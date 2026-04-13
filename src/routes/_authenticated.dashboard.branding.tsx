@@ -88,6 +88,21 @@ function BrandingPage() {
     if (!user) return;
     setSaving(true);
 
+    let logoUrl = branding.logo_url;
+    let faviconUrl = branding.favicon_url;
+
+    // Upload files if changed
+    if (logoFile) {
+      const url = await uploadBrandAsset(user.id, logoFile, "logo");
+      if (url) logoUrl = url;
+      else toast.error("Failed to upload logo");
+    }
+    if (faviconFile) {
+      const url = await uploadBrandAsset(user.id, faviconFile, "favicon");
+      if (url) faviconUrl = url;
+      else toast.error("Failed to upload favicon");
+    }
+
     const { error } = await supabase
       .from("branding_settings")
       .upsert(
@@ -97,8 +112,8 @@ function BrandingPage() {
           accent_color: branding.accent_color,
           hud_bg_color: branding.hud_bg_color,
           gate_label: branding.gate_label,
-          logo_url: branding.logo_url,
-          favicon_url: branding.favicon_url,
+          logo_url: logoUrl,
+          favicon_url: faviconUrl,
           custom_domain: isPro ? branding.custom_domain : null,
           slug: branding.slug,
           payment_link: branding.payment_link,
@@ -111,6 +126,9 @@ function BrandingPage() {
     if (error) {
       toast.error("Failed to save branding settings");
     } else {
+      setBranding((prev) => ({ ...prev, logo_url: logoUrl, favicon_url: faviconUrl }));
+      setLogoFile(null);
+      setFaviconFile(null);
       toast.success("Branding settings saved");
     }
   };
