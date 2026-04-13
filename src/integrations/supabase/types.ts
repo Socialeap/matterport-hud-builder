@@ -25,7 +25,10 @@ export type Database = {
           hud_bg_color: string
           id: string
           logo_url: string | null
+          payment_instructions: string | null
+          payment_link: string | null
           provider_id: string
+          slug: string | null
           tier: Database["public"]["Enums"]["app_tier"]
           updated_at: string
         }
@@ -39,7 +42,10 @@ export type Database = {
           hud_bg_color?: string
           id?: string
           logo_url?: string | null
+          payment_instructions?: string | null
+          payment_link?: string | null
           provider_id: string
+          slug?: string | null
           tier?: Database["public"]["Enums"]["app_tier"]
           updated_at?: string
         }
@@ -53,7 +59,10 @@ export type Database = {
           hud_bg_color?: string
           id?: string
           logo_url?: string | null
+          payment_instructions?: string | null
+          payment_link?: string | null
           provider_id?: string
+          slug?: string | null
           tier?: Database["public"]["Enums"]["app_tier"]
           updated_at?: string
         }
@@ -113,12 +122,51 @@ export type Database = {
         }
         Relationships: []
       }
+      order_notifications: {
+        Row: {
+          client_id: string
+          created_at: string
+          id: string
+          model_id: string
+          provider_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          id?: string
+          model_id: string
+          provider_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          id?: string
+          model_id?: string
+          provider_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_notifications_model_id_fkey"
+            columns: ["model_id"]
+            isOneToOne: false
+            referencedRelation: "saved_models"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
           created_at: string
           display_name: string | null
           id: string
+          provider_id: string | null
           updated_at: string
           user_id: string
         }
@@ -127,6 +175,7 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           id?: string
+          provider_id?: string | null
           updated_at?: string
           user_id: string
         }
@@ -135,6 +184,7 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           id?: string
+          provider_id?: string | null
           updated_at?: string
           user_id?: string
         }
@@ -190,9 +240,11 @@ export type Database = {
           client_id: string
           created_at: string
           id: string
+          is_released: boolean
           name: string
           properties: Json
           provider_id: string
+          status: Database["public"]["Enums"]["model_status"]
           tour_config: Json
           updated_at: string
         }
@@ -200,9 +252,11 @@ export type Database = {
           client_id: string
           created_at?: string
           id?: string
+          is_released?: boolean
           name?: string
           properties?: Json
           provider_id: string
+          status?: Database["public"]["Enums"]["model_status"]
           tour_config?: Json
           updated_at?: string
         }
@@ -210,9 +264,11 @@ export type Database = {
           client_id?: string
           created_at?: string
           id?: string
+          is_released?: boolean
           name?: string
           properties?: Json
           provider_id?: string
+          status?: Database["public"]["Enums"]["model_status"]
           tour_config?: Json
           updated_at?: string
         }
@@ -257,6 +313,7 @@ export type Database = {
       app_role: "admin" | "provider" | "client"
       app_tier: "starter" | "pro"
       invitation_status: "pending" | "accepted" | "expired"
+      model_status: "preview" | "pending_payment" | "paid"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -387,6 +444,7 @@ export const Constants = {
       app_role: ["admin", "provider", "client"],
       app_tier: ["starter", "pro"],
       invitation_status: ["pending", "accepted", "expired"],
+      model_status: ["preview", "pending_payment", "paid"],
     },
   },
 } as const
