@@ -14,16 +14,200 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      branding_settings: {
+        Row: {
+          accent_color: string
+          brand_name: string
+          created_at: string
+          custom_domain: string | null
+          favicon_url: string | null
+          gate_label: string
+          hud_bg_color: string
+          id: string
+          logo_url: string | null
+          provider_id: string
+          tier: Database["public"]["Enums"]["app_tier"]
+          updated_at: string
+        }
+        Insert: {
+          accent_color?: string
+          brand_name?: string
+          created_at?: string
+          custom_domain?: string | null
+          favicon_url?: string | null
+          gate_label?: string
+          hud_bg_color?: string
+          id?: string
+          logo_url?: string | null
+          provider_id: string
+          tier?: Database["public"]["Enums"]["app_tier"]
+          updated_at?: string
+        }
+        Update: {
+          accent_color?: string
+          brand_name?: string
+          created_at?: string
+          custom_domain?: string | null
+          favicon_url?: string | null
+          gate_label?: string
+          hud_bg_color?: string
+          id?: string
+          logo_url?: string | null
+          provider_id?: string
+          tier?: Database["public"]["Enums"]["app_tier"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      client_providers: {
+        Row: {
+          client_id: string
+          created_at: string
+          id: string
+          provider_id: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          id?: string
+          provider_id: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          id?: string
+          provider_id?: string
+        }
+        Relationships: []
+      }
+      invitations: {
+        Row: {
+          created_at: string
+          email: string
+          expires_at: string
+          id: string
+          provider_id: string
+          status: Database["public"]["Enums"]["invitation_status"]
+          token: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          expires_at?: string
+          id?: string
+          provider_id: string
+          status?: Database["public"]["Enums"]["invitation_status"]
+          token?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          provider_id?: string
+          status?: Database["public"]["Enums"]["invitation_status"]
+          token?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          display_name: string | null
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      saved_models: {
+        Row: {
+          client_id: string
+          created_at: string
+          id: string
+          name: string
+          properties: Json
+          provider_id: string
+          tour_config: Json
+          updated_at: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          id?: string
+          name?: string
+          properties?: Json
+          provider_id: string
+          tour_config?: Json
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          id?: string
+          name?: string
+          properties?: Json
+          provider_id?: string
+          tour_config?: Json
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "provider" | "client"
+      app_tier: "starter" | "pro"
+      invitation_status: "pending" | "accepted" | "expired"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +334,10 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "provider", "client"],
+      app_tier: ["starter", "pro"],
+      invitation_status: ["pending", "accepted", "expired"],
+    },
   },
 } as const
