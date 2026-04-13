@@ -220,8 +220,39 @@ function BrandingPage() {
               </div>
             </div>
           </div>
-        </CardContent>
-      </Card>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Primary Logo</Label>
+              <Input
+                type="file"
+                accept=".png,.jpg,.jpeg,.svg,.webp"
+                onChange={(e) => setLogoFile(e.target.files?.[0] || null)}
+              />
+              {(logoFile || branding.logo_url) && (
+                <img
+                  src={logoFile ? URL.createObjectURL(logoFile) : branding.logo_url!}
+                  alt="Logo preview"
+                  className="mt-2 h-12 rounded object-contain"
+                />
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>Favicon / Tab Icon</Label>
+              <Input
+                type="file"
+                accept=".png,.jpg,.jpeg,.svg,.webp,.ico"
+                onChange={(e) => setFaviconFile(e.target.files?.[0] || null)}
+              />
+              {(faviconFile || branding.favicon_url) && (
+                <img
+                  src={faviconFile ? URL.createObjectURL(faviconFile) : branding.favicon_url!}
+                  alt="Favicon preview"
+                  className="mt-2 h-8 rounded object-contain"
+                />
+              )}
+            </div>
+          </div>
 
       {/* Portal & Payment Settings */}
       <Card>
