@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Lock } from "lucide-react";
 import { toast } from "sonner";
+import { uploadBrandAsset } from "@/lib/storage";
 
 export const Route = createFileRoute("/_authenticated/dashboard/branding")({
   component: BrandingPage,
@@ -48,6 +49,8 @@ function BrandingPage() {
   const [branding, setBranding] = useState<BrandingData>(defaultBranding);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [faviconFile, setFaviconFile] = useState<File | null>(null);
 
   const isPro = branding.tier === "pro";
 
