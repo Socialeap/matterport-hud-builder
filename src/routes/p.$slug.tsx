@@ -19,20 +19,15 @@ const fetchBrandingBySlug = createServerFn({ method: "GET" })
   });
 
 export const Route = createFileRoute("/p/$slug")({
-  head: ({ loaderData }) => {
-    const name = loaderData?.branding?.brand_name || "Property Tours";
-    return {
-      meta: [
-        { title: `${name} — 3D Property Presentations` },
-        { name: "description", content: `Create stunning 3D property tour presentations with ${name}` },
-        { property: "og:title", content: `${name} — 3D Property Presentations` },
-        { property: "og:description", content: `Create stunning 3D property tour presentations with ${name}` },
-      ],
-    };
-  },
+  head: () => ({
+    meta: [
+      { title: "3D Property Presentations" },
+      { name: "description", content: "Create stunning 3D property tour presentations" },
+    ],
+  }),
   loader: async ({ params }) => {
     const result = await fetchBrandingBySlug({ data: { slug: params.slug } });
-    return result;
+    return result as { branding: Awaited<ReturnType<typeof fetchBrandingBySlug>>["branding"] };
   },
   component: PortalPage,
   notFoundComponent: () => (

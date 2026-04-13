@@ -19,6 +19,7 @@ import { Route as PSlugRouteImport } from './routes/p.$slug'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated.dashboard'
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated.dashboard.index'
 import { Route as AuthenticatedDashboardPricingRouteImport } from './routes/_authenticated.dashboard.pricing'
+import { Route as AuthenticatedDashboardOrdersRouteImport } from './routes/_authenticated.dashboard.orders'
 import { Route as AuthenticatedDashboardDemoRouteImport } from './routes/_authenticated.dashboard.demo'
 import { Route as AuthenticatedDashboardClientsRouteImport } from './routes/_authenticated.dashboard.clients'
 import { Route as AuthenticatedDashboardBrandingRouteImport } from './routes/_authenticated.dashboard.branding'
@@ -74,6 +75,12 @@ const AuthenticatedDashboardPricingRoute =
     path: '/pricing',
     getParentRoute: () => AuthenticatedDashboardRoute,
   } as any)
+const AuthenticatedDashboardOrdersRoute =
+  AuthenticatedDashboardOrdersRouteImport.update({
+    id: '/orders',
+    path: '/orders',
+    getParentRoute: () => AuthenticatedDashboardRoute,
+  } as any)
 const AuthenticatedDashboardDemoRoute =
   AuthenticatedDashboardDemoRouteImport.update({
     id: '/demo',
@@ -104,6 +111,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/branding': typeof AuthenticatedDashboardBrandingRoute
   '/dashboard/clients': typeof AuthenticatedDashboardClientsRoute
   '/dashboard/demo': typeof AuthenticatedDashboardDemoRoute
+  '/dashboard/orders': typeof AuthenticatedDashboardOrdersRoute
   '/dashboard/pricing': typeof AuthenticatedDashboardPricingRoute
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
 }
@@ -117,6 +125,7 @@ export interface FileRoutesByTo {
   '/dashboard/branding': typeof AuthenticatedDashboardBrandingRoute
   '/dashboard/clients': typeof AuthenticatedDashboardClientsRoute
   '/dashboard/demo': typeof AuthenticatedDashboardDemoRoute
+  '/dashboard/orders': typeof AuthenticatedDashboardOrdersRoute
   '/dashboard/pricing': typeof AuthenticatedDashboardPricingRoute
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
 }
@@ -133,6 +142,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard/branding': typeof AuthenticatedDashboardBrandingRoute
   '/_authenticated/dashboard/clients': typeof AuthenticatedDashboardClientsRoute
   '/_authenticated/dashboard/demo': typeof AuthenticatedDashboardDemoRoute
+  '/_authenticated/dashboard/orders': typeof AuthenticatedDashboardOrdersRoute
   '/_authenticated/dashboard/pricing': typeof AuthenticatedDashboardPricingRoute
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
 }
@@ -149,6 +159,7 @@ export interface FileRouteTypes {
     | '/dashboard/branding'
     | '/dashboard/clients'
     | '/dashboard/demo'
+    | '/dashboard/orders'
     | '/dashboard/pricing'
     | '/dashboard/'
   fileRoutesByTo: FileRoutesByTo
@@ -162,6 +173,7 @@ export interface FileRouteTypes {
     | '/dashboard/branding'
     | '/dashboard/clients'
     | '/dashboard/demo'
+    | '/dashboard/orders'
     | '/dashboard/pricing'
     | '/dashboard'
   id:
@@ -177,6 +189,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard/branding'
     | '/_authenticated/dashboard/clients'
     | '/_authenticated/dashboard/demo'
+    | '/_authenticated/dashboard/orders'
     | '/_authenticated/dashboard/pricing'
     | '/_authenticated/dashboard/'
   fileRoutesById: FileRoutesById
@@ -263,6 +276,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardPricingRouteImport
       parentRoute: typeof AuthenticatedDashboardRoute
     }
+    '/_authenticated/dashboard/orders': {
+      id: '/_authenticated/dashboard/orders'
+      path: '/orders'
+      fullPath: '/dashboard/orders'
+      preLoaderRoute: typeof AuthenticatedDashboardOrdersRouteImport
+      parentRoute: typeof AuthenticatedDashboardRoute
+    }
     '/_authenticated/dashboard/demo': {
       id: '/_authenticated/dashboard/demo'
       path: '/demo'
@@ -291,6 +311,7 @@ interface AuthenticatedDashboardRouteChildren {
   AuthenticatedDashboardBrandingRoute: typeof AuthenticatedDashboardBrandingRoute
   AuthenticatedDashboardClientsRoute: typeof AuthenticatedDashboardClientsRoute
   AuthenticatedDashboardDemoRoute: typeof AuthenticatedDashboardDemoRoute
+  AuthenticatedDashboardOrdersRoute: typeof AuthenticatedDashboardOrdersRoute
   AuthenticatedDashboardPricingRoute: typeof AuthenticatedDashboardPricingRoute
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
 }
@@ -300,6 +321,7 @@ const AuthenticatedDashboardRouteChildren: AuthenticatedDashboardRouteChildren =
     AuthenticatedDashboardBrandingRoute: AuthenticatedDashboardBrandingRoute,
     AuthenticatedDashboardClientsRoute: AuthenticatedDashboardClientsRoute,
     AuthenticatedDashboardDemoRoute: AuthenticatedDashboardDemoRoute,
+    AuthenticatedDashboardOrdersRoute: AuthenticatedDashboardOrdersRoute,
     AuthenticatedDashboardPricingRoute: AuthenticatedDashboardPricingRoute,
     AuthenticatedDashboardIndexRoute: AuthenticatedDashboardIndexRoute,
   }
