@@ -9,7 +9,7 @@ export const Route = createFileRoute("/_authenticated/dashboard/")({
 });
 
 function DashboardOverview() {
-  const { user } = useAuth();
+  const _auth = useAuth();
 
   return (
     <div className="mx-auto max-w-5xl space-y-8">
