@@ -12,12 +12,13 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { Palette, Users, Play, LayoutDashboard, LogOut } from "lucide-react";
+import { Palette, Users, Play, LayoutDashboard, LogOut, CreditCard } from "lucide-react";
 
 const navItems = [
   { label: "Overview", to: "/dashboard", icon: LayoutDashboard },
   { label: "Branding", to: "/dashboard/branding", icon: Palette },
   { label: "Clients", to: "/dashboard/clients", icon: Users },
+  { label: "Pricing", to: "/dashboard/pricing", icon: CreditCard },
   { label: "Demo", to: "/dashboard/demo", icon: Play },
 ] as const;
 
