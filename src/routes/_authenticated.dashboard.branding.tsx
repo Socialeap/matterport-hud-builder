@@ -253,6 +253,8 @@ function BrandingPage() {
               )}
             </div>
           </div>
+        </CardContent>
+      </Card>
 
       {/* Portal & Payment Settings */}
       <Card>
