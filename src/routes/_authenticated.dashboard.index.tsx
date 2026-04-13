@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, Palette, Play } from "lucide-react";
 import { Link } from "@tanstack/react-router";
@@ -9,7 +8,6 @@ export const Route = createFileRoute("/_authenticated/dashboard/")({
 });
 
 function DashboardOverview() {
-  const _auth = useAuth();
 
   return (
     <div className="mx-auto max-w-5xl space-y-8">
