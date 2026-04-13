@@ -1,13 +1,17 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { BrandingSection } from "./BrandingSection";
 import { PropertyModelsSection } from "./PropertyModelsSection";
 import { AgentContactSection } from "./AgentContactSection";
 import { TourBehaviorModal } from "./TourBehaviorModal";
 import { HudPreview } from "./HudPreview";
+import { PortalSignupModal } from "./PortalSignupModal";
 import type { PropertyModel, AgentContact, TourBehavior } from "./types";
 import { DEFAULT_BEHAVIOR, DEFAULT_AGENT } from "./types";
 import type { Tables } from "@/integrations/supabase/types";
+import { supabase } from "@/integrations/supabase/client";
+import { savePresentationRequest } from "@/lib/portal.functions";
+import { toast } from "sonner";
 
 interface HudBuilderSandboxProps {
   branding: Tables<"branding_settings">;
@@ -24,6 +28,21 @@ function createEmptyModel(): PropertyModel {
 }
 
 export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
+  // Auth state
+  const [userId, setUserId] = useState<string | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUserId(session?.user?.id ?? null);
+      setAuthChecked(true);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUserId(session?.user?.id ?? null);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
   // Branding state (pre-filled from MSP settings)
   const [brandName, setBrandName] = useState(branding.brand_name);
   const [accentColor, setAccentColor] = useState(branding.accent_color);
@@ -35,18 +54,19 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
   const [faviconPreview, setFaviconPreview] = useState<string | null>(branding.favicon_url);
 
   // Models
-  const [models, setModels] = useState<PropertyModel[]>([createEmptyModel()]);
+  const [models, setModels] = useState<PropertyModel[]>(() => {
+    const first = createEmptyModel();
+    return [first];
+  });
   const [behaviors, setBehaviors] = useState<Record<string, TourBehavior>>(() => {
     const initial: Record<string, TourBehavior> = {};
-    const firstModel = createEmptyModel();
-    initial[firstModel.id] = { ...DEFAULT_BEHAVIOR };
     return initial;
   });
 
-  // Re-initialize behaviors when models state is set initially
-  const [initialModelId] = useState(() => models[0]?.id);
-  if (initialModelId && !behaviors[initialModelId]) {
-    behaviors[initialModelId] = { ...DEFAULT_BEHAVIOR };
+  // Ensure first model has behavior
+  const firstModelId = models[0]?.id;
+  if (firstModelId && !behaviors[firstModelId]) {
+    behaviors[firstModelId] = { ...DEFAULT_BEHAVIOR };
   }
 
   // Agent
@@ -59,8 +79,14 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
   // Preview
   const [selectedModelIndex, setSelectedModelIndex] = useState(0);
 
-  // Intent state
+  // Signup modal
+  const [signupOpen, setSignupOpen] = useState(false);
+
+  // Intent/submission state
+  const [submitting, setSubmitting] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
+
+  const isPro = branding.tier === "pro";
 
   const handleBrandingChange = useCallback((field: string, value: string) => {
     switch (field) {
@@ -123,11 +149,53 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
     setAgent((prev) => ({ ...prev, [field]: value }));
   }, []);
 
-  const handleConfirmIntent = useCallback(() => {
-    setShowConfirmation(true);
-  }, []);
+  const submitRequest = useCallback(async (authenticatedUserId: string) => {
+    setSubmitting(true);
+    try {
+      const result = await savePresentationRequest({
+        data: {
+          providerId: branding.provider_id,
+          name: models[0]?.name || "Untitled Presentation",
+          properties: models,
+          tourConfig: behaviors as unknown as Record<string, unknown>,
+          agent: agent as unknown as Record<string, string>,
+          brandingOverrides: {
+            brandName,
+            accentColor,
+            hudBgColor,
+            gateLabel,
+          },
+        },
+      });
 
-  const isPro = branding.tier === "pro";
+      if (result.success) {
+        setShowConfirmation(true);
+      } else {
+        toast.error(result.error || "Failed to submit request");
+      }
+    } catch (err) {
+      toast.error("An error occurred. Please try again.");
+      console.error(err);
+    }
+    setSubmitting(false);
+  }, [branding.provider_id, models, behaviors, agent, brandName, accentColor, hudBgColor, gateLabel]);
+
+  const handleConfirmIntent = useCallback(() => {
+    if (!userId) {
+      // Not logged in — show signup modal
+      setSignupOpen(true);
+    } else {
+      // Already logged in — submit directly
+      submitRequest(userId);
+    }
+  }, [userId, submitRequest]);
+
+  const handleAuthenticated = useCallback((newUserId: string) => {
+    setUserId(newUserId);
+    setSignupOpen(false);
+    submitRequest(newUserId);
+  }, [submitRequest]);
+
   const behaviorModel = behaviorModelId ? models.find((m) => m.id === behaviorModelId) : null;
 
   if (showConfirmation) {
@@ -191,9 +259,14 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
               {brandName || "Property Tours"}
             </span>
           </div>
-          {!isPro && (
-            <span className="text-xs text-muted-foreground">Powered by Transcendence Media</span>
-          )}
+          <div className="flex items-center gap-3">
+            {userId && (
+              <span className="text-xs text-muted-foreground">Signed in</span>
+            )}
+            {!isPro && (
+              <span className="text-xs text-muted-foreground">Powered by Transcendence Media</span>
+            )}
+          </div>
         </div>
       </header>
 
@@ -249,8 +322,9 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
                 className="mt-4 text-white"
                 style={{ backgroundColor: accentColor }}
                 onClick={handleConfirmIntent}
+                disabled={submitting}
               >
-                I Want This — Request Presentation
+                {submitting ? "Submitting…" : "I Want This — Request Presentation"}
               </Button>
             </div>
           </div>
@@ -288,6 +362,16 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
           modelName={behaviorModel.name}
         />
       )}
+
+      {/* Signup Modal */}
+      <PortalSignupModal
+        open={signupOpen}
+        onOpenChange={setSignupOpen}
+        onAuthenticated={handleAuthenticated}
+        providerId={branding.provider_id}
+        accentColor={accentColor}
+        brandName={brandName}
+      />
     </div>
   );
 }
