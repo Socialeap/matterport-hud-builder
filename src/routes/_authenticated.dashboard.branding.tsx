@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Lock } from "lucide-react";
@@ -23,6 +24,9 @@ interface BrandingData {
   favicon_url: string | null;
   custom_domain: string | null;
   tier: "starter" | "pro";
+  slug: string | null;
+  payment_link: string | null;
+  payment_instructions: string | null;
 }
 
 const defaultBranding: BrandingData = {
@@ -34,6 +38,9 @@ const defaultBranding: BrandingData = {
   favicon_url: null,
   custom_domain: null,
   tier: "starter",
+  slug: null,
+  payment_link: null,
+  payment_instructions: null,
 };
 
 function BrandingPage() {
@@ -62,6 +69,9 @@ function BrandingPage() {
         favicon_url: data.favicon_url,
         custom_domain: data.custom_domain,
         tier: data.tier as "starter" | "pro",
+        slug: data.slug,
+        payment_link: data.payment_link,
+        payment_instructions: data.payment_instructions,
       });
     }
     setLoading(false);
@@ -87,6 +97,9 @@ function BrandingPage() {
           logo_url: branding.logo_url,
           favicon_url: branding.favicon_url,
           custom_domain: isPro ? branding.custom_domain : null,
+          slug: branding.slug,
+          payment_link: branding.payment_link,
+          payment_instructions: branding.payment_instructions,
         },
         { onConflict: "provider_id" }
       );
@@ -185,6 +198,64 @@ function BrandingPage() {
                 />
               </div>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Portal & Payment Settings */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Portal & Payment</CardTitle>
+          <CardDescription>
+            Configure your public portal URL and payment details for client orders.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="slug">Portal Slug</Label>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground whitespace-nowrap">/p/</span>
+              <Input
+                id="slug"
+                value={branding.slug ?? ""}
+                onChange={(e) =>
+                  setBranding({
+                    ...branding,
+                    slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""),
+                  })
+                }
+                placeholder="your-brand"
+              />
+            </div>
+            {branding.slug && (
+              <p className="text-xs text-muted-foreground">
+                Your portal: {window.location.origin}/p/{branding.slug}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="payment_link">Payment Link</Label>
+            <Input
+              id="payment_link"
+              value={branding.payment_link ?? ""}
+              onChange={(e) => setBranding({ ...branding, payment_link: e.target.value })}
+              placeholder="https://venmo.com/your-handle or PayPal/Square link"
+            />
+            <p className="text-xs text-muted-foreground">
+              Shown to clients when they confirm a presentation request.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="payment_instructions">Payment Instructions</Label>
+            <Textarea
+              id="payment_instructions"
+              value={branding.payment_instructions ?? ""}
+              onChange={(e) => setBranding({ ...branding, payment_instructions: e.target.value })}
+              placeholder="e.g. Please send payment via Venmo to @your-handle with your property address as the note."
+              rows={3}
+            />
           </div>
         </CardContent>
       </Card>

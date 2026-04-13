@@ -1,0 +1,232 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { useAuth } from "@/hooks/use-auth";
+import { useEffect, useState, useCallback } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { toast } from "sonner";
+import { CheckCircle, Download, Clock, Eye } from "lucide-react";
+
+export const Route = createFileRoute("/_authenticated/dashboard/orders")({
+  component: OrdersPage,
+});
+
+interface OrderRow {
+  id: string;
+  model_id: string;
+  client_id: string;
+  status: string;
+  created_at: string;
+  model_name: string;
+  model_status: string;
+  is_released: boolean;
+}
+
+function OrdersPage() {
+  const { user } = useAuth();
+  const [orders, setOrders] = useState<OrderRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchOrders = useCallback(async () => {
+    if (!user) return;
+    const { data: notifications } = await supabase
+      .from("order_notifications")
+      .select("*")
+      .eq("provider_id", user.id)
+      .order("created_at", { ascending: false });
+
+    if (!notifications || notifications.length === 0) {
+      setOrders([]);
+      setLoading(false);
+      return;
+    }
+
+    // Fetch associated models
+    const modelIds = notifications.map((n) => n.model_id);
+    const { data: models } = await supabase
+      .from("saved_models")
+      .select("id, name, status, is_released")
+      .in("id", modelIds);
+
+    const modelMap = new Map(models?.map((m) => [m.id, m]) || []);
+
+    const rows: OrderRow[] = notifications.map((n) => {
+      const model = modelMap.get(n.model_id);
+      return {
+        id: n.id,
+        model_id: n.model_id,
+        client_id: n.client_id,
+        status: n.status,
+        created_at: n.created_at,
+        model_name: model?.name || "Unknown",
+        model_status: model?.status || "preview",
+        is_released: model?.is_released || false,
+      };
+    });
+
+    setOrders(rows);
+    setLoading(false);
+  }, [user]);
+
+  useEffect(() => {
+    fetchOrders();
+  }, [fetchOrders]);
+
+  const handleMarkPaid = async (modelId: string) => {
+    const { error } = await supabase
+      .from("saved_models")
+      .update({ status: "paid" as const })
+      .eq("id", modelId);
+    if (error) {
+      toast.error("Failed to update status");
+    } else {
+      toast.success("Marked as paid");
+      fetchOrders();
+    }
+  };
+
+  const handleRelease = async (modelId: string) => {
+    const { error } = await supabase
+      .from("saved_models")
+      .update({ is_released: true })
+      .eq("id", modelId);
+    if (error) {
+      toast.error("Failed to release file");
+    } else {
+      toast.success("File released to client");
+      fetchOrders();
+    }
+  };
+
+  const handleMarkRead = async (notificationId: string) => {
+    await supabase
+      .from("order_notifications")
+      .update({ status: "read" })
+      .eq("id", notificationId);
+    fetchOrders();
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto max-w-5xl space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Orders</h1>
+        <p className="text-sm text-muted-foreground">
+          Manage client presentation requests and fulfillment.
+        </p>
+      </div>
+
+      {orders.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Clock className="mx-auto h-10 w-10 text-muted-foreground/50" />
+            <h3 className="mt-4 text-lg font-semibold text-foreground">No orders yet</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              When clients request presentations through your portal, they'll appear here.
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Pending & Completed Orders</CardTitle>
+            <CardDescription>
+              Review requests, mark payments, and release files to clients.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Presentation</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Payment</TableHead>
+                  <TableHead>Released</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {orders.map((order) => (
+                  <TableRow key={order.id} className={order.status === "unread" ? "bg-primary/5" : ""}>
+                    <TableCell>
+                      <div>
+                        <p className="font-medium text-foreground">{order.model_name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Client: {order.client_id.slice(0, 8)}…
+                        </p>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {new Date(order.created_at).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={order.model_status === "paid" ? "default" : "secondary"}
+                      >
+                        {order.model_status === "paid" ? "Paid" : "Pending"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {order.is_released ? (
+                        <CheckCircle className="size-4 text-green-500" />
+                      ) : (
+                        <span className="text-xs text-muted-foreground">No</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        {order.status === "unread" && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleMarkRead(order.id)}
+                          >
+                            <Eye className="size-3" />
+                          </Button>
+                        )}
+                        {order.model_status !== "paid" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleMarkPaid(order.model_id)}
+                          >
+                            Mark Paid
+                          </Button>
+                        )}
+                        {order.model_status === "paid" && !order.is_released && (
+                          <Button
+                            size="sm"
+                            onClick={() => handleRelease(order.model_id)}
+                          >
+                            <Download className="mr-1 size-3" />
+                            Release
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
