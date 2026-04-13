@@ -23,6 +23,9 @@ interface BrandingData {
   favicon_url: string | null;
   custom_domain: string | null;
   tier: "starter" | "pro";
+  slug: string | null;
+  payment_link: string | null;
+  payment_instructions: string | null;
 }
 
 const defaultBranding: BrandingData = {
@@ -34,6 +37,9 @@ const defaultBranding: BrandingData = {
   favicon_url: null,
   custom_domain: null,
   tier: "starter",
+  slug: null,
+  payment_link: null,
+  payment_instructions: null,
 };
 
 function BrandingPage() {
@@ -62,6 +68,9 @@ function BrandingPage() {
         favicon_url: data.favicon_url,
         custom_domain: data.custom_domain,
         tier: data.tier as "starter" | "pro",
+        slug: data.slug,
+        payment_link: data.payment_link,
+        payment_instructions: data.payment_instructions,
       });
     }
     setLoading(false);
@@ -87,6 +96,9 @@ function BrandingPage() {
           logo_url: branding.logo_url,
           favicon_url: branding.favicon_url,
           custom_domain: isPro ? branding.custom_domain : null,
+          slug: branding.slug,
+          payment_link: branding.payment_link,
+          payment_instructions: branding.payment_instructions,
         },
         { onConflict: "provider_id" }
       );
