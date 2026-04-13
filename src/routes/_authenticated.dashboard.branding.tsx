@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Lock } from "lucide-react";
 import { toast } from "sonner";
+import { uploadBrandAsset } from "@/lib/storage";
 
 export const Route = createFileRoute("/_authenticated/dashboard/branding")({
   component: BrandingPage,
@@ -48,6 +49,8 @@ function BrandingPage() {
   const [branding, setBranding] = useState<BrandingData>(defaultBranding);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [faviconFile, setFaviconFile] = useState<File | null>(null);
 
   const isPro = branding.tier === "pro";
 
@@ -85,6 +88,21 @@ function BrandingPage() {
     if (!user) return;
     setSaving(true);
 
+    let logoUrl = branding.logo_url;
+    let faviconUrl = branding.favicon_url;
+
+    // Upload files if changed
+    if (logoFile) {
+      const url = await uploadBrandAsset(user.id, logoFile, "logo");
+      if (url) logoUrl = url;
+      else toast.error("Failed to upload logo");
+    }
+    if (faviconFile) {
+      const url = await uploadBrandAsset(user.id, faviconFile, "favicon");
+      if (url) faviconUrl = url;
+      else toast.error("Failed to upload favicon");
+    }
+
     const { error } = await supabase
       .from("branding_settings")
       .upsert(
@@ -94,8 +112,8 @@ function BrandingPage() {
           accent_color: branding.accent_color,
           hud_bg_color: branding.hud_bg_color,
           gate_label: branding.gate_label,
-          logo_url: branding.logo_url,
-          favicon_url: branding.favicon_url,
+          logo_url: logoUrl,
+          favicon_url: faviconUrl,
           custom_domain: isPro ? branding.custom_domain : null,
           slug: branding.slug,
           payment_link: branding.payment_link,
@@ -108,6 +126,9 @@ function BrandingPage() {
     if (error) {
       toast.error("Failed to save branding settings");
     } else {
+      setBranding((prev) => ({ ...prev, logo_url: logoUrl, favicon_url: faviconUrl }));
+      setLogoFile(null);
+      setFaviconFile(null);
       toast.success("Branding settings saved");
     }
   };
@@ -197,6 +218,39 @@ function BrandingPage() {
                   className="flex-1"
                 />
               </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Primary Logo</Label>
+              <Input
+                type="file"
+                accept=".png,.jpg,.jpeg,.svg,.webp"
+                onChange={(e) => setLogoFile(e.target.files?.[0] || null)}
+              />
+              {(logoFile || branding.logo_url) && (
+                <img
+                  src={logoFile ? URL.createObjectURL(logoFile) : branding.logo_url!}
+                  alt="Logo preview"
+                  className="mt-2 h-12 rounded object-contain"
+                />
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>Favicon / Tab Icon</Label>
+              <Input
+                type="file"
+                accept=".png,.jpg,.jpeg,.svg,.webp,.ico"
+                onChange={(e) => setFaviconFile(e.target.files?.[0] || null)}
+              />
+              {(faviconFile || branding.favicon_url) && (
+                <img
+                  src={faviconFile ? URL.createObjectURL(faviconFile) : branding.favicon_url!}
+                  alt="Favicon preview"
+                  className="mt-2 h-8 rounded object-contain"
+                />
+              )}
             </div>
           </div>
         </CardContent>
