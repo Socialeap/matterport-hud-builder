@@ -31,15 +31,15 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Matterport HUD Builder" },
+      { title: "3D Presentation Studio" },
       { name: "description", content: "©Transcendence Media 2026" },
       { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Matterport HUD Builder" },
+      { property: "og:title", content: "3D Presentation Studio" },
       { property: "og:description", content: "©Transcendence Media 2026" },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
-      { name: "twitter:title", content: "Matterport HUD Builder" },
+      { name: "twitter:title", content: "3D Presentation Studio" },
       { name: "twitter:description", content: "©Transcendence Media 2026" },
     ],
     links: [
