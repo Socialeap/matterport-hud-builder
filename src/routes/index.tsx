@@ -427,7 +427,7 @@ function Index() {
       </section>
 
       {/* ---- Features grid ---- */}
-      <section className="border-t border-border bg-muted/30 px-4 py-16 sm:py-24">
+      <section className="relative z-10 border-t border-white/5 px-4 py-16 sm:py-24" style={{ backgroundColor: 'rgba(255,255,255,0.015)' }}>
         <div className="mx-auto max-w-5xl">
           <h2 className="text-center text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
             A Branded HUD Station for Clients to Build Their Own Presentations
@@ -439,7 +439,7 @@ function Index() {
 
           <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {features.map((f) => (
-              <Card key={f.title} className="bg-card/80 backdrop-blur">
+              <Card key={f.title} className="bg-white/5 backdrop-blur">
                 <CardContent className="pt-6">
                   <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
                     <f.icon className="size-5 text-primary" />
@@ -454,7 +454,7 @@ function Index() {
       </section>
 
       {/* ---- Pricing comparison ---- */}
-      <section className="px-4 py-16 sm:py-24">
+      <section className="relative z-10 px-4 py-16 sm:py-24">
         <div className="mx-auto max-w-4xl">
           <h2 className="text-center text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
             Simple, One-Time Pricing
@@ -528,7 +528,7 @@ function Index() {
       </section>
 
       {/* ---- Admin Demo ---- */}
-      <section className="border-t border-border bg-muted/30 px-4 py-16 sm:py-24">
+      <section className="relative z-10 border-t border-white/5 px-4 py-16 sm:py-24" style={{ backgroundColor: 'rgba(255,255,255,0.015)' }}>
         <div className="mx-auto max-w-2xl">
           <h2 className="mb-6 text-center text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
             Try It Now — Admin Demo
@@ -542,7 +542,7 @@ function Index() {
       </section>
 
       {/* ---- How it works ---- */}
-      <section className="px-4 py-16 sm:py-24">
+      <section className="relative z-10 px-4 py-16 sm:py-24">
         <div className="mx-auto max-w-3xl">
           <h2 className="text-center text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
             How It Works
@@ -585,7 +585,7 @@ function Index() {
       </section>
 
       {/* ---- Footer ---- */}
-      <footer className="border-t border-border px-4 py-8">
+      <footer className="relative z-10 border-t border-white/5 px-4 py-8">
         <div className="mx-auto max-w-5xl text-center text-xs text-muted-foreground">
           © {new Date().getFullYear()} Transcendence Media. All rights reserved.
         </div>
