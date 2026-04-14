@@ -365,7 +365,7 @@ function Index() {
       </section>
 
       {/* ---- Problem section ---- */}
-      <section className="bg-destructive/5 px-4 py-16 sm:py-24">
+      <section className="relative z-10 px-4 py-16 sm:py-24" style={{ backgroundColor: 'rgba(255,255,255,0.02)' }}>
         <div className="mx-auto max-w-5xl">
           <h2 className="text-center text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
             The &ldquo;Service Trap&rdquo; of Traditional 3D Presentation Platforms
@@ -375,7 +375,7 @@ function Index() {
           </p>
 
           <div className="mt-12 grid gap-6 sm:grid-cols-2">
-            <Card className="border-destructive/20 bg-card/80 backdrop-blur">
+            <Card className="border-red-500/20 bg-white/5 backdrop-blur">
               <CardContent className="pt-6">
                 <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
                   <DollarSign className="size-5 text-destructive" />
@@ -387,7 +387,7 @@ function Index() {
               </CardContent>
             </Card>
 
-            <Card className="border-destructive/20 bg-card/80 backdrop-blur">
+            <Card className="border-red-500/20 bg-white/5 backdrop-blur">
               <CardContent className="pt-6">
                 <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
                   <Clock className="size-5 text-destructive" />
@@ -399,7 +399,7 @@ function Index() {
               </CardContent>
             </Card>
 
-            <Card className="border-destructive/20 bg-card/80 backdrop-blur">
+            <Card className="border-red-500/20 bg-white/5 backdrop-blur">
               <CardContent className="pt-6">
                 <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
                   <Lock className="size-5 text-destructive" />
@@ -411,7 +411,7 @@ function Index() {
               </CardContent>
             </Card>
 
-            <Card className="border-destructive/20 bg-card/80 backdrop-blur">
+            <Card className="border-red-500/20 bg-white/5 backdrop-blur">
               <CardContent className="pt-6">
                 <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
                   <PackageX className="size-5 text-destructive" />
