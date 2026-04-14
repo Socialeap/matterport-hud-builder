@@ -18,6 +18,7 @@ export interface AgentContact {
   tiktok: string;
   other: string;
   website: string;
+  gaTrackingId: string;
 }
 
 export interface TourBehavior {
@@ -82,6 +83,7 @@ export const DEFAULT_AGENT: AgentContact = {
   tiktok: "",
   other: "",
   website: "",
+  gaTrackingId: "",
 };
 
 export function buildMatterportUrl(modelId: string, behavior: TourBehavior): string {
