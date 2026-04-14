@@ -18,6 +18,7 @@ export interface AgentContact {
   tiktok: string;
   other: string;
   website: string;
+  gaTrackingId: string;
 }
 
 export interface TourBehavior {
