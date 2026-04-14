@@ -3,7 +3,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Check,
@@ -101,35 +101,20 @@ const proFeatures = [
 ];
 
 /* ------------------------------------------------------------------ */
-/*  Admin Demo Panel                                                   */
+/*  Demo Button (inline in pricing cards)                              */
 /* ------------------------------------------------------------------ */
 
-function AdminDemoPanel() {
+function DemoButton({ tier }: { tier: "starter" | "pro" }) {
   const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
-  const [activating, setActivating] = useState<string | null>(null);
+  const [activating, setActivating] = useState(false);
 
-  if (!isAuthenticated || !user) {
-    return (
-      <Card className="border-dashed border-primary/40 bg-primary/5">
-        <CardContent className="py-8 text-center">
-          <Lock className="mx-auto size-8 text-muted-foreground/60" />
-          <h3 className="mt-3 text-lg font-semibold text-foreground">
-            Admin Demo — Sign In Required
-          </h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Sign in to activate a test tier and explore the dashboard without purchasing.
-          </p>
-          <Button className="mt-4" onClick={() => navigate({ to: "/login" })}>
-            Sign In to Test
-          </Button>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  const activateTier = async (tier: "starter" | "pro") => {
-    setActivating(tier);
+  const activateTier = async () => {
+    if (!isAuthenticated || !user) {
+      navigate({ to: "/login" });
+      return;
+    }
+    setActivating(true);
     try {
       const { data: existingRole } = await supabase
         .from("user_roles")
@@ -146,17 +131,6 @@ function AdminDemoPanel() {
 
       const productId = tier === "pro" ? "pro_tier" : "starter_tier";
       const amount = tier === "pro" ? 29900 : 14900;
-
-      const { data: existingPurchases } = await supabase
-        .from("purchases")
-        .select("id")
-        .eq("user_id", user.id)
-        .eq("environment", "sandbox")
-        .in("product_id", ["starter_tier", "pro_tier", "pro_upgrade"]);
-
-      if (existingPurchases && existingPurchases.length > 0) {
-        // The get_user_tier function checks for pro first, so adding pro overrides starter
-      }
 
       await supabase.from("purchases").insert({
         user_id: user.id,
@@ -192,93 +166,27 @@ function AdminDemoPanel() {
       }
 
       toast.success(
-        `${tier === "pro" ? "Pro" : "Starter"} tier activated! Redirecting to dashboard…`
+        `${tier === "pro" ? "Pro" : "Starter"} demo activated! Redirecting…`
       );
       setTimeout(() => navigate({ to: "/dashboard" }), 1200);
     } catch (err) {
       console.error(err);
-      toast.error("Failed to activate tier. Please try again.");
+      toast.error("Failed to activate demo. Please try again.");
     }
-    setActivating(null);
+    setActivating(false);
   };
 
   return (
-    <Card className="border-2 border-primary/30 bg-gradient-to-br from-primary/5 to-transparent">
-      <CardHeader className="text-center">
-        <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-primary/10">
-          <Play className="size-6 text-primary" />
-        </div>
-        <CardTitle className="mt-2 text-xl">Admin Demo Mode</CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Activate a test tier instantly — no Stripe purchase required. Explore the full
-          dashboard, branding settings, client portal, and orders workflow.
-        </p>
-      </CardHeader>
-      <CardContent>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <button
-            onClick={() => activateTier("starter")}
-            disabled={!!activating}
-            className="group relative flex flex-col items-center rounded-xl border-2 border-border bg-card p-6 text-center transition-all hover:border-primary/50 hover:shadow-md disabled:opacity-50"
-          >
-            <Badge variant="secondary" className="mb-3">
-              Starter
-            </Badge>
-            <span className="text-3xl font-bold text-foreground">$149</span>
-            <span className="text-xs text-muted-foreground">one-time (simulated)</span>
-            <ul className="mt-4 space-y-1.5 text-left text-xs text-muted-foreground">
-              {starterFeatures.slice(0, 3).map((f) => (
-                <li key={f} className="flex items-start gap-1.5">
-                  <Check className="mt-0.5 size-3 shrink-0 text-primary" />
-                  {f}
-                </li>
-              ))}
-            </ul>
-            <span className="mt-4 inline-flex items-center text-sm font-medium text-primary opacity-0 transition-opacity group-hover:opacity-100">
-              Activate Starter
-              <ChevronRight className="ml-1 size-4" />
-            </span>
-            {activating === "starter" && (
-              <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-background/80">
-                <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-              </div>
-            )}
-          </button>
-
-          <button
-            onClick={() => activateTier("pro")}
-            disabled={!!activating}
-            className="group relative flex flex-col items-center rounded-xl border-2 border-primary bg-card p-6 text-center shadow-sm transition-all hover:shadow-lg disabled:opacity-50"
-          >
-            <Badge className="mb-3">Pro — Recommended</Badge>
-            <span className="text-3xl font-bold text-foreground">$299</span>
-            <span className="text-xs text-muted-foreground">one-time (simulated)</span>
-            <ul className="mt-4 space-y-1.5 text-left text-xs text-muted-foreground">
-              {proFeatures.slice(0, 3).map((f) => (
-                <li key={f} className="flex items-start gap-1.5">
-                  <Check className="mt-0.5 size-3 shrink-0 text-primary" />
-                  {f}
-                </li>
-              ))}
-            </ul>
-            <span className="mt-4 inline-flex items-center text-sm font-medium text-primary opacity-0 transition-opacity group-hover:opacity-100">
-              Activate Pro
-              <ChevronRight className="ml-1 size-4" />
-            </span>
-            {activating === "pro" && (
-              <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-background/80">
-                <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-              </div>
-            )}
-          </button>
-        </div>
-
-        <p className="mt-4 text-center text-xs text-muted-foreground">
-          Demo purchases are recorded in sandbox mode and don't affect billing.
-          You can switch tiers any time by returning here.
-        </p>
-      </CardContent>
-    </Card>
+    <Button
+      variant="ghost"
+      size="sm"
+      className="w-full gap-1.5 text-muted-foreground hover:text-primary"
+      onClick={activateTier}
+      disabled={activating}
+    >
+      <Play className="size-3.5" />
+      {activating ? "Activating…" : `View ${tier === "pro" ? "Pro" : "Starter"} Demo`}
+    </Button>
   );
 }
 
@@ -378,34 +286,34 @@ function Index() {
       </header>
 
       {/* ---- Hero ---- */}
-      <section className="relative z-10 pt-20 sm:pt-24">
-        {/* Hero headline area */}
-        <div className="px-4 pb-6 pt-8 sm:pb-8 sm:pt-12">
-          <div className="mx-auto max-w-3xl text-center">
-            <Badge variant="secondary" className="mb-6 gap-1.5 px-3 py-1 text-xs">
+      <section className="relative z-10 pt-[56px]">
+        {/* Hero image with overlaid text */}
+        <div className="relative w-full">
+          <img
+            src={heroHudBanner}
+            alt="3D property tour HUD presentation showcase"
+            className="w-full object-cover object-top"
+            style={{ maxHeight: '520px' }}
+          />
+          {/* Gradient overlay for text legibility */}
+          <div className="absolute inset-0 bg-gradient-to-b from-[#0a0e27]/60 via-[#0a0e27]/30 to-[#0a0e27]/70" />
+
+          {/* Centered text overlay */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center px-4">
+            <Badge variant="secondary" className="mb-4 gap-1.5 px-3 py-1 text-xs sm:mb-6">
               <Sparkles className="size-3" />
               No subscriptions. Ever.
             </Badge>
 
             <h1
-              className="text-4xl font-extrabold leading-tight tracking-tight text-white sm:text-5xl lg:text-6xl"
-              style={{ textShadow: '0 2px 20px rgba(0,0,0,0.8), 0 4px 40px rgba(0,0,0,0.5)' }}
+              className="max-w-4xl text-center text-3xl font-extrabold leading-tight tracking-tight text-white sm:text-4xl lg:text-5xl xl:text-6xl"
+              style={{ textShadow: '0 2px 20px rgba(0,0,0,0.9), 0 4px 40px rgba(0,0,0,0.6), 0 0 80px rgba(0,0,0,0.4)' }}
             >
               Launch your own Studio where Clients can&nbsp;Customize
               <br />
-              <span className="text-primary" style={{ textShadow: '0 2px 20px rgba(0,0,0,0.7), 0 4px 40px rgba(0,0,0,0.4)' }}>their MP 3D Tour Presentations</span>
+              <span className="text-primary" style={{ textShadow: '0 2px 20px rgba(0,0,0,0.9), 0 4px 40px rgba(0,0,0,0.6)' }}>their MP 3D Tour Presentations</span>
             </h1>
           </div>
-        </div>
-
-        {/* Hero banner image — sits directly below header, no overlay */}
-        <div className="w-full">
-          <img
-            src={heroHudBanner}
-            alt="3D property tour HUD presentation showcase"
-            className="w-full object-cover object-top"
-            style={{ maxHeight: '500px' }}
-          />
         </div>
 
         {/* Secondary text + CTA below the image */}
@@ -416,12 +324,7 @@ function Index() {
             </p>
 
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-              {isAuthenticated ? (
-                <Button size="lg" onClick={() => navigate({ to: "/dashboard" })}>
-                  Go to Dashboard
-                  <ChevronRight className="ml-1 size-4" />
-                </Button>
-              ) : (
+              {!isAuthenticated && (
                 <>
                   <Button size="lg" onClick={() => navigate({ to: "/signup", search: { token: "", email: "" } })}>
                     Get Started Free
@@ -555,15 +458,18 @@ function Index() {
                     </li>
                   ))}
                 </ul>
-                {!isAuthenticated && (
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => navigate({ to: "/signup", search: { token: "", email: "" } })}
-                  >
-                    Get Starter
-                  </Button>
-                )}
+                <div className="flex flex-col gap-2">
+                  {!isAuthenticated && (
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => navigate({ to: "/signup", search: { token: "", email: "" } })}
+                    >
+                      Get Starter
+                    </Button>
+                  )}
+                  <DemoButton tier="starter" />
+                </div>
               </CardContent>
             </Card>
 
@@ -586,31 +492,24 @@ function Index() {
                     </li>
                   ))}
                 </ul>
-                {!isAuthenticated && (
-                  <Button
-                    className="w-full"
-                    onClick={() => navigate({ to: "/signup", search: { token: "", email: "" } })}
-                  >
-                    Get Pro
-                  </Button>
-                )}
+                <div className="flex flex-col gap-2">
+                  {!isAuthenticated && (
+                    <Button
+                      className="w-full"
+                      onClick={() => navigate({ to: "/signup", search: { token: "", email: "" } })}
+                    >
+                      Get Pro
+                    </Button>
+                  )}
+                  <DemoButton tier="pro" />
+                </div>
               </CardContent>
             </Card>
           </div>
-        </div>
-      </section>
 
-      {/* ---- Admin Demo ---- */}
-      <section className="relative z-10 border-t border-white/5 px-4 py-16 sm:py-24" style={{ backgroundColor: 'rgba(255,255,255,0.015)' }}>
-        <div className="mx-auto max-w-2xl">
-          <h2 className="mb-6 text-center text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-            Try It Now — Admin Demo
-          </h2>
-          <p className="mb-8 text-center text-muted-foreground">
-            Activate a test tier instantly to explore the full dashboard, branding
-            configurator, client portal, and order management — without spending a dime.
+          <p className="mx-auto mt-8 max-w-2xl text-center text-xs text-muted-foreground">
+            Activate a test tier instantly — no Stripe purchase required. Explore the full dashboard, branding settings, client portal, and orders workflow. Demo purchases are recorded in sandbox mode. You can switch Demo tiers any time by returning here.
           </p>
-          <AdminDemoPanel />
         </div>
       </section>
 
