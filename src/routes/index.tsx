@@ -22,6 +22,8 @@ import {
   PackageX,
   Menu,
   X,
+  Sun,
+  Moon,
 } from "lucide-react";
 import heroHudBanner from "@/assets/hero-hud-showcase.png";
 import { toast } from "sonner";
