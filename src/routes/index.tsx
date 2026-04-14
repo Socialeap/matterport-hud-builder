@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/hooks/use-auth";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -302,11 +302,30 @@ function Index() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="dark relative min-h-screen bg-[#0a0e27] text-foreground">
+      {/* ---- Notebook grid overlay ---- */}
+      <div
+        className="pointer-events-none fixed inset-0 z-0"
+        style={{
+          backgroundImage: `
+            linear-gradient(rgba(148,163,184,0.06) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(148,163,184,0.06) 1px, transparent 1px)
+          `,
+          backgroundSize: '70px 70px',
+        }}
+      />
+
+      {/* ---- Organic translucent orbs ---- */}
+      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+        <div className="absolute -left-32 -top-20 h-[500px] w-[500px] rounded-full bg-blue-600/15 blur-[160px]" />
+        <div className="absolute right-0 top-[30%] h-[400px] w-[450px] rounded-full bg-indigo-500/12 blur-[140px]" />
+        <div className="absolute bottom-[10%] left-[20%] h-[350px] w-[400px] rounded-full bg-teal-500/10 blur-[180px]" />
+        <div className="absolute -right-20 bottom-[40%] h-[300px] w-[350px] rounded-full bg-purple-600/8 blur-[150px]" />
+        <div className="absolute left-[50%] top-[60%] h-[400px] w-[400px] rounded-full bg-cyan-500/8 blur-[200px]" />
+      </div>
+
       {/* ---- Hero ---- */}
-      <section className="relative overflow-hidden px-4 pb-16 pt-20 sm:pb-24 sm:pt-28">
-        {/* subtle gradient accent */}
-        <div className="pointer-events-none absolute -top-32 left-1/2 h-[480px] w-[720px] -translate-x-1/2 rounded-full bg-primary/10 blur-[120px]" />
+      <section className="relative z-10 overflow-hidden px-4 pb-16 pt-20 sm:pb-24 sm:pt-28">
 
         <div className="relative mx-auto max-w-3xl text-center">
           <Badge variant="secondary" className="mb-6 gap-1.5 px-3 py-1 text-xs">
@@ -346,7 +365,7 @@ function Index() {
       </section>
 
       {/* ---- Problem section ---- */}
-      <section className="bg-destructive/5 px-4 py-16 sm:py-24">
+      <section className="relative z-10 px-4 py-16 sm:py-24" style={{ backgroundColor: 'rgba(255,255,255,0.02)' }}>
         <div className="mx-auto max-w-5xl">
           <h2 className="text-center text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
             The &ldquo;Service Trap&rdquo; of Traditional 3D Presentation Platforms
@@ -356,7 +375,7 @@ function Index() {
           </p>
 
           <div className="mt-12 grid gap-6 sm:grid-cols-2">
-            <Card className="border-destructive/20 bg-card/80 backdrop-blur">
+            <Card className="border-red-500/20 bg-white/5 backdrop-blur">
               <CardContent className="pt-6">
                 <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
                   <DollarSign className="size-5 text-destructive" />
@@ -368,7 +387,7 @@ function Index() {
               </CardContent>
             </Card>
 
-            <Card className="border-destructive/20 bg-card/80 backdrop-blur">
+            <Card className="border-red-500/20 bg-white/5 backdrop-blur">
               <CardContent className="pt-6">
                 <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
                   <Clock className="size-5 text-destructive" />
@@ -380,7 +399,7 @@ function Index() {
               </CardContent>
             </Card>
 
-            <Card className="border-destructive/20 bg-card/80 backdrop-blur">
+            <Card className="border-red-500/20 bg-white/5 backdrop-blur">
               <CardContent className="pt-6">
                 <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
                   <Lock className="size-5 text-destructive" />
@@ -392,7 +411,7 @@ function Index() {
               </CardContent>
             </Card>
 
-            <Card className="border-destructive/20 bg-card/80 backdrop-blur">
+            <Card className="border-red-500/20 bg-white/5 backdrop-blur">
               <CardContent className="pt-6">
                 <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
                   <PackageX className="size-5 text-destructive" />
@@ -408,7 +427,7 @@ function Index() {
       </section>
 
       {/* ---- Features grid ---- */}
-      <section className="border-t border-border bg-muted/30 px-4 py-16 sm:py-24">
+      <section className="relative z-10 border-t border-white/5 px-4 py-16 sm:py-24" style={{ backgroundColor: 'rgba(255,255,255,0.015)' }}>
         <div className="mx-auto max-w-5xl">
           <h2 className="text-center text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
             A Branded HUD Station for Clients to Build Their Own Presentations
@@ -420,7 +439,7 @@ function Index() {
 
           <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {features.map((f) => (
-              <Card key={f.title} className="bg-card/80 backdrop-blur">
+              <Card key={f.title} className="bg-white/5 backdrop-blur">
                 <CardContent className="pt-6">
                   <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
                     <f.icon className="size-5 text-primary" />
@@ -435,7 +454,7 @@ function Index() {
       </section>
 
       {/* ---- Pricing comparison ---- */}
-      <section className="px-4 py-16 sm:py-24">
+      <section className="relative z-10 px-4 py-16 sm:py-24">
         <div className="mx-auto max-w-4xl">
           <h2 className="text-center text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
             Simple, One-Time Pricing
@@ -509,7 +528,7 @@ function Index() {
       </section>
 
       {/* ---- Admin Demo ---- */}
-      <section className="border-t border-border bg-muted/30 px-4 py-16 sm:py-24">
+      <section className="relative z-10 border-t border-white/5 px-4 py-16 sm:py-24" style={{ backgroundColor: 'rgba(255,255,255,0.015)' }}>
         <div className="mx-auto max-w-2xl">
           <h2 className="mb-6 text-center text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
             Try It Now — Admin Demo
@@ -523,7 +542,7 @@ function Index() {
       </section>
 
       {/* ---- How it works ---- */}
-      <section className="px-4 py-16 sm:py-24">
+      <section className="relative z-10 px-4 py-16 sm:py-24">
         <div className="mx-auto max-w-3xl">
           <h2 className="text-center text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
             How It Works
@@ -566,7 +585,7 @@ function Index() {
       </section>
 
       {/* ---- Footer ---- */}
-      <footer className="border-t border-border px-4 py-8">
+      <footer className="relative z-10 border-t border-white/5 px-4 py-8">
         <div className="mx-auto max-w-5xl text-center text-xs text-muted-foreground">
           © {new Date().getFullYear()} Transcendence Media. All rights reserved.
         </div>
