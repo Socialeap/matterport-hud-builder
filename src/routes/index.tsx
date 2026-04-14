@@ -302,11 +302,30 @@ function Index() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="dark relative min-h-screen bg-[#0a0e27] text-foreground">
+      {/* ---- Notebook grid overlay ---- */}
+      <div
+        className="pointer-events-none fixed inset-0 z-0"
+        style={{
+          backgroundImage: `
+            linear-gradient(rgba(148,163,184,0.06) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(148,163,184,0.06) 1px, transparent 1px)
+          `,
+          backgroundSize: '70px 70px',
+        }}
+      />
+
+      {/* ---- Organic translucent orbs ---- */}
+      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+        <div className="absolute -left-32 -top-20 h-[500px] w-[500px] rounded-full bg-blue-600/15 blur-[160px]" />
+        <div className="absolute right-0 top-[30%] h-[400px] w-[450px] rounded-full bg-indigo-500/12 blur-[140px]" />
+        <div className="absolute bottom-[10%] left-[20%] h-[350px] w-[400px] rounded-full bg-teal-500/10 blur-[180px]" />
+        <div className="absolute -right-20 bottom-[40%] h-[300px] w-[350px] rounded-full bg-purple-600/8 blur-[150px]" />
+        <div className="absolute left-[50%] top-[60%] h-[400px] w-[400px] rounded-full bg-cyan-500/8 blur-[200px]" />
+      </div>
+
       {/* ---- Hero ---- */}
-      <section className="relative overflow-hidden px-4 pb-16 pt-20 sm:pb-24 sm:pt-28">
-        {/* subtle gradient accent */}
-        <div className="pointer-events-none absolute -top-32 left-1/2 h-[480px] w-[720px] -translate-x-1/2 rounded-full bg-primary/10 blur-[120px]" />
+      <section className="relative z-10 overflow-hidden px-4 pb-16 pt-20 sm:pb-24 sm:pt-28">
 
         <div className="relative mx-auto max-w-3xl text-center">
           <Badge variant="secondary" className="mb-6 gap-1.5 px-3 py-1 text-xs">
