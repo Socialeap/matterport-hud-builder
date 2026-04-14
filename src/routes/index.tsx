@@ -312,14 +312,13 @@ function Index() {
           </Badge>
 
           <h1 className="text-4xl font-extrabold leading-tight tracking-tight text-foreground sm:text-5xl lg:text-6xl">
-            Launch your own HUD Station where Clients can
+            Launch your own HUD Station where Clients can{" "}
             <br />
             <span className="text-primary">Customize their 3D Tour Presentations</span>
           </h1>
 
           <p className="mx-auto mt-6 max-w-xl text-lg text-muted-foreground">
-            Turn Matterport scans into stunning, whitelabeled HUD presentations your
-            clients can preview, customize, and deploy — all under your brand.
+            Stop paying 3rd party services to hold your tours hostage on their servers. Instead of manually configuring tours on external platforms, host your own space where clients can EASILY build their own tour presentations—downloaded as independent assets they own and EASILY host wherever they choose.
           </p>
 
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
