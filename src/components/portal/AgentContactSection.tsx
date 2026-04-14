@@ -2,7 +2,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { UserCircle } from "lucide-react";
+import { UserCircle, BarChart3 } from "lucide-react";
 import type { AgentContact } from "./types";
 
 interface AgentContactSectionProps {
@@ -84,6 +84,24 @@ export function AgentContactSection({ agent, onChange }: AgentContactSectionProp
                 />
               </div>
             ))}
+          </div>
+        </div>
+
+        <div className="space-y-2 border-t pt-4">
+          <Label className="text-xs font-medium flex items-center gap-1.5">
+            <BarChart3 className="size-3.5 text-primary" />
+            Analytics & Tracking
+          </Label>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Google Analytics Measurement ID</Label>
+            <Input
+              value={agent.gaTrackingId}
+              onChange={(e) => onChange("gaTrackingId", e.target.value)}
+              placeholder="G-XXXXXXXXXX"
+            />
+            <p className="text-xs text-muted-foreground">
+              Enter your GA4 Measurement ID. This will be injected into the generated presentation's header for traffic monitoring.
+            </p>
           </div>
         </div>
       </CardContent>

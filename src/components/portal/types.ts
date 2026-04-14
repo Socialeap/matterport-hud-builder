@@ -83,6 +83,7 @@ export const DEFAULT_AGENT: AgentContact = {
   tiktok: "",
   other: "",
   website: "",
+  gaTrackingId: "",
 };
 
 export function buildMatterportUrl(modelId: string, behavior: TourBehavior): string {
