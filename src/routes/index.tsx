@@ -28,14 +28,54 @@ import {
 import heroHudBanner from "@/assets/hero-hud-showcase.png";
 import { toast } from "sonner";
 
+const SITE_URL = "https://matterport-hud-builder.lovable.app";
+const OG_TITLE = "3D Presentation Studio — Branded Matterport Tour Presentations";
+const OG_DESC =
+  "Launch your own white-label studio where clients customize and download self-contained Matterport 3D tour presentations. One-time purchase — no subscriptions, no per-tour fees.";
+const OG_IMAGE = `${SITE_URL}/hero-hud-showcase-og.png`;
+
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "3D Presentation Studio — Branded 3D Property Presentations" },
+      { title: OG_TITLE },
+      { name: "description", content: OG_DESC },
+      { name: "keywords", content: "Matterport presentation, 3D tour branding, property tour HUD, white-label Matterport, 3D presentation builder, real estate virtual tour" },
+      { property: "og:type", content: "website" },
+      { property: "og:url", content: SITE_URL },
+      { property: "og:title", content: OG_TITLE },
+      { property: "og:description", content: OG_DESC },
+      { property: "og:image", content: OG_IMAGE },
+      { property: "og:image:width", content: "1200" },
+      { property: "og:image:height", content: "630" },
+      { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: OG_TITLE },
+      { name: "twitter:description", content: OG_DESC },
+      { name: "twitter:image", content: OG_IMAGE },
+    ],
+    links: [
+      { rel: "canonical", href: SITE_URL },
+    ],
+    scripts: [
       {
-        name: "description",
-        content:
-          "Build professional, whitelabeled 3D property tour presentations. No subscriptions. One-time purchase. Host anywhere.",
+        type: "application/ld+json",
+        children: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "SoftwareApplication",
+          name: "3D Presentation Studio",
+          applicationCategory: "BusinessApplication",
+          operatingSystem: "Web",
+          description: OG_DESC,
+          url: SITE_URL,
+          image: OG_IMAGE,
+          offers: [
+            { "@type": "Offer", name: "Starter", price: "149", priceCurrency: "USD" },
+            { "@type": "Offer", name: "Pro", price: "299", priceCurrency: "USD" },
+          ],
+          creator: {
+            "@type": "Organization",
+            name: "Transcendence Media",
+          },
+        }),
       },
     ],
   }),
@@ -197,18 +237,13 @@ function DemoButton({ tier }: { tier: "starter" | "pro" }) {
 /* ------------------------------------------------------------------ */
 
 function Index() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isDark, setIsDark] = useState(true);
 
-  if (isLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-      </div>
-    );
-  }
+  /* No loading gate — all static content renders on the server for SEO.
+     Auth-dependent buttons simply hide during the brief loading window. */
 
   const bg = isDark ? '#0a0e27' : '#f0ede6';
   const gridColor = isDark ? 'rgba(148,163,184,0.06)' : 'rgba(120,110,100,0.18)';
