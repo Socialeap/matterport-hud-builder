@@ -17,6 +17,9 @@ import {
   Sparkles,
   Lock,
   Play,
+  Clock,
+  DollarSign,
+  PackageX,
 } from "lucide-react";
 import { toast } from "sonner";
 
