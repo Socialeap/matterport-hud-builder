@@ -342,6 +342,68 @@ function Index() {
         </div>
       </section>
 
+      {/* ---- Problem section ---- */}
+      <section className="bg-destructive/5 px-4 py-16 sm:py-24">
+        <div className="mx-auto max-w-5xl">
+          <h2 className="text-center text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+            The &ldquo;Service Trap&rdquo; of Traditional 3D Presentation Platforms
+          </h2>
+          <p className="mx-auto mt-3 max-w-xl text-center text-muted-foreground">
+            Most platforms require you to do the manual labor on their servers, charging you a monthly subscription just to keep your assets online.
+          </p>
+
+          <div className="mt-12 grid gap-6 sm:grid-cols-2">
+            <Card className="border-destructive/20 bg-card/80 backdrop-blur">
+              <CardContent className="pt-6">
+                <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
+                  <DollarSign className="size-5 text-destructive" />
+                </div>
+                <h3 className="mt-4 font-semibold text-foreground">You Do the Work, They Get Paid</h3>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Monthly subscriptions to keep your assets online — while you&#39;re the one doing all the manual labor on their servers.
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="border-destructive/20 bg-card/80 backdrop-blur">
+              <CardContent className="pt-6">
+                <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
+                  <Clock className="size-5 text-destructive" />
+                </div>
+                <h3 className="mt-4 font-semibold text-foreground">Every Change Goes Through You</h3>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  When a client needs an MLS-compliant version or a simple music change, you have to log in and do the work every time.
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="border-destructive/20 bg-card/80 backdrop-blur">
+              <CardContent className="pt-6">
+                <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
+                  <Lock className="size-5 text-destructive" />
+                </div>
+                <h3 className="mt-4 font-semibold text-foreground">A Bottleneck You Don&#39;t Own</h3>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  You aren&#39;t just paying for software — you&#39;re paying for the privilege of being an unpaid administrator for a company you don&#39;t own. It drains your time and limits your growth.
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="border-destructive/20 bg-card/80 backdrop-blur">
+              <CardContent className="pt-6">
+                <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
+                  <PackageX className="size-5 text-destructive" />
+                </div>
+                <h3 className="mt-4 font-semibold text-foreground">Paying for Tools You Never Use</h3>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Complex &ldquo;bloatware&rdquo; like IoT data integrations and rarely used features like graphical overlays and sectional audio — bundled into every plan whether you need them or not.
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </section>
+
       {/* ---- Features grid ---- */}
       <section className="border-t border-border bg-muted/30 px-4 py-16 sm:py-24">
         <div className="mx-auto max-w-5xl">
