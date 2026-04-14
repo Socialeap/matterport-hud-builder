@@ -347,9 +347,9 @@ function Index() {
           </Badge>
 
           <h1 className="text-4xl font-extrabold leading-tight tracking-tight text-white drop-shadow-lg sm:text-5xl lg:text-6xl">
-            Launch your own HUD Station where Clients can{" "}
+            Launch your own Studio where Clients can&nbsp;Customize
             <br />
-            <span className="text-primary drop-shadow-md">Customize their 3D Tour Presentations</span>
+            <span className="text-primary drop-shadow-md">their MP 3D Tour Presentations</span>
           </h1>
 
           <p className="mx-auto mt-6 max-w-xl text-lg text-white/80 drop-shadow">
