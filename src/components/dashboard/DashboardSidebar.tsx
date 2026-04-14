@@ -31,7 +31,7 @@ export function DashboardSidebar() {
     <Sidebar>
       <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
         <span className="text-lg font-bold text-sidebar-foreground">
-          HUD Builder
+          3D Presentation Studio
         </span>
         <span className="mt-1 inline-block rounded-full bg-sidebar-accent px-2 py-0.5 text-xs font-medium text-sidebar-accent-foreground">
           {roles[0] ?? "user"}

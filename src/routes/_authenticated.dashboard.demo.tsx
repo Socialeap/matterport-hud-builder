@@ -123,7 +123,7 @@ function DemoPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            HUD Builder Demo
+            3D Presentation Studio Demo
           </h1>
           <p className="text-sm text-muted-foreground">
             This is a live sandbox — configure branding, add properties, adjust tour behaviors, and preview the result in real-time.

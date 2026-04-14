@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useAuth } from "@/hooks/use-auth";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -20,14 +20,16 @@ import {
   Clock,
   DollarSign,
   PackageX,
+  Menu,
+  X,
 } from "lucide-react";
-import heroShowcase from "@/assets/hero-showcase.png";
+import heroHudBanner from "@/assets/hero-hud-showcase.png";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Matterport HUD Builder — Branded 3D Property Presentations" },
+      { title: "3D Presentation Studio — Branded 3D Property Presentations" },
       {
         name: "description",
         content:
@@ -47,7 +49,7 @@ const features = [
     icon: Palette,
     title: "100% White-Label Authority",
     description:
-      "Invite clients to your HUD Station with your logo, colors, and domain name, reinforcing your brand equity, not ours.",
+      "Invite clients to your Studio with your logo, colors, and domain name, reinforcing your brand equity, not ours.",
   },
   {
     icon: Layers,
@@ -63,7 +65,7 @@ const features = [
   },
   {
     icon: Users,
-    title: "Self-Serve Branding Station",
+    title: "Self-Serve Branding Studio",
     description:
       "Allow clients to configure their own Tour Presentations with logo/profile image, music track, contact options, branded HUD, and Google Analytics.",
   },
@@ -83,7 +85,7 @@ const features = [
 
 const starterFeatures = [
   'Co-branded output ("Powered by TM")',
-  "Full HUD builder access",
+  "Full presentation builder access",
   "Client portal at /p/your-slug",
   "Music & tour behavior config",
   "Unlimited Matterport models",
@@ -92,7 +94,7 @@ const starterFeatures = [
 const proFeatures = [
   "100% ghost-labeled — zero co-branding",
   "Custom domain mapping",
-  "Full HUD builder access",
+  "Full presentation builder access",
   "Client portal on your domain",
   "Priority support",
   "All Starter features included",
@@ -129,7 +131,6 @@ function AdminDemoPanel() {
   const activateTier = async (tier: "starter" | "pro") => {
     setActivating(tier);
     try {
-      // 1. Ensure user has provider role
       const { data: existingRole } = await supabase
         .from("user_roles")
         .select("id")
@@ -143,12 +144,9 @@ function AdminDemoPanel() {
           .insert({ user_id: user.id, role: "provider" });
       }
 
-      // 2. Insert a sandbox purchase for the selected tier
       const productId = tier === "pro" ? "pro_tier" : "starter_tier";
       const amount = tier === "pro" ? 29900 : 14900;
 
-      // Remove any existing sandbox tier purchases
-      // (we use upsert-like logic by deleting first)
       const { data: existingPurchases } = await supabase
         .from("purchases")
         .select("id")
@@ -157,7 +155,6 @@ function AdminDemoPanel() {
         .in("product_id", ["starter_tier", "pro_tier", "pro_upgrade"]);
 
       if (existingPurchases && existingPurchases.length > 0) {
-        // Can't delete via client (no policy), so we'll just insert
         // The get_user_tier function checks for pro first, so adding pro overrides starter
       }
 
@@ -172,7 +169,6 @@ function AdminDemoPanel() {
         environment: "sandbox",
       });
 
-      // 3. Upsert branding_settings with the tier
       const { data: existingBranding } = await supabase
         .from("branding_settings")
         .select("id")
@@ -293,6 +289,7 @@ function AdminDemoPanel() {
 function Index() {
   const { isAuthenticated, isLoading } = useAuth();
   const navigate = useNavigate();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   if (isLoading) {
     return (
@@ -325,19 +322,72 @@ function Index() {
         <div className="absolute left-[50%] top-[60%] h-[400px] w-[400px] rounded-full bg-cyan-500/8 blur-[200px]" />
       </div>
 
+      {/* ---- Header with glassmorphism ---- */}
+      <header className="fixed inset-x-0 top-0 z-50 border-b border-white/10 bg-[#0a0e27]/60 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
+          <span className="text-lg font-bold tracking-tight text-white">
+            3D Presentation Studio
+          </span>
+
+          {/* Desktop nav */}
+          <nav className="hidden items-center gap-6 sm:flex">
+            <a href="#features" className="text-sm text-white/70 transition-colors hover:text-white">Features</a>
+            <a href="#pricing" className="text-sm text-white/70 transition-colors hover:text-white">Pricing</a>
+            <a href="#how-it-works" className="text-sm text-white/70 transition-colors hover:text-white">How It Works</a>
+            {isAuthenticated ? (
+              <Button size="sm" onClick={() => navigate({ to: "/dashboard" })}>Dashboard</Button>
+            ) : (
+              <>
+                <Button size="sm" variant="ghost" className="text-white/80 hover:bg-white/10 hover:text-white" onClick={() => navigate({ to: "/login" })}>
+                  Sign In
+                </Button>
+                <Button size="sm" onClick={() => navigate({ to: "/signup", search: { token: "", email: "" } })}>
+                  Get Started
+                </Button>
+              </>
+            )}
+          </nav>
+
+          {/* Mobile menu button */}
+          <button
+            className="sm:hidden text-white/80 hover:text-white"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          >
+            {mobileMenuOpen ? <X className="size-6" /> : <Menu className="size-6" />}
+          </button>
+        </div>
+
+        {/* Mobile nav dropdown */}
+        {mobileMenuOpen && (
+          <div className="border-t border-white/10 bg-[#0a0e27]/90 backdrop-blur-xl sm:hidden">
+            <div className="flex flex-col gap-2 px-4 py-4">
+              <a href="#features" className="rounded-lg px-3 py-2 text-sm text-white/70 hover:bg-white/5 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Features</a>
+              <a href="#pricing" className="rounded-lg px-3 py-2 text-sm text-white/70 hover:bg-white/5 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Pricing</a>
+              <a href="#how-it-works" className="rounded-lg px-3 py-2 text-sm text-white/70 hover:bg-white/5 hover:text-white" onClick={() => setMobileMenuOpen(false)}>How It Works</a>
+              {isAuthenticated ? (
+                <Button size="sm" className="mt-2" onClick={() => navigate({ to: "/dashboard" })}>Dashboard</Button>
+              ) : (
+                <>
+                  <Button size="sm" variant="ghost" className="justify-start text-white/80 hover:bg-white/10" onClick={() => navigate({ to: "/login" })}>Sign In</Button>
+                  <Button size="sm" className="mt-1" onClick={() => navigate({ to: "/signup", search: { token: "", email: "" } })}>Get Started</Button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </header>
+
       {/* ---- Hero ---- */}
-      <section className="relative z-10 overflow-hidden px-4 pb-16 pt-20 sm:pb-24 sm:pt-28">
-        {/* Hero background image */}
+      <section className="relative z-10 overflow-hidden px-4 pb-16 pt-28 sm:pb-24 sm:pt-36">
+        {/* Hero background image — no vignette */}
         <div className="absolute inset-0 z-0">
           <img
-            src={heroShowcase}
-            alt="3D property tour showcase"
-            className="h-full w-full object-cover"
+            src={heroHudBanner}
+            alt="3D property tour HUD presentation showcase"
+            className="h-full w-full object-cover object-top"
           />
-          {/* Dark gradient overlay for text readability */}
-          <div className="absolute inset-0 bg-gradient-to-b from-[#0a0e27]/80 via-[#0a0e27]/60 to-[#0a0e27]/90" />
-          {/* Subtle vignette */}
-          <div className="absolute inset-0" style={{ boxShadow: 'inset 0 0 150px 60px rgba(10,14,39,0.7)' }} />
+          {/* Subtle gradient for text readability — no vignette */}
+          <div className="absolute inset-0 bg-gradient-to-b from-[#0a0e27]/70 via-transparent to-[#0a0e27]/85" />
         </div>
 
         <div className="relative z-10 mx-auto max-w-3xl text-center">
@@ -440,13 +490,13 @@ function Index() {
       </section>
 
       {/* ---- Features grid ---- */}
-      <section className="relative z-10 border-t border-white/5 px-4 py-16 sm:py-24" style={{ backgroundColor: 'rgba(255,255,255,0.015)' }}>
+      <section id="features" className="relative z-10 border-t border-white/5 px-4 py-16 sm:py-24" style={{ backgroundColor: 'rgba(255,255,255,0.015)' }}>
         <div className="mx-auto max-w-5xl">
           <h2 className="text-center text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-            A Branded HUD Station for Clients to Build Their Own Presentations
+            A Branded Studio for Clients to Build Their Own Presentations
           </h2>
           <p className="mx-auto mt-3 max-w-xl text-center text-muted-foreground">
-            One platform to configure, preview, and deliver professional Matterport HUD
+            One platform to configure, preview, and deliver professional Matterport 3D
             presentations — fully branded to you.
           </p>
 
@@ -467,7 +517,7 @@ function Index() {
       </section>
 
       {/* ---- Pricing comparison ---- */}
-      <section className="relative z-10 px-4 py-16 sm:py-24">
+      <section id="pricing" className="relative z-10 px-4 py-16 sm:py-24">
         <div className="mx-auto max-w-4xl">
           <h2 className="text-center text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
             Simple, One-Time Pricing
@@ -555,7 +605,7 @@ function Index() {
       </section>
 
       {/* ---- How it works ---- */}
-      <section className="relative z-10 px-4 py-16 sm:py-24">
+      <section id="how-it-works" className="relative z-10 px-4 py-16 sm:py-24">
         <div className="mx-auto max-w-3xl">
           <h2 className="text-center text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
             How It Works
@@ -598,9 +648,34 @@ function Index() {
       </section>
 
       {/* ---- Footer ---- */}
-      <footer className="relative z-10 border-t border-white/5 px-4 py-8">
-        <div className="mx-auto max-w-5xl text-center text-xs text-muted-foreground">
-          © {new Date().getFullYear()} Transcendence Media. All rights reserved.
+      <footer className="relative z-10 border-t border-white/10 bg-[#0a0e27]/80 backdrop-blur-lg px-4 py-10">
+        <div className="mx-auto max-w-6xl">
+          <div className="grid gap-8 sm:grid-cols-3">
+            <div>
+              <span className="text-lg font-bold text-white">3D Presentation Studio</span>
+              <p className="mt-2 text-sm text-white/50">
+                Professional, white-labeled 3D property tour presentations. One-time purchase. Host anywhere.
+              </p>
+            </div>
+            <div>
+              <h4 className="mb-3 text-sm font-semibold uppercase tracking-wider text-white/60">Product</h4>
+              <ul className="space-y-2 text-sm">
+                <li><a href="#features" className="text-white/50 transition-colors hover:text-white">Features</a></li>
+                <li><a href="#pricing" className="text-white/50 transition-colors hover:text-white">Pricing</a></li>
+                <li><a href="#how-it-works" className="text-white/50 transition-colors hover:text-white">How It Works</a></li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="mb-3 text-sm font-semibold uppercase tracking-wider text-white/60">Account</h4>
+              <ul className="space-y-2 text-sm">
+                <li><Link to="/login" className="text-white/50 transition-colors hover:text-white">Sign In</Link></li>
+                <li><Link to="/signup" search={{ token: "", email: "" }} className="text-white/50 transition-colors hover:text-white">Get Started</Link></li>
+              </ul>
+            </div>
+          </div>
+          <div className="mt-8 border-t border-white/10 pt-6 text-center text-xs text-white/40">
+            © {new Date().getFullYear()} Transcendence Media. All rights reserved.
+          </div>
         </div>
       </footer>
     </div>
