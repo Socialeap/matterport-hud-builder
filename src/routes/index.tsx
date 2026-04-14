@@ -237,7 +237,7 @@ function DemoButton({ tier }: { tier: "starter" | "pro" }) {
 /* ------------------------------------------------------------------ */
 
 function Index() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isDark, setIsDark] = useState(true);
