@@ -1,26 +1,38 @@
 
 
-## Plan: Add Google Analytics Measurement ID Field
+## Plan: Dark Mode Landing Page with Grid + Organic Orb Background
 
-The Google Analytics Measurement ID is a per-agent/per-presentation setting that clients enter so it gets injected into the generated HTML file's `<head>`. The most logical place is the **Agent** tab, since it contains the client's profile and contact info — analytics tracking is another per-client configuration.
+### Design Direction
+Force the landing page into dark mode with a deep navy base, a subtle CSS notebook grid overlay, and several large translucent radial-gradient "orbs" scattered across the page for an organic, atmospheric feel — inspired by the reference image.
 
 ### Changes
 
-**1. Update `AgentContact` type (`src/components/portal/types.ts`)**
-- Add `gaTrackingId: string` to the `AgentContact` interface
-- Add `gaTrackingId: ""` to `DEFAULT_AGENT`
+**1. Force dark theme on landing page (`src/routes/index.tsx`)**
+- Wrap the entire page in a `div` with the `dark` class so all semantic color tokens (bg-background, text-foreground, etc.) automatically flip to their dark values
+- Set the outermost container background to a deep navy (`bg-[#0a0e27]` or similar) as the base layer
 
-**2. Add GA field to `AgentContactSection` (`src/components/portal/AgentContactSection.tsx`)**
-- Add a new input field after the social links section (or as a separate card/subsection labeled "Analytics & Tracking")
-- Field label: "Google Analytics Measurement ID"
-- Placeholder: `G-XXXXXXXXXX`
-- Include helper text: "Enter your GA4 Measurement ID. This will be injected into the generated presentation's header for traffic monitoring."
-- Use the `BarChart3` icon from lucide-react for visual consistency
+**2. Add notebook grid overlay (CSS in `src/routes/index.tsx`)**
+- Add a full-page `position: fixed` or `absolute` div with a repeating CSS linear-gradient grid pattern
+- Grid lines: very faint (`opacity-[0.06]` to `opacity-[0.08]`), thin (1px), in a lighter blue tone
+- Grid cell size: ~60-80px for the major grid, optionally a finer 20px sub-grid at even lower opacity
 
-**3. Update demo page state (`src/routes/_authenticated.dashboard.demo.tsx`)**
-- No changes needed — the `AgentContact` type flows through automatically since the demo page already uses `agent` state with `DEFAULT_AGENT` and passes `onChange` generically by field key.
+**3. Add dispersed translucent orbs**
+- 4-6 absolutely positioned divs with large radial gradients in blues/indigos/teals
+- Heavily blurred (`blur-[120px]` to `blur-[200px]`) and very low opacity (`opacity-[0.15]` to `opacity-[0.25]`)
+- Scattered at different positions across the page (top-left, center-right, bottom-left, etc.)
+- These replace or supplement the existing single gradient accent blob at the top
+
+**4. Adjust section backgrounds for dark context**
+- Problem section: change `bg-destructive/5` to a slightly lighter dark surface (e.g., `bg-white/[0.02]`)
+- Features section: change `bg-muted/30` and `border-t` to dark-appropriate variants
+- Cards: ensure `bg-card/80 backdrop-blur` renders well on dark — may tweak to `bg-white/5`
+- Pricing cards, footer — all inherit dark tokens naturally from the `.dark` wrapper
+
+**5. No changes to `src/styles.css`**
+- The `.dark` color tokens are already defined — we just force the dark class on the landing page container
 
 ### Technical Notes
-- The field value will be available at generation time as `agent.gaTrackingId` for injection into the standalone HTML `<head>` as the standard `gtag.js` snippet.
-- No database migration needed — `saved_models` already stores config as JSONB (`tour_config`), which can include this field.
+- Only the landing page (`/`) gets forced dark mode; the dashboard and auth pages remain unchanged
+- The grid and orbs are purely decorative CSS — no images, no dependencies
+- All existing semantic color classes (`text-foreground`, `bg-card`, etc.) will automatically use their dark values inside the `.dark` wrapper
 
