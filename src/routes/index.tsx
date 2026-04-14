@@ -550,15 +550,18 @@ function Index() {
                     </li>
                   ))}
                 </ul>
-                {!isAuthenticated && (
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => navigate({ to: "/signup", search: { token: "", email: "" } })}
-                  >
-                    Get Starter
-                  </Button>
-                )}
+                <div className="flex flex-col gap-2">
+                  {!isAuthenticated && (
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => navigate({ to: "/signup", search: { token: "", email: "" } })}
+                    >
+                      Get Starter
+                    </Button>
+                  )}
+                  <DemoButton tier="starter" />
+                </div>
               </CardContent>
             </Card>
 
@@ -581,31 +584,24 @@ function Index() {
                     </li>
                   ))}
                 </ul>
-                {!isAuthenticated && (
-                  <Button
-                    className="w-full"
-                    onClick={() => navigate({ to: "/signup", search: { token: "", email: "" } })}
-                  >
-                    Get Pro
-                  </Button>
-                )}
+                <div className="flex flex-col gap-2">
+                  {!isAuthenticated && (
+                    <Button
+                      className="w-full"
+                      onClick={() => navigate({ to: "/signup", search: { token: "", email: "" } })}
+                    >
+                      Get Pro
+                    </Button>
+                  )}
+                  <DemoButton tier="pro" />
+                </div>
               </CardContent>
             </Card>
           </div>
-        </div>
-      </section>
 
-      {/* ---- Admin Demo ---- */}
-      <section className="relative z-10 border-t border-white/5 px-4 py-16 sm:py-24" style={{ backgroundColor: 'rgba(255,255,255,0.015)' }}>
-        <div className="mx-auto max-w-2xl">
-          <h2 className="mb-6 text-center text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-            Try It Now — Admin Demo
-          </h2>
-          <p className="mb-8 text-center text-muted-foreground">
-            Activate a test tier instantly to explore the full dashboard, branding
-            configurator, client portal, and order management — without spending a dime.
+          <p className="mx-auto mt-8 max-w-2xl text-center text-xs text-muted-foreground">
+            Activate a test tier instantly — no Stripe purchase required. Explore the full dashboard, branding settings, client portal, and orders workflow. Demo purchases are recorded in sandbox mode. You can switch Demo tiers any time by returning here.
           </p>
-          <AdminDemoPanel />
         </div>
       </section>
 
