@@ -378,34 +378,34 @@ function Index() {
       </header>
 
       {/* ---- Hero ---- */}
-      <section className="relative z-10 pt-20 sm:pt-24">
-        {/* Hero headline area */}
-        <div className="px-4 pb-6 pt-8 sm:pb-8 sm:pt-12">
-          <div className="mx-auto max-w-3xl text-center">
-            <Badge variant="secondary" className="mb-6 gap-1.5 px-3 py-1 text-xs">
+      <section className="relative z-10 pt-[56px]">
+        {/* Hero image with overlaid text */}
+        <div className="relative w-full">
+          <img
+            src={heroHudBanner}
+            alt="3D property tour HUD presentation showcase"
+            className="w-full object-cover object-top"
+            style={{ maxHeight: '520px' }}
+          />
+          {/* Gradient overlay for text legibility */}
+          <div className="absolute inset-0 bg-gradient-to-b from-[#0a0e27]/60 via-[#0a0e27]/30 to-[#0a0e27]/70" />
+
+          {/* Centered text overlay */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center px-4">
+            <Badge variant="secondary" className="mb-4 gap-1.5 px-3 py-1 text-xs sm:mb-6">
               <Sparkles className="size-3" />
               No subscriptions. Ever.
             </Badge>
 
             <h1
-              className="text-4xl font-extrabold leading-tight tracking-tight text-white sm:text-5xl lg:text-6xl"
-              style={{ textShadow: '0 2px 20px rgba(0,0,0,0.8), 0 4px 40px rgba(0,0,0,0.5)' }}
+              className="max-w-4xl text-center text-3xl font-extrabold leading-tight tracking-tight text-white sm:text-4xl lg:text-5xl xl:text-6xl"
+              style={{ textShadow: '0 2px 20px rgba(0,0,0,0.9), 0 4px 40px rgba(0,0,0,0.6), 0 0 80px rgba(0,0,0,0.4)' }}
             >
               Launch your own Studio where Clients can&nbsp;Customize
               <br />
-              <span className="text-primary" style={{ textShadow: '0 2px 20px rgba(0,0,0,0.7), 0 4px 40px rgba(0,0,0,0.4)' }}>their MP 3D Tour Presentations</span>
+              <span className="text-primary" style={{ textShadow: '0 2px 20px rgba(0,0,0,0.9), 0 4px 40px rgba(0,0,0,0.6)' }}>their MP 3D Tour Presentations</span>
             </h1>
           </div>
-        </div>
-
-        {/* Hero banner image — sits directly below header, no overlay */}
-        <div className="w-full">
-          <img
-            src={heroHudBanner}
-            alt="3D property tour HUD presentation showcase"
-            className="w-full object-cover object-top"
-            style={{ maxHeight: '500px' }}
-          />
         </div>
 
         {/* Secondary text + CTA below the image */}
@@ -416,12 +416,7 @@ function Index() {
             </p>
 
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-              {isAuthenticated ? (
-                <Button size="lg" onClick={() => navigate({ to: "/dashboard" })}>
-                  Go to Dashboard
-                  <ChevronRight className="ml-1 size-4" />
-                </Button>
-              ) : (
+              {!isAuthenticated && (
                 <>
                   <Button size="lg" onClick={() => navigate({ to: "/signup", search: { token: "", email: "" } })}>
                     Get Started Free
