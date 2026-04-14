@@ -44,33 +44,33 @@ export const Route = createFileRoute("/")({
 const features = [
   {
     icon: Palette,
-    title: "Your Brand, Everywhere",
+    title: "100% White-Label Authority",
     description:
-      "Custom logos, colors, fonts, and entry labels. Every pixel screams your brand — not ours.",
+      "Invite clients to your HUD Station with your logo, colors, and domain name, reinforcing your brand equity, not ours.",
   },
   {
     icon: Layers,
     title: "Multi-Model HUD",
     description:
-      "Bundle multiple Matterport tours into a single branded presentation with tab navigation.",
+      "Allow clients to bundle multiple Matterport tours into a single branded presentation with dropdown navigation.",
   },
   {
     icon: Globe,
-    title: "Host Anywhere, Forever",
+    title: "Total Hosting Sovereignty",
     description:
-      "Generated HTML is 100% self-contained. Drop it on any web host. No subscriptions. No phone-home.",
+      "Once downloaded, Tour Presentations are 100% self-contained files. Clients can host them anywhere they like, including cost-free platforms like Netflify.",
   },
   {
     icon: Users,
-    title: "Client Portal",
+    title: "Self-Serve Branding Station",
     description:
-      "Give your agents a branded portal where they configure their own tours and request presentations.",
+      "Allow clients to configure their own Tour Presentations with logo/profile image, music track, contact options, branded HUD, and Google Analytics.",
   },
   {
     icon: ShieldCheck,
-    title: "Secure & Obfuscated",
+    title: "Protected Intellectual Property",
     description:
-      "Tour IDs and config are Base64-scrambled. Your intellectual property stays protected.",
+      "Tour IDs and config settings are Base64-scrambled. Your intellectual property stays protected.",
   },
   {
     icon: Zap,
@@ -411,7 +411,7 @@ function Index() {
       <section className="border-t border-border bg-muted/30 px-4 py-16 sm:py-24">
         <div className="mx-auto max-w-5xl">
           <h2 className="text-center text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-            Everything an MSP Needs
+            A Branded HUD Station for Clients to Build Their Own Presentations
           </h2>
           <p className="mx-auto mt-3 max-w-xl text-center text-muted-foreground">
             One platform to configure, preview, and deliver professional Matterport HUD
