@@ -21,6 +21,7 @@ import {
   DollarSign,
   PackageX,
 } from "lucide-react";
+import heroShowcase from "@/assets/hero-showcase.png";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/")({
@@ -326,20 +327,32 @@ function Index() {
 
       {/* ---- Hero ---- */}
       <section className="relative z-10 overflow-hidden px-4 pb-16 pt-20 sm:pb-24 sm:pt-28">
+        {/* Hero background image */}
+        <div className="absolute inset-0 z-0">
+          <img
+            src={heroShowcase}
+            alt="3D property tour showcase"
+            className="h-full w-full object-cover"
+          />
+          {/* Dark gradient overlay for text readability */}
+          <div className="absolute inset-0 bg-gradient-to-b from-[#0a0e27]/80 via-[#0a0e27]/60 to-[#0a0e27]/90" />
+          {/* Subtle vignette */}
+          <div className="absolute inset-0" style={{ boxShadow: 'inset 0 0 150px 60px rgba(10,14,39,0.7)' }} />
+        </div>
 
-        <div className="relative mx-auto max-w-3xl text-center">
+        <div className="relative z-10 mx-auto max-w-3xl text-center">
           <Badge variant="secondary" className="mb-6 gap-1.5 px-3 py-1 text-xs">
             <Sparkles className="size-3" />
             No subscriptions. Ever.
           </Badge>
 
-          <h1 className="text-4xl font-extrabold leading-tight tracking-tight text-foreground sm:text-5xl lg:text-6xl">
+          <h1 className="text-4xl font-extrabold leading-tight tracking-tight text-white drop-shadow-lg sm:text-5xl lg:text-6xl">
             Launch your own HUD Station where Clients can{" "}
             <br />
-            <span className="text-primary">Customize their 3D Tour Presentations</span>
+            <span className="text-primary drop-shadow-md">Customize their 3D Tour Presentations</span>
           </h1>
 
-          <p className="mx-auto mt-6 max-w-xl text-lg text-muted-foreground">
+          <p className="mx-auto mt-6 max-w-xl text-lg text-white/80 drop-shadow">
             Stop paying 3rd party services to hold your tours hostage on their servers. Instead of manually configuring tours on external platforms, host your own space where clients can EASILY build their own tour presentations—downloaded as independent assets they own and EASILY host wherever they choose.
           </p>
 
@@ -355,7 +368,7 @@ function Index() {
                   Get Started Free
                   <ChevronRight className="ml-1 size-4" />
                 </Button>
-                <Button size="lg" variant="outline" onClick={() => navigate({ to: "/login" })}>
+                <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10" onClick={() => navigate({ to: "/login" })}>
                   Sign In
                 </Button>
               </>
