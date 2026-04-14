@@ -200,6 +200,7 @@ function Index() {
   const { isAuthenticated, isLoading } = useAuth();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isDark, setIsDark] = useState(true);
 
   if (isLoading) {
     return (
@@ -208,6 +209,25 @@ function Index() {
       </div>
     );
   }
+
+  const bg = isDark ? '#0a0e27' : '#f0ede6';
+  const gridColor = isDark ? 'rgba(148,163,184,0.06)' : 'rgba(120,110,100,0.18)';
+  const textColor = isDark ? 'text-white' : 'text-gray-900';
+  const textMuted = isDark ? 'text-white/70' : 'text-gray-600';
+  const textSubtle = isDark ? 'text-white/50' : 'text-gray-500';
+  const textBody = isDark ? 'text-white/80' : 'text-gray-700';
+  const headerBg = isDark ? 'bg-[#0a0e27]/60' : 'bg-[#f0ede6]/70';
+  const headerBorder = isDark ? 'border-white/10' : 'border-gray-400/20';
+  const mobileBg = isDark ? 'bg-[#0a0e27]/90' : 'bg-[#f0ede6]/95';
+  const cardBg = isDark ? 'bg-white/5' : 'bg-white/70';
+  const footerBg = isDark ? 'bg-[#0a0e27]/80' : 'bg-[#e8e4dc]/90';
+  const sectionTint = isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)';
+  const sectionTint2 = isDark ? 'rgba(255,255,255,0.015)' : 'rgba(0,0,0,0.015)';
+  const borderLight = isDark ? 'border-white/5' : 'border-gray-300/40';
+  const borderFooter = isDark ? 'border-white/10' : 'border-gray-300/30';
+  const heroOverlay = isDark
+    ? 'bg-gradient-to-b from-[#0a0e27]/60 via-[#0a0e27]/30 to-[#0a0e27]/70'
+    : 'bg-gradient-to-b from-[#f0ede6]/50 via-transparent to-[#f0ede6]/60';
 
   return (
     <div className="dark relative min-h-screen bg-[#0a0e27] text-foreground">
