@@ -314,7 +314,7 @@ function Index() {
           <h1 className="text-4xl font-extrabold leading-tight tracking-tight text-foreground sm:text-5xl lg:text-6xl">
             Launch your own HUD Station where Clients can
             <br />
-            <span className="text-primary">Customize their 3D Tour presentations</span>
+            <span className="text-primary">Customize their 3D Tour Presentations</span>
           </h1>
 
           <p className="mx-auto mt-6 max-w-xl text-lg text-muted-foreground">
