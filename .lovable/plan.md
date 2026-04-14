@@ -1,28 +1,26 @@
-## Plan: Add "The 'Service Trap' of Traditional 3D Presentations" Section After Hero
-
-Insert a new section between the hero (ends line 343) and the features grid (starts line 345) with problem-focused cards. Use a slightly darker or contrasting background color for this section to make it feel like a "problem/solution" bridge before moving into the features.
-
-### Cards Breakdown
-
-The copy will be split into 4 cards:
-
-1. **"You Do the Work, They Get Paid"** — Monthly subscriptions to keep assets online; you're doing manual labor on their servers.
-2. **"Every Change Goes Through You"** — MLS-compliant versions, music changes — you have to log in and do the work every time.
-3. **"A Bottleneck You Don't Own"** — You're an unpaid administrator for a company you don't own; it drains your time and limits your growth.
-4. **"Paying for Tools You Never Use" -** Including complex 'bloatware' like IoT data and rarely used features like graphical overlays and sectional audio.   
 
 
-### Visual Design
+## Plan: Add Google Analytics Measurement ID Field
 
-- Section with a subtle background differentiation (no border-t, use a slightly tinted bg)
-- Section heading: something like "The 'Service Trap' of Traditional 3D Presentation Platforms"
-- 4 cards in a responsive grid (for desktop and mobile)
-- Each card gets a red/destructive-tinted icon (e.g., Lock, Clock, DollarSign from lucide) to reinforce the "pain point" theme
-- Cards use the existing `Card`/`CardContent` components for consistency
+The Google Analytics Measurement ID is a per-agent/per-presentation setting that clients enter so it gets injected into the generated HTML file's `<head>`. The most logical place is the **Agent** tab, since it contains the client's profile and contact info — analytics tracking is another per-client configuration.
 
-### Technical Details
+### Changes
 
-- **File**: `src/routes/index.tsx`
-- Insert ~40 lines of JSX between lines 343 and 345
-- Add `Lock`, `Clock`, `DollarSign` to the existing lucide-react import
-- No new dependencies or files needed
+**1. Update `AgentContact` type (`src/components/portal/types.ts`)**
+- Add `gaTrackingId: string` to the `AgentContact` interface
+- Add `gaTrackingId: ""` to `DEFAULT_AGENT`
+
+**2. Add GA field to `AgentContactSection` (`src/components/portal/AgentContactSection.tsx`)**
+- Add a new input field after the social links section (or as a separate card/subsection labeled "Analytics & Tracking")
+- Field label: "Google Analytics Measurement ID"
+- Placeholder: `G-XXXXXXXXXX`
+- Include helper text: "Enter your GA4 Measurement ID. This will be injected into the generated presentation's header for traffic monitoring."
+- Use the `BarChart3` icon from lucide-react for visual consistency
+
+**3. Update demo page state (`src/routes/_authenticated.dashboard.demo.tsx`)**
+- No changes needed — the `AgentContact` type flows through automatically since the demo page already uses `agent` state with `DEFAULT_AGENT` and passes `onChange` generically by field key.
+
+### Technical Notes
+- The field value will be available at generation time as `agent.gaTrackingId` for injection into the standalone HTML `<head>` as the standard `gtag.js` snippet.
+- No database migration needed — `saved_models` already stores config as JSONB (`tour_config`), which can include this field.
+
