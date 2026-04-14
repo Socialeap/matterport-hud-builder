@@ -21,6 +21,7 @@ import {
   DollarSign,
   PackageX,
 } from "lucide-react";
+import heroShowcase from "@/assets/hero-showcase.png";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/")({
