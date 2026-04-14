@@ -378,51 +378,61 @@ function Index() {
       </header>
 
       {/* ---- Hero ---- */}
-      <section className="relative z-10 overflow-hidden px-4 pb-16 pt-28 sm:pb-24 sm:pt-36">
-        {/* Hero background image — no vignette */}
-        <div className="absolute inset-0 z-0">
+      <section className="relative z-10 pt-20 sm:pt-24">
+        {/* Hero headline area */}
+        <div className="px-4 pb-6 pt-8 sm:pb-8 sm:pt-12">
+          <div className="mx-auto max-w-3xl text-center">
+            <Badge variant="secondary" className="mb-6 gap-1.5 px-3 py-1 text-xs">
+              <Sparkles className="size-3" />
+              No subscriptions. Ever.
+            </Badge>
+
+            <h1
+              className="text-4xl font-extrabold leading-tight tracking-tight text-white sm:text-5xl lg:text-6xl"
+              style={{ textShadow: '0 2px 20px rgba(0,0,0,0.8), 0 4px 40px rgba(0,0,0,0.5)' }}
+            >
+              Launch your own Studio where Clients can&nbsp;Customize
+              <br />
+              <span className="text-primary" style={{ textShadow: '0 2px 20px rgba(0,0,0,0.7), 0 4px 40px rgba(0,0,0,0.4)' }}>their MP 3D Tour Presentations</span>
+            </h1>
+          </div>
+        </div>
+
+        {/* Hero banner image — sits directly below header, no overlay */}
+        <div className="w-full">
           <img
             src={heroHudBanner}
             alt="3D property tour HUD presentation showcase"
-            className="h-full w-full object-cover object-top"
+            className="w-full object-cover object-top"
+            style={{ maxHeight: '500px' }}
           />
-          {/* Subtle gradient for text readability — no vignette */}
-          <div className="absolute inset-0 bg-gradient-to-b from-[#0a0e27]/70 via-transparent to-[#0a0e27]/85" />
         </div>
 
-        <div className="relative z-10 mx-auto max-w-3xl text-center">
-          <Badge variant="secondary" className="mb-6 gap-1.5 px-3 py-1 text-xs">
-            <Sparkles className="size-3" />
-            No subscriptions. Ever.
-          </Badge>
+        {/* Secondary text + CTA below the image */}
+        <div className="px-4 pb-16 pt-8 sm:pb-24 sm:pt-12">
+          <div className="mx-auto max-w-3xl text-center">
+            <p className="mx-auto max-w-xl text-lg text-white/80">
+              Stop paying 3rd party services to hold your tours hostage on their servers. Instead of manually configuring tours on external platforms, host your own space where clients can EASILY build their own tour presentations—downloaded as independent assets they own and EASILY host wherever they choose.
+            </p>
 
-          <h1 className="text-4xl font-extrabold leading-tight tracking-tight text-white drop-shadow-lg sm:text-5xl lg:text-6xl">
-            Launch your own Studio where Clients can&nbsp;Customize
-            <br />
-            <span className="text-primary drop-shadow-md">their MP 3D Tour Presentations</span>
-          </h1>
-
-          <p className="mx-auto mt-6 max-w-xl text-lg text-white/80 drop-shadow">
-            Stop paying 3rd party services to hold your tours hostage on their servers. Instead of manually configuring tours on external platforms, host your own space where clients can EASILY build their own tour presentations—downloaded as independent assets they own and EASILY host wherever they choose.
-          </p>
-
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-            {isAuthenticated ? (
-              <Button size="lg" onClick={() => navigate({ to: "/dashboard" })}>
-                Go to Dashboard
-                <ChevronRight className="ml-1 size-4" />
-              </Button>
-            ) : (
-              <>
-                <Button size="lg" onClick={() => navigate({ to: "/signup", search: { token: "", email: "" } })}>
-                  Get Started Free
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+              {isAuthenticated ? (
+                <Button size="lg" onClick={() => navigate({ to: "/dashboard" })}>
+                  Go to Dashboard
                   <ChevronRight className="ml-1 size-4" />
                 </Button>
-                <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10" onClick={() => navigate({ to: "/login" })}>
-                  Sign In
-                </Button>
-              </>
-            )}
+              ) : (
+                <>
+                  <Button size="lg" onClick={() => navigate({ to: "/signup", search: { token: "", email: "" } })}>
+                    Get Started Free
+                    <ChevronRight className="ml-1 size-4" />
+                  </Button>
+                  <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10" onClick={() => navigate({ to: "/login" })}>
+                    Sign In
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </section>
