@@ -309,9 +309,11 @@ function Index() {
               className="max-w-4xl text-center text-3xl font-extrabold leading-tight tracking-tight text-white sm:text-4xl lg:text-5xl xl:text-6xl"
               style={{ textShadow: '0 2px 20px rgba(0,0,0,0.9), 0 4px 40px rgba(0,0,0,0.6), 0 0 80px rgba(0,0,0,0.4)' }}
             >
-              Launch your own Studio where Clients can&nbsp;Customize
+              Launch Your own Studio where
               <br />
-              <span className="text-primary" style={{ textShadow: '0 2px 20px rgba(0,0,0,0.9), 0 4px 40px rgba(0,0,0,0.6)' }}>their MP 3D Tour Presentations</span>
+              Clients can Customize their
+              <br />
+              <span className="text-primary" style={{ textShadow: '0 2px 20px rgba(0,0,0,0.9), 0 4px 40px rgba(0,0,0,0.6)' }}>own MP Tour Presentations</span>
             </h1>
           </div>
         </div>
