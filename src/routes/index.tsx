@@ -250,7 +250,7 @@ function Index() {
   const textColor = isDark ? 'text-white' : 'text-gray-900';
   const textMuted = isDark ? 'text-white/70' : 'text-gray-600';
   const textSubtle = isDark ? 'text-white/50' : 'text-gray-500';
-  const textBody = isDark ? 'text-white/80' : 'text-gray-700';
+  const _textBody = isDark ? 'text-white/80' : 'text-gray-700';
   const headerBg = isDark ? 'bg-[#0a0e27]/60' : 'bg-[#f0ede6]/70';
   const headerBorder = isDark ? 'border-white/10' : 'border-gray-400/20';
   const mobileBg = isDark ? 'bg-[#0a0e27]/90' : 'bg-[#f0ede6]/95';
