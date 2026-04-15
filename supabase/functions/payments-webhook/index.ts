@@ -17,11 +17,23 @@ serve(async (req) => {
 
   try {
     const event = await verifyWebhook(req, env);
-    console.log("Received event:", event.type, "env:", env);
+    console.log("Received event:", event.type, "env:", env, "account:", (event as any).account);
+
+    // Check if this is a connected account event
+    const connectedAccountId = (event as any).account;
 
     switch (event.type) {
       case "checkout.session.completed":
-        await handleCheckoutCompleted(event.data.object, env);
+        if (connectedAccountId) {
+          await handleConnectCheckoutCompleted(event.data.object, connectedAccountId);
+        } else {
+          await handleCheckoutCompleted(event.data.object, env);
+        }
+        break;
+      case "account.updated":
+        if (connectedAccountId) {
+          await handleAccountUpdated(event.data.object, connectedAccountId);
+        }
         break;
       default:
         console.log("Unhandled event:", event.type);
@@ -37,6 +49,64 @@ serve(async (req) => {
   }
 });
 
+// Handle checkout from a connected MSP account (client paying for presentation)
+async function handleConnectCheckoutCompleted(session: any, connectedAccountId: string) {
+  console.log("Connect checkout completed:", session.id, "account:", connectedAccountId);
+
+  const modelId = session.metadata?.modelId;
+  const providerId = session.metadata?.providerId;
+  const clientId = session.metadata?.clientId;
+
+  if (!modelId) {
+    console.error("No modelId in connect checkout session metadata");
+    return;
+  }
+
+  // Update saved_models: mark as paid and released
+  const { error: modelError } = await supabase
+    .from("saved_models")
+    .update({
+      status: "paid",
+      is_released: true,
+      amount_cents: session.amount_total || 0,
+    })
+    .eq("id", modelId);
+
+  if (modelError) {
+    console.error("Failed to update saved_model:", modelError);
+    return;
+  }
+
+  // Update order notification
+  if (providerId) {
+    await supabase
+      .from("order_notifications")
+      .update({ status: "paid" })
+      .eq("model_id", modelId)
+      .eq("provider_id", providerId);
+  }
+
+  console.log(`Connect payment: model=${modelId}, provider=${providerId}, client=${clientId}, amount=${session.amount_total}`);
+}
+
+// Handle account status updates (onboarding completion)
+async function handleAccountUpdated(account: any, connectedAccountId: string) {
+  if (account.charges_enabled && account.details_submitted) {
+    // Mark onboarding complete for this MSP
+    const { error } = await supabase
+      .from("branding_settings")
+      .update({ stripe_onboarding_complete: true })
+      .eq("stripe_connect_id", connectedAccountId);
+
+    if (error) {
+      console.error("Failed to update onboarding status:", error);
+    } else {
+      console.log(`Onboarding complete for account: ${connectedAccountId}`);
+    }
+  }
+}
+
+// Handle platform checkout (MSP buying tier upgrades)
 async function handleCheckoutCompleted(session: any, env: StripeEnv) {
   console.log("Checkout completed:", session.id, "mode:", session.mode);
 
@@ -58,9 +128,7 @@ async function handleCheckoutCompleted(session: any, env: StripeEnv) {
   }
 
   const priceId = item.price?.metadata?.lovable_external_id || item.price?.lookup_key || item.price?.id;
-  const productId = (item.price as any)?.product?.metadata?.lovable_external_id 
-    || (typeof item.price?.product === 'string' ? item.price.product : '');
-
+  
   // Determine the tier product_id from the price lookup key
   let resolvedProductId = 'unknown';
   if (priceId === 'starter_onetime') resolvedProductId = 'starter_tier';
