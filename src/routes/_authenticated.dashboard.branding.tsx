@@ -61,6 +61,16 @@ function BrandingPage() {
   const [faviconFile, setFaviconFile] = useState<File | null>(null);
 
   const isPro = branding.tier === "pro";
+  const { openCheckout, closeCheckout, isOpen, CheckoutForm } = useStripeCheckout();
+
+  const handleUpgrade = useCallback(() => {
+    openCheckout({
+      priceId: "pro_upgrade_onetime",
+      customerEmail: user?.email ?? undefined,
+      userId: user?.id ?? "",
+      returnUrl: `${window.location.origin}/dashboard/branding?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+    });
+  }, [user, openCheckout]);
 
   const fetchBranding = useCallback(async () => {
     if (!user) return;
