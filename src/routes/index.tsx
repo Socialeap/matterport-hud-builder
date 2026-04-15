@@ -245,24 +245,20 @@ function Index() {
   /* No loading gate — all static content renders on the server for SEO.
      Auth-dependent buttons simply hide during the brief loading window. */
 
-  const bg = isDark ? '#0a0e27' : '#f0ede6';
-  const gridColor = isDark ? 'rgba(148,163,184,0.06)' : 'rgba(120,110,100,0.18)';
-  const textColor = isDark ? 'text-white' : 'text-gray-900';
-  const textMuted = isDark ? 'text-white/70' : 'text-gray-600';
-  const textSubtle = isDark ? 'text-white/50' : 'text-gray-500';
-  const _textBody = isDark ? 'text-white/80' : 'text-gray-700';
-  const headerBg = isDark ? 'bg-[#0a0e27]/60' : 'bg-[#f0ede6]/70';
-  const headerBorder = isDark ? 'border-white/10' : 'border-gray-400/20';
-  const mobileBg = isDark ? 'bg-[#0a0e27]/90' : 'bg-[#f0ede6]/95';
-  const cardBg = isDark ? 'bg-white/5' : 'bg-white/70';
-  const footerBg = isDark ? 'bg-[#0a0e27]/80' : 'bg-[#e8e4dc]/90';
-  const sectionTint = isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)';
-  const sectionTint2 = isDark ? 'rgba(255,255,255,0.015)' : 'rgba(0,0,0,0.015)';
-  const borderLight = isDark ? 'border-white/5' : 'border-gray-300/40';
-  const borderFooter = isDark ? 'border-white/10' : 'border-gray-300/30';
-  const heroOverlay = isDark
-    ? 'bg-gradient-to-b from-[#0a0e27]/60 via-[#0a0e27]/30 to-[#0a0e27]/70'
-    : 'bg-gradient-to-b from-[#1a1a2e]/50 via-[#1a1a2e]/35 to-[#1a1a2e]/65';
+  const bg = isDark ? '#0a0e27' : '#1a1a1a';
+  const gridColor = isDark ? 'rgba(148,163,184,0.06)' : 'rgba(255,255,255,0.04)';
+  const textColor = 'text-white';
+  const textMuted = 'text-white/70';
+  const textSubtle = 'text-white/50';
+  const headerBg = isDark ? 'bg-[#0a0e27]/60' : 'bg-[#1a1a1a]/70';
+  const headerBorder = 'border-white/10';
+  const mobileBg = isDark ? 'bg-[#0a0e27]/90' : 'bg-[#1a1a1a]/95';
+  const cardBg = 'bg-white/5';
+  const footerBg = isDark ? 'bg-[#0a0e27]/80' : 'bg-[#141414]/90';
+  const sectionTint = 'rgba(255,255,255,0.02)';
+  const sectionTint2 = 'rgba(255,255,255,0.015)';
+  const borderLight = 'border-white/5';
+  const borderFooter = 'border-white/10';
 
   return (
     <div className={`${isDark ? 'dark' : ''} relative min-h-screen text-foreground transition-colors duration-500`} style={{ backgroundColor: bg }}>
@@ -278,34 +274,37 @@ function Index() {
         }}
       />
 
-      {/* ---- Organic translucent orbs (dark only) ---- */}
-      {isDark && (
-        <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
-          <div className="absolute -left-32 -top-20 h-[500px] w-[500px] rounded-full bg-blue-600/15 blur-[160px]" />
-          <div className="absolute right-0 top-[30%] h-[400px] w-[450px] rounded-full bg-indigo-500/12 blur-[140px]" />
-          <div className="absolute bottom-[10%] left-[20%] h-[350px] w-[400px] rounded-full bg-teal-500/10 blur-[180px]" />
-          <div className="absolute -right-20 bottom-[40%] h-[300px] w-[350px] rounded-full bg-purple-600/8 blur-[150px]" />
-          <div className="absolute left-[50%] top-[60%] h-[400px] w-[400px] rounded-full bg-cyan-500/8 blur-[200px]" />
-        </div>
-      )}
+      {/* ---- Organic translucent orbs (both modes) ---- */}
+      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+        <div className="absolute -left-32 -top-20 h-[500px] w-[500px] rounded-full blur-[160px]"
+          style={{ background: isDark ? 'rgba(37,99,235,0.15)' : 'rgba(120,100,80,0.08)' }} />
+        <div className="absolute right-0 top-[30%] h-[400px] w-[450px] rounded-full blur-[140px]"
+          style={{ background: isDark ? 'rgba(99,102,241,0.12)' : 'rgba(100,90,70,0.06)' }} />
+        <div className="absolute bottom-[10%] left-[20%] h-[350px] w-[400px] rounded-full blur-[180px]"
+          style={{ background: isDark ? 'rgba(20,184,166,0.10)' : 'rgba(140,120,90,0.07)' }} />
+        <div className="absolute -right-20 bottom-[40%] h-[300px] w-[350px] rounded-full blur-[150px]"
+          style={{ background: isDark ? 'rgba(147,51,234,0.08)' : 'rgba(100,80,60,0.05)' }} />
+        <div className="absolute left-[50%] top-[60%] h-[400px] w-[400px] rounded-full blur-[200px]"
+          style={{ background: isDark ? 'rgba(6,182,212,0.08)' : 'rgba(130,110,85,0.06)' }} />
+      </div>
 
       {/* ---- Header with glassmorphism ---- */}
-      <header className={`fixed inset-x-0 top-0 z-50 border-b ${headerBorder} ${headerBg} backdrop-blur-xl transition-colors duration-500`}>
+      <header className={`fixed inset-x-0 top-0 z-50 border-b ${headerBorder} ${headerBg} backdrop-blur-xl`}>
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
-          <span className={`text-lg font-bold tracking-tight ${textColor}`}>
+          <span className="text-lg font-bold tracking-tight text-white">
             3D Presentation Studio
           </span>
 
           {/* Desktop nav */}
           <nav className="hidden items-center gap-6 sm:flex">
-            <a href="#features" className={`text-sm ${textMuted} transition-colors hover:${isDark ? 'text-white' : 'text-gray-900'}`}>Features</a>
-            <a href="#pricing" className={`text-sm ${textMuted} transition-colors hover:${isDark ? 'text-white' : 'text-gray-900'}`}>Pricing</a>
-            <a href="#how-it-works" className={`text-sm ${textMuted} transition-colors hover:${isDark ? 'text-white' : 'text-gray-900'}`}>How It Works</a>
+            <a href="#features" className="text-sm text-white/70 transition-colors hover:text-white">Features</a>
+            <a href="#pricing" className="text-sm text-white/70 transition-colors hover:text-white">Pricing</a>
+            <a href="#how-it-works" className="text-sm text-white/70 transition-colors hover:text-white">How It Works</a>
 
             {/* Theme toggle */}
             <button
               onClick={() => setIsDark(!isDark)}
-              className={`rounded-full p-2 transition-colors ${isDark ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900'}`}
+              className="rounded-full p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
               aria-label="Toggle theme"
             >
               {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
@@ -315,7 +314,7 @@ function Index() {
               <Button size="sm" onClick={() => navigate({ to: "/dashboard" })}>Dashboard</Button>
             ) : (
               <>
-                <Button size="sm" variant="ghost" className={`${isDark ? 'text-white/80 hover:bg-white/10 hover:text-white' : 'text-gray-700 hover:bg-gray-200 hover:text-gray-900'}`} onClick={() => navigate({ to: "/login" })}>
+                <Button size="sm" variant="ghost" className="text-white/80 hover:bg-white/10 hover:text-white" onClick={() => navigate({ to: "/login" })}>
                   Sign In
                 </Button>
                 <Button size="sm" onClick={() => navigate({ to: "/signup", search: { token: "", email: "" } })}>
@@ -329,13 +328,13 @@ function Index() {
           <div className="flex items-center gap-2 sm:hidden">
             <button
               onClick={() => setIsDark(!isDark)}
-              className={`rounded-full p-2 transition-colors ${isDark ? 'text-white/70 hover:bg-white/10' : 'text-gray-600 hover:bg-gray-200'}`}
+              className="rounded-full p-2 text-white/70 transition-colors hover:bg-white/10"
               aria-label="Toggle theme"
             >
               {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
             </button>
             <button
-              className={`${isDark ? 'text-white/80 hover:text-white' : 'text-gray-700 hover:text-gray-900'}`}
+              className="text-white/80 hover:text-white"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             >
               {mobileMenuOpen ? <X className="size-6" /> : <Menu className="size-6" />}
@@ -347,14 +346,14 @@ function Index() {
         {mobileMenuOpen && (
           <div className={`border-t ${headerBorder} ${mobileBg} backdrop-blur-xl sm:hidden`}>
             <div className="flex flex-col gap-2 px-4 py-4">
-              <a href="#features" className={`rounded-lg px-3 py-2 text-sm ${textMuted} hover:${isDark ? 'bg-white/5 text-white' : 'bg-gray-100 text-gray-900'}`} onClick={() => setMobileMenuOpen(false)}>Features</a>
-              <a href="#pricing" className={`rounded-lg px-3 py-2 text-sm ${textMuted} hover:${isDark ? 'bg-white/5 text-white' : 'bg-gray-100 text-gray-900'}`} onClick={() => setMobileMenuOpen(false)}>Pricing</a>
-              <a href="#how-it-works" className={`rounded-lg px-3 py-2 text-sm ${textMuted} hover:${isDark ? 'bg-white/5 text-white' : 'bg-gray-100 text-gray-900'}`} onClick={() => setMobileMenuOpen(false)}>How It Works</a>
+              <a href="#features" className="rounded-lg px-3 py-2 text-sm text-white/70 hover:bg-white/5 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Features</a>
+              <a href="#pricing" className="rounded-lg px-3 py-2 text-sm text-white/70 hover:bg-white/5 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Pricing</a>
+              <a href="#how-it-works" className="rounded-lg px-3 py-2 text-sm text-white/70 hover:bg-white/5 hover:text-white" onClick={() => setMobileMenuOpen(false)}>How It Works</a>
               {isAuthenticated ? (
                 <Button size="sm" className="mt-2" onClick={() => navigate({ to: "/dashboard" })}>Dashboard</Button>
               ) : (
                 <>
-                  <Button size="sm" variant="ghost" className={`justify-start ${isDark ? 'text-white/80 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-200'}`} onClick={() => navigate({ to: "/login" })}>Sign In</Button>
+                  <Button size="sm" variant="ghost" className="justify-start text-white/80 hover:bg-white/10" onClick={() => navigate({ to: "/login" })}>Sign In</Button>
                   <Button size="sm" className="mt-1" onClick={() => navigate({ to: "/signup", search: { token: "", email: "" } })}>Get Started</Button>
                 </>
               )}
@@ -364,65 +363,57 @@ function Index() {
       </header>
 
       {/* ---- Hero ---- */}
-      <section className="relative z-10 pt-[56px]">
-        {/* Hero image with overlaid text */}
-        <div className="relative w-full">
-          <img
-            src={heroHudBanner}
-            alt="3D property tour HUD presentation showcase"
-            className="w-full object-cover object-top"
-            style={{ maxHeight: '520px' }}
-          />
-          {/* Gradient overlay for text legibility */}
-          <div className={heroOverlay} style={{ position: 'absolute', inset: 0 }} />
+      <section className="relative z-10 px-4 pt-32 pb-16 sm:pt-40 sm:pb-24">
+        <div className="mx-auto max-w-4xl text-center">
+          {/* Pill badge */}
+          <div className="mb-6 inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-medium text-white/80 backdrop-blur-sm">
+            <Sparkles className="size-3 text-primary" />
+            No subscriptions. Ever.
+          </div>
 
-          {/* Centered text overlay */}
-          <div className="absolute inset-0 flex flex-col items-center justify-center px-4">
-            <Badge variant="secondary" className="mb-4 gap-1.5 px-3 py-1 text-xs sm:mb-6">
-              <Sparkles className="size-3" />
-              No subscriptions. Ever.
-            </Badge>
+          {/* Headline */}
+          <h1 className="mx-auto max-w-3xl text-4xl font-bold leading-[1.1] tracking-tight text-white sm:text-5xl lg:text-6xl">
+            Your own studio for clients to custom brand their{' '}
+            <span className="text-primary">3D Tour presentations</span>
+          </h1>
 
-            <h1
-              className="max-w-4xl text-center text-3xl font-extrabold leading-tight tracking-tight text-white sm:text-4xl lg:text-5xl xl:text-6xl"
-              style={{ textShadow: '0 2px 20px rgba(0,0,0,0.9), 0 4px 40px rgba(0,0,0,0.6), 0 0 80px rgba(0,0,0,0.4)' }}
-            >
-              Launch Your own Studio where
-              <br />
-              Clients can Customize their
-              <br />
-              <span className="text-primary" style={{ textShadow: '0 2px 20px rgba(0,0,0,0.9), 0 4px 40px rgba(0,0,0,0.6)' }}>own MP Tour Presentations</span>
-            </h1>
+          {/* Subheadline */}
+          <p className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-white/60 sm:text-lg">
+            Give clients a space to build, customize, and download presentations they fully own.
+          </p>
+
+          {/* CTA */}
+          <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
+            <a href="#pricing">
+              <Button size="lg" className="gap-2">
+                Try our demo
+                <ChevronRight className="size-4" />
+              </Button>
+            </a>
           </div>
         </div>
 
-        {/* Secondary text + CTA — integrated band flowing from image */}
-        <div
-          className="relative px-4 pb-16 pt-10 sm:pb-24 sm:pt-14"
-          style={{
-            background: isDark
-              ? 'linear-gradient(to bottom, #0a0e27, transparent 100%)'
-              : 'linear-gradient(to bottom, #2a2a3e, #f0ede6 100%)',
-          }}
-        >
-          <div className="mx-auto max-w-3xl text-center">
-            <p className="mx-auto max-w-xl text-lg leading-relaxed text-white/85" style={{ textShadow: isDark ? 'none' : '0 1px 6px rgba(0,0,0,0.3)' }}>
-              Stop paying 3rd party services to hold your tours hostage on their servers. Instead of manually configuring tours on external platforms, host your own space where clients can EASILY build their own tour presentations—downloaded as independent assets they own and EASILY host wherever they choose.
-            </p>
-
-            <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-              {!isAuthenticated && (
-                <>
-                  <Button size="lg" onClick={() => navigate({ to: "/signup", search: { token: "", email: "" } })}>
-                    Get Started Free
-                    <ChevronRight className="ml-1 size-4" />
-                  </Button>
-                  <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10" onClick={() => navigate({ to: "/login" })}>
-                    Sign In
-                  </Button>
-                </>
-              )}
+        {/* Browser chrome frame */}
+        <div className="mx-auto mt-16 max-w-5xl">
+          <div className="overflow-hidden rounded-xl border border-white/10 bg-[#111] shadow-2xl shadow-black/40">
+            {/* Title bar */}
+            <div className="flex items-center gap-3 border-b border-white/5 px-4 py-3">
+              <div className="flex gap-1.5">
+                <div className="size-3 rounded-full bg-[#ff5f57]" />
+                <div className="size-3 rounded-full bg-[#febc2e]" />
+                <div className="size-3 rounded-full bg-[#28c840]" />
+              </div>
+              <div className="flex-1 rounded-md bg-white/5 px-3 py-1 text-center text-xs text-white/40">
+                your-studio.com/tour/brickell-tower
+              </div>
             </div>
+            {/* Screenshot */}
+            <img
+              src={heroHudBanner}
+              alt="3D property tour HUD presentation showcase"
+              className="w-full"
+              loading="eager"
+            />
           </div>
         </div>
       </section>
@@ -430,10 +421,10 @@ function Index() {
       {/* ---- Problem section ---- */}
       <section className="relative z-10 px-4 py-16 sm:py-24" style={{ backgroundColor: sectionTint }}>
         <div className="mx-auto max-w-5xl">
-          <h2 className={`text-center text-2xl font-bold tracking-tight ${isDark ? 'text-foreground' : 'text-gray-900'} sm:text-3xl`}>
+          <h2 className={`text-center text-2xl font-bold tracking-tight text-white sm:text-3xl`}>
             The &ldquo;Service Trap&rdquo; of Traditional 3D Presentation Platforms
           </h2>
-          <p className={`mx-auto mt-3 max-w-xl text-center ${isDark ? 'text-muted-foreground' : 'text-gray-600'}`}>
+          <p className={`mx-auto mt-3 max-w-xl text-center text-white/60`}>
             Most platforms require you to do the manual labor on their servers, charging you a monthly subscription just to keep your assets online.
           </p>
 
@@ -443,8 +434,8 @@ function Index() {
                 <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
                   <DollarSign className="size-5 text-destructive" />
                 </div>
-                <h3 className={`mt-4 font-semibold ${isDark ? 'text-foreground' : 'text-gray-900'}`}>You Do the Work, They Get Paid</h3>
-                <p className={`mt-2 text-sm ${isDark ? 'text-muted-foreground' : 'text-gray-600'}`}>
+                <h3 className={`mt-4 font-semibold text-white`}>You Do the Work, They Get Paid</h3>
+                <p className={`mt-2 text-sm text-white/60`}>
                   Monthly subscriptions to keep your assets online — while you&#39;re the one doing all the manual labor on their servers.
                 </p>
               </CardContent>
@@ -455,8 +446,8 @@ function Index() {
                 <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
                   <Clock className="size-5 text-destructive" />
                 </div>
-                <h3 className={`mt-4 font-semibold ${isDark ? 'text-foreground' : 'text-gray-900'}`}>Every Change Goes Through You</h3>
-                <p className={`mt-2 text-sm ${isDark ? 'text-muted-foreground' : 'text-gray-600'}`}>
+                <h3 className={`mt-4 font-semibold text-white`}>Every Change Goes Through You</h3>
+                <p className={`mt-2 text-sm text-white/60`}>
                   When a client needs an MLS-compliant version or a simple music change, you have to log in and do the work every time.
                 </p>
               </CardContent>
@@ -467,8 +458,8 @@ function Index() {
                 <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
                   <Lock className="size-5 text-destructive" />
                 </div>
-                <h3 className={`mt-4 font-semibold ${isDark ? 'text-foreground' : 'text-gray-900'}`}>A Bottleneck You Don&#39;t Own</h3>
-                <p className={`mt-2 text-sm ${isDark ? 'text-muted-foreground' : 'text-gray-600'}`}>
+                <h3 className={`mt-4 font-semibold text-white`}>A Bottleneck You Don&#39;t Own</h3>
+                <p className={`mt-2 text-sm text-white/60`}>
                   You aren&#39;t just paying for software — you&#39;re paying for the privilege of being an unpaid administrator for a company you don&#39;t own. It drains your time and limits your growth.
                 </p>
               </CardContent>
@@ -479,8 +470,8 @@ function Index() {
                 <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
                   <PackageX className="size-5 text-destructive" />
                 </div>
-                <h3 className={`mt-4 font-semibold ${isDark ? 'text-foreground' : 'text-gray-900'}`}>Paying for Tools You Never Use</h3>
-                <p className={`mt-2 text-sm ${isDark ? 'text-muted-foreground' : 'text-gray-600'}`}>
+                <h3 className={`mt-4 font-semibold text-white`}>Paying for Tools You Never Use</h3>
+                <p className={`mt-2 text-sm text-white/60`}>
                   Complex &ldquo;bloatware&rdquo; like IoT data integrations and rarely used features like graphical overlays and sectional audio — bundled into every plan whether you need them or not.
                 </p>
               </CardContent>
@@ -492,10 +483,10 @@ function Index() {
       {/* ---- Features grid ---- */}
       <section id="features" className={`relative z-10 border-t ${borderLight} px-4 py-16 sm:py-24`} style={{ backgroundColor: sectionTint2 }}>
         <div className="mx-auto max-w-5xl">
-          <h2 className={`text-center text-2xl font-bold tracking-tight ${isDark ? 'text-foreground' : 'text-gray-900'} sm:text-3xl`}>
+          <h2 className={`text-center text-2xl font-bold tracking-tight text-white sm:text-3xl`}>
             A Branded Studio for Clients to Build Their Own Presentations
           </h2>
-          <p className={`mx-auto mt-3 max-w-xl text-center ${isDark ? 'text-muted-foreground' : 'text-gray-600'}`}>
+          <p className={`mx-auto mt-3 max-w-xl text-center text-white/60`}>
             One platform to configure, preview, and deliver professional Matterport 3D
             presentations — fully branded to you.
           </p>
@@ -507,8 +498,8 @@ function Index() {
                   <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
                     <f.icon className="size-5 text-primary" />
                   </div>
-                  <h3 className={`mt-4 font-semibold ${isDark ? 'text-foreground' : 'text-gray-900'}`}>{f.title}</h3>
-                  <p className={`mt-1 text-sm ${isDark ? 'text-muted-foreground' : 'text-gray-600'}`}>{f.description}</p>
+                  <h3 className={`mt-4 font-semibold text-white`}>{f.title}</h3>
+                  <p className={`mt-1 text-sm text-white/60`}>{f.description}</p>
                 </CardContent>
               </Card>
             ))}
@@ -519,27 +510,27 @@ function Index() {
       {/* ---- Pricing comparison ---- */}
       <section id="pricing" className="relative z-10 px-4 py-16 sm:py-24">
         <div className="mx-auto max-w-4xl">
-          <h2 className={`text-center text-2xl font-bold tracking-tight ${isDark ? 'text-foreground' : 'text-gray-900'} sm:text-3xl`}>
+          <h2 className={`text-center text-2xl font-bold tracking-tight text-white sm:text-3xl`}>
             Simple, One-Time Pricing
           </h2>
-          <p className={`mx-auto mt-3 max-w-lg text-center ${isDark ? 'text-muted-foreground' : 'text-gray-600'}`}>
+          <p className={`mx-auto mt-3 max-w-lg text-center text-white/60`}>
             Pay once. Own it forever. No monthly fees, no per-tour charges, no surprises.
           </p>
 
           <div className="mt-12 grid gap-6 sm:grid-cols-2">
             {/* Starter */}
-            <Card className={`flex flex-col ${isDark ? '' : 'bg-white/80 backdrop-blur'}`}>
+            <Card className={`flex flex-col backdrop-blur`}>
               <CardHeader className="text-center">
                 <Badge variant="secondary" className="mx-auto mb-2 w-fit">
                   Starter
                 </Badge>
-                <span className={`text-4xl font-bold ${isDark ? 'text-foreground' : 'text-gray-900'}`}>$149</span>
-                <span className={`text-sm ${isDark ? 'text-muted-foreground' : 'text-gray-500'}`}>one-time payment</span>
+                <span className={`text-4xl font-bold text-white`}>$149</span>
+                <span className={`text-sm text-white/50`}>one-time payment</span>
               </CardHeader>
               <CardContent className="flex flex-1 flex-col justify-between gap-6">
                 <ul className="space-y-2.5">
                   {starterFeatures.map((f) => (
-                    <li key={f} className={`flex items-start gap-2 text-sm ${isDark ? 'text-foreground' : 'text-gray-800'}`}>
+                    <li key={f} className={`flex items-start gap-2 text-sm text-white/90`}>
                       <Check className="mt-0.5 size-4 shrink-0 text-primary" />
                       {f}
                     </li>
@@ -561,19 +552,19 @@ function Index() {
             </Card>
 
             {/* Pro */}
-            <Card className={`relative flex flex-col border-primary shadow-lg ${isDark ? '' : 'bg-white/80 backdrop-blur'}`}>
+            <Card className={`relative flex flex-col border-primary shadow-lg backdrop-blur`}>
               <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">
                 Most Popular
               </Badge>
               <CardHeader className="text-center">
                 <Badge className="mx-auto mb-2 w-fit">Pro</Badge>
-                <span className={`text-4xl font-bold ${isDark ? 'text-foreground' : 'text-gray-900'}`}>$299</span>
-                <span className={`text-sm ${isDark ? 'text-muted-foreground' : 'text-gray-500'}`}>one-time payment</span>
+                <span className={`text-4xl font-bold text-white`}>$299</span>
+                <span className={`text-sm text-white/50`}>one-time payment</span>
               </CardHeader>
               <CardContent className="flex flex-1 flex-col justify-between gap-6">
                 <ul className="space-y-2.5">
                   {proFeatures.map((f) => (
-                    <li key={f} className={`flex items-start gap-2 text-sm ${isDark ? 'text-foreground' : 'text-gray-800'}`}>
+                    <li key={f} className={`flex items-start gap-2 text-sm text-white/90`}>
                       <Check className="mt-0.5 size-4 shrink-0 text-primary" />
                       {f}
                     </li>
@@ -594,7 +585,7 @@ function Index() {
             </Card>
           </div>
 
-          <p className={`mx-auto mt-8 max-w-2xl text-center text-xs ${isDark ? 'text-muted-foreground' : 'text-gray-500'}`}>
+          <p className={`mx-auto mt-8 max-w-2xl text-center text-xs text-white/50`}>
             Activate a test tier instantly — no Stripe purchase required. Explore the full dashboard, branding settings, client portal, and orders workflow. Demo purchases are recorded in sandbox mode. You can switch Demo tiers any time by returning here.
           </p>
         </div>
@@ -603,7 +594,7 @@ function Index() {
       {/* ---- How it works ---- */}
       <section id="how-it-works" className="relative z-10 px-4 py-16 sm:py-24">
         <div className="mx-auto max-w-3xl">
-          <h2 className={`text-center text-2xl font-bold tracking-tight ${isDark ? 'text-foreground' : 'text-gray-900'} sm:text-3xl`}>
+          <h2 className={`text-center text-2xl font-bold tracking-tight text-white sm:text-3xl`}>
             How It Works
           </h2>
           <div className="mt-12 space-y-8">
@@ -634,8 +625,8 @@ function Index() {
                   {item.step}
                 </div>
                 <div>
-                  <h3 className={`font-semibold ${isDark ? 'text-foreground' : 'text-gray-900'}`}>{item.title}</h3>
-                  <p className={`mt-1 text-sm ${isDark ? 'text-muted-foreground' : 'text-gray-600'}`}>{item.desc}</p>
+                  <h3 className={`font-semibold text-white`}>{item.title}</h3>
+                  <p className={`mt-1 text-sm text-white/60`}>{item.desc}</p>
                 </div>
               </div>
             ))}
@@ -654,22 +645,22 @@ function Index() {
               </p>
             </div>
             <div>
-              <h4 className={`mb-3 text-sm font-semibold uppercase tracking-wider ${isDark ? 'text-white/60' : 'text-gray-500'}`}>Product</h4>
+              <h4 className={`mb-3 text-sm font-semibold uppercase tracking-wider text-white/60`}>Product</h4>
               <ul className="space-y-2 text-sm">
-                <li><a href="#features" className={`${textSubtle} transition-colors hover:${isDark ? 'text-white' : 'text-gray-900'}`}>Features</a></li>
-                <li><a href="#pricing" className={`${textSubtle} transition-colors hover:${isDark ? 'text-white' : 'text-gray-900'}`}>Pricing</a></li>
-                <li><a href="#how-it-works" className={`${textSubtle} transition-colors hover:${isDark ? 'text-white' : 'text-gray-900'}`}>How It Works</a></li>
+                <li><a href="#features" className={`text-white/50 transition-colors hover:text-white`}>Features</a></li>
+                <li><a href="#pricing" className={`text-white/50 transition-colors hover:text-white`}>Pricing</a></li>
+                <li><a href="#how-it-works" className={`text-white/50 transition-colors hover:text-white`}>How It Works</a></li>
               </ul>
             </div>
             <div>
-              <h4 className={`mb-3 text-sm font-semibold uppercase tracking-wider ${isDark ? 'text-white/60' : 'text-gray-500'}`}>Account</h4>
+              <h4 className={`mb-3 text-sm font-semibold uppercase tracking-wider text-white/60`}>Account</h4>
               <ul className="space-y-2 text-sm">
-                <li><Link to="/login" className={`${textSubtle} transition-colors hover:${isDark ? 'text-white' : 'text-gray-900'}`}>Sign In</Link></li>
-                <li><Link to="/signup" search={{ token: "", email: "" }} className={`${textSubtle} transition-colors hover:${isDark ? 'text-white' : 'text-gray-900'}`}>Get Started</Link></li>
+                <li><Link to="/login" className={`text-white/50 transition-colors hover:text-white`}>Sign In</Link></li>
+                <li><Link to="/signup" search={{ token: "", email: "" }} className={`text-white/50 transition-colors hover:text-white`}>Get Started</Link></li>
               </ul>
             </div>
           </div>
-          <div className={`mt-8 border-t ${borderFooter} pt-6 text-center text-xs ${isDark ? 'text-white/40' : 'text-gray-400'}`}>
+          <div className={`mt-8 border-t ${borderFooter} pt-6 text-center text-xs text-white/40`}>
             © {new Date().getFullYear()} Transcendence Media. All rights reserved.
           </div>
         </div>
