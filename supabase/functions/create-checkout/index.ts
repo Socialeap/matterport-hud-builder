@@ -10,6 +10,7 @@ serve(async (req) => {
   try {
     const { priceId, customerEmail, userId, returnUrl, environment } = await req.json();
     if (!priceId || typeof priceId !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(priceId)) {
+      console.error("[create-checkout] Invalid priceId:", priceId);
       return new Response(JSON.stringify({ error: "Invalid priceId" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -17,11 +18,24 @@ serve(async (req) => {
     }
 
     const env = (environment || 'sandbox') as StripeEnv;
-    const stripe = createStripeClient(env);
+    console.log(`[create-checkout] env=${env}, priceId=${priceId}`);
+
+    let stripe;
+    try {
+      stripe = createStripeClient(env);
+    } catch (keyErr) {
+      const msg = keyErr instanceof Error ? keyErr.message : String(keyErr);
+      console.error("[create-checkout] Stripe client init failed:", msg);
+      return new Response(JSON.stringify({ error: `Payment environment not configured: ${msg}` }), {
+        status: 503,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Resolve human-readable price ID via lookup_keys
     const prices = await stripe.prices.list({ lookup_keys: [priceId] });
     if (!prices.data.length) {
+      console.error(`[create-checkout] Price not found for lookup_key: ${priceId}`);
       return new Response(JSON.stringify({ error: "Price not found" }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -41,11 +55,14 @@ serve(async (req) => {
       },
     });
 
+    console.log(`[create-checkout] Session created: ${session.id}`);
     return new Response(JSON.stringify({ clientSecret: session.client_secret }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
-    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Internal server error" }), {
+    const msg = error instanceof Error ? error.message : "Internal server error";
+    console.error("[create-checkout] Unhandled error:", msg);
+    return new Response(JSON.stringify({ error: msg }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
