@@ -37,6 +37,7 @@ function OrdersPage() {
   const { user } = useAuth();
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [clientNames, setClientNames] = useState<Map<string, string>>(new Map());
 
   const fetchOrders = useCallback(async () => {
     if (!user) return;
@@ -60,6 +61,19 @@ function OrdersPage() {
       .in("id", modelIds);
 
     const modelMap = new Map(models?.map((m) => [m.id, m]) || []);
+
+    // Fetch client display names
+    const clientIds = [...new Set(notifications.map((n) => n.client_id))];
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("user_id, display_name")
+      .in("user_id", clientIds);
+
+    const nameMap = new Map<string, string>();
+    profiles?.forEach((p) => {
+      if (p.display_name) nameMap.set(p.user_id, p.display_name);
+    });
+    setClientNames(nameMap);
 
     const rows: OrderRow[] = notifications.map((n) => {
       const model = modelMap.get(n.model_id);
@@ -174,7 +188,7 @@ function OrdersPage() {
                       <div>
                         <p className="font-medium text-foreground">{order.model_name}</p>
                         <p className="text-xs text-muted-foreground">
-                          Client: {order.client_id.slice(0, 8)}…
+                          Client: {clientNames.get(order.client_id) || order.client_id.slice(0, 8) + "…"}
                         </p>
                       </div>
                     </TableCell>

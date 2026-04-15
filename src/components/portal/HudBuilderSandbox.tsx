@@ -14,7 +14,7 @@ import { savePresentationRequest, generatePresentation } from "@/lib/portal.func
 import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe-js";
-import { getStripe } from "@/lib/stripe";
+import { getStripeForConnect } from "@/lib/stripe";
 import { useServerFn } from "@tanstack/react-start";
 
 interface HudBuilderSandboxProps {
@@ -96,6 +96,9 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
   const [savedModelId, setSavedModelId] = useState<string | null>(null);
   const [isReleased, setIsReleased] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [isPolling, setIsPolling] = useState(false);
+  const [connectAccountId, setConnectAccountId] = useState<string | null>(null);
+  const [checkoutClientSecret, setCheckoutClientSecret] = useState<string | null>(null);
   const generatePresentationFn = useServerFn(generatePresentation);
 
   // Post-payment polling: detect return from Stripe checkout
@@ -105,6 +108,8 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
     if (!checkoutModelId) return;
 
     setSavedModelId(checkoutModelId);
+    setIsPolling(true);
+    setShowCheckout(false);
     let attempts = 0;
     const maxAttempts = 15;
     const interval = setInterval(async () => {
@@ -116,11 +121,13 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
         .single();
       if (data?.status === "paid") {
         setIsReleased(true);
-        setShowCheckout(false);
+        setIsPolling(false);
         clearInterval(interval);
       }
       if (attempts >= maxAttempts) {
+        setIsPolling(false);
         clearInterval(interval);
+        toast.error("Payment verification timed out. Please refresh the page.");
       }
     }, 2000);
     return () => clearInterval(interval);
@@ -340,7 +347,15 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
             />
 
             {/* Purchase / Download Card */}
-            {isReleased ? (
+            {isPolling ? (
+              <div className="rounded-lg border-2 border-primary/50 bg-primary/5 p-6 text-center">
+                <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+                <h3 className="text-lg font-semibold text-foreground">Verifying Payment…</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Please wait while we confirm your payment. This may take a few seconds.
+                </p>
+              </div>
+            ) : isReleased ? (
               <div className="rounded-lg border-2 border-green-500 bg-green-500/5 p-6 text-center">
                 <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-green-500/10">
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -369,7 +384,8 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
                       const url = URL.createObjectURL(blob);
                       const a = document.createElement("a");
                       a.href = url;
-                      a.download = `${models[0]?.name || "presentation"}.html`;
+                      const safeName = (models[0]?.name || "presentation").replace(/[^a-zA-Z0-9_-]/g, "_");
+                      a.download = `${safeName}.html`;
                       document.body.appendChild(a);
                       a.click();
                       document.body.removeChild(a);
@@ -383,27 +399,12 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
                   {downloading ? "Generating…" : "Download Presentation File"}
                 </Button>
               </div>
-            ) : showCheckout && savedModelId ? (
+            ) : showCheckout && savedModelId && connectAccountId && checkoutClientSecret ? (
               <div className="rounded-lg border p-6">
                 <h3 className="text-lg font-semibold text-foreground mb-4">Complete Payment</h3>
                 <EmbeddedCheckoutProvider
-                  stripe={getStripe()}
-                  options={{
-                    fetchClientSecret: async () => {
-                      const { data, error } = await supabase.functions.invoke("create-connect-checkout", {
-                        body: {
-                          providerId: branding.provider_id,
-                          modelId: savedModelId,
-                          modelCount,
-                          returnUrl: `${window.location.origin}${window.location.pathname}?checkout_model_id=${savedModelId}&session_id={CHECKOUT_SESSION_ID}`,
-                        },
-                      });
-                      if (error || !data?.clientSecret) {
-                        throw new Error("Failed to create checkout session");
-                      }
-                      return data.clientSecret;
-                    },
-                  }}
+                  stripe={getStripeForConnect(connectAccountId)}
+                  options={{ clientSecret: checkoutClientSecret }}
                 >
                   <EmbeddedCheckout />
                 </EmbeddedCheckoutProvider>
@@ -479,7 +480,22 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
                         });
                         if (result.success && result.modelId) {
                           setSavedModelId(result.modelId);
-                          setShowCheckout(true);
+                          // Pre-fetch checkout session to get Connect account ID + client secret
+                          const { data: checkoutData, error: checkoutError } = await supabase.functions.invoke("create-connect-checkout", {
+                            body: {
+                              providerId: branding.provider_id,
+                              modelId: result.modelId,
+                              modelCount,
+                              returnUrl: `${window.location.origin}${window.location.pathname}?checkout_model_id=${result.modelId}&session_id={CHECKOUT_SESSION_ID}`,
+                            },
+                          });
+                          if (checkoutError || !checkoutData?.clientSecret || !checkoutData?.stripeConnectAccountId) {
+                            toast.error("Failed to create checkout session");
+                          } else {
+                            setConnectAccountId(checkoutData.stripeConnectAccountId);
+                            setCheckoutClientSecret(checkoutData.clientSecret);
+                            setShowCheckout(true);
+                          }
                         } else {
                           toast.error(result.error || "Failed to save presentation");
                         }
