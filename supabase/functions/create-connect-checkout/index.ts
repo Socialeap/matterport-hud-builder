@@ -135,7 +135,7 @@ serve(async (req) => {
       .update({ amount_cents: totalCents, model_count: modelCount })
       .eq("id", modelId);
 
-    return new Response(JSON.stringify({ clientSecret: session.client_secret }), {
+    return new Response(JSON.stringify({ clientSecret: session.client_secret, stripeConnectAccountId: branding.stripe_connect_id }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {

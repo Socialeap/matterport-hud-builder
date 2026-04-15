@@ -16,6 +16,14 @@ export function getStripe(): Promise<Stripe | null> {
   return stripePromise;
 }
 
+/** Returns a Stripe instance configured for a connected account (not cached). */
+export function getStripeForConnect(stripeAccount: string): Promise<Stripe | null> {
+  if (!clientToken) {
+    throw new Error("VITE_PAYMENTS_CLIENT_TOKEN is not set");
+  }
+  return loadStripe(clientToken, { stripeAccount });
+}
+
 export async function getStripePriceId(priceId: string): Promise<string> {
   const { data, error } = await supabase.functions.invoke("get-stripe-price", {
     body: { priceId, environment },
