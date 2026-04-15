@@ -314,7 +314,7 @@ function Index() {
               <Button size="sm" onClick={() => navigate({ to: "/dashboard" })}>Dashboard</Button>
             ) : (
               <>
-                <Button size="sm" variant="ghost" className={`${isDark ? 'text-white/80 hover:bg-white/10 hover:text-white' : 'text-gray-700 hover:bg-gray-200 hover:text-gray-900'}`} onClick={() => navigate({ to: "/login" })}>
+                <Button size="sm" variant="ghost" className="text-white/80 hover:bg-white/10 hover:text-white" onClick={() => navigate({ to: "/login" })}>
                   Sign In
                 </Button>
                 <Button size="sm" onClick={() => navigate({ to: "/signup", search: { token: "", email: "" } })}>
@@ -328,13 +328,13 @@ function Index() {
           <div className="flex items-center gap-2 sm:hidden">
             <button
               onClick={() => setIsDark(!isDark)}
-              className={`rounded-full p-2 transition-colors ${isDark ? 'text-white/70 hover:bg-white/10' : 'text-gray-600 hover:bg-gray-200'}`}
+              className="rounded-full p-2 text-white/70 transition-colors hover:bg-white/10"
               aria-label="Toggle theme"
             >
               {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
             </button>
             <button
-              className={`${isDark ? 'text-white/80 hover:text-white' : 'text-gray-700 hover:text-gray-900'}`}
+              className="text-white/80 hover:text-white"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             >
               {mobileMenuOpen ? <X className="size-6" /> : <Menu className="size-6" />}
@@ -346,14 +346,14 @@ function Index() {
         {mobileMenuOpen && (
           <div className={`border-t ${headerBorder} ${mobileBg} backdrop-blur-xl sm:hidden`}>
             <div className="flex flex-col gap-2 px-4 py-4">
-              <a href="#features" className={`rounded-lg px-3 py-2 text-sm ${textMuted} hover:${isDark ? 'bg-white/5 text-white' : 'bg-gray-100 text-gray-900'}`} onClick={() => setMobileMenuOpen(false)}>Features</a>
-              <a href="#pricing" className={`rounded-lg px-3 py-2 text-sm ${textMuted} hover:${isDark ? 'bg-white/5 text-white' : 'bg-gray-100 text-gray-900'}`} onClick={() => setMobileMenuOpen(false)}>Pricing</a>
-              <a href="#how-it-works" className={`rounded-lg px-3 py-2 text-sm ${textMuted} hover:${isDark ? 'bg-white/5 text-white' : 'bg-gray-100 text-gray-900'}`} onClick={() => setMobileMenuOpen(false)}>How It Works</a>
+              <a href="#features" className="rounded-lg px-3 py-2 text-sm text-white/70 hover:bg-white/5 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Features</a>
+              <a href="#pricing" className="rounded-lg px-3 py-2 text-sm text-white/70 hover:bg-white/5 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Pricing</a>
+              <a href="#how-it-works" className="rounded-lg px-3 py-2 text-sm text-white/70 hover:bg-white/5 hover:text-white" onClick={() => setMobileMenuOpen(false)}>How It Works</a>
               {isAuthenticated ? (
                 <Button size="sm" className="mt-2" onClick={() => navigate({ to: "/dashboard" })}>Dashboard</Button>
               ) : (
                 <>
-                  <Button size="sm" variant="ghost" className={`justify-start ${isDark ? 'text-white/80 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-200'}`} onClick={() => navigate({ to: "/login" })}>Sign In</Button>
+                  <Button size="sm" variant="ghost" className="justify-start text-white/80 hover:bg-white/10" onClick={() => navigate({ to: "/login" })}>Sign In</Button>
                   <Button size="sm" className="mt-1" onClick={() => navigate({ to: "/signup", search: { token: "", email: "" } })}>Get Started</Button>
                 </>
               )}
@@ -363,65 +363,57 @@ function Index() {
       </header>
 
       {/* ---- Hero ---- */}
-      <section className="relative z-10 pt-[56px]">
-        {/* Hero image with overlaid text */}
-        <div className="relative w-full">
-          <img
-            src={heroHudBanner}
-            alt="3D property tour HUD presentation showcase"
-            className="w-full object-cover object-top"
-            style={{ maxHeight: '520px' }}
-          />
-          {/* Gradient overlay for text legibility */}
-          <div className={heroOverlay} style={{ position: 'absolute', inset: 0 }} />
+      <section className="relative z-10 px-4 pt-32 pb-16 sm:pt-40 sm:pb-24">
+        <div className="mx-auto max-w-4xl text-center">
+          {/* Pill badge */}
+          <div className="mb-6 inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-medium text-white/80 backdrop-blur-sm">
+            <Sparkles className="size-3 text-primary" />
+            No subscriptions. Ever.
+          </div>
 
-          {/* Centered text overlay */}
-          <div className="absolute inset-0 flex flex-col items-center justify-center px-4">
-            <Badge variant="secondary" className="mb-4 gap-1.5 px-3 py-1 text-xs sm:mb-6">
-              <Sparkles className="size-3" />
-              No subscriptions. Ever.
-            </Badge>
+          {/* Headline */}
+          <h1 className="mx-auto max-w-3xl text-4xl font-bold leading-[1.1] tracking-tight text-white sm:text-5xl lg:text-6xl">
+            Your own studio for clients to custom brand their{' '}
+            <span className="text-primary">3D Tour presentations</span>
+          </h1>
 
-            <h1
-              className="max-w-4xl text-center text-3xl font-extrabold leading-tight tracking-tight text-white sm:text-4xl lg:text-5xl xl:text-6xl"
-              style={{ textShadow: '0 2px 20px rgba(0,0,0,0.9), 0 4px 40px rgba(0,0,0,0.6), 0 0 80px rgba(0,0,0,0.4)' }}
-            >
-              Launch Your own Studio where
-              <br />
-              Clients can Customize their
-              <br />
-              <span className="text-primary" style={{ textShadow: '0 2px 20px rgba(0,0,0,0.9), 0 4px 40px rgba(0,0,0,0.6)' }}>own MP Tour Presentations</span>
-            </h1>
+          {/* Subheadline */}
+          <p className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-white/60 sm:text-lg">
+            Give clients a space to build, customize, and download presentations they fully own.
+          </p>
+
+          {/* CTA */}
+          <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
+            <a href="#pricing">
+              <Button size="lg" className="gap-2">
+                Try our demo
+                <ChevronRight className="size-4" />
+              </Button>
+            </a>
           </div>
         </div>
 
-        {/* Secondary text + CTA — integrated band flowing from image */}
-        <div
-          className="relative px-4 pb-16 pt-10 sm:pb-24 sm:pt-14"
-          style={{
-            background: isDark
-              ? 'linear-gradient(to bottom, #0a0e27, transparent 100%)'
-              : 'linear-gradient(to bottom, #2a2a3e, #f0ede6 100%)',
-          }}
-        >
-          <div className="mx-auto max-w-3xl text-center">
-            <p className="mx-auto max-w-xl text-lg leading-relaxed text-white/85" style={{ textShadow: isDark ? 'none' : '0 1px 6px rgba(0,0,0,0.3)' }}>
-              Stop paying 3rd party services to hold your tours hostage on their servers. Instead of manually configuring tours on external platforms, host your own space where clients can EASILY build their own tour presentations—downloaded as independent assets they own and EASILY host wherever they choose.
-            </p>
-
-            <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-              {!isAuthenticated && (
-                <>
-                  <Button size="lg" onClick={() => navigate({ to: "/signup", search: { token: "", email: "" } })}>
-                    Get Started Free
-                    <ChevronRight className="ml-1 size-4" />
-                  </Button>
-                  <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10" onClick={() => navigate({ to: "/login" })}>
-                    Sign In
-                  </Button>
-                </>
-              )}
+        {/* Browser chrome frame */}
+        <div className="mx-auto mt-16 max-w-5xl">
+          <div className="overflow-hidden rounded-xl border border-white/10 bg-[#111] shadow-2xl shadow-black/40">
+            {/* Title bar */}
+            <div className="flex items-center gap-3 border-b border-white/5 px-4 py-3">
+              <div className="flex gap-1.5">
+                <div className="size-3 rounded-full bg-[#ff5f57]" />
+                <div className="size-3 rounded-full bg-[#febc2e]" />
+                <div className="size-3 rounded-full bg-[#28c840]" />
+              </div>
+              <div className="flex-1 rounded-md bg-white/5 px-3 py-1 text-center text-xs text-white/40">
+                your-studio.com/tour/brickell-tower
+              </div>
             </div>
+            {/* Screenshot */}
+            <img
+              src={heroHudBanner}
+              alt="3D property tour HUD presentation showcase"
+              className="w-full"
+              loading="eager"
+            />
           </div>
         </div>
       </section>
