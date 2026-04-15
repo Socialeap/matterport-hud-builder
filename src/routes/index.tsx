@@ -421,10 +421,10 @@ function Index() {
       {/* ---- Problem section ---- */}
       <section className="relative z-10 px-4 py-16 sm:py-24" style={{ backgroundColor: sectionTint }}>
         <div className="mx-auto max-w-5xl">
-          <h2 className={`text-center text-2xl font-bold tracking-tight ${isDark ? 'text-foreground' : 'text-gray-900'} sm:text-3xl`}>
+          <h2 className={`text-center text-2xl font-bold tracking-tight text-white sm:text-3xl`}>
             The &ldquo;Service Trap&rdquo; of Traditional 3D Presentation Platforms
           </h2>
-          <p className={`mx-auto mt-3 max-w-xl text-center ${isDark ? 'text-muted-foreground' : 'text-gray-600'}`}>
+          <p className={`mx-auto mt-3 max-w-xl text-center text-white/60`}>
             Most platforms require you to do the manual labor on their servers, charging you a monthly subscription just to keep your assets online.
           </p>
 
@@ -434,8 +434,8 @@ function Index() {
                 <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
                   <DollarSign className="size-5 text-destructive" />
                 </div>
-                <h3 className={`mt-4 font-semibold ${isDark ? 'text-foreground' : 'text-gray-900'}`}>You Do the Work, They Get Paid</h3>
-                <p className={`mt-2 text-sm ${isDark ? 'text-muted-foreground' : 'text-gray-600'}`}>
+                <h3 className={`mt-4 font-semibold text-white`}>You Do the Work, They Get Paid</h3>
+                <p className={`mt-2 text-sm text-white/60`}>
                   Monthly subscriptions to keep your assets online — while you&#39;re the one doing all the manual labor on their servers.
                 </p>
               </CardContent>
@@ -446,8 +446,8 @@ function Index() {
                 <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
                   <Clock className="size-5 text-destructive" />
                 </div>
-                <h3 className={`mt-4 font-semibold ${isDark ? 'text-foreground' : 'text-gray-900'}`}>Every Change Goes Through You</h3>
-                <p className={`mt-2 text-sm ${isDark ? 'text-muted-foreground' : 'text-gray-600'}`}>
+                <h3 className={`mt-4 font-semibold text-white`}>Every Change Goes Through You</h3>
+                <p className={`mt-2 text-sm text-white/60`}>
                   When a client needs an MLS-compliant version or a simple music change, you have to log in and do the work every time.
                 </p>
               </CardContent>
@@ -458,8 +458,8 @@ function Index() {
                 <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
                   <Lock className="size-5 text-destructive" />
                 </div>
-                <h3 className={`mt-4 font-semibold ${isDark ? 'text-foreground' : 'text-gray-900'}`}>A Bottleneck You Don&#39;t Own</h3>
-                <p className={`mt-2 text-sm ${isDark ? 'text-muted-foreground' : 'text-gray-600'}`}>
+                <h3 className={`mt-4 font-semibold text-white`}>A Bottleneck You Don&#39;t Own</h3>
+                <p className={`mt-2 text-sm text-white/60`}>
                   You aren&#39;t just paying for software — you&#39;re paying for the privilege of being an unpaid administrator for a company you don&#39;t own. It drains your time and limits your growth.
                 </p>
               </CardContent>
@@ -470,8 +470,8 @@ function Index() {
                 <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
                   <PackageX className="size-5 text-destructive" />
                 </div>
-                <h3 className={`mt-4 font-semibold ${isDark ? 'text-foreground' : 'text-gray-900'}`}>Paying for Tools You Never Use</h3>
-                <p className={`mt-2 text-sm ${isDark ? 'text-muted-foreground' : 'text-gray-600'}`}>
+                <h3 className={`mt-4 font-semibold text-white`}>Paying for Tools You Never Use</h3>
+                <p className={`mt-2 text-sm text-white/60`}>
                   Complex &ldquo;bloatware&rdquo; like IoT data integrations and rarely used features like graphical overlays and sectional audio — bundled into every plan whether you need them or not.
                 </p>
               </CardContent>
@@ -483,10 +483,10 @@ function Index() {
       {/* ---- Features grid ---- */}
       <section id="features" className={`relative z-10 border-t ${borderLight} px-4 py-16 sm:py-24`} style={{ backgroundColor: sectionTint2 }}>
         <div className="mx-auto max-w-5xl">
-          <h2 className={`text-center text-2xl font-bold tracking-tight ${isDark ? 'text-foreground' : 'text-gray-900'} sm:text-3xl`}>
+          <h2 className={`text-center text-2xl font-bold tracking-tight text-white sm:text-3xl`}>
             A Branded Studio for Clients to Build Their Own Presentations
           </h2>
-          <p className={`mx-auto mt-3 max-w-xl text-center ${isDark ? 'text-muted-foreground' : 'text-gray-600'}`}>
+          <p className={`mx-auto mt-3 max-w-xl text-center text-white/60`}>
             One platform to configure, preview, and deliver professional Matterport 3D
             presentations — fully branded to you.
           </p>
@@ -498,8 +498,8 @@ function Index() {
                   <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
                     <f.icon className="size-5 text-primary" />
                   </div>
-                  <h3 className={`mt-4 font-semibold ${isDark ? 'text-foreground' : 'text-gray-900'}`}>{f.title}</h3>
-                  <p className={`mt-1 text-sm ${isDark ? 'text-muted-foreground' : 'text-gray-600'}`}>{f.description}</p>
+                  <h3 className={`mt-4 font-semibold text-white`}>{f.title}</h3>
+                  <p className={`mt-1 text-sm text-white/60`}>{f.description}</p>
                 </CardContent>
               </Card>
             ))}
@@ -510,27 +510,27 @@ function Index() {
       {/* ---- Pricing comparison ---- */}
       <section id="pricing" className="relative z-10 px-4 py-16 sm:py-24">
         <div className="mx-auto max-w-4xl">
-          <h2 className={`text-center text-2xl font-bold tracking-tight ${isDark ? 'text-foreground' : 'text-gray-900'} sm:text-3xl`}>
+          <h2 className={`text-center text-2xl font-bold tracking-tight text-white sm:text-3xl`}>
             Simple, One-Time Pricing
           </h2>
-          <p className={`mx-auto mt-3 max-w-lg text-center ${isDark ? 'text-muted-foreground' : 'text-gray-600'}`}>
+          <p className={`mx-auto mt-3 max-w-lg text-center text-white/60`}>
             Pay once. Own it forever. No monthly fees, no per-tour charges, no surprises.
           </p>
 
           <div className="mt-12 grid gap-6 sm:grid-cols-2">
             {/* Starter */}
-            <Card className={`flex flex-col ${isDark ? '' : 'bg-white/80 backdrop-blur'}`}>
+            <Card className={`flex flex-col backdrop-blur`}>
               <CardHeader className="text-center">
                 <Badge variant="secondary" className="mx-auto mb-2 w-fit">
                   Starter
                 </Badge>
-                <span className={`text-4xl font-bold ${isDark ? 'text-foreground' : 'text-gray-900'}`}>$149</span>
-                <span className={`text-sm ${isDark ? 'text-muted-foreground' : 'text-gray-500'}`}>one-time payment</span>
+                <span className={`text-4xl font-bold text-white`}>$149</span>
+                <span className={`text-sm text-white/50`}>one-time payment</span>
               </CardHeader>
               <CardContent className="flex flex-1 flex-col justify-between gap-6">
                 <ul className="space-y-2.5">
                   {starterFeatures.map((f) => (
-                    <li key={f} className={`flex items-start gap-2 text-sm ${isDark ? 'text-foreground' : 'text-gray-800'}`}>
+                    <li key={f} className={`flex items-start gap-2 text-sm text-white/90`}>
                       <Check className="mt-0.5 size-4 shrink-0 text-primary" />
                       {f}
                     </li>
@@ -552,19 +552,19 @@ function Index() {
             </Card>
 
             {/* Pro */}
-            <Card className={`relative flex flex-col border-primary shadow-lg ${isDark ? '' : 'bg-white/80 backdrop-blur'}`}>
+            <Card className={`relative flex flex-col border-primary shadow-lg backdrop-blur`}>
               <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">
                 Most Popular
               </Badge>
               <CardHeader className="text-center">
                 <Badge className="mx-auto mb-2 w-fit">Pro</Badge>
-                <span className={`text-4xl font-bold ${isDark ? 'text-foreground' : 'text-gray-900'}`}>$299</span>
-                <span className={`text-sm ${isDark ? 'text-muted-foreground' : 'text-gray-500'}`}>one-time payment</span>
+                <span className={`text-4xl font-bold text-white`}>$299</span>
+                <span className={`text-sm text-white/50`}>one-time payment</span>
               </CardHeader>
               <CardContent className="flex flex-1 flex-col justify-between gap-6">
                 <ul className="space-y-2.5">
                   {proFeatures.map((f) => (
-                    <li key={f} className={`flex items-start gap-2 text-sm ${isDark ? 'text-foreground' : 'text-gray-800'}`}>
+                    <li key={f} className={`flex items-start gap-2 text-sm text-white/90`}>
                       <Check className="mt-0.5 size-4 shrink-0 text-primary" />
                       {f}
                     </li>
@@ -585,7 +585,7 @@ function Index() {
             </Card>
           </div>
 
-          <p className={`mx-auto mt-8 max-w-2xl text-center text-xs ${isDark ? 'text-muted-foreground' : 'text-gray-500'}`}>
+          <p className={`mx-auto mt-8 max-w-2xl text-center text-xs text-white/50`}>
             Activate a test tier instantly — no Stripe purchase required. Explore the full dashboard, branding settings, client portal, and orders workflow. Demo purchases are recorded in sandbox mode. You can switch Demo tiers any time by returning here.
           </p>
         </div>
@@ -594,7 +594,7 @@ function Index() {
       {/* ---- How it works ---- */}
       <section id="how-it-works" className="relative z-10 px-4 py-16 sm:py-24">
         <div className="mx-auto max-w-3xl">
-          <h2 className={`text-center text-2xl font-bold tracking-tight ${isDark ? 'text-foreground' : 'text-gray-900'} sm:text-3xl`}>
+          <h2 className={`text-center text-2xl font-bold tracking-tight text-white sm:text-3xl`}>
             How It Works
           </h2>
           <div className="mt-12 space-y-8">
@@ -625,8 +625,8 @@ function Index() {
                   {item.step}
                 </div>
                 <div>
-                  <h3 className={`font-semibold ${isDark ? 'text-foreground' : 'text-gray-900'}`}>{item.title}</h3>
-                  <p className={`mt-1 text-sm ${isDark ? 'text-muted-foreground' : 'text-gray-600'}`}>{item.desc}</p>
+                  <h3 className={`font-semibold text-white`}>{item.title}</h3>
+                  <p className={`mt-1 text-sm text-white/60`}>{item.desc}</p>
                 </div>
               </div>
             ))}
@@ -645,22 +645,22 @@ function Index() {
               </p>
             </div>
             <div>
-              <h4 className={`mb-3 text-sm font-semibold uppercase tracking-wider ${isDark ? 'text-white/60' : 'text-gray-500'}`}>Product</h4>
+              <h4 className={`mb-3 text-sm font-semibold uppercase tracking-wider text-white/60`}>Product</h4>
               <ul className="space-y-2 text-sm">
-                <li><a href="#features" className={`${textSubtle} transition-colors hover:${isDark ? 'text-white' : 'text-gray-900'}`}>Features</a></li>
-                <li><a href="#pricing" className={`${textSubtle} transition-colors hover:${isDark ? 'text-white' : 'text-gray-900'}`}>Pricing</a></li>
-                <li><a href="#how-it-works" className={`${textSubtle} transition-colors hover:${isDark ? 'text-white' : 'text-gray-900'}`}>How It Works</a></li>
+                <li><a href="#features" className={`text-white/50 transition-colors hover:text-white`}>Features</a></li>
+                <li><a href="#pricing" className={`text-white/50 transition-colors hover:text-white`}>Pricing</a></li>
+                <li><a href="#how-it-works" className={`text-white/50 transition-colors hover:text-white`}>How It Works</a></li>
               </ul>
             </div>
             <div>
-              <h4 className={`mb-3 text-sm font-semibold uppercase tracking-wider ${isDark ? 'text-white/60' : 'text-gray-500'}`}>Account</h4>
+              <h4 className={`mb-3 text-sm font-semibold uppercase tracking-wider text-white/60`}>Account</h4>
               <ul className="space-y-2 text-sm">
-                <li><Link to="/login" className={`${textSubtle} transition-colors hover:${isDark ? 'text-white' : 'text-gray-900'}`}>Sign In</Link></li>
-                <li><Link to="/signup" search={{ token: "", email: "" }} className={`${textSubtle} transition-colors hover:${isDark ? 'text-white' : 'text-gray-900'}`}>Get Started</Link></li>
+                <li><Link to="/login" className={`text-white/50 transition-colors hover:text-white`}>Sign In</Link></li>
+                <li><Link to="/signup" search={{ token: "", email: "" }} className={`text-white/50 transition-colors hover:text-white`}>Get Started</Link></li>
               </ul>
             </div>
           </div>
-          <div className={`mt-8 border-t ${borderFooter} pt-6 text-center text-xs ${isDark ? 'text-white/40' : 'text-gray-400'}`}>
+          <div className={`mt-8 border-t ${borderFooter} pt-6 text-center text-xs text-white/40`}>
             © {new Date().getFullYear()} Transcendence Media. All rights reserved.
           </div>
         </div>
