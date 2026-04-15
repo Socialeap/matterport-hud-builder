@@ -29,6 +29,8 @@ interface OrderRow {
   model_name: string;
   model_status: string;
   is_released: boolean;
+  amount_cents: number | null;
+  model_count: number | null;
 }
 
 function OrdersPage() {
@@ -54,7 +56,7 @@ function OrdersPage() {
     const modelIds = notifications.map((n) => n.model_id);
     const { data: models } = await supabase
       .from("saved_models")
-      .select("id, name, status, is_released")
+      .select("id, name, status, is_released, amount_cents, model_count")
       .in("id", modelIds);
 
     const modelMap = new Map(models?.map((m) => [m.id, m]) || []);
@@ -70,6 +72,8 @@ function OrdersPage() {
         model_name: model?.name || "Unknown",
         model_status: model?.status || "preview",
         is_released: model?.is_released || false,
+        amount_cents: model?.amount_cents ?? null,
+        model_count: model?.model_count ?? null,
       };
     });
 
@@ -156,9 +160,11 @@ function OrdersPage() {
                 <TableRow>
                   <TableHead>Presentation</TableHead>
                   <TableHead>Date</TableHead>
-                  <TableHead>Payment</TableHead>
-                  <TableHead>Released</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                   <TableHead>Models</TableHead>
+                   <TableHead>Amount</TableHead>
+                   <TableHead>Payment</TableHead>
+                   <TableHead>Released</TableHead>
+                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -175,13 +181,19 @@ function OrdersPage() {
                     <TableCell className="text-sm text-muted-foreground">
                       {new Date(order.created_at).toLocaleDateString()}
                     </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={order.model_status === "paid" ? "default" : "secondary"}
-                      >
-                        {order.model_status === "paid" ? "Paid" : "Pending"}
-                      </Badge>
-                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                       {order.model_count ?? "—"}
+                     </TableCell>
+                     <TableCell className="text-sm text-muted-foreground">
+                       {order.amount_cents != null ? `$${(order.amount_cents / 100).toFixed(2)}` : "—"}
+                     </TableCell>
+                     <TableCell>
+                       {order.model_status === "paid" ? (
+                         <Badge variant="default">Auto-paid</Badge>
+                       ) : (
+                         <Badge variant="secondary">Pending</Badge>
+                       )}
+                     </TableCell>
                     <TableCell>
                       {order.is_released ? (
                         <CheckCircle className="size-4 text-green-500" />
@@ -200,24 +212,24 @@ function OrdersPage() {
                             <Eye className="size-3" />
                           </Button>
                         )}
-                        {order.model_status !== "paid" && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleMarkPaid(order.model_id)}
-                          >
-                            Mark Paid
-                          </Button>
-                        )}
-                        {order.model_status === "paid" && !order.is_released && (
-                          <Button
-                            size="sm"
-                            onClick={() => handleRelease(order.model_id)}
-                          >
-                            <Download className="mr-1 size-3" />
-                            Release
-                          </Button>
-                        )}
+                        {order.model_status !== "paid" && order.amount_cents == null && (
+                           <Button
+                             size="sm"
+                             variant="outline"
+                             onClick={() => handleMarkPaid(order.model_id)}
+                           >
+                             Mark Paid
+                           </Button>
+                         )}
+                         {order.model_status === "paid" && !order.is_released && order.amount_cents == null && (
+                           <Button
+                             size="sm"
+                             onClick={() => handleRelease(order.model_id)}
+                           >
+                             <Download className="mr-1 size-3" />
+                             Release
+                           </Button>
+                         )}
                       </div>
                     </TableCell>
                   </TableRow>

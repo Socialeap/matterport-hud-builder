@@ -11,6 +11,8 @@ import { Badge } from "@/components/ui/badge";
 import { Lock, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { uploadBrandAsset } from "@/lib/storage";
+import { useStripeCheckout } from "@/hooks/useStripeCheckout";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
 export const Route = createFileRoute("/_authenticated/dashboard/branding")({
   component: BrandingPage,
@@ -462,7 +464,7 @@ function BrandingPage() {
               <p className="mt-1 text-xs text-muted-foreground">
                 Starter tier includes "Powered by Transcendence Media" on all output.
               </p>
-              <Button size="sm" className="mt-3">
+              <Button size="sm" className="mt-3" onClick={() => handleUpgrade()}>
                 Upgrade to Pro — $199
               </Button>
             </div>
