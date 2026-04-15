@@ -1,65 +1,46 @@
 
+Plan: Fix the blank Stripe checkout and remove the client-secret timeout path
 
-# Plan: Harden Download Function & Orders Page
+What I found
+- `OPENAI_API_KEY` is present, so that part is confirmed.
+- The frontend payment token is already present: `.env` has a live publishable key and `.env.development` has a sandbox key. So the old “VITE_PAYMENTS_CLIENT_TOKEN is not set” issue is no longer the blocker.
+- `src/lib/stripe.ts` derives the payment environment from that key. Preview/dev uses sandbox; published uses live.
+- The pricing flow still relies on `create-checkout`, and that function is currently returning repeated HTTP 500s.
+- Live payments are not fully ready yet: the current payment status is still incomplete, and the available runtime payment secrets only cover sandbox. The shared Stripe backend code expects `STRIPE_LIVE_API_KEY` for live mode, not `STRIPE_SECRET_KEY`.
+- Because the pricing dialog mounts Embedded Checkout immediately, a backend failure turns into Stripe’s blank “Something went wrong / Timed out waiting for client secret” screen instead of a clear app-level error.
 
-## Checklist of Components Reviewed
+Implementation plan
+1. Align payment mode with backend readiness
+   - Keep preview/testing on sandbox.
+   - For published/live checkout, complete the built-in Payments go-live setup so the live payment backend keys are provisioned.
+   - If live launch is not intended yet, temporarily align the published build back to sandbox instead of mixing a live frontend token with a sandbox-only backend.
 
-| Component | File | Status |
-|-----------|------|--------|
-| `generatePresentation` server fn | `src/lib/portal.functions.ts` | ✅ Implemented — builds self-contained HTML |
-| Download button wiring | `HudBuilderSandbox.tsx:354-384` | ✅ Wired — calls `generatePresentationFn`, creates Blob |
-| Post-payment polling | `HudBuilderSandbox.tsx:102-127` | ⚠️ Minor gap — no user feedback during polling |
-| Stripe Connect Embedded Checkout | `HudBuilderSandbox.tsx:386-410` | ⚠️ Missing `stripeAccount` on provider — Connect sessions require it |
-| `create-connect-checkout` edge fn | `supabase/functions/create-connect-checkout/` | ✅ Correct — creates session with `stripeAccount` server-side |
-| Webhook handler | `supabase/functions/payments-webhook/` | ✅ Sets `paid` + `is_released` + assigns client role |
-| Orders page | `_authenticated.dashboard.orders.tsx` | ⚠️ Minor — no client name resolution, only shows UUID prefix |
-| DB triggers | `trg_assign_provider_role`, `trg_assign_client_role` | ✅ Confirmed in DB |
-| Config.toml | All edge fns have `verify_jwt = false` | ✅ Correct |
+2. Harden the pricing checkout flow
+   - Refactor the dashboard pricing flow to match the safer pattern already used in `HudBuilderSandbox`.
+   - Pre-create the checkout session before mounting Stripe.
+   - Store the `clientSecret` in state and only render `EmbeddedCheckoutProvider` after session creation succeeds.
+   - If session creation fails, keep the modal in an app-controlled error state with retry/cancel instead of mounting a blank Stripe iframe.
 
-## Issues Found & Fixes
+3. Add explicit loading and failure UI
+   - Show a clear loading state like “Preparing secure checkout…” while the session is being created.
+   - Show a friendly inline error if the backend returns 4xx/5xx.
+   - Map the live-not-configured case to a readable message so the UI explains why checkout is unavailable.
 
-### 1. Stripe Connect Embedded Checkout — missing `stripeAccount` option
-The `EmbeddedCheckoutProvider` loads the platform's publishable key via `getStripe()`, but the checkout session is created on the **connected account**. Stripe requires passing `stripeAccount` on the client side for Connect sessions. Without it, the iframe will fail to mount.
+4. Improve backend observability
+   - Add safe error logging inside `supabase/functions/create-checkout/index.ts` so future 500s expose the real cause in backend logs.
+   - Leave `verify_jwt = false` in `supabase/config.toml` as-is; that part is already correct.
 
-**Fix**: Return `stripeConnectAccountId` from the edge function alongside `clientSecret`, then pass it to `getStripe()` using `loadStripe(key, { stripeAccount })`.
+Files to update
+- `src/components/StripeEmbeddedCheckout.tsx`
+- `src/hooks/useStripeCheckout.tsx`
+- `src/routes/_authenticated.dashboard.pricing.tsx`
+- `supabase/functions/create-checkout/index.ts`
 
-Since `getStripe()` caches a singleton and the connected account varies per MSP, we'll create a one-off Stripe promise for Connect sessions instead of reusing the cached instance.
+Validation checklist
+- Preview/test: open pricing, click Starter/Pro, confirm the test-mode banner appears and checkout loads instead of blanking.
+- Published/live: confirm checkout session creation returns 200 after live payments are fully provisioned.
+- Failure path: confirm the app shows a readable inline error, not Stripe’s generic timeout screen.
+- Regression check: confirm the existing connect checkout in `HudBuilderSandbox` still works unchanged.
 
-### 2. Polling UX — no feedback during payment detection
-After returning from Stripe checkout, the user lands back on the builder with no visual indication that payment is being verified. The polling runs silently for up to 30 seconds.
-
-**Fix**: Add a "Verifying payment…" state that shows a spinner + message while polling is active.
-
-### 3. Orders page — client name resolution
-Currently shows `client_id.slice(0, 8)…` which is meaningless. Should show the client's display name or email.
-
-**Fix**: Join with `profiles` table to fetch `display_name` for each unique `client_id`.
-
-### 4. Download filename sanitization
-The download filename uses `models[0]?.name` directly which could contain special characters.
-
-**Fix**: Sanitize the filename by replacing non-alphanumeric characters.
-
-## Files Changed
-
-1. **`src/components/portal/HudBuilderSandbox.tsx`**
-   - Import `loadStripe` directly for Connect sessions
-   - Pass `stripeAccount` from edge function response to Stripe provider
-   - Add "Verifying payment…" polling UI state
-   - Sanitize download filename
-
-2. **`src/lib/stripe.ts`**
-   - Add `getStripeForConnect(accountId)` helper that returns a Stripe instance configured for a connected account
-
-3. **`supabase/functions/create-connect-checkout/index.ts`**
-   - Return `stripeConnectAccountId` alongside `clientSecret` in response
-
-4. **`src/routes/_authenticated.dashboard.orders.tsx`**
-   - Fetch client profiles to resolve `display_name` for each order
-   - Show client name instead of UUID prefix
-
-## Testing Instructions
-1. **Download flow**: As a client on `/p/{slug}`, build a presentation, purchase with test card `4242 4242 4242 4242`. After payment returns, verify you see "Verifying payment…" spinner, then the green download card appears. Click "Download Presentation File" — verify a valid `.html` file downloads and opens correctly in a browser.
-2. **Orders page**: As the MSP, navigate to `/dashboard/orders`. Verify the order shows the client's name (not UUID), correct amount, model count, "Auto-paid" badge, and no manual action buttons.
-3. **Edge case**: Open the downloaded `.html` file — verify the gate screen, model tabs, agent drawer, and Matterport iframe all work. Check Starter tier shows "Powered by Transcendence Media" footer.
-
+Technical note
+The most likely root cause is no longer the frontend publishable key. It is a live/sandbox mismatch: the published pricing flow is attempting live checkout, but the backend payment integration is only provisioned for sandbox right now.
