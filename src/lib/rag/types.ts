@@ -76,3 +76,21 @@ export type PipelineStatus =
   | "searching"
   | "synthesizing"
   | "error";
+
+// ── Pre-computed Q&A types (Layout-Aware RAG) ───────────────────────────
+
+/** Raw Q&A entry returned by the generate-qa-dictionary Edge Function. */
+export interface QAEntry {
+  question: string;
+  answer: string;
+  source_anchor_id: string;
+}
+
+/** Enriched Q&A entry with pre-computed embedding, ready for HTML injection. */
+export interface QADatabaseEntry {
+  id: string;
+  question: string;
+  answer: string;
+  source_anchor_id: string;
+  embedding: number[];
+}

@@ -13,4 +13,6 @@ export type {
   SynthesisResponse,
   WorkerRequest,
   WorkerResponse,
+  QAEntry,
+  QADatabaseEntry,
 } from "./types";

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { BrandingSection } from "./BrandingSection";
 import { PropertyModelsSection } from "./PropertyModelsSection";
@@ -16,6 +16,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe-js";
 import { getStripeForConnect } from "@/lib/stripe";
 import { useServerFn } from "@tanstack/react-start";
+import { EmbeddingWorkerClient } from "@/lib/rag/embedding-worker-client";
+import type { QAEntry, QADatabaseEntry } from "@/lib/rag/types";
 
 interface HudBuilderSandboxProps {
   branding: Tables<"branding_settings">;
@@ -96,10 +98,12 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
   const [savedModelId, setSavedModelId] = useState<string | null>(null);
   const [isReleased, setIsReleased] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [downloadStep, setDownloadStep] = useState("");
   const [isPolling, setIsPolling] = useState(false);
   const [connectAccountId, setConnectAccountId] = useState<string | null>(null);
   const [checkoutClientSecret, setCheckoutClientSecret] = useState<string | null>(null);
   const generatePresentationFn = useServerFn(generatePresentation);
+  const workerRef = useRef<EmbeddingWorkerClient | null>(null);
 
   // Post-payment polling: detect return from Stripe checkout
   useEffect(() => {
@@ -374,8 +378,81 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
                   onClick={async () => {
                     if (!savedModelId) return;
                     setDownloading(true);
+                    setDownloadStep("Generating Q&A dictionary…");
                     try {
-                      const result = await generatePresentationFn({ data: { modelId: savedModelId } });
+                      // ── Step 1: Build property spec text for Q&A generation ──
+                      const specParts: string[] = [];
+                      for (const m of models) {
+                        if (m.name) specParts.push(`## Property: ${m.name}`);
+                        if (m.location) specParts.push(`Location: ${m.location}`);
+                      }
+                      if (agent.name) {
+                        specParts.push(`## Agent Contact`);
+                        specParts.push(`Name: ${agent.name}`);
+                        if (agent.titleRole) specParts.push(`Title: ${agent.titleRole}`);
+                        if (agent.email) specParts.push(`Email: ${agent.email}`);
+                        if (agent.phone) specParts.push(`Phone: ${agent.phone}`);
+                        if (agent.welcomeNote) specParts.push(`Note: ${agent.welcomeNote}`);
+                      }
+                      const propertySpec = specParts.join("\n");
+
+                      // ── Step 2: Call generate-qa-dictionary Edge Function ────
+                      let qaDatabase: QADatabaseEntry[] = [];
+
+                      if (propertySpec.trim().length >= 20) {
+                        const { data: sessionData } = await supabase.auth.getSession();
+                        const token = sessionData?.session?.access_token;
+
+                        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+                        const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
+
+                        const qaRes = await fetch(
+                          `${supabaseUrl}/functions/v1/generate-qa-dictionary`,
+                          {
+                            method: "POST",
+                            headers: {
+                              "Content-Type": "application/json",
+                              Authorization: `Bearer ${token || supabaseKey}`,
+                              apikey: supabaseKey,
+                            },
+                            body: JSON.stringify({ propertySpec }),
+                          },
+                        );
+
+                        if (qaRes.ok) {
+                          const qaData = await qaRes.json();
+                          const entries: QAEntry[] = qaData.entries || [];
+
+                          if (entries.length > 0) {
+                            // ── Step 3: Embed questions via Web Worker ─────────
+                            setDownloadStep(`Embedding ${entries.length} Q&A pairs…`);
+
+                            if (!workerRef.current) {
+                              workerRef.current = new EmbeddingWorkerClient();
+                            }
+                            await workerRef.current.init();
+
+                            const questions = entries.map((e) => e.question);
+                            const embeddings = await workerRef.current.embedBatch(questions);
+
+                            qaDatabase = entries.map((entry, i) => ({
+                              id: `qa-${i}`,
+                              question: entry.question,
+                              answer: entry.answer,
+                              source_anchor_id: entry.source_anchor_id,
+                              embedding: embeddings[i],
+                            }));
+                          }
+                        } else {
+                          console.warn("Q&A generation failed, continuing without Q&A:", await qaRes.text());
+                        }
+                      }
+
+                      // ── Step 4: Generate presentation HTML with Q&A baked in ─
+                      setDownloadStep("Building presentation…");
+                      const result = await generatePresentationFn({
+                        data: { modelId: savedModelId, qaDatabase },
+                      });
                       if (!result.success || !result.html) {
                         toast.error(result.error || "Failed to generate presentation");
                         return;
@@ -394,9 +471,10 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
                       toast.error("Download failed. Please try again.");
                     }
                     setDownloading(false);
+                    setDownloadStep("");
                   }}
                 >
-                  {downloading ? "Generating…" : "Download Presentation File"}
+                  {downloading ? (downloadStep || "Generating…") : "Download Presentation File"}
                 </Button>
               </div>
             ) : showCheckout && savedModelId && connectAccountId && checkoutClientSecret ? (
