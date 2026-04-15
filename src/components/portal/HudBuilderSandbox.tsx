@@ -343,8 +343,7 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
               accentColor={accentColor}
               hudBgColor={hudBgColor}
               logoPreview={logoPreview}
-              agentName={agent.name}
-              agentPhone={agent.phone}
+              agent={agent}
               isPro={isPro}
             />
           </div>
