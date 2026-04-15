@@ -374,8 +374,8 @@ function Index() {
 
           {/* Headline */}
           <h1 className="mx-auto max-w-3xl text-4xl font-bold leading-[1.1] tracking-tight text-white sm:text-5xl lg:text-6xl whitespace-pre-line">
-            Why Not Your own Studio for{"\n"}clients to customize their{"\n"}{' '}
-            <span className="text-primary text-slate-50">3D Tour presentations</span>
+            Why Not Your Own Studio for{"\n"}Clients to Customize their{"\n"}
+            <span className="text-primary text-slate-50">3D Tour Presentations</span>
           </h1>
 
           {/* Subheadline */}
