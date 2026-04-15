@@ -368,7 +368,7 @@ function Index() {
         <div className="mx-auto max-w-4xl text-center">
           {/* Pill badge */}
           <div className="mb-6 inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-medium text-white/80 backdrop-blur-sm">
-            <Sparkles className="size-3 text-primary text-amber-300" />
+            <Sparkles className="size-3 text-amber-300" />
             No subscriptions. Ever.
           </div>
 
@@ -441,7 +441,7 @@ function Index() {
             <Card className={`border-red-500/20 ${cardBg} backdrop-blur`}>
               <CardContent className="pt-6">
                 <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
-                  <DollarSign className="size-5 text-destructive text-amber-300" />
+                  <DollarSign className="size-5 text-amber-300" />
                 </div>
                 <h3 className={`mt-4 font-semibold text-white`}>You Do the Work, They Get Paid</h3>
                 <p className={`mt-2 text-sm text-white/60`}>
@@ -453,7 +453,7 @@ function Index() {
             <Card className={`border-red-500/20 ${cardBg} backdrop-blur`}>
               <CardContent className="pt-6">
                 <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
-                  <Clock className="size-5 text-destructive text-amber-300" />
+                  <Clock className="size-5 text-amber-300" />
                 </div>
                 <h3 className={`mt-4 font-semibold text-white`}>Every Change Goes Through You</h3>
                 <p className={`mt-2 text-sm text-white/60`}>
@@ -465,7 +465,7 @@ function Index() {
             <Card className={`border-red-500/20 ${cardBg} backdrop-blur`}>
               <CardContent className="pt-6">
                 <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
-                  <Lock className="size-5 text-destructive text-amber-300" />
+                  <Lock className="size-5 text-amber-300" />
                 </div>
                 <h3 className={`mt-4 font-semibold text-white`}>A Bottleneck You Don&#39;t Own</h3>
                 <p className={`mt-2 text-sm text-white/60`}>
@@ -477,7 +477,7 @@ function Index() {
             <Card className={`border-red-500/20 ${cardBg} backdrop-blur`}>
               <CardContent className="pt-6">
                 <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
-                  <PackageX className="size-5 text-destructive text-amber-300" />
+                  <PackageX className="size-5 text-amber-300" />
                 </div>
                 <h3 className={`mt-4 font-semibold text-white`}>Paying for Tools You Never Use</h3>
                 <p className={`mt-2 text-sm text-white/60`}>
@@ -505,7 +505,7 @@ function Index() {
               <Card key={f.title} className={`${cardBg} backdrop-blur`}>
                 <CardContent className="pt-6">
                   <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
-                    <f.icon className="size-5 text-primary text-amber-300" />
+                    <f.icon className="size-5 text-amber-300" />
                   </div>
                   <h3 className={`mt-4 font-semibold text-white`}>{f.title}</h3>
                   <p className={`mt-1 text-sm text-white/60`}>{f.description}</p>
