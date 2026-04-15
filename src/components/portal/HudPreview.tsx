@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronUp, ChevronDown, Phone, Mail, MessageSquare, Globe, Linkedin, Twitter, Instagram, Facebook } from "lucide-react";
+import { ChevronUp, ChevronDown, Phone, Mail, MessageSquare, Globe } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import type { PropertyModel, TourBehavior, AgentContact } from "./types";
 import { buildMatterportUrl } from "./types";
