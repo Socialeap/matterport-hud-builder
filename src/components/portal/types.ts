@@ -8,6 +8,7 @@ export interface PropertyModel {
 
 export interface AgentContact {
   name: string;
+  titleRole: string;
   email: string;
   phone: string;
   welcomeNote: string;
@@ -73,6 +74,7 @@ export const DEFAULT_BEHAVIOR: TourBehavior = {
 
 export const DEFAULT_AGENT: AgentContact = {
   name: "",
+  titleRole: "",
   email: "",
   phone: "",
   welcomeNote: "",
