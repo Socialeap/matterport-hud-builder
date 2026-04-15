@@ -1,7 +1,11 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
-import { type StripeEnv, createStripeClient } from "../_shared/stripe.ts";
+import Stripe from "https://esm.sh/stripe@18.5.0";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
 
 const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -37,8 +41,16 @@ serve(async (req) => {
     }
 
     const { returnUrl } = await req.json();
-    const env: StripeEnv = "sandbox";
-    const stripe = createStripeClient(env);
+
+    // Use the user's own Stripe secret key directly for Connect operations
+    const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY");
+    if (!stripeSecretKey) {
+      return new Response(JSON.stringify({ error: "Stripe secret key not configured. Please add your STRIPE_SECRET_KEY." }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const stripe = new Stripe(stripeSecretKey);
 
     // Check if user already has a connect account
     const { data: branding } = await supabaseAdmin
