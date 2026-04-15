@@ -103,13 +103,14 @@ const features = [
     icon: Globe,
     title: "Total Hosting Sovereignty",
     description:
-      "Once downloaded, Tour Presentations are 100% self-contained files. Clients can host them anywhere they like, including cost-free platforms like Netflify.",
+      "Once downloaded, Tour Presentations are 100% self-contained files. Clients can host them anywhere, including cost-free platforms like Netlify. ",
   },
   {
     icon: Users,
     title: "Self-Serve Branding Studio",
     description:
-      "Allow clients to configure their own Tour Presentations with logo/profile image, music track, contact options, branded HUD, and Google Analytics.",
+      "Invite clients to configure their Tour Presentations with logo, music track, contact options, branded HUD, and Google Analytics. Add payment link to unlock downloads.",
+
   },
   {
     icon: ShieldCheck,
@@ -407,8 +408,8 @@ function Index() {
               />
               {/* Center overlay text */}
               <div className="absolute inset-0 flex items-center justify-center">
-                <p className="mx-4 max-w-lg text-center text-lg font-medium text-white/90 sm:text-xl lg:text-2xl" style={{ textShadow: '0 2px 12px rgba(0,0,0,0.7)' }}>
-                  ...Where your clients easily build their own tour presentations
+                <p className="mx-4 max-w-lg text-lg font-medium text-white/90 lg:text-2xl text-left sm:text-xl" style={{ textShadow: '0 2px 12px rgba(0,0,0,0.7)', whiteSpace: 'pre-line' }}>
+                  ...Where your clients easily build{"\n"}their own tour presentations
                 </p>
               </div>
             </div>
