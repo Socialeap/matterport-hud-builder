@@ -457,7 +457,7 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
                   {submitting ? "Submitting…" : "I Want This — Request Presentation"}
                 </Button>
               </div>
-            )
+            )}
           </div>
 
           {/* Right: Live HUD Preview */}
