@@ -374,7 +374,7 @@ function Index() {
 
           {/* Headline */}
           <h1 className="mx-auto max-w-3xl text-4xl font-bold leading-[1.1] tracking-tight text-white sm:text-5xl lg:text-6xl whitespace-pre-line">
-            Imagine a Turn-Key Studio where{"\n"}Your Clients Customize Their{"\n"}
+            Imagine a Turn-Key Studio where{"\n"}<em className="italic">Your</em> Clients Customize <em className="italic">Their</em>{"\n"}
             <span className="text-primary text-slate-50 text-5xl">3D Tour Presentations 🤔</span>
           </h1>
 
