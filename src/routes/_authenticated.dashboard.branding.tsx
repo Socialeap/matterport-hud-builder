@@ -145,7 +145,7 @@ function BrandingPage() {
     <div className="mx-auto max-w-3xl space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Branding</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Studio Branding</h1>
           <p className="text-sm text-muted-foreground">
             Configure your whitelabel settings and visual identity.
           </p>
