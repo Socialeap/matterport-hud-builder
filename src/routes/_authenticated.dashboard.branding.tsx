@@ -93,6 +93,22 @@ function BrandingPage() {
     fetchBranding();
   }, [fetchBranding]);
 
+  // Check Stripe Connect status on return from onboarding
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("stripe_connect_return") && user) {
+      supabase.functions.invoke("stripe-connect-status").then(({ data }) => {
+        if (data?.onboarding_complete) {
+          setBranding((prev) => ({ ...prev, stripe_onboarding_complete: true }));
+          toast.success("Stripe account connected successfully!");
+        }
+      });
+      // Clean up the URL
+      url.searchParams.delete("stripe_connect_return");
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, [user]);
+
   const handleSave = async () => {
     if (!user) return;
     setSaving(true);
