@@ -250,7 +250,7 @@ function Index() {
   const textColor = isDark ? 'text-white' : 'text-gray-900';
   const textMuted = isDark ? 'text-white/70' : 'text-gray-600';
   const textSubtle = isDark ? 'text-white/50' : 'text-gray-500';
-  const textBody = isDark ? 'text-white/80' : 'text-gray-700';
+  const _textBody = isDark ? 'text-white/80' : 'text-gray-700';
   const headerBg = isDark ? 'bg-[#0a0e27]/60' : 'bg-[#f0ede6]/70';
   const headerBorder = isDark ? 'border-white/10' : 'border-gray-400/20';
   const mobileBg = isDark ? 'bg-[#0a0e27]/90' : 'bg-[#f0ede6]/95';
@@ -262,7 +262,7 @@ function Index() {
   const borderFooter = isDark ? 'border-white/10' : 'border-gray-300/30';
   const heroOverlay = isDark
     ? 'bg-gradient-to-b from-[#0a0e27]/60 via-[#0a0e27]/30 to-[#0a0e27]/70'
-    : 'bg-gradient-to-b from-[#f0ede6]/50 via-transparent to-[#f0ede6]/60';
+    : 'bg-gradient-to-b from-[#1a1a2e]/50 via-[#1a1a2e]/35 to-[#1a1a2e]/65';
 
   return (
     <div className={`${isDark ? 'dark' : ''} relative min-h-screen text-foreground transition-colors duration-500`} style={{ backgroundColor: bg }}>
@@ -396,10 +396,17 @@ function Index() {
           </div>
         </div>
 
-        {/* Secondary text + CTA below the image */}
-        <div className="px-4 pb-16 pt-8 sm:pb-24 sm:pt-12">
+        {/* Secondary text + CTA — integrated band flowing from image */}
+        <div
+          className="relative px-4 pb-16 pt-10 sm:pb-24 sm:pt-14"
+          style={{
+            background: isDark
+              ? 'linear-gradient(to bottom, #0a0e27, transparent 100%)'
+              : 'linear-gradient(to bottom, #2a2a3e, #f0ede6 100%)',
+          }}
+        >
           <div className="mx-auto max-w-3xl text-center">
-            <p className={`mx-auto max-w-xl text-lg ${textBody}`}>
+            <p className="mx-auto max-w-xl text-lg leading-relaxed text-white/85" style={{ textShadow: isDark ? 'none' : '0 1px 6px rgba(0,0,0,0.3)' }}>
               Stop paying 3rd party services to hold your tours hostage on their servers. Instead of manually configuring tours on external platforms, host your own space where clients can EASILY build their own tour presentations—downloaded as independent assets they own and EASILY host wherever they choose.
             </p>
 
@@ -410,7 +417,7 @@ function Index() {
                     Get Started Free
                     <ChevronRight className="ml-1 size-4" />
                   </Button>
-                  <Button size="lg" variant="outline" className={`${isDark ? 'border-white/30 text-white hover:bg-white/10' : 'border-gray-400 text-gray-800 hover:bg-gray-100'}`} onClick={() => navigate({ to: "/login" })}>
+                  <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10" onClick={() => navigate({ to: "/login" })}>
                     Sign In
                   </Button>
                 </>
