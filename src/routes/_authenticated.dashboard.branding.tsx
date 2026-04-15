@@ -73,8 +73,11 @@ function BrandingPage() {
         custom_domain: data.custom_domain,
         tier: data.tier as "starter" | "pro",
         slug: data.slug,
-        payment_link: data.payment_link,
-        payment_instructions: data.payment_instructions,
+        stripe_connect_id: data.stripe_connect_id,
+        stripe_onboarding_complete: data.stripe_onboarding_complete,
+        base_price_cents: data.base_price_cents,
+        model_threshold: data.model_threshold,
+        additional_model_fee_cents: data.additional_model_fee_cents,
       });
     }
     setLoading(false);
@@ -116,8 +119,9 @@ function BrandingPage() {
           favicon_url: faviconUrl,
           custom_domain: isPro ? branding.custom_domain : null,
           slug: branding.slug,
-          payment_link: branding.payment_link,
-          payment_instructions: branding.payment_instructions,
+          base_price_cents: branding.base_price_cents,
+          model_threshold: branding.model_threshold,
+          additional_model_fee_cents: branding.additional_model_fee_cents,
         },
         { onConflict: "provider_id" }
       );
