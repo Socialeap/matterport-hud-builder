@@ -480,7 +480,22 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
                         });
                         if (result.success && result.modelId) {
                           setSavedModelId(result.modelId);
-                          setShowCheckout(true);
+                          // Pre-fetch checkout session to get Connect account ID + client secret
+                          const { data: checkoutData, error: checkoutError } = await supabase.functions.invoke("create-connect-checkout", {
+                            body: {
+                              providerId: branding.provider_id,
+                              modelId: result.modelId,
+                              modelCount,
+                              returnUrl: `${window.location.origin}${window.location.pathname}?checkout_model_id=${result.modelId}&session_id={CHECKOUT_SESSION_ID}`,
+                            },
+                          });
+                          if (checkoutError || !checkoutData?.clientSecret || !checkoutData?.stripeConnectAccountId) {
+                            toast.error("Failed to create checkout session");
+                          } else {
+                            setConnectAccountId(checkoutData.stripeConnectAccountId);
+                            setCheckoutClientSecret(checkoutData.clientSecret);
+                            setShowCheckout(true);
+                          }
                         } else {
                           toast.error(result.error || "Failed to save presentation");
                         }
