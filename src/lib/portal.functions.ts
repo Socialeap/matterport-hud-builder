@@ -152,9 +152,17 @@ function escapeHtml(str: string): string {
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+interface QADatabaseEntry {
+  id: string;
+  question: string;
+  answer: string;
+  source_anchor_id: string;
+  embedding: number[];
+}
+
 export const generatePresentation = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data: { modelId: string }) => data)
+  .inputValidator((data: { modelId: string; qaDatabase?: QADatabaseEntry[] }) => data)
   .handler(async ({ data, context }): Promise<{ success: boolean; html?: string; error?: string }> => {
     const { supabase, userId } = context;
 
@@ -209,6 +217,9 @@ export const generatePresentation = createServerFn({ method: "POST" })
         };
       });
 
+    const qaDatabase = data.qaDatabase ?? [];
+    const hasQA = qaDatabase.length > 0;
+
     // Base64-encode config for obfuscation
     const configObj = {
       properties: propertyEntries,
@@ -236,6 +247,200 @@ export const generatePresentation = createServerFn({ method: "POST" })
         </div>`
       : "";
 
+    // ── Chat Q&A CSS (only when qaDatabase is present) ────────────────
+    const qaCss = hasQA
+      ? `
+#qa-toggle{padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;background:${accentColor};border:none;color:#fff;display:flex;align-items:center;gap:6px}
+#qa-toggle svg{width:16px;height:16px}
+#qa-panel{display:none;position:fixed;bottom:56px;right:16px;width:380px;max-width:calc(100vw - 32px);height:480px;max-height:calc(100vh - 80px);background:${hudBgColor};border:1px solid #333;border-radius:12px;z-index:999;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.5);overflow:hidden}
+#qa-panel.open{display:flex}
+#qa-header{padding:12px 16px;border-bottom:1px solid #333;display:flex;align-items:center;justify-content:space-between}
+#qa-header h4{font-size:14px;font-weight:600;color:#fff}
+#qa-close{background:none;border:none;color:#999;font-size:18px;cursor:pointer;padding:0 4px}
+#qa-messages{flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:10px}
+.qa-msg{max-width:88%;padding:8px 12px;border-radius:10px;font-size:13px;line-height:1.5;word-wrap:break-word}
+.qa-msg.user{align-self:flex-end;background:${accentColor};color:#fff;border-bottom-right-radius:4px}
+.qa-msg.assistant{align-self:flex-start;background:#2a2a3e;color:#ddd;border-bottom-left-radius:4px}
+.qa-msg .source-link{display:inline-block;margin-top:6px;padding:2px 8px;font-size:11px;background:${accentColor}33;color:${accentColor};border-radius:4px;cursor:pointer;border:1px solid ${accentColor}55;text-decoration:none}
+.qa-msg .source-link:hover{background:${accentColor}55}
+.qa-msg.loading{color:#999;font-style:italic}
+#qa-input-row{padding:10px 12px;border-top:1px solid #333;display:flex;gap:8px;align-items:center}
+#qa-input{flex:1;background:#1e1e30;border:1px solid #444;border-radius:8px;padding:8px 12px;color:#fff;font-size:13px;outline:none}
+#qa-input:focus{border-color:${accentColor}}
+#qa-input:disabled{opacity:0.5;cursor:not-allowed}
+#qa-send{background:${accentColor};border:none;color:#fff;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:13px;font-weight:600}
+#qa-send:disabled{opacity:0.4;cursor:not-allowed}
+@keyframes qa-pulse{0%,100%{opacity:0.4}50%{opacity:1}}
+.qa-loading-dots span{animation:qa-pulse 1.4s infinite;animation-delay:calc(var(--i)*0.2s)}
+`
+      : "";
+
+    // ── Chat panel HTML ───────────────────────────────────────────────
+    const qaToggleBtn = hasQA
+      ? `<button id="qa-toggle" onclick="document.getElementById('qa-panel').classList.toggle('open')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>Ask AI</button>`
+      : "";
+
+    const qaPanelHtml = hasQA
+      ? `<div id="qa-panel">
+  <div id="qa-header"><h4>Property Q&amp;A</h4><button id="qa-close" onclick="document.getElementById('qa-panel').classList.remove('open')">&times;</button></div>
+  <div id="qa-messages"><div class="qa-msg assistant" id="qa-welcome">Hi! Ask me anything about this property.</div></div>
+  <div id="qa-input-row"><input id="qa-input" type="text" placeholder="Initializing AI Assistant..." disabled /><button id="qa-send" disabled>Send</button></div>
+</div>`
+      : "";
+
+    // ── Inline module script for the air-gapped chat engine ──────────
+    const qaModuleScript = hasQA
+      ? `<script>window.__QA_DATABASE__=${JSON.stringify(qaDatabase)};</script>
+<script type="module">
+// ── CDN imports ─────────────────────────────────────────────────────
+const ORAMA_CDN = "https://cdn.jsdelivr.net/npm/@orama/orama@3.0.0/+esm";
+const TRANSFORMERS_CDN = "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2";
+
+const input = document.getElementById("qa-input");
+const sendBtn = document.getElementById("qa-send");
+const messagesEl = document.getElementById("qa-messages");
+
+let oramaDb = null;
+let embedPipeline = null;
+let MODE_HYBRID = null;
+
+function addMsg(text, role, anchorId) {
+  const div = document.createElement("div");
+  div.className = "qa-msg " + role;
+  div.textContent = text;
+  if (role === "assistant" && anchorId) {
+    const link = document.createElement("span");
+    link.className = "source-link";
+    link.textContent = "View source: " + anchorId.replace(/-/g, " ");
+    link.onclick = function() {
+      var el = document.getElementById(anchorId);
+      if (el) { el.scrollIntoView({ behavior: "smooth", block: "center" }); el.style.outline = "2px solid ${accentColor}"; setTimeout(function(){ el.style.outline = "none"; }, 3000); }
+    };
+    div.appendChild(document.createElement("br"));
+    div.appendChild(link);
+  }
+  messagesEl.appendChild(div);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  return div;
+}
+
+function showLoading() {
+  const div = document.createElement("div");
+  div.className = "qa-msg assistant loading";
+  div.id = "qa-loading";
+  div.innerHTML = 'Searching<span style="--i:0"> .</span><span style="--i:1"> .</span><span style="--i:2"> .</span>';
+  const spans = div.querySelectorAll("span");
+  spans.forEach(function(s){ s.classList.add("qa-loading-dots"); });
+  messagesEl.appendChild(div);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function removeLoading() {
+  var el = document.getElementById("qa-loading");
+  if (el) el.remove();
+}
+
+// ── Init pipeline ───────────────────────────────────────────────────
+async function init() {
+  try {
+    input.placeholder = "Downloading AI model…";
+
+    const [{ pipeline, env }, oramaModule] = await Promise.all([
+      import(TRANSFORMERS_CDN),
+      import(ORAMA_CDN),
+    ]);
+
+    env.allowLocalModels = false;
+    input.placeholder = "Loading model into memory…";
+
+    embedPipeline = await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2");
+    MODE_HYBRID = oramaModule.MODE_HYBRID_SEARCH;
+
+    input.placeholder = "Indexing property data…";
+
+    // Build Orama DB from injected data
+    const qaData = window.__QA_DATABASE__;
+    oramaDb = await oramaModule.create({
+      schema: { id: "string", question: "string", answer: "string", source_anchor_id: "string", embedding: "vector[384]" },
+    });
+
+    for (const entry of qaData) {
+      await oramaModule.insert(oramaDb, {
+        id: entry.id,
+        question: entry.question,
+        answer: entry.answer,
+        source_anchor_id: entry.source_anchor_id,
+        embedding: entry.embedding,
+      });
+    }
+
+    // Ready!
+    input.placeholder = "Ask a question about this property…";
+    input.disabled = false;
+    sendBtn.disabled = false;
+  } catch (err) {
+    console.error("QA init failed:", err);
+    input.placeholder = "AI Assistant unavailable";
+    addMsg("Sorry, I could not load the AI assistant. Please try refreshing the page.", "assistant", null);
+  }
+}
+
+// ── Search handler ──────────────────────────────────────────────────
+async function handleQuestion(question) {
+  addMsg(question, "user", null);
+  input.value = "";
+  input.disabled = true;
+  sendBtn.disabled = true;
+  showLoading();
+
+  try {
+    const output = await embedPipeline(question, { pooling: "mean", normalize: true });
+    const queryVec = Array.from(output.data);
+
+    const { search } = await import(ORAMA_CDN);
+    const results = await search(oramaDb, {
+      mode: MODE_HYBRID,
+      term: question,
+      vector: { value: queryVec, property: "embedding" },
+      limit: 3,
+      similarity: 0.0,
+    });
+
+    removeLoading();
+
+    if (results.hits.length > 0 && results.hits[0].score > 0.3) {
+      const best = results.hits[0].document;
+      addMsg(best.answer, "assistant", best.source_anchor_id);
+    } else {
+      addMsg("I don't have that specific information in the property details. Please reach out to the listing agent!", "assistant", null);
+    }
+  } catch (err) {
+    console.error("QA search error:", err);
+    removeLoading();
+    addMsg("Sorry, something went wrong. Please try again.", "assistant", null);
+  }
+
+  input.disabled = false;
+  sendBtn.disabled = false;
+  input.focus();
+}
+
+// ── Event listeners ─────────────────────────────────────────────────
+sendBtn.addEventListener("click", function() {
+  var q = input.value.trim();
+  if (q) handleQuestion(q);
+});
+input.addEventListener("keydown", function(e) {
+  if (e.key === "Enter") {
+    var q = input.value.trim();
+    if (q) handleQuestion(q);
+  }
+});
+
+init();
+</script>`
+      : "";
+
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -258,6 +463,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 #viewer{position:fixed;inset:0;bottom:50px}
 #viewer iframe{width:100%;height:100%;border:none}
 ${logoUrl ? `#gate img.logo{max-height:64px;margin-bottom:16px}` : ""}
+${qaCss}
 </style>
 </head>
 <body>
@@ -271,9 +477,11 @@ ${logoUrl ? `#gate img.logo{max-height:64px;margin-bottom:16px}` : ""}
 <div id="hud">
   <div id="tabs"></div>
   <div class="spacer"></div>
+  ${qaToggleBtn}
   ${agent.name ? `<button class="agent-btn" onclick="document.getElementById('agent-drawer').style.display='block'">Contact</button>` : ""}
 </div>
 ${agentDrawer}
+${qaPanelHtml}
 ${poweredBy}
 <script>
 (function(){
@@ -298,6 +506,7 @@ props.forEach(function(p,i){
 if(props.length>0) load(0);
 })();
 </script>
+${qaModuleScript}
 </body>
 </html>`;
 
