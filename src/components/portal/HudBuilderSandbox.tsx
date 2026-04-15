@@ -10,11 +10,12 @@ import type { PropertyModel, AgentContact, TourBehavior } from "./types";
 import { DEFAULT_BEHAVIOR, DEFAULT_AGENT } from "./types";
 import type { Tables } from "@/integrations/supabase/types";
 import { supabase } from "@/integrations/supabase/client";
-import { savePresentationRequest } from "@/lib/portal.functions";
+import { savePresentationRequest, generatePresentation } from "@/lib/portal.functions";
 import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe-js";
 import { getStripe } from "@/lib/stripe";
+import { useServerFn } from "@tanstack/react-start";
 
 interface HudBuilderSandboxProps {
   branding: Tables<"branding_settings">;
@@ -94,6 +95,36 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
   const [showCheckout, setShowCheckout] = useState(false);
   const [savedModelId, setSavedModelId] = useState<string | null>(null);
   const [isReleased, setIsReleased] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const generatePresentationFn = useServerFn(generatePresentation);
+
+  // Post-payment polling: detect return from Stripe checkout
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const checkoutModelId = params.get("checkout_model_id");
+    if (!checkoutModelId) return;
+
+    setSavedModelId(checkoutModelId);
+    let attempts = 0;
+    const maxAttempts = 15;
+    const interval = setInterval(async () => {
+      attempts++;
+      const { data } = await supabase
+        .from("saved_models")
+        .select("status, is_released")
+        .eq("id", checkoutModelId)
+        .single();
+      if (data?.status === "paid") {
+        setIsReleased(true);
+        setShowCheckout(false);
+        clearInterval(interval);
+      }
+      if (attempts >= maxAttempts) {
+        clearInterval(interval);
+      }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, []);
 
   const isPro = branding.tier === "pro";
   const hasPricing = branding.base_price_cents != null && branding.stripe_onboarding_complete;
@@ -324,8 +355,32 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
                   size="lg"
                   className="mt-4 text-white"
                   style={{ backgroundColor: accentColor }}
+                  disabled={downloading || !savedModelId}
+                  onClick={async () => {
+                    if (!savedModelId) return;
+                    setDownloading(true);
+                    try {
+                      const result = await generatePresentationFn({ data: { modelId: savedModelId } });
+                      if (!result.success || !result.html) {
+                        toast.error(result.error || "Failed to generate presentation");
+                        return;
+                      }
+                      const blob = new Blob([result.html], { type: "text/html" });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = `${models[0]?.name || "presentation"}.html`;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      URL.revokeObjectURL(url);
+                    } catch {
+                      toast.error("Download failed. Please try again.");
+                    }
+                    setDownloading(false);
+                  }}
                 >
-                  Download Presentation File
+                  {downloading ? "Generating…" : "Download Presentation File"}
                 </Button>
               </div>
             ) : showCheckout && savedModelId ? (
@@ -340,7 +395,7 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
                           providerId: branding.provider_id,
                           modelId: savedModelId,
                           modelCount,
-                          returnUrl: window.location.href,
+                          returnUrl: `${window.location.origin}${window.location.pathname}?checkout_model_id=${savedModelId}&session_id={CHECKOUT_SESSION_ID}`,
                         },
                       });
                       if (error || !data?.clientSecret) {

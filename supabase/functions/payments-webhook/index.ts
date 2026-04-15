@@ -19,7 +19,6 @@ serve(async (req) => {
     const event = await verifyWebhook(req, env);
     console.log("Received event:", event.type, "env:", env, "account:", (event as any).account);
 
-    // Check if this is a connected account event
     const connectedAccountId = (event as any).account;
 
     switch (event.type) {
@@ -49,7 +48,6 @@ serve(async (req) => {
   }
 });
 
-// Handle checkout from a connected MSP account (client paying for presentation)
 async function handleConnectCheckoutCompleted(session: any, connectedAccountId: string) {
   console.log("Connect checkout completed:", session.id, "account:", connectedAccountId);
 
@@ -86,13 +84,21 @@ async function handleConnectCheckoutCompleted(session: any, connectedAccountId: 
       .eq("provider_id", providerId);
   }
 
+  // Belt-and-suspenders: assign client role if not already present
+  if (clientId) {
+    await supabase
+      .from("user_roles")
+      .upsert(
+        { user_id: clientId, role: "client" },
+        { onConflict: "user_id,role" }
+      );
+  }
+
   console.log(`Connect payment: model=${modelId}, provider=${providerId}, client=${clientId}, amount=${session.amount_total}`);
 }
 
-// Handle account status updates (onboarding completion)
 async function handleAccountUpdated(account: any, connectedAccountId: string) {
   if (account.charges_enabled && account.details_submitted) {
-    // Mark onboarding complete for this MSP
     const { error } = await supabase
       .from("branding_settings")
       .update({ stripe_onboarding_complete: true })
@@ -106,7 +112,6 @@ async function handleAccountUpdated(account: any, connectedAccountId: string) {
   }
 }
 
-// Handle platform checkout (MSP buying tier upgrades)
 async function handleCheckoutCompleted(session: any, env: StripeEnv) {
   console.log("Checkout completed:", session.id, "mode:", session.mode);
 
@@ -118,7 +123,6 @@ async function handleCheckoutCompleted(session: any, env: StripeEnv) {
     return;
   }
 
-  // Retrieve the line items to get product/price info
   const stripe = createStripeClient(env);
   const lineItems = await stripe.checkout.sessions.listLineItems(session.id);
   const item = lineItems.data[0];
@@ -129,13 +133,11 @@ async function handleCheckoutCompleted(session: any, env: StripeEnv) {
 
   const priceId = item.price?.metadata?.lovable_external_id || item.price?.lookup_key || item.price?.id;
   
-  // Determine the tier product_id from the price lookup key
   let resolvedProductId = 'unknown';
   if (priceId === 'starter_onetime') resolvedProductId = 'starter_tier';
   else if (priceId === 'pro_onetime') resolvedProductId = 'pro_tier';
   else if (priceId === 'pro_upgrade_onetime') resolvedProductId = 'pro_upgrade';
 
-  // Record the purchase
   const { error } = await supabase.from("purchases").upsert(
     {
       user_id: userId,
@@ -159,14 +161,12 @@ async function handleCheckoutCompleted(session: any, env: StripeEnv) {
   // Update the provider's branding_settings tier
   const newTier = resolvedProductId === 'starter_tier' ? 'starter' : 'pro';
   
-  // Only upgrade, never downgrade
   if (newTier === 'pro') {
     await supabase
       .from("branding_settings")
       .update({ tier: 'pro' })
       .eq("provider_id", userId);
   } else {
-    // For starter, only set if no branding_settings exists yet
     const { data: existing } = await supabase
       .from("branding_settings")
       .select("tier")

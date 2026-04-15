@@ -11,6 +11,8 @@ import { Badge } from "@/components/ui/badge";
 import { Lock, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { uploadBrandAsset } from "@/lib/storage";
+import { useStripeCheckout } from "@/hooks/useStripeCheckout";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
 export const Route = createFileRoute("/_authenticated/dashboard/branding")({
   component: BrandingPage,
@@ -59,6 +61,16 @@ function BrandingPage() {
   const [faviconFile, setFaviconFile] = useState<File | null>(null);
 
   const isPro = branding.tier === "pro";
+  const { openCheckout, closeCheckout, isOpen, CheckoutForm } = useStripeCheckout();
+
+  const handleUpgrade = useCallback(() => {
+    openCheckout({
+      priceId: "pro_upgrade_onetime",
+      customerEmail: user?.email ?? undefined,
+      userId: user?.id ?? "",
+      returnUrl: `${window.location.origin}/dashboard/branding?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+    });
+  }, [user, openCheckout]);
 
   const fetchBranding = useCallback(async () => {
     if (!user) return;
@@ -462,7 +474,7 @@ function BrandingPage() {
               <p className="mt-1 text-xs text-muted-foreground">
                 Starter tier includes "Powered by Transcendence Media" on all output.
               </p>
-              <Button size="sm" className="mt-3">
+              <Button size="sm" className="mt-3" onClick={() => handleUpgrade()}>
                 Upgrade to Pro — $199
               </Button>
             </div>
@@ -475,6 +487,13 @@ function BrandingPage() {
           {saving ? "Saving…" : "Save Changes"}
         </Button>
       </div>
+
+      <Dialog open={isOpen} onOpenChange={(open) => !open && closeCheckout()}>
+        <DialogContent className="max-w-2xl">
+          <DialogTitle>Upgrade to Pro</DialogTitle>
+          {CheckoutForm && <CheckoutForm />}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
