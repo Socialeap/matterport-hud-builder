@@ -11,8 +11,10 @@ interface CheckoutOptions {
 export function useStripeCheckout() {
   const [isOpen, setIsOpen] = useState(false);
   const [options, setOptions] = useState<CheckoutOptions | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const openCheckout = useCallback((opts: CheckoutOptions) => {
+    setError(null);
     setOptions(opts);
     setIsOpen(true);
   }, []);
@@ -20,11 +22,17 @@ export function useStripeCheckout() {
   const closeCheckout = useCallback(() => {
     setIsOpen(false);
     setOptions(null);
+    setError(null);
   }, []);
 
   const CheckoutForm = isOpen && options
-    ? () => <StripeEmbeddedCheckout {...options} />
+    ? () => (
+        <StripeEmbeddedCheckout
+          {...options}
+          onError={(msg) => setError(msg)}
+        />
+      )
     : null;
 
-  return { openCheckout, closeCheckout, isOpen, CheckoutForm };
+  return { openCheckout, closeCheckout, isOpen, error, CheckoutForm };
 }
