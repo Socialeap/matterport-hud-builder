@@ -487,6 +487,13 @@ function BrandingPage() {
           {saving ? "Saving…" : "Save Changes"}
         </Button>
       </div>
+
+      <Dialog open={isOpen} onOpenChange={(open) => !open && closeCheckout()}>
+        <DialogContent className="max-w-2xl">
+          <DialogTitle>Upgrade to Pro</DialogTitle>
+          {CheckoutForm && <CheckoutForm />}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
