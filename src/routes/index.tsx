@@ -262,7 +262,7 @@ function Index() {
   const borderFooter = isDark ? 'border-white/10' : 'border-gray-300/30';
   const heroOverlay = isDark
     ? 'bg-gradient-to-b from-[#0a0e27]/60 via-[#0a0e27]/30 to-[#0a0e27]/70'
-    : 'bg-gradient-to-b from-[#f0ede6]/50 via-transparent to-[#f0ede6]/60';
+    : 'bg-gradient-to-b from-[#1a1a2e]/50 via-[#1a1a2e]/35 to-[#1a1a2e]/65';
 
   return (
     <div className={`${isDark ? 'dark' : ''} relative min-h-screen text-foreground transition-colors duration-500`} style={{ backgroundColor: bg }}>
