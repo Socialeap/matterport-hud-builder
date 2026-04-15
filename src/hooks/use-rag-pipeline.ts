@@ -7,7 +7,7 @@ import type { ChatMessage, PipelineStatus } from "@/lib/rag/types";
 import { RAGPipeline } from "@/lib/rag/rag-pipeline";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
 
 interface UseRAGPipelineReturn {
   status: PipelineStatus;
