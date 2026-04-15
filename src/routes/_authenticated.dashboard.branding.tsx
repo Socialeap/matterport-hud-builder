@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Lock } from "lucide-react";
+import { Lock, Copy, Check } from "lucide-react";
 import { toast } from "sonner";
 import { uploadBrandAsset } from "@/lib/storage";
 
@@ -282,9 +282,24 @@ function BrandingPage() {
               />
             </div>
             {branding.slug && (
-              <p className="text-xs text-muted-foreground">
-                Your portal: {window.location.origin}/p/{branding.slug}
-              </p>
+              <div className="flex items-center gap-2 mt-1">
+                <p className="text-xs text-muted-foreground">
+                  Your studio: {window.location.origin}/p/{branding.slug}
+                </p>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-xs"
+                  onClick={() => {
+                    navigator.clipboard.writeText(`${window.location.origin}/p/${branding.slug}`);
+                    toast.success("Studio link copied to clipboard!");
+                  }}
+                >
+                  <Copy className="h-3 w-3 mr-1" />
+                  Copy Link
+                </Button>
+              </div>
             )}
           </div>
 
