@@ -101,7 +101,7 @@ IMPORTANT:
 
       // Validate shape of each entry
       qaEntries = qaEntries.filter(
-        (e: Record<string, unknown>) =>
+        (e) =>
           typeof e.question === "string" &&
           typeof e.answer === "string" &&
           typeof e.source_anchor_id === "string",
