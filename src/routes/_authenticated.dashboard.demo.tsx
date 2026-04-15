@@ -190,8 +190,7 @@ function DemoPage() {
             accentColor={accentColor}
             hudBgColor={hudBgColor}
             logoPreview={logoPreview}
-            agentName={agent.name}
-            agentPhone={agent.phone}
+            agent={agent}
             isPro={false}
           />
           <p className="mt-3 text-xs text-muted-foreground text-center">
