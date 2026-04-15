@@ -368,14 +368,14 @@ function Index() {
         <div className="mx-auto max-w-4xl text-center">
           {/* Pill badge */}
           <div className="mb-6 inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-medium text-white/80 backdrop-blur-sm">
-            <Sparkles className="size-3 text-primary" />
+            <Sparkles className="size-3 text-primary text-amber-300" />
             No subscriptions. Ever.
           </div>
 
           {/* Headline */}
-          <h1 className="mx-auto max-w-3xl text-4xl font-bold leading-[1.1] tracking-tight text-white sm:text-5xl lg:text-6xl">
-            Your own studio for clients to custom brand their{' '}
-            <span className="text-primary">3D Tour presentations</span>
+          <h1 className="mx-auto max-w-3xl text-4xl font-bold leading-[1.1] tracking-tight text-white sm:text-5xl lg:text-6xl whitespace-pre-line">
+            Why Not Your own Studio for{"\n"}clients to customize their{"\n"}{' '}
+            <span className="text-primary text-slate-50">3D Tour presentations</span>
           </h1>
 
           {/* Subheadline */}
@@ -409,7 +409,7 @@ function Index() {
               {/* Center overlay text */}
               <div className="absolute inset-0 flex items-center justify-center">
                 <p className="mx-4 max-w-lg text-lg font-medium text-white/90 lg:text-2xl text-left sm:text-xl" style={{ textShadow: '0 2px 12px rgba(0,0,0,0.7)', whiteSpace: 'pre-line' }}>
-                  ...Where your clients easily build{"\n"}their own tour presentations
+                  Here... My clients easily build{"\n"}their own tour presentations 😉
                 </p>
               </div>
             </div>
@@ -441,7 +441,7 @@ function Index() {
             <Card className={`border-red-500/20 ${cardBg} backdrop-blur`}>
               <CardContent className="pt-6">
                 <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
-                  <DollarSign className="size-5 text-destructive" />
+                  <DollarSign className="size-5 text-destructive text-amber-300" />
                 </div>
                 <h3 className={`mt-4 font-semibold text-white`}>You Do the Work, They Get Paid</h3>
                 <p className={`mt-2 text-sm text-white/60`}>
@@ -453,7 +453,7 @@ function Index() {
             <Card className={`border-red-500/20 ${cardBg} backdrop-blur`}>
               <CardContent className="pt-6">
                 <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
-                  <Clock className="size-5 text-destructive" />
+                  <Clock className="size-5 text-destructive text-amber-300" />
                 </div>
                 <h3 className={`mt-4 font-semibold text-white`}>Every Change Goes Through You</h3>
                 <p className={`mt-2 text-sm text-white/60`}>
@@ -465,7 +465,7 @@ function Index() {
             <Card className={`border-red-500/20 ${cardBg} backdrop-blur`}>
               <CardContent className="pt-6">
                 <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
-                  <Lock className="size-5 text-destructive" />
+                  <Lock className="size-5 text-destructive text-amber-300" />
                 </div>
                 <h3 className={`mt-4 font-semibold text-white`}>A Bottleneck You Don&#39;t Own</h3>
                 <p className={`mt-2 text-sm text-white/60`}>
@@ -477,7 +477,7 @@ function Index() {
             <Card className={`border-red-500/20 ${cardBg} backdrop-blur`}>
               <CardContent className="pt-6">
                 <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
-                  <PackageX className="size-5 text-destructive" />
+                  <PackageX className="size-5 text-destructive text-amber-300" />
                 </div>
                 <h3 className={`mt-4 font-semibold text-white`}>Paying for Tools You Never Use</h3>
                 <p className={`mt-2 text-sm text-white/60`}>
@@ -505,7 +505,7 @@ function Index() {
               <Card key={f.title} className={`${cardBg} backdrop-blur`}>
                 <CardContent className="pt-6">
                   <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
-                    <f.icon className="size-5 text-primary" />
+                    <f.icon className="size-5 text-primary text-amber-300" />
                   </div>
                   <h3 className={`mt-4 font-semibold text-white`}>{f.title}</h3>
                   <p className={`mt-1 text-sm text-white/60`}>{f.description}</p>
