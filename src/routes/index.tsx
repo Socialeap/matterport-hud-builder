@@ -289,22 +289,22 @@ function Index() {
       </div>
 
       {/* ---- Header with glassmorphism ---- */}
-      <header className={`fixed inset-x-0 top-0 z-50 border-b ${headerBorder} ${headerBg} backdrop-blur-xl transition-colors duration-500`}>
+      <header className={`fixed inset-x-0 top-0 z-50 border-b ${headerBorder} ${headerBg} backdrop-blur-xl`}>
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
-          <span className={`text-lg font-bold tracking-tight ${textColor}`}>
+          <span className="text-lg font-bold tracking-tight text-white">
             3D Presentation Studio
           </span>
 
           {/* Desktop nav */}
           <nav className="hidden items-center gap-6 sm:flex">
-            <a href="#features" className={`text-sm ${textMuted} transition-colors hover:${isDark ? 'text-white' : 'text-gray-900'}`}>Features</a>
-            <a href="#pricing" className={`text-sm ${textMuted} transition-colors hover:${isDark ? 'text-white' : 'text-gray-900'}`}>Pricing</a>
-            <a href="#how-it-works" className={`text-sm ${textMuted} transition-colors hover:${isDark ? 'text-white' : 'text-gray-900'}`}>How It Works</a>
+            <a href="#features" className="text-sm text-white/70 transition-colors hover:text-white">Features</a>
+            <a href="#pricing" className="text-sm text-white/70 transition-colors hover:text-white">Pricing</a>
+            <a href="#how-it-works" className="text-sm text-white/70 transition-colors hover:text-white">How It Works</a>
 
             {/* Theme toggle */}
             <button
               onClick={() => setIsDark(!isDark)}
-              className={`rounded-full p-2 transition-colors ${isDark ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900'}`}
+              className="rounded-full p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
               aria-label="Toggle theme"
             >
               {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
