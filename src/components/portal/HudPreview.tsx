@@ -38,10 +38,10 @@ export function HudPreview({
     : "";
 
   const socialLinks = [
-    { url: agent.linkedin, icon: Linkedin, label: "LinkedIn" },
-    { url: agent.twitter, icon: Twitter, label: "Twitter" },
-    { url: agent.instagram, icon: Instagram, label: "Instagram" },
-    { url: agent.facebook, icon: Facebook, label: "Facebook" },
+    { url: agent.linkedin, icon: Globe, label: "LinkedIn" },
+    { url: agent.twitter, icon: Globe, label: "Twitter" },
+    { url: agent.instagram, icon: Globe, label: "Instagram" },
+    { url: agent.facebook, icon: Globe, label: "Facebook" },
     { url: agent.tiktok, icon: Globe, label: "TikTok" },
     { url: agent.website, icon: Globe, label: "Website" },
     { url: agent.other, icon: Globe, label: "Other" },
