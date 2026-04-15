@@ -80,9 +80,9 @@ function BrandingPage() {
         tier: data.tier as "starter" | "pro",
         slug: data.slug,
         stripe_connect_id: data.stripe_connect_id,
-        stripe_onboarding_complete: data.stripe_onboarding_complete,
+        stripe_onboarding_complete: data.stripe_onboarding_complete ?? false,
         base_price_cents: data.base_price_cents,
-        model_threshold: data.model_threshold,
+        model_threshold: data.model_threshold ?? 1,
         additional_model_fee_cents: data.additional_model_fee_cents,
       });
     }
@@ -313,29 +313,103 @@ function BrandingPage() {
             )}
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="payment_link">Payment Link (Stripe)</Label>
-            <Input
-              id="payment_link"
-              value={branding.payment_link ?? ""}
-              onChange={(e) => setBranding({ ...branding, payment_link: e.target.value })}
-              placeholder="https://venmo.com/your-handle or PayPal/Square link"
-            />
-            <p className="text-xs text-muted-foreground">
-              Shown to clients when they confirm a presentation request.
-            </p>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Stripe Connect</Label>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Connect your Stripe account to accept payments from clients.
+                </p>
+              </div>
+              {branding.stripe_onboarding_complete ? (
+                <Badge className="bg-green-600 text-white">Stripe Connected ✅</Badge>
+              ) : (
+                <Button
+                  size="sm"
+                  onClick={async () => {
+                    try {
+                      const { data, error } = await supabase.functions.invoke("stripe-connect-onboard", {
+                        body: { returnUrl: window.location.href },
+                      });
+                      if (error || !data?.url) throw new Error("Failed to start onboarding");
+                      window.location.href = data.url;
+                    } catch {
+                      toast.error("Failed to connect Stripe. Please try again.");
+                    }
+                  }}
+                >
+                  Connect with Stripe
+                </Button>
+              )}
+            </div>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="payment_instructions">Payment Instructions</Label>
-            <Textarea
-              id="payment_instructions"
-              value={branding.payment_instructions ?? ""}
-              onChange={(e) => setBranding({ ...branding, payment_instructions: e.target.value })}
-              placeholder="e.g. Please send payment via Venmo to @your-handle with your property address as the note."
-              rows={3}
-            />
-          </div>
+          {branding.stripe_onboarding_complete && (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="base_price">Base Price ($)</Label>
+                <Input
+                  id="base_price"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={branding.base_price_cents != null ? (branding.base_price_cents / 100).toString() : ""}
+                  onChange={(e) =>
+                    setBranding({
+                      ...branding,
+                      base_price_cents: e.target.value ? Math.round(parseFloat(e.target.value) * 100) : null,
+                    })
+                  }
+                  placeholder="200"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Flat fee for the starting package.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="model_threshold">Model Threshold</Label>
+                <Input
+                  id="model_threshold"
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={branding.model_threshold}
+                  onChange={(e) =>
+                    setBranding({
+                      ...branding,
+                      model_threshold: parseInt(e.target.value) || 1,
+                    })
+                  }
+                  placeholder="3"
+                />
+                <p className="text-xs text-muted-foreground">
+                  How many models are included in the base price.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="additional_fee">Additional Model Fee ($)</Label>
+                <Input
+                  id="additional_fee"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={branding.additional_model_fee_cents != null ? (branding.additional_model_fee_cents / 100).toString() : ""}
+                  onChange={(e) =>
+                    setBranding({
+                      ...branding,
+                      additional_model_fee_cents: e.target.value ? Math.round(parseFloat(e.target.value) * 100) : null,
+                    })
+                  }
+                  placeholder="50"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Price for each model beyond the threshold.
+                </p>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
