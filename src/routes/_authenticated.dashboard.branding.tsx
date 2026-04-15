@@ -256,17 +256,17 @@ function BrandingPage() {
         </CardContent>
       </Card>
 
-      {/* Portal & Payment Settings */}
+      {/* Studio & Payment Settings */}
       <Card>
         <CardHeader>
-          <CardTitle>Portal & Payment</CardTitle>
+          <CardTitle>Studio & Payment Links</CardTitle>
           <CardDescription>
-            Configure your public portal URL and payment details for client orders.
+            Configure your site URL and payment details for client orders.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="slug">Portal Slug</Label>
+            <Label htmlFor="slug">Studio URL Slug</Label>
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground whitespace-nowrap">/p/</span>
               <Input
@@ -304,7 +304,7 @@ function BrandingPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="payment_link">Payment Link</Label>
+            <Label htmlFor="payment_link">Payment Link (Stripe)</Label>
             <Input
               id="payment_link"
               value={branding.payment_link ?? ""}
