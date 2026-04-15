@@ -40,6 +40,17 @@ export function AgentContactSection({ agent, onChange }: AgentContactSectionProp
             />
           </div>
           <div className="space-y-1">
+            <Label className="text-xs">Title / Role</Label>
+            <Input
+              value={agent.titleRole}
+              onChange={(e) => onChange("titleRole", e.target.value)}
+              placeholder="e.g. Real Estate Agent, Broker"
+            />
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1">
             <Label className="text-xs">Email Address</Label>
             <Input
               type="email"
@@ -48,18 +59,19 @@ export function AgentContactSection({ agent, onChange }: AgentContactSectionProp
               placeholder="agent@company.com"
             />
           </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Phone Number</Label>
+            <Input
+              type="tel"
+              value={agent.phone}
+              onChange={(e) => onChange("phone", e.target.value)}
+              placeholder="+1 (555) 123-4567"
+            />
+            <p className="text-xs text-muted-foreground">Used for click-to-call and click-to-text</p>
+          </div>
         </div>
 
         <div className="space-y-1">
-          <Label className="text-xs">Phone Number</Label>
-          <Input
-            type="tel"
-            value={agent.phone}
-            onChange={(e) => onChange("phone", e.target.value)}
-            placeholder="+1 (555) 123-4567"
-          />
-          <p className="text-xs text-muted-foreground">Used for click-to-call and click-to-text</p>
-        </div>
 
         <div className="space-y-1">
           <Label className="text-xs">Default Welcome Note</Label>
