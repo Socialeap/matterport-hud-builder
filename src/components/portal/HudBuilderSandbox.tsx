@@ -12,6 +12,9 @@ import type { Tables } from "@/integrations/supabase/types";
 import { supabase } from "@/integrations/supabase/client";
 import { savePresentationRequest } from "@/lib/portal.functions";
 import { toast } from "sonner";
+import { Checkbox } from "@/components/ui/checkbox";
+import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe-js";
+import { getStripe } from "@/lib/stripe";
 
 interface HudBuilderSandboxProps {
   branding: Tables<"branding_settings">;
