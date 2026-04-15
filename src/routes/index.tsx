@@ -274,16 +274,19 @@ function Index() {
         }}
       />
 
-      {/* ---- Organic translucent orbs (dark only) ---- */}
-      {isDark && (
-        <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
-          <div className="absolute -left-32 -top-20 h-[500px] w-[500px] rounded-full bg-blue-600/15 blur-[160px]" />
-          <div className="absolute right-0 top-[30%] h-[400px] w-[450px] rounded-full bg-indigo-500/12 blur-[140px]" />
-          <div className="absolute bottom-[10%] left-[20%] h-[350px] w-[400px] rounded-full bg-teal-500/10 blur-[180px]" />
-          <div className="absolute -right-20 bottom-[40%] h-[300px] w-[350px] rounded-full bg-purple-600/8 blur-[150px]" />
-          <div className="absolute left-[50%] top-[60%] h-[400px] w-[400px] rounded-full bg-cyan-500/8 blur-[200px]" />
-        </div>
-      )}
+      {/* ---- Organic translucent orbs (both modes) ---- */}
+      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+        <div className="absolute -left-32 -top-20 h-[500px] w-[500px] rounded-full blur-[160px]"
+          style={{ background: isDark ? 'rgba(37,99,235,0.15)' : 'rgba(120,100,80,0.08)' }} />
+        <div className="absolute right-0 top-[30%] h-[400px] w-[450px] rounded-full blur-[140px]"
+          style={{ background: isDark ? 'rgba(99,102,241,0.12)' : 'rgba(100,90,70,0.06)' }} />
+        <div className="absolute bottom-[10%] left-[20%] h-[350px] w-[400px] rounded-full blur-[180px]"
+          style={{ background: isDark ? 'rgba(20,184,166,0.10)' : 'rgba(140,120,90,0.07)' }} />
+        <div className="absolute -right-20 bottom-[40%] h-[300px] w-[350px] rounded-full blur-[150px]"
+          style={{ background: isDark ? 'rgba(147,51,234,0.08)' : 'rgba(100,80,60,0.05)' }} />
+        <div className="absolute left-[50%] top-[60%] h-[400px] w-[400px] rounded-full blur-[200px]"
+          style={{ background: isDark ? 'rgba(6,182,212,0.08)' : 'rgba(130,110,85,0.06)' }} />
+      </div>
 
       {/* ---- Header with glassmorphism ---- */}
       <header className={`fixed inset-x-0 top-0 z-50 border-b ${headerBorder} ${headerBg} backdrop-blur-xl transition-colors duration-500`}>
