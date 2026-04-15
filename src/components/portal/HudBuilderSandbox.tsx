@@ -395,7 +395,7 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
                           providerId: branding.provider_id,
                           modelId: savedModelId,
                           modelCount,
-                          returnUrl: window.location.href,
+                          returnUrl: `${window.location.origin}${window.location.pathname}?checkout_model_id=${savedModelId}&session_id={CHECKOUT_SESSION_ID}`,
                         },
                       });
                       if (error || !data?.clientSecret) {

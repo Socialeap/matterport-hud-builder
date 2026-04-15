@@ -27,7 +27,6 @@ export const savePresentationRequest = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
 
-    // Save the model configuration
     const { data: model, error: modelError } = await supabase
       .from("saved_models")
       .insert({
@@ -42,6 +41,7 @@ export const savePresentationRequest = createServerFn({ method: "POST" })
         } as unknown as import("@/integrations/supabase/types").Json,
         status: "pending_payment" as const,
         is_released: false,
+        model_count: data.properties.filter((p) => p.matterportId.trim()).length,
       })
       .select("id")
       .single();
@@ -51,7 +51,6 @@ export const savePresentationRequest = createServerFn({ method: "POST" })
       return { success: false, error: "Failed to save presentation" };
     }
 
-    // Create order notification for the MSP
     const { error: notifError } = await supabase
       .from("order_notifications")
       .insert({
