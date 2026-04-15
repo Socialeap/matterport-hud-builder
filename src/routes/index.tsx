@@ -381,16 +381,6 @@ function Index() {
           <p className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-white/60 sm:text-lg">
             Give clients a space to build, customize, and download presentations they fully own.
           </p>
-
-          {/* CTA */}
-          <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
-            <a href="#pricing">
-              <Button size="lg" className="gap-2">
-                Try our demo
-                <ChevronRight className="size-4" />
-              </Button>
-            </a>
-          </div>
         </div>
 
         {/* Browser chrome frame */}
@@ -408,12 +398,30 @@ function Index() {
               </div>
             </div>
             {/* Screenshot */}
-            <img
-              src={heroHudBanner}
-              alt="3D property tour HUD presentation showcase"
-              className="w-full"
-              loading="eager"
-            />
+            <div className="relative">
+              <img
+                src={heroHudBanner}
+                alt="3D property tour HUD presentation showcase"
+                className="w-full"
+                loading="eager"
+              />
+              {/* Center overlay text */}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <p className="mx-4 max-w-lg text-center text-lg font-medium text-white/90 sm:text-xl lg:text-2xl" style={{ textShadow: '0 2px 12px rgba(0,0,0,0.7)' }}>
+                  ...Where your clients easily build their own tour presentations
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* CTA below image */}
+          <div className="mt-8 flex justify-center">
+            <a href="#pricing">
+              <Button size="lg" className="gap-2">
+                Try our demo
+                <ChevronRight className="size-4" />
+              </Button>
+            </a>
           </div>
         </div>
       </section>
@@ -519,7 +527,7 @@ function Index() {
 
           <div className="mt-12 grid gap-6 sm:grid-cols-2">
             {/* Starter */}
-            <Card className={`flex flex-col backdrop-blur`}>
+            <Card className={`flex flex-col backdrop-blur bg-white/5`}>
               <CardHeader className="text-center">
                 <Badge variant="secondary" className="mx-auto mb-2 w-fit">
                   Starter
@@ -552,7 +560,7 @@ function Index() {
             </Card>
 
             {/* Pro */}
-            <Card className={`relative flex flex-col border-primary shadow-lg backdrop-blur`}>
+            <Card className={`relative flex flex-col border-primary shadow-lg backdrop-blur bg-white/5`}>
               <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">
                 Most Popular
               </Badge>
@@ -586,7 +594,7 @@ function Index() {
           </div>
 
           <p className={`mx-auto mt-8 max-w-2xl text-center text-xs text-white/50`}>
-            Activate a test tier instantly — no Stripe purchase required. Explore the full dashboard, branding settings, client portal, and orders workflow. Demo purchases are recorded in sandbox mode. You can switch Demo tiers any time by returning here.
+            <strong>Activate a test tier instantly</strong> — no Stripe purchase required. Explore the full dashboard, branding settings, client portal, and orders workflow. Demo purchases are recorded in sandbox mode. You can switch Demo tiers any time by returning here.
           </p>
         </div>
       </section>
@@ -606,13 +614,13 @@ function Index() {
               },
               {
                 step: "2",
-                title: "Configure Your Brand",
-                desc: "Upload your logo, set accent colors, and customize the HUD header. Set a portal slug for your client-facing page.",
+                title: "Configure Your Brand & Pricing",
+                desc: "Upload your logo, set accent colors, and customize the HUD header. Set a portal slug and (optional) pricing for your client-facing page.",
               },
               {
                 step: "3",
-                title: "Share Your Portal",
-                desc: "Send agents and property managers to your branded portal. They add Matterport models, configure tour behaviors, and preview in real-time.",
+                title: "Share Your Studio Link",
+                desc: "Send agents and property managers to your branded studio. They add Matterport models, configure tour behaviors, and preview in real-time.",
               },
               {
                 step: "4",
