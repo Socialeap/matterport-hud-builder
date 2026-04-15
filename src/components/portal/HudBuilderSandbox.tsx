@@ -98,6 +98,7 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
   const [downloading, setDownloading] = useState(false);
   const [isPolling, setIsPolling] = useState(false);
   const [connectAccountId, setConnectAccountId] = useState<string | null>(null);
+  const [checkoutClientSecret, setCheckoutClientSecret] = useState<string | null>(null);
   const generatePresentationFn = useServerFn(generatePresentation);
 
   // Post-payment polling: detect return from Stripe checkout
@@ -398,30 +399,12 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
                   {downloading ? "Generating…" : "Download Presentation File"}
                 </Button>
               </div>
-            ) : showCheckout && savedModelId ? (
+            ) : showCheckout && savedModelId && connectAccountId && checkoutClientSecret ? (
               <div className="rounded-lg border p-6">
                 <h3 className="text-lg font-semibold text-foreground mb-4">Complete Payment</h3>
                 <EmbeddedCheckoutProvider
-                  stripe={connectAccountId ? getStripeForConnect(connectAccountId) : getStripeForConnect("")}
-                  options={{
-                    fetchClientSecret: async () => {
-                      const { data, error } = await supabase.functions.invoke("create-connect-checkout", {
-                        body: {
-                          providerId: branding.provider_id,
-                          modelId: savedModelId,
-                          modelCount,
-                          returnUrl: `${window.location.origin}${window.location.pathname}?checkout_model_id=${savedModelId}&session_id={CHECKOUT_SESSION_ID}`,
-                        },
-                      });
-                      if (error || !data?.clientSecret) {
-                        throw new Error("Failed to create checkout session");
-                      }
-                      if (data.stripeConnectAccountId) {
-                        setConnectAccountId(data.stripeConnectAccountId);
-                      }
-                      return data.clientSecret;
-                    },
-                  }}
+                  stripe={getStripeForConnect(connectAccountId)}
+                  options={{ clientSecret: checkoutClientSecret }}
                 >
                   <EmbeddedCheckout />
                 </EmbeddedCheckoutProvider>
