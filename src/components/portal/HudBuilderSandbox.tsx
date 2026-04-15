@@ -89,7 +89,24 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
   const [submitting, setSubmitting] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
 
+  // Purchase state
+  const [reviewApproved, setReviewApproved] = useState(false);
+  const [showCheckout, setShowCheckout] = useState(false);
+  const [savedModelId, setSavedModelId] = useState<string | null>(null);
+  const [isReleased, setIsReleased] = useState(false);
+
   const isPro = branding.tier === "pro";
+  const hasPricing = branding.base_price_cents != null && branding.stripe_onboarding_complete;
+
+  // Calculate price
+  const modelCount = models.filter((m) => m.matterportId.trim()).length;
+  const basePriceCents = branding.base_price_cents ?? 0;
+  const threshold = branding.model_threshold ?? 1;
+  const additionalFeeCents = branding.additional_model_fee_cents ?? 0;
+  const totalCents = modelCount <= threshold
+    ? basePriceCents
+    : basePriceCents + ((modelCount - threshold) * additionalFeeCents);
+  const extraModels = Math.max(0, modelCount - threshold);
 
   const handleBrandingChange = useCallback((field: string, value: string) => {
     switch (field) {
