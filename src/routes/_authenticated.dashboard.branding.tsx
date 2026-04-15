@@ -26,8 +26,11 @@ interface BrandingData {
   custom_domain: string | null;
   tier: "starter" | "pro";
   slug: string | null;
-  payment_link: string | null;
-  payment_instructions: string | null;
+  stripe_connect_id: string | null;
+  stripe_onboarding_complete: boolean;
+  base_price_cents: number | null;
+  model_threshold: number;
+  additional_model_fee_cents: number | null;
 }
 
 const defaultBranding: BrandingData = {
@@ -40,8 +43,11 @@ const defaultBranding: BrandingData = {
   custom_domain: null,
   tier: "starter",
   slug: null,
-  payment_link: null,
-  payment_instructions: null,
+  stripe_connect_id: null,
+  stripe_onboarding_complete: false,
+  base_price_cents: null,
+  model_threshold: 1,
+  additional_model_fee_cents: null,
 };
 
 function BrandingPage() {

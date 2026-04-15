@@ -211,30 +211,9 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
           <p className="mt-2 text-muted-foreground">
             Your presentation configuration has been saved. To proceed, complete payment using the link below.
           </p>
-          {branding.payment_link && (
-            <a
-              href={branding.payment_link}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-6 inline-flex items-center justify-center rounded-md px-6 py-3 text-sm font-medium text-white transition-colors hover:opacity-90"
-              style={{ backgroundColor: accentColor }}
-            >
-              Complete Payment
-            </a>
-          )}
-          {branding.payment_instructions && (
-            <div className="mt-4 rounded-lg border border-border bg-muted/50 p-4 text-left">
-              <p className="text-sm font-medium text-foreground">Payment Instructions</p>
-              <p className="mt-1 text-sm text-muted-foreground whitespace-pre-wrap">
-                {branding.payment_instructions}
-              </p>
-            </div>
-          )}
-          {!branding.payment_link && !branding.payment_instructions && (
-            <p className="mt-4 text-sm text-muted-foreground">
-              {brandName || "The provider"} will contact you with payment details.
+           <p className="mt-4 text-sm text-muted-foreground">
+              Your presentation has been submitted. You will be notified when it is ready for download.
             </p>
-          )}
           {!isPro && (
             <p className="mt-6 text-xs text-muted-foreground">Powered by Transcendence Media</p>
           )}
