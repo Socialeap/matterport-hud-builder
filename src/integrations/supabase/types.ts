@@ -17,6 +17,8 @@ export type Database = {
       branding_settings: {
         Row: {
           accent_color: string
+          additional_model_fee_cents: number | null
+          base_price_cents: number | null
           brand_name: string
           created_at: string
           custom_domain: string | null
@@ -25,15 +27,18 @@ export type Database = {
           hud_bg_color: string
           id: string
           logo_url: string | null
-          payment_instructions: string | null
-          payment_link: string | null
+          model_threshold: number | null
           provider_id: string
           slug: string | null
+          stripe_connect_id: string | null
+          stripe_onboarding_complete: boolean | null
           tier: Database["public"]["Enums"]["app_tier"]
           updated_at: string
         }
         Insert: {
           accent_color?: string
+          additional_model_fee_cents?: number | null
+          base_price_cents?: number | null
           brand_name?: string
           created_at?: string
           custom_domain?: string | null
@@ -42,15 +47,18 @@ export type Database = {
           hud_bg_color?: string
           id?: string
           logo_url?: string | null
-          payment_instructions?: string | null
-          payment_link?: string | null
+          model_threshold?: number | null
           provider_id: string
           slug?: string | null
+          stripe_connect_id?: string | null
+          stripe_onboarding_complete?: boolean | null
           tier?: Database["public"]["Enums"]["app_tier"]
           updated_at?: string
         }
         Update: {
           accent_color?: string
+          additional_model_fee_cents?: number | null
+          base_price_cents?: number | null
           brand_name?: string
           created_at?: string
           custom_domain?: string | null
@@ -59,10 +67,11 @@ export type Database = {
           hud_bg_color?: string
           id?: string
           logo_url?: string | null
-          payment_instructions?: string | null
-          payment_link?: string | null
+          model_threshold?: number | null
           provider_id?: string
           slug?: string | null
+          stripe_connect_id?: string | null
+          stripe_onboarding_complete?: boolean | null
           tier?: Database["public"]["Enums"]["app_tier"]
           updated_at?: string
         }
@@ -237,10 +246,12 @@ export type Database = {
       }
       saved_models: {
         Row: {
+          amount_cents: number | null
           client_id: string
           created_at: string
           id: string
           is_released: boolean
+          model_count: number | null
           name: string
           properties: Json
           provider_id: string
@@ -249,10 +260,12 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          amount_cents?: number | null
           client_id: string
           created_at?: string
           id?: string
           is_released?: boolean
+          model_count?: number | null
           name?: string
           properties?: Json
           provider_id: string
@@ -261,10 +274,12 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          amount_cents?: number | null
           client_id?: string
           created_at?: string
           id?: string
           is_released?: boolean
+          model_count?: number | null
           name?: string
           properties?: Json
           provider_id?: string

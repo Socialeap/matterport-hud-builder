@@ -5,10 +5,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Lock, Copy, Check } from "lucide-react";
+import { Lock, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { uploadBrandAsset } from "@/lib/storage";
 
@@ -26,8 +26,11 @@ interface BrandingData {
   custom_domain: string | null;
   tier: "starter" | "pro";
   slug: string | null;
-  payment_link: string | null;
-  payment_instructions: string | null;
+  stripe_connect_id: string | null;
+  stripe_onboarding_complete: boolean;
+  base_price_cents: number | null;
+  model_threshold: number;
+  additional_model_fee_cents: number | null;
 }
 
 const defaultBranding: BrandingData = {
@@ -40,8 +43,11 @@ const defaultBranding: BrandingData = {
   custom_domain: null,
   tier: "starter",
   slug: null,
-  payment_link: null,
-  payment_instructions: null,
+  stripe_connect_id: null,
+  stripe_onboarding_complete: false,
+  base_price_cents: null,
+  model_threshold: 1,
+  additional_model_fee_cents: null,
 };
 
 function BrandingPage() {
@@ -73,8 +79,11 @@ function BrandingPage() {
         custom_domain: data.custom_domain,
         tier: data.tier as "starter" | "pro",
         slug: data.slug,
-        payment_link: data.payment_link,
-        payment_instructions: data.payment_instructions,
+        stripe_connect_id: data.stripe_connect_id,
+        stripe_onboarding_complete: data.stripe_onboarding_complete ?? false,
+        base_price_cents: data.base_price_cents,
+        model_threshold: data.model_threshold ?? 1,
+        additional_model_fee_cents: data.additional_model_fee_cents,
       });
     }
     setLoading(false);
@@ -83,6 +92,22 @@ function BrandingPage() {
   useEffect(() => {
     fetchBranding();
   }, [fetchBranding]);
+
+  // Check Stripe Connect status on return from onboarding
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("stripe_connect_return") && user) {
+      supabase.functions.invoke("stripe-connect-status").then(({ data }) => {
+        if (data?.onboarding_complete) {
+          setBranding((prev) => ({ ...prev, stripe_onboarding_complete: true }));
+          toast.success("Stripe account connected successfully!");
+        }
+      });
+      // Clean up the URL
+      url.searchParams.delete("stripe_connect_return");
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, [user]);
 
   const handleSave = async () => {
     if (!user) return;
@@ -116,8 +141,9 @@ function BrandingPage() {
           favicon_url: faviconUrl,
           custom_domain: isPro ? branding.custom_domain : null,
           slug: branding.slug,
-          payment_link: branding.payment_link,
-          payment_instructions: branding.payment_instructions,
+          base_price_cents: branding.base_price_cents,
+          model_threshold: branding.model_threshold,
+          additional_model_fee_cents: branding.additional_model_fee_cents,
         },
         { onConflict: "provider_id" }
       );
@@ -303,29 +329,103 @@ function BrandingPage() {
             )}
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="payment_link">Payment Link (Stripe)</Label>
-            <Input
-              id="payment_link"
-              value={branding.payment_link ?? ""}
-              onChange={(e) => setBranding({ ...branding, payment_link: e.target.value })}
-              placeholder="https://venmo.com/your-handle or PayPal/Square link"
-            />
-            <p className="text-xs text-muted-foreground">
-              Shown to clients when they confirm a presentation request.
-            </p>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Stripe Connect</Label>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Connect your Stripe account to accept payments from clients.
+                </p>
+              </div>
+              {branding.stripe_onboarding_complete ? (
+                <Badge className="bg-green-600 text-white">Stripe Connected ✅</Badge>
+              ) : (
+                <Button
+                  size="sm"
+                  onClick={async () => {
+                    try {
+                      const { data, error } = await supabase.functions.invoke("stripe-connect-onboard", {
+                        body: { returnUrl: window.location.href },
+                      });
+                      if (error || !data?.url) throw new Error("Failed to start onboarding");
+                      window.location.href = data.url;
+                    } catch {
+                      toast.error("Failed to connect Stripe. Please try again.");
+                    }
+                  }}
+                >
+                  Connect with Stripe
+                </Button>
+              )}
+            </div>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="payment_instructions">Payment Instructions</Label>
-            <Textarea
-              id="payment_instructions"
-              value={branding.payment_instructions ?? ""}
-              onChange={(e) => setBranding({ ...branding, payment_instructions: e.target.value })}
-              placeholder="e.g. Please send payment via Venmo to @your-handle with your property address as the note."
-              rows={3}
-            />
-          </div>
+          {branding.stripe_onboarding_complete && (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="base_price">Base Price ($)</Label>
+                <Input
+                  id="base_price"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={branding.base_price_cents != null ? (branding.base_price_cents / 100).toString() : ""}
+                  onChange={(e) =>
+                    setBranding({
+                      ...branding,
+                      base_price_cents: e.target.value ? Math.round(parseFloat(e.target.value) * 100) : null,
+                    })
+                  }
+                  placeholder="200"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Flat fee for the starting package.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="model_threshold">Model Threshold</Label>
+                <Input
+                  id="model_threshold"
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={branding.model_threshold}
+                  onChange={(e) =>
+                    setBranding({
+                      ...branding,
+                      model_threshold: parseInt(e.target.value) || 1,
+                    })
+                  }
+                  placeholder="3"
+                />
+                <p className="text-xs text-muted-foreground">
+                  How many models are included in the base price.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="additional_fee">Additional Model Fee ($)</Label>
+                <Input
+                  id="additional_fee"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={branding.additional_model_fee_cents != null ? (branding.additional_model_fee_cents / 100).toString() : ""}
+                  onChange={(e) =>
+                    setBranding({
+                      ...branding,
+                      additional_model_fee_cents: e.target.value ? Math.round(parseFloat(e.target.value) * 100) : null,
+                    })
+                  }
+                  placeholder="50"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Price for each model beyond the threshold.
+                </p>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 

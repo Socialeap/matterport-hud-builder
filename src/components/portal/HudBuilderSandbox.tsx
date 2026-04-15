@@ -12,6 +12,9 @@ import type { Tables } from "@/integrations/supabase/types";
 import { supabase } from "@/integrations/supabase/client";
 import { savePresentationRequest } from "@/lib/portal.functions";
 import { toast } from "sonner";
+import { Checkbox } from "@/components/ui/checkbox";
+import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe-js";
+import { getStripe } from "@/lib/stripe";
 
 interface HudBuilderSandboxProps {
   branding: Tables<"branding_settings">;
@@ -86,7 +89,24 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
   const [submitting, setSubmitting] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
 
+  // Purchase state
+  const [reviewApproved, setReviewApproved] = useState(false);
+  const [showCheckout, setShowCheckout] = useState(false);
+  const [savedModelId, setSavedModelId] = useState<string | null>(null);
+  const [isReleased, setIsReleased] = useState(false);
+
   const isPro = branding.tier === "pro";
+  const hasPricing = branding.base_price_cents != null && branding.stripe_onboarding_complete;
+
+  // Calculate price
+  const modelCount = models.filter((m) => m.matterportId.trim()).length;
+  const basePriceCents = branding.base_price_cents ?? 0;
+  const threshold = branding.model_threshold ?? 1;
+  const additionalFeeCents = branding.additional_model_fee_cents ?? 0;
+  const totalCents = modelCount <= threshold
+    ? basePriceCents
+    : basePriceCents + ((modelCount - threshold) * additionalFeeCents);
+  const extraModels = Math.max(0, modelCount - threshold);
 
   const handleBrandingChange = useCallback((field: string, value: string) => {
     switch (field) {
@@ -211,30 +231,9 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
           <p className="mt-2 text-muted-foreground">
             Your presentation configuration has been saved. To proceed, complete payment using the link below.
           </p>
-          {branding.payment_link && (
-            <a
-              href={branding.payment_link}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-6 inline-flex items-center justify-center rounded-md px-6 py-3 text-sm font-medium text-white transition-colors hover:opacity-90"
-              style={{ backgroundColor: accentColor }}
-            >
-              Complete Payment
-            </a>
-          )}
-          {branding.payment_instructions && (
-            <div className="mt-4 rounded-lg border border-border bg-muted/50 p-4 text-left">
-              <p className="text-sm font-medium text-foreground">Payment Instructions</p>
-              <p className="mt-1 text-sm text-muted-foreground whitespace-pre-wrap">
-                {branding.payment_instructions}
-              </p>
-            </div>
-          )}
-          {!branding.payment_link && !branding.payment_instructions && (
-            <p className="mt-4 text-sm text-muted-foreground">
-              {brandName || "The provider"} will contact you with payment details.
+           <p className="mt-4 text-sm text-muted-foreground">
+              Your presentation has been submitted. You will be notified when it is ready for download.
             </p>
-          )}
           {!isPro && (
             <p className="mt-6 text-xs text-muted-foreground">Powered by Transcendence Media</p>
           )}
@@ -309,24 +308,156 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
               onChange={handleAgentChange}
             />
 
-            {/* CTA */}
-            <div className="rounded-lg border-2 p-6 text-center" style={{ borderColor: accentColor }}>
-              <h3 className="text-lg font-semibold text-foreground">
-                Satisfied with your preview?
-              </h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Request your professional presentation and receive it once payment is confirmed.
-              </p>
-              <Button
-                size="lg"
-                className="mt-4 text-white"
-                style={{ backgroundColor: accentColor }}
-                onClick={handleConfirmIntent}
-                disabled={submitting}
-              >
-                {submitting ? "Submitting…" : "I Want This — Request Presentation"}
-              </Button>
-            </div>
+            {/* Purchase / Download Card */}
+            {isReleased ? (
+              <div className="rounded-lg border-2 border-green-500 bg-green-500/5 p-6 text-center">
+                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-green-500/10">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-foreground">Payment Confirmed!</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Your presentation is ready for download.
+                </p>
+                <Button
+                  size="lg"
+                  className="mt-4 text-white"
+                  style={{ backgroundColor: accentColor }}
+                >
+                  Download Presentation File
+                </Button>
+              </div>
+            ) : showCheckout && savedModelId ? (
+              <div className="rounded-lg border p-6">
+                <h3 className="text-lg font-semibold text-foreground mb-4">Complete Payment</h3>
+                <EmbeddedCheckoutProvider
+                  stripe={getStripe()}
+                  options={{
+                    fetchClientSecret: async () => {
+                      const { data, error } = await supabase.functions.invoke("create-connect-checkout", {
+                        body: {
+                          providerId: branding.provider_id,
+                          modelId: savedModelId,
+                          modelCount,
+                          returnUrl: window.location.href,
+                        },
+                      });
+                      if (error || !data?.clientSecret) {
+                        throw new Error("Failed to create checkout session");
+                      }
+                      return data.clientSecret;
+                    },
+                  }}
+                >
+                  <EmbeddedCheckout />
+                </EmbeddedCheckoutProvider>
+              </div>
+            ) : hasPricing ? (
+              <div className="rounded-lg border-2 p-6" style={{ borderColor: accentColor }}>
+                <h3 className="text-lg font-semibold text-foreground">
+                  Purchase & Download Your Presentation
+                </h3>
+
+                {/* Price breakdown */}
+                <div className="mt-4 rounded-md bg-muted/50 p-4 text-left text-sm space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">
+                      Base Package ({threshold} model{threshold > 1 ? "s" : ""} included)
+                    </span>
+                    <span className="font-medium text-foreground">${(basePriceCents / 100).toFixed(2)}</span>
+                  </div>
+                  {extraModels > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">
+                        + {extraModels} extra model{extraModels > 1 ? "s" : ""} × ${(additionalFeeCents / 100).toFixed(2)}
+                      </span>
+                      <span className="font-medium text-foreground">
+                        ${((extraModels * additionalFeeCents) / 100).toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                  <div className="border-t border-border pt-2 mt-2 flex justify-between font-semibold">
+                    <span>Total</span>
+                    <span>${(totalCents / 100).toFixed(2)}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {modelCount} model{modelCount !== 1 ? "s" : ""} in this presentation
+                  </p>
+                </div>
+
+                {/* Review checkbox */}
+                <div className="mt-4 flex items-start gap-3">
+                  <Checkbox
+                    id="review-approved"
+                    checked={reviewApproved}
+                    onCheckedChange={(v) => setReviewApproved(v === true)}
+                  />
+                  <label htmlFor="review-approved" className="text-sm text-muted-foreground cursor-pointer leading-snug">
+                    I have reviewed and approve this as my finalized presentation.
+                  </label>
+                </div>
+
+                {/* Purchase button */}
+                {reviewApproved && (
+                  <Button
+                    size="lg"
+                    className="mt-4 w-full text-white"
+                    style={{ backgroundColor: accentColor }}
+                    disabled={submitting || modelCount < 1}
+                    onClick={async () => {
+                      if (!userId) {
+                        setSignupOpen(true);
+                        return;
+                      }
+                      setSubmitting(true);
+                      try {
+                        const result = await savePresentationRequest({
+                          data: {
+                            providerId: branding.provider_id,
+                            name: models[0]?.name || "Untitled Presentation",
+                            properties: models,
+                            tourConfig: behaviors as unknown as Record<string, unknown>,
+                            agent: agent as unknown as Record<string, string>,
+                            brandingOverrides: { brandName, accentColor, hudBgColor, gateLabel },
+                          },
+                        });
+                        if (result.success && result.modelId) {
+                          setSavedModelId(result.modelId);
+                          setShowCheckout(true);
+                        } else {
+                          toast.error(result.error || "Failed to save presentation");
+                        }
+                      } catch {
+                        toast.error("An error occurred. Please try again.");
+                      }
+                      setSubmitting(false);
+                    }}
+                  >
+                    {submitting ? "Preparing…" : `Purchase — $${(totalCents / 100).toFixed(2)}`}
+                  </Button>
+                )}
+              </div>
+            ) : (
+              /* Fallback: no pricing configured, use old flow */
+              <div className="rounded-lg border-2 p-6 text-center" style={{ borderColor: accentColor }}>
+                <h3 className="text-lg font-semibold text-foreground">
+                  Satisfied with your preview?
+                </h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Request your professional presentation and receive it once payment is confirmed.
+                </p>
+                <Button
+                  size="lg"
+                  className="mt-4 text-white"
+                  style={{ backgroundColor: accentColor }}
+                  onClick={handleConfirmIntent}
+                  disabled={submitting}
+                >
+                  {submitting ? "Submitting…" : "I Want This — Request Presentation"}
+                </Button>
+              </div>
+            )}
           </div>
 
           {/* Right: Live HUD Preview */}
