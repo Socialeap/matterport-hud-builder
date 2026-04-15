@@ -364,7 +364,7 @@ function Index() {
       </header>
 
       {/* ---- Hero ---- */}
-      <section className="relative z-10 px-4 pt-32 pb-16 sm:pt-40 sm:pb-24">
+      <section className="relative z-10 px-4 pt-20 pb-16 sm:pt-28 sm:pb-24">
         <div className="mx-auto max-w-4xl text-center">
           {/* Pill badge */}
           <div className="mb-6 inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-medium text-white/80 backdrop-blur-sm">
