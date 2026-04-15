@@ -187,7 +187,7 @@ export const generatePresentation = createServerFn({ method: "POST" })
     const tourConfig = (model.tour_config || {}) as unknown as TourConfigData;
     const behaviors = tourConfig.behaviors || {};
     const agent = tourConfig.agent || {};
-    const overrides = tourConfig.brandingOverrides || {};
+    const overrides = (tourConfig.brandingOverrides || {}) as Record<string, string>;
 
     const brandName = overrides.brandName || brandingData?.brand_name || "Property Tours";
     const accentColor = overrides.accentColor || brandingData?.accent_color || "#3B82F6";
