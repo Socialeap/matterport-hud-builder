@@ -31,7 +31,7 @@ export function DashboardSidebar() {
 
   // Filter nav items based on role; if no roles yet, show all (provider default)
   const navItems = isClient
-    ? allNavItems.filter((item) => item.roles.includes("client"))
+    ? allNavItems.filter((item) => (item.roles as readonly string[]).includes("client"))
     : allNavItems;
 
   return (
