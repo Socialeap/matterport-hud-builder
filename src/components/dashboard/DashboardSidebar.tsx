@@ -27,7 +27,7 @@ export function DashboardSidebar() {
   const { user, roles, signOut } = useAuth();
   const location = useLocation();
 
-  const isClient = roles.includes("client");
+  const isClient = roles.includes("client" as any);
 
   // Filter nav items based on role; if no roles yet, show all (provider default)
   const navItems = isClient
