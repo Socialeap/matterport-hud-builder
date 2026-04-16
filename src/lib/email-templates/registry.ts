@@ -10,7 +10,9 @@ export interface TemplateEntry {
 }
 
 import { template as invitation } from './invitation'
+import { template as leadCaptureAlert } from './lead-capture-alert'
 
 export const TEMPLATES: Record<string, TemplateEntry> = {
   'invitation': invitation,
+  'lead-capture-alert': leadCaptureAlert,
 }

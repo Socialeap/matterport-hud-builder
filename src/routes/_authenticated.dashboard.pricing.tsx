@@ -15,47 +15,40 @@ export const Route = createFileRoute("/_authenticated/dashboard/pricing")({
 const tiers = [
   {
     id: "starter",
-    name: "Starter",
-    price: "$149",
-    priceId: "starter_onetime",
-    description: "Get started with the platform at a lower price point.",
+    name: "Starter Studio",
+    setupPrice: "$149",
+    annualPrice: "$49",
+    priceId: "starter_annual",
+    description: "Get started with the platform and co-branded output.",
     features: [
       { text: 'Co-branded HUD output ("Powered by Transcendence Media")', included: true },
       { text: "Full builder access", included: true },
       { text: "Client invitation management", included: true },
       { text: "Music & tour behavior config", included: true },
+      { text: "AI-powered property Q&A", included: true },
       { text: "Custom domain", included: false },
       { text: "Full whitelabel (remove co-branding)", included: false },
+      { text: "Automated AI Lead Generation (Lead-Hook Bridge)", included: false },
     ],
   },
   {
     id: "pro",
-    name: "Pro",
-    price: "$299",
-    priceId: "pro_onetime",
+    name: "Pro Studio",
+    setupPrice: "$299",
+    annualPrice: "$49",
+    priceId: "pro_annual",
     popular: true,
-    description: "Full whitelabel with your own branding everywhere.",
+    description: "Full whitelabel with AI-powered lead capture built in.",
     features: [
       { text: "100% whitelabel — no co-branding", included: true },
       { text: "Full builder access", included: true },
       { text: "Client invitation management", included: true },
       { text: "Music & tour behavior config", included: true },
+      { text: "AI-powered property Q&A", included: true },
       { text: "Custom domain support", included: true },
+      { text: "Automated AI Lead Generation (Lead-Hook Bridge)", included: true },
       { text: "Priority support", included: true },
     ],
-  },
-  {
-    id: "upgrade",
-    name: "Pro Upgrade",
-    price: "$199",
-    priceId: "pro_upgrade_onetime",
-    description: "Already on Starter? Upgrade to Pro for the difference.",
-    features: [
-      { text: "Removes co-branding from all output", included: true },
-      { text: "Unlocks custom domain support", included: true },
-      { text: "Retroactive — applies to existing tours", included: true },
-    ],
-    upgradeOnly: true,
   },
 ];
 
@@ -73,15 +66,19 @@ function PricingPage() {
   };
 
   return (
-    <div className="mx-auto max-w-5xl space-y-8">
+    <div className="mx-auto max-w-4xl space-y-8">
       <PaymentTestModeBanner />
 
       <div className="text-center">
-        <h1 className="text-3xl font-bold tracking-tight text-foreground">Choose Your Plan</h1>
-        <p className="mt-2 text-muted-foreground">One-time payment. No recurring fees. Lifetime access.</p>
+        <h1 className="text-3xl font-bold tracking-tight text-foreground">
+          Purchase Your Studio
+        </h1>
+        <p className="mt-2 text-muted-foreground">
+          One-time setup fee + low annual operating license. Your studio setup is permanent.
+        </p>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-3">
+      <div className="grid gap-6 md:grid-cols-2">
         {tiers.map((tier) => (
           <Card
             key={tier.id}
@@ -92,17 +89,17 @@ function PricingPage() {
                 Most Popular
               </Badge>
             )}
-            {tier.upgradeOnly && (
-              <Badge variant="secondary" className="absolute -top-3 left-1/2 -translate-x-1/2">
-                Upgrade Path
-              </Badge>
-            )}
             <CardHeader className="text-center">
               <CardTitle className="text-xl">{tier.name}</CardTitle>
               <p className="text-sm text-muted-foreground">{tier.description}</p>
-              <div className="mt-4">
-                <span className="text-4xl font-bold text-foreground">{tier.price}</span>
-                <span className="text-sm text-muted-foreground"> one-time</span>
+              <div className="mt-4 space-y-1">
+                <div>
+                  <span className="text-4xl font-bold text-foreground">{tier.setupPrice}</span>
+                  <span className="text-sm text-muted-foreground"> setup</span>
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  + <span className="font-semibold text-foreground">{tier.annualPrice}</span>/year operating license
+                </div>
               </div>
             </CardHeader>
             <CardContent className="flex flex-1 flex-col justify-between gap-6">
@@ -125,11 +122,17 @@ function PricingPage() {
                 variant={tier.popular ? "default" : "outline"}
                 onClick={() => handlePurchase(tier.priceId)}
               >
-                {tier.upgradeOnly ? "Upgrade Now" : `Get ${tier.name}`}
+                Get {tier.name}
               </Button>
             </CardContent>
           </Card>
         ))}
+      </div>
+
+      <div className="text-center text-xs text-muted-foreground">
+        Your AI engine and Lead-Hook bridge require an active annual operating license to function.
+        <br />
+        Your studio setup (builder, branding, saved presentations) is permanent and never expires.
       </div>
 
       <Dialog open={isOpen} onOpenChange={(open) => !open && closeCheckout()}>
