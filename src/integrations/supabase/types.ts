@@ -218,6 +218,42 @@ export type Database = {
         }
         Relationships: []
       }
+      licenses: {
+        Row: {
+          created_at: string
+          id: string
+          license_expiry: string | null
+          license_status: Database["public"]["Enums"]["license_status"]
+          stripe_subscription_id: string | null
+          studio_id: string
+          tier: Database["public"]["Enums"]["app_tier"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          license_expiry?: string | null
+          license_status?: Database["public"]["Enums"]["license_status"]
+          stripe_subscription_id?: string | null
+          studio_id?: string
+          tier?: Database["public"]["Enums"]["app_tier"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          license_expiry?: string | null
+          license_status?: Database["public"]["Enums"]["license_status"]
+          stripe_subscription_id?: string | null
+          studio_id?: string
+          tier?: Database["public"]["Enums"]["app_tier"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       order_notifications: {
         Row: {
           client_id: string
@@ -431,6 +467,15 @@ export type Database = {
         Args: { payload: Json; queue_name: string }
         Returns: number
       }
+      get_license_info: {
+        Args: { user_uuid: string }
+        Returns: {
+          license_expiry: string
+          license_status: Database["public"]["Enums"]["license_status"]
+          studio_id: string
+          tier: Database["public"]["Enums"]["app_tier"]
+        }[]
+      }
       get_user_tier: {
         Args: { check_env?: string; user_uuid: string }
         Returns: string
@@ -464,6 +509,7 @@ export type Database = {
       app_role: "admin" | "provider" | "client"
       app_tier: "starter" | "pro"
       invitation_status: "pending" | "accepted" | "expired"
+      license_status: "active" | "past_due" | "expired"
       model_status: "preview" | "pending_payment" | "paid"
     }
     CompositeTypes: {
@@ -595,6 +641,7 @@ export const Constants = {
       app_role: ["admin", "provider", "client"],
       app_tier: ["starter", "pro"],
       invitation_status: ["pending", "accepted", "expired"],
+      license_status: ["active", "past_due", "expired"],
       model_status: ["preview", "pending_payment", "paid"],
     },
   },
