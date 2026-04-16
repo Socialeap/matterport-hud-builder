@@ -74,7 +74,7 @@ function PricingPage() {
           Purchase Your Studio
         </h1>
         <p className="mt-2 text-muted-foreground">
-          One-time setup fee + low annual operating license. Your studio setup is permanent.
+          One-time setup fee + low annual upkeep license. Your studio setup is permanent.
         </p>
       </div>
 
@@ -98,7 +98,7 @@ function PricingPage() {
                   <span className="text-sm text-muted-foreground"> setup</span>
                 </div>
                 <div className="text-sm text-muted-foreground">
-                  + <span className="font-semibold text-foreground">{tier.annualPrice}</span>/year operating license
+                  + <span className="font-semibold text-foreground">{tier.annualPrice}</span>/year upkeep license
                 </div>
               </div>
             </CardHeader>
