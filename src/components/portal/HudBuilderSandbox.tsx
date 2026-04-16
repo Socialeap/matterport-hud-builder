@@ -373,6 +373,17 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
               onChange={handleAgentChange}
             />
 
+            {/* License Expired Banner */}
+            {licenseExpired && (
+              <div className="rounded-lg border-2 border-destructive/50 bg-destructive/5 p-6 text-center">
+                <h3 className="text-lg font-semibold text-foreground">Operating License Renewal Required</h3>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Your Studio setup is permanent, but your AI engine and Lead-Hook bridge require an active license.
+                  Please renew your annual operating license to continue generating presentations.
+                </p>
+              </div>
+            )}
+
             {/* Purchase / Download Card */}
             {isPolling ? (
               <div className="rounded-lg border-2 border-primary/50 bg-primary/5 p-6 text-center">
