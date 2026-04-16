@@ -25,10 +25,10 @@ const tiers = [
       { text: "Full builder access", included: true },
       { text: "Client invitation management", included: true },
       { text: "Music & tour behavior config", included: true },
-      { text: "AI-powered property Q&A", included: true },
+      { text: "AI-powered property Q&A*", included: true },
       { text: "Custom domain", included: false },
       { text: "Full whitelabel (remove co-branding)", included: false },
-      { text: "Automated AI Lead Generation (Lead-Hook Bridge)", included: false },
+      { text: "AI Lead Generation for Clients*", included: false },
     ],
   },
   {
@@ -44,9 +44,9 @@ const tiers = [
       { text: "Full builder access", included: true },
       { text: "Client invitation management", included: true },
       { text: "Music & tour behavior config", included: true },
-      { text: "AI-powered property Q&A", included: true },
+      { text: "AI-powered property Q&A*", included: true },
       { text: "Custom domain support", included: true },
-      { text: "Automated AI Lead Generation (Lead-Hook Bridge)", included: true },
+      { text: "AI Lead Generation for Clients*", included: true },
       { text: "Priority support", included: true },
     ],
   },
@@ -130,7 +130,7 @@ function PricingPage() {
       </div>
 
       <div className="text-center text-xs text-muted-foreground">
-        Your AI engine and Lead-Hook bridge require an active annual operating license to function.
+        *All AI supported features require an active annual upkeep license to function.
         <br />
         Your studio setup (builder, branding, saved presentations) is permanent and never expires.
       </div>
