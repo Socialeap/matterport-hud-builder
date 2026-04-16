@@ -91,7 +91,7 @@ function PricingPage() {
           Purchase Your Studio
         </h1>
         <p className="mt-2 text-muted-foreground">
-          One-time setup fee · first year included free, then $49/year upkeep license. Your studio setup is permanent.
+          One-time setup fee · then $49/year upkeep license (first year free).
         </p>
       </div>
 
@@ -115,7 +115,9 @@ function PricingPage() {
                   <span className="text-sm text-muted-foreground"> setup</span>
                 </div>
                 <div className="text-sm text-muted-foreground">
-                  First year free · then <span className="font-semibold text-foreground">{tier.annualPrice}</span>/year upkeep license
+                  <span className="font-semibold text-foreground">{tier.annualPrice}</span>/year upkeep license
+                  <br />
+                  First year <span className="font-bold text-primary">FREE!</span>
                 </div>
               </div>
             </CardHeader>
