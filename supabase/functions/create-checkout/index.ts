@@ -2,10 +2,10 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { type StripeEnv, createStripeClient } from "../_shared/stripe.ts";
 
-// Setup fees in cents
+// Setup fees in cents (Studio Setup & Franchise Fee)
 const SETUP_FEES: Record<string, number> = {
-  starter_annual: 14900, // $149
-  pro_annual: 29900,     // $299
+  starter_annual: 10000, // $100
+  pro_annual: 25000,     // $250
 };
 
 serve(async (req) => {
@@ -65,23 +65,19 @@ serve(async (req) => {
       ...(customerEmail && { customer_email: customerEmail }),
     };
 
-    // For subscriptions, attach metadata and setup fee via invoice
+    // For subscriptions, attach metadata, 1-year free trial, and setup fee
     if (isRecurring) {
+      const tierLabel = priceId === 'pro_annual' ? 'Pro' : 'Starter';
       sessionParams.subscription_data = {
-        metadata: { userId: userId || "", priceId, tier: priceId === 'pro_annual' ? 'pro' : 'starter' },
+        metadata: { userId: userId || "", priceId, tier: tierLabel.toLowerCase() },
+        trial_period_days: 365, // First year free — $49/yr upkeep starts Year 2
       };
-      // Add setup fee as an invoice item via subscription_data
+      // Add one-time setup fee as a line item alongside the subscription
       if (setupFeeCents > 0) {
-        sessionParams.subscription_data.invoice_settings = {
-          issuer: { type: 'self' },
-        };
-        // Use invoice_creation for adding one-time setup fee line
-        sessionParams.invoice_creation = undefined; // not available in sub mode
-        // Instead, use a one-time price_data line item alongside the subscription
         lineItems.push({
           price_data: {
             currency: stripePrice.currency || 'usd',
-            product_data: { name: `${priceId === 'pro_annual' ? 'Pro' : 'Starter'} Studio Setup Fee` },
+            product_data: { name: `${tierLabel} Studio Setup & Franchise Fee` },
             unit_amount: setupFeeCents,
           },
           quantity: 1,

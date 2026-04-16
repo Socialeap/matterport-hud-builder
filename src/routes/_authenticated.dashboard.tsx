@@ -10,32 +10,52 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 });
 
 function DashboardLayout() {
-  const { user } = useAuth();
+  const { user, roles } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [tierChecked, setTierChecked] = useState(false);
   const [hasTier, setHasTier] = useState(false);
 
   const isPricingPage = location.pathname === "/dashboard/pricing";
+  const isClient = roles.includes("client");
 
   useEffect(() => {
     if (!user) return;
-    supabase
-      .from("purchases")
-      .select("id")
-      .eq("user_id", user.id)
-      .eq("environment", "sandbox")
-      .eq("status", "completed")
-      .limit(1)
-      .then(({ data }) => {
-        const purchased = (data?.length ?? 0) > 0;
-        setHasTier(purchased);
-        setTierChecked(true);
-        if (!purchased && !isPricingPage) {
-          navigate({ to: "/dashboard/pricing" });
-        }
-      });
-  }, [user, isPricingPage, navigate]);
+
+    // Clients skip the purchase gate — their provider owns the license
+    if (isClient) {
+      setHasTier(true);
+      setTierChecked(true);
+      return;
+    }
+
+    // Check for license OR legacy purchase
+    const checkAccess = async () => {
+      const [licenseRes, purchaseRes] = await Promise.all([
+        supabase
+          .from("licenses")
+          .select("id")
+          .eq("user_id", user.id)
+          .limit(1),
+        supabase
+          .from("purchases")
+          .select("id")
+          .eq("user_id", user.id)
+          .eq("environment", "sandbox")
+          .eq("status", "completed")
+          .limit(1),
+      ]);
+      const hasAccess =
+        (licenseRes.data?.length ?? 0) > 0 ||
+        (purchaseRes.data?.length ?? 0) > 0;
+      setHasTier(hasAccess);
+      setTierChecked(true);
+      if (!hasAccess && !isPricingPage) {
+        navigate({ to: "/dashboard/pricing" });
+      }
+    };
+    checkAccess();
+  }, [user, isPricingPage, navigate, isClient]);
 
   if (!tierChecked) {
     return (

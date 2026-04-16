@@ -3,12 +3,12 @@
 ## Core
 Matterport HUD Builder — multi-tenant SaaS for MSPs. TanStack Start + Lovable Cloud.
 Two products: Platform (builder UI) + End Product (standalone .html file).
-Tiers: Starter ($149 setup + $49/yr) and Pro ($299 setup + $49/yr) — annual subscriptions via Stripe.
-Auth: Google OAuth + email sign-in. Invite-only for clients.
+Tiers: Starter ($100 setup + $49/yr) and Pro ($250 setup + $49/yr) — subscriptions with 365-day free trial.
+Auth: Google OAuth + email sign-in. Invite-only for clients (invite token consumed on signup).
 Generated .html must be fully self-contained — no "phone home" to backend.
 Never store roles on profiles table. Use separate user_roles table.
-Licenses tracked in dedicated `licenses` table with studio_id for Lead-Hook Bridge.
-Pro-only: Lead-Hook Bridge (AI lead capture via handle-lead-capture edge function).
+Clients see limited sidebar (Overview, Orders). Providers see all nav items.
+Export lock checks provider's license for client users via client_providers lookup.
 
 ## Memories
 - [Tier logic](mem://features/tier-logic) — Starter vs Pro restrictions, branding enforcement, upgrade path
