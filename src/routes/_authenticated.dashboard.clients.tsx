@@ -53,21 +53,41 @@ function ClientsPage() {
     if (!user || !email.trim()) return;
     setSending(true);
 
-    const { error } = await supabase.from("invitations").insert({
+    const trimmedEmail = email.trim().toLowerCase();
+    const { data: inserted, error } = await supabase.from("invitations").insert({
       provider_id: user.id,
-      email: email.trim().toLowerCase(),
-    });
+      email: trimmedEmail,
+    }).select("id, token").single();
 
-    setSending(false);
     if (error) {
+      setSending(false);
       toast.error(error.message.includes("duplicate")
         ? "This email has already been invited"
         : "Failed to send invitation");
-    } else {
-      toast.success(`Invitation sent to ${email}`);
-      setEmail("");
-      fetchInvitations();
+      return;
     }
+
+    // Send the invitation email
+    try {
+      const signupUrl = `${window.location.origin}/signup?token=${inserted.token}`;
+      await sendTransactionalEmail({
+        templateName: "invitation",
+        recipientEmail: trimmedEmail,
+        idempotencyKey: `invitation-${inserted.id}`,
+        templateData: {
+          providerName: user.user_metadata?.full_name || user.email,
+          signupUrl,
+        },
+      });
+    } catch (emailError) {
+      console.error("Failed to send invitation email:", emailError);
+      // Invitation was recorded, just the email failed
+    }
+
+    setSending(false);
+    toast.success(`Invitation sent to ${email}`);
+    setEmail("");
+    fetchInvitations();
   };
 
   const statusIcon = (status: string) => {
