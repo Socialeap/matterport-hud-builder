@@ -38,6 +38,10 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
   const [userId, setUserId] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
 
+  // License guard state
+  const [licenseExpired, setLicenseExpired] = useState(false);
+  const [licenseChecked, setLicenseChecked] = useState(false);
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUserId(session?.user?.id ?? null);
@@ -48,6 +52,25 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  // Check license status
+  useEffect(() => {
+    if (!userId) return;
+    supabase
+      .from("licenses")
+      .select("license_status, license_expiry")
+      .eq("user_id", userId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          const isExpired =
+            data.license_status === "expired" ||
+            (data.license_expiry && new Date(data.license_expiry) < new Date());
+          setLicenseExpired(!!isExpired);
+        }
+        setLicenseChecked(true);
+      });
+  }, [userId]);
 
   // Branding state (pre-filled from MSP settings)
   const [brandName, setBrandName] = useState(branding.brand_name);
