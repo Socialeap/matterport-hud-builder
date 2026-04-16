@@ -408,7 +408,7 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
                   size="lg"
                   className="mt-4 text-white"
                   style={{ backgroundColor: accentColor }}
-                  disabled={downloading || !savedModelId}
+                  disabled={downloading || !savedModelId || licenseExpired}
                   onClick={async () => {
                     if (!savedModelId) return;
                     setDownloading(true);
