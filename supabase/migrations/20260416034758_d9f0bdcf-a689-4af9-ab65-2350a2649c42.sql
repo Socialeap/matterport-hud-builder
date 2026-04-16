@@ -1,0 +1,1 @@
+ALTER TABLE public.licenses ADD CONSTRAINT licenses_user_id_unique UNIQUE (user_id);

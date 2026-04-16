@@ -29,11 +29,29 @@ serve(async (req) => {
           await handleCheckoutCompleted(event.data.object, env);
         }
         break;
+
+      case "customer.subscription.created":
+        await handleSubscriptionCreated(event.data.object, env);
+        break;
+
+      case "customer.subscription.updated":
+        await handleSubscriptionUpdated(event.data.object, env);
+        break;
+
+      case "customer.subscription.deleted":
+        await handleSubscriptionDeleted(event.data.object, env);
+        break;
+
+      case "invoice.payment_succeeded":
+        await handleInvoicePaymentSucceeded(event.data.object, env);
+        break;
+
       case "account.updated":
         if (connectedAccountId) {
           await handleAccountUpdated(event.data.object, connectedAccountId);
         }
         break;
+
       default:
         console.log("Unhandled event:", event.type);
     }
@@ -48,6 +66,7 @@ serve(async (req) => {
   }
 });
 
+// ── Connect checkout (client paying provider) ──────────────────────
 async function handleConnectCheckoutCompleted(session: any, connectedAccountId: string) {
   console.log("Connect checkout completed:", session.id, "account:", connectedAccountId);
 
@@ -60,14 +79,9 @@ async function handleConnectCheckoutCompleted(session: any, connectedAccountId: 
     return;
   }
 
-  // Update saved_models: mark as paid and released
   const { error: modelError } = await supabase
     .from("saved_models")
-    .update({
-      status: "paid",
-      is_released: true,
-      amount_cents: session.amount_total || 0,
-    })
+    .update({ status: "paid", is_released: true, amount_cents: session.amount_total || 0 })
     .eq("id", modelId);
 
   if (modelError) {
@@ -75,7 +89,6 @@ async function handleConnectCheckoutCompleted(session: any, connectedAccountId: 
     return;
   }
 
-  // Update order notification
   if (providerId) {
     await supabase
       .from("order_notifications")
@@ -84,19 +97,16 @@ async function handleConnectCheckoutCompleted(session: any, connectedAccountId: 
       .eq("provider_id", providerId);
   }
 
-  // Belt-and-suspenders: assign client role if not already present
   if (clientId) {
     await supabase
       .from("user_roles")
-      .upsert(
-        { user_id: clientId, role: "client" },
-        { onConflict: "user_id,role" }
-      );
+      .upsert({ user_id: clientId, role: "client" }, { onConflict: "user_id,role" });
   }
 
   console.log(`Connect payment: model=${modelId}, provider=${providerId}, client=${clientId}, amount=${session.amount_total}`);
 }
 
+// ── Account updated (Connect onboarding) ───────────────────────────
 async function handleAccountUpdated(account: any, connectedAccountId: string) {
   if (account.charges_enabled && account.details_submitted) {
     const { error } = await supabase
@@ -112,9 +122,14 @@ async function handleAccountUpdated(account: any, connectedAccountId: string) {
   }
 }
 
+// ── Platform checkout (one-time legacy fallback) ───────────────────
 async function handleCheckoutCompleted(session: any, env: StripeEnv) {
   console.log("Checkout completed:", session.id, "mode:", session.mode);
-
+  // For subscriptions the subscription.created event handles license creation
+  if (session.mode === "subscription") {
+    console.log("Subscription checkout — license handled by subscription.created event");
+    return;
+  }
   if (session.mode !== "payment") return;
 
   const userId = session.metadata?.userId;
@@ -132,7 +147,7 @@ async function handleCheckoutCompleted(session: any, env: StripeEnv) {
   }
 
   const priceId = item.price?.metadata?.lovable_external_id || item.price?.lookup_key || item.price?.id;
-  
+
   let resolvedProductId = 'unknown';
   if (priceId === 'starter_onetime') resolvedProductId = 'starter_tier';
   else if (priceId === 'pro_onetime') resolvedProductId = 'pro_tier';
@@ -158,28 +173,146 @@ async function handleCheckoutCompleted(session: any, env: StripeEnv) {
     return;
   }
 
-  // Update the provider's branding_settings tier
   const newTier = resolvedProductId === 'starter_tier' ? 'starter' : 'pro';
-  
+
   if (newTier === 'pro') {
-    await supabase
-      .from("branding_settings")
-      .update({ tier: 'pro' })
-      .eq("provider_id", userId);
+    await supabase.from("branding_settings").update({ tier: 'pro' }).eq("provider_id", userId);
   } else {
     const { data: existing } = await supabase
       .from("branding_settings")
       .select("tier")
       .eq("provider_id", userId)
       .single();
-    
+
     if (!existing) {
-      await supabase.from("branding_settings").insert({
-        provider_id: userId,
-        tier: 'starter',
-      });
+      await supabase.from("branding_settings").insert({ provider_id: userId, tier: 'starter' });
     }
   }
 
   console.log(`Purchase recorded: user=${userId}, tier=${newTier}, product=${resolvedProductId}`);
+}
+
+// ── Subscription created → insert license ──────────────────────────
+async function handleSubscriptionCreated(subscription: any, env: StripeEnv) {
+  const userId = subscription.metadata?.userId;
+  const tier = subscription.metadata?.tier || 'starter';
+
+  if (!userId) {
+    console.error("No userId in subscription metadata");
+    return;
+  }
+
+  const periodEnd = subscription.current_period_end;
+  const licenseExpiry = periodEnd ? new Date(periodEnd * 1000).toISOString() : null;
+
+  // Upsert license
+  const { error: licError } = await supabase.from("licenses").upsert(
+    {
+      user_id: userId,
+      tier: tier as 'starter' | 'pro',
+      license_status: 'active',
+      license_expiry: licenseExpiry,
+      stripe_subscription_id: subscription.id,
+    },
+    { onConflict: "user_id" }
+  );
+
+  if (licError) {
+    console.error("Failed to create license:", licError);
+  }
+
+  // Ensure branding_settings row exists with correct tier
+  const { data: existing } = await supabase
+    .from("branding_settings")
+    .select("id")
+    .eq("provider_id", userId)
+    .single();
+
+  if (existing) {
+    await supabase.from("branding_settings").update({ tier }).eq("provider_id", userId);
+  } else {
+    await supabase.from("branding_settings").insert({ provider_id: userId, tier });
+  }
+
+  // Assign provider role
+  await supabase
+    .from("user_roles")
+    .upsert({ user_id: userId, role: "provider" }, { onConflict: "user_id,role" });
+
+  console.log(`License created: user=${userId}, tier=${tier}, expiry=${licenseExpiry}, sub=${subscription.id}`);
+}
+
+// ── Subscription updated → sync status ─────────────────────────────
+async function handleSubscriptionUpdated(subscription: any, env: StripeEnv) {
+  const statusMap: Record<string, string> = {
+    active: 'active',
+    trialing: 'active',
+    past_due: 'past_due',
+    canceled: 'expired',
+    unpaid: 'expired',
+    incomplete: 'past_due',
+    incomplete_expired: 'expired',
+    paused: 'past_due',
+  };
+
+  const licenseStatus = statusMap[subscription.status] || 'expired';
+  const periodEnd = subscription.current_period_end;
+  const licenseExpiry = periodEnd ? new Date(periodEnd * 1000).toISOString() : null;
+
+  const { error } = await supabase
+    .from("licenses")
+    .update({
+      license_status: licenseStatus as 'active' | 'past_due' | 'expired',
+      license_expiry: licenseExpiry,
+    })
+    .eq("stripe_subscription_id", subscription.id);
+
+  if (error) {
+    console.error("Failed to update license:", error);
+  } else {
+    console.log(`License updated: sub=${subscription.id}, status=${licenseStatus}`);
+  }
+}
+
+// ── Subscription deleted → expire license ──────────────────────────
+async function handleSubscriptionDeleted(subscription: any, env: StripeEnv) {
+  const { error } = await supabase
+    .from("licenses")
+    .update({ license_status: 'expired' })
+    .eq("stripe_subscription_id", subscription.id);
+
+  if (error) {
+    console.error("Failed to expire license:", error);
+  } else {
+    console.log(`License expired: sub=${subscription.id}`);
+  }
+}
+
+// ── Invoice payment succeeded → extend expiry ──────────────────────
+async function handleInvoicePaymentSucceeded(invoice: any, env: StripeEnv) {
+  const subscriptionId = invoice.subscription;
+  if (!subscriptionId) {
+    console.log("Invoice without subscription, skipping license extension");
+    return;
+  }
+
+  // Fetch the subscription to get current_period_end
+  const stripe = createStripeClient(env);
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  const periodEnd = subscription.current_period_end;
+  const licenseExpiry = periodEnd ? new Date(periodEnd * 1000).toISOString() : null;
+
+  const { error } = await supabase
+    .from("licenses")
+    .update({
+      license_status: 'active',
+      license_expiry: licenseExpiry,
+    })
+    .eq("stripe_subscription_id", subscriptionId);
+
+  if (error) {
+    console.error("Failed to extend license:", error);
+  } else {
+    console.log(`License extended: sub=${subscriptionId}, new_expiry=${licenseExpiry}`);
+  }
 }

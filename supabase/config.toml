@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.create-connect-checkout]
 verify_jwt = false
+
+[functions.handle-lead-capture]
+verify_jwt = false

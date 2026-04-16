@@ -38,6 +38,10 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
   const [userId, setUserId] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
 
+  // License guard state
+  const [licenseExpired, setLicenseExpired] = useState(false);
+  const [licenseChecked, setLicenseChecked] = useState(false);
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUserId(session?.user?.id ?? null);
@@ -48,6 +52,25 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  // Check license status
+  useEffect(() => {
+    if (!userId) return;
+    supabase
+      .from("licenses")
+      .select("license_status, license_expiry")
+      .eq("user_id", userId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          const isExpired =
+            data.license_status === "expired" ||
+            (data.license_expiry && new Date(data.license_expiry) < new Date());
+          setLicenseExpired(!!isExpired);
+        }
+        setLicenseChecked(true);
+      });
+  }, [userId]);
 
   // Branding state (pre-filled from MSP settings)
   const [brandName, setBrandName] = useState(branding.brand_name);
@@ -350,6 +373,17 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
               onChange={handleAgentChange}
             />
 
+            {/* License Expired Banner */}
+            {licenseExpired && (
+              <div className="rounded-lg border-2 border-destructive/50 bg-destructive/5 p-6 text-center">
+                <h3 className="text-lg font-semibold text-foreground">Operating License Renewal Required</h3>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Your Studio setup is permanent, but your AI engine and Lead-Hook bridge require an active license.
+                  Please renew your annual operating license to continue generating presentations.
+                </p>
+              </div>
+            )}
+
             {/* Purchase / Download Card */}
             {isPolling ? (
               <div className="rounded-lg border-2 border-primary/50 bg-primary/5 p-6 text-center">
@@ -374,7 +408,7 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
                   size="lg"
                   className="mt-4 text-white"
                   style={{ backgroundColor: accentColor }}
-                  disabled={downloading || !savedModelId}
+                  disabled={downloading || !savedModelId || licenseExpired}
                   onClick={async () => {
                     if (!savedModelId) return;
                     setDownloading(true);
