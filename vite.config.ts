@@ -20,7 +20,6 @@ export default defineConfig({
         "entities/lib/decode.js": path.resolve(__dirname, "node_modules/entities/lib/decode.js"),
         "entities/lib/encode.js": path.resolve(__dirname, "node_modules/entities/lib/encode.js"),
         "entities": path.resolve(__dirname, "node_modules/entities"),
-        "htmlparser2": path.resolve(__dirname, "node_modules/htmlparser2/lib/esm/index.js"),
       },
     },
   },
