@@ -4,11 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const Route = createFileRoute("/unsubscribe")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    token: (search.token as string) || undefined,
+  }),
   component: UnsubscribePage,
 });
 
 function UnsubscribePage() {
-  const { token } = Route.useSearch<{ token?: string }>();
+  const { token } = Route.useSearch();
   const [status, setStatus] = useState<"loading" | "valid" | "already" | "invalid" | "done" | "error">("loading");
   const [processing, setProcessing] = useState(false);
 
