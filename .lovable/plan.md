@@ -1,29 +1,38 @@
 
 
-# Fix Stripe Pricing Logic
+## Add "Sales Machine that Self-Serves your Clients" Section
 
-## Problem
-The Stripe checkout shows $100 (Starter) and $250 (Pro) due today, which doesn't match the marketed prices of $149 and $299. The screenshot confirms "$100.00" is displayed instead of "$149.00".
+A new client-value section will be inserted on the landing page between the existing **Features grid** ("A Branded Studio for Clients to Build Their Own Presentations") and the **Pricing** section. This positions it as the natural "what your clients get" follow-up to "what you get as the MSP."
 
-## Root Cause
-`SETUP_FEES` in `create-checkout/index.ts` are set to `10000` ($100) and `25000` ($250) — these were the old "setup fee only" amounts. They need to be the full advertised price since the subscription trial covers the first year free.
+### Placement
+`src/routes/index.tsx` — new `<section>` inserted at line ~518 (after the existing Features grid closes, before `#pricing`).
 
-## Changes
+### Structure
 
-**File: `supabase/functions/create-checkout/index.ts`**
+**Section header**
+- Eyebrow chip: "For Your Clients" (subtle pill matching site style)
+- Headline (h2): "A Sales Machine that Self-Serves Your Clients"
+- Punchy intro (1–2 lines): something like "Stop being the bottleneck. Hand your clients a closing tool — not a service ticket. Every presentation works, sells, and follows up on autopilot."
 
-1. Update `SETUP_FEES` constants:
-   - `starter_annual`: `10000` → `14900` ($149.00)
-   - `pro_annual`: `25000` → `29900` ($299.00)
+**3×2 card grid** (`sm:grid-cols-2 lg:grid-cols-3`) — same Card + icon + title + description pattern already used in the Problem and Features sections for visual consistency:
 
-That's the only change needed. The rest of the logic is already correct:
-- `trial_period_days: 365` is already set (line 73)
-- The setup fee is already added as a one-time `price_data` line item with the label "Studio Setup & Franchise Fee" (lines 76-84)
-- The recurring $49/year subscription line item is included but won't charge until the trial ends
+| Icon | Title | Copy |
+|---|---|---|
+| `Layers` | The Portfolio HUD | One branded interface for everything. Bundle multiple property models into a single presentation with seamless dropdown navigation. |
+| `Bot` | The AI Concierge | A 24/7 virtual expert trained on your client's property data — answering buyer questions and capturing high-intent leads automatically. |
+| `MailCheck` | Instant Lead Alerts | No dashboards to babysit. High-intent leads land directly in your client's inbox the moment a viewer raises their hand. |
+| `Download` | Digital Sovereignty | Forever Assets. Clients download a self-contained presentation file and host it anywhere — Netlify, their own site, or any platform they choose. |
+| `Boxes` | Scale-Based Pricing | Charge per property model bundled into a presentation. Bigger portfolios = bigger tickets, automatically. |
+| `CreditCard` | White-Label Delivery | Stripe checkout, payouts, and order tracking — fully branded as your studio. Sales close while you sleep. |
 
-## Expected Result
-- Starter checkout: **$149.00 due today**, then $49/year starting after 365 days
-- Pro checkout: **$299.00 due today**, then $49/year starting after 365 days
+### Implementation Details
 
-After the code change, the edge function will be redeployed automatically.
+1. Add a new data array `clientFeatures` near the existing `features` array (around line 127).
+2. Add the new lucide-react icons to the existing import block (line 8): `Bot`, `MailCheck`, `Download`, `Boxes`, `CreditCard`.
+3. Insert the new `<section>` JSX with the same styling tokens (`sectionTint`, `cardBg`, white text classes, amber-300 icon color) so it visually integrates with adjacent sections.
+4. Keep copy bold, scannable, and non-technical — no jargon, short sentences.
+
+### Out of Scope
+- No DNS / email / Stripe changes (paused as requested).
+- No new routes — purely a content addition to the existing landing page.
 
