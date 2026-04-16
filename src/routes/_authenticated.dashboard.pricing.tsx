@@ -19,7 +19,7 @@ const tiers = [
     setupPrice: "$149",
     annualPrice: "$49",
     priceId: "starter_annual",
-    description: "Get started with the platform and co-branded output.",
+    description: "Get started with  co-branded studio.",
     features: [
       { text: 'Co-branded HUD output ("Powered by Transcendence Media")', included: true },
       { text: "Full builder access", included: true },
@@ -38,7 +38,7 @@ const tiers = [
     annualPrice: "$49",
     priceId: "pro_annual",
     popular: true,
-    description: "Full whitelabel with AI-powered lead capture built in.",
+    description: "Full whitelabel studio and more.",
     features: [
       { text: "100% whitelabel — no co-branding", included: true },
       { text: "Full builder access", included: true },
