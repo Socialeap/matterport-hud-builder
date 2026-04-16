@@ -19,17 +19,20 @@ const tiers = [
     setupPrice: "$149",
     annualPrice: "$49",
     priceId: "starter_annual",
-    description: "Get started with  co-branded studio.",
+    description: "Get started with co-branded studio.",
     features: [
       { text: 'Co-branded HUD output ("Powered by Transcendence Media")', included: true },
       { text: "Full builder access", included: true },
       { text: "Client invitation management", included: true },
       { text: "Music & tour behavior config", included: true },
       { text: "AI-powered property Q&A*", included: true },
+      { text: "Easy Stripe-Connect payout options", included: true },
+      { text: "Per-pricing for multiple property tours", included: true },
       { text: "Custom domain", included: false },
       { text: "Full whitelabel (remove co-branding)", included: false },
       { text: "AI Lead Generation for Clients*", included: false },
     ],
+    note: "Upgrade to Pro Studio later for just $199 — not the full $299.",
   },
   {
     id: "pro",
@@ -45,12 +48,26 @@ const tiers = [
       { text: "Client invitation management", included: true },
       { text: "Music & tour behavior config", included: true },
       { text: "AI-powered property Q&A*", included: true },
+      { text: "Easy Stripe-Connect payout options", included: true },
+      { text: "Per-pricing for multiple property tours", included: true },
       { text: "Custom domain support", included: true },
       { text: "AI Lead Generation for Clients*", included: true },
       { text: "Priority support", included: true },
     ],
   },
-];
+] as const;
+
+type Tier = {
+  id: string;
+  name: string;
+  setupPrice: string;
+  annualPrice: string;
+  priceId: string;
+  description: string;
+  features: readonly { text: string; included: boolean }[];
+  popular?: boolean;
+  note?: string;
+};
 
 function PricingPage() {
   const { user } = useAuth();
@@ -74,12 +91,12 @@ function PricingPage() {
           Purchase Your Studio
         </h1>
         <p className="mt-2 text-muted-foreground">
-          One-time setup fee + low annual upkeep license. Your studio setup is permanent.
+          One-time setup fee · first year included free, then $49/year upkeep license. Your studio setup is permanent.
         </p>
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
-        {tiers.map((tier) => (
+        {(tiers as unknown as Tier[]).map((tier) => (
           <Card
             key={tier.id}
             className={`relative flex flex-col ${tier.popular ? "border-primary shadow-lg" : ""}`}
@@ -98,7 +115,7 @@ function PricingPage() {
                   <span className="text-sm text-muted-foreground"> setup</span>
                 </div>
                 <div className="text-sm text-muted-foreground">
-                  + <span className="font-semibold text-foreground">{tier.annualPrice}</span>/year upkeep license
+                  First year free · then <span className="font-semibold text-foreground">{tier.annualPrice}</span>/year upkeep license
                 </div>
               </div>
             </CardHeader>
@@ -117,6 +134,9 @@ function PricingPage() {
                   </li>
                 ))}
               </ul>
+              {tier.note && (
+                <p className="text-xs text-muted-foreground italic">{tier.note}</p>
+              )}
               <Button
                 className="w-full"
                 variant={tier.popular ? "default" : "outline"}
