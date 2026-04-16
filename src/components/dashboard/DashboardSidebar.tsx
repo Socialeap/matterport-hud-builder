@@ -14,18 +14,25 @@ import {
 } from "@/components/ui/sidebar";
 import { Palette, Users, Play, LayoutDashboard, LogOut, CreditCard, ShoppingCart } from "lucide-react";
 
-const navItems = [
-  { label: "Overview", to: "/dashboard", icon: LayoutDashboard },
-  { label: "Branding", to: "/dashboard/branding", icon: Palette },
-  { label: "Orders", to: "/dashboard/orders", icon: ShoppingCart },
-  { label: "Clients", to: "/dashboard/clients", icon: Users },
-  { label: "Pricing", to: "/dashboard/pricing", icon: CreditCard },
-  { label: "Demo", to: "/dashboard/demo", icon: Play },
+const allNavItems = [
+  { label: "Overview", to: "/dashboard", icon: LayoutDashboard, roles: ["provider", "client"] },
+  { label: "Branding", to: "/dashboard/branding", icon: Palette, roles: ["provider"] },
+  { label: "Orders", to: "/dashboard/orders", icon: ShoppingCart, roles: ["provider", "client"] },
+  { label: "Clients", to: "/dashboard/clients", icon: Users, roles: ["provider"] },
+  { label: "Pricing", to: "/dashboard/pricing", icon: CreditCard, roles: ["provider"] },
+  { label: "Demo", to: "/dashboard/demo", icon: Play, roles: ["provider"] },
 ] as const;
 
 export function DashboardSidebar() {
   const { user, roles, signOut } = useAuth();
   const location = useLocation();
+
+  const isClient = roles.includes("client");
+
+  // Filter nav items based on role; if no roles yet, show all (provider default)
+  const navItems = isClient
+    ? allNavItems.filter((item) => item.roles.includes("client"))
+    : allNavItems;
 
   return (
     <Sidebar>

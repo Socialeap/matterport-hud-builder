@@ -53,23 +53,53 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Check license status
+  // Check license status — for clients, check the provider's license
   useEffect(() => {
     if (!userId) return;
-    supabase
-      .from("licenses")
-      .select("license_status, license_expiry")
-      .eq("user_id", userId)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data) {
+
+    const checkLicense = async () => {
+      // First check if user has their own license (provider)
+      const { data: ownLicense } = await supabase
+        .from("licenses")
+        .select("license_status, license_expiry")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (ownLicense) {
+        const isExpired =
+          ownLicense.license_status === "expired" ||
+          (ownLicense.license_expiry && new Date(ownLicense.license_expiry) < new Date());
+        setLicenseExpired(!!isExpired);
+        setLicenseChecked(true);
+        return;
+      }
+
+      // No own license — check if client, look up provider's license
+      const { data: providerLink } = await supabase
+        .from("client_providers")
+        .select("provider_id")
+        .eq("client_id", userId)
+        .maybeSingle();
+
+      if (providerLink) {
+        const { data: provLicense } = await supabase
+          .from("licenses")
+          .select("license_status, license_expiry")
+          .eq("user_id", providerLink.provider_id)
+          .maybeSingle();
+
+        if (provLicense) {
           const isExpired =
-            data.license_status === "expired" ||
-            (data.license_expiry && new Date(data.license_expiry) < new Date());
+            provLicense.license_status === "expired" ||
+            (provLicense.license_expiry && new Date(provLicense.license_expiry) < new Date());
           setLicenseExpired(!!isExpired);
         }
-        setLicenseChecked(true);
-      });
+      }
+
+      setLicenseChecked(true);
+    };
+
+    checkLicense();
   }, [userId]);
 
   // Branding state (pre-filled from MSP settings)
