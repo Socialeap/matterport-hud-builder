@@ -15,10 +15,10 @@ export const Route = createFileRoute("/_authenticated/dashboard/pricing")({
 const tiers = [
   {
     id: "starter",
-    name: "Starter",
-    price: "$149",
-    priceId: "starter_onetime",
-    description: "Get started with the platform at a lower price point.",
+    name: "Starter Studio",
+    setupPrice: "$149",
+    priceId: "starter_setup",
+    description: "Launch your branded studio with co-branded output.",
     features: [
       { text: 'Co-branded HUD output ("Powered by Transcendence Media")', included: true },
       { text: "Full builder access", included: true },
@@ -30,11 +30,11 @@ const tiers = [
   },
   {
     id: "pro",
-    name: "Pro",
-    price: "$299",
-    priceId: "pro_onetime",
+    name: "Pro Studio",
+    setupPrice: "$299",
+    priceId: "pro_setup",
     popular: true,
-    description: "Full whitelabel with your own branding everywhere.",
+    description: "Full whitelabel studio with your own branding everywhere.",
     features: [
       { text: "100% whitelabel — no co-branding", included: true },
       { text: "Full builder access", included: true },
@@ -47,9 +47,9 @@ const tiers = [
   {
     id: "upgrade",
     name: "Pro Upgrade",
-    price: "$199",
-    priceId: "pro_upgrade_onetime",
-    description: "Already on Starter? Upgrade to Pro for the difference.",
+    setupPrice: "$189",
+    priceId: "pro_upgrade_setup",
+    description: "Already on Starter? Upgrade to Pro for a one-time fee.",
     features: [
       { text: "Removes co-branding from all output", included: true },
       { text: "Unlocks custom domain support", included: true },
@@ -77,8 +77,12 @@ function PricingPage() {
       <PaymentTestModeBanner />
 
       <div className="text-center">
-        <h1 className="text-3xl font-bold tracking-tight text-foreground">Choose Your Plan</h1>
-        <p className="mt-2 text-muted-foreground">One-time payment. No recurring fees. Lifetime access.</p>
+        <h1 className="text-3xl font-bold tracking-tight text-foreground">Purchase Your Dedicated 3D Studio.</h1>
+        <p className="mt-2 max-w-2xl mx-auto text-muted-foreground">
+          A one-time license fee grants you access to setup and brand your own Studio.
+          Your first year of white-label hosting, transactions, AI data-generation (for clients),
+          is all FREE! After that it's just $49/year to maintain those features while improving/developing new ones.
+        </p>
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">
@@ -101,8 +105,16 @@ function PricingPage() {
               <CardTitle className="text-xl">{tier.name}</CardTitle>
               <p className="text-sm text-muted-foreground">{tier.description}</p>
               <div className="mt-4">
-                <span className="text-4xl font-bold text-foreground">{tier.price}</span>
-                <span className="text-sm text-muted-foreground"> one-time</span>
+                <span className="text-4xl font-bold text-foreground">{tier.setupPrice}</span>
+                <span className="text-sm text-muted-foreground">
+                  {tier.upgradeOnly ? " one-time upgrade" : " Studio Setup Fee"}
+                </span>
+                {!tier.upgradeOnly && (
+                  <div className="mt-1">
+                    <span className="text-lg font-semibold text-foreground">$49</span>
+                    <span className="text-sm text-muted-foreground">/year starting Year 2</span>
+                  </div>
+                )}
               </div>
             </CardHeader>
             <CardContent className="flex flex-1 flex-col justify-between gap-6">
@@ -125,7 +137,7 @@ function PricingPage() {
                 variant={tier.popular ? "default" : "outline"}
                 onClick={() => handlePurchase(tier.priceId)}
               >
-                {tier.upgradeOnly ? "Upgrade Now" : `Get ${tier.name}`}
+                {tier.upgradeOnly ? `Upgrade to Pro — ${tier.setupPrice}` : "Open Your Studio"}
               </Button>
             </CardContent>
           </Card>

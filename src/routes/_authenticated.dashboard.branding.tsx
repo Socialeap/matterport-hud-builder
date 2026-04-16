@@ -65,7 +65,7 @@ function BrandingPage() {
 
   const handleUpgrade = useCallback(() => {
     openCheckout({
-      priceId: "pro_upgrade_onetime",
+      priceId: "pro_upgrade_setup",
       customerEmail: user?.email ?? undefined,
       userId: user?.id ?? "",
       returnUrl: `${window.location.origin}/dashboard/branding?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
@@ -475,7 +475,7 @@ function BrandingPage() {
                 Starter tier includes "Powered by Transcendence Media" on all output.
               </p>
               <Button size="sm" className="mt-3" onClick={() => handleUpgrade()}>
-                Upgrade to Pro — $199
+                Upgrade to Pro — $189
               </Button>
             </div>
           )}

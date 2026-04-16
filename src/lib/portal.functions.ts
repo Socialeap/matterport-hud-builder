@@ -191,6 +191,17 @@ export const generatePresentation = createServerFn({ method: "POST" })
       .eq("provider_id", model.provider_id)
       .single();
 
+    // ── License kill-switch (server-side enforcement) ─────────────────
+    const licenseExpired = brandingData?.license_expiry_date
+      ? new Date(brandingData.license_expiry_date) < new Date()
+      : false;
+    if (brandingData?.license_status !== "active" || licenseExpired) {
+      return {
+        success: false,
+        error: "Studio operating license has expired. Please contact the provider to renew.",
+      };
+    }
+
     const properties = (model.properties || []) as unknown as PropertyData[];
     const tourConfig = (model.tour_config || {}) as unknown as TourConfigData;
     const behaviors = tourConfig.behaviors || {};

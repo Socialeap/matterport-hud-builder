@@ -138,6 +138,10 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
   }, []);
 
   const isPro = branding.tier === "pro";
+  const licenseExpired = branding.license_expiry_date
+    ? new Date(branding.license_expiry_date) < new Date()
+    : false;
+  const licenseActive = branding.license_status === "active" && !licenseExpired;
   const hasPricing = branding.base_price_cents != null && branding.stripe_onboarding_complete;
 
   // Calculate price
@@ -350,8 +354,27 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
               onChange={handleAgentChange}
             />
 
+            {/* License Expired Kill-Switch */}
+            {!licenseActive && (
+              <div className="rounded-lg border-2 border-amber-500 bg-amber-500/5 p-6 text-center">
+                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/10">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-foreground">Operating License Renewal Required</h3>
+                <p className="mt-2 text-sm text-muted-foreground max-w-md mx-auto">
+                  Your Studio setup is permanent, but your AI engine and hosting license has expired.
+                  Renew now to continue exporting smart 3D presentations.
+                </p>
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Please contact the studio provider to renew their operating license.
+                </p>
+              </div>
+            )}
+
             {/* Purchase / Download Card */}
-            {isPolling ? (
+            {!licenseActive ? null : isPolling ? (
               <div className="rounded-lg border-2 border-primary/50 bg-primary/5 p-6 text-center">
                 <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
                 <h3 className="text-lg font-semibold text-foreground">Verifying Payment…</h3>

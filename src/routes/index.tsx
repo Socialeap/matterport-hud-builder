@@ -31,7 +31,7 @@ import { toast } from "sonner";
 const SITE_URL = "https://matterport-hud-builder.lovable.app";
 const OG_TITLE = "3D Presentation Studio — Branded Matterport Tour Presentations";
 const OG_DESC =
-  "Launch your own white-label studio where clients customize and download self-contained Matterport 3D tour presentations. One-time purchase — no subscriptions, no per-tour fees.";
+  "Launch your own white-label 3D presentation studio. One-time setup fee, first year of hosting and AI included free. $49/year to keep your franchise running.";
 const OG_IMAGE = `${SITE_URL}/hero-hud-showcase-og.png`;
 
 export const Route = createFileRoute("/")({
@@ -68,8 +68,9 @@ export const Route = createFileRoute("/")({
           url: SITE_URL,
           image: OG_IMAGE,
           offers: [
-            { "@type": "Offer", name: "Starter", price: "149", priceCurrency: "USD" },
-            { "@type": "Offer", name: "Pro", price: "299", priceCurrency: "USD" },
+            { "@type": "Offer", name: "Starter Studio Setup", price: "149", priceCurrency: "USD" },
+            { "@type": "Offer", name: "Pro Studio Setup", price: "299", priceCurrency: "USD" },
+            { "@type": "Offer", name: "Annual Operating License", price: "49", priceCurrency: "USD" },
           ],
           creator: {
             "@type": "Organization",
@@ -179,12 +180,16 @@ function DemoButton({ tier }: { tier: "starter" | "pro" }) {
         user_id: user.id,
         stripe_session_id: `demo_${tier}_${Date.now()}`,
         product_id: productId,
-        price_id: `${tier}_onetime`,
+        price_id: `${tier}_setup`,
         amount_cents: amount,
         currency: "usd",
         status: "completed",
         environment: "sandbox",
       });
+
+      // Set license active with 1-year expiry for demo
+      const expiryDate = new Date();
+      expiryDate.setFullYear(expiryDate.getFullYear() + 1);
 
       const { data: existingBranding } = await supabase
         .from("branding_settings")
@@ -200,11 +205,17 @@ function DemoButton({ tier }: { tier: "starter" | "pro" }) {
           accent_color: "#3B82F6",
           hud_bg_color: "#1a1a2e",
           gate_label: "Enter",
+          license_status: "active",
+          license_expiry_date: expiryDate.toISOString(),
         });
       } else {
         await supabase
           .from("branding_settings")
-          .update({ tier: tier })
+          .update({
+            tier: tier,
+            license_status: "active",
+            license_expiry_date: expiryDate.toISOString(),
+          })
           .eq("provider_id", user.id);
       }
 
@@ -369,7 +380,7 @@ function Index() {
           {/* Pill badge */}
           <div className="mb-6 inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-medium text-white/80 backdrop-blur-sm">
             <Sparkles className="size-3 text-amber-300" />
-            No subscriptions. Ever.
+            Own Your Studio Franchise
           </div>
 
           {/* Headline */}
@@ -520,10 +531,12 @@ function Index() {
       <section id="pricing" className="relative z-10 px-4 py-16 sm:py-24">
         <div className="mx-auto max-w-4xl">
           <h2 className={`text-center text-2xl font-bold tracking-tight text-white sm:text-3xl`}>
-            Simple, One-Time Pricing
+            Purchase Your Dedicated 3D Studio.
           </h2>
-          <p className={`mx-auto mt-3 max-w-lg text-center text-white/60`}>
-            Pay once. Own it forever. No monthly fees, no per-tour charges, no surprises.
+          <p className={`mx-auto mt-3 max-w-xl text-center text-white/60`}>
+            A one-time license fee grants you access to setup and brand your own Studio.
+            Your first year of white-label hosting, transactions, AI data-generation (for clients),
+            is all FREE! After that it's just $49/year to maintain those features while improving/developing new ones.
           </p>
 
           <div className="mt-12 grid gap-6 sm:grid-cols-2">
@@ -531,10 +544,14 @@ function Index() {
             <Card className={`flex flex-col backdrop-blur bg-white/5`}>
               <CardHeader className="text-center">
                 <Badge variant="secondary" className="mx-auto mb-2 w-fit">
-                  Starter
+                  Starter Studio
                 </Badge>
                 <span className={`text-4xl font-bold text-white`}>$149</span>
-                <span className={`text-sm text-white/50`}>one-time payment</span>
+                <span className={`text-sm text-white/50`}>Studio Setup Fee</span>
+                <div className="mt-1">
+                  <span className={`text-lg font-semibold text-white`}>$49</span>
+                  <span className={`text-sm text-white/50`}>/year starting Year 2</span>
+                </div>
               </CardHeader>
               <CardContent className="flex flex-1 flex-col justify-between gap-6">
                 <ul className="space-y-2.5">
@@ -552,7 +569,7 @@ function Index() {
                       className="w-full"
                       onClick={() => navigate({ to: "/signup", search: { token: "", email: "" } })}
                     >
-                      Get Starter
+                      Open Your Studio
                     </Button>
                   )}
                   <DemoButton tier="starter" />
@@ -566,9 +583,13 @@ function Index() {
                 Most Popular
               </Badge>
               <CardHeader className="text-center">
-                <Badge className="mx-auto mb-2 w-fit">Pro</Badge>
+                <Badge className="mx-auto mb-2 w-fit">Pro Studio</Badge>
                 <span className={`text-4xl font-bold text-white`}>$299</span>
-                <span className={`text-sm text-white/50`}>one-time payment</span>
+                <span className={`text-sm text-white/50`}>Studio Setup Fee</span>
+                <div className="mt-1">
+                  <span className={`text-lg font-semibold text-white`}>$49</span>
+                  <span className={`text-sm text-white/50`}>/year starting Year 2</span>
+                </div>
               </CardHeader>
               <CardContent className="flex flex-1 flex-col justify-between gap-6">
                 <ul className="space-y-2.5">
@@ -585,7 +606,7 @@ function Index() {
                       className="w-full"
                       onClick={() => navigate({ to: "/signup", search: { token: "", email: "" } })}
                     >
-                      Get Pro
+                      Open Your Studio
                     </Button>
                   )}
                   <DemoButton tier="pro" />
@@ -595,7 +616,7 @@ function Index() {
           </div>
 
           <p className={`mx-auto mt-8 max-w-2xl text-center text-xs text-white/50`}>
-            <strong>Activate a test tier instantly</strong> — no Stripe purchase required. Explore the full dashboard, branding settings, client portal, and orders workflow. Demo purchases are recorded in sandbox mode. You can switch Demo tiers any time by returning here.
+            <strong>Activate a test studio instantly</strong> — no Stripe purchase required. Explore the full dashboard, branding settings, client portal, and orders workflow. Demo purchases include a 1-year license in sandbox mode. You can switch tiers any time by returning here.
           </p>
         </div>
       </section>
@@ -610,8 +631,8 @@ function Index() {
             {[
               {
                 step: "1",
-                title: "Sign Up & Choose Your Tier",
-                desc: "Create your account and pick Starter or Pro. One-time payment, lifetime access.",
+                title: "Sign Up & Open Your Studio",
+                desc: "Create your account and pick Starter or Pro. Pay the setup fee — first year of hosting and AI is included free.",
               },
               {
                 step: "2",
@@ -650,7 +671,7 @@ function Index() {
             <div>
               <span className={`text-lg font-bold ${textColor}`}>3D Presentation Studio</span>
               <p className={`mt-2 text-sm ${textSubtle}`}>
-                Professional, white-labeled 3D property tour presentations. One-time purchase. Host anywhere.
+                Professional, white-labeled 3D property tour presentations. Setup fee + $49/year license. Host anywhere.
               </p>
             </div>
             <div>

@@ -29,6 +29,12 @@ serve(async (req) => {
           await handleCheckoutCompleted(event.data.object, env);
         }
         break;
+      case "invoice.paid":
+        await handleInvoicePaid(event.data.object);
+        break;
+      case "customer.subscription.deleted":
+        await handleSubscriptionDeleted(event.data.object);
+        break;
       case "account.updated":
         if (connectedAccountId) {
           await handleAccountUpdated(event.data.object, connectedAccountId);
@@ -132,11 +138,12 @@ async function handleCheckoutCompleted(session: any, env: StripeEnv) {
   }
 
   const priceId = item.price?.metadata?.lovable_external_id || item.price?.lookup_key || item.price?.id;
-  
+
+  // Map price lookup keys to product IDs (supports both old and new naming)
   let resolvedProductId = 'unknown';
-  if (priceId === 'starter_onetime') resolvedProductId = 'starter_tier';
-  else if (priceId === 'pro_onetime') resolvedProductId = 'pro_tier';
-  else if (priceId === 'pro_upgrade_onetime') resolvedProductId = 'pro_upgrade';
+  if (priceId === 'starter_onetime' || priceId === 'starter_setup') resolvedProductId = 'starter_tier';
+  else if (priceId === 'pro_onetime' || priceId === 'pro_setup') resolvedProductId = 'pro_tier';
+  else if (priceId === 'pro_upgrade_onetime' || priceId === 'pro_upgrade_setup') resolvedProductId = 'pro_upgrade';
 
   const { error } = await supabase.from("purchases").upsert(
     {
@@ -160,7 +167,8 @@ async function handleCheckoutCompleted(session: any, env: StripeEnv) {
 
   // Update the provider's branding_settings tier
   const newTier = resolvedProductId === 'starter_tier' ? 'starter' : 'pro';
-  
+  const isUpgrade = resolvedProductId === 'pro_upgrade';
+
   if (newTier === 'pro') {
     await supabase
       .from("branding_settings")
@@ -172,7 +180,7 @@ async function handleCheckoutCompleted(session: any, env: StripeEnv) {
       .select("tier")
       .eq("provider_id", userId)
       .single();
-    
+
     if (!existing) {
       await supabase.from("branding_settings").insert({
         provider_id: userId,
@@ -181,5 +189,130 @@ async function handleCheckoutCompleted(session: any, env: StripeEnv) {
     }
   }
 
+  // ── Franchise License: create annual subscription ───────────────────
+  // Only create a new subscription for initial setup purchases (not upgrades,
+  // since upgrade users already have a subscription from their original purchase).
+  if (!isUpgrade && session.customer) {
+    try {
+      // Resolve the annual_license recurring price
+      const annualPrices = await stripe.prices.list({ lookup_keys: ['annual_license'] });
+      const annualPrice = annualPrices.data[0];
+
+      if (annualPrice) {
+        // Create subscription with 1-year trial (first $49 charge in Year 2)
+        const trialEnd = Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60;
+        const subscription = await stripe.subscriptions.create({
+          customer: session.customer,
+          items: [{ price: annualPrice.id }],
+          trial_end: trialEnd,
+          metadata: { userId, tier: newTier },
+        });
+
+        // Set license active with 1-year expiry
+        const expiryDate = new Date();
+        expiryDate.setFullYear(expiryDate.getFullYear() + 1);
+
+        await supabase
+          .from("branding_settings")
+          .update({
+            stripe_subscription_id: subscription.id,
+            license_status: 'active',
+            license_expiry_date: expiryDate.toISOString(),
+          })
+          .eq("provider_id", userId);
+
+        console.log(`Subscription created: ${subscription.id} for user=${userId}, trial until ${expiryDate.toISOString()}`);
+      } else {
+        console.warn("annual_license price not found — subscription not created");
+        // Still set license active (graceful degradation)
+        const expiryDate = new Date();
+        expiryDate.setFullYear(expiryDate.getFullYear() + 1);
+        await supabase
+          .from("branding_settings")
+          .update({
+            license_status: 'active',
+            license_expiry_date: expiryDate.toISOString(),
+          })
+          .eq("provider_id", userId);
+      }
+    } catch (subErr) {
+      console.error("Failed to create subscription:", subErr);
+      // Still set license active (don't block the user over subscription failure)
+      const expiryDate = new Date();
+      expiryDate.setFullYear(expiryDate.getFullYear() + 1);
+      await supabase
+        .from("branding_settings")
+        .update({
+          license_status: 'active',
+          license_expiry_date: expiryDate.toISOString(),
+        })
+        .eq("provider_id", userId);
+    }
+  }
+
   console.log(`Purchase recorded: user=${userId}, tier=${newTier}, product=${resolvedProductId}`);
+}
+
+// ── Annual license renewal ──────────────────────────────────────────────
+
+async function handleInvoicePaid(invoice: any) {
+  // Only handle subscription invoices (not one-time payment invoices)
+  if (!invoice.subscription) return;
+
+  // Skip the initial $0 trial invoice — only extend license on real renewals
+  if (invoice.amount_paid === 0) {
+    console.log(`Skipping $0 trial invoice for subscription: ${invoice.subscription}`);
+    return;
+  }
+
+  const subscriptionId = invoice.subscription;
+
+  const { data: branding } = await supabase
+    .from("branding_settings")
+    .select("provider_id")
+    .eq("stripe_subscription_id", subscriptionId)
+    .single();
+
+  if (!branding) {
+    console.log(`No branding_settings found for subscription: ${subscriptionId}`);
+    return;
+  }
+
+  // Extend license by 1 year from now
+  const newExpiry = new Date();
+  newExpiry.setFullYear(newExpiry.getFullYear() + 1);
+
+  await supabase
+    .from("branding_settings")
+    .update({
+      license_status: 'active',
+      license_expiry_date: newExpiry.toISOString(),
+    })
+    .eq("stripe_subscription_id", subscriptionId);
+
+  console.log(`License renewed: provider=${branding.provider_id}, new expiry=${newExpiry.toISOString()}`);
+}
+
+// ── Subscription canceled (failed retries) ──────────────────────────────
+
+async function handleSubscriptionDeleted(subscription: any) {
+  const subscriptionId = subscription.id;
+
+  const { data: branding } = await supabase
+    .from("branding_settings")
+    .select("provider_id")
+    .eq("stripe_subscription_id", subscriptionId)
+    .single();
+
+  if (!branding) {
+    console.log(`No branding_settings found for subscription: ${subscriptionId}`);
+    return;
+  }
+
+  await supabase
+    .from("branding_settings")
+    .update({ license_status: 'expired' })
+    .eq("stripe_subscription_id", subscriptionId);
+
+  console.log(`License expired: provider=${branding.provider_id}, subscription=${subscriptionId}`);
 }

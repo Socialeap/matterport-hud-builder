@@ -26,12 +26,15 @@ export type Database = {
           gate_label: string
           hud_bg_color: string
           id: string
+          license_status: string
+          license_expiry_date: string | null
           logo_url: string | null
           model_threshold: number | null
           provider_id: string
           slug: string | null
           stripe_connect_id: string | null
           stripe_onboarding_complete: boolean | null
+          stripe_subscription_id: string | null
           tier: Database["public"]["Enums"]["app_tier"]
           updated_at: string
         }
@@ -46,12 +49,15 @@ export type Database = {
           gate_label?: string
           hud_bg_color?: string
           id?: string
+          license_status?: string
+          license_expiry_date?: string | null
           logo_url?: string | null
           model_threshold?: number | null
           provider_id: string
           slug?: string | null
           stripe_connect_id?: string | null
           stripe_onboarding_complete?: boolean | null
+          stripe_subscription_id?: string | null
           tier?: Database["public"]["Enums"]["app_tier"]
           updated_at?: string
         }
@@ -66,12 +72,15 @@ export type Database = {
           gate_label?: string
           hud_bg_color?: string
           id?: string
+          license_status?: string
+          license_expiry_date?: string | null
           logo_url?: string | null
           model_threshold?: number | null
           provider_id?: string
           slug?: string | null
           stripe_connect_id?: string | null
           stripe_onboarding_complete?: boolean | null
+          stripe_subscription_id?: string | null
           tier?: Database["public"]["Enums"]["app_tier"]
           updated_at?: string
         }
@@ -211,6 +220,7 @@ export type Database = {
           status: string
           stripe_customer_id: string | null
           stripe_session_id: string
+          stripe_subscription_id: string | null
           updated_at: string
           user_id: string
         }
@@ -225,6 +235,7 @@ export type Database = {
           status?: string
           stripe_customer_id?: string | null
           stripe_session_id: string
+          stripe_subscription_id?: string | null
           updated_at?: string
           user_id: string
         }
@@ -239,6 +250,7 @@ export type Database = {
           status?: string
           stripe_customer_id?: string | null
           stripe_session_id?: string
+          stripe_subscription_id?: string | null
           updated_at?: string
           user_id?: string
         }
