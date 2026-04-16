@@ -24,6 +24,11 @@ import {
   X,
   Sun,
   Moon,
+  Bot,
+  MailCheck,
+  Download,
+  Boxes,
+  CreditCard,
 } from "lucide-react";
 import heroHudBanner from "@/assets/hero-hud-showcase.png";
 import { toast } from "sonner";
@@ -123,6 +128,45 @@ const features = [
     title: "20+ Tour Behaviors",
     description:
       "MLS mode, auto-play, scroll-wheel lock, guided tours, language forcing, custom transitions — granular control.",
+  },
+];
+
+const clientFeatures = [
+  {
+    icon: Layers,
+    title: "The Portfolio HUD",
+    description:
+      "One branded interface for everything. Bundle multiple property models into a single presentation with seamless dropdown navigation.",
+  },
+  {
+    icon: Bot,
+    title: "The AI Concierge",
+    description:
+      "A 24/7 virtual expert trained on your client's property data — answering buyer questions and capturing high-intent leads automatically.",
+  },
+  {
+    icon: MailCheck,
+    title: "Instant Lead Alerts",
+    description:
+      "No dashboards to babysit. High-intent leads land directly in your client's inbox the moment a viewer raises their hand.",
+  },
+  {
+    icon: Download,
+    title: "Digital Sovereignty",
+    description:
+      "Forever Assets. Clients download a self-contained presentation file and host it anywhere — Netlify, their own site, or any platform they choose.",
+  },
+  {
+    icon: Boxes,
+    title: "Scale-Based Pricing",
+    description:
+      "Charge per property model bundled into a presentation. Bigger portfolios = bigger tickets, automatically.",
+  },
+  {
+    icon: CreditCard,
+    title: "White-Label Delivery",
+    description:
+      "Stripe checkout, payouts, and order tracking — fully branded as your studio. Sales close while you sleep.",
   },
 ];
 
@@ -502,6 +546,36 @@ function Index() {
 
           <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {features.map((f) => (
+              <Card key={f.title} className={`${cardBg} backdrop-blur`}>
+                <CardContent className="pt-6">
+                  <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
+                    <f.icon className="size-5 text-amber-300" />
+                  </div>
+                  <h3 className={`mt-4 font-semibold text-white`}>{f.title}</h3>
+                  <p className={`mt-1 text-sm text-white/60`}>{f.description}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ---- Client value section ---- */}
+      <section className={`relative z-10 border-t ${borderLight} px-4 py-16 sm:py-24`} style={{ backgroundColor: sectionTint }}>
+        <div className="mx-auto max-w-5xl">
+          <Badge variant="secondary" className="mx-auto mb-4 flex w-fit">
+            For Your Clients
+          </Badge>
+          <h2 className={`text-center text-2xl font-bold tracking-tight text-white sm:text-3xl`}>
+            A Sales Machine that Self-Serves Your Clients
+          </h2>
+          <p className={`mx-auto mt-3 max-w-2xl text-center text-white/60`}>
+            Stop being the bottleneck. Hand your clients a closing tool — not a service ticket.
+            Every presentation works, sells, and follows up on autopilot.
+          </p>
+
+          <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {clientFeatures.map((f) => (
               <Card key={f.title} className={`${cardBg} backdrop-blur`}>
                 <CardContent className="pt-6">
                   <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
