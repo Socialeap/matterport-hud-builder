@@ -4,8 +4,8 @@ import { type StripeEnv, createStripeClient } from "../_shared/stripe.ts";
 
 // Setup fees in cents (Studio Setup & Franchise Fee)
 const SETUP_FEES: Record<string, number> = {
-  starter_annual: 10000, // $100
-  pro_annual: 25000,     // $250
+  starter_annual: 14900, // $149
+  pro_annual: 29900,     // $299
 };
 
 serve(async (req) => {
