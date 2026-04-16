@@ -476,6 +476,16 @@ export type Database = {
           tier: Database["public"]["Enums"]["app_tier"]
         }[]
       }
+      get_provider_license: {
+        Args: { client_uuid: string }
+        Returns: {
+          license_expiry: string
+          license_status: Database["public"]["Enums"]["license_status"]
+          provider_id: string
+          studio_id: string
+          tier: Database["public"]["Enums"]["app_tier"]
+        }[]
+      }
       get_user_tier: {
         Args: { check_env?: string; user_uuid: string }
         Returns: string
