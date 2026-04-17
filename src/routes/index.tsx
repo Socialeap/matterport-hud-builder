@@ -103,19 +103,19 @@ const features = [
     icon: Users,
     title: "Self-Serve Branding Studio",
     description:
-      "Invite clients to configure their Tour Presentations with logo, music track, contact options, branded HUD, and Google Analytics. Add payment link to unlock downloads.",
+      "Invite clients to configure their Tour Presentations with their branding, music tracks, contact options, property data, and more. ",
   },
   {
     icon: Boxes,
     title: "Scale-Based Pricing",
     description:
-      "Charge per property model bundled into a presentation. Bigger portfolios = bigger tickets, automatically.",
+      "You set the rates. Charge a flat rate for the first set of models and a price for each additional model bundled into each Presentation. ",
   },
   {
     icon: CreditCard,
     title: "White-Label Delivery",
     description:
-      "Stripe checkout, payouts, and order tracking — fully branded as your studio. Sales close while you sleep.",
+      "Easily set your Stripe checkout, schedule payouts, and track orders within a single dashboard.",
   },
 ];
 
@@ -526,11 +526,10 @@ function Index() {
       <section id="features" className={`relative z-10 border-t ${borderLight} px-4 py-16 sm:py-24`} style={{ backgroundColor: sectionTint2 }}>
         <div className="mx-auto max-w-5xl">
           <h2 className={`text-center text-2xl font-bold tracking-tight text-white sm:text-3xl`}>
-            A Branded Studio for Clients to Build Their Own Presentations
+            Offer a Space where Clients can Build their Own Presentations
           </h2>
           <p className={`mx-auto mt-3 max-w-xl text-center text-white/60`}>
-            One platform to configure, preview, and deliver professional Matterport 3D
-            presentations — fully branded to you.
+            Our platform lets you configure & brand your Studio to deliver professional Matterport 3D presentations for clients and other MP model owners.
           </p>
 
           <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
@@ -556,7 +555,7 @@ function Index() {
             For Your Clients
           </Badge>
           <h2 className={`text-center text-2xl font-bold tracking-tight text-white sm:text-3xl`}>
-            A Sales Kiosk where Clients can Self-Serve
+            Clients Love the Easy Self Serve Kiosk Options
           </h2>
           <p className={`mx-auto mt-3 max-w-2xl text-center text-white/60`}>
             Hand your clients a self closing tool — not a service ticket. Your Studio makes 3D tour Presentations easily configurable and finalizes them into a permanent self-contained files.
