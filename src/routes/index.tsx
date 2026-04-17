@@ -10,7 +10,7 @@ import {
   Layers,
   Palette,
   Globe,
-  ShieldCheck,
+  
   Zap,
   Users,
   ChevronRight,
@@ -26,7 +26,7 @@ import {
   Moon,
   Bot,
   MailCheck,
-  Download,
+  
   Boxes,
   CreditCard,
   Wand2,
