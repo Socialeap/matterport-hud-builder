@@ -263,9 +263,9 @@ function DemoButton({ tier }: { tier: "starter" | "pro" }) {
 
   return (
     <Button
-      variant="ghost"
+      variant="outline"
       size="sm"
-      className="w-full gap-1.5 text-muted-foreground hover:text-primary"
+      className="w-full gap-1.5 border-white/20 text-white/80 hover:bg-white/10 hover:text-white"
       onClick={activateTier}
       disabled={activating}
     >
@@ -408,11 +408,6 @@ function Index() {
       {/* ---- Hero ---- */}
       <section className="relative z-10 px-4 pt-20 pb-16 sm:pt-28 sm:pb-24 py-[80px]">
         <div className="mx-auto max-w-4xl text-center">
-          {/* Pill badge */}
-          <div className="mb-6 inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-medium text-white/80 backdrop-blur-sm">
-            <Sparkles className="size-3 text-amber-300" />
-            No subscriptions. Ever.
-          </div>
 
           {/* Headline */}
           <h1 className="mx-auto max-w-4xl text-4xl font-bold leading-[1.1] tracking-tight text-white sm:text-5xl lg:text-6xl">
@@ -560,9 +555,6 @@ function Index() {
       {/* ---- Client value section ---- */}
       <section className={`relative z-10 border-t ${borderLight} px-4 py-16 sm:py-24`} style={{ backgroundColor: sectionTint }}>
         <div className="mx-auto max-w-5xl">
-          <Badge variant="secondary" className="mx-auto mb-4 flex w-fit">
-            For Your Clients
-          </Badge>
           <h2 className={`text-center text-2xl font-bold tracking-tight text-white sm:text-3xl`}>
             Clients will Love your Studio's  Self-Serve Work Flow
           </h2>
@@ -600,12 +592,12 @@ function Index() {
             {/* Starter */}
             <Card className={`relative flex flex-col backdrop-blur bg-white/5`}>
               <CardHeader className="text-center">
-                <CardTitle className="text-xl text-white">Starter Studio</CardTitle>
+                <CardTitle className="text-xl text-amber-300">Starter Studio</CardTitle>
                 <p className="text-sm text-white/60">Get started with co-branded studio.</p>
                 <div className="mt-4 space-y-1">
                   <div>
-                    <span className="text-4xl font-bold text-white">$149</span>
-                    <span className="text-sm text-white/50"> setup</span>
+<span className="text-4xl font-bold text-amber-300">$149</span>
+<span className="text-sm text-white/50"> setup</span>
                   </div>
                   <div className="text-sm text-white/60">
                     <span className="font-semibold text-white">$49</span>/year upkeep license - First year <span className="font-bold text-primary">FREE!</span>
@@ -651,12 +643,12 @@ function Index() {
                 Most Popular
               </Badge>
               <CardHeader className="text-center">
-                <CardTitle className="text-xl text-white">Pro Studio</CardTitle>
+                <CardTitle className="text-xl text-amber-300">Pro Studio</CardTitle>
                 <p className="text-sm text-white/60">Full whitelabel studio and more.</p>
                 <div className="mt-4 space-y-1">
                   <div>
-                    <span className="text-4xl font-bold text-white">$299</span>
-                    <span className="text-sm text-white/50"> setup</span>
+<span className="text-4xl font-bold text-amber-300">$299</span>
+<span className="text-sm text-white/50"> setup</span>
                   </div>
                   <div className="text-sm text-white/60">
                     <span className="font-semibold text-white">$49</span>/year upkeep license - First year <span className="font-bold text-primary">FREE!</span>
