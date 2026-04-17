@@ -264,6 +264,15 @@ export function HudPreview({
           Powered by Transcendence Media
         </div>
       )}
+
+      {currentModel && (
+        <NeighborhoodMapModal
+          open={mapOpen}
+          onOpenChange={setMapOpen}
+          location={currentModel.location}
+          propertyName={currentModel.name}
+        />
+      )}
     </div>
   );
 }
