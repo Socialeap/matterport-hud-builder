@@ -397,7 +397,7 @@ function Index() {
       </header>
 
       {/* ---- Hero ---- */}
-      <section className="relative z-10 px-4 pt-20 pb-16 sm:pt-28 sm:pb-24">
+      <section className="relative z-10 px-4 pt-20 pb-16 sm:pt-28 sm:pb-24 py-[80px]">
         <div className="mx-auto max-w-4xl text-center">
           {/* Pill badge */}
           <div className="mb-6 inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-medium text-white/80 backdrop-blur-sm">
@@ -408,7 +408,7 @@ function Index() {
           {/* Headline */}
           <h1 className="mx-auto max-w-4xl text-4xl font-bold leading-[1.1] tracking-tight text-white sm:text-5xl lg:text-6xl">
             Imagine a Turn-Key Studio where <em className="italic">Your</em> Clients Customize <em className="italic">Their</em>{" "}
-            <span className="text-slate-50 text-5xl">3D Tour Presentations 🤔</span>
+            <span className="text-slate-50 text-6xl">3D Tour Presentations 🤔</span>
           </h1>
 
           {/* Subheadline */}
@@ -467,7 +467,7 @@ function Index() {
             The &ldquo;Service Trap&rdquo; of Traditional 3D Presentation Platforms
           </h2>
           <p className={`mx-auto mt-3 max-w-xl text-center text-white/60`}>
-            Most platforms require you to do the manual labor on their servers, charging you a monthly subscription just to keep your assets online.
+            Most 3D tour presentation platforms require you to format and configure your client's models, charging you a monthly subscription just to keep the assets on their servers. At 3DPS , we flip that dynamic to give YOU ownership of the presentation service and your clients ownership of the results.
           </p>
 
           <div className="mt-12 grid gap-6 sm:grid-cols-2">
