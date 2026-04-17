@@ -134,15 +134,15 @@ const clientFeatures = [
   },
   {
     icon: Zap,
-    title: "20+ Tour Behaviors",
+    title: "15+ Tour Behaviors",
     description:
-      "MLS mode, auto-play, scroll-wheel lock, guided tours, language forcing, custom transitions — granular control at every turn.",
+      "Clients can easily configure tour settings for each model, including MLS mode, auto-play, scroll-wheel lock, guided tours, language forcing, custom transitions, and more.",
   },
   {
     icon: Bot,
     title: "The AI Concierge",
     description:
-      "A 24/7 virtual expert trained on your client's property data — answering buyer questions and capturing high-intent leads automatically.",
+      "A 24/7 Q&A assistant trained on your client's property data — answers viewer questions while proactively capturing emails from high-intent visitors.",
   },
   {
     icon: MailCheck,
@@ -154,7 +154,7 @@ const clientFeatures = [
     icon: Globe,
     title: "Total Hosting Sovereignty",
     description:
-      "Forever Assets. Clients download a self-contained presentation file and host it anywhere — Netlify, their own site, or any platform they choose.",
+      "Permanent Assets. Clients download and own the self-contained presentation file they can host anywhere, including cost-free platform like Netlify or Github.",
   },
 ];
 
@@ -556,11 +556,10 @@ function Index() {
             For Your Clients
           </Badge>
           <h2 className={`text-center text-2xl font-bold tracking-tight text-white sm:text-3xl`}>
-            A Sales Machine that Self-Serves Your Clients
+            A Sales Kiosk where Clients can Self-Serve
           </h2>
           <p className={`mx-auto mt-3 max-w-2xl text-center text-white/60`}>
-            Stop being the bottleneck. Hand your clients a closing tool — not a service ticket.
-            Every presentation works, sells, and follows up on autopilot.
+            Hand your clients a self closing tool — not a service ticket. Your Studio makes 3D tour Presentations easily configurable and finalizes them into a permanent self-contained files.
           </p>
 
           <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
