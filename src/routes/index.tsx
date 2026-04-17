@@ -160,20 +160,29 @@ const clientFeatures = [
 
 
 const starterFeatures = [
-  'Co-branded output ("Powered by TM")',
-  "Full presentation builder access",
-  "Client portal at /p/your-slug",
-  "Music & tour behavior config",
-  "Unlimited Matterport models",
+  { text: 'Co-branded HUD output ("Powered by Transcendence Media")', included: true },
+  { text: "Full builder access", included: true },
+  { text: "Client invitation management", included: true },
+  { text: "Music & tour behavior config", included: true },
+  { text: "AI-powered property Q&A*", included: true },
+  { text: "Easy Stripe-Connect payout options", included: true },
+  { text: "Per-pricing for multiple property tours", included: true },
+  { text: "Custom domain", included: false },
+  { text: "Full whitelabel (remove co-branding)", included: false },
+  { text: "AI Lead Generation for Clients*", included: false },
 ];
 
 const proFeatures = [
-  "100% ghost-labeled — zero co-branding",
-  "Custom domain mapping",
-  "Full presentation builder access",
-  "Client portal on your domain",
-  "Priority support",
-  "All Starter features included",
+  { text: "100% whitelabel — no co-branding", included: true },
+  { text: "Full builder access", included: true },
+  { text: "Client invitation management", included: true },
+  { text: "Music & tour behavior config", included: true },
+  { text: "AI-powered property Q&A*", included: true },
+  { text: "Easy Stripe-Connect payout options", included: true },
+  { text: "Per-pricing for multiple property tours", included: true },
+  { text: "Custom domain support", included: true },
+  { text: "AI Lead Generation for Clients*", included: true },
+  { text: "Priority support", included: true },
 ];
 
 /* ------------------------------------------------------------------ */
