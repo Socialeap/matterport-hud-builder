@@ -94,6 +94,16 @@ export function HudPreview({
             </div>
 
             <div className="flex items-center gap-2 mr-8">
+              {currentModel?.enableNeighborhoodMap && currentModel.location.trim() && (
+                <button
+                  onClick={() => setMapOpen(true)}
+                  className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm transition-colors hover:bg-white/20"
+                  title="View Neighborhood Map"
+                  aria-label="View Neighborhood Map"
+                >
+                  <MapPin className="h-3.5 w-3.5" />
+                </button>
+              )}
               {agent.name && (
                 <span className="text-xs text-white/70">{agent.name}</span>
               )}
