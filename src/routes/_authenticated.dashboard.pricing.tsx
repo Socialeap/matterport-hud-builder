@@ -115,8 +115,7 @@ function PricingPage() {
                   <span className="text-sm text-muted-foreground"> setup</span>
                 </div>
                 <div className="text-sm text-muted-foreground">
-                  <span className="font-semibold text-foreground">{tier.annualPrice}</span>/year upkeep license
-                  <br />
+                  <span className="font-semibold text-foreground">{tier.annualPrice}</span>/year upkeep license -{" "}
                   First year <span className="font-bold text-primary">FREE!</span>
                 </div>
               </div>
