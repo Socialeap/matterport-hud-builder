@@ -122,7 +122,7 @@ const features = [
 const clientFeatures = [
   {
     icon: Wand2,
-    title: "Try Before You Buy Presentation",
+    title: "Try Before You Buy Presentations",
     description:
       "Clients can design, configure, and tweak their presentations for their preferred look and behavior. Once satisfied, they make a payment to unlock the download.",
   },
@@ -136,7 +136,7 @@ const clientFeatures = [
     icon: Zap,
     title: "15+ Tour Behaviors",
     description:
-      "Clients can easily configure tour settings for each model, including MLS mode, auto-play, scroll-wheel lock, guided tours, language forcing, custom transitions, and more.",
+      "Clients can easily configure each model, setting MLS mode, auto-play, scroll-wheel lock, guided tours, language forcing, custom transitions, and more.",
   },
   {
     icon: Bot,
@@ -526,10 +526,10 @@ function Index() {
       <section id="features" className={`relative z-10 border-t ${borderLight} px-4 py-16 sm:py-24`} style={{ backgroundColor: sectionTint2 }}>
         <div className="mx-auto max-w-5xl">
           <h2 className={`text-center text-2xl font-bold tracking-tight text-white sm:text-3xl`}>
-            Offer a Space where Clients can Build their Own Presentations
+            Invite Clients to a Space where they Build their Own Presentations
           </h2>
           <p className={`mx-auto mt-3 max-w-xl text-center text-white/60`}>
-            Our platform lets you configure & brand your Studio to deliver professional Matterport 3D presentations for clients and other MP model owners.
+            Our platform lets you brand, configure, and run  your Studio like a kiosk that delivers professional 3D presentations for clients and other model owners.
           </p>
 
           <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
@@ -555,7 +555,7 @@ function Index() {
             For Your Clients
           </Badge>
           <h2 className={`text-center text-2xl font-bold tracking-tight text-white sm:text-3xl`}>
-            Clients Love the Easy Self Serve Kiosk Options
+            Clients will Love your Studio's  Self-Serve Work Flow
           </h2>
           <p className={`mx-auto mt-3 max-w-2xl text-center text-white/60`}>
             Hand your clients a self closing tool — not a service ticket. Your Studio makes 3D tour Presentations easily configurable and finalizes them into a permanent self-contained files.
