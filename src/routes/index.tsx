@@ -608,9 +608,7 @@ function Index() {
                     <span className="text-sm text-white/50"> setup</span>
                   </div>
                   <div className="text-sm text-white/60">
-                    <span className="font-semibold text-white">$49</span>/year upkeep license
-                    <br />
-                    First year <span className="font-bold text-primary">FREE!</span>
+                    <span className="font-semibold text-white">$49</span>/year upkeep license - First year <span className="font-bold text-primary">FREE!</span>
                   </div>
                 </div>
               </CardHeader>
@@ -661,9 +659,7 @@ function Index() {
                     <span className="text-sm text-white/50"> setup</span>
                   </div>
                   <div className="text-sm text-white/60">
-                    <span className="font-semibold text-white">$49</span>/year upkeep license
-                    <br />
-                    First year <span className="font-bold text-primary">FREE!</span>
+                    <span className="font-semibold text-white">$49</span>/year upkeep license - First year <span className="font-bold text-primary">FREE!</span>
                   </div>
                 </div>
               </CardHeader>
