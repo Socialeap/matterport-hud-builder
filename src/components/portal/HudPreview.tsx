@@ -1,7 +1,8 @@
 import { useState, useRef } from "react";
-import { ChevronUp, ChevronDown, Phone, Mail, MessageSquare, Globe, X } from "lucide-react";
+import { ChevronUp, ChevronDown, Phone, Mail, MessageSquare, Globe, X, MapPin } from "lucide-react";
 import type { PropertyModel, TourBehavior, AgentContact } from "./types";
 import { buildMatterportUrl } from "./types";
+import { NeighborhoodMapModal } from "./NeighborhoodMapModal";
 
 interface HudPreviewProps {
   models: PropertyModel[];
@@ -30,6 +31,7 @@ export function HudPreview({
 }: HudPreviewProps) {
   const [headerVisible, setHeaderVisible] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const currentModel = models[selectedModelIndex];
   const behavior = currentModel ? behaviors[currentModel.id] : null;
@@ -92,6 +94,16 @@ export function HudPreview({
             </div>
 
             <div className="flex items-center gap-2 mr-8">
+              {currentModel?.enableNeighborhoodMap && currentModel.location.trim() && (
+                <button
+                  onClick={() => setMapOpen(true)}
+                  className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm transition-colors hover:bg-white/20"
+                  title="View Neighborhood Map"
+                  aria-label="View Neighborhood Map"
+                >
+                  <MapPin className="h-3.5 w-3.5" />
+                </button>
+              )}
               {agent.name && (
                 <span className="text-xs text-white/70">{agent.name}</span>
               )}
@@ -251,6 +263,15 @@ export function HudPreview({
         <div className="bg-muted/30 px-4 py-1.5 text-center text-xs text-muted-foreground">
           Powered by Transcendence Media
         </div>
+      )}
+
+      {currentModel && (
+        <NeighborhoodMapModal
+          open={mapOpen}
+          onOpenChange={setMapOpen}
+          location={currentModel.location}
+          propertyName={currentModel.name}
+        />
       )}
     </div>
   );

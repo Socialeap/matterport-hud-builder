@@ -4,6 +4,12 @@ export interface PropertyModel {
   location: string;
   matterportId: string;
   musicUrl: string;
+  enableNeighborhoodMap?: boolean;
+}
+
+export function buildNeighborhoodMapUrl(location: string): string {
+  if (!location.trim()) return "";
+  return `https://maps.google.com/maps?q=${encodeURIComponent(location)}&t=&z=15&ie=UTF8&iwloc=&output=embed`;
 }
 
 export interface AgentContact {

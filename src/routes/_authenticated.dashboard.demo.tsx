@@ -21,6 +21,7 @@ function createEmptyModel(): PropertyModel {
     location: "",
     matterportId: "",
     musicUrl: "",
+    enableNeighborhoodMap: false,
   };
 }
 
@@ -90,7 +91,7 @@ function DemoPage() {
     setSelectedModelIndex(0);
   }, []);
 
-  const handleModelChange = useCallback((id: string, field: keyof PropertyModel, value: string) => {
+  const handleModelChange = useCallback((id: string, field: keyof PropertyModel, value: string | boolean) => {
     setModels((prev) =>
       prev.map((m) => (m.id === id ? { ...m, [field]: value } : m))
     );

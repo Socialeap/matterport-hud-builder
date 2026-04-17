@@ -2,14 +2,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Trash2, Home, Settings2 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Plus, Trash2, Home, Settings2, MapPin } from "lucide-react";
 import type { PropertyModel } from "./types";
 
 interface PropertyModelsSectionProps {
   models: PropertyModel[];
   onAdd: () => void;
   onRemove: (id: string) => void;
-  onChange: (id: string, field: keyof PropertyModel, value: string) => void;
+  onChange: (id: string, field: keyof PropertyModel, value: string | boolean) => void;
   onOpenBehavior: (id: string) => void;
 }
 
@@ -107,6 +108,33 @@ export function PropertyModelsSection({
                   onChange={(e) => onChange(model.id, "musicUrl", e.target.value)}
                   placeholder="https://example.com/music.mp3"
                 />
+              </div>
+            </div>
+
+            <div className="flex items-start gap-3 rounded-md border border-border/60 bg-muted/30 p-3">
+              <MapPin className="mt-0.5 size-4 shrink-0 text-primary" />
+              <div className="flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <Label
+                    htmlFor={`map-toggle-${model.id}`}
+                    className="text-xs font-medium"
+                  >
+                    Enable Neighborhood Map
+                  </Label>
+                  <Switch
+                    id={`map-toggle-${model.id}`}
+                    checked={!!model.enableNeighborhoodMap}
+                    disabled={!model.location.trim()}
+                    onCheckedChange={(checked) =>
+                      onChange(model.id, "enableNeighborhoodMap", checked)
+                    }
+                  />
+                </div>
+                <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+                  {model.location.trim()
+                    ? "Adds a map button to the HUD using the Location above."
+                    : "Add a Location above to enable this feature."}
+                </p>
               </div>
             </div>
           </div>
