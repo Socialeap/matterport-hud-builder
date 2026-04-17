@@ -10,7 +10,7 @@ import {
   Layers,
   Palette,
   Globe,
-  ShieldCheck,
+  
   Zap,
   Users,
   ChevronRight,
@@ -26,9 +26,10 @@ import {
   Moon,
   Bot,
   MailCheck,
-  Download,
+  
   Boxes,
   CreditCard,
+  Wand2,
 } from "lucide-react";
 import heroHudBanner from "@/assets/hero-hud-showcase.png";
 import { toast } from "sonner";
@@ -99,62 +100,10 @@ const features = [
       "Invite clients to your Studio with your logo, colors, and domain name, reinforcing your brand equity, not ours.",
   },
   {
-    icon: Layers,
-    title: "Multi-Model HUD",
-    description:
-      "Allow clients to bundle multiple Matterport tours into a single branded presentation with dropdown navigation.",
-  },
-  {
-    icon: Globe,
-    title: "Total Hosting Sovereignty",
-    description:
-      "Once downloaded, Tour Presentations are 100% self-contained files. Clients can host them anywhere, including cost-free platforms like Netlify. ",
-  },
-  {
     icon: Users,
     title: "Self-Serve Branding Studio",
     description:
       "Invite clients to configure their Tour Presentations with logo, music track, contact options, branded HUD, and Google Analytics. Add payment link to unlock downloads.",
-
-  },
-  {
-    icon: ShieldCheck,
-    title: "Protected Intellectual Property",
-    description:
-      "Tour IDs and config settings are Base64-scrambled. Your intellectual property stays protected.",
-  },
-  {
-    icon: Zap,
-    title: "20+ Tour Behaviors",
-    description:
-      "MLS mode, auto-play, scroll-wheel lock, guided tours, language forcing, custom transitions — granular control.",
-  },
-];
-
-const clientFeatures = [
-  {
-    icon: Layers,
-    title: "The Portfolio HUD",
-    description:
-      "One branded interface for everything. Bundle multiple property models into a single presentation with seamless dropdown navigation.",
-  },
-  {
-    icon: Bot,
-    title: "The AI Concierge",
-    description:
-      "A 24/7 virtual expert trained on your client's property data — answering buyer questions and capturing high-intent leads automatically.",
-  },
-  {
-    icon: MailCheck,
-    title: "Instant Lead Alerts",
-    description:
-      "No dashboards to babysit. High-intent leads land directly in your client's inbox the moment a viewer raises their hand.",
-  },
-  {
-    icon: Download,
-    title: "Digital Sovereignty",
-    description:
-      "Forever Assets. Clients download a self-contained presentation file and host it anywhere — Netlify, their own site, or any platform they choose.",
   },
   {
     icon: Boxes,
@@ -169,6 +118,46 @@ const clientFeatures = [
       "Stripe checkout, payouts, and order tracking — fully branded as your studio. Sales close while you sleep.",
   },
 ];
+
+const clientFeatures = [
+  {
+    icon: Wand2,
+    title: "Try Before You Buy Presentation",
+    description:
+      "Clients can design, configure, and tweak their presentations for their preferred look and behavior. Once satisfied, they make a payment to unlock the download.",
+  },
+  {
+    icon: Layers,
+    title: "Multi-Model HUD",
+    description:
+      "Bundle multiple Matterport tours into a single branded presentation with seamless dropdown navigation.",
+  },
+  {
+    icon: Zap,
+    title: "20+ Tour Behaviors",
+    description:
+      "MLS mode, auto-play, scroll-wheel lock, guided tours, language forcing, custom transitions — granular control at every turn.",
+  },
+  {
+    icon: Bot,
+    title: "The AI Concierge",
+    description:
+      "A 24/7 virtual expert trained on your client's property data — answering buyer questions and capturing high-intent leads automatically.",
+  },
+  {
+    icon: MailCheck,
+    title: "Instant Lead Alerts",
+    description:
+      "No dashboards to babysit. High-intent leads land directly in your client's inbox the moment a viewer raises their hand.",
+  },
+  {
+    icon: Globe,
+    title: "Total Hosting Sovereignty",
+    description:
+      "Forever Assets. Clients download a self-contained presentation file and host it anywhere — Netlify, their own site, or any platform they choose.",
+  },
+];
+
 
 const starterFeatures = [
   'Co-branded output ("Powered by TM")',
@@ -544,7 +533,7 @@ function Index() {
             presentations — fully branded to you.
           </p>
 
-          <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {features.map((f) => (
               <Card key={f.title} className={`${cardBg} backdrop-blur`}>
                 <CardContent className="pt-6">
