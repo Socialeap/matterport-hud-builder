@@ -29,6 +29,7 @@ import {
   Download,
   Boxes,
   CreditCard,
+  Wand2,
 } from "lucide-react";
 import heroHudBanner from "@/assets/hero-hud-showcase.png";
 import { toast } from "sonner";
