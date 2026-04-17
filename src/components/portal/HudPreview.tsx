@@ -31,6 +31,7 @@ export function HudPreview({
 }: HudPreviewProps) {
   const [headerVisible, setHeaderVisible] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const currentModel = models[selectedModelIndex];
   const behavior = currentModel ? behaviors[currentModel.id] : null;
