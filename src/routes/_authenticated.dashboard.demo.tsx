@@ -21,6 +21,7 @@ function createEmptyModel(): PropertyModel {
     location: "",
     matterportId: "",
     musicUrl: "",
+    enableNeighborhoodMap: false,
   };
 }
 
