@@ -2,14 +2,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Trash2, Home, Settings2 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Plus, Trash2, Home, Settings2, MapPin } from "lucide-react";
 import type { PropertyModel } from "./types";
 
 interface PropertyModelsSectionProps {
   models: PropertyModel[];
   onAdd: () => void;
   onRemove: (id: string) => void;
-  onChange: (id: string, field: keyof PropertyModel, value: string) => void;
+  onChange: (id: string, field: keyof PropertyModel, value: string | boolean) => void;
   onOpenBehavior: (id: string) => void;
 }
 
