@@ -590,31 +590,48 @@ function Index() {
       <section id="pricing" className="relative z-10 px-4 py-16 sm:py-24">
         <div className="mx-auto max-w-4xl">
           <h2 className={`text-center text-2xl font-bold tracking-tight text-white sm:text-3xl`}>
-            Simple, One-Time Pricing
+            Purchase Your Studio
           </h2>
           <p className={`mx-auto mt-3 max-w-lg text-center text-white/60`}>
-            Pay once. Own it forever. No monthly fees, no per-tour charges, no surprises.
+            One-time setup fee · then $49/year upkeep license (first year free).
           </p>
 
           <div className="mt-12 grid gap-6 sm:grid-cols-2">
             {/* Starter */}
-            <Card className={`flex flex-col backdrop-blur bg-white/5`}>
+            <Card className={`relative flex flex-col backdrop-blur bg-white/5`}>
               <CardHeader className="text-center">
-                <Badge variant="secondary" className="mx-auto mb-2 w-fit">
-                  Starter
-                </Badge>
-                <span className={`text-4xl font-bold text-white`}>$149</span>
-                <span className={`text-sm text-white/50`}>one-time payment</span>
+                <CardTitle className="text-xl text-white">Starter Studio</CardTitle>
+                <p className="text-sm text-white/60">Get started with co-branded studio.</p>
+                <div className="mt-4 space-y-1">
+                  <div>
+                    <span className="text-4xl font-bold text-white">$149</span>
+                    <span className="text-sm text-white/50"> setup</span>
+                  </div>
+                  <div className="text-sm text-white/60">
+                    <span className="font-semibold text-white">$49</span>/year upkeep license
+                    <br />
+                    First year <span className="font-bold text-primary">FREE!</span>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent className="flex flex-1 flex-col justify-between gap-6">
-                <ul className="space-y-2.5">
-                  {starterFeatures.map((f) => (
-                    <li key={f} className={`flex items-start gap-2 text-sm text-white/90`}>
-                      <Check className="mt-0.5 size-4 shrink-0 text-primary" />
-                      {f}
+                <ul className="space-y-3">
+                  {starterFeatures.map((f, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm">
+                      {f.included ? (
+                        <Check className="mt-0.5 size-4 shrink-0 text-primary" />
+                      ) : (
+                        <X className="mt-0.5 size-4 shrink-0 text-white/40" />
+                      )}
+                      <span className={f.included ? "text-white/90" : "text-white/40"}>
+                        {f.text}
+                      </span>
                     </li>
                   ))}
                 </ul>
+                <p className="text-xs text-white/50 italic">
+                  Upgrade to Pro Studio later for just $199 — not the full $299.
+                </p>
                 <div className="flex flex-col gap-2">
                   {!isAuthenticated && (
                     <Button
@@ -622,7 +639,7 @@ function Index() {
                       className="w-full"
                       onClick={() => navigate({ to: "/signup", search: { token: "", email: "" } })}
                     >
-                      Get Starter
+                      Get Starter Studio
                     </Button>
                   )}
                   <DemoButton tier="starter" />
@@ -636,16 +653,32 @@ function Index() {
                 Most Popular
               </Badge>
               <CardHeader className="text-center">
-                <Badge className="mx-auto mb-2 w-fit">Pro</Badge>
-                <span className={`text-4xl font-bold text-white`}>$299</span>
-                <span className={`text-sm text-white/50`}>one-time payment</span>
+                <CardTitle className="text-xl text-white">Pro Studio</CardTitle>
+                <p className="text-sm text-white/60">Full whitelabel studio and more.</p>
+                <div className="mt-4 space-y-1">
+                  <div>
+                    <span className="text-4xl font-bold text-white">$299</span>
+                    <span className="text-sm text-white/50"> setup</span>
+                  </div>
+                  <div className="text-sm text-white/60">
+                    <span className="font-semibold text-white">$49</span>/year upkeep license
+                    <br />
+                    First year <span className="font-bold text-primary">FREE!</span>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent className="flex flex-1 flex-col justify-between gap-6">
-                <ul className="space-y-2.5">
-                  {proFeatures.map((f) => (
-                    <li key={f} className={`flex items-start gap-2 text-sm text-white/90`}>
-                      <Check className="mt-0.5 size-4 shrink-0 text-primary" />
-                      {f}
+                <ul className="space-y-3">
+                  {proFeatures.map((f, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm">
+                      {f.included ? (
+                        <Check className="mt-0.5 size-4 shrink-0 text-primary" />
+                      ) : (
+                        <X className="mt-0.5 size-4 shrink-0 text-white/40" />
+                      )}
+                      <span className={f.included ? "text-white/90" : "text-white/40"}>
+                        {f.text}
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -655,7 +688,7 @@ function Index() {
                       className="w-full"
                       onClick={() => navigate({ to: "/signup", search: { token: "", email: "" } })}
                     >
-                      Get Pro
+                      Get Pro Studio
                     </Button>
                   )}
                   <DemoButton tier="pro" />
@@ -664,7 +697,13 @@ function Index() {
             </Card>
           </div>
 
-          <p className={`mx-auto mt-8 max-w-2xl text-center text-xs text-white/50`}>
+          <p className={`mx-auto mt-6 max-w-2xl text-center text-xs text-white/50`}>
+            *All AI supported features require an active annual upkeep license to function.
+            <br />
+            Your studio setup (builder, branding, saved presentations) is permanent and never expires.
+          </p>
+
+          <p className={`mx-auto mt-4 max-w-2xl text-center text-xs text-white/50`}>
             <strong>Activate a test tier instantly</strong> — no Stripe purchase required. Explore the full dashboard, branding settings, client portal, and orders workflow. Demo purchases are recorded in sandbox mode. You can switch Demo tiers any time by returning here.
           </p>
         </div>
