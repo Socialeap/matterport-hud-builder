@@ -164,7 +164,7 @@ const starterFeatures = [
   { text: "Full builder access", included: true },
   { text: "Client invitation management", included: true },
   { text: "Music & tour behavior config", included: true },
-  { text: "AI-powered property Q&A*", included: true },
+  { text: "AI Property FAQ Assistant*", included: true },
   { text: "Easy Stripe-Connect payout options", included: true },
   { text: "Per-pricing for multiple property tours", included: true },
   { text: "Custom domain", included: false },
@@ -177,10 +177,10 @@ const proFeatures = [
   { text: "Full builder access", included: true },
   { text: "Client invitation management", included: true },
   { text: "Music & tour behavior config", included: true },
-  { text: "AI-powered property Q&A*", included: true },
+  { text: "AI Property FAQ Assistant*", included: true },
   { text: "Easy Stripe-Connect payout options", included: true },
   { text: "Per-pricing for multiple property tours", included: true },
-  { text: "Custom domain support", included: true },
+  { text: "Custom domain", included: true },
   { text: "AI Lead Generation for Clients*", included: true },
   { text: "Priority support", included: true },
 ];
@@ -715,7 +715,7 @@ function Index() {
             {[
               {
                 step: "1",
-                title: "Sign Up & Choose Your Tier",
+                title: "Choose Your Studio Tier",
                 desc: "Create your account and pick Starter or Pro. One-time payment, lifetime access.",
               },
               {
