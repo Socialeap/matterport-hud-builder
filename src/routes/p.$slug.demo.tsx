@@ -7,17 +7,14 @@ import type { PropertyModel, AgentContact, TourBehavior } from "@/components/por
 import { useState } from "react";
 
 export const Route = createFileRoute("/p/$slug/demo")({
-  head: ({ loaderData }) => {
-    const brandName = loaderData?.branding?.brand_name || "3D Property Demo";
-    return {
-      meta: [
-        { title: `${brandName} — Live Demo` },
-        { name: "description", content: `Explore an interactive 3D property tour demo by ${brandName}.` },
-        { property: "og:title", content: `${brandName} — Live Demo` },
-        { property: "og:description", content: `Interactive 3D property tour demo by ${brandName}.` },
-      ],
-    };
-  },
+  head: () => ({
+    meta: [
+      { title: "Live 3D Property Demo" },
+      { name: "description", content: "Explore an interactive 3D property tour demo." },
+      { property: "og:title", content: "Live 3D Property Demo" },
+      { property: "og:description", content: "Interactive 3D property tour demo." },
+    ],
+  }),
   loader: async ({ params }) => {
     const result = await getPublicDemoBySlug({ data: { slug: params.slug } });
     return result;

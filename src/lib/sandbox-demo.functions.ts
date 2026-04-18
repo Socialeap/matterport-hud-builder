@@ -13,6 +13,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import type { Json } from "@/integrations/supabase/types";
 
 interface SandboxDemoPayload {
   brand_overrides: {
@@ -55,10 +56,10 @@ export const saveSandboxDemo = createServerFn({ method: "POST" })
 
     const payload = {
       provider_id: userId,
-      brand_overrides: data.brand_overrides,
-      properties: data.properties,
-      behaviors: data.behaviors,
-      agent: data.agent,
+      brand_overrides: data.brand_overrides as unknown as Json,
+      properties: data.properties as unknown as Json,
+      behaviors: data.behaviors as unknown as Json,
+      agent: data.agent as unknown as Json,
     };
 
     if (existing) {
