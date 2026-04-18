@@ -1,38 +1,76 @@
 
 
-## Add "Sales Machine that Self-Serves your Clients" Section
+## Answers to your questions
 
-A new client-value section will be inserted on the landing page between the existing **Features grid** ("A Branded Studio for Clients to Build Their Own Presentations") and the **Pricing** section. This positions it as the natural "what your clients get" follow-up to "what you get as the MSP."
+**Q1 — Who can access the Sandbox / Demo today?**
 
-### Placement
-`src/routes/index.tsx` — new `<section>` inserted at line ~518 (after the existing Features grid closes, before `#pricing`).
+There are actually **two different "preview" surfaces** in the codebase right now, and they serve different audiences:
 
-### Structure
+| Surface | Route | Who sees it | Persisted? |
+|---|---|---|---|
+| **Internal Demo** | `/dashboard/demo` | MSP (provider) only — sidebar entry is gated to `roles: ["provider"]` | No — pure in-memory React state, resets on refresh |
+| **Client Builder** | `/p/$slug` (public URL like `/p/your-brand`) | Anyone with the link — clients use this to actually configure & purchase a presentation | Saved on submit (`saved_models` table) |
 
-**Section header**
-- Eyebrow chip: "For Your Clients" (subtle pill matching site style)
-- Headline (h2): "A Sales Machine that Self-Serves Your Clients"
-- Punchy intro (1–2 lines): something like "Stop being the bottleneck. Hand your clients a closing tool — not a service ticket. Every presentation works, sells, and follows up on autopilot."
+So today the `/dashboard/demo` sandbox is **MSP-only** and is essentially a throwaway playground — nothing the MSP does there is saved or visible to anyone else. Clients have their own builder at `/p/$slug` which is already public-facing but is a *purchase flow*, not a *demo*.
 
-**3×2 card grid** (`sm:grid-cols-2 lg:grid-cols-3`) — same Card + icon + title + description pattern already used in the Problem and Features sections for visual consistency:
+**Q2 — Can we promote a sandbox config into a public demo on the MSP's Studio?**
 
-| Icon | Title | Copy |
-|---|---|---|
-| `Layers` | The Portfolio HUD | One branded interface for everything. Bundle multiple property models into a single presentation with seamless dropdown navigation. |
-| `Bot` | The AI Concierge | A 24/7 virtual expert trained on your client's property data — answering buyer questions and capturing high-intent leads automatically. |
-| `MailCheck` | Instant Lead Alerts | No dashboards to babysit. High-intent leads land directly in your client's inbox the moment a viewer raises their hand. |
-| `Download` | Digital Sovereignty | Forever Assets. Clients download a self-contained presentation file and host it anywhere — Netlify, their own site, or any platform they choose. |
-| `Boxes` | Scale-Based Pricing | Charge per property model bundled into a presentation. Bigger portfolios = bigger tickets, automatically. |
-| `CreditCard` | White-Label Delivery | Stripe checkout, payouts, and order tracking — fully branded as your studio. Sales close while you sleep. |
+Yes, this is a clean, achievable feature. Here's the proposed plan.
 
-### Implementation Details
+## Plan: "Publish Sandbox as Public Demo"
 
-1. Add a new data array `clientFeatures` near the existing `features` array (around line 127).
-2. Add the new lucide-react icons to the existing import block (line 8): `Bot`, `MailCheck`, `Download`, `Boxes`, `CreditCard`.
-3. Insert the new `<section>` JSX with the same styling tokens (`sectionTint`, `cardBg`, white text classes, amber-300 icon color) so it visually integrates with adjacent sections.
-4. Keep copy bold, scannable, and non-technical — no jargon, short sentences.
+### Concept
+Add a **"Save as Demo"** button to `/dashboard/demo`. When toggled on, the MSP's last-saved sandbox configuration is exposed at `/p/$slug/demo` (read-only, no purchase flow, no signup) so visitors to their Studio see a fully-branded, interactive 3D tour example before committing to build their own.
 
-### Out of Scope
-- No DNS / email / Stripe changes (paused as requested).
-- No new routes — purely a content addition to the existing landing page.
+### User flow
+1. MSP opens `/dashboard/demo`, configures branding + 1–3 sample properties + agent info.
+2. Clicks **"Save & Publish as Public Demo"** → config is persisted.
+3. Toggle **"Show on public Studio"** controls visibility.
+4. On `/p/$slug` (the public Studio), a banner/CTA appears: *"See a Live Demo →"* linking to `/p/$slug/demo`.
+5. `/p/$slug/demo` renders the saved demo config in **read-only mode** — full HUD preview, working Matterport tours, no "Submit / Purchase" buttons, with a clear *"Build Your Own"* CTA that returns to `/p/$slug`.
+
+### Database
+One new table: `sandbox_demos`
+```text
+- id              uuid pk
+- provider_id     uuid (unique — one demo per MSP)
+- is_published    boolean default false
+- brand_overrides jsonb   (brandName, accentColor, hudBgColor, gateLabel, logo override)
+- properties      jsonb   (PropertyModel[])
+- behaviors       jsonb   (Record<id, TourBehavior>)
+- agent           jsonb   (AgentContact)
+- updated_at, created_at
+```
+RLS:
+- Provider: full CRUD on rows where `provider_id = auth.uid()`
+- Public (anon + auth): SELECT where `is_published = true` (joined via slug on `branding_settings`)
+
+### Code changes
+1. **`/dashboard/demo`** (`_authenticated.dashboard.demo.tsx`)
+   - Add Save / Publish toggle UI at the bottom of the left column.
+   - Load existing saved demo on mount (so MSP can iterate).
+   - Server fn `saveSandboxDemo` + `publishSandboxDemo`.
+2. **New route** `src/routes/p.$slug.demo.tsx`
+   - Loader fetches branding by slug → fetches `sandbox_demos` where `is_published = true`.
+   - Renders a read-only variant of `HudBuilderSandbox` (new prop `mode="demo"` that hides Submit, Pricing, Signup, License banners).
+3. **`/p/$slug`** (existing public builder)
+   - When a published demo exists, show a **"View Live Demo"** ribbon/CTA at the top.
+4. **HudBuilderSandbox refactor (small)**
+   - Add `mode?: "build" | "demo"` prop. In `demo` mode: hide purchase card, hide license banner, hide signup modal, change header copy.
+
+### LUS interaction
+Demo publishing is gated behind `useLusLicense().isActive` for the MSP — consistent with the "Premium Studio" rule. If LUS lapses, the published demo keeps rendering (so the MSP's marketing surface stays live), but the MSP can't *edit or republish* it until they renew. This matches the existing freeze/standard-mode pattern.
+
+### Out of scope (explicit)
+- No analytics on demo views (can add later).
+- No multiple demos per MSP — one canonical demo per Studio.
+- No "convert this demo into my own build" deep-link prefill (nice future addition).
+
+### File checklist
+- `supabase/migrations/{timestamp}_sandbox_demos.sql` — table + RLS
+- `src/lib/sandbox-demo.functions.ts` — `saveSandboxDemo`, `getSandboxDemo`, `publishSandboxDemo`
+- `src/routes/_authenticated.dashboard.demo.tsx` — load/save/publish UI
+- `src/routes/p.$slug.demo.tsx` — new public read-only route
+- `src/routes/p.$slug.tsx` — add "View Live Demo" CTA when demo published
+- `src/components/portal/HudBuilderSandbox.tsx` — add `mode` prop branching
 
