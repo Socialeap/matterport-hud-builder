@@ -514,6 +514,12 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
                       }
 
                       // ── Step 4: Generate presentation HTML with Q&A baked in ─
+                      //   Per-property-doc chunk embeddings + canonical Q&As
+                      //   are persisted at extraction time (see
+                      //   usePropertyExtractions.extract) while authenticated
+                      //   as the provider. This code path runs as the client
+                      //   (read-only on property_extractions), so we just
+                      //   consume what the provider already cached.
                       setDownloadStep("Building presentation…");
                       const result = await generatePresentationFn({
                         data: { modelId: savedModelId, qaDatabase },

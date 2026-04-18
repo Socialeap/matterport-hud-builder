@@ -176,7 +176,9 @@ async function loadExtractionsByProperty(
   try {
     const { data: rows, error } = await supabase
       .from("property_extractions")
-      .select("template_id, property_uuid, fields, chunks, extracted_at")
+      .select(
+        "template_id, property_uuid, fields, chunks, canonical_qas, extracted_at",
+      )
       .in("property_uuid", propertyUuids);
     if (error || !rows) {
       if (error) console.error("property_extractions fetch failed:", error);
@@ -204,13 +206,21 @@ async function loadExtractionsByProperty(
       const tplId = String(row.template_id);
       const bucket = (out[uuid] ??= []);
       const rawChunks = Array.isArray(row.chunks) ? row.chunks : [];
+      const rawCanonicalQAs = Array.isArray(row.canonical_qas)
+        ? row.canonical_qas
+        : [];
       bucket.push({
         template_id: tplId,
         template_label: labelByTemplate[tplId] || "Document",
         fields: (row.fields as Record<string, unknown>) ?? {},
         chunks: rawChunks
           .filter(
-            (c): c is { id: string; section: string; content: string } =>
+            (c): c is {
+              id: string;
+              section: string;
+              content: string;
+              embedding?: unknown;
+            } =>
               !!c &&
               typeof c === "object" &&
               typeof (c as { content?: unknown }).content === "string",
@@ -219,6 +229,30 @@ async function loadExtractionsByProperty(
             id: String(c.id ?? ""),
             section: String(c.section ?? ""),
             content: String(c.content ?? ""),
+            embedding: normalizeEmbedding(c.embedding),
+          })),
+        canonical_qas: rawCanonicalQAs
+          .filter(
+            (q): q is {
+              id: string;
+              field: string;
+              question: string;
+              answer: string;
+              source_anchor_id: string;
+              embedding?: unknown;
+            } =>
+              !!q &&
+              typeof q === "object" &&
+              typeof (q as { question?: unknown }).question === "string" &&
+              typeof (q as { answer?: unknown }).answer === "string",
+          )
+          .map((q) => ({
+            id: String(q.id ?? ""),
+            field: String(q.field ?? ""),
+            question: String(q.question ?? ""),
+            answer: String(q.answer ?? ""),
+            source_anchor_id: String(q.source_anchor_id ?? ""),
+            embedding: normalizeEmbedding(q.embedding),
           })),
         extracted_at: String(row.extracted_at ?? ""),
       });
@@ -228,6 +262,20 @@ async function loadExtractionsByProperty(
     console.error("loadExtractionsByProperty threw:", err);
     return {};
   }
+}
+
+/** Coerce an unknown JSONB value to a number[] or null. Guards against
+ *  pgvector-style serialised strings and drops malformed shapes. */
+function normalizeEmbedding(raw: unknown): number[] | null {
+  if (!Array.isArray(raw)) return null;
+  if (raw.length === 0) return null;
+  const out: number[] = [];
+  for (const v of raw) {
+    const n = typeof v === "number" ? v : Number(v);
+    if (!Number.isFinite(n)) return null;
+    out.push(n);
+  }
+  return out;
 }
 
 interface QADatabaseEntry {
@@ -242,7 +290,20 @@ interface PropertyExtractionForHud {
   template_id: string;
   template_label: string;
   fields: Record<string, unknown>;
-  chunks: Array<{ id: string; section: string; content: string }>;
+  chunks: Array<{
+    id: string;
+    section: string;
+    content: string;
+    embedding: number[] | null;
+  }>;
+  canonical_qas: Array<{
+    id: string;
+    field: string;
+    question: string;
+    answer: string;
+    source_anchor_id: string;
+    embedding: number[] | null;
+  }>;
   extracted_at: string;
 }
 
@@ -779,20 +840,35 @@ function renderPropertyDocs(i){
   body.innerHTML=parts.join("");
 }
 
-// ── Docs Q&A (Phase 3): BM25-only search over the active property's
-//    chunks + fields. Lazy-loads Orama on first open to keep the gate
-//    render fast. Re-indexes on tab change so conversations stay
-//    scoped to the current property.
+// ── Docs Q&A (Phase 5): three-tier answer pipeline, fully local.
+//    Tier 1 — cosine over pre-embedded canonical Q&As derived from
+//      structured fields. Deterministic, high-precision.
+//    Tier 2 — Orama hybrid (BM25 + vector) search over chunks. Uses
+//      per-chunk embeddings baked into the tour HTML.
+//    Tier 3 — BM25-only fallback for extraction rows that predate
+//      Phase 5 and therefore lack embeddings.
+//    All embedding / search happens client-side; no LLM at view time.
 var __docsQa={
   initPromise:null,
-  insert:null,
-  search:null,
+  oramaModule:null,
+  embedPipeline:null,
+  MODE_HYBRID:null,
   db:null,
+  mode:null,            // "hybrid" | "bm25"
+  canonicalQAs:[],      // [{id, field, question, answer, source_anchor_id, embedding}]
   currentIndexKey:null,
   input:null,
   send:null,
   messages:null
 };
+
+// Tier 1 confidence threshold. Calibrated for MiniLM L2-normalized
+// cosine: 0.72 catches phrasings close to the canonical forms without
+// bleeding into unrelated questions. Tier 2 uses Orama's native scoring
+// with no extra gate — the existence of any hit is enough, mirroring
+// the Phase 3 baseline so we never regress on recall.
+var __DQA_TIER1_THRESHOLD=0.72;
+
 function __dqaAppendMsg(text,role,source){
   if(!__docsQa.messages) return;
   var div=document.createElement("div");
@@ -807,52 +883,127 @@ function __dqaAppendMsg(text,role,source){
   __docsQa.messages.appendChild(div);
   __docsQa.messages.scrollTop=__docsQa.messages.scrollHeight;
 }
-function __dqaCorpusForProperty(i){
+function __dqaCosine(a,b){
+  if(!a||!b||a.length!==b.length) return -1;
+  var dot=0,na=0,nb=0;
+  for(var i=0;i<a.length;i++){dot+=a[i]*b[i];na+=a[i]*a[i];nb+=b[i]*b[i];}
+  if(na===0||nb===0) return -1;
+  return dot/Math.sqrt(na*nb);
+}
+function __dqaActiveEntries(i){
   var data=window.__PROPERTY_EXTRACTIONS__||{};
   var uuid=uuidByIndex[i];
-  var entries=uuid?(data[uuid]||[]):[];
+  return uuid?(data[uuid]||[]):[];
+}
+function __dqaCollectCanonicalQAs(entries){
+  var out=[];
+  for(var e=0;e<entries.length;e++){
+    var qas=entries[e].canonical_qas||[];
+    for(var q=0;q<qas.length;q++){
+      var it=qas[q];
+      if(!it||!Array.isArray(it.embedding)||it.embedding.length===0) continue;
+      out.push(it);
+    }
+  }
+  return out;
+}
+function __dqaCollectChunkDocs(entries){
+  // Returns {docs, hasEmbeddings}. docs are Orama-ready objects; the
+  // flag tells the caller which schema to build.
   var docs=[];
+  var withEmb=0,total=0;
   for(var e=0;e<entries.length;e++){
     var entry=entries[e];
     var label=entry.template_label||"Document";
     var chunks=entry.chunks||[];
     for(var c=0;c<chunks.length;c++){
+      total++;
+      var ch=chunks[c];
+      var hasEmb=Array.isArray(ch.embedding)&&ch.embedding.length>0;
+      if(hasEmb) withEmb++;
       docs.push({
-        id:label+"#chunk#"+(chunks[c].id||c),
-        source:label+" \u2192 "+(chunks[c].section||"section"),
-        content:String(chunks[c].content||"")
+        id:label+"#chunk#"+(ch.id||c),
+        source:label+" \u2192 "+(ch.section||"section"),
+        content:String(ch.content||""),
+        embedding:hasEmb?ch.embedding:null
       });
     }
+    // Fields are also indexed for BM25 fallback; they never carry
+    // embeddings (tier 1 covers these via canonical_qas).
     var fields=entry.fields||{};
-    var keys=Object.keys(fields);
-    for(var k=0;k<keys.length;k++){
-      var val=fields[keys[k]];
+    var fkeys=Object.keys(fields);
+    for(var k=0;k<fkeys.length;k++){
+      var val=fields[fkeys[k]];
       if(val==null) continue;
       var text=(typeof val==="object")?JSON.stringify(val):String(val);
       docs.push({
-        id:label+"#field#"+keys[k],
-        source:label+" \u2192 "+keys[k],
-        content:keys[k]+": "+text
+        id:label+"#field#"+fkeys[k],
+        source:label+" \u2192 "+fkeys[k],
+        content:fkeys[k]+": "+text,
+        embedding:null
       });
     }
   }
-  return docs;
+  return {docs:docs,hasEmbeddings:total>0&&withEmb===total};
 }
 async function __dqaRebuildIndex(i){
   if(!__docsQa.initPromise) return;
   await __docsQa.initPromise;
   var key=String(i);
   if(__docsQa.currentIndexKey===key) return;
-  var oramaModule=await import("https://cdn.jsdelivr.net/npm/@orama/orama@3.0.0/+esm");
-  __docsQa.db=await oramaModule.create({
-    schema:{id:"string",source:"string",content:"string"},
+  var om=__docsQa.oramaModule;
+  if(!om) return;
+  var entries=__dqaActiveEntries(i);
+  __docsQa.canonicalQAs=__dqaCollectCanonicalQAs(entries);
+  var collected=__dqaCollectChunkDocs(entries);
+  var useHybrid=collected.hasEmbeddings&&!!__docsQa.embedPipeline;
+  __docsQa.mode=useHybrid?"hybrid":"bm25";
+  var schema=useHybrid
+    ? {id:"string",source:"string",content:"string",embedding:"vector[384]"}
+    : {id:"string",source:"string",content:"string"};
+  __docsQa.db=await om.create({
+    schema:schema,
     components:{tokenizer:{language:"english",stemming:true}}
   });
-  var docs=__dqaCorpusForProperty(i);
-  for(var d=0;d<docs.length;d++){
-    await __docsQa.insert(__docsQa.db,docs[d]);
+  for(var d=0;d<collected.docs.length;d++){
+    var doc=collected.docs[d];
+    if(useHybrid){
+      // Chunks lacking a vector cannot be inserted into a vector schema.
+      // Synthesize a zero vector so they stay in the BM25 lane.
+      var emb=doc.embedding||new Array(384).fill(0);
+      await om.insert(__docsQa.db,{
+        id:doc.id,source:doc.source,content:doc.content,embedding:emb
+      });
+    }else{
+      await om.insert(__docsQa.db,{
+        id:doc.id,source:doc.source,content:doc.content
+      });
+    }
   }
   __docsQa.currentIndexKey=key;
+}
+async function __dqaEmbedQuery(q){
+  if(!__docsQa.embedPipeline) return null;
+  try{
+    var out=await __docsQa.embedPipeline(q,{pooling:"mean",normalize:true});
+    return Array.from(out.data);
+  }catch(err){
+    console.warn("docs-qa query embed failed:",err);
+    return null;
+  }
+}
+function __dqaTier1(queryVec){
+  if(!queryVec||!__docsQa.canonicalQAs.length) return null;
+  var best=null,bestScore=-1;
+  for(var i=0;i<__docsQa.canonicalQAs.length;i++){
+    var qa=__docsQa.canonicalQAs[i];
+    var s=__dqaCosine(queryVec,qa.embedding);
+    if(s>bestScore){bestScore=s;best=qa;}
+  }
+  if(best&&bestScore>=__DQA_TIER1_THRESHOLD){
+    return {answer:best.answer,source:best.source_anchor_id||best.field,score:bestScore};
+  }
+  return null;
 }
 async function __dqaInit(){
   if(__docsQa.initPromise) return __docsQa.initPromise;
@@ -861,9 +1012,21 @@ async function __dqaInit(){
   __docsQa.messages=document.getElementById("docs-qa-messages");
   if(!__docsQa.input||!__docsQa.send) return;
   __docsQa.initPromise=(async function(){
-    var mod=await import("https://cdn.jsdelivr.net/npm/@orama/orama@3.0.0/+esm");
-    __docsQa.insert=mod.insert;
-    __docsQa.search=mod.search;
+    // Load Orama first (tiny), then transformers.js (heavy, WASM + ONNX
+    // weights). Transformers is cached across the Q&A surface by URL so
+    // a second import() here is instant after the first.
+    var oramaModule=await import("https://cdn.jsdelivr.net/npm/@orama/orama@3.0.0/+esm");
+    __docsQa.oramaModule=oramaModule;
+    __docsQa.MODE_HYBRID=oramaModule.MODE_HYBRID_SEARCH;
+    try{
+      var tf=await import("https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2");
+      tf.env.allowLocalModels=false;
+      __docsQa.embedPipeline=await tf.pipeline("feature-extraction","Xenova/all-MiniLM-L6-v2");
+    }catch(err){
+      // Network or WASM failure — graceful degradation to BM25-only.
+      console.warn("docs-qa transformers load failed, falling back to BM25:",err);
+      __docsQa.embedPipeline=null;
+    }
   })();
   await __docsQa.initPromise;
   await __dqaRebuildIndex(current);
@@ -878,12 +1041,36 @@ async function __dqaInit(){
     __docsQa.input.disabled=true;
     __docsQa.send.disabled=true;
     try{
-      var res=await __docsQa.search(__docsQa.db,{term:q,properties:["content"],limit:1});
-      if(res&&res.hits&&res.hits.length>0){
-        var hit=res.hits[0].document;
-        __dqaAppendMsg(String(hit.content||""),"assistant",String(hit.source||""));
+      // Embed the query once; tiers 1 + 2 share the vector.
+      var queryVec=await __dqaEmbedQuery(q);
+
+      // Tier 1 — canonical-QA cosine (deterministic, templated).
+      var tier1=__dqaTier1(queryVec);
+      if(tier1){
+        __dqaAppendMsg(tier1.answer,"assistant",tier1.source);
       }else{
-        __dqaAppendMsg("I couldn't find that in the docs for this property. Try rephrasing or switch to another property.","assistant",null);
+        // Tier 2 (hybrid) or Tier 3 (BM25) via Orama.
+        var searchArgs;
+        if(__docsQa.mode==="hybrid"&&queryVec){
+          searchArgs={
+            mode:__docsQa.MODE_HYBRID,
+            term:q,
+            vector:{value:queryVec,property:"embedding"},
+            properties:["content"],
+            limit:1,
+            similarity:0
+          };
+        }else{
+          searchArgs={term:q,properties:["content"],limit:1};
+        }
+        var res=await __docsQa.oramaModule.search(__docsQa.db,searchArgs);
+        var hits=(res&&res.hits)||[];
+        if(hits.length>0){
+          var hit=hits[0].document;
+          __dqaAppendMsg(String(hit.content||""),"assistant",String(hit.source||""));
+        }else{
+          __dqaAppendMsg("I couldn't find that in the docs for this property. Try rephrasing or switch to another property.","assistant",null);
+        }
       }
     }catch(err){
       console.error("docs-qa search failed:",err);
