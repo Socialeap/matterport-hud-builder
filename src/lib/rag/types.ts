@@ -46,40 +46,9 @@ export interface SearchResult {
   score: number;
 }
 
-// ── Chat types ──────────────────────────────────────────────────────────
+// ── Pre-computed Q&A types ──────────────────────────────────────────────
 
-export interface ChatMessage {
-  role: "user" | "assistant";
-  content: string;
-}
-
-// ── Synthesis request/response (edge function) ──────────────────────────
-
-export interface SynthesisRequest {
-  query: string;
-  context: SearchResult[];
-  history: ChatMessage[];
-}
-
-export interface SynthesisResponse {
-  answer: string;
-  error?: string;
-}
-
-// ── Pipeline status ─────────────────────────────────────────────────────
-
-export type PipelineStatus =
-  | "idle"
-  | "loading-model"
-  | "indexing"
-  | "ready"
-  | "searching"
-  | "synthesizing"
-  | "error";
-
-// ── Pre-computed Q&A types (Layout-Aware RAG) ───────────────────────────
-
-/** Raw Q&A entry returned by the generate-qa-dictionary Edge Function. */
+/** Raw Q&A entry produced by the rule-based property-qa-builder. */
 export interface QAEntry {
   question: string;
   answer: string;
