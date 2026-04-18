@@ -28,6 +28,7 @@ export interface AgentContact {
   other: string;
   website: string;
   gaTrackingId: string;
+  avatarUrl: string;
 }
 
 export interface TourBehavior {
@@ -94,6 +95,7 @@ export const DEFAULT_AGENT: AgentContact = {
   other: "",
   website: "",
   gaTrackingId: "",
+  avatarUrl: "",
 };
 
 export function buildMatterportUrl(modelId: string, behavior: TourBehavior): string {

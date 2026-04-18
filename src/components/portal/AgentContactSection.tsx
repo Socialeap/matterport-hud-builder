@@ -1,14 +1,21 @@
+import { useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { UserCircle, BarChart3 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UserCircle, BarChart3, Upload, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import type { AgentContact } from "./types";
 
 interface AgentContactSectionProps {
   agent: AgentContact;
   onChange: (field: keyof AgentContact, value: string) => void;
+  onAvatarFileChange?: (file: File | null) => void;
 }
+
+const MAX_AVATAR_BYTES = 500 * 1024; // 500 KB
 
 const socialFields: { key: keyof AgentContact; label: string; placeholder: string }[] = [
   { key: "linkedin", label: "LinkedIn", placeholder: "https://linkedin.com/in/..." },
@@ -20,19 +27,90 @@ const socialFields: { key: keyof AgentContact; label: string; placeholder: strin
   { key: "website", label: "Website", placeholder: "https://yourwebsite.com" },
 ];
 
-export function AgentContactSection({ agent, onChange }: AgentContactSectionProps) {
+export function AgentContactSection({ agent, onChange, onAvatarFileChange }: AgentContactSectionProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleAvatarSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select an image file");
+      e.target.value = "";
+      return;
+    }
+    if (file.size > MAX_AVATAR_BYTES) {
+      toast.error("Avatar must be 500 KB or smaller");
+      e.target.value = "";
+      return;
+    }
+    onAvatarFileChange?.(file);
+  };
+
+  const handleRemoveAvatar = () => {
+    onAvatarFileChange?.(null);
+    onChange("avatarUrl", "");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const initials = (agent.name || "?")
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((s) => s.charAt(0).toUpperCase())
+    .join("");
+
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <UserCircle className="size-5 text-primary" />
-          Agent Contact
+          Agent/Manager Contact
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Avatar */}
+        <div className="flex items-center gap-4">
+          <Avatar className="h-16 w-16 border border-border">
+            {agent.avatarUrl ? <AvatarImage src={agent.avatarUrl} alt={agent.name || "Avatar"} /> : null}
+            <AvatarFallback>{initials}</AvatarFallback>
+          </Avatar>
+          <div className="space-y-2">
+            <Label className="text-xs">Profile Photo</Label>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleAvatarSelect}
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload className="mr-1.5 size-3.5" />
+                Upload
+              </Button>
+              {agent.avatarUrl && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={handleRemoveAvatar}
+                >
+                  <Trash2 className="mr-1.5 size-3.5" />
+                  Remove
+                </Button>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">PNG/JPG, square recommended, max 500 KB.</p>
+          </div>
+        </div>
+
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1">
-            <Label className="text-xs">Agent Name</Label>
+            <Label className="text-xs">Agent/Manager Name</Label>
             <Input
               value={agent.name}
               onChange={(e) => onChange("name", e.target.value)}
@@ -44,7 +122,7 @@ export function AgentContactSection({ agent, onChange }: AgentContactSectionProp
             <Input
               value={agent.titleRole}
               onChange={(e) => onChange("titleRole", e.target.value)}
-              placeholder="e.g. Real Estate Agent, Broker"
+              placeholder="e.g. Real Estate Agent, Property Manager, Owner"
             />
           </div>
         </div>

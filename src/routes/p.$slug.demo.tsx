@@ -88,6 +88,10 @@ function PublicDemoPage() {
   const properties = ((demo.properties as unknown) ?? []) as PropertyModel[];
   const behaviors = ((demo.behaviors as unknown) ?? {}) as Record<string, TourBehavior>;
   const agent = { ...DEFAULT_AGENT, ...(((demo.agent as unknown) ?? {}) as Partial<AgentContact>) };
+  // Defensive: clear stale blob: avatar URLs that should never have been persisted.
+  if (typeof agent.avatarUrl === "string" && agent.avatarUrl.startsWith("blob:")) {
+    agent.avatarUrl = "";
+  }
 
   // Ensure every property has a behavior entry
   const safeBehaviors: Record<string, TourBehavior> = { ...behaviors };

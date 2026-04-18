@@ -44,6 +44,7 @@ function DemoPage() {
   const [faviconFile, setFaviconFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [faviconPreview, setFaviconPreview] = useState<string | null>(null);
+  const [agentAvatarFile, setAgentAvatarFile] = useState<File | null>(null);
 
   // Models
   const [models, setModels] = useState<PropertyModel[]>(() => [createEmptyModel()]);
@@ -108,6 +109,10 @@ function DemoPage() {
           const loadedBehaviors = ((result.demo.behaviors as unknown) ?? {}) as Record<string, TourBehavior>;
           if (Object.keys(loadedBehaviors).length > 0) setBehaviors(loadedBehaviors);
           const loadedAgent = ((result.demo.agent as unknown) ?? {}) as Partial<AgentContact>;
+          // Strip stale blob: avatar URLs (defensive — should never persist)
+          if (typeof loadedAgent.avatarUrl === "string" && loadedAgent.avatarUrl.startsWith("blob:")) {
+            loadedAgent.avatarUrl = "";
+          }
           setAgent({ ...DEFAULT_AGENT, ...loadedAgent });
           setIsPublished(!!result.demo.is_published);
         }
@@ -132,12 +137,13 @@ function DemoPage() {
   // Upload a brand asset (logo or favicon) to public storage if still a local File.
   // Returns the durable URL or null on failure.
   const uploadIfFile = useCallback(
-    async (file: File | null, currentPreview: string | null, kind: "logo" | "favicon"): Promise<string | null> => {
+    async (file: File | null, currentPreview: string | null, kind: "logo" | "favicon" | "avatar"): Promise<string | null> => {
       if (file) {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return null;
         const ext = (file.name.split(".").pop() || "png").toLowerCase();
-        const path = `demo-${kind}s/${user.id}/${Date.now()}-${kind}.${ext}`;
+        const folder = kind === "avatar" ? "agent-avatars" : `demo-${kind}s`;
+        const path = `${folder}/${user.id}/${Date.now()}-${kind}.${ext}`;
         const { error: uploadErr } = await supabase.storage
           .from("brand-assets")
           .upload(path, file, { upsert: true, contentType: file.type || undefined });
@@ -156,10 +162,11 @@ function DemoPage() {
     []
   );
 
-  const ensureBrandAssetUrls = useCallback(async (): Promise<{ logoUrl: string | null; faviconUrl: string | null }> => {
-    const [logoUrl, faviconUrl] = await Promise.all([
+  const ensureBrandAssetUrls = useCallback(async (): Promise<{ logoUrl: string | null; faviconUrl: string | null; avatarUrl: string | null }> => {
+    const [logoUrl, faviconUrl, avatarUrl] = await Promise.all([
       uploadIfFile(logoFile, logoPreview, "logo"),
       uploadIfFile(faviconFile, faviconPreview, "favicon"),
+      uploadIfFile(agentAvatarFile, agent.avatarUrl || null, "avatar"),
     ]);
     // Replace local previews with durable URLs and clear the File handles.
     if (logoFile) {
@@ -170,19 +177,24 @@ function DemoPage() {
       setFaviconFile(null);
       if (faviconUrl) setFaviconPreview(faviconUrl);
     }
-    return { logoUrl, faviconUrl };
-  }, [uploadIfFile, logoFile, logoPreview, faviconFile, faviconPreview]);
+    if (agentAvatarFile) {
+      setAgentAvatarFile(null);
+      if (avatarUrl) setAgent((prev) => ({ ...prev, avatarUrl }));
+    }
+    return { logoUrl, faviconUrl, avatarUrl };
+  }, [uploadIfFile, logoFile, logoPreview, faviconFile, faviconPreview, agentAvatarFile, agent.avatarUrl]);
 
   const handleSave = useCallback(async () => {
     setSaving(true);
     try {
-      const { logoUrl, faviconUrl } = await ensureBrandAssetUrls();
+      const { logoUrl, faviconUrl, avatarUrl } = await ensureBrandAssetUrls();
+      const safeAgent = { ...agent, avatarUrl: avatarUrl ?? "" };
       const result = await saveDemo({
         data: {
           brand_overrides: { brandName, accentColor, hudBgColor, gateLabel, logoUrl, faviconUrl },
           properties: models,
           behaviors,
-          agent: agent as unknown as Record<string, unknown>,
+          agent: safeAgent as unknown as Record<string, unknown>,
         },
       });
       if (result.success) {
@@ -204,13 +216,14 @@ function DemoPage() {
     setPublishing(true);
     try {
       if (publish) {
-        const { logoUrl, faviconUrl } = await ensureBrandAssetUrls();
+        const { logoUrl, faviconUrl, avatarUrl } = await ensureBrandAssetUrls();
+        const safeAgent = { ...agent, avatarUrl: avatarUrl ?? "" };
         await saveDemo({
           data: {
             brand_overrides: { brandName, accentColor, hudBgColor, gateLabel, logoUrl, faviconUrl },
             properties: models,
             behaviors,
-            agent: agent as unknown as Record<string, unknown>,
+            agent: safeAgent as unknown as Record<string, unknown>,
           },
         });
       }
@@ -288,6 +301,15 @@ function DemoPage() {
     setAgent((prev) => ({ ...prev, [field]: value }));
   }, []);
 
+  const handleAgentAvatarChange = useCallback((file: File | null) => {
+    setAgentAvatarFile(file);
+    if (file) {
+      setAgent((prev) => ({ ...prev, avatarUrl: URL.createObjectURL(file) }));
+    } else {
+      setAgent((prev) => ({ ...prev, avatarUrl: "" }));
+    }
+  }, []);
+
   const behaviorModel = behaviorModelId ? models.find((m) => m.id === behaviorModelId) : null;
 
   return (
@@ -311,7 +333,7 @@ function DemoPage() {
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="branding">Branding</TabsTrigger>
               <TabsTrigger value="properties">Properties</TabsTrigger>
-              <TabsTrigger value="agent">Agent</TabsTrigger>
+              <TabsTrigger value="agent">Agent/Manager</TabsTrigger>
             </TabsList>
 
             <TabsContent value="branding" className="mt-4">
@@ -343,6 +365,7 @@ function DemoPage() {
               <AgentContactSection
                 agent={agent}
                 onChange={handleAgentChange}
+                onAvatarFileChange={handleAgentAvatarChange}
               />
             </TabsContent>
           </Tabs>
