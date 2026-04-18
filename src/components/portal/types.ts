@@ -5,6 +5,7 @@ export interface PropertyModel {
   location: string;
   matterportId: string;
   musicUrl: string;
+  cinematicVideoUrl?: string;
   enableNeighborhoodMap?: boolean;
 }
 
