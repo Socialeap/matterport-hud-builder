@@ -60,93 +60,6 @@ export function HudPreview({
 
   return (
     <div ref={containerRef} className="relative overflow-hidden rounded-lg border border-border shadow-lg">
-      {/* Toggle button — always visible */}
-      <div className="relative">
-        <button
-          onClick={() => setHeaderVisible((v) => !v)}
-          className="absolute right-2 top-2 z-20 flex h-6 w-6 items-center justify-center rounded-full bg-white/20 text-white backdrop-blur-sm transition-colors hover:bg-white/30"
-          aria-label={headerVisible ? "Hide header" : "Show header"}
-        >
-          {headerVisible ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-        </button>
-
-        {/* HUD Header — glassmorphism + animated */}
-        <div
-          className="transition-all duration-300 ease-in-out overflow-hidden"
-          style={{
-            maxHeight: headerVisible ? "120px" : "0px",
-            opacity: headerVisible ? 1 : 0,
-          }}
-        >
-          <div
-            className="flex items-center justify-between px-4 py-4"
-            style={{
-              backgroundColor: `${hudBgColor}cc`,
-              backdropFilter: "blur(16px)",
-              WebkitBackdropFilter: "blur(16px)",
-            }}
-          >
-            <div className="flex items-center gap-3">
-              {logoPreview && (
-                <img src={logoPreview} alt="Brand logo" className="h-8 object-contain" />
-              )}
-              <div>
-                <p className="text-sm font-semibold text-white">
-                  {brandName || "Your Brand"}
-                </p>
-                {currentModel && (
-                  <>
-                    {currentModel.propertyName?.trim() && (
-                      <p className="text-xs font-medium text-white/90">
-                        {currentModel.propertyName}
-                      </p>
-                    )}
-                    <p className="text-xs text-white/70">
-                      {currentModel.name || "Property"} — {currentModel.location || "Location"}
-                    </p>
-                  </>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 mr-8">
-              {currentModel?.enableNeighborhoodMap && currentModel.location.trim() && (
-                <button
-                  onClick={() => setMapOpen(true)}
-                  className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm transition-colors hover:bg-white/20"
-                  title="View Neighborhood Map"
-                  aria-label="View Neighborhood Map"
-                >
-                  <MapPin className="h-3.5 w-3.5" />
-                </button>
-              )}
-              {hasCinematic && (
-                <button
-                  onClick={() => setCinemaOpen(true)}
-                  className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm transition-colors hover:bg-white/20"
-                  title="Watch Cinematic Video"
-                  aria-label="Watch Cinematic Video"
-                >
-                  <Film className="h-3.5 w-3.5" />
-                </button>
-              )}
-              {agent.name && (
-                <span className="text-xs text-white/70">{agent.name}</span>
-              )}
-              {(agent.phone || agent.email || agent.name) && (
-                <button
-                  onClick={() => setContactOpen(true)}
-                  className="rounded px-2 py-1 text-xs font-medium text-white cursor-pointer"
-                  style={{ backgroundColor: accentColor }}
-                >
-                  Contact
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Property selector */}
       {models.length > 1 && (
         <div className="flex gap-1 border-b border-border bg-muted/50 px-4 py-2">
@@ -182,14 +95,102 @@ export function HudPreview({
           </div>
         )}
 
-        {/* Contact Side Panel — slides from right within the screen */}
+        {/* Toggle button — overlays the 3D model */}
+        <button
+          onClick={() => setHeaderVisible((v) => !v)}
+          className="absolute right-2 top-2 z-30 flex h-6 w-6 items-center justify-center rounded-full bg-white/20 text-white backdrop-blur-md transition-colors hover:bg-white/30"
+          aria-label={headerVisible ? "Hide header" : "Show header"}
+          style={{ WebkitBackdropFilter: "blur(12px)", backdropFilter: "blur(12px)" }}
+        >
+          {headerVisible ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+        </button>
+
+        {/* HUD Header — overlays the 3D model with glassmorphism */}
         <div
-          className="absolute inset-y-0 right-0 z-30 w-[280px] overflow-y-auto transition-transform duration-300 ease-in-out"
+          className="absolute inset-x-0 top-0 z-20 transition-all duration-300 ease-in-out overflow-hidden"
+          style={{
+            maxHeight: headerVisible ? "120px" : "0px",
+            opacity: headerVisible ? 1 : 0,
+          }}
+        >
+          <div
+            className="flex items-center justify-between px-4 py-4 border-b border-white/10"
+            style={{
+              backgroundColor: `${hudBgColor}66`,
+              backdropFilter: "blur(20px) saturate(180%)",
+              WebkitBackdropFilter: "blur(20px) saturate(180%)",
+              boxShadow: "0 4px 24px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.08)",
+            }}
+          >
+            <div className="flex items-center gap-3">
+              {logoPreview && (
+                <img src={logoPreview} alt="Brand logo" className="h-8 object-contain" />
+              )}
+              <div>
+                <p className="text-sm font-semibold text-white drop-shadow-sm">
+                  {brandName || "Your Brand"}
+                </p>
+                {currentModel && (
+                  <>
+                    {currentModel.propertyName?.trim() && (
+                      <p className="text-xs font-medium text-white/90 drop-shadow-sm">
+                        {currentModel.propertyName}
+                      </p>
+                    )}
+                    <p className="text-xs text-white/80 drop-shadow-sm">
+                      {currentModel.name || "Property"} — {currentModel.location || "Location"}
+                    </p>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 mr-8">
+              {currentModel?.enableNeighborhoodMap && currentModel.location.trim() && (
+                <button
+                  onClick={() => setMapOpen(true)}
+                  className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur-md transition-colors hover:bg-white/25"
+                  title="View Neighborhood Map"
+                  aria-label="View Neighborhood Map"
+                >
+                  <MapPin className="h-3.5 w-3.5" />
+                </button>
+              )}
+              {hasCinematic && (
+                <button
+                  onClick={() => setCinemaOpen(true)}
+                  className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur-md transition-colors hover:bg-white/25"
+                  title="Watch Cinematic Video"
+                  aria-label="Watch Cinematic Video"
+                >
+                  <Film className="h-3.5 w-3.5" />
+                </button>
+              )}
+              {agent.name && (
+                <span className="text-xs text-white/80 drop-shadow-sm">{agent.name}</span>
+              )}
+              {(agent.phone || agent.email || agent.name) && (
+                <button
+                  onClick={() => setContactOpen(true)}
+                  className="rounded px-2 py-1 text-xs font-medium text-white cursor-pointer shadow-md"
+                  style={{ backgroundColor: accentColor }}
+                >
+                  Contact
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Contact Side Panel — slides from right with glassmorphism */}
+        <div
+          className="absolute inset-y-0 right-0 z-40 w-[280px] overflow-y-auto transition-transform duration-300 ease-in-out border-l border-white/10"
           style={{
             transform: contactOpen ? "translateX(0)" : "translateX(100%)",
-            backgroundColor: `${hudBgColor}ee`,
-            backdropFilter: "blur(20px)",
-            WebkitBackdropFilter: "blur(20px)",
+            backgroundColor: `${hudBgColor}80`,
+            backdropFilter: "blur(24px) saturate(180%)",
+            WebkitBackdropFilter: "blur(24px) saturate(180%)",
+            boxShadow: "-8px 0 32px rgba(0,0,0,0.25)",
           }}
         >
           <div className="p-4">
