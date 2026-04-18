@@ -454,6 +454,51 @@ export type Database = {
         }
         Relationships: []
       }
+      vault_assets: {
+        Row: {
+          asset_url: string
+          category_type: Database["public"]["Enums"]["vault_category"]
+          created_at: string
+          description: string | null
+          file_size_bytes: number | null
+          id: string
+          is_active: boolean
+          label: string
+          mime_type: string | null
+          provider_id: string
+          storage_path: string | null
+          updated_at: string
+        }
+        Insert: {
+          asset_url: string
+          category_type: Database["public"]["Enums"]["vault_category"]
+          created_at?: string
+          description?: string | null
+          file_size_bytes?: number | null
+          id?: string
+          is_active?: boolean
+          label: string
+          mime_type?: string | null
+          provider_id: string
+          storage_path?: string | null
+          updated_at?: string
+        }
+        Update: {
+          asset_url?: string
+          category_type?: Database["public"]["Enums"]["vault_category"]
+          created_at?: string
+          description?: string | null
+          file_size_bytes?: number | null
+          id?: string
+          is_active?: boolean
+          label?: string
+          mime_type?: string | null
+          provider_id?: string
+          storage_path?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -521,6 +566,13 @@ export type Database = {
       invitation_status: "pending" | "accepted" | "expired"
       license_status: "active" | "past_due" | "expired"
       model_status: "preview" | "pending_payment" | "paid"
+      vault_category:
+        | "spatial_audio"
+        | "visual_hud_filter"
+        | "interactive_widget"
+        | "custom_iconography"
+        | "property_doc"
+        | "external_link"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -653,6 +705,14 @@ export const Constants = {
       invitation_status: ["pending", "accepted", "expired"],
       license_status: ["active", "past_due", "expired"],
       model_status: ["preview", "pending_payment", "paid"],
+      vault_category: [
+        "spatial_audio",
+        "visual_hud_filter",
+        "interactive_widget",
+        "custom_iconography",
+        "property_doc",
+        "external_link",
+      ],
     },
   },
 } as const
