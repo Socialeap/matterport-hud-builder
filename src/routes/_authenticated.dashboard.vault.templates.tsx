@@ -209,6 +209,7 @@ function VaultTemplatesPage() {
               template={t}
               onEdit={() => openEdit(t)}
               onDelete={() => handleDelete(t)}
+              editDisabled={editingDisabled}
             />
           ))}
         </div>
@@ -243,10 +244,12 @@ function TemplateCard({
   template,
   onEdit,
   onDelete,
+  editDisabled,
 }: {
   template: VaultTemplate;
   onEdit: () => void;
   onDelete: () => void;
+  editDisabled?: boolean;
 }) {
   const fieldCount = Object.keys(template.field_schema.properties ?? {}).length;
   return (
@@ -267,8 +270,18 @@ function TemplateCard({
         </CardDescription>
       </CardHeader>
       <CardContent className="flex items-center justify-end gap-1 pt-0">
-        <Button size="sm" variant="ghost" onClick={onEdit}>
-          <Pencil className="size-3.5" />
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={onEdit}
+          disabled={editDisabled}
+          title={editDisabled ? "Studio license inactive — paused" : "Edit"}
+        >
+          {editDisabled ? (
+            <Lock className="size-3.5 text-muted-foreground" />
+          ) : (
+            <Pencil className="size-3.5" />
+          )}
         </Button>
         <Button size="sm" variant="ghost" onClick={onDelete}>
           <Trash2 className="size-3.5 text-destructive" />
