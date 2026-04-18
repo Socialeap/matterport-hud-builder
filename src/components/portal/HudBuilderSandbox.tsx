@@ -32,6 +32,7 @@ function createEmptyModel(): PropertyModel {
     location: "",
     matterportId: "",
     musicUrl: "",
+    cinematicVideoUrl: "",
   };
 }
 

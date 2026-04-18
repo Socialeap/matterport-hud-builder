@@ -3,10 +3,11 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import { Lock, Plus, Trash2, Home, Settings2, MapPin } from "lucide-react";
+import { Lock, Plus, Trash2, Home, Settings2, MapPin, Film } from "lucide-react";
 import type { PropertyModel } from "./types";
 import { PropertyDocsPanel } from "./PropertyDocsPanel";
 import { useLusLicense } from "@/hooks/useLusLicense";
+import { parseCinematicVideo } from "@/lib/video-embed";
 
 interface PropertyModelsSectionProps {
   models: PropertyModel[];
@@ -127,6 +128,34 @@ export function PropertyModelsSection({
                 />
               </div>
             </div>
+
+            {(() => {
+              const raw = model.cinematicVideoUrl ?? "";
+              const parsed = parseCinematicVideo(raw);
+              const showWarning = raw.trim().length > 0 && parsed.kind === "invalid";
+              return (
+                <div className="space-y-1">
+                  <Label className="text-xs flex items-center gap-1.5">
+                    <Film className="size-3.5 text-primary" />
+                    Cinematic Video URL <span className="text-muted-foreground">(optional)</span>
+                  </Label>
+                  <Input
+                    value={raw}
+                    onChange={(e) => onChange(model.id, "cinematicVideoUrl", e.target.value)}
+                    placeholder="YouTube, Vimeo, Loom, Wistia, or .mp4 link"
+                  />
+                  {showWarning ? (
+                    <p className="text-[11px] leading-snug text-destructive">
+                      Unrecognized link. Use a YouTube, Vimeo, Loom, Wistia URL, or a direct .mp4 file.
+                    </p>
+                  ) : (
+                    <p className="text-[11px] leading-snug text-muted-foreground">
+                      Adds a "Cinema Mode" button to the HUD. Loads only when clicked — won't slow the tour.
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
 
             {showPremium ? (
               <div className="flex items-start gap-3 rounded-md border border-border/60 bg-muted/30 p-3">
