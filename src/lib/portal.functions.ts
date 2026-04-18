@@ -176,7 +176,7 @@ async function loadExtractionsByProperty(
   try {
     const { data: rows, error } = await supabase
       .from("property_extractions")
-      .select("template_id, property_uuid, fields, extracted_at")
+      .select("template_id, property_uuid, fields, chunks, extracted_at")
       .in("property_uuid", propertyUuids);
     if (error || !rows) {
       if (error) console.error("property_extractions fetch failed:", error);
@@ -203,10 +203,23 @@ async function loadExtractionsByProperty(
       const uuid = String(row.property_uuid);
       const tplId = String(row.template_id);
       const bucket = (out[uuid] ??= []);
+      const rawChunks = Array.isArray(row.chunks) ? row.chunks : [];
       bucket.push({
         template_id: tplId,
         template_label: labelByTemplate[tplId] || "Document",
         fields: (row.fields as Record<string, unknown>) ?? {},
+        chunks: rawChunks
+          .filter(
+            (c): c is { id: string; section: string; content: string } =>
+              !!c &&
+              typeof c === "object" &&
+              typeof (c as { content?: unknown }).content === "string",
+          )
+          .map((c) => ({
+            id: String(c.id ?? ""),
+            section: String(c.section ?? ""),
+            content: String(c.content ?? ""),
+          })),
         extracted_at: String(row.extracted_at ?? ""),
       });
     }
@@ -229,6 +242,7 @@ interface PropertyExtractionForHud {
   template_id: string;
   template_label: string;
   fields: Record<string, unknown>;
+  chunks: Array<{ id: string; section: string; content: string }>;
   extracted_at: string;
 }
 
@@ -243,6 +257,68 @@ function safeJsonScriptLiteral(value: unknown): string {
     .replace(/</g, "\\u003c")
     .replace(/\u2028/g, "\\u2028")
     .replace(/\u2029/g, "\\u2029");
+}
+
+/**
+ * Docs Q&A panel (Phase 3). A lazily-initialised chat surface that
+ * BM25-searches the active property's chunks + fields-as-text via Orama.
+ * Emits CSS, the DOM shell, and the toggle button. The runtime
+ * initialisation lives in the main IIFE below so it shares the
+ * `load(i)` tab-change hook. Empty string when no property has docs.
+ */
+function buildDocsQaAssets(
+  extractionsByProperty: ExtractionsByProperty,
+  hudBgColor: string,
+  accentColor: string,
+): { css: string; toggleBtn: string; panelHtml: string; enabled: boolean } {
+  const anyDocs = Object.values(extractionsByProperty).some((arr) =>
+    arr.some(
+      (e) =>
+        (e.chunks && e.chunks.length > 0) ||
+        Object.keys(e.fields ?? {}).length > 0,
+    ),
+  );
+  if (!anyDocs) {
+    return { css: "", toggleBtn: "", panelHtml: "", enabled: false };
+  }
+
+  const css = `
+#docs-qa-toggle{padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;background:${escapeHtml(accentColor)};border:none;color:#fff;display:flex;align-items:center;gap:6px}
+#docs-qa-toggle svg{width:14px;height:14px}
+#docs-qa-panel{display:none;position:fixed;bottom:56px;right:16px;width:380px;max-width:calc(100vw - 32px);height:480px;max-height:calc(100vh - 80px);background:${escapeHtml(hudBgColor)};border:1px solid #333;border-radius:12px;z-index:99;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.5);overflow:hidden}
+#docs-qa-panel.open{display:flex}
+#docs-qa-header{padding:12px 16px;border-bottom:1px solid #333;display:flex;align-items:center;justify-content:space-between}
+#docs-qa-header h4{font-size:14px;font-weight:600;color:#fff;margin:0}
+#docs-qa-close{background:none;border:none;color:#999;font-size:18px;cursor:pointer;padding:0 4px}
+#docs-qa-messages{flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:10px}
+.dqa-msg{max-width:88%;padding:8px 12px;border-radius:10px;font-size:13px;line-height:1.5;word-wrap:break-word;white-space:pre-wrap}
+.dqa-msg.user{align-self:flex-end;background:${escapeHtml(accentColor)};color:#fff;border-bottom-right-radius:4px}
+.dqa-msg.assistant{align-self:flex-start;background:#2a2a3e;color:#ddd;border-bottom-left-radius:4px}
+.dqa-src{display:inline-block;margin-top:6px;padding:2px 8px;font-size:11px;color:#aaa;font-style:italic}
+#docs-qa-input-row{padding:10px 12px;border-top:1px solid #333;display:flex;gap:8px;align-items:center}
+#docs-qa-input{flex:1;background:#1e1e30;border:1px solid #444;border-radius:8px;padding:8px 12px;color:#fff;font-size:13px;outline:none}
+#docs-qa-input:focus{border-color:${escapeHtml(accentColor)}}
+#docs-qa-input:disabled{opacity:0.5;cursor:not-allowed}
+#docs-qa-send{background:${escapeHtml(accentColor)};border:none;color:#fff;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:13px;font-weight:600}
+#docs-qa-send:disabled{opacity:0.4;cursor:not-allowed}
+`;
+
+  const toggleBtn = `<button id="docs-qa-toggle" onclick="window.__openDocsQa&&window.__openDocsQa()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Ask docs</button>`;
+
+  const panelHtml = `
+<div id="docs-qa-panel">
+  <div id="docs-qa-header">
+    <h4>Ask the property docs</h4>
+    <button id="docs-qa-close" onclick="document.getElementById('docs-qa-panel').classList.remove('open')">&times;</button>
+  </div>
+  <div id="docs-qa-messages"><div class="dqa-msg assistant">Hi! I can answer questions from the uploaded docs for this property. Try asking about fields, terms, dates, or amounts.</div></div>
+  <div id="docs-qa-input-row">
+    <input id="docs-qa-input" type="text" placeholder="Initializing search…" disabled />
+    <button id="docs-qa-send" disabled>Send</button>
+  </div>
+</div>`;
+
+  return { css, toggleBtn, panelHtml, enabled: true };
 }
 
 /** Renders a per-property-extraction block as trusted HTML. All dynamic
@@ -386,6 +462,12 @@ export const generatePresentation = createServerFn({ method: "POST" })
     )
       ? extractionsByProperty
       : null;
+
+    const docsQaAssets = buildDocsQaAssets(
+      extractionsByProperty,
+      hudBgColor,
+      accentColor,
+    );
 
     const poweredBy = isPro
       ? ""
@@ -619,6 +701,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 #viewer iframe{width:100%;height:100%;border:none}
 ${logoUrl ? `#gate img.logo{max-height:64px;margin-bottom:16px}` : ""}
 ${qaCss}
+${docsQaAssets.css}
 </style>
 </head>
 <body>
@@ -632,11 +715,13 @@ ${qaCss}
 <div id="hud">
   <div id="tabs"></div>
   <div class="spacer"></div>
+  ${docsQaAssets.toggleBtn}
   ${qaToggleBtn}
   ${agent.name ? `<button class="agent-btn" onclick="document.getElementById('agent-drawer').style.display='block'">Contact</button>` : ""}
 </div>
 ${agentDrawer}
 ${qaPanelHtml}
+${docsQaAssets.panelHtml}
 ${propertyDocsPanelHtml}
 ${poweredBy}
 ${
@@ -694,12 +779,142 @@ function renderPropertyDocs(i){
   body.innerHTML=parts.join("");
 }
 
+// ── Docs Q&A (Phase 3): BM25-only search over the active property's
+//    chunks + fields. Lazy-loads Orama on first open to keep the gate
+//    render fast. Re-indexes on tab change so conversations stay
+//    scoped to the current property.
+var __docsQa={
+  initPromise:null,
+  insert:null,
+  search:null,
+  db:null,
+  currentIndexKey:null,
+  input:null,
+  send:null,
+  messages:null
+};
+function __dqaAppendMsg(text,role,source){
+  if(!__docsQa.messages) return;
+  var div=document.createElement("div");
+  div.className="dqa-msg "+role;
+  div.textContent=text;
+  if(source){
+    var tag=document.createElement("div");
+    tag.className="dqa-src";
+    tag.textContent="from: "+source;
+    div.appendChild(tag);
+  }
+  __docsQa.messages.appendChild(div);
+  __docsQa.messages.scrollTop=__docsQa.messages.scrollHeight;
+}
+function __dqaCorpusForProperty(i){
+  var data=window.__PROPERTY_EXTRACTIONS__||{};
+  var uuid=uuidByIndex[i];
+  var entries=uuid?(data[uuid]||[]):[];
+  var docs=[];
+  for(var e=0;e<entries.length;e++){
+    var entry=entries[e];
+    var label=entry.template_label||"Document";
+    var chunks=entry.chunks||[];
+    for(var c=0;c<chunks.length;c++){
+      docs.push({
+        id:label+"#chunk#"+(chunks[c].id||c),
+        source:label+" \u2192 "+(chunks[c].section||"section"),
+        content:String(chunks[c].content||"")
+      });
+    }
+    var fields=entry.fields||{};
+    var keys=Object.keys(fields);
+    for(var k=0;k<keys.length;k++){
+      var val=fields[keys[k]];
+      if(val==null) continue;
+      var text=(typeof val==="object")?JSON.stringify(val):String(val);
+      docs.push({
+        id:label+"#field#"+keys[k],
+        source:label+" \u2192 "+keys[k],
+        content:keys[k]+": "+text
+      });
+    }
+  }
+  return docs;
+}
+async function __dqaRebuildIndex(i){
+  if(!__docsQa.initPromise) return;
+  await __docsQa.initPromise;
+  var key=String(i);
+  if(__docsQa.currentIndexKey===key) return;
+  var oramaModule=await import("https://cdn.jsdelivr.net/npm/@orama/orama@3.0.0/+esm");
+  __docsQa.db=await oramaModule.create({
+    schema:{id:"string",source:"string",content:"string"},
+    components:{tokenizer:{language:"english",stemming:true}}
+  });
+  var docs=__dqaCorpusForProperty(i);
+  for(var d=0;d<docs.length;d++){
+    await __docsQa.insert(__docsQa.db,docs[d]);
+  }
+  __docsQa.currentIndexKey=key;
+}
+async function __dqaInit(){
+  if(__docsQa.initPromise) return __docsQa.initPromise;
+  __docsQa.input=document.getElementById("docs-qa-input");
+  __docsQa.send=document.getElementById("docs-qa-send");
+  __docsQa.messages=document.getElementById("docs-qa-messages");
+  if(!__docsQa.input||!__docsQa.send) return;
+  __docsQa.initPromise=(async function(){
+    var mod=await import("https://cdn.jsdelivr.net/npm/@orama/orama@3.0.0/+esm");
+    __docsQa.insert=mod.insert;
+    __docsQa.search=mod.search;
+  })();
+  await __docsQa.initPromise;
+  await __dqaRebuildIndex(current);
+  __docsQa.input.placeholder="Ask about this property's docs\u2026";
+  __docsQa.input.disabled=false;
+  __docsQa.send.disabled=false;
+  async function handleAsk(){
+    var q=(__docsQa.input.value||"").trim();
+    if(!q||!__docsQa.db) return;
+    __docsQa.input.value="";
+    __dqaAppendMsg(q,"user",null);
+    __docsQa.input.disabled=true;
+    __docsQa.send.disabled=true;
+    try{
+      var res=await __docsQa.search(__docsQa.db,{term:q,properties:["content"],limit:1});
+      if(res&&res.hits&&res.hits.length>0){
+        var hit=res.hits[0].document;
+        __dqaAppendMsg(String(hit.content||""),"assistant",String(hit.source||""));
+      }else{
+        __dqaAppendMsg("I couldn't find that in the docs for this property. Try rephrasing or switch to another property.","assistant",null);
+      }
+    }catch(err){
+      console.error("docs-qa search failed:",err);
+      __dqaAppendMsg("Search failed. Please try again.","assistant",null);
+    }
+    __docsQa.input.disabled=false;
+    __docsQa.send.disabled=false;
+    __docsQa.input.focus();
+  }
+  __docsQa.send.addEventListener("click",handleAsk);
+  __docsQa.input.addEventListener("keydown",function(e){if(e.key==="Enter") handleAsk();});
+}
+window.__openDocsQa=function(){
+  var panel=document.getElementById("docs-qa-panel");
+  if(!panel) return;
+  panel.classList.add("open");
+  __dqaInit();
+};
+
 function load(i){
   current=i;
   frame.src=props[i].iframeUrl;
   var tabs=tabsEl.querySelectorAll(".tab");
   tabs.forEach(function(t,j){t.classList.toggle("active",j===i)});
   renderPropertyDocs(i);
+  // Reset Docs Q&A state so next open re-indexes for this property.
+  __docsQa.currentIndexKey=null;
+  if(__docsQa.messages){
+    __docsQa.messages.innerHTML='<div class="dqa-msg assistant">Switched to '+escapeText(props[i].name||"property")+'. Ask me something.</div>';
+  }
+  if(__docsQa.initPromise){ __dqaRebuildIndex(i); }
 }
 props.forEach(function(p,i){
   var btn=document.createElement("button");
