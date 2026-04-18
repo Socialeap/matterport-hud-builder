@@ -592,7 +592,7 @@ export const generatePresentation = createServerFn({ method: "POST" })
 <script type="module">
 // ── CDN imports ─────────────────────────────────────────────────────
 const ORAMA_CDN = "https://cdn.jsdelivr.net/npm/@orama/orama@3.0.0/+esm";
-const TRANSFORMERS_CDN = "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2";
+const TRANSFORMERS_CDN = "https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.1.0";
 
 const input = document.getElementById("qa-input");
 const sendBtn = document.getElementById("qa-send");
@@ -651,7 +651,19 @@ async function init() {
     env.allowLocalModels = false;
     input.placeholder = "Loading model into memory…";
 
-    embedPipeline = await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2");
+    // WebGPU-first with WASM fallback; q8 quantisation in both paths to
+    // keep cold-load bandwidth down relative to v4's fp32 default.
+    try {
+      if (typeof navigator !== "undefined" && navigator.gpu) {
+        embedPipeline = await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2", { device: "webgpu", dtype: "q8" });
+      }
+    } catch (err) {
+      console.warn("[transformers] webgpu init failed, falling back to wasm:", err);
+      embedPipeline = null;
+    }
+    if (!embedPipeline) {
+      embedPipeline = await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2", { dtype: "q8" });
+    }
     MODE_HYBRID = oramaModule.MODE_HYBRID_SEARCH;
 
     input.placeholder = "Indexing property data…";
@@ -883,12 +895,16 @@ function __dqaAppendMsg(text,role,source){
   __docsQa.messages.appendChild(div);
   __docsQa.messages.scrollTop=__docsQa.messages.scrollHeight;
 }
-function __dqaCosine(a,b){
+// Dot product on L2-normalized vectors is identical to cosine similarity
+// but skips the square-root + two accumulator passes. Both query and
+// canonical_qa embeddings are produced with normalize:true, so this is
+// a straight simplification — the 0.72 tier-1 threshold keeps the same
+// semantic meaning.
+function __dqaDot(a,b){
   if(!a||!b||a.length!==b.length) return -1;
-  var dot=0,na=0,nb=0;
-  for(var i=0;i<a.length;i++){dot+=a[i]*b[i];na+=a[i]*a[i];nb+=b[i]*b[i];}
-  if(na===0||nb===0) return -1;
-  return dot/Math.sqrt(na*nb);
+  var dot=0;
+  for(var i=0;i<a.length;i++){dot+=a[i]*b[i];}
+  return dot;
 }
 function __dqaActiveEntries(i){
   var data=window.__PROPERTY_EXTRACTIONS__||{};
@@ -997,7 +1013,7 @@ function __dqaTier1(queryVec){
   var best=null,bestScore=-1;
   for(var i=0;i<__docsQa.canonicalQAs.length;i++){
     var qa=__docsQa.canonicalQAs[i];
-    var s=__dqaCosine(queryVec,qa.embedding);
+    var s=__dqaDot(queryVec,qa.embedding);
     if(s>bestScore){bestScore=s;best=qa;}
   }
   if(best&&bestScore>=__DQA_TIER1_THRESHOLD){
@@ -1019,9 +1035,23 @@ async function __dqaInit(){
     __docsQa.oramaModule=oramaModule;
     __docsQa.MODE_HYBRID=oramaModule.MODE_HYBRID_SEARCH;
     try{
-      var tf=await import("https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2");
+      var tf=await import("https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.1.0");
       tf.env.allowLocalModels=false;
-      __docsQa.embedPipeline=await tf.pipeline("feature-extraction","Xenova/all-MiniLM-L6-v2");
+      // WebGPU-first with WASM fallback; q8 in both paths to keep
+      // cold-load bandwidth down relative to v4's fp32 default.
+      var pipe=null;
+      try{
+        if(typeof navigator!=="undefined"&&navigator.gpu){
+          pipe=await tf.pipeline("feature-extraction","Xenova/all-MiniLM-L6-v2",{device:"webgpu",dtype:"q8"});
+        }
+      }catch(gpuErr){
+        console.warn("[transformers] webgpu init failed, falling back to wasm:",gpuErr);
+        pipe=null;
+      }
+      if(!pipe){
+        pipe=await tf.pipeline("feature-extraction","Xenova/all-MiniLM-L6-v2",{dtype:"q8"});
+      }
+      __docsQa.embedPipeline=pipe;
     }catch(err){
       // Network or WASM failure — graceful degradation to BM25-only.
       console.warn("docs-qa transformers load failed, falling back to BM25:",err);
@@ -1111,6 +1141,25 @@ props.forEach(function(p,i){
   tabsEl.appendChild(btn);
 });
 if(props.length>0) load(0);
+
+// Pre-warm the docs-qa pipeline after the Matterport iframe has finished
+// its initial load. Gated on the panel actually existing so tours with
+// no extractions skip the ~23 MB model download. requestIdleCallback
+// keeps the work off the critical path; a short setTimeout covers
+// browsers (Safari) that haven't shipped it yet.
+function __dqaPrewarm(){
+  if(!document.getElementById("docs-qa-panel")) return;
+  __dqaInit().catch(function(err){console.warn("docs-qa prewarm failed:",err);});
+}
+if(frame){
+  frame.addEventListener("load",function(){
+    if(typeof window.requestIdleCallback==="function"){
+      window.requestIdleCallback(__dqaPrewarm,{timeout:5000});
+    }else{
+      setTimeout(__dqaPrewarm,2000);
+    }
+  },{once:true});
+}
 })();
 </script>
 ${qaModuleScript}
