@@ -3,6 +3,7 @@ import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
 import { invokeExtraction } from "@/lib/extraction/client";
+import { ensureExtractionEmbeddings } from "@/lib/rag/extraction-hydrator";
 import type { PropertyChunk } from "@/lib/rag/types";
 
 export interface PropertyExtraction {
@@ -66,6 +67,14 @@ export function usePropertyExtractions(propertyUuid: string | null) {
           saved_model_id: input.saved_model_id ?? null,
         });
         toast.success(`Extracted ${res.chunks_indexed} chunks`);
+        // Enrich the new extraction with chunk embeddings + canonical
+        // Q&As so the delivered tour runs a zero-LLM answer pipeline.
+        // Non-fatal on failure — the tour falls back to BM25-only Q&A.
+        try {
+          await ensureExtractionEmbeddings([propertyUuid]);
+        } catch (err) {
+          console.warn("Post-extraction embedding enrichment failed:", err);
+        }
         await refresh();
         return res;
       } catch (err) {

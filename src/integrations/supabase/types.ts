@@ -546,6 +546,7 @@ export type Database = {
       }
       property_extractions: {
         Row: {
+          canonical_qas: Json | null
           chunks: Json
           embedding: string | null
           extracted_at: string
@@ -559,6 +560,7 @@ export type Database = {
           vault_asset_id: string
         }
         Insert: {
+          canonical_qas?: Json | null
           chunks: Json
           embedding?: string | null
           extracted_at?: string
@@ -572,6 +574,7 @@ export type Database = {
           vault_asset_id: string
         }
         Update: {
+          canonical_qas?: Json | null
           chunks?: Json
           embedding?: string | null
           extracted_at?: string
