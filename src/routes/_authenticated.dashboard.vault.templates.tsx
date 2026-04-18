@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   FileJson,
   FileText,
+  Lock,
   Pencil,
   Play,
   Plus,
@@ -13,6 +14,7 @@ import {
 import { toast } from "sonner";
 
 import { useVaultTemplates } from "@/hooks/useVaultTemplates";
+import { useLusLicense } from "@/hooks/useLusLicense";
 import type {
   JsonSchema,
   VaultTemplate,
@@ -75,10 +77,16 @@ const EMPTY_EDITOR: EditorState = {
 
 function VaultTemplatesPage() {
   const { templates, loading, create, update, remove } = useVaultTemplates();
+  const { isActive: lusActive, loading: lusLoading } = useLusLicense();
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const openCreate = () => setEditor({ ...EMPTY_EDITOR });
+  const editingDisabled = !lusLoading && !lusActive;
+
+  const openCreate = () => {
+    if (editingDisabled) return;
+    setEditor({ ...EMPTY_EDITOR });
+  };
   const openEdit = (t: VaultTemplate) =>
     setEditor({
       id: t.id,
@@ -90,6 +98,10 @@ function VaultTemplatesPage() {
 
   const handleSave = async () => {
     if (!editor) return;
+    if (editingDisabled) {
+      toast.error("Studio license inactive — saving templates is paused.");
+      return;
+    }
     if (!editor.label.trim()) {
       toast.error("Label required");
       return;
