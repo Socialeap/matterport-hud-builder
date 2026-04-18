@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { FileText, Loader2, Play, Trash2 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 
@@ -15,8 +15,8 @@ import {
 } from "@/components/ui/dialog";
 
 import { usePropertyExtractions } from "@/hooks/usePropertyExtractions";
-import { useVaultTemplates } from "@/hooks/useVaultTemplates";
-import { useProviderVaultDocs } from "@/hooks/useProviderVaultDocs";
+import { useAvailableTemplates } from "@/hooks/useAvailableTemplates";
+import { useAvailablePropertyDocs } from "@/hooks/useAvailablePropertyDocs";
 import type { PropertyExtraction } from "@/hooks/usePropertyExtractions";
 
 interface PropertyDocsPanelProps {
@@ -26,9 +26,9 @@ interface PropertyDocsPanelProps {
 
 /**
  * Per-property extraction control surface inside the HUD builder.
- * MSPs pick a vault doc + template and run extraction; extracted
- * fields are rendered inline so they can preview what end-viewers
- * will see.
+ * Works for both providers (their own vault + templates) and for
+ * clients bound to a provider via client_providers (the provider's
+ * active vault docs + active templates). RLS does the scoping.
  */
 export function PropertyDocsPanel({
   propertyUuid,
@@ -36,17 +36,12 @@ export function PropertyDocsPanel({
 }: PropertyDocsPanelProps) {
   const { extractions, loading, running, extract, remove } =
     usePropertyExtractions(propertyUuid);
-  const { templates } = useVaultTemplates();
-  const { docs } = useProviderVaultDocs();
+  const { templates } = useAvailableTemplates();
+  const { docs } = useAvailablePropertyDocs();
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [vaultAssetId, setVaultAssetId] = useState<string>("");
   const [templateId, setTemplateId] = useState<string>("");
-
-  const activeTemplates = useMemo(
-    () => templates.filter((t) => t.is_active),
-    [templates],
-  );
 
   const canRun = !!vaultAssetId && !!templateId && !running;
 
@@ -64,7 +59,7 @@ export function PropertyDocsPanel({
     }
   };
 
-  const noTemplates = activeTemplates.length === 0;
+  const noTemplates = templates.length === 0;
   const noDocs = docs.length === 0;
 
   return (
@@ -159,7 +154,7 @@ export function PropertyDocsPanel({
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
               >
                 <option value="">Select a template…</option>
-                {activeTemplates.map((t) => (
+                {templates.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.label} ({t.doc_kind})
                   </option>
@@ -199,35 +194,49 @@ function EmptyHint({
   noTemplates: boolean;
   noDocs: boolean;
 }) {
+  // Works for both audiences: providers see deep-links into their vault,
+  // clients see the copy without broken navigation to pages they can't reach.
+  if (noTemplates && noDocs) {
+    return (
+      <p className="text-[11px] leading-snug text-muted-foreground">
+        No property docs or templates available yet. Ask your provider, or
+        {" "}
+        <Link
+          to="/dashboard/vault"
+          className="underline hover:text-foreground"
+        >
+          manage your vault
+        </Link>
+        .
+      </p>
+    );
+  }
+  if (noTemplates) {
+    return (
+      <p className="text-[11px] leading-snug text-muted-foreground">
+        No active templates available yet. Providers can
+        {" "}
+        <Link
+          to="/dashboard/vault/templates"
+          className="underline hover:text-foreground"
+        >
+          publish one
+        </Link>
+        .
+      </p>
+    );
+  }
   return (
     <p className="text-[11px] leading-snug text-muted-foreground">
-      {noTemplates && noDocs
-        ? "Add a property doc to your vault and create a template first."
-        : noTemplates
-          ? (
-            <>
-              No active templates yet —{" "}
-              <Link
-                to="/dashboard/vault/templates"
-                className="underline hover:text-foreground"
-              >
-                create one
-              </Link>
-              .
-            </>
-          )
-          : (
-            <>
-              No property docs in your vault yet —{" "}
-              <Link
-                to="/dashboard/vault"
-                className="underline hover:text-foreground"
-              >
-                upload one
-              </Link>
-              .
-            </>
-          )}
+      No property docs available yet. Providers can
+      {" "}
+      <Link
+        to="/dashboard/vault"
+        className="underline hover:text-foreground"
+      >
+        upload one
+      </Link>
+      .
     </p>
   );
 }
