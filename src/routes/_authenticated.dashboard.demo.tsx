@@ -17,7 +17,6 @@ import { getSandboxDemo, saveSandboxDemo, publishSandboxDemo } from "@/lib/sandb
 import { useLusLicense } from "@/hooks/useLusLicense";
 import { toast } from "sonner";
 import { ExternalLink, Save, Globe, Lock } from "lucide-react";
-import { Link } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/_authenticated/dashboard/demo")({
@@ -131,7 +130,7 @@ function DemoPage() {
           brand_overrides: { brandName, accentColor, hudBgColor, gateLabel, logoUrl: logoPreview },
           properties: models,
           behaviors,
-          agent,
+          agent: agent as unknown as Record<string, unknown>,
         },
       });
       if (result.success) {
@@ -158,7 +157,7 @@ function DemoPage() {
             brand_overrides: { brandName, accentColor, hudBgColor, gateLabel, logoUrl: logoPreview },
             properties: models,
             behaviors,
-            agent,
+            agent: agent as unknown as Record<string, unknown>,
           },
         });
       }
