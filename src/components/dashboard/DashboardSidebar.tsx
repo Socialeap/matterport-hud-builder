@@ -12,11 +12,12 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { Palette, Users, Play, LayoutDashboard, LogOut, CreditCard, ShoppingCart } from "lucide-react";
+import { Palette, Users, Play, LayoutDashboard, LogOut, CreditCard, ShoppingCart, Archive } from "lucide-react";
 
 const allNavItems = [
   { label: "Overview", to: "/dashboard", icon: LayoutDashboard, roles: ["provider", "client"] },
   { label: "Branding", to: "/dashboard/branding", icon: Palette, roles: ["provider"] },
+  { label: "Vault", to: "/dashboard/vault", icon: Archive, roles: ["provider"] },
   { label: "Orders", to: "/dashboard/orders", icon: ShoppingCart, roles: ["provider", "client"] },
   { label: "Clients", to: "/dashboard/clients", icon: Users, roles: ["provider"] },
   { label: "Pricing", to: "/dashboard/pricing", icon: CreditCard, roles: ["provider"] },
