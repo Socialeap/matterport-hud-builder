@@ -1,13 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
-import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { supabase } from "@/integrations/supabase/client";
 import { HudBuilderSandbox } from "@/components/portal/HudBuilderSandbox";
 import { checkDemoPublished } from "@/lib/sandbox-demo.functions";
 
 const fetchBrandingBySlug = createServerFn({ method: "GET" })
   .inputValidator((data: { slug: string }) => data)
   .handler(async ({ data }) => {
-    const { data: branding, error } = await supabaseAdmin
+    const { data: branding, error } = await supabase
       .from("branding_settings")
       .select("*")
       .eq("slug", data.slug)
