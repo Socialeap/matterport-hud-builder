@@ -22,7 +22,11 @@ function respond(msg: WorkerResponse) {
   self.postMessage(msg);
 }
 
-/** Lazy-init: download the model + create the feature-extraction pipeline. */
+/** Lazy-init: download the model + create the feature-extraction pipeline.
+ *  Tries WebGPU first on browsers that expose it (inside a worker, via
+ *  `self.navigator.gpu`), then falls back cleanly to the default WASM
+ *  backend. `dtype: "q8"` is requested in both paths so cold-load
+ *  bandwidth is minimised relative to v4's fp32 default. */
 async function ensureInitialized(): Promise<void> {
   if (extractor) return;
 
@@ -33,17 +37,39 @@ async function ensureInitialized(): Promise<void> {
       respond({ type: "init:progress", message: "Downloading embedding model…" });
 
       // Dynamic import so the heavy WASM bundle is only pulled when needed.
-      const { pipeline, env } = await import("@xenova/transformers");
+      const tf = await import("@huggingface/transformers");
+      const { pipeline, env } = tf;
 
       // Disable local model caching fallback (browser Cache API is used instead).
       (env as Record<string, unknown>).allowLocalModels = false;
 
       respond({ type: "init:progress", message: "Loading model into memory…" });
 
-      extractor = (await pipeline(
-        "feature-extraction",
-        "Xenova/all-MiniLM-L6-v2",
-      )) as unknown as FeatureExtractor;
+      // WebGPU-first with WASM fallback. q8 quantisation in both paths
+      // to keep cold-load bandwidth down relative to v4's fp32 default.
+      const model = "Xenova/all-MiniLM-L6-v2";
+      const gpu =
+        typeof self !== "undefined" &&
+        (self as unknown as { navigator?: { gpu?: unknown } }).navigator?.gpu;
+      let pipe: unknown = null;
+      if (gpu) {
+        try {
+          pipe = await pipeline("feature-extraction", model, {
+            device: "webgpu",
+            dtype: "q8",
+          });
+        } catch (gpuErr) {
+          console.warn(
+            "[transformers] webgpu init failed in worker, falling back to wasm:",
+            gpuErr,
+          );
+          pipe = null;
+        }
+      }
+      if (!pipe) {
+        pipe = await pipeline("feature-extraction", model, { dtype: "q8" });
+      }
+      extractor = pipe as unknown as FeatureExtractor;
 
       respond({ type: "init:ready" });
     } catch (err) {
