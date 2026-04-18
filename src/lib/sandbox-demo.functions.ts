@@ -22,6 +22,7 @@ interface SandboxDemoPayload {
     hudBgColor?: string;
     gateLabel?: string;
     logoUrl?: string | null;
+    faviconUrl?: string | null;
   };
   properties: unknown[];
   behaviors: Record<string, unknown>;
