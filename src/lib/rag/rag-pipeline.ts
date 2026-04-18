@@ -9,12 +9,20 @@ import type {
   ChatMessage,
   IndexedChunk,
   PipelineStatus,
+  PropertyChunk,
   SearchResult,
   SynthesisResponse,
 } from "./types";
 import { EmbeddingWorkerClient } from "./embedding-worker-client";
 import { chunkPropertySpec } from "./property-chunker";
-import { createPropertyDB, indexChunks, hybridSearch, resetDB } from "./orama-search";
+import {
+  createPropertyDB,
+  indexChunks,
+  hybridSearch,
+  hybridSearchFor,
+  rebuildFor,
+  resetDB,
+} from "./orama-search";
 
 const SYNTHESIS_FUNCTION = "chat-synthesis";
 
@@ -103,6 +111,54 @@ export class RAGPipeline {
       this.setStatus("error", msg);
       throw err;
     }
+  }
+
+  // ── Extraction hydration (Property Docs engine) ────────────────────
+
+  /**
+   * Hydrate an asset-scoped Orama DB from already-extracted chunks.
+   * Used after a property-doc extraction run to make the chunks
+   * searchable client-side via hybrid BM25+vector lookup.
+   */
+  async hydrateFromExtractions(
+    scopeId: string,
+    chunks: PropertyChunk[],
+  ): Promise<void> {
+    if (chunks.length === 0) {
+      await rebuildFor(scopeId, []);
+      return;
+    }
+    if (!this.worker) {
+      this.worker = new EmbeddingWorkerClient();
+      this.worker.onInit((msg) => {
+        if (msg.type === "init:progress") {
+          this.setStatus("loading-model", msg.message);
+        }
+      });
+    }
+    await this.worker.init();
+
+    this.setStatus("indexing", `Embedding ${chunks.length} extraction chunks…`);
+    const texts = chunks.map((c) => `${c.section}: ${c.content}`);
+    const embeddings = await this.worker.embedBatch(texts);
+
+    const indexed: IndexedChunk[] = chunks.map((c, i) => ({
+      ...c,
+      embedding: embeddings[i],
+    }));
+    await rebuildFor(scopeId, indexed);
+    this.setStatus("ready");
+  }
+
+  /** Hybrid search against a specific asset's DB (not the default scope). */
+  async searchAsset(
+    scopeId: string,
+    question: string,
+    topK = 3,
+  ): Promise<SearchResult[]> {
+    if (!this.worker) throw new Error("Worker not available");
+    const queryVec = await this.worker.embed(question);
+    return hybridSearchFor(scopeId, question, queryVec, topK);
   }
 
   // ── Query ──────────────────────────────────────────────────────────
