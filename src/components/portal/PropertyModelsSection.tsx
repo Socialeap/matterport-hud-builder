@@ -3,9 +3,10 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Trash2, Home, Settings2, MapPin } from "lucide-react";
+import { Lock, Plus, Trash2, Home, Settings2, MapPin } from "lucide-react";
 import type { PropertyModel } from "./types";
 import { PropertyDocsPanel } from "./PropertyDocsPanel";
+import { useLusLicense } from "@/hooks/useLusLicense";
 
 interface PropertyModelsSectionProps {
   models: PropertyModel[];

@@ -129,7 +129,7 @@ export function PropertyDocsPanel({
             {isFrozen && (
               <Badge
                 variant="outline"
-                className="h-5 gap-1 border-blue-500/40 px-1.5 text-[10px] text-blue-600 dark:text-blue-400"
+                className="h-5 gap-1 border-primary/40 px-1.5 text-[10px] text-primary"
                 title={
                   freezeRow?.reason ??
                   "Property is frozen. New extractions are blocked; existing ones still render."
