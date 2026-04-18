@@ -90,12 +90,19 @@ function DemoPage() {
             hudBgColor?: string;
             gateLabel?: string;
             logoUrl?: string | null;
+            faviconUrl?: string | null;
           };
           if (overrides.brandName) setBrandName(overrides.brandName);
           if (overrides.accentColor) setAccentColor(overrides.accentColor);
           if (overrides.hudBgColor) setHudBgColor(overrides.hudBgColor);
           if (overrides.gateLabel) setGateLabel(overrides.gateLabel);
-          if (overrides.logoUrl) setLogoPreview(overrides.logoUrl);
+          // Only restore durable (non-blob:) URLs from previous saves.
+          if (overrides.logoUrl && !overrides.logoUrl.startsWith("blob:")) {
+            setLogoPreview(overrides.logoUrl);
+          }
+          if (overrides.faviconUrl && !overrides.faviconUrl.startsWith("blob:")) {
+            setFaviconPreview(overrides.faviconUrl);
+          }
           const loadedProps = ((result.demo.properties as unknown) ?? []) as PropertyModel[];
           if (loadedProps.length > 0) setModels(loadedProps);
           const loadedBehaviors = ((result.demo.behaviors as unknown) ?? {}) as Record<string, TourBehavior>;
