@@ -152,12 +152,137 @@ function escapeHtml(str: string): string {
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+/**
+ * Narrowly typed facade over the Supabase client — only the three calls
+ * we actually make. Keeps us from having to import the heavyweight
+ * generated Database type into this helper's public signature.
+ */
+type PropertyDocsSupabase = {
+  from: (table: "property_extractions" | "vault_templates") => {
+    select: (cols: string) => {
+      in: (col: string, vals: string[]) => PromiseLike<{
+        data: Array<Record<string, unknown>> | null;
+        error: unknown;
+      }>;
+    };
+  };
+};
+
+async function loadExtractionsByProperty(
+  supabase: PropertyDocsSupabase,
+  propertyUuids: string[],
+): Promise<Record<string, PropertyExtractionForHud[]>> {
+  if (propertyUuids.length === 0) return {};
+  try {
+    const { data: rows, error } = await supabase
+      .from("property_extractions")
+      .select("template_id, property_uuid, fields, extracted_at")
+      .in("property_uuid", propertyUuids);
+    if (error || !rows) {
+      if (error) console.error("property_extractions fetch failed:", error);
+      return {};
+    }
+
+    const templateIds = Array.from(
+      new Set(rows.map((r) => String(r.template_id))),
+    );
+    const labelByTemplate: Record<string, string> = {};
+    if (templateIds.length > 0) {
+      const { data: templates } = await supabase
+        .from("vault_templates")
+        .select("id, label, doc_kind")
+        .in("id", templateIds);
+      for (const t of templates ?? []) {
+        labelByTemplate[String(t.id)] =
+          String(t.label ?? "") || String(t.doc_kind ?? "Document");
+      }
+    }
+
+    const out: Record<string, PropertyExtractionForHud[]> = {};
+    for (const row of rows) {
+      const uuid = String(row.property_uuid);
+      const tplId = String(row.template_id);
+      const bucket = (out[uuid] ??= []);
+      bucket.push({
+        template_id: tplId,
+        template_label: labelByTemplate[tplId] || "Document",
+        fields: (row.fields as Record<string, unknown>) ?? {},
+        extracted_at: String(row.extracted_at ?? ""),
+      });
+    }
+    return out;
+  } catch (err) {
+    console.error("loadExtractionsByProperty threw:", err);
+    return {};
+  }
+}
+
 interface QADatabaseEntry {
   id: string;
   question: string;
   answer: string;
   source_anchor_id: string;
   embedding: number[];
+}
+
+interface PropertyExtractionForHud {
+  template_id: string;
+  template_label: string;
+  fields: Record<string, unknown>;
+  extracted_at: string;
+}
+
+type ExtractionsByProperty = Record<string, PropertyExtractionForHud[]>;
+
+/**
+ * Safely embed a JSON literal inside an HTML <script> tag.
+ * Prevents `</script>` break-out and JS-parser hazards from U+2028 / U+2029.
+ */
+function safeJsonScriptLiteral(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+}
+
+/** Renders a per-property-extraction block as trusted HTML. All dynamic
+ *  values are escaped. Returned string is safe to interpolate into the
+ *  <body>. Empty string when there are no extractions for any property. */
+function buildPropertyDocsPanel(
+  extractionsByProperty: ExtractionsByProperty,
+  hudBgColor: string,
+  accentColor: string,
+): string {
+  const anyExtractions = Object.values(extractionsByProperty).some(
+    (arr) => arr.length > 0,
+  );
+  if (!anyExtractions) return "";
+
+  const css = `
+#property-docs{position:fixed;bottom:56px;left:16px;width:320px;max-width:calc(100vw - 32px);max-height:calc(100vh - 96px);background:${escapeHtml(hudBgColor)};border:1px solid #333;border-radius:12px;z-index:99;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.5);overflow:hidden;transition:transform 0.2s}
+#property-docs.collapsed{transform:translateY(calc(100% - 40px))}
+#pd-header{padding:10px 14px;border-bottom:1px solid #333;display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none}
+#pd-header h4{font-size:13px;font-weight:600;color:#fff;margin:0}
+#pd-toggle{background:none;border:none;color:#999;font-size:14px;cursor:pointer;padding:0 4px;pointer-events:none}
+#pd-body{flex:1;overflow-y:auto;padding:10px 14px;display:flex;flex-direction:column;gap:12px}
+.pd-extraction .pd-tpl{font-size:11px;font-weight:600;color:${escapeHtml(accentColor)};text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px}
+.pd-extraction dl{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:12px}
+.pd-extraction dt{color:#999;font-family:ui-monospace,Menlo,monospace;font-size:11px;white-space:nowrap}
+.pd-extraction dd{color:#ddd;word-break:break-word}
+.pd-empty{font-size:12px;color:#888;padding:8px 0;text-align:center}
+`;
+
+  // The DOM shell is emitted once; the body is re-rendered on tab change
+  // via renderPropertyDocs(i) below.
+  return `
+<style>${css}</style>
+<div id="property-docs">
+  <div id="pd-header" onclick="document.getElementById('property-docs').classList.toggle('collapsed')">
+    <h4>Property Docs</h4>
+    <button id="pd-toggle" aria-hidden="true">&#x25BC;</button>
+  </div>
+  <div id="pd-body"></div>
+</div>`;
 }
 
 export const generatePresentation = createServerFn({ method: "POST" })
@@ -220,6 +345,24 @@ export const generatePresentation = createServerFn({ method: "POST" })
     const qaDatabase = data.qaDatabase ?? [];
     const hasQA = qaDatabase.length > 0;
 
+    // ── Property Docs: pull extractions for every property in the model
+    //    (bridge: saved_model.properties[i].id === property_extractions.property_uuid).
+    //    Runs under the client's auth; Phase 1 RLS grants SELECT via
+    //    the "Bound clients can read extractions" policy. Any failure is
+    //    swallowed — the tour must still generate if docs are unavailable.
+    const propertyUuids = properties
+      .map((p) => p.id)
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
+    const extractionsByProperty = await loadExtractionsByProperty(
+      supabase as unknown as PropertyDocsSupabase,
+      propertyUuids,
+    );
+    // propertyUuidByIndex mirrors the filtered propertyEntries order so the
+    // runtime tab-switcher can look up extractions by current tab index.
+    const propertyUuidByIndex = properties
+      .filter((p) => p.matterportId?.trim())
+      .map((p) => p.id);
+
     // Base64-encode config for obfuscation
     const configObj = {
       properties: propertyEntries,
@@ -229,8 +372,20 @@ export const generatePresentation = createServerFn({ method: "POST" })
       hudBgColor,
       gateLabel,
       logoUrl,
+      propertyUuidByIndex,
     };
     const configB64 = Buffer.from(JSON.stringify(configObj)).toString("base64");
+
+    const propertyDocsPanelHtml = buildPropertyDocsPanel(
+      extractionsByProperty,
+      hudBgColor,
+      accentColor,
+    );
+    const propertyDocsData = Object.values(extractionsByProperty).some(
+      (arr) => arr.length > 0,
+    )
+      ? extractionsByProperty
+      : null;
 
     const poweredBy = isPro
       ? ""
@@ -482,19 +637,69 @@ ${qaCss}
 </div>
 ${agentDrawer}
 ${qaPanelHtml}
+${propertyDocsPanelHtml}
 ${poweredBy}
+${
+  propertyDocsData
+    ? `<script>window.__PROPERTY_EXTRACTIONS__=${safeJsonScriptLiteral(propertyDocsData)};</script>`
+    : ""
+}
 <script>
 (function(){
 var C=JSON.parse(atob("${configB64}"));
 var props=C.properties;
+var uuidByIndex=C.propertyUuidByIndex||[];
 var frame=document.getElementById("matterport-frame");
 var tabsEl=document.getElementById("tabs");
 var current=0;
+
+function escapeText(s){
+  return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+function formatFieldValue(v){
+  if(v==null) return "\u2014";
+  if(typeof v==="object") return JSON.stringify(v);
+  return String(v);
+}
+function renderPropertyDocs(i){
+  var container=document.getElementById("property-docs");
+  if(!container) return;
+  var body=document.getElementById("pd-body");
+  var data=window.__PROPERTY_EXTRACTIONS__||{};
+  var uuid=uuidByIndex[i];
+  var entries=uuid?(data[uuid]||[]):[];
+  if(!entries.length){
+    container.style.display="none";
+    body.innerHTML="";
+    return;
+  }
+  container.style.display="flex";
+  var parts=[];
+  for(var e=0;e<entries.length;e++){
+    var entry=entries[e];
+    var fields=entry.fields||{};
+    var keys=Object.keys(fields);
+    var rows=keys.length
+      ? keys.map(function(k){
+          return "<dt>"+escapeText(k)+"</dt><dd>"+escapeText(formatFieldValue(fields[k]))+"</dd>";
+        }).join("")
+      : "";
+    parts.push(
+      '<div class="pd-extraction">'+
+        '<div class="pd-tpl">'+escapeText(entry.template_label)+'</div>'+
+        (rows?'<dl>'+rows+'</dl>':'<div class="pd-empty">No fields extracted.</div>')+
+      '</div>'
+    );
+  }
+  body.innerHTML=parts.join("");
+}
+
 function load(i){
   current=i;
   frame.src=props[i].iframeUrl;
   var tabs=tabsEl.querySelectorAll(".tab");
   tabs.forEach(function(t,j){t.classList.toggle("active",j===i)});
+  renderPropertyDocs(i);
 }
 props.forEach(function(p,i){
   var btn=document.createElement("button");
