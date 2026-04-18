@@ -17,6 +17,7 @@ import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe
 import { getStripeForConnect } from "@/lib/stripe";
 import { useServerFn } from "@tanstack/react-start";
 import { EmbeddingWorkerClient } from "@/lib/rag/embedding-worker-client";
+import { buildPropertyQAEntries } from "@/lib/rag/property-qa-builder";
 import type { QAEntry, QADatabaseEntry } from "@/lib/rag/types";
 
 interface HudBuilderSandboxProps {
@@ -445,75 +446,37 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
                     setDownloading(true);
                     setDownloadStep("Generating Q&A dictionary…");
                     try {
-                      // ── Step 1: Build property spec text for Q&A generation ──
-                      const specParts: string[] = [];
-                      for (const m of models) {
-                        if (m.name) specParts.push(`## Property: ${m.name}`);
-                        if (m.location) specParts.push(`Location: ${m.location}`);
-                      }
-                      if (agent.name) {
-                        specParts.push(`## Agent Contact`);
-                        specParts.push(`Name: ${agent.name}`);
-                        if (agent.titleRole) specParts.push(`Title: ${agent.titleRole}`);
-                        if (agent.email) specParts.push(`Email: ${agent.email}`);
-                        if (agent.phone) specParts.push(`Phone: ${agent.phone}`);
-                        if (agent.welcomeNote) specParts.push(`Note: ${agent.welcomeNote}`);
-                      }
-                      const propertySpec = specParts.join("\n");
+                      // ── Step 1: Build property Q&A pairs locally ─────────
+                      //   Deterministic rule-based generation from typed
+                      //   builder state — zero LLM, zero network. Covers the
+                      //   "Ask AI" panel's top-of-funnel metadata questions;
+                      //   the docs-qa panel (Phase 5) handles content-grounded
+                      //   questions via chunk embeddings.
+                      const entries: QAEntry[] = buildPropertyQAEntries(models, agent);
 
-                      // ── Step 2: Call generate-qa-dictionary Edge Function ────
+                      // ── Step 2: Embed questions via Web Worker ───────────
                       let qaDatabase: QADatabaseEntry[] = [];
+                      if (entries.length > 0) {
+                        setDownloadStep(`Embedding ${entries.length} Q&A pairs…`);
 
-                      if (propertySpec.trim().length >= 20) {
-                        const { data: sessionData } = await supabase.auth.getSession();
-                        const token = sessionData?.session?.access_token;
-
-                        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-                        const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
-
-                        const qaRes = await fetch(
-                          `${supabaseUrl}/functions/v1/generate-qa-dictionary`,
-                          {
-                            method: "POST",
-                            headers: {
-                              "Content-Type": "application/json",
-                              Authorization: `Bearer ${token || supabaseKey}`,
-                              apikey: supabaseKey,
-                            },
-                            body: JSON.stringify({ propertySpec }),
-                          },
-                        );
-
-                        if (qaRes.ok) {
-                          const qaData = await qaRes.json();
-                          const entries: QAEntry[] = qaData.entries || [];
-
-                          if (entries.length > 0) {
-                            // ── Step 3: Embed questions via Web Worker ─────────
-                            setDownloadStep(`Embedding ${entries.length} Q&A pairs…`);
-
-                            if (!workerRef.current) {
-                              workerRef.current = new EmbeddingWorkerClient();
-                            }
-                            await workerRef.current.init();
-
-                            const questions = entries.map((e) => e.question);
-                            const embeddings = await workerRef.current.embedBatch(questions);
-
-                            qaDatabase = entries.map((entry, i) => ({
-                              id: `qa-${i}`,
-                              question: entry.question,
-                              answer: entry.answer,
-                              source_anchor_id: entry.source_anchor_id,
-                              embedding: embeddings[i],
-                            }));
-                          }
-                        } else {
-                          console.warn("Q&A generation failed, continuing without Q&A:", await qaRes.text());
+                        if (!workerRef.current) {
+                          workerRef.current = new EmbeddingWorkerClient();
                         }
+                        await workerRef.current.init();
+
+                        const questions = entries.map((e) => e.question);
+                        const embeddings = await workerRef.current.embedBatch(questions);
+
+                        qaDatabase = entries.map((entry, i) => ({
+                          id: `qa-${i}`,
+                          question: entry.question,
+                          answer: entry.answer,
+                          source_anchor_id: entry.source_anchor_id,
+                          embedding: embeddings[i],
+                        }));
                       }
 
-                      // ── Step 4: Generate presentation HTML with Q&A baked in ─
+                      // ── Step 3: Generate presentation HTML with Q&A baked in ─
                       //   Per-property-doc chunk embeddings + canonical Q&As
                       //   are persisted at extraction time (see
                       //   usePropertyExtractions.extract) while authenticated
