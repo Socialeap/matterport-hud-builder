@@ -79,9 +79,9 @@ function PublicDemoPage() {
   const logoPreview = brandOverrides.logoUrl ?? branding.logo_url;
   const isPro = branding.tier === "pro";
 
-  const properties = (demo.properties ?? []) as PropertyModel[];
-  const behaviors = (demo.behaviors ?? {}) as Record<string, TourBehavior>;
-  const agent = { ...DEFAULT_AGENT, ...((demo.agent ?? {}) as Partial<AgentContact>) };
+  const properties = ((demo.properties as unknown) ?? []) as PropertyModel[];
+  const behaviors = ((demo.behaviors as unknown) ?? {}) as Record<string, TourBehavior>;
+  const agent = { ...DEFAULT_AGENT, ...(((demo.agent as unknown) ?? {}) as Partial<AgentContact>) };
 
   // Ensure every property has a behavior entry
   const safeBehaviors: Record<string, TourBehavior> = { ...behaviors };
