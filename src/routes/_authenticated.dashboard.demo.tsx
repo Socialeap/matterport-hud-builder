@@ -1,6 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BrandingSection } from "@/components/portal/BrandingSection";
 import { PropertyModelsSection } from "@/components/portal/PropertyModelsSection";
@@ -9,6 +12,12 @@ import { TourBehaviorModal } from "@/components/portal/TourBehaviorModal";
 import { HudPreview } from "@/components/portal/HudPreview";
 import type { PropertyModel, AgentContact, TourBehavior } from "@/components/portal/types";
 import { DEFAULT_BEHAVIOR, DEFAULT_AGENT } from "@/components/portal/types";
+import { useServerFn } from "@tanstack/react-start";
+import { getSandboxDemo, saveSandboxDemo, publishSandboxDemo } from "@/lib/sandbox-demo.functions";
+import { useLusLicense } from "@/hooks/useLusLicense";
+import { toast } from "sonner";
+import { ExternalLink, Save, Globe, Lock } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/_authenticated/dashboard/demo")({
   component: DemoPage,
@@ -55,6 +64,115 @@ function DemoPage() {
 
   // Preview
   const [selectedModelIndex, setSelectedModelIndex] = useState(0);
+
+  // Publish state
+  const [isPublished, setIsPublished] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [studioSlug, setStudioSlug] = useState<string | null>(null);
+
+  const getDemo = useServerFn(getSandboxDemo);
+  const saveDemo = useServerFn(saveSandboxDemo);
+  const publishDemo = useServerFn(publishSandboxDemo);
+  const { isActive: lusActive, loading: lusLoading } = useLusLicense();
+
+  // Load existing demo + studio slug on mount
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = await getDemo();
+        if (cancelled) return;
+        if (result.demo) {
+          const overrides = (result.demo.brand_overrides ?? {}) as {
+            brandName?: string;
+            accentColor?: string;
+            hudBgColor?: string;
+            gateLabel?: string;
+            logoUrl?: string | null;
+          };
+          if (overrides.brandName) setBrandName(overrides.brandName);
+          if (overrides.accentColor) setAccentColor(overrides.accentColor);
+          if (overrides.hudBgColor) setHudBgColor(overrides.hudBgColor);
+          if (overrides.gateLabel) setGateLabel(overrides.gateLabel);
+          if (overrides.logoUrl) setLogoPreview(overrides.logoUrl);
+          const loadedProps = ((result.demo.properties as unknown) ?? []) as PropertyModel[];
+          if (loadedProps.length > 0) setModels(loadedProps);
+          const loadedBehaviors = ((result.demo.behaviors as unknown) ?? {}) as Record<string, TourBehavior>;
+          if (Object.keys(loadedBehaviors).length > 0) setBehaviors(loadedBehaviors);
+          const loadedAgent = ((result.demo.agent as unknown) ?? {}) as Partial<AgentContact>;
+          setAgent({ ...DEFAULT_AGENT, ...loadedAgent });
+          setIsPublished(!!result.demo.is_published);
+        }
+      } catch (err) {
+        console.error("Failed to load demo:", err);
+      }
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user && !cancelled) {
+        const { data: branding } = await supabase
+          .from("branding_settings")
+          .select("slug")
+          .eq("provider_id", user.id)
+          .maybeSingle();
+        if (branding?.slug && !cancelled) setStudioSlug(branding.slug);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [getDemo]);
+
+  const handleSave = useCallback(async () => {
+    setSaving(true);
+    try {
+      const result = await saveDemo({
+        data: {
+          brand_overrides: { brandName, accentColor, hudBgColor, gateLabel, logoUrl: logoPreview },
+          properties: models,
+          behaviors,
+          agent: agent as unknown as Record<string, unknown>,
+        },
+      });
+      if (result.success) {
+        toast.success("Demo saved");
+      } else {
+        toast.error(result.error || "Failed to save demo");
+      }
+    } catch {
+      toast.error("Failed to save demo");
+    }
+    setSaving(false);
+  }, [saveDemo, brandName, accentColor, hudBgColor, gateLabel, logoPreview, models, behaviors, agent]);
+
+  const handlePublishToggle = useCallback(async (publish: boolean) => {
+    if (publish && !lusActive) {
+      toast.error("An active LUS license is required to publish your demo.");
+      return;
+    }
+    setPublishing(true);
+    try {
+      if (publish) {
+        await saveDemo({
+          data: {
+            brand_overrides: { brandName, accentColor, hudBgColor, gateLabel, logoUrl: logoPreview },
+            properties: models,
+            behaviors,
+            agent: agent as unknown as Record<string, unknown>,
+          },
+        });
+      }
+      const result = await publishDemo({ data: { publish } });
+      if (result.success) {
+        setIsPublished(publish);
+        toast.success(publish ? "Demo is now live on your Studio" : "Demo unpublished");
+      } else {
+        toast.error(result.error || "Failed to update publish state");
+      }
+    } catch {
+      toast.error("Failed to update publish state");
+    }
+    setPublishing(false);
+  }, [publishDemo, saveDemo, lusActive, brandName, accentColor, hudBgColor, gateLabel, logoPreview, models, behaviors, agent]);
 
   const handleBrandingChange = useCallback((field: string, value: string) => {
     switch (field) {
@@ -175,6 +293,77 @@ function DemoPage() {
               />
             </TabsContent>
           </Tabs>
+
+          {/* Publish as Public Demo */}
+          <div className="rounded-lg border-2 border-primary/30 bg-primary/5 p-5 space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="flex items-center gap-2 text-base font-semibold text-foreground">
+                  <Globe className="h-4 w-4" />
+                  Publish as Public Demo
+                </h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Save this configuration and expose it as a live, read-only demo on your public Studio.
+                  Visitors to your slug page will see a "View Live Demo" CTA.
+                </p>
+              </div>
+              {!lusActive && !lusLoading && (
+                <Lock className="h-4 w-4 text-muted-foreground shrink-0" aria-label="License required" />
+              )}
+            </div>
+
+            {!lusActive && !lusLoading && (
+              <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-foreground">
+                Publishing requires an active LUS (Lifetime Upgrade Service) license.
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-4">
+              <div className="space-y-0.5">
+                <Label htmlFor="publish-toggle" className="text-sm font-medium">
+                  Show on public Studio
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  {isPublished ? "Your demo is live." : "Toggle on to publish."}
+                </p>
+              </div>
+              <Switch
+                id="publish-toggle"
+                checked={isPublished}
+                disabled={publishing || (!lusActive && !isPublished)}
+                onCheckedChange={handlePublishToggle}
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSave}
+                disabled={saving}
+              >
+                <Save className="mr-2 h-4 w-4" />
+                {saving ? "Saving…" : "Save Draft"}
+              </Button>
+              {isPublished && studioSlug && (
+                <Button variant="ghost" size="sm" asChild>
+                  <a
+                    href={`/p/${studioSlug}/demo`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <ExternalLink className="mr-2 h-4 w-4" />
+                    View Live
+                  </a>
+                </Button>
+              )}
+              {!studioSlug && (
+                <span className="text-xs text-muted-foreground">
+                  Set a slug in Branding to enable a public URL.
+                </span>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Right: Live HUD Preview */}

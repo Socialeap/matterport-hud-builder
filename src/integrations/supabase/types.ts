@@ -455,6 +455,42 @@ export type Database = {
         }
         Relationships: []
       }
+      sandbox_demos: {
+        Row: {
+          agent: Json
+          behaviors: Json
+          brand_overrides: Json
+          created_at: string
+          id: string
+          is_published: boolean
+          properties: Json
+          provider_id: string
+          updated_at: string
+        }
+        Insert: {
+          agent?: Json
+          behaviors?: Json
+          brand_overrides?: Json
+          created_at?: string
+          id?: string
+          is_published?: boolean
+          properties?: Json
+          provider_id: string
+          updated_at?: string
+        }
+        Update: {
+          agent?: Json
+          behaviors?: Json
+          brand_overrides?: Json
+          created_at?: string
+          id?: string
+          is_published?: boolean
+          properties?: Json
+          provider_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       saved_models: {
         Row: {
           amount_cents: number | null
