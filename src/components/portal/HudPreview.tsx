@@ -206,12 +206,20 @@ export function HudPreview({
 
             {/* Agent info */}
             <div className="flex items-center gap-3 mb-4">
-              <div
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white text-sm font-bold"
-                style={{ backgroundColor: accentColor }}
-              >
-                {agent.name ? agent.name.charAt(0).toUpperCase() : "?"}
-              </div>
+              {agent.avatarUrl ? (
+                <img
+                  src={agent.avatarUrl}
+                  alt={agent.name || "Agent"}
+                  className="h-12 w-12 shrink-0 rounded-full object-cover border border-white/20 shadow-sm"
+                />
+              ) : (
+                <div
+                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-white text-sm font-bold border border-white/20 shadow-sm"
+                  style={{ backgroundColor: accentColor }}
+                >
+                  {agent.name ? agent.name.charAt(0).toUpperCase() : "?"}
+                </div>
+              )}
               <div>
                 <p className="text-sm font-semibold text-white">{agent.name || "Agent"}</p>
                 {agent.titleRole && (
