@@ -28,6 +28,7 @@ function createEmptyModel(): PropertyModel {
   return {
     id: crypto.randomUUID(),
     name: "",
+    propertyName: "",
     location: "",
     matterportId: "",
     musicUrl: "",

@@ -86,9 +86,16 @@ export function HudPreview({
                   {brandName || "Your Brand"}
                 </p>
                 {currentModel && (
-                  <p className="text-xs text-white/70">
-                    {currentModel.name || "Property"} — {currentModel.location || "Location"}
-                  </p>
+                  <>
+                    {currentModel.propertyName?.trim() && (
+                      <p className="text-xs font-medium text-white/90">
+                        {currentModel.propertyName}
+                      </p>
+                    )}
+                    <p className="text-xs text-white/70">
+                      {currentModel.name || "Property"} — {currentModel.location || "Location"}
+                    </p>
+                  </>
                 )}
               </div>
             </div>
