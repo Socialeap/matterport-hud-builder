@@ -89,16 +89,30 @@ serve(async (req) => {
     );
   }
 
-  // 2 ─ Load asset + template + verify ownership
+  // 2 ─ Load asset. Authorise the caller as either:
+  //     (a) the provider that owns the asset, OR
+  //     (b) a client linked to that provider via client_providers.
   const { data: asset, error: assetErr } = await serviceClient
     .from("vault_assets")
     .select("id, provider_id, storage_path, category_type")
     .eq("id", body.vault_asset_id)
     .single();
   if (assetErr || !asset) return jsonResponse({ error: "asset_not_found" }, 404);
-  if (asset.provider_id !== userId) {
+
+  let authorised = asset.provider_id === userId;
+  if (!authorised) {
+    const { data: link } = await serviceClient
+      .from("client_providers")
+      .select("id")
+      .eq("provider_id", asset.provider_id)
+      .eq("client_id", userId)
+      .maybeSingle();
+    authorised = !!link;
+  }
+  if (!authorised) {
     return jsonResponse({ error: "forbidden" }, 403);
   }
+
   if (asset.category_type !== "property_doc") {
     return jsonResponse({ error: "wrong_category" }, 400);
   }
@@ -106,11 +120,14 @@ serve(async (req) => {
     return jsonResponse({ error: "no_storage_path" }, 400);
   }
 
+  // Template must belong to the same provider as the asset — no
+  // cross-tenant extractions even if the caller is a client bound
+  // to multiple providers.
   const { data: template, error: tplErr } = await serviceClient
     .from("vault_templates")
     .select("*")
     .eq("id", body.template_id)
-    .eq("provider_id", userId)
+    .eq("provider_id", asset.provider_id)
     .single();
   if (tplErr || !template) {
     return jsonResponse({ error: "template_not_found" }, 404);
