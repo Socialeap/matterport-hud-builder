@@ -129,40 +129,57 @@ function DemoPage() {
     };
   }, [getDemo]);
 
-  // Upload logo to public storage if it's still a local File. Returns durable URL or null.
-  const ensureLogoUrl = useCallback(async (): Promise<string | null> => {
-    // If we have a fresh File, upload it.
-    if (logoFile) {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return null;
-      const ext = (logoFile.name.split(".").pop() || "png").toLowerCase();
-      const path = `demo-logos/${user.id}/${Date.now()}-logo.${ext}`;
-      const { error: uploadErr } = await supabase.storage
-        .from("brand-assets")
-        .upload(path, logoFile, { upsert: true, contentType: logoFile.type || undefined });
-      if (uploadErr) {
-        console.error("Logo upload failed:", uploadErr);
-        toast.error("Failed to upload logo");
-        return null;
+  // Upload a brand asset (logo or favicon) to public storage if still a local File.
+  // Returns the durable URL or null on failure.
+  const uploadIfFile = useCallback(
+    async (file: File | null, currentPreview: string | null, kind: "logo" | "favicon"): Promise<string | null> => {
+      if (file) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return null;
+        const ext = (file.name.split(".").pop() || "png").toLowerCase();
+        const path = `demo-${kind}s/${user.id}/${Date.now()}-${kind}.${ext}`;
+        const { error: uploadErr } = await supabase.storage
+          .from("brand-assets")
+          .upload(path, file, { upsert: true, contentType: file.type || undefined });
+        if (uploadErr) {
+          console.error(`${kind} upload failed:`, uploadErr);
+          toast.error(`Failed to upload ${kind}`);
+          return null;
+        }
+        const { data: urlData } = supabase.storage.from("brand-assets").getPublicUrl(path);
+        return urlData.publicUrl;
       }
-      const { data: urlData } = supabase.storage.from("brand-assets").getPublicUrl(path);
-      // Replace the local blob preview with the durable URL so subsequent saves are clean.
+      // No fresh file: keep existing preview unless it's a stale blob: URL.
+      if (currentPreview && currentPreview.startsWith("blob:")) return null;
+      return currentPreview;
+    },
+    []
+  );
+
+  const ensureBrandAssetUrls = useCallback(async (): Promise<{ logoUrl: string | null; faviconUrl: string | null }> => {
+    const [logoUrl, faviconUrl] = await Promise.all([
+      uploadIfFile(logoFile, logoPreview, "logo"),
+      uploadIfFile(faviconFile, faviconPreview, "favicon"),
+    ]);
+    // Replace local previews with durable URLs and clear the File handles.
+    if (logoFile) {
       setLogoFile(null);
-      setLogoPreview(urlData.publicUrl);
-      return urlData.publicUrl;
+      if (logoUrl) setLogoPreview(logoUrl);
     }
-    // No fresh file: keep existing preview unless it's a stale blob: URL.
-    if (logoPreview && logoPreview.startsWith("blob:")) return null;
-    return logoPreview;
-  }, [logoFile, logoPreview]);
+    if (faviconFile) {
+      setFaviconFile(null);
+      if (faviconUrl) setFaviconPreview(faviconUrl);
+    }
+    return { logoUrl, faviconUrl };
+  }, [uploadIfFile, logoFile, logoPreview, faviconFile, faviconPreview]);
 
   const handleSave = useCallback(async () => {
     setSaving(true);
     try {
-      const logoUrl = await ensureLogoUrl();
+      const { logoUrl, faviconUrl } = await ensureBrandAssetUrls();
       const result = await saveDemo({
         data: {
-          brand_overrides: { brandName, accentColor, hudBgColor, gateLabel, logoUrl },
+          brand_overrides: { brandName, accentColor, hudBgColor, gateLabel, logoUrl, faviconUrl },
           properties: models,
           behaviors,
           agent: agent as unknown as Record<string, unknown>,
@@ -177,7 +194,7 @@ function DemoPage() {
       toast.error("Failed to save demo");
     }
     setSaving(false);
-  }, [saveDemo, ensureLogoUrl, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent]);
+  }, [saveDemo, ensureBrandAssetUrls, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent]);
 
   const handlePublishToggle = useCallback(async (publish: boolean) => {
     if (publish && !lusActive) {
@@ -187,10 +204,10 @@ function DemoPage() {
     setPublishing(true);
     try {
       if (publish) {
-        const logoUrl = await ensureLogoUrl();
+        const { logoUrl, faviconUrl } = await ensureBrandAssetUrls();
         await saveDemo({
           data: {
-            brand_overrides: { brandName, accentColor, hudBgColor, gateLabel, logoUrl },
+            brand_overrides: { brandName, accentColor, hudBgColor, gateLabel, logoUrl, faviconUrl },
             properties: models,
             behaviors,
             agent: agent as unknown as Record<string, unknown>,
@@ -208,7 +225,7 @@ function DemoPage() {
       toast.error("Failed to update publish state");
     }
     setPublishing(false);
-  }, [publishDemo, saveDemo, ensureLogoUrl, lusActive, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent]);
+  }, [publishDemo, saveDemo, ensureBrandAssetUrls, lusActive, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent]);
 
   const handleBrandingChange = useCallback((field: string, value: string) => {
     switch (field) {
