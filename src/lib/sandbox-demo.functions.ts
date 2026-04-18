@@ -113,14 +113,14 @@ export const publishSandboxDemo = createServerFn({ method: "POST" })
 export const getPublicDemoBySlug = createServerFn({ method: "GET" })
   .inputValidator((input: { slug: string }) => input)
   .handler(async ({ data }) => {
-    const { data: branding } = await supabaseAdmin
+    const { data: branding } = await supabase
       .from("branding_settings")
       .select("*")
       .eq("slug", data.slug)
       .maybeSingle();
     if (!branding) return { branding: null, demo: null };
 
-    const { data: demo } = await supabaseAdmin
+    const { data: demo } = await supabase
       .from("sandbox_demos")
       .select("*")
       .eq("provider_id", branding.provider_id)
@@ -137,7 +137,7 @@ export const getPublicDemoBySlug = createServerFn({ method: "GET" })
 export const checkDemoPublished = createServerFn({ method: "GET" })
   .inputValidator((input: { providerId: string }) => input)
   .handler(async ({ data }) => {
-    const { data: row } = await supabaseAdmin
+    const { data: row } = await supabase
       .from("sandbox_demos")
       .select("id")
       .eq("provider_id", data.providerId)
