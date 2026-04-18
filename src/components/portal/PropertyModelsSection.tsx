@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Plus, Trash2, Home, Settings2, MapPin } from "lucide-react";
 import type { PropertyModel } from "./types";
+import { PropertyDocsPanel } from "./PropertyDocsPanel";
 
 interface PropertyModelsSectionProps {
   models: PropertyModel[];
@@ -12,6 +13,7 @@ interface PropertyModelsSectionProps {
   onRemove: (id: string) => void;
   onChange: (id: string, field: keyof PropertyModel, value: string | boolean) => void;
   onOpenBehavior: (id: string) => void;
+  savedModelId?: string | null;
 }
 
 export function PropertyModelsSection({
@@ -20,6 +22,7 @@ export function PropertyModelsSection({
   onRemove,
   onChange,
   onOpenBehavior,
+  savedModelId,
 }: PropertyModelsSectionProps) {
   return (
     <Card>
@@ -137,6 +140,11 @@ export function PropertyModelsSection({
                 </p>
               </div>
             </div>
+
+            <PropertyDocsPanel
+              propertyUuid={model.id}
+              savedModelId={savedModelId ?? null}
+            />
           </div>
         ))}
       </CardContent>

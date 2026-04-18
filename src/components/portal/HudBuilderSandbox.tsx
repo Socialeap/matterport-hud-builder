@@ -396,6 +396,7 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
               onRemove={handleRemoveModel}
               onChange={handleModelChange}
               onOpenBehavior={handleOpenBehavior}
+              savedModelId={savedModelId}
             />
 
             <AgentContactSection
