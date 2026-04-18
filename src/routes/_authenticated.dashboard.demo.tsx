@@ -1,6 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BrandingSection } from "@/components/portal/BrandingSection";
 import { PropertyModelsSection } from "@/components/portal/PropertyModelsSection";
@@ -9,6 +12,13 @@ import { TourBehaviorModal } from "@/components/portal/TourBehaviorModal";
 import { HudPreview } from "@/components/portal/HudPreview";
 import type { PropertyModel, AgentContact, TourBehavior } from "@/components/portal/types";
 import { DEFAULT_BEHAVIOR, DEFAULT_AGENT } from "@/components/portal/types";
+import { useServerFn } from "@tanstack/react-start";
+import { getSandboxDemo, saveSandboxDemo, publishSandboxDemo } from "@/lib/sandbox-demo.functions";
+import { useLusLicense } from "@/hooks/useLusLicense";
+import { toast } from "sonner";
+import { ExternalLink, Save, Globe, Lock } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/_authenticated/dashboard/demo")({
   component: DemoPage,
