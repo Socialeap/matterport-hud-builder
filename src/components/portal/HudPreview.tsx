@@ -1,8 +1,10 @@
 import { useState, useRef } from "react";
-import { ChevronUp, ChevronDown, Phone, Mail, MessageSquare, Globe, X, MapPin } from "lucide-react";
+import { ChevronUp, ChevronDown, Phone, Mail, MessageSquare, Globe, X, MapPin, Film } from "lucide-react";
 import type { PropertyModel, TourBehavior, AgentContact } from "./types";
 import { buildMatterportUrl } from "./types";
 import { NeighborhoodMapModal } from "./NeighborhoodMapModal";
+import { CinemaModal } from "./CinemaModal";
+import { parseCinematicVideo } from "@/lib/video-embed";
 
 interface HudPreviewProps {
   models: PropertyModel[];
@@ -32,12 +34,17 @@ export function HudPreview({
   const [headerVisible, setHeaderVisible] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
+  const [cinemaOpen, setCinemaOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const currentModel = models[selectedModelIndex];
   const behavior = currentModel ? behaviors[currentModel.id] : null;
   const iframeUrl = currentModel && behavior
     ? buildMatterportUrl(currentModel.matterportId, behavior)
     : "";
+  const cinematicParsed = currentModel
+    ? parseCinematicVideo(currentModel.cinematicVideoUrl)
+    : null;
+  const hasCinematic = cinematicParsed?.kind === "iframe" || cinematicParsed?.kind === "mp4";
 
   const socialLinks = [
     { url: agent.linkedin, icon: Globe, label: "LinkedIn" },
@@ -109,6 +116,16 @@ export function HudPreview({
                   aria-label="View Neighborhood Map"
                 >
                   <MapPin className="h-3.5 w-3.5" />
+                </button>
+              )}
+              {hasCinematic && (
+                <button
+                  onClick={() => setCinemaOpen(true)}
+                  className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm transition-colors hover:bg-white/20"
+                  title="Watch Cinematic Video"
+                  aria-label="Watch Cinematic Video"
+                >
+                  <Film className="h-3.5 w-3.5" />
                 </button>
               )}
               {agent.name && (
@@ -278,6 +295,14 @@ export function HudPreview({
           onOpenChange={setMapOpen}
           location={currentModel.location}
           propertyName={currentModel.name}
+        />
+      )}
+
+      {hasCinematic && currentModel && (
+        <CinemaModal
+          open={cinemaOpen}
+          onClose={() => setCinemaOpen(false)}
+          videoUrl={currentModel.cinematicVideoUrl ?? ""}
         />
       )}
     </div>
