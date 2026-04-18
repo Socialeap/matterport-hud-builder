@@ -1,6 +1,11 @@
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { installServerFnAuth } from "@/integrations/supabase/server-fn-auth";
 import type { User, Session } from "@supabase/supabase-js";
+
+// Patch window.fetch once so server function calls automatically include
+// the current Supabase JWT for routes guarded by requireSupabaseAuth.
+installServerFnAuth();
 
 type UserRole = "admin" | "provider" | "client";
 
