@@ -1,6 +1,7 @@
 export interface PropertyModel {
   id: string;
   name: string;
+  propertyName?: string;
   location: string;
   matterportId: string;
   musicUrl: string;

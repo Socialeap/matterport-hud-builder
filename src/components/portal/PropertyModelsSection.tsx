@@ -78,6 +78,17 @@ export function PropertyModelsSection({
               </div>
             </div>
 
+            <div className="space-y-1">
+              <Label className="text-xs">
+                Property Name <span className="text-muted-foreground">(optional)</span>
+              </Label>
+              <Input
+                value={model.propertyName ?? ""}
+                onChange={(e) => onChange(model.id, "propertyName", e.target.value)}
+                placeholder="e.g. The Grand Hotel, Aspen Loft (leave blank for residential)"
+              />
+            </div>
+
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label className="text-xs">Property Address</Label>
