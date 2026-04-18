@@ -80,7 +80,7 @@ export function PropertyModelsSection({
 
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">
-                <Label className="text-xs">Property Name</Label>
+                <Label className="text-xs">Property Address</Label>
                 <Input
                   value={model.name}
                   onChange={(e) => onChange(model.id, "name", e.target.value)}
@@ -140,7 +140,7 @@ export function PropertyModelsSection({
                   <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
                     {model.location.trim()
                       ? "Adds a map button to the HUD using the Location above."
-                      : "Add a Location above to enable this feature."}
+                    : "Add the address above to enable this feature."}
                   </p>
                 </div>
               </div>
