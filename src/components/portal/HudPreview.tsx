@@ -17,6 +17,7 @@ interface HudPreviewProps {
   logoPreview: string | null;
   agent: AgentContact;
   isPro: boolean;
+  defaultHeaderVisible?: boolean;
 }
 
 export function HudPreview({
@@ -30,8 +31,9 @@ export function HudPreview({
   logoPreview,
   agent,
   isPro,
+  defaultHeaderVisible = false,
 }: HudPreviewProps) {
-  const [headerVisible, setHeaderVisible] = useState(false);
+  const [headerVisible, setHeaderVisible] = useState(defaultHeaderVisible);
   const [contactOpen, setContactOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [cinemaOpen, setCinemaOpen] = useState(false);
