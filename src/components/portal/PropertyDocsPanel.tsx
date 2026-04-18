@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FileText, Loader2, Play, Trash2 } from "lucide-react";
+import { FileText, Loader2, Play, RefreshCw, Trash2 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 
 import { Button } from "@/components/ui/button";
@@ -34,7 +34,7 @@ export function PropertyDocsPanel({
   propertyUuid,
   savedModelId,
 }: PropertyDocsPanelProps) {
-  const { extractions, loading, running, extract, remove } =
+  const { extractions, loading, running, backfilling, extract, remove, reindex } =
     usePropertyExtractions(propertyUuid);
   const { templates } = useAvailableTemplates();
   const { docs } = useAvailablePropertyDocs();
@@ -73,16 +73,37 @@ export function PropertyDocsPanel({
               {extractions.length}
             </Badge>
           )}
+          {backfilling && (
+            <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+              <Loader2 className="size-3 animate-spin" /> Indexing…
+            </span>
+          )}
         </div>
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-7 text-xs"
-          onClick={() => setPickerOpen(true)}
-          disabled={noTemplates || noDocs}
-        >
-          <Play className="mr-1 size-3" /> Run Extraction
-        </Button>
+        <div className="flex items-center gap-1">
+          {extractions.length > 0 && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 w-7 p-0"
+              onClick={reindex}
+              disabled={backfilling || running}
+              title="Re-index doc embeddings"
+            >
+              <RefreshCw
+                className={`size-3 ${backfilling ? "animate-spin" : ""}`}
+              />
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs"
+            onClick={() => setPickerOpen(true)}
+            disabled={noTemplates || noDocs}
+          >
+            <Play className="mr-1 size-3" /> Run Extraction
+          </Button>
+        </div>
       </div>
 
       {noTemplates || noDocs ? (

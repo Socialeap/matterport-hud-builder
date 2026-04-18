@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
@@ -23,6 +23,26 @@ export function usePropertyExtractions(propertyUuid: string | null) {
   const [extractions, setExtractions] = useState<PropertyExtraction[]>([]);
   const [loading, setLoading] = useState(false);
   const [running, setRunning] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
+
+  // Track which propertyUuids have already been backfill-checked this
+  // session so we don't re-spin the embedding worker on every refresh.
+  // Already-enriched rows fast-path in ensureExtractionEmbeddings, but
+  // skipping the extra SELECT + re-fetch keeps tab switches snappy.
+  const backfilledRef = useRef<Set<string>>(new Set());
+
+  const fetchRows = useCallback(async (uuid: string) => {
+    const { data, error } = await supabase
+      .from("property_extractions")
+      .select("*")
+      .eq("property_uuid", uuid)
+      .order("extracted_at", { ascending: false });
+    if (error) {
+      toast.error("Failed to load extractions");
+      return null;
+    }
+    return (data as unknown as PropertyExtraction[]) ?? [];
+  }, []);
 
   const refresh = useCallback(async () => {
     if (!propertyUuid) {
@@ -30,23 +50,51 @@ export function usePropertyExtractions(propertyUuid: string | null) {
       return;
     }
     setLoading(true);
-    const { data, error } = await supabase
-      .from("property_extractions")
-      .select("*")
-      .eq("property_uuid", propertyUuid)
-      .order("extracted_at", { ascending: false });
-
-    if (error) {
-      toast.error("Failed to load extractions");
-    } else {
-      setExtractions((data as unknown as PropertyExtraction[]) ?? []);
-    }
+    const rows = await fetchRows(propertyUuid);
+    if (rows) setExtractions(rows);
     setLoading(false);
-  }, [propertyUuid]);
+  }, [propertyUuid, fetchRows]);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // ── Phase 5d: one-shot lazy backfill of pre-Phase-5 rows. ──────────
+  // The first refresh for each property kicks off ensureExtractionEmbeddings
+  // in the background. Already-enriched rows fast-path via the helper's
+  // own idempotency guard; only rows missing chunk embeddings or
+  // canonical_qas actually spin up the worker. Result: MSPs who created
+  // extractions before Phase 5 shipped get their tours upgraded the next
+  // time they open the property in the builder — no manual action needed.
+  useEffect(() => {
+    if (!propertyUuid || loading) return;
+    if (backfilledRef.current.has(propertyUuid)) return;
+    backfilledRef.current.add(propertyUuid);
+
+    let cancelled = false;
+    (async () => {
+      setBackfilling(true);
+      try {
+        const stats = await ensureExtractionEmbeddings([propertyUuid]);
+        if (!cancelled && stats.rows_enriched > 0) {
+          const fresh = await fetchRows(propertyUuid);
+          if (fresh && !cancelled) setExtractions(fresh);
+          console.info(
+            `[doc-qa] backfilled ${stats.rows_enriched} extraction row(s)`,
+            stats,
+          );
+        }
+      } catch (err) {
+        console.warn("[doc-qa] backfill failed:", err);
+      } finally {
+        if (!cancelled) setBackfilling(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [propertyUuid, loading, fetchRows]);
 
   const extract = useCallback(
     async (input: {
@@ -105,5 +153,38 @@ export function usePropertyExtractions(propertyUuid: string | null) {
     [refresh],
   );
 
-  return { extractions, loading, running, refresh, extract, remove };
+  // Explicit re-index escape hatch. Clears the per-session guard so the
+  // backfill runs even if this property was already checked.
+  const reindex = useCallback(async () => {
+    if (!propertyUuid) return;
+    backfilledRef.current.delete(propertyUuid);
+    setBackfilling(true);
+    try {
+      const stats = await ensureExtractionEmbeddings([propertyUuid]);
+      if (stats.rows_enriched > 0) {
+        toast.success(`Re-indexed ${stats.rows_enriched} extraction(s)`);
+        const fresh = await fetchRows(propertyUuid);
+        if (fresh) setExtractions(fresh);
+      } else {
+        toast.message("Extractions are already indexed.");
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`Re-index failed: ${msg}`);
+    } finally {
+      setBackfilling(false);
+      backfilledRef.current.add(propertyUuid);
+    }
+  }, [propertyUuid, fetchRows]);
+
+  return {
+    extractions,
+    loading,
+    running,
+    backfilling,
+    refresh,
+    extract,
+    remove,
+    reindex,
+  };
 }
