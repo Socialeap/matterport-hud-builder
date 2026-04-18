@@ -3,9 +3,10 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Trash2, Home, Settings2, MapPin } from "lucide-react";
+import { Lock, Plus, Trash2, Home, Settings2, MapPin } from "lucide-react";
 import type { PropertyModel } from "./types";
 import { PropertyDocsPanel } from "./PropertyDocsPanel";
+import { useLusLicense } from "@/hooks/useLusLicense";
 
 interface PropertyModelsSectionProps {
   models: PropertyModel[];
@@ -24,6 +25,8 @@ export function PropertyModelsSection({
   onOpenBehavior,
   savedModelId,
 }: PropertyModelsSectionProps) {
+  const { isActive: lusActive, loading: lusLoading } = useLusLicense();
+  const showPremium = lusLoading || lusActive;
   return (
     <Card>
       <CardHeader>
@@ -114,32 +117,47 @@ export function PropertyModelsSection({
               </div>
             </div>
 
-            <div className="flex items-start gap-3 rounded-md border border-border/60 bg-muted/30 p-3">
-              <MapPin className="mt-0.5 size-4 shrink-0 text-primary" />
-              <div className="flex-1">
-                <div className="flex items-center justify-between gap-2">
-                  <Label
-                    htmlFor={`map-toggle-${model.id}`}
-                    className="text-xs font-medium"
-                  >
-                    Enable Neighborhood Map
-                  </Label>
-                  <Switch
-                    id={`map-toggle-${model.id}`}
-                    checked={!!model.enableNeighborhoodMap}
-                    disabled={!model.location.trim()}
-                    onCheckedChange={(checked) =>
-                      onChange(model.id, "enableNeighborhoodMap", checked)
-                    }
-                  />
+            {showPremium ? (
+              <div className="flex items-start gap-3 rounded-md border border-border/60 bg-muted/30 p-3">
+                <MapPin className="mt-0.5 size-4 shrink-0 text-primary" />
+                <div className="flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <Label
+                      htmlFor={`map-toggle-${model.id}`}
+                      className="text-xs font-medium"
+                    >
+                      Enable Neighborhood Map
+                    </Label>
+                    <Switch
+                      id={`map-toggle-${model.id}`}
+                      checked={!!model.enableNeighborhoodMap}
+                      disabled={!model.location.trim()}
+                      onCheckedChange={(checked) =>
+                        onChange(model.id, "enableNeighborhoodMap", checked)
+                      }
+                    />
+                  </div>
+                  <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+                    {model.location.trim()
+                      ? "Adds a map button to the HUD using the Location above."
+                      : "Add a Location above to enable this feature."}
+                  </p>
                 </div>
-                <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
-                  {model.location.trim()
-                    ? "Adds a map button to the HUD using the Location above."
-                    : "Add a Location above to enable this feature."}
-                </p>
               </div>
-            </div>
+            ) : model.enableNeighborhoodMap ? (
+              <div className="flex items-start gap-3 rounded-md border border-border/60 bg-muted/20 p-3">
+                <Lock className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                <div className="flex-1">
+                  <Label className="text-xs font-medium">
+                    Neighborhood Map (locked)
+                  </Label>
+                  <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+                    Studio license inactive. Existing map still renders in your
+                    tour, but the toggle is paused until upkeep is reactivated.
+                  </p>
+                </div>
+              </div>
+            ) : null}
 
             <PropertyDocsPanel
               propertyUuid={model.id}

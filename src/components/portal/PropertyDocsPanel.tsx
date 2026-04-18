@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FileText, Loader2, Play, RefreshCw, Trash2 } from "lucide-react";
+import { FileText, Loader2, Lock, Play, RefreshCw, Snowflake, Trash2 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 
 import { Button } from "@/components/ui/button";
@@ -13,10 +13,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 import { usePropertyExtractions } from "@/hooks/usePropertyExtractions";
 import { useAvailableTemplates } from "@/hooks/useAvailableTemplates";
 import { useAvailablePropertyDocs } from "@/hooks/useAvailablePropertyDocs";
+import { useLusFreeze } from "@/hooks/useLusFreeze";
+import { useLusLicense } from "@/hooks/useLusLicense";
 import type { PropertyExtraction } from "@/hooks/usePropertyExtractions";
 
 interface PropertyDocsPanelProps {
@@ -29,6 +37,13 @@ interface PropertyDocsPanelProps {
  * Works for both providers (their own vault + templates) and for
  * clients bound to a provider via client_providers (the provider's
  * active vault docs + active templates). RLS does the scoping.
+ *
+ * Two LUS gates apply:
+ *   • Provider-wide LUS license — when inactive, the entire Smart Doc
+ *     Engine surface is hidden (MSP hasn't paid for upkeep).
+ *   • Per-property freeze — when this property has a freeze row,
+ *     Run Extraction is disabled but existing rows still render and
+ *     can be deleted (matches the DB-level safety contract).
  */
 export function PropertyDocsPanel({
   propertyUuid,
@@ -38,12 +53,14 @@ export function PropertyDocsPanel({
     usePropertyExtractions(propertyUuid);
   const { templates } = useAvailableTemplates();
   const { docs } = useAvailablePropertyDocs();
+  const { isFrozen, freeze: freezeRow } = useLusFreeze(propertyUuid);
+  const { isActive: lusActive, loading: lusLoading } = useLusLicense();
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [vaultAssetId, setVaultAssetId] = useState<string>("");
   const [templateId, setTemplateId] = useState<string>("");
 
-  const canRun = !!vaultAssetId && !!templateId && !running;
+  const canRun = !!vaultAssetId && !!templateId && !running && !isFrozen && lusActive;
 
   const handleRun = async () => {
     if (!canRun) return;
@@ -62,62 +79,26 @@ export function PropertyDocsPanel({
   const noTemplates = templates.length === 0;
   const noDocs = docs.length === 0;
 
-  return (
-    <div className="rounded-md border border-border/60 bg-muted/20 p-3 space-y-3">
-      <div className="flex items-center justify-between">
+  // Provider-wide LUS gate: hide the entire Smart Doc Engine surface.
+  // We still render any pre-existing extractions read-only so the viewer
+  // experience persists when LUS lapses (matches the "Standard Mode" spec).
+  if (!lusLoading && !lusActive) {
+    if (extractions.length === 0) return null;
+    return (
+      <div className="rounded-md border border-border/60 bg-muted/20 p-3 space-y-2">
         <div className="flex items-center gap-2">
-          <FileText className="size-4 text-primary" />
+          <Lock className="size-3.5 text-muted-foreground" />
           <Label className="text-xs font-medium">Property Docs</Label>
-          {extractions.length > 0 && (
-            <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
-              {extractions.length}
-            </Badge>
-          )}
-          {backfilling && (
-            <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-              <Loader2 className="size-3 animate-spin" /> Indexing…
-            </span>
-          )}
+          <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
+            Read-only
+          </Badge>
         </div>
-        <div className="flex items-center gap-1">
-          {extractions.length > 0 && (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 w-7 p-0"
-              onClick={reindex}
-              disabled={backfilling || running}
-              title="Re-index doc embeddings"
-            >
-              <RefreshCw
-                className={`size-3 ${backfilling ? "animate-spin" : ""}`}
-              />
-            </Button>
-          )}
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 text-xs"
-            onClick={() => setPickerOpen(true)}
-            disabled={noTemplates || noDocs}
-          >
-            <Play className="mr-1 size-3" /> Run Extraction
-          </Button>
-        </div>
-      </div>
-
-      {noTemplates || noDocs ? (
-        <EmptyHint noTemplates={noTemplates} noDocs={noDocs} />
-      ) : loading ? (
-        <div className="flex items-center justify-center py-3 text-xs text-muted-foreground">
-          <Loader2 className="mr-1 size-3 animate-spin" /> Loading…
-        </div>
-      ) : extractions.length === 0 ? (
         <p className="text-[11px] leading-snug text-muted-foreground">
-          No extractions yet. Pick a doc + template and run to populate HUD fields.
+          Smart Doc Engine is paused. Existing extractions still render in your
+          tour. Reactivate your studio license to upload, re-extract, or add
+          new docs.
         </p>
-      ) : (
-        <ul className="space-y-2">
+        <ul className="space-y-2 pt-1">
           {extractions.map((ex) => (
             <ExtractionRow
               key={ex.id}
@@ -129,82 +110,192 @@ export function PropertyDocsPanel({
             />
           ))}
         </ul>
-      )}
+      </div>
+    );
+  }
 
-      <Dialog
-        open={pickerOpen}
-        onOpenChange={(o) => {
-          setPickerOpen(o);
-          if (!o) {
-            setVaultAssetId("");
-            setTemplateId("");
-          }
-        }}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Run Extraction</DialogTitle>
-            <DialogDescription>
-              Pick a doc from your vault and a template to extract against.
-              Fields will populate the HUD for this property.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs">Vault Doc</Label>
-              <select
-                value={vaultAssetId}
-                onChange={(e) => setVaultAssetId(e.target.value)}
-                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+  return (
+    <TooltipProvider delayDuration={150}>
+      <div className="rounded-md border border-border/60 bg-muted/20 p-3 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <FileText className="size-4 text-primary" />
+            <Label className="text-xs font-medium">Property Docs</Label>
+            {extractions.length > 0 && (
+              <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+                {extractions.length}
+              </Badge>
+            )}
+            {isFrozen && (
+              <Badge
+                variant="outline"
+                className="h-5 gap-1 border-primary/40 px-1.5 text-[10px] text-primary"
+                title={
+                  freezeRow?.reason ??
+                  "Property is frozen. New extractions are blocked; existing ones still render."
+                }
               >
-                <option value="">Select a property doc…</option>
-                {docs.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label className="text-xs">Template</Label>
-              <select
-                value={templateId}
-                onChange={(e) => setTemplateId(e.target.value)}
-                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-              >
-                <option value="">Select a template…</option>
-                {templates.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.label} ({t.doc_kind})
-                  </option>
-                ))}
-              </select>
-            </div>
+                <Snowflake className="size-2.5" />
+                Frozen
+              </Badge>
+            )}
+            {backfilling && (
+              <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                <Loader2 className="size-3 animate-spin" /> Indexing…
+              </span>
+            )}
           </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setPickerOpen(false)}
-              disabled={running}
-            >
-              Cancel
-            </Button>
-            <Button onClick={handleRun} disabled={!canRun}>
-              {running ? (
-                <>
-                  <Loader2 className="mr-1 size-3.5 animate-spin" /> Extracting…
-                </>
-              ) : (
-                "Run"
+          <div className="flex items-center gap-1">
+            {extractions.length > 0 && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 w-7 p-0"
+                onClick={reindex}
+                disabled={backfilling || running || isFrozen}
+                title={
+                  isFrozen
+                    ? "Re-index disabled while frozen"
+                    : "Re-index doc embeddings"
+                }
+              >
+                <RefreshCw
+                  className={`size-3 ${backfilling ? "animate-spin" : ""}`}
+                />
+              </Button>
+            )}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    onClick={() => setPickerOpen(true)}
+                    disabled={noTemplates || noDocs || isFrozen}
+                  >
+                    {isFrozen ? (
+                      <>
+                        <Snowflake className="mr-1 size-3" /> Frozen
+                      </>
+                    ) : (
+                      <>
+                        <Play className="mr-1 size-3" /> Run Extraction
+                      </>
+                    )}
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              {isFrozen && (
+                <TooltipContent>
+                  This property is in a freeze. Unfreeze it to run new
+                  extractions.
+                </TooltipContent>
               )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+            </Tooltip>
+          </div>
+        </div>
+
+        {noTemplates || noDocs ? (
+          <EmptyHint noTemplates={noTemplates} noDocs={noDocs} />
+        ) : loading ? (
+          <div className="flex items-center justify-center py-3 text-xs text-muted-foreground">
+            <Loader2 className="mr-1 size-3 animate-spin" /> Loading…
+          </div>
+        ) : extractions.length === 0 ? (
+          <p className="text-[11px] leading-snug text-muted-foreground">
+            No extractions yet. Pick a doc + template and run to populate HUD fields.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {extractions.map((ex) => (
+              <ExtractionRow
+                key={ex.id}
+                extraction={ex}
+                templateLabel={
+                  templates.find((t) => t.id === ex.template_id)?.label ?? "Template"
+                }
+                onDelete={() => remove(ex.id)}
+              />
+            ))}
+          </ul>
+        )}
+
+        <Dialog
+          open={pickerOpen}
+          onOpenChange={(o) => {
+            setPickerOpen(o);
+            if (!o) {
+              setVaultAssetId("");
+              setTemplateId("");
+            }
+          }}
+        >
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Run Extraction</DialogTitle>
+              <DialogDescription>
+                Pick a doc from your vault and a template to extract against.
+                Fields will populate the HUD for this property.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Vault Doc</Label>
+                <select
+                  value={vaultAssetId}
+                  onChange={(e) => setVaultAssetId(e.target.value)}
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="">Select a property doc…</option>
+                  {docs.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs">Template</Label>
+                <select
+                  value={templateId}
+                  onChange={(e) => setTemplateId(e.target.value)}
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="">Select a template…</option>
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.label} ({t.doc_kind})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setPickerOpen(false)}
+                disabled={running}
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleRun} disabled={!canRun}>
+                {running ? (
+                  <>
+                    <Loader2 className="mr-1 size-3.5 animate-spin" /> Extracting…
+                  </>
+                ) : (
+                  "Run"
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </TooltipProvider>
   );
 }
 
@@ -299,7 +390,7 @@ function ExtractionRow({
           variant="ghost"
           className="h-6 w-6 p-0"
           onClick={onDelete}
-          title="Delete extraction"
+          title="Delete extraction (allowed even when frozen)"
         >
           <Trash2 className="size-3 text-destructive" />
         </Button>

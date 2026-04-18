@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   FileJson,
   FileText,
+  Lock,
   Pencil,
   Play,
   Plus,
@@ -13,6 +14,7 @@ import {
 import { toast } from "sonner";
 
 import { useVaultTemplates } from "@/hooks/useVaultTemplates";
+import { useLusLicense } from "@/hooks/useLusLicense";
 import type {
   JsonSchema,
   VaultTemplate,
@@ -75,10 +77,16 @@ const EMPTY_EDITOR: EditorState = {
 
 function VaultTemplatesPage() {
   const { templates, loading, create, update, remove } = useVaultTemplates();
+  const { isActive: lusActive, loading: lusLoading } = useLusLicense();
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const openCreate = () => setEditor({ ...EMPTY_EDITOR });
+  const editingDisabled = !lusLoading && !lusActive;
+
+  const openCreate = () => {
+    if (editingDisabled) return;
+    setEditor({ ...EMPTY_EDITOR });
+  };
   const openEdit = (t: VaultTemplate) =>
     setEditor({
       id: t.id,
@@ -90,6 +98,10 @@ function VaultTemplatesPage() {
 
   const handleSave = async () => {
     if (!editor) return;
+    if (editingDisabled) {
+      toast.error("Studio license inactive — saving templates is paused.");
+      return;
+    }
     if (!editor.label.trim()) {
       toast.error("Label required");
       return;
@@ -153,10 +165,35 @@ function VaultTemplatesPage() {
             HUDs consume these fields automatically.
           </p>
         </div>
-        <Button onClick={openCreate} size="sm">
+        <Button
+          onClick={openCreate}
+          size="sm"
+          disabled={editingDisabled}
+          title={
+            editingDisabled
+              ? "Studio license inactive — paused"
+              : undefined
+          }
+        >
           <Plus className="mr-1 size-4" /> New Template
         </Button>
       </div>
+
+      {editingDisabled && (
+        <div className="flex items-start gap-2 rounded-md border border-border/60 bg-muted/30 p-3">
+          <Lock className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          <div className="text-xs text-muted-foreground">
+            <p className="font-medium text-foreground">
+              Studio license inactive
+            </p>
+            <p className="mt-0.5">
+              Existing templates still run in client tours, but creating or
+              editing them is paused until your upkeep license is reactivated.
+              Deletion is still available.
+            </p>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center py-10">
@@ -172,6 +209,7 @@ function VaultTemplatesPage() {
               template={t}
               onEdit={() => openEdit(t)}
               onDelete={() => handleDelete(t)}
+              editDisabled={editingDisabled}
             />
           ))}
         </div>
@@ -206,10 +244,12 @@ function TemplateCard({
   template,
   onEdit,
   onDelete,
+  editDisabled,
 }: {
   template: VaultTemplate;
   onEdit: () => void;
   onDelete: () => void;
+  editDisabled?: boolean;
 }) {
   const fieldCount = Object.keys(template.field_schema.properties ?? {}).length;
   return (
@@ -230,8 +270,18 @@ function TemplateCard({
         </CardDescription>
       </CardHeader>
       <CardContent className="flex items-center justify-end gap-1 pt-0">
-        <Button size="sm" variant="ghost" onClick={onEdit}>
-          <Pencil className="size-3.5" />
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={onEdit}
+          disabled={editDisabled}
+          title={editDisabled ? "Studio license inactive — paused" : "Edit"}
+        >
+          {editDisabled ? (
+            <Lock className="size-3.5 text-muted-foreground" />
+          ) : (
+            <Pencil className="size-3.5" />
+          )}
         </Button>
         <Button size="sm" variant="ghost" onClick={onDelete}>
           <Trash2 className="size-3.5 text-destructive" />
