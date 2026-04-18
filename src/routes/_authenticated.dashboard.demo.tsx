@@ -66,6 +66,115 @@ function DemoPage() {
   // Preview
   const [selectedModelIndex, setSelectedModelIndex] = useState(0);
 
+  // Publish state
+  const [isPublished, setIsPublished] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [studioSlug, setStudioSlug] = useState<string | null>(null);
+
+  const getDemo = useServerFn(getSandboxDemo);
+  const saveDemo = useServerFn(saveSandboxDemo);
+  const publishDemo = useServerFn(publishSandboxDemo);
+  const { isActive: lusActive, loading: lusLoading } = useLusLicense();
+
+  // Load existing demo + studio slug on mount
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = await getDemo();
+        if (cancelled) return;
+        if (result.demo) {
+          const overrides = (result.demo.brand_overrides ?? {}) as {
+            brandName?: string;
+            accentColor?: string;
+            hudBgColor?: string;
+            gateLabel?: string;
+            logoUrl?: string | null;
+          };
+          if (overrides.brandName) setBrandName(overrides.brandName);
+          if (overrides.accentColor) setAccentColor(overrides.accentColor);
+          if (overrides.hudBgColor) setHudBgColor(overrides.hudBgColor);
+          if (overrides.gateLabel) setGateLabel(overrides.gateLabel);
+          if (overrides.logoUrl) setLogoPreview(overrides.logoUrl);
+          const loadedProps = ((result.demo.properties as unknown) ?? []) as PropertyModel[];
+          if (loadedProps.length > 0) setModels(loadedProps);
+          const loadedBehaviors = ((result.demo.behaviors as unknown) ?? {}) as Record<string, TourBehavior>;
+          if (Object.keys(loadedBehaviors).length > 0) setBehaviors(loadedBehaviors);
+          const loadedAgent = ((result.demo.agent as unknown) ?? {}) as Partial<AgentContact>;
+          setAgent({ ...DEFAULT_AGENT, ...loadedAgent });
+          setIsPublished(!!result.demo.is_published);
+        }
+      } catch (err) {
+        console.error("Failed to load demo:", err);
+      }
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user && !cancelled) {
+        const { data: branding } = await supabase
+          .from("branding_settings")
+          .select("slug")
+          .eq("provider_id", user.id)
+          .maybeSingle();
+        if (branding?.slug && !cancelled) setStudioSlug(branding.slug);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [getDemo]);
+
+  const handleSave = useCallback(async () => {
+    setSaving(true);
+    try {
+      const result = await saveDemo({
+        data: {
+          brand_overrides: { brandName, accentColor, hudBgColor, gateLabel, logoUrl: logoPreview },
+          properties: models,
+          behaviors,
+          agent,
+        },
+      });
+      if (result.success) {
+        toast.success("Demo saved");
+      } else {
+        toast.error(result.error || "Failed to save demo");
+      }
+    } catch {
+      toast.error("Failed to save demo");
+    }
+    setSaving(false);
+  }, [saveDemo, brandName, accentColor, hudBgColor, gateLabel, logoPreview, models, behaviors, agent]);
+
+  const handlePublishToggle = useCallback(async (publish: boolean) => {
+    if (publish && !lusActive) {
+      toast.error("An active LUS license is required to publish your demo.");
+      return;
+    }
+    setPublishing(true);
+    try {
+      if (publish) {
+        await saveDemo({
+          data: {
+            brand_overrides: { brandName, accentColor, hudBgColor, gateLabel, logoUrl: logoPreview },
+            properties: models,
+            behaviors,
+            agent,
+          },
+        });
+      }
+      const result = await publishDemo({ data: { publish } });
+      if (result.success) {
+        setIsPublished(publish);
+        toast.success(publish ? "Demo is now live on your Studio" : "Demo unpublished");
+      } else {
+        toast.error(result.error || "Failed to update publish state");
+      }
+    } catch {
+      toast.error("Failed to update publish state");
+    }
+    setPublishing(false);
+  }, [publishDemo, saveDemo, lusActive, brandName, accentColor, hudBgColor, gateLabel, logoPreview, models, behaviors, agent]);
+
   const handleBrandingChange = useCallback((field: string, value: string) => {
     switch (field) {
       case "brandName": setBrandName(value); break;
