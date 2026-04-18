@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Volume2,
@@ -11,6 +11,7 @@ import {
   Pencil,
   Trash2,
   ExternalLink,
+  FileJson,
   Upload,
   type LucideIcon,
 } from "lucide-react";
@@ -410,6 +411,20 @@ function VaultPage() {
         {CATEGORIES.map((c) => (
           <TabsContent key={c.value} value={c.value} className="space-y-4">
             <CategoryGuide category={c} />
+
+            {c.value === "property_doc" && (
+              <div className="flex items-center justify-between rounded-md border border-dashed border-border bg-muted/20 px-3 py-2 text-xs">
+                <span className="text-muted-foreground">
+                  Define what gets extracted from each uploaded doc.
+                </span>
+                <Link
+                  to="/dashboard/vault/templates"
+                  className="inline-flex items-center gap-1 font-medium hover:text-foreground"
+                >
+                  <FileJson className="size-3.5" /> Manage Templates
+                </Link>
+              </div>
+            )}
 
             <div className="flex items-center justify-between">
               <div>

@@ -460,6 +460,8 @@ export type Database = {
           category_type: Database["public"]["Enums"]["vault_category"]
           created_at: string
           description: string | null
+          embedding_backfilled_at: string | null
+          embedding_status: string | null
           file_size_bytes: number | null
           id: string
           is_active: boolean
@@ -474,6 +476,8 @@ export type Database = {
           category_type: Database["public"]["Enums"]["vault_category"]
           created_at?: string
           description?: string | null
+          embedding_backfilled_at?: string | null
+          embedding_status?: string | null
           file_size_bytes?: number | null
           id?: string
           is_active?: boolean
@@ -488,6 +492,8 @@ export type Database = {
           category_type?: Database["public"]["Enums"]["vault_category"]
           created_at?: string
           description?: string | null
+          embedding_backfilled_at?: string | null
+          embedding_status?: string | null
           file_size_bytes?: number | null
           id?: string
           is_active?: boolean
@@ -496,6 +502,130 @@ export type Database = {
           provider_id?: string
           storage_path?: string | null
           updated_at?: string
+        }
+        Relationships: []
+      }
+      vault_templates: {
+        Row: {
+          created_at: string
+          doc_kind: string
+          extractor: string
+          field_schema: Json
+          id: string
+          is_active: boolean
+          label: string
+          provider_id: string
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          created_at?: string
+          doc_kind: string
+          extractor?: string
+          field_schema: Json
+          id?: string
+          is_active?: boolean
+          label: string
+          provider_id: string
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          created_at?: string
+          doc_kind?: string
+          extractor?: string
+          field_schema?: Json
+          id?: string
+          is_active?: boolean
+          label?: string
+          provider_id?: string
+          updated_at?: string
+          version?: number
+        }
+        Relationships: []
+      }
+      property_extractions: {
+        Row: {
+          chunks: Json
+          embedding: string | null
+          extracted_at: string
+          extractor: string
+          extractor_version: string
+          fields: Json
+          id: string
+          property_uuid: string
+          saved_model_id: string | null
+          template_id: string
+          vault_asset_id: string
+        }
+        Insert: {
+          chunks: Json
+          embedding?: string | null
+          extracted_at?: string
+          extractor: string
+          extractor_version: string
+          fields: Json
+          id?: string
+          property_uuid: string
+          saved_model_id?: string | null
+          template_id: string
+          vault_asset_id: string
+        }
+        Update: {
+          chunks?: Json
+          embedding?: string | null
+          extracted_at?: string
+          extractor?: string
+          extractor_version?: string
+          fields?: Json
+          id?: string
+          property_uuid?: string
+          saved_model_id?: string | null
+          template_id?: string
+          vault_asset_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_extractions_saved_model_id_fkey"
+            columns: ["saved_model_id"]
+            isOneToOne: false
+            referencedRelation: "saved_models"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_extractions_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "vault_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_extractions_vault_asset_id_fkey"
+            columns: ["vault_asset_id"]
+            isOneToOne: false
+            referencedRelation: "vault_assets"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      lus_freezes: {
+        Row: {
+          frozen_at: string
+          frozen_by: string
+          property_uuid: string
+          reason: string | null
+        }
+        Insert: {
+          frozen_at?: string
+          frozen_by: string
+          property_uuid: string
+          reason?: string | null
+        }
+        Update: {
+          frozen_at?: string
+          frozen_by?: string
+          property_uuid?: string
+          reason?: string | null
         }
         Relationships: []
       }

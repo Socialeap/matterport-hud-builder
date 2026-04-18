@@ -30,6 +30,7 @@ import { Route as AuthenticatedDashboardBrandingRouteImport } from './routes/_au
 import { Route as LovableEmailTransactionalSendRouteImport } from './routes/lovable/email/transactional/send'
 import { Route as LovableEmailTransactionalPreviewRouteImport } from './routes/lovable/email/transactional/preview'
 import { Route as LovableEmailQueueProcessRouteImport } from './routes/lovable/email/queue/process'
+import { Route as AuthenticatedDashboardVaultTemplatesRouteImport } from './routes/_authenticated.dashboard.vault.templates'
 
 const UnsubscribeRoute = UnsubscribeRouteImport.update({
   id: '/unsubscribe',
@@ -145,6 +146,12 @@ const LovableEmailQueueProcessRoute =
     path: '/lovable/email/queue/process',
     getParentRoute: () => rootRouteImport,
   } as any)
+const AuthenticatedDashboardVaultTemplatesRoute =
+  AuthenticatedDashboardVaultTemplatesRouteImport.update({
+    id: '/templates',
+    path: '/templates',
+    getParentRoute: () => AuthenticatedDashboardVaultRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -161,9 +168,10 @@ export interface FileRoutesByFullPath {
   '/dashboard/demo': typeof AuthenticatedDashboardDemoRoute
   '/dashboard/orders': typeof AuthenticatedDashboardOrdersRoute
   '/dashboard/pricing': typeof AuthenticatedDashboardPricingRoute
-  '/dashboard/vault': typeof AuthenticatedDashboardVaultRoute
+  '/dashboard/vault': typeof AuthenticatedDashboardVaultRouteWithChildren
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
+  '/dashboard/vault/templates': typeof AuthenticatedDashboardVaultTemplatesRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
   '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
   '/lovable/email/transactional/send': typeof LovableEmailTransactionalSendRoute
@@ -182,9 +190,10 @@ export interface FileRoutesByTo {
   '/dashboard/demo': typeof AuthenticatedDashboardDemoRoute
   '/dashboard/orders': typeof AuthenticatedDashboardOrdersRoute
   '/dashboard/pricing': typeof AuthenticatedDashboardPricingRoute
-  '/dashboard/vault': typeof AuthenticatedDashboardVaultRoute
+  '/dashboard/vault': typeof AuthenticatedDashboardVaultRouteWithChildren
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
+  '/dashboard/vault/templates': typeof AuthenticatedDashboardVaultTemplatesRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
   '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
   '/lovable/email/transactional/send': typeof LovableEmailTransactionalSendRoute
@@ -206,9 +215,10 @@ export interface FileRoutesById {
   '/_authenticated/dashboard/demo': typeof AuthenticatedDashboardDemoRoute
   '/_authenticated/dashboard/orders': typeof AuthenticatedDashboardOrdersRoute
   '/_authenticated/dashboard/pricing': typeof AuthenticatedDashboardPricingRoute
-  '/_authenticated/dashboard/vault': typeof AuthenticatedDashboardVaultRoute
+  '/_authenticated/dashboard/vault': typeof AuthenticatedDashboardVaultRouteWithChildren
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
+  '/_authenticated/dashboard/vault/templates': typeof AuthenticatedDashboardVaultTemplatesRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
   '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
   '/lovable/email/transactional/send': typeof LovableEmailTransactionalSendRoute
@@ -233,6 +243,7 @@ export interface FileRouteTypes {
     | '/dashboard/vault'
     | '/lovable/email/suppression'
     | '/dashboard/'
+    | '/dashboard/vault/templates'
     | '/lovable/email/queue/process'
     | '/lovable/email/transactional/preview'
     | '/lovable/email/transactional/send'
@@ -254,6 +265,7 @@ export interface FileRouteTypes {
     | '/dashboard/vault'
     | '/lovable/email/suppression'
     | '/dashboard'
+    | '/dashboard/vault/templates'
     | '/lovable/email/queue/process'
     | '/lovable/email/transactional/preview'
     | '/lovable/email/transactional/send'
@@ -277,6 +289,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard/vault'
     | '/lovable/email/suppression'
     | '/_authenticated/dashboard/'
+    | '/_authenticated/dashboard/vault/templates'
     | '/lovable/email/queue/process'
     | '/lovable/email/transactional/preview'
     | '/lovable/email/transactional/send'
@@ -447,8 +460,30 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LovableEmailQueueProcessRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/dashboard/vault/templates': {
+      id: '/_authenticated/dashboard/vault/templates'
+      path: '/templates'
+      fullPath: '/dashboard/vault/templates'
+      preLoaderRoute: typeof AuthenticatedDashboardVaultTemplatesRouteImport
+      parentRoute: typeof AuthenticatedDashboardVaultRoute
+    }
   }
 }
+
+interface AuthenticatedDashboardVaultRouteChildren {
+  AuthenticatedDashboardVaultTemplatesRoute: typeof AuthenticatedDashboardVaultTemplatesRoute
+}
+
+const AuthenticatedDashboardVaultRouteChildren: AuthenticatedDashboardVaultRouteChildren =
+  {
+    AuthenticatedDashboardVaultTemplatesRoute:
+      AuthenticatedDashboardVaultTemplatesRoute,
+  }
+
+const AuthenticatedDashboardVaultRouteWithChildren =
+  AuthenticatedDashboardVaultRoute._addFileChildren(
+    AuthenticatedDashboardVaultRouteChildren,
+  )
 
 interface AuthenticatedDashboardRouteChildren {
   AuthenticatedDashboardBrandingRoute: typeof AuthenticatedDashboardBrandingRoute
@@ -456,7 +491,7 @@ interface AuthenticatedDashboardRouteChildren {
   AuthenticatedDashboardDemoRoute: typeof AuthenticatedDashboardDemoRoute
   AuthenticatedDashboardOrdersRoute: typeof AuthenticatedDashboardOrdersRoute
   AuthenticatedDashboardPricingRoute: typeof AuthenticatedDashboardPricingRoute
-  AuthenticatedDashboardVaultRoute: typeof AuthenticatedDashboardVaultRoute
+  AuthenticatedDashboardVaultRoute: typeof AuthenticatedDashboardVaultRouteWithChildren
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
 }
 
@@ -467,7 +502,8 @@ const AuthenticatedDashboardRouteChildren: AuthenticatedDashboardRouteChildren =
     AuthenticatedDashboardDemoRoute: AuthenticatedDashboardDemoRoute,
     AuthenticatedDashboardOrdersRoute: AuthenticatedDashboardOrdersRoute,
     AuthenticatedDashboardPricingRoute: AuthenticatedDashboardPricingRoute,
-    AuthenticatedDashboardVaultRoute: AuthenticatedDashboardVaultRoute,
+    AuthenticatedDashboardVaultRoute:
+      AuthenticatedDashboardVaultRouteWithChildren,
     AuthenticatedDashboardIndexRoute: AuthenticatedDashboardIndexRoute,
   }
 
@@ -506,12 +542,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}
