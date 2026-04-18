@@ -5,8 +5,10 @@ import {
   FileJson,
   FileText,
   Pencil,
+  Play,
   Plus,
   Trash2,
+  Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -16,6 +18,7 @@ import type {
   VaultTemplate,
   ExtractorId,
 } from "@/lib/extraction/provider";
+import { dryRunTemplate, type DryRunSuccess } from "@/lib/extraction/dryrun";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -250,16 +253,80 @@ function EditorDialog({
   onSave: () => void;
 }) {
   const open = state !== null;
+  const [dryRunFile, setDryRunFile] = useState<File | null>(null);
+  const [dryRunBusy, setDryRunBusy] = useState(false);
+  const [dryRunResult, setDryRunResult] = useState<DryRunSuccess | null>(null);
+  const [dryRunError, setDryRunError] = useState<string | null>(null);
+
+  const resetDryRun = () => {
+    setDryRunFile(null);
+    setDryRunResult(null);
+    setDryRunError(null);
+    setDryRunBusy(false);
+  };
+
   if (!state) {
     return (
-      <Dialog open={open} onOpenChange={(o) => !o && setState(null)}>
+      <Dialog
+        open={open}
+        onOpenChange={(o) => {
+          if (!o) {
+            setState(null);
+            resetDryRun();
+          }
+        }}
+      >
         <DialogContent />
       </Dialog>
     );
   }
+
+  const runDryRun = async () => {
+    if (!state || !dryRunFile) return;
+    let schema: JsonSchema;
+    try {
+      schema = JSON.parse(state.schema_text);
+      if (schema.type !== "object" || !schema.properties) {
+        throw new Error("schema must be { type: 'object', properties: {...} }");
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "parse error";
+      toast.error(`Invalid field schema: ${msg}`);
+      return;
+    }
+    setDryRunBusy(true);
+    setDryRunResult(null);
+    setDryRunError(null);
+    try {
+      const res = await dryRunTemplate({
+        template: {
+          label: state.label,
+          doc_kind: state.doc_kind,
+          extractor: state.extractor,
+          field_schema: schema,
+        },
+        pdfFile: dryRunFile,
+      });
+      setDryRunResult(res);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setDryRunError(msg);
+    } finally {
+      setDryRunBusy(false);
+    }
+  };
+
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && setState(null)}>
-      <DialogContent className="max-w-2xl">
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) {
+          setState(null);
+          resetDryRun();
+        }
+      }}
+    >
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {state.id ? "Edit Template" : "New Template"}
@@ -331,6 +398,16 @@ function EditorDialog({
               Shape: <code>{"{ type: 'object', properties: { name: { type, pattern? } } }"}</code>
             </p>
           </div>
+
+          <DryRunSection
+            file={dryRunFile}
+            setFile={setDryRunFile}
+            busy={dryRunBusy}
+            result={dryRunResult}
+            error={dryRunError}
+            onRun={runDryRun}
+            disabled={saving}
+          />
         </div>
 
         <DialogFooter>
@@ -347,5 +424,122 @@ function EditorDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function DryRunSection({
+  file,
+  setFile,
+  busy,
+  result,
+  error,
+  onRun,
+  disabled,
+}: {
+  file: File | null;
+  setFile: (f: File | null) => void;
+  busy: boolean;
+  result: DryRunSuccess | null;
+  error: string | null;
+  onRun: () => void;
+  disabled: boolean;
+}) {
+  const canRun = !!file && !busy && !disabled;
+
+  return (
+    <div className="space-y-2 rounded-md border border-dashed border-border bg-muted/20 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <Label className="text-xs font-medium">Dry Run</Label>
+          <p className="text-[11px] text-muted-foreground">
+            Test the draft against a sample PDF without saving anything.
+          </p>
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onRun}
+          disabled={!canRun}
+          className="h-7 text-xs"
+        >
+          <Play className="mr-1 size-3" />
+          {busy ? "Running…" : "Run"}
+        </Button>
+      </div>
+
+      <label
+        htmlFor="dryrun-file"
+        className="flex cursor-pointer items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-xs hover:bg-accent"
+      >
+        <Upload className="size-3.5 text-muted-foreground" />
+        <span className="truncate">
+          {file ? file.name : "Choose a sample PDF…"}
+        </span>
+        <input
+          id="dryrun-file"
+          type="file"
+          accept="application/pdf,.pdf"
+          className="hidden"
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+        />
+      </label>
+
+      {error && (
+        <p className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-[11px] text-destructive">
+          {error}
+        </p>
+      )}
+
+      {result && (
+        <div className="space-y-2 rounded-md border border-border bg-background p-2 text-xs">
+          <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+            <span>
+              {Object.keys(result.fields).length} fields •{" "}
+              {result.chunks.length} chunks •{" "}
+              {(result.pdf_bytes / 1024).toFixed(1)} KB
+            </span>
+            <span>
+              {result.extractor}@{result.extractor_version}
+            </span>
+          </div>
+          {Object.keys(result.fields).length === 0 ? (
+            <p className="text-[11px] text-muted-foreground">
+              No fields matched. Adjust patterns or extractor and try again.
+            </p>
+          ) : (
+            <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5">
+              {Object.entries(result.fields).map(([k, v]) => {
+                const display =
+                  v === null || v === undefined
+                    ? "—"
+                    : typeof v === "object"
+                      ? JSON.stringify(v)
+                      : String(v);
+                return (
+                  <DryRunFieldRow key={k} name={k} display={display} />
+                );
+              })}
+            </dl>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DryRunFieldRow({
+  name,
+  display,
+}: {
+  name: string;
+  display: string;
+}) {
+  return (
+    <>
+      <dt className="font-mono text-[11px] text-muted-foreground">{name}</dt>
+      <dd className="truncate" title={display}>
+        {display}
+      </dd>
+    </>
   );
 }
