@@ -122,12 +122,40 @@ function DemoPage() {
     };
   }, [getDemo]);
 
+  // Upload logo to public storage if it's still a local File. Returns durable URL or null.
+  const ensureLogoUrl = useCallback(async (): Promise<string | null> => {
+    // If we have a fresh File, upload it.
+    if (logoFile) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+      const ext = (logoFile.name.split(".").pop() || "png").toLowerCase();
+      const path = `demo-logos/${user.id}/${Date.now()}-logo.${ext}`;
+      const { error: uploadErr } = await supabase.storage
+        .from("brand-assets")
+        .upload(path, logoFile, { upsert: true, contentType: logoFile.type || undefined });
+      if (uploadErr) {
+        console.error("Logo upload failed:", uploadErr);
+        toast.error("Failed to upload logo");
+        return null;
+      }
+      const { data: urlData } = supabase.storage.from("brand-assets").getPublicUrl(path);
+      // Replace the local blob preview with the durable URL so subsequent saves are clean.
+      setLogoFile(null);
+      setLogoPreview(urlData.publicUrl);
+      return urlData.publicUrl;
+    }
+    // No fresh file: keep existing preview unless it's a stale blob: URL.
+    if (logoPreview && logoPreview.startsWith("blob:")) return null;
+    return logoPreview;
+  }, [logoFile, logoPreview]);
+
   const handleSave = useCallback(async () => {
     setSaving(true);
     try {
+      const logoUrl = await ensureLogoUrl();
       const result = await saveDemo({
         data: {
-          brand_overrides: { brandName, accentColor, hudBgColor, gateLabel, logoUrl: logoPreview },
+          brand_overrides: { brandName, accentColor, hudBgColor, gateLabel, logoUrl },
           properties: models,
           behaviors,
           agent: agent as unknown as Record<string, unknown>,
@@ -142,7 +170,7 @@ function DemoPage() {
       toast.error("Failed to save demo");
     }
     setSaving(false);
-  }, [saveDemo, brandName, accentColor, hudBgColor, gateLabel, logoPreview, models, behaviors, agent]);
+  }, [saveDemo, ensureLogoUrl, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent]);
 
   const handlePublishToggle = useCallback(async (publish: boolean) => {
     if (publish && !lusActive) {
@@ -152,9 +180,10 @@ function DemoPage() {
     setPublishing(true);
     try {
       if (publish) {
+        const logoUrl = await ensureLogoUrl();
         await saveDemo({
           data: {
-            brand_overrides: { brandName, accentColor, hudBgColor, gateLabel, logoUrl: logoPreview },
+            brand_overrides: { brandName, accentColor, hudBgColor, gateLabel, logoUrl },
             properties: models,
             behaviors,
             agent: agent as unknown as Record<string, unknown>,
@@ -172,7 +201,7 @@ function DemoPage() {
       toast.error("Failed to update publish state");
     }
     setPublishing(false);
-  }, [publishDemo, saveDemo, lusActive, brandName, accentColor, hudBgColor, gateLabel, logoPreview, models, behaviors, agent]);
+  }, [publishDemo, saveDemo, ensureLogoUrl, lusActive, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent]);
 
   const handleBrandingChange = useCallback((field: string, value: string) => {
     switch (field) {

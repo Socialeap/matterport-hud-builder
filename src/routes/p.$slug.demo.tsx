@@ -76,7 +76,13 @@ function PublicDemoPage() {
   const brandName = brandOverrides.brandName || branding.brand_name;
   const accentColor = brandOverrides.accentColor || branding.accent_color;
   const hudBgColor = brandOverrides.hudBgColor || branding.hud_bg_color;
-  const logoPreview = brandOverrides.logoUrl ?? branding.logo_url;
+  // Coerce stale blob: URLs (saved before storage upload was wired) to null so brand name fallback renders.
+  const rawLogo = brandOverrides.logoUrl ?? branding.logo_url;
+  if (typeof rawLogo === "string" && rawLogo.startsWith("blob:")) {
+    console.warn("[demo] Ignoring stale blob: logo URL in brand_overrides");
+  }
+  const logoPreview =
+    typeof rawLogo === "string" && rawLogo.startsWith("blob:") ? null : rawLogo;
   const isPro = branding.tier === "pro";
 
   const properties = ((demo.properties as unknown) ?? []) as PropertyModel[];
@@ -145,6 +151,7 @@ function PublicDemoPage() {
             logoPreview={logoPreview}
             agent={agent}
             isPro={isPro}
+            defaultHeaderVisible={true}
           />
         )}
 
