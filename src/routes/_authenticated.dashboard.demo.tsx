@@ -44,6 +44,7 @@ function DemoPage() {
   const [faviconFile, setFaviconFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [faviconPreview, setFaviconPreview] = useState<string | null>(null);
+  const [agentAvatarFile, setAgentAvatarFile] = useState<File | null>(null);
 
   // Models
   const [models, setModels] = useState<PropertyModel[]>(() => [createEmptyModel()]);
@@ -108,6 +109,10 @@ function DemoPage() {
           const loadedBehaviors = ((result.demo.behaviors as unknown) ?? {}) as Record<string, TourBehavior>;
           if (Object.keys(loadedBehaviors).length > 0) setBehaviors(loadedBehaviors);
           const loadedAgent = ((result.demo.agent as unknown) ?? {}) as Partial<AgentContact>;
+          // Strip stale blob: avatar URLs (defensive — should never persist)
+          if (typeof loadedAgent.avatarUrl === "string" && loadedAgent.avatarUrl.startsWith("blob:")) {
+            loadedAgent.avatarUrl = "";
+          }
           setAgent({ ...DEFAULT_AGENT, ...loadedAgent });
           setIsPublished(!!result.demo.is_published);
         }
@@ -132,12 +137,13 @@ function DemoPage() {
   // Upload a brand asset (logo or favicon) to public storage if still a local File.
   // Returns the durable URL or null on failure.
   const uploadIfFile = useCallback(
-    async (file: File | null, currentPreview: string | null, kind: "logo" | "favicon"): Promise<string | null> => {
+    async (file: File | null, currentPreview: string | null, kind: "logo" | "favicon" | "avatar"): Promise<string | null> => {
       if (file) {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return null;
         const ext = (file.name.split(".").pop() || "png").toLowerCase();
-        const path = `demo-${kind}s/${user.id}/${Date.now()}-${kind}.${ext}`;
+        const folder = kind === "avatar" ? "agent-avatars" : `demo-${kind}s`;
+        const path = `${folder}/${user.id}/${Date.now()}-${kind}.${ext}`;
         const { error: uploadErr } = await supabase.storage
           .from("brand-assets")
           .upload(path, file, { upsert: true, contentType: file.type || undefined });
