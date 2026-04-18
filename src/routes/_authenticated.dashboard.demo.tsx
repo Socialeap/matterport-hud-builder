@@ -293,6 +293,77 @@ function DemoPage() {
               />
             </TabsContent>
           </Tabs>
+
+          {/* Publish as Public Demo */}
+          <div className="rounded-lg border-2 border-primary/30 bg-primary/5 p-5 space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="flex items-center gap-2 text-base font-semibold text-foreground">
+                  <Globe className="h-4 w-4" />
+                  Publish as Public Demo
+                </h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Save this configuration and expose it as a live, read-only demo on your public Studio.
+                  Visitors to your slug page will see a "View Live Demo" CTA.
+                </p>
+              </div>
+              {!lusActive && !lusLoading && (
+                <Lock className="h-4 w-4 text-muted-foreground shrink-0" aria-label="License required" />
+              )}
+            </div>
+
+            {!lusActive && !lusLoading && (
+              <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+                Publishing requires an active LUS (Lifetime Upgrade Service) license.
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-4">
+              <div className="space-y-0.5">
+                <Label htmlFor="publish-toggle" className="text-sm font-medium">
+                  Show on public Studio
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  {isPublished ? "Your demo is live." : "Toggle on to publish."}
+                </p>
+              </div>
+              <Switch
+                id="publish-toggle"
+                checked={isPublished}
+                disabled={publishing || (!lusActive && !isPublished)}
+                onCheckedChange={handlePublishToggle}
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSave}
+                disabled={saving}
+              >
+                <Save className="mr-2 h-4 w-4" />
+                {saving ? "Saving…" : "Save Draft"}
+              </Button>
+              {isPublished && studioSlug && (
+                <Button variant="ghost" size="sm" asChild>
+                  <a
+                    href={`/p/${studioSlug}/demo`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <ExternalLink className="mr-2 h-4 w-4" />
+                    View Live
+                  </a>
+                </Button>
+              )}
+              {!studioSlug && (
+                <span className="text-xs text-muted-foreground">
+                  Set a slug in Branding to enable a public URL.
+                </span>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Right: Live HUD Preview */}
