@@ -1,52 +1,54 @@
 
 
-## Cinematic Video Integration — Plan
+## Plan: LUS Terminology Fix + Admin Account Provisioning
 
-### Scope
-Add an optional cinematic video per property (YouTube/Vimeo/Wistia/Loom/.mp4), surfaced as a "Cinema Mode" button in the HUD that opens a lazy-loaded modal. Un-gated (no LUS check).
+### Findings
 
-### Files to change
+**1. LUS terminology**
+The incorrect expansion `"Lifetime Upgrade Service"` appears in **exactly one user-facing location**:
+- `src/routes/_authenticated.dashboard.demo.tsx:317` — the publish-gate amber banner
+All other references (hooks, server fns, comments, edge functions) already say `"License for Upkeep Services"` or just `"LUS"`.
 
-**1. New utility: `src/lib/video-embed.ts`**
-- Pure function `parseCinematicVideo(url: string): { kind: "iframe" | "mp4" | "invalid"; embedUrl: string; provider: "youtube"|"vimeo"|"wistia"|"loom"|"mp4" }`
-- Regex extractors per provider (handles `youtu.be/ID`, `youtube.com/watch?v=ID`, `vimeo.com/ID`, `wistia.com/medias/ID`, `loom.com/share/ID`).
-- Returns minimalist embed URLs per spec.
-- Trim/validate; empty → invalid.
+**2. Admin account state**
+- `shakoure@transcendencemedia.com` exists (user_id `a3d9b1d1-326d-405d-bceb-a980bebd77b6`)
+- Has `provider` role ✓
+- Has **no row in `licenses`** → `useLusLicense().isActive` returns `false` for this account today
 
-**2. Data model: `src/components/portal/types.ts`**
-- Add `cinematicVideoUrl?: string` to `PropertyModel`.
+**3. Preview vs Published — important clarification**
+The preview URL (`id-preview--...lovable.app`) and published URL (`matterport-hud-builder.lovable.app`) **already share the same Lovable Cloud database**. Any change made while signed in on the preview is a real change to the same `licenses`, `sandbox_demos`, `branding_settings`, etc. tables that the published site reads.
 
-**3. Builder UI: `src/components/portal/PropertyModelsSection.tsx`**
-- Add one input under the existing Music URL field: "Cinematic Video URL (YouTube, Vimeo, Loom, Wistia, or .mp4)".
-- Inline validation hint when URL is non-empty but unparseable.
+So there's nothing to "bridge" environment-wise — once the admin has a license row, edits on preview will already persist and be visible on the published site under the same account. The only environment-flagged data is Stripe `purchases.environment` (`sandbox` vs `live`), which is irrelevant to LUS gating.
 
-**4. Sandbox state: `src/components/portal/HudBuilderSandbox.tsx`**
-- Initialize `cinematicVideoUrl: ""` in `createEmptyModel`.
+### Changes
 
-**5. New component: `src/components/portal/CinemaModal.tsx`**
-- Props: `open`, `onClose`, `videoUrl`.
-- Parses URL on render; renders `<iframe>` or `<video autoPlay controls>` only when `open === true` (lazy mount; unmounts on close to kill audio/scripts).
-- Centered 16:9 container, `rounded-2xl`, soft shadow.
-- Backdrop: fixed overlay with `backdrop-blur-md bg-black/60`, click-to-close.
-- Top-right X close button.
-- Esc key closes.
+**A. Fix the user-facing string** (1 file)
+- `src/routes/_authenticated.dashboard.demo.tsx:317`
+  - From: `Publishing requires an active LUS (Lifetime Upgrade Service) license.`
+  - To: `Publishing requires an active LUS (License for Upkeep Services) license.`
 
-**6. HUD trigger: `src/components/portal/HudPreview.tsx`**
-- When active property has a valid parsed `cinematicVideoUrl`, render a `Film` (lucide-react) icon button alongside existing HUD tools.
-- Local state `cinemaOpen`; renders `<CinemaModal />` conditionally.
+**B. Provision the admin's permanent LUS license** (1 SQL insert via the data-mutation tool)
+Insert a row into `public.licenses` for user `a3d9b1d1-326d-405d-bceb-a980bebd77b6`:
+```sql
+INSERT INTO public.licenses (user_id, tier, license_status, license_expiry)
+VALUES ('a3d9b1d1-326d-405d-bceb-a980bebd77b6', 'pro', 'active', NULL)
+ON CONFLICT (user_id) DO UPDATE SET
+  license_status = 'active', license_expiry = NULL, tier = 'pro';
+```
+- `license_expiry = NULL` → never expires (matches `useLusLicense.isActive` logic which treats null expiry as "no expiry")
+- `tier = 'pro'` → unlocks Pro-tier features
+- Also satisfies the `_authenticated.dashboard.tsx` purchase gate (any license row passes)
 
-### Performance guardrails
-- `CinemaModal` returns `null` when closed → iframe/video never enters DOM until clicked.
-- On close, component unmounts → `src` removed → background audio stops.
-- No preconnect / no preload — strict lazy.
+If the table lacks a UNIQUE constraint on `user_id`, I'll do a guarded `INSERT … WHERE NOT EXISTS` instead.
 
-### Non-goals
-- No LUS gating (per spec — un-gated).
-- No analytics on play events (future).
-- No upload UI — link-only.
-- No persistence migration needed beyond the existing `tour_config` JSON (field flows through naturally; round-trip already covered by saved_models JSON storage).
+**C. Confirm no admin role exists, optionally add one**
+The account has only `provider`. The `app_role` enum includes `admin`. I'll add an `admin` role row as well so any future admin-only routes/RPCs (e.g. `has_role(uid, 'admin')` checks in RLS policies) treat shakoure as admin.
 
-### Technical notes
-- Reuse existing Dialog primitives only if they support full-bleed backdrop; otherwise use a plain portal `<div>` overlay for full control over blur + click-to-close (the spec's blur effect is custom enough that a bare overlay is cleaner than overriding shadcn's `DialogOverlay`).
-- Keep the parser pure & unit-testable (no DOM, no React).
+### What this does NOT change
+- No code change to allow a "preview-only" override — unnecessary, since preview already writes to the live DB under the same auth.
+- No change to LUS gating logic anywhere; we're just giving the admin a real license row.
+- No `LUS` references in comments/docs need updating — they're already correct.
+
+### Files touched
+- `src/routes/_authenticated.dashboard.demo.tsx` — one-line copy fix
+- One data migration (insert into `licenses` + `user_roles` for admin)
 
