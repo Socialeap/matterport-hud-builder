@@ -84,7 +84,7 @@ interface CategoryMeta {
 const CATEGORIES: CategoryMeta[] = [
   {
     value: "spatial_audio",
-    label: "Spatial Audio",
+    label: "Sound Library",
     utility: "Background Ambience",
     purpose: "Emotional mood setting",
     format: ".mp3, .wav, or Audio URL",
