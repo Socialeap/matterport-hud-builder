@@ -20,6 +20,7 @@ import { Route as PSlugRouteImport } from './routes/p.$slug'
 import { Route as EmailUnsubscribeRouteImport } from './routes/email/unsubscribe'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated.dashboard'
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated.dashboard.index'
+import { Route as PSlugDemoRouteImport } from './routes/p.$slug.demo'
 import { Route as LovableEmailSuppressionRouteImport } from './routes/lovable/email/suppression'
 import { Route as AuthenticatedDashboardVaultRouteImport } from './routes/_authenticated.dashboard.vault'
 import { Route as AuthenticatedDashboardPricingRouteImport } from './routes/_authenticated.dashboard.pricing'
@@ -87,6 +88,11 @@ const AuthenticatedDashboardIndexRoute =
     path: '/',
     getParentRoute: () => AuthenticatedDashboardRoute,
   } as any)
+const PSlugDemoRoute = PSlugDemoRouteImport.update({
+  id: '/demo',
+  path: '/demo',
+  getParentRoute: () => PSlugRoute,
+} as any)
 const LovableEmailSuppressionRoute = LovableEmailSuppressionRouteImport.update({
   id: '/lovable/email/suppression',
   path: '/lovable/email/suppression',
@@ -162,7 +168,7 @@ export interface FileRoutesByFullPath {
   '/unsubscribe': typeof UnsubscribeRoute
   '/dashboard': typeof AuthenticatedDashboardRouteWithChildren
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
-  '/p/$slug': typeof PSlugRoute
+  '/p/$slug': typeof PSlugRouteWithChildren
   '/dashboard/branding': typeof AuthenticatedDashboardBrandingRoute
   '/dashboard/clients': typeof AuthenticatedDashboardClientsRoute
   '/dashboard/demo': typeof AuthenticatedDashboardDemoRoute
@@ -170,6 +176,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/pricing': typeof AuthenticatedDashboardPricingRoute
   '/dashboard/vault': typeof AuthenticatedDashboardVaultRouteWithChildren
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
+  '/p/$slug/demo': typeof PSlugDemoRoute
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/dashboard/vault/templates': typeof AuthenticatedDashboardVaultTemplatesRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
@@ -184,7 +191,7 @@ export interface FileRoutesByTo {
   '/signup': typeof SignupRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
-  '/p/$slug': typeof PSlugRoute
+  '/p/$slug': typeof PSlugRouteWithChildren
   '/dashboard/branding': typeof AuthenticatedDashboardBrandingRoute
   '/dashboard/clients': typeof AuthenticatedDashboardClientsRoute
   '/dashboard/demo': typeof AuthenticatedDashboardDemoRoute
@@ -192,6 +199,7 @@ export interface FileRoutesByTo {
   '/dashboard/pricing': typeof AuthenticatedDashboardPricingRoute
   '/dashboard/vault': typeof AuthenticatedDashboardVaultRouteWithChildren
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
+  '/p/$slug/demo': typeof PSlugDemoRoute
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
   '/dashboard/vault/templates': typeof AuthenticatedDashboardVaultTemplatesRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
@@ -209,7 +217,7 @@ export interface FileRoutesById {
   '/unsubscribe': typeof UnsubscribeRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRouteWithChildren
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
-  '/p/$slug': typeof PSlugRoute
+  '/p/$slug': typeof PSlugRouteWithChildren
   '/_authenticated/dashboard/branding': typeof AuthenticatedDashboardBrandingRoute
   '/_authenticated/dashboard/clients': typeof AuthenticatedDashboardClientsRoute
   '/_authenticated/dashboard/demo': typeof AuthenticatedDashboardDemoRoute
@@ -217,6 +225,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard/pricing': typeof AuthenticatedDashboardPricingRoute
   '/_authenticated/dashboard/vault': typeof AuthenticatedDashboardVaultRouteWithChildren
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
+  '/p/$slug/demo': typeof PSlugDemoRoute
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/_authenticated/dashboard/vault/templates': typeof AuthenticatedDashboardVaultTemplatesRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
@@ -242,6 +251,7 @@ export interface FileRouteTypes {
     | '/dashboard/pricing'
     | '/dashboard/vault'
     | '/lovable/email/suppression'
+    | '/p/$slug/demo'
     | '/dashboard/'
     | '/dashboard/vault/templates'
     | '/lovable/email/queue/process'
@@ -264,6 +274,7 @@ export interface FileRouteTypes {
     | '/dashboard/pricing'
     | '/dashboard/vault'
     | '/lovable/email/suppression'
+    | '/p/$slug/demo'
     | '/dashboard'
     | '/dashboard/vault/templates'
     | '/lovable/email/queue/process'
@@ -288,6 +299,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard/pricing'
     | '/_authenticated/dashboard/vault'
     | '/lovable/email/suppression'
+    | '/p/$slug/demo'
     | '/_authenticated/dashboard/'
     | '/_authenticated/dashboard/vault/templates'
     | '/lovable/email/queue/process'
@@ -304,7 +316,7 @@ export interface RootRouteChildren {
   SignupRoute: typeof SignupRoute
   UnsubscribeRoute: typeof UnsubscribeRoute
   EmailUnsubscribeRoute: typeof EmailUnsubscribeRoute
-  PSlugRoute: typeof PSlugRoute
+  PSlugRoute: typeof PSlugRouteWithChildren
   LovableEmailSuppressionRoute: typeof LovableEmailSuppressionRoute
   LovableEmailQueueProcessRoute: typeof LovableEmailQueueProcessRoute
   LovableEmailTransactionalPreviewRoute: typeof LovableEmailTransactionalPreviewRoute
@@ -389,6 +401,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/dashboard/'
       preLoaderRoute: typeof AuthenticatedDashboardIndexRouteImport
       parentRoute: typeof AuthenticatedDashboardRoute
+    }
+    '/p/$slug/demo': {
+      id: '/p/$slug/demo'
+      path: '/demo'
+      fullPath: '/p/$slug/demo'
+      preLoaderRoute: typeof PSlugDemoRouteImport
+      parentRoute: typeof PSlugRoute
     }
     '/lovable/email/suppression': {
       id: '/lovable/email/suppression'
@@ -524,6 +543,16 @@ const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
   AuthenticatedRouteChildren,
 )
 
+interface PSlugRouteChildren {
+  PSlugDemoRoute: typeof PSlugDemoRoute
+}
+
+const PSlugRouteChildren: PSlugRouteChildren = {
+  PSlugDemoRoute: PSlugDemoRoute,
+}
+
+const PSlugRouteWithChildren = PSlugRoute._addFileChildren(PSlugRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
@@ -533,7 +562,7 @@ const rootRouteChildren: RootRouteChildren = {
   SignupRoute: SignupRoute,
   UnsubscribeRoute: UnsubscribeRoute,
   EmailUnsubscribeRoute: EmailUnsubscribeRoute,
-  PSlugRoute: PSlugRoute,
+  PSlugRoute: PSlugRouteWithChildren,
   LovableEmailSuppressionRoute: LovableEmailSuppressionRoute,
   LovableEmailQueueProcessRoute: LovableEmailQueueProcessRoute,
   LovableEmailTransactionalPreviewRoute: LovableEmailTransactionalPreviewRoute,

@@ -1,7 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { HudBuilderSandbox } from "@/components/portal/HudBuilderSandbox";
+import { checkDemoPublished } from "@/lib/sandbox-demo.functions";
 
 const fetchBrandingBySlug = createServerFn({ method: "GET" })
   .inputValidator((data: { slug: string }) => data)
@@ -13,9 +14,10 @@ const fetchBrandingBySlug = createServerFn({ method: "GET" })
       .maybeSingle();
 
     if (error || !branding) {
-      return { branding: null };
+      return { branding: null, demoPublished: false };
     }
-    return { branding };
+    const demoCheck = await checkDemoPublished({ data: { providerId: branding.provider_id } });
+    return { branding, demoPublished: demoCheck.published };
   });
 
 export const Route = createFileRoute("/p/$slug")({
@@ -27,7 +29,7 @@ export const Route = createFileRoute("/p/$slug")({
   }),
   loader: async ({ params }) => {
     const result = await fetchBrandingBySlug({ data: { slug: params.slug } });
-    return result as { branding: Awaited<ReturnType<typeof fetchBrandingBySlug>>["branding"] };
+    return result;
   },
   component: PortalPage,
   notFoundComponent: () => (
@@ -41,7 +43,8 @@ export const Route = createFileRoute("/p/$slug")({
 });
 
 function PortalPage() {
-  const { branding } = Route.useLoaderData();
+  const { branding, demoPublished } = Route.useLoaderData();
+  const { slug } = Route.useParams();
 
   if (!branding) {
     return (
@@ -54,5 +57,20 @@ function PortalPage() {
     );
   }
 
-  return <HudBuilderSandbox branding={branding} />;
+  return (
+    <>
+      {demoPublished && (
+        <div
+          className="w-full px-4 py-2 text-center text-sm font-medium text-white"
+          style={{ backgroundColor: branding.accent_color }}
+        >
+          ✨ See a Live Demo of {branding.brand_name}'s 3D Studio →{" "}
+          <Link to="/p/$slug/demo" params={{ slug }} className="underline font-semibold">
+            View Demo
+          </Link>
+        </div>
+      )}
+      <HudBuilderSandbox branding={branding} />
+    </>
+  );
 }
