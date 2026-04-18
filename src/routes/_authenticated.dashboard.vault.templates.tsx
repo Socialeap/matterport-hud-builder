@@ -165,10 +165,35 @@ function VaultTemplatesPage() {
             HUDs consume these fields automatically.
           </p>
         </div>
-        <Button onClick={openCreate} size="sm">
+        <Button
+          onClick={openCreate}
+          size="sm"
+          disabled={editingDisabled}
+          title={
+            editingDisabled
+              ? "Studio license inactive — paused"
+              : undefined
+          }
+        >
           <Plus className="mr-1 size-4" /> New Template
         </Button>
       </div>
+
+      {editingDisabled && (
+        <div className="flex items-start gap-2 rounded-md border border-border/60 bg-muted/30 p-3">
+          <Lock className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          <div className="text-xs text-muted-foreground">
+            <p className="font-medium text-foreground">
+              Studio license inactive
+            </p>
+            <p className="mt-0.5">
+              Existing templates still run in client tours, but creating or
+              editing them is paused until your upkeep license is reactivated.
+              Deletion is still available.
+            </p>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center py-10">
