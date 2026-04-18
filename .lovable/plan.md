@@ -1,54 +1,39 @@
 
 
-## Plan: LUS Terminology Fix + Admin Account Provisioning
+## Plan: Fix public demo route 500 error
 
-### Findings
+### Root cause
+`/p/$slug/demo` calls `getPublicDemoBySlug` (server function) which uses `supabaseAdmin` from `client.server.ts`. That client requires `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` from `process.env`. The Cloudflare Worker runtime running our TanStack server functions does **not** have these injected — `fetch_secrets` confirms only Stripe/OpenAI/Lovable keys exist at the worker runtime. (The Supabase secrets shown in `<supabase-configuration>` are Edge Function secrets, a separate runtime.)
 
-**1. LUS terminology**
-The incorrect expansion `"Lifetime Upgrade Service"` appears in **exactly one user-facing location**:
-- `src/routes/_authenticated.dashboard.demo.tsx:317` — the publish-gate amber banner
-All other references (hooks, server fns, comments, edge functions) already say `"License for Upkeep Services"` or just `"LUS"`.
+The middleware-protected functions (`getSandboxDemo`, etc.) work because they fall through `requireSupabaseAuth`, which uses `SUPABASE_PUBLISHABLE_KEY` — also missing, but those endpoints only run when the user is signed in on `/dashboard/demo`, where the auth interceptor already short-circuits and they hit a different code path (the user has been seeing those work).
 
-**2. Admin account state**
-- `shakoure@transcendencemedia.com` exists (user_id `a3d9b1d1-326d-405d-bceb-a980bebd77b6`)
-- Has `provider` role ✓
-- Has **no row in `licenses`** → `useLusLicense().isActive` returns `false` for this account today
+Wait — re-checking: middleware also reads `process.env.SUPABASE_URL`. If that fails too, all server fns would be broken. Looking at `.env`, `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` ARE defined as top-level (non-VITE) keys — and TanStack Start's Vite plugin loads `.env` into `process.env` at build time. So those two vars are bundled.
 
-**3. Preview vs Published — important clarification**
-The preview URL (`id-preview--...lovable.app`) and published URL (`matterport-hud-builder.lovable.app`) **already share the same Lovable Cloud database**. Any change made while signed in on the preview is a real change to the same `licenses`, `sandbox_demos`, `branding_settings`, etc. tables that the published site reads.
+`SUPABASE_SERVICE_ROLE_KEY` is **not** in `.env` (only in Supabase secrets), so it's `undefined` at worker runtime — that's the actual failure.
 
-So there's nothing to "bridge" environment-wise — once the admin has a license row, edits on preview will already persist and be visible on the published site under the same account. The only environment-flagged data is Stripe `purchases.environment` (`sandbox` vs `live`), which is irrelevant to LUS gating.
+### Fix
+Avoid `supabaseAdmin` entirely for the public demo lookup. The data we need is already public:
+- `branding_settings` with public slug — should be readable by anon (RLS likely already permits this for `/p/$slug` to work).
+- `sandbox_demos` where `is_published = true` — should also be anon-readable for published rows.
 
-### Changes
+**Step 1 — Verify/add RLS policies** so anon can `SELECT`:
+- `branding_settings`: ensure `SELECT` policy allows anon (likely already exists since `/p/$slug` works).
+- `sandbox_demos`: add `SELECT` policy `USING (is_published = true)` for anon.
 
-**A. Fix the user-facing string** (1 file)
-- `src/routes/_authenticated.dashboard.demo.tsx:317`
-  - From: `Publishing requires an active LUS (Lifetime Upgrade Service) license.`
-  - To: `Publishing requires an active LUS (License for Upkeep Services) license.`
+**Step 2 — Replace `supabaseAdmin` with the anon client** in two server functions in `src/lib/sandbox-demo.functions.ts`:
+- `getPublicDemoBySlug` → use `@/integrations/supabase/client` (anon).
+- `checkDemoPublished` → same.
 
-**B. Provision the admin's permanent LUS license** (1 SQL insert via the data-mutation tool)
-Insert a row into `public.licenses` for user `a3d9b1d1-326d-405d-bceb-a980bebd77b6`:
-```sql
-INSERT INTO public.licenses (user_id, tier, license_status, license_expiry)
-VALUES ('a3d9b1d1-326d-405d-bceb-a980bebd77b6', 'pro', 'active', NULL)
-ON CONFLICT (user_id) DO UPDATE SET
-  license_status = 'active', license_expiry = NULL, tier = 'pro';
-```
-- `license_expiry = NULL` → never expires (matches `useLusLicense.isActive` logic which treats null expiry as "no expiry")
-- `tier = 'pro'` → unlocks Pro-tier features
-- Also satisfies the `_authenticated.dashboard.tsx` purchase gate (any license row passes)
+These fns can even run client-side via the loader (they're already isomorphic), so swapping to the anon client is correct and removes the worker-secret dependency.
 
-If the table lacks a UNIQUE constraint on `user_id`, I'll do a guarded `INSERT … WHERE NOT EXISTS` instead.
-
-**C. Confirm no admin role exists, optionally add one**
-The account has only `provider`. The `app_role` enum includes `admin`. I'll add an `admin` role row as well so any future admin-only routes/RPCs (e.g. `has_role(uid, 'admin')` checks in RLS policies) treat shakoure as admin.
-
-### What this does NOT change
-- No code change to allow a "preview-only" override — unnecessary, since preview already writes to the live DB under the same auth.
-- No change to LUS gating logic anywhere; we're just giving the admin a real license row.
-- No `LUS` references in comments/docs need updating — they're already correct.
+**Step 3 — (Optional hardening)** Remove the unused `supabaseAdmin` import from this file so future edits don't accidentally re-introduce the dependency.
 
 ### Files touched
-- `src/routes/_authenticated.dashboard.demo.tsx` — one-line copy fix
-- One data migration (insert into `licenses` + `user_roles` for admin)
+- `supabase/migrations/{ts}_sandbox_demos_public_read.sql` — add anon SELECT policy on `sandbox_demos` for published rows (verify branding_settings policy exists; add if missing).
+- `src/lib/sandbox-demo.functions.ts` — swap `supabaseAdmin` → `supabase` (anon) in `getPublicDemoBySlug` and `checkDemoPublished`; drop the admin import.
+
+### Why this is the right fix
+- No new secrets to provision in two places.
+- Public demo data is *meant* to be public — RLS is the correct gate, not a service-role bypass.
+- Eliminates a class of "works locally / fails in production" bugs caused by the worker env not matching the dev env.
 
