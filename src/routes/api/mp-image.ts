@@ -25,7 +25,11 @@
  *   - Returns 1×1 transparent PNG only on invalid input / rate-limit
  */
 import { createFileRoute } from "@tanstack/react-router";
-import { isValidMatterportId } from "@/lib/matterport-manifest";
+
+const MP_ID_RE = /^[A-Za-z0-9]{11}$/;
+function isValidMatterportId(id: string): boolean {
+  return MP_ID_RE.test(id);
+}
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
