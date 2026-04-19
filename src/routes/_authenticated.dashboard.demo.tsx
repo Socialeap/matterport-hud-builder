@@ -18,6 +18,7 @@ import { useLusLicense } from "@/hooks/useLusLicense";
 import { toast } from "sonner";
 import { ExternalLink, Save, Globe, Lock, Copy, Check } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { buildDemoUrl } from "@/lib/public-url";
 
 export const Route = createFileRoute("/_authenticated/dashboard/demo")({
   component: DemoPage,
@@ -71,6 +72,8 @@ function DemoPage() {
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [studioSlug, setStudioSlug] = useState<string | null>(null);
+  const [studioTier, setStudioTier] = useState<"starter" | "pro" | null>(null);
+  const [studioCustomDomain, setStudioCustomDomain] = useState<string | null>(null);
   const [logoUploading, setLogoUploading] = useState(false);
   const [faviconUploading, setFaviconUploading] = useState(false);
   const [urlCopied, setUrlCopied] = useState(false);
@@ -126,10 +129,14 @@ function DemoPage() {
       if (user && !cancelled) {
         const { data: branding } = await supabase
           .from("branding_settings")
-          .select("slug")
+          .select("slug, tier, custom_domain")
           .eq("provider_id", user.id)
           .maybeSingle();
-        if (branding?.slug && !cancelled) setStudioSlug(branding.slug);
+        if (!cancelled && branding) {
+          if (branding.slug) setStudioSlug(branding.slug);
+          if (branding.tier) setStudioTier(branding.tier as "starter" | "pro");
+          setStudioCustomDomain(branding.custom_domain ?? null);
+        }
       }
     })();
     return () => {
@@ -409,7 +416,7 @@ function DemoPage() {
   );
 
   const publicDemoUrl = studioSlug
-    ? `${typeof window !== "undefined" ? window.location.origin : ""}/p/${studioSlug}/demo`
+    ? buildDemoUrl(studioSlug, { tier: studioTier, customDomain: studioCustomDomain })
     : null;
 
   const handleCopyUrl = useCallback(async () => {
