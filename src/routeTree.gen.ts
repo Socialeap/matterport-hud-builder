@@ -10,8 +10,10 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
+import { Route as TermsRouteImport } from './routes/terms'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
+import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
@@ -39,6 +41,11 @@ const UnsubscribeRoute = UnsubscribeRouteImport.update({
   path: '/unsubscribe',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
   path: '/signup',
@@ -47,6 +54,11 @@ const SignupRoute = SignupRouteImport.update({
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
   path: '/reset-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -169,8 +181,10 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/terms': typeof TermsRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/dashboard': typeof AuthenticatedDashboardRouteWithChildren
   '/api/mp-image': typeof ApiMpImageRoute
@@ -194,8 +208,10 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/terms': typeof TermsRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/api/mp-image': typeof ApiMpImageRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
@@ -220,8 +236,10 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/terms': typeof TermsRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRouteWithChildren
   '/api/mp-image': typeof ApiMpImageRoute
@@ -247,8 +265,10 @@ export interface FileRouteTypes {
     | '/'
     | '/forgot-password'
     | '/login'
+    | '/privacy'
     | '/reset-password'
     | '/signup'
+    | '/terms'
     | '/unsubscribe'
     | '/dashboard'
     | '/api/mp-image'
@@ -272,8 +292,10 @@ export interface FileRouteTypes {
     | '/'
     | '/forgot-password'
     | '/login'
+    | '/privacy'
     | '/reset-password'
     | '/signup'
+    | '/terms'
     | '/unsubscribe'
     | '/api/mp-image'
     | '/email/unsubscribe'
@@ -297,8 +319,10 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/forgot-password'
     | '/login'
+    | '/privacy'
     | '/reset-password'
     | '/signup'
+    | '/terms'
     | '/unsubscribe'
     | '/_authenticated/dashboard'
     | '/api/mp-image'
@@ -324,8 +348,10 @@ export interface RootRouteChildren {
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   LoginRoute: typeof LoginRoute
+  PrivacyRoute: typeof PrivacyRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
+  TermsRoute: typeof TermsRoute
   UnsubscribeRoute: typeof UnsubscribeRoute
   ApiMpImageRoute: typeof ApiMpImageRoute
   EmailUnsubscribeRoute: typeof EmailUnsubscribeRoute
@@ -345,6 +371,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof UnsubscribeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/signup': {
       id: '/signup'
       path: '/signup'
@@ -357,6 +390,13 @@ declare module '@tanstack/react-router' {
       path: '/reset-password'
       fullPath: '/reset-password'
       preLoaderRoute: typeof ResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -578,8 +618,10 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   ForgotPasswordRoute: ForgotPasswordRoute,
   LoginRoute: LoginRoute,
+  PrivacyRoute: PrivacyRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
+  TermsRoute: TermsRoute,
   UnsubscribeRoute: UnsubscribeRoute,
   ApiMpImageRoute: ApiMpImageRoute,
   EmailUnsubscribeRoute: EmailUnsubscribeRoute,
