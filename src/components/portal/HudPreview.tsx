@@ -1,9 +1,10 @@
 import { useState, useRef } from "react";
-import { ChevronUp, ChevronDown, Phone, Mail, MessageSquare, Globe, X, MapPin, Film } from "lucide-react";
+import { ChevronUp, ChevronDown, Phone, Mail, MessageSquare, Globe, X, MapPin, Film, Images } from "lucide-react";
 import type { PropertyModel, TourBehavior, AgentContact } from "./types";
 import { buildMatterportUrl } from "./types";
 import { NeighborhoodMapModal } from "./NeighborhoodMapModal";
 import { CinemaModal } from "./CinemaModal";
+import { MediaCarouselModal } from "./MediaCarouselModal";
 import { parseCinematicVideo } from "@/lib/video-embed";
 
 interface HudPreviewProps {
@@ -37,6 +38,7 @@ export function HudPreview({
   const [contactOpen, setContactOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [cinemaOpen, setCinemaOpen] = useState(false);
+  const [carouselOpen, setCarouselOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const currentModel = models[selectedModelIndex];
   const behavior = currentModel ? behaviors[currentModel.id] : null;
@@ -47,6 +49,8 @@ export function HudPreview({
     ? parseCinematicVideo(currentModel.cinematicVideoUrl)
     : null;
   const hasCinematic = cinematicParsed?.kind === "iframe" || cinematicParsed?.kind === "mp4";
+  const visibleMedia = (currentModel?.multimedia ?? []).filter((m) => m.visible);
+  const hasMedia = visibleMedia.length > 0;
 
   const socialLinks = [
     { url: agent.linkedin, icon: Globe, label: "LinkedIn" },
@@ -164,6 +168,16 @@ export function HudPreview({
                   aria-label="Watch Cinematic Video"
                 >
                   <Film className="h-3.5 w-3.5" />
+                </button>
+              )}
+              {hasMedia && (
+                <button
+                  onClick={() => setCarouselOpen(true)}
+                  className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur-md transition-colors hover:bg-white/25"
+                  title="View Media Gallery"
+                  aria-label="View Media Gallery"
+                >
+                  <Images className="h-3.5 w-3.5" />
                 </button>
               )}
               {agent.name && (
@@ -314,6 +328,14 @@ export function HudPreview({
           open={cinemaOpen}
           onClose={() => setCinemaOpen(false)}
           videoUrl={currentModel.cinematicVideoUrl ?? ""}
+        />
+      )}
+
+      {hasMedia && (
+        <MediaCarouselModal
+          open={carouselOpen}
+          onClose={() => setCarouselOpen(false)}
+          assets={visibleMedia}
         />
       )}
     </div>
