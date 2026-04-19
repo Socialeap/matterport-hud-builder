@@ -40,6 +40,8 @@
         "@radix-ui/react-tooltip": "^1.2.8",
         "@react-email/components": "^1.0.12",
         "@react-email/render": "^2.0.6",
+        "@stripe/connect-js": "^3.3.35",
+        "@stripe/react-connect-js": "^3.3.34",
         "@stripe/react-stripe-js": "^6.1.0",
         "@stripe/stripe-js": "^9.1.0",
         "@supabase/supabase-js": "^2.103.0",
@@ -571,6 +573,10 @@
     "@speed-highlight/core": ["@speed-highlight/core@1.2.15", "", {}, "sha512-BMq1K3DsElxDWawkX6eLg9+CKJrTVGCBAWVuHXVUV2u0s2711qiChLSId6ikYPfxhdYocLNt3wWwSvDiTvFabw=="],
 
     "@standard-schema/utils": ["@standard-schema/utils@0.3.0", "", {}, "sha512-e7Mew686owMaPJVNNLs55PUvgz371nKgwsc4vxE49zsODpJEnxgxRo2y/OKrqueavXgZNMDVj3DdHFlaSAeU8g=="],
+
+    "@stripe/connect-js": ["@stripe/connect-js@3.3.35", "https://europe-west1-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@stripe/connect-js/-/connect-js-3.3.35.tgz", {}, "sha512-9qGDe+G5MWPHdFK05lBRX+wjHIafZ72hCNrXzXnM4Uf7X/rbRe04/EOgaur0/aza5UlDcmEWJ+LSNmeoxytX6w=="],
+
+    "@stripe/react-connect-js": ["@stripe/react-connect-js@3.3.34", "https://europe-west1-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@stripe/react-connect-js/-/react-connect-js-3.3.34.tgz", { "peerDependencies": { "@stripe/connect-js": ">=3.3.35", "react": ">=16.8.0", "react-dom": ">=16.8.0" } }, "sha512-eNyvlWeh90SBUC5dQhNfVPXOFuliO2Va3ZOfhZfybJoAYyZx4Jwy6SBOq5lEUU5+4RwRj/JJQfMeezSS9xQBng=="],
 
     "@stripe/react-stripe-js": ["@stripe/react-stripe-js@6.2.0", "", { "dependencies": { "prop-types": "^15.7.2" }, "peerDependencies": { "@stripe/stripe-js": ">=9.2.0 <10.0.0", "react": ">=16.8.0 <20.0.0", "react-dom": ">=16.8.0 <20.0.0" } }, "sha512-GSCErjljZEQv9LaxP30xGOwstcMyyUzb5JyihXwvjOU95yrfhbiPG4K2KkwxYxn+WY0/AyHsRhPPoGRw7urBzg=="],
 
