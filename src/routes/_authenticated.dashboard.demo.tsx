@@ -460,8 +460,11 @@ function DemoPage() {
                 faviconFile={faviconFile}
                 logoPreview={logoPreview}
                 faviconPreview={faviconPreview}
+                logoUploading={logoUploading}
+                faviconUploading={faviconUploading}
                 onChange={handleBrandingChange}
                 onFileChange={handleFileChange}
+                onRemoveAsset={handleRemoveAsset}
               />
             </TabsContent>
 
