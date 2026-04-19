@@ -39,11 +39,14 @@ export function PropertyModelsSection({
   onAdd,
   onRemove,
   onChange,
+  onMediaChange,
   onOpenBehavior,
   savedModelId,
 }: PropertyModelsSectionProps) {
   const { isActive: lusActive, loading: lusLoading } = useLusLicense();
   const showPremium = lusLoading || lusActive;
+  const [syncModelId, setSyncModelId] = useState<string | null>(null);
+  const syncModel = syncModelId ? models.find((m) => m.id === syncModelId) ?? null : null;
   return (
     <Card>
       <CardHeader>
