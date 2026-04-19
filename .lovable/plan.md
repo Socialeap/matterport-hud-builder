@@ -1,91 +1,43 @@
 
 
-## Verdict on Gemini's proposal
+## Plan: Fix Branding asset persistence + Public Demo "View Live" link
 
-**The architecture is correct and elegant.** A stateless 302 edge redirect is the right pattern for this exact problem. It solves all four constraints we hit:
+### Issue 1 — Logo & Favicon don't persist
 
-1. CORS — bypassed because the browser does the final fetch directly to Matterport's CDN, not via `fetch()` from our origin
-2. Token expiry — solved at request time, every time, so URLs never go stale
-3. Standalone HTML portability — generated file stays "dumb" (`<img src="https://your-domain/api/mp-image?...">`), no JS, no SDK, no auth juggling
-4. Bandwidth/storage cost — bytes-only redirect; Matterport serves the actual file
+**Root cause:** Two compounding problems:
 
-But there are **real refinements** required before shipping it. Gemini glossed over the hardest part: *how exactly does the edge function get a fresh token from Matterport?* That's the linchpin and we need to solve it correctly.
+1. **Files only upload on Save click.** `handleFileChange` only stores a `File` object + a temporary `blob:` URL in component state (lines 252–260 of `_authenticated.dashboard.demo.tsx`). The actual upload to Supabase Storage happens inside `ensureBrandAssetUrls()` which runs only when the user explicitly clicks "Save Draft" or toggles Publish. If the user uploads an image and then navigates away (e.g., switches tabs, leaves the page), nothing is persisted — the `blob:` URL dies with the page.
+2. **Even after Save, blob URLs sometimes get filtered out on reload.** Lines 101–106 correctly skip `blob:` URLs, but if the upload succeeded the durable URL should be in the DB. Current DB row confirms `logoUrl: null, faviconUrl: null` for the test user — meaning the user never successfully completed a Save *with files staged*, OR the upload silently failed and was swallowed.
 
-## Refinements & critical engineering decisions
+**Fix:** Upload-on-select. The moment the user picks a file in `BrandingSection`, immediately upload it to `brand-assets` storage, then set `logoPreview`/`faviconPreview` to the durable public URL (not a `blob:` URL). Show a small inline "Uploading…" spinner during the round trip. This way:
+- The image survives navigation away even without clicking Save (the URL is durable).
+- Save just persists the already-durable URL into `sandbox_demos.brand_overrides`.
+- We auto-trigger a silent `saveDemo` after a successful upload so the URL gets persisted to DB immediately (no manual Save needed for the asset to stick across sessions).
 
-### 1. How we mint the fresh `?t=` token (the real question)
+**Files touched:**
+- `src/routes/_authenticated.dashboard.demo.tsx` — rewrite `handleFileChange` to upload immediately via the existing `uploadIfFile` helper, set `logoPreview`/`faviconPreview` to the public URL, then call `saveDemo` to persist. Same treatment for `handleAgentAvatarChange`.
+- `src/components/portal/BrandingSection.tsx` — add `uploading` prop + small spinner overlay on the file input rows. Add tiny "Remove" buttons next to each preview so users can clear an asset (currently impossible).
 
-Matterport doesn't expose a public "give me a signed URL" endpoint. We have three viable approaches, in descending order of robustness:
+### Issue 2 — "View Live" appears to reopen the dashboard
 
-- **A. Re-parse on demand from the model's public viewer page.** The `my.matterport.com/show/?m={modelId}` page exposes a JSON bundle that lists assets with signed URLs. Fetch server-side, cache the parsed map for ~30 min in memory, redirect. **Pros:** no agent credentials, scales to all clients. **Cons:** scraping = fragile if Matterport changes the page structure.
-- **B. Re-upload on sync (server-side rehost to Lovable Cloud Storage).** Skip the redirect entirely. **Pros:** zero runtime dependency on Matterport. **Cons:** storage cost; you previously marked this out of scope.
-- **C. Proxy the bytes (no redirect).** Same fetch logic but stream the image through. **Cons:** bandwidth cost ≠ "free", which defeats Gemini's whole point.
+**Root cause:** The button's href IS correct (`/p/transcendencemedia/demo`, opens in new tab). I verified the slug exists in DB, the demo is published, and `/p/$slug/demo` is a real, distinct route. **However**, the destination page (`src/routes/p.$slug.demo.tsx`) renders the exact same `HudPreview` with the same brand colors and same property data as the dashboard's right-column preview, so it visually looks identical. Combined with both opening to similar layouts, this gives the impression nothing changed. The actual navigation IS happening — but the page itself doesn't differentiate as a public, prospect-facing demo.
 
-**Recommendation: A**, with a defensive fallback. If the parse fails (Matterport changed structure), the function returns a 1×1 transparent PNG + logs a Sentry-style alert so we can patch quickly without breaking visitor experience.
+**Fix (two parts):**
 
-### 2. Use a TanStack server route, not a Supabase Edge Function
+A. **Make the public demo page visually distinct as a "live presentation"** (not a builder echo):
+   - Drop the dashboard-style header/labels currently at the top of `/p/$slug/demo`
+   - Replace with a full-bleed cinematic presentation layout: brand header bar at top, large HUD preview centered, a clear "This is a live 3D Property Presentation by {brandName}" subtitle, and a prominent "Build Your Own" CTA at the bottom only.
+   - Remove the redundant "Interactive Demo" title block — the page IS the demo.
 
-The project standard (per `<server-side-modern>` knowledge) is **never use Supabase Edge Functions for new work**. We build this as `src/routes/api/mp-image.ts` using `createFileRoute`. Same architecture, native to the stack, runs on the Worker, supports 302 redirects natively.
+B. **Add the actual published-presentation URL prominently in the dashboard**, so the user can see and copy it:
+   - Replace the icon-only "View Live" button with a labeled URL display block: shows `3dps.transcendencemedia.com/p/{slug}/demo`, a copy-to-clipboard button, and a clearer "Open in new tab ↗" button. This makes it unambiguous that it's a different URL/page.
 
-### 3. Videos: keep them client-side, no backend hop
+**Files touched:**
+- `src/routes/p.$slug.demo.tsx` — restructure layout into a presentation-first page (kill builder-echo framing, add cinematic header/footer).
+- `src/routes/_authenticated.dashboard.demo.tsx` — replace the "View Live" button block (lines 429–445) with a URL display + copy button + open-in-new-tab button.
 
-Gemini is right — `/resources/model/{m}/clip/{id}` is publicly iframeable for Matterport-hosted clips. **But** in our current carousel we render videos as `<video>` elements expecting a direct `.mp4`, which fails. We need to:
-- Switch the carousel to render videos as `<iframe src="...resources/.../clip/...">` (Matterport's official embeddable player)
-- Drop the "Open in Matterport" fallback button — no longer needed for clips
-
-### 4. Caching strategy
-
-- In-memory LRU cache on the Worker keyed by `{modelId}:{assetId}` → signed URL, TTL 25 min (tokens generally last ~1h, leave buffer)
-- Cache the *parsed manifest* per model (one fetch yields all assets), not per-asset
-- Add `Cache-Control: private, max-age=300` to the 302 so browsers/CDNs don't stick to a stale redirect
-
-### 5. Generated end-product HTML stays portable
-
-The exported `.html` will reference `https://3dps.transcendencemedia.com/api/mp-image?m=...&id=...`. That's a stable Lovable-hosted URL that works regardless of where the agent hosts the file. Per project memory: end product must be self-contained and not "phone home" *to the builder backend* — but routing media through a stable Lovable CDN endpoint is a different concern (it's the media host, not the builder API), and is the only honest way to keep tokens fresh forever. We document this clearly.
-
-### 6. Schema simplification
-
-`MediaAsset` becomes:
-```ts
-{ id, kind: "video"|"photo"|"gif", visible, label?,
-  // photo/gif:
-  proxyUrl?: "/api/mp-image?m=...&id=...&type=photo|gif",
-  // video:
-  embedUrl?: "https://my.matterport.com/resources/model/{m}/clip/{id}" }
-```
-No more `apifsUrl`, no more `?t=` tokens stored anywhere. The "stale after 7 days" warning goes away — proxy refreshes on every load.
-
-### 7. Security & abuse prevention on the proxy
-
-- Validate `m` and `id` are 11-char `[a-zA-Z0-9]` (reject everything else)
-- Whitelist redirect target host to `cdn-2.matterport.com` only — defense against open-redirect abuse
-- Rate-limit by IP (simple in-memory bucket: 60 req/min/IP)
-- Log abnormal volume per `modelId` (someone hot-linking)
-
-### 8. Carousel modal behavior changes
-
-- Photos/GIFs: `<img src={proxyUrl}>` — no change to UX
-- Videos: `<iframe src={embedUrl} allow="autoplay; fullscreen">` — replaces the current "Open in Matterport" placeholder
-- Loading skeleton while the 302 round-trip resolves (~150-300ms)
-
-## Files touched
-
-- **NEW** `src/routes/api/mp-image.ts` — TanStack server route, 302 redirect, manifest cache, security checks
-- **NEW** `src/lib/matterport-manifest.ts` — server-only helper that fetches & parses `my.matterport.com/show/?m=...` to extract `{assetId → signedUrl}` map
-- `src/lib/matterport-mhtml.ts` — drop URL extraction; just emit `{id, kind, label}` per asset
-- `src/components/portal/types.ts` — slim `MediaAsset` to `{id, kind, visible, label?, proxyUrl?, embedUrl?}`; remove `embeddable`, `posterUrl`, `syncedAt`
-- `src/components/portal/MediaCarouselModal.tsx` — render video as `<iframe>`, photo/gif as `<img src={proxyUrl}>`; remove "Open in Matterport" branch
-- `src/components/portal/PropertyModelsSection.tsx` — remove "stale > 7 days" warning + "External" badge (no longer relevant)
-- `src/components/portal/MediaSyncModal.tsx` — update info popup wording: assets always fresh, no re-sync needed for token expiry
-- `src/components/portal/HudPreview.tsx` — minor: ensure visible-media filter still works with new shape
-
-## Open question for you (one decision)
-
-Gemini's plan assumes we can reliably fetch a fresh signed URL on demand. We have three ways to do it (above). I'm recommending **option A** (server-side re-parse of `my.matterport.com/show/?m=...`, with cache + graceful fallback). Confirm or pick another:
-
-- **A** — Server-side re-parse (recommended, zero per-agent setup)
-- **B** — Server-side rehost to Lovable Cloud Storage on sync (most bulletproof, costs storage)
-- **C** — Proxy bytes through our Worker (simplest, but kills Gemini's "zero bandwidth" win)
-
-Once you confirm the token-minting strategy, I'll implement.
+### Out of scope
+- No DB schema changes.
+- No changes to the HudPreview component itself.
+- No changes to publish/license logic.
 
