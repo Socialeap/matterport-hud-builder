@@ -71,6 +71,9 @@ function DemoPage() {
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [studioSlug, setStudioSlug] = useState<string | null>(null);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [faviconUploading, setFaviconUploading] = useState(false);
+  const [urlCopied, setUrlCopied] = useState(false);
 
   const getDemo = useServerFn(getSandboxDemo);
   const saveDemo = useServerFn(saveSandboxDemo);
