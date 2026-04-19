@@ -1,7 +1,8 @@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Palette } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Palette, Loader2, X } from "lucide-react";
 
 interface BrandingSectionProps {
   brandName: string;
@@ -12,8 +13,11 @@ interface BrandingSectionProps {
   faviconFile: File | null;
   logoPreview: string | null;
   faviconPreview: string | null;
+  logoUploading?: boolean;
+  faviconUploading?: boolean;
   onChange: (field: string, value: string) => void;
   onFileChange: (field: "logo" | "favicon", file: File | null) => void;
+  onRemoveAsset?: (field: "logo" | "favicon") => void;
 }
 
 export function BrandingSection({
@@ -23,8 +27,11 @@ export function BrandingSection({
   gateLabel,
   logoPreview,
   faviconPreview,
+  logoUploading,
+  faviconUploading,
   onChange,
   onFileChange,
+  onRemoveAsset,
 }: BrandingSectionProps) {
   return (
     <Card>
@@ -90,25 +97,59 @@ export function BrandingSection({
 
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label>Primary Logo</Label>
+            <Label className="flex items-center gap-2">
+              Primary Logo
+              {logoUploading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+            </Label>
             <Input
               type="file"
               accept=".png,.jpg,.jpeg,.svg,.webp"
+              disabled={logoUploading}
               onChange={(e) => onFileChange("logo", e.target.files?.[0] || null)}
             />
             {logoPreview && (
-              <img src={logoPreview} alt="Logo preview" className="mt-2 h-12 rounded object-contain" />
+              <div className="mt-2 flex items-center gap-2">
+                <img src={logoPreview} alt="Logo preview" className="h-12 rounded object-contain" />
+                {onRemoveAsset && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 px-2 text-xs text-muted-foreground"
+                    onClick={() => onRemoveAsset("logo")}
+                  >
+                    <X className="h-3 w-3 mr-1" /> Remove
+                  </Button>
+                )}
+              </div>
             )}
           </div>
           <div className="space-y-2">
-            <Label>Favicon / Tab Icon</Label>
+            <Label className="flex items-center gap-2">
+              Favicon / Tab Icon
+              {faviconUploading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+            </Label>
             <Input
               type="file"
               accept=".png,.jpg,.jpeg,.svg,.webp,.ico"
+              disabled={faviconUploading}
               onChange={(e) => onFileChange("favicon", e.target.files?.[0] || null)}
             />
             {faviconPreview && (
-              <img src={faviconPreview} alt="Favicon preview" className="mt-2 h-8 rounded object-contain" />
+              <div className="mt-2 flex items-center gap-2">
+                <img src={faviconPreview} alt="Favicon preview" className="h-8 rounded object-contain" />
+                {onRemoveAsset && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 px-2 text-xs text-muted-foreground"
+                    onClick={() => onRemoveAsset("favicon")}
+                  >
+                    <X className="h-3 w-3 mr-1" /> Remove
+                  </Button>
+                )}
+              </div>
             )}
           </div>
         </div>

@@ -16,7 +16,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { getSandboxDemo, saveSandboxDemo, publishSandboxDemo } from "@/lib/sandbox-demo.functions";
 import { useLusLicense } from "@/hooks/useLusLicense";
 import { toast } from "sonner";
-import { ExternalLink, Save, Globe, Lock } from "lucide-react";
+import { ExternalLink, Save, Globe, Lock, Copy, Check } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/_authenticated/dashboard/demo")({
@@ -71,6 +71,9 @@ function DemoPage() {
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [studioSlug, setStudioSlug] = useState<string | null>(null);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [faviconUploading, setFaviconUploading] = useState(false);
+  const [urlCopied, setUrlCopied] = useState(false);
 
   const getDemo = useServerFn(getSandboxDemo);
   const saveDemo = useServerFn(saveSandboxDemo);
@@ -249,15 +252,92 @@ function DemoPage() {
     }
   }, []);
 
-  const handleFileChange = useCallback((field: "logo" | "favicon", file: File | null) => {
-    if (field === "logo") {
-      setLogoFile(file);
-      setLogoPreview(file ? URL.createObjectURL(file) : null);
-    } else {
-      setFaviconFile(file);
-      setFaviconPreview(file ? URL.createObjectURL(file) : null);
-    }
-  }, []);
+  // Persist current demo state silently (no toast). Used for auto-save after asset upload.
+  const persistSilently = useCallback(
+    async (overrides: { logoUrl?: string | null; faviconUrl?: string | null; avatarUrl?: string | null }) => {
+      try {
+        await saveDemo({
+          data: {
+            brand_overrides: {
+              brandName,
+              accentColor,
+              hudBgColor,
+              gateLabel,
+              logoUrl: overrides.logoUrl !== undefined ? overrides.logoUrl : logoPreview,
+              faviconUrl: overrides.faviconUrl !== undefined ? overrides.faviconUrl : faviconPreview,
+            },
+            properties: models,
+            behaviors,
+            agent: {
+              ...agent,
+              avatarUrl: overrides.avatarUrl !== undefined ? overrides.avatarUrl : agent.avatarUrl,
+            } as unknown as Record<string, unknown>,
+          },
+        });
+      } catch (err) {
+        console.error("Auto-save failed:", err);
+      }
+    },
+    [saveDemo, brandName, accentColor, hudBgColor, gateLabel, logoPreview, faviconPreview, models, behaviors, agent]
+  );
+
+  const handleFileChange = useCallback(
+    async (field: "logo" | "favicon", file: File | null) => {
+      if (!file) {
+        if (field === "logo") {
+          setLogoFile(null);
+          setLogoPreview(null);
+          await persistSilently({ logoUrl: null });
+        } else {
+          setFaviconFile(null);
+          setFaviconPreview(null);
+          await persistSilently({ faviconUrl: null });
+        }
+        return;
+      }
+      // Upload immediately so the asset survives navigation.
+      if (field === "logo") setLogoUploading(true);
+      else setFaviconUploading(true);
+      try {
+        const url = await uploadIfFile(file, null, field);
+        if (!url) {
+          if (field === "logo") setLogoUploading(false);
+          else setFaviconUploading(false);
+          return;
+        }
+        if (field === "logo") {
+          setLogoFile(null);
+          setLogoPreview(url);
+          await persistSilently({ logoUrl: url });
+          toast.success("Logo uploaded");
+        } else {
+          setFaviconFile(null);
+          setFaviconPreview(url);
+          await persistSilently({ faviconUrl: url });
+          toast.success("Favicon uploaded");
+        }
+      } finally {
+        if (field === "logo") setLogoUploading(false);
+        else setFaviconUploading(false);
+      }
+    },
+    [uploadIfFile, persistSilently]
+  );
+
+  const handleRemoveAsset = useCallback(
+    async (field: "logo" | "favicon") => {
+      if (field === "logo") {
+        setLogoFile(null);
+        setLogoPreview(null);
+        await persistSilently({ logoUrl: null });
+      } else {
+        setFaviconFile(null);
+        setFaviconPreview(null);
+        await persistSilently({ faviconUrl: null });
+      }
+    },
+    [persistSilently]
+  );
 
   const handleAddModel = useCallback(() => {
     const newModel = createEmptyModel();
@@ -305,14 +385,44 @@ function DemoPage() {
     setAgent((prev) => ({ ...prev, [field]: value }));
   }, []);
 
-  const handleAgentAvatarChange = useCallback((file: File | null) => {
-    setAgentAvatarFile(file);
-    if (file) {
-      setAgent((prev) => ({ ...prev, avatarUrl: URL.createObjectURL(file) }));
-    } else {
-      setAgent((prev) => ({ ...prev, avatarUrl: "" }));
+  const handleAgentAvatarChange = useCallback(
+    async (file: File | null) => {
+      if (!file) {
+        setAgentAvatarFile(null);
+        setAgent((prev) => ({ ...prev, avatarUrl: "" }));
+        await persistSilently({ avatarUrl: "" });
+        return;
+      }
+      // Upload immediately so the avatar survives navigation.
+      try {
+        const url = await uploadIfFile(file, null, "avatar");
+        if (!url) return;
+        setAgentAvatarFile(null);
+        setAgent((prev) => ({ ...prev, avatarUrl: url }));
+        await persistSilently({ avatarUrl: url });
+        toast.success("Avatar uploaded");
+      } catch (err) {
+        console.error("Avatar upload failed:", err);
+      }
+    },
+    [uploadIfFile, persistSilently]
+  );
+
+  const publicDemoUrl = studioSlug
+    ? `${typeof window !== "undefined" ? window.location.origin : ""}/p/${studioSlug}/demo`
+    : null;
+
+  const handleCopyUrl = useCallback(async () => {
+    if (!publicDemoUrl) return;
+    try {
+      await navigator.clipboard.writeText(publicDemoUrl);
+      setUrlCopied(true);
+      toast.success("URL copied to clipboard");
+      setTimeout(() => setUrlCopied(false), 2000);
+    } catch {
+      toast.error("Failed to copy URL");
     }
-  }, []);
+  }, [publicDemoUrl]);
 
   const behaviorModel = behaviorModelId ? models.find((m) => m.id === behaviorModelId) : null;
 
@@ -350,8 +460,11 @@ function DemoPage() {
                 faviconFile={faviconFile}
                 logoPreview={logoPreview}
                 faviconPreview={faviconPreview}
+                logoUploading={logoUploading}
+                faviconUploading={faviconUploading}
                 onChange={handleBrandingChange}
                 onFileChange={handleFileChange}
+                onRemoveAsset={handleRemoveAsset}
               />
             </TabsContent>
 
@@ -416,28 +529,58 @@ function DemoPage() {
               />
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleSave}
-                disabled={saving}
-              >
-                <Save className="mr-2 h-4 w-4" />
-                {saving ? "Saving…" : "Save Draft"}
-              </Button>
-              {isPublished && studioSlug && (
-                <Button variant="ghost" size="sm" asChild>
-                  <a
-                    href={`/p/${studioSlug}/demo`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <ExternalLink className="mr-2 h-4 w-4" />
-                    View Live
-                  </a>
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSave}
+                  disabled={saving}
+                >
+                  <Save className="mr-2 h-4 w-4" />
+                  {saving ? "Saving…" : "Save Draft"}
                 </Button>
+              </div>
+
+              {isPublished && publicDemoUrl && (
+                <div className="space-y-2 rounded-md border bg-background p-3">
+                  <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Live Presentation URL
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 truncate rounded bg-muted px-2 py-1.5 text-xs text-foreground">
+                      {publicDemoUrl}
+                    </code>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleCopyUrl}
+                      title="Copy URL"
+                    >
+                      {urlCopied ? (
+                        <Check className="h-4 w-4 text-primary" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                    </Button>
+                    <Button variant="default" size="sm" asChild>
+                      <a
+                        href={publicDemoUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Open in new tab
+                        <ExternalLink className="ml-2 h-4 w-4" />
+                      </a>
+                    </Button>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Share this link with prospects — it opens a public, read-only Presentation.
+                  </p>
+                </div>
               )}
+
               {!studioSlug && (
                 <span className="text-xs text-muted-foreground">
                   Set a slug in Branding to enable a public URL.

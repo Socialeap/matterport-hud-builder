@@ -9,10 +9,10 @@ import { useState } from "react";
 export const Route = createFileRoute("/p/$slug/demo")({
   head: () => ({
     meta: [
-      { title: "Live 3D Property Demo" },
-      { name: "description", content: "Explore an interactive 3D property tour demo." },
-      { property: "og:title", content: "Live 3D Property Demo" },
-      { property: "og:description", content: "Interactive 3D property tour demo." },
+      { title: "Live 3D Property Presentation" },
+      { name: "description", content: "Explore an interactive, fully-branded 3D property presentation." },
+      { property: "og:title", content: "Live 3D Property Presentation" },
+      { property: "og:description", content: "Interactive, branded 3D property presentation." },
     ],
   }),
   loader: async ({ params }) => {
@@ -35,8 +35,8 @@ export const Route = createFileRoute("/p/$slug/demo")({
   notFoundComponent: () => (
     <div className="flex min-h-screen items-center justify-center bg-background">
       <div className="text-center">
-        <h1 className="text-4xl font-bold text-foreground">Demo Not Found</h1>
-        <p className="mt-2 text-muted-foreground">This demo isn't available.</p>
+        <h1 className="text-4xl font-bold text-foreground">Presentation Not Found</h1>
+        <p className="mt-2 text-muted-foreground">This Presentation isn't available.</p>
       </div>
     </div>
   ),
@@ -51,9 +51,9 @@ function PublicDemoPage() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-4">
         <div className="text-center max-w-md">
-          <h1 className="text-3xl font-bold text-foreground">No Live Demo Yet</h1>
+          <h1 className="text-3xl font-bold text-foreground">No Live Presentation Yet</h1>
           <p className="mt-2 text-muted-foreground">
-            This Studio hasn't published a demo yet. Visit the main builder to start your own presentation.
+            This Studio hasn't published a Presentation yet. Visit the main builder to start your own.
           </p>
           {branding?.slug && (
             <Link to="/p/$slug" params={{ slug }}>
@@ -100,77 +100,97 @@ function PublicDemoPage() {
   });
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b px-6 py-4" style={{ borderColor: `${accentColor}33` }}>
-        <div className="mx-auto flex max-w-7xl items-center justify-between">
+    <div
+      className="min-h-screen bg-background"
+      style={{
+        backgroundImage: `radial-gradient(ellipse at top, ${accentColor}14, transparent 60%)`,
+      }}
+    >
+      {/* Cinematic brand header */}
+      <header
+        className="border-b backdrop-blur-sm"
+        style={{
+          borderColor: `${accentColor}33`,
+          backgroundColor: `${hudBgColor}cc`,
+        }}
+      >
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
           <div className="flex items-center gap-3">
-            {logoPreview && <img src={logoPreview} alt="Logo" className="h-8 object-contain" />}
-            <span className="text-lg font-bold text-foreground">{brandName}</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <span
-              className="rounded-full px-3 py-1 text-xs font-medium text-white"
-              style={{ backgroundColor: accentColor }}
-            >
-              LIVE DEMO
-            </span>
-            {!isPro && (
-              <span className="text-xs text-muted-foreground hidden sm:inline">
-                Powered by Transcendence Media
-              </span>
+            {logoPreview && (
+              <img src={logoPreview} alt={`${brandName} logo`} className="h-10 object-contain" />
             )}
+            <span className="text-xl font-bold tracking-tight text-white">{brandName}</span>
           </div>
+          <span
+            className="rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-white shadow-sm"
+            style={{ backgroundColor: accentColor }}
+          >
+            ● Live
+          </span>
         </div>
       </header>
 
-      <div className="mx-auto max-w-7xl px-4 py-8">
-        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Interactive Demo</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Explore a fully-branded sample 3D presentation. Ready to build your own?
-            </p>
+      {/* Centered cinematic HUD */}
+      <main className="mx-auto max-w-7xl px-4 py-10">
+        {properties.length === 0 ? (
+          <div className="rounded-lg border-2 border-dashed p-12 text-center">
+            <p className="text-muted-foreground">This Presentation has no properties configured yet.</p>
           </div>
+        ) : (
+          <>
+            <div className="mb-6 text-center">
+              <p className="text-sm font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                A Live 3D Property Presentation by
+              </p>
+              <p
+                className="mt-1 text-2xl font-bold sm:text-3xl"
+                style={{ color: accentColor }}
+              >
+                {brandName}
+              </p>
+            </div>
+
+            <HudPreview
+              models={properties}
+              selectedModelIndex={selectedModelIndex}
+              onSelectModel={setSelectedModelIndex}
+              behaviors={safeBehaviors}
+              brandName={brandName}
+              accentColor={accentColor}
+              hudBgColor={hudBgColor}
+              logoPreview={logoPreview}
+              agent={agent}
+              isPro={isPro}
+              defaultHeaderVisible={true}
+            />
+          </>
+        )}
+
+        {/* Bottom CTA only — no top duplicate */}
+        <div
+          className="mt-10 rounded-xl border-2 p-8 text-center"
+          style={{
+            borderColor: accentColor,
+            backgroundImage: `linear-gradient(135deg, ${accentColor}10, transparent)`,
+          }}
+        >
+          <h2 className="text-2xl font-bold text-foreground">Want a Presentation like this?</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Build your own branded 3D property Presentation in minutes.
+          </p>
           <Link to="/p/$slug" params={{ slug }}>
-            <Button size="lg" className="text-white" style={{ backgroundColor: accentColor }}>
+            <Button size="lg" className="mt-5 text-white shadow-lg" style={{ backgroundColor: accentColor }}>
               Build Your Own →
             </Button>
           </Link>
         </div>
 
-        {properties.length === 0 ? (
-          <div className="rounded-lg border-2 border-dashed p-12 text-center">
-            <p className="text-muted-foreground">This demo has no properties configured.</p>
-          </div>
-        ) : (
-          <HudPreview
-            models={properties}
-            selectedModelIndex={selectedModelIndex}
-            onSelectModel={setSelectedModelIndex}
-            behaviors={safeBehaviors}
-            brandName={brandName}
-            accentColor={accentColor}
-            hudBgColor={hudBgColor}
-            logoPreview={logoPreview}
-            agent={agent}
-            isPro={isPro}
-            defaultHeaderVisible={true}
-          />
-        )}
-
-        <div className="mt-8 rounded-lg border-2 p-6 text-center" style={{ borderColor: accentColor }}>
-          <h2 className="text-xl font-semibold text-foreground">Like what you see?</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Build your own branded 3D property presentation in minutes.
+        {!isPro && (
+          <p className="mt-6 text-center text-xs text-muted-foreground">
+            Powered by Transcendence Media
           </p>
-          <Link to="/p/$slug" params={{ slug }}>
-            <Button size="lg" className="mt-4 text-white" style={{ backgroundColor: accentColor }}>
-              Get Started
-            </Button>
-          </Link>
-        </div>
-      </div>
+        )}
+      </main>
     </div>
   );
 }
