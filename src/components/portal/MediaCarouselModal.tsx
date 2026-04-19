@@ -93,14 +93,17 @@ export function MediaCarouselModal({
         {/* Media stage */}
         <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-black shadow-[0_25px_80px_-15px_rgba(0,0,0,0.7)]">
           {isVideo && current.embedUrl && (
-            <iframe
+            <video
               key={current.id}
               src={current.embedUrl}
-              title={current.label || "Matterport clip"}
-              className="h-full w-full border-0"
-              allow="autoplay; fullscreen; picture-in-picture"
-              allowFullScreen
-            />
+              controls
+              autoPlay
+              playsInline
+              className="h-full w-full"
+              style={{ objectFit: "contain" }}
+            >
+              <source src={current.embedUrl} type="video/mp4" />
+            </video>
           )}
 
           {!isVideo && current.proxyUrl && (
