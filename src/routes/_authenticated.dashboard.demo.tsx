@@ -105,12 +105,7 @@ function DemoPage() {
             setFaviconPreview(overrides.faviconUrl);
           }
           const loadedProps = ((result.demo.properties as unknown) ?? []) as PropertyModel[];
-          // Defensive: strip any media URL containing a session token (?t= / &t=)
-          const sanitizedProps = loadedProps.map((p) => ({
-            ...p,
-            multimedia: (p.multimedia ?? []).filter((a) => !/[?&]t=/.test(a.url)),
-          }));
-          if (sanitizedProps.length > 0) setModels(sanitizedProps);
+          if (loadedProps.length > 0) setModels(loadedProps);
           const loadedBehaviors = ((result.demo.behaviors as unknown) ?? {}) as Record<string, TourBehavior>;
           if (Object.keys(loadedBehaviors).length > 0) setBehaviors(loadedBehaviors);
           const loadedAgent = ((result.demo.agent as unknown) ?? {}) as Partial<AgentContact>;

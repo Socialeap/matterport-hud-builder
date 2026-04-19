@@ -15,11 +15,6 @@
  */
 const MANIFEST_TTL_MS = 25 * 60 * 1000; // 25 min — tokens last ~1h
 
-interface ManifestEntry {
-  url: string;       // signed cdn-2 URL (apifs/...?t=...)
-  fetchedAt: number; // ms epoch
-}
-
 interface CachedManifest {
   byAssetId: Map<string, string>;  // assetId → signed URL
   fetchedAt: number;
