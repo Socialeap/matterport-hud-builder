@@ -743,7 +743,7 @@ function Index() {
       {/* ---- Footer ---- */}
       <footer className={`relative z-10 border-t ${borderFooter} ${footerBg} backdrop-blur-lg px-4 py-10 transition-colors duration-500`}>
         <div className="mx-auto max-w-6xl">
-          <div className="grid gap-8 sm:grid-cols-3">
+          <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <span className={`text-lg font-bold ${textColor}`}>3D Presentation Studio</span>
               <p className={`mt-2 text-sm ${textSubtle}`}>
@@ -763,6 +763,13 @@ function Index() {
               <ul className="space-y-2 text-sm">
                 <li><Link to="/login" className={`text-white/50 transition-colors hover:text-white`}>Sign In</Link></li>
                 <li><Link to="/signup" search={{ token: "", email: "" }} className={`text-white/50 transition-colors hover:text-white`}>Get Started</Link></li>
+              </ul>
+            </div>
+            <div>
+              <h4 className={`mb-3 text-sm font-semibold uppercase tracking-wider text-white/60`}>Legal</h4>
+              <ul className="space-y-2 text-sm">
+                <li><Link to="/privacy" className={`text-white/50 transition-colors hover:text-white`}>Privacy Policy</Link></li>
+                <li><Link to="/terms" className={`text-white/50 transition-colors hover:text-white`}>Terms of Service</Link></li>
               </ul>
             </div>
           </div>
