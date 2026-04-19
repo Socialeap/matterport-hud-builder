@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { UserPlus, Mail, Clock, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
+import { buildPlatformUrl } from "@/lib/public-url";
 
 export const Route = createFileRoute("/_authenticated/dashboard/clients")({
   component: ClientsPage,
@@ -69,7 +70,7 @@ function ClientsPage() {
 
     // Send the invitation email
     try {
-      const signupUrl = `${window.location.origin}/signup?token=${inserted.token}`;
+      const signupUrl = buildPlatformUrl(`/signup?token=${inserted.token}`);
       await sendTransactionalEmail({
         templateName: "invitation",
         recipientEmail: trimmedEmail,
