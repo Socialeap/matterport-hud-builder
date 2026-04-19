@@ -1,9 +1,10 @@
 import { useState, useRef } from "react";
-import { ChevronUp, ChevronDown, Phone, Mail, MessageSquare, Globe, X, MapPin, Film } from "lucide-react";
+import { ChevronUp, ChevronDown, Phone, Mail, MessageSquare, Globe, X, MapPin, Film, Images } from "lucide-react";
 import type { PropertyModel, TourBehavior, AgentContact } from "./types";
 import { buildMatterportUrl } from "./types";
 import { NeighborhoodMapModal } from "./NeighborhoodMapModal";
 import { CinemaModal } from "./CinemaModal";
+import { MediaCarouselModal } from "./MediaCarouselModal";
 import { parseCinematicVideo } from "@/lib/video-embed";
 
 interface HudPreviewProps {
@@ -37,6 +38,7 @@ export function HudPreview({
   const [contactOpen, setContactOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [cinemaOpen, setCinemaOpen] = useState(false);
+  const [carouselOpen, setCarouselOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const currentModel = models[selectedModelIndex];
   const behavior = currentModel ? behaviors[currentModel.id] : null;
@@ -47,6 +49,8 @@ export function HudPreview({
     ? parseCinematicVideo(currentModel.cinematicVideoUrl)
     : null;
   const hasCinematic = cinematicParsed?.kind === "iframe" || cinematicParsed?.kind === "mp4";
+  const visibleMedia = (currentModel?.multimedia ?? []).filter((m) => m.visible);
+  const hasMedia = visibleMedia.length > 0;
 
   const socialLinks = [
     { url: agent.linkedin, icon: Globe, label: "LinkedIn" },
