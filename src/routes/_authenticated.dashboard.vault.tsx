@@ -1,5 +1,6 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Lock } from "lucide-react";
 import {
   Volume2,
   Wand2,
@@ -169,6 +170,7 @@ const emptyForm: AssetFormState = {
 
 function VaultPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [assets, setAssets] = useState<VaultAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<VaultCategory>("spatial_audio");
@@ -176,6 +178,17 @@ function VaultPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<AssetFormState>(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [tier, setTier] = useState<"starter" | "pro" | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("branding_settings")
+      .select("tier")
+      .eq("provider_id", user.id)
+      .maybeSingle()
+      .then(({ data }) => setTier((data?.tier as "starter" | "pro") ?? "starter"));
+  }, [user]);
 
   const fetchAssets = useCallback(async () => {
     if (!user) return;
