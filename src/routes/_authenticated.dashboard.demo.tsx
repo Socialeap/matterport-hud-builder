@@ -252,15 +252,92 @@ function DemoPage() {
     }
   }, []);
 
-  const handleFileChange = useCallback((field: "logo" | "favicon", file: File | null) => {
-    if (field === "logo") {
-      setLogoFile(file);
-      setLogoPreview(file ? URL.createObjectURL(file) : null);
-    } else {
-      setFaviconFile(file);
-      setFaviconPreview(file ? URL.createObjectURL(file) : null);
-    }
-  }, []);
+  // Persist current demo state silently (no toast). Used for auto-save after asset upload.
+  const persistSilently = useCallback(
+    async (overrides: { logoUrl?: string | null; faviconUrl?: string | null; avatarUrl?: string | null }) => {
+      try {
+        await saveDemo({
+          data: {
+            brand_overrides: {
+              brandName,
+              accentColor,
+              hudBgColor,
+              gateLabel,
+              logoUrl: overrides.logoUrl !== undefined ? overrides.logoUrl : logoPreview,
+              faviconUrl: overrides.faviconUrl !== undefined ? overrides.faviconUrl : faviconPreview,
+            },
+            properties: models,
+            behaviors,
+            agent: {
+              ...agent,
+              avatarUrl: overrides.avatarUrl !== undefined ? overrides.avatarUrl : agent.avatarUrl,
+            } as unknown as Record<string, unknown>,
+          },
+        });
+      } catch (err) {
+        console.error("Auto-save failed:", err);
+      }
+    },
+    [saveDemo, brandName, accentColor, hudBgColor, gateLabel, logoPreview, faviconPreview, models, behaviors, agent]
+  );
+
+  const handleFileChange = useCallback(
+    async (field: "logo" | "favicon", file: File | null) => {
+      if (!file) {
+        if (field === "logo") {
+          setLogoFile(null);
+          setLogoPreview(null);
+          await persistSilently({ logoUrl: null });
+        } else {
+          setFaviconFile(null);
+          setFaviconPreview(null);
+          await persistSilently({ faviconUrl: null });
+        }
+        return;
+      }
+      // Upload immediately so the asset survives navigation.
+      if (field === "logo") setLogoUploading(true);
+      else setFaviconUploading(true);
+      try {
+        const url = await uploadIfFile(file, null, field);
+        if (!url) {
+          if (field === "logo") setLogoUploading(false);
+          else setFaviconUploading(false);
+          return;
+        }
+        if (field === "logo") {
+          setLogoFile(null);
+          setLogoPreview(url);
+          await persistSilently({ logoUrl: url });
+          toast.success("Logo uploaded");
+        } else {
+          setFaviconFile(null);
+          setFaviconPreview(url);
+          await persistSilently({ faviconUrl: url });
+          toast.success("Favicon uploaded");
+        }
+      } finally {
+        if (field === "logo") setLogoUploading(false);
+        else setFaviconUploading(false);
+      }
+    },
+    [uploadIfFile, persistSilently]
+  );
+
+  const handleRemoveAsset = useCallback(
+    async (field: "logo" | "favicon") => {
+      if (field === "logo") {
+        setLogoFile(null);
+        setLogoPreview(null);
+        await persistSilently({ logoUrl: null });
+      } else {
+        setFaviconFile(null);
+        setFaviconPreview(null);
+        await persistSilently({ faviconUrl: null });
+      }
+    },
+    [persistSilently]
+  );
 
   const handleAddModel = useCallback(() => {
     const newModel = createEmptyModel();
