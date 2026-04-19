@@ -9,13 +9,19 @@
  *   - id        — the 11-char Matterport asset id (extracted from data-testid)
  *   - kind      — video | photo | gif (classified by filename extension)
  *   - label     — friendly name (derived from filename)
- *   - proxyUrl  — `/api/mp-image?m=...&id=...` for photos/gifs
- *                 (browsers will 302 to a fresh signed CDN URL on each load)
- *   - embedUrl  — `https://my.matterport.com/resources/model/{m}/clip/{id}`
- *                 for videos (Matterport's official iframeable clip player)
+ *   - proxyUrl  — for photos/gifs:
+ *                   • First choice: the CDN thumbnail URL extracted directly
+ *                     from the MHTML <img src> (works for ~1 h after save).
+ *                   • Fallback:   `/api/mp-image?m=...&id=...` proxy URL
+ *                     (used when no img src found; proxy resolves at request time).
+ *   - embedUrl  — for videos: Matterport's official iframeable clip player.
  *
- * We no longer extract or store any short-lived `?t=...` signed URLs —
- * the proxy resolves them at request time, so they never expire.
+ * Why we prefer the extracted CDN URL over the proxy:
+ *   The proxy resolves a fresh signed URL by fetching the Matterport viewer
+ *   page and scraping CDN links from it. Because the viewer is a React SPA,
+ *   its initial HTML contains no CDN image URLs — so the proxy always falls
+ *   back to a 1×1 transparent PNG. The MHTML file itself is the only reliable
+ *   source of working CDN URLs at parse time.
  */
 
 import type { MediaAsset, MediaAssetKind } from "@/components/portal/types";
@@ -34,6 +40,9 @@ const ID_PATTERN = "[A-Za-z0-9]{11}";
  * Matterport-saved MHTML uses Content-Transfer-Encoding: quoted-printable,
  * which escapes "=" as "=3D" and inserts soft line breaks ("=" + newline)
  * to keep lines under ~76 chars. We must reverse both before regex parsing.
+ *
+ * NOTE: only apply this to the HTML MIME part, not to base64 image parts —
+ * base64 data contains "=" padding chars that must not be QP-decoded.
  */
 function decodeQuotedPrintable(input: string): string {
   const noSoftBreaks = input.replace(/=\r?\n/g, "");
@@ -57,6 +66,64 @@ function decodeQuotedPrintable(input: string): string {
   }
 }
 
+/**
+ * Extract the HTML MIME part from the raw MHTML text, then QP-decode it.
+ *
+ * In a well-formed MHTML file the HTML part is first and has
+ * Content-Transfer-Encoding: quoted-printable.  We locate the boundary,
+ * split off the first part, and decode only that — leaving base64 image
+ * parts untouched so they aren't corrupted by the QP decoder.
+ *
+ * Falls back gracefully to decoding the entire text (old behaviour) if the
+ * MIME structure cannot be parsed, so existing tests / edge cases are safe.
+ */
+function extractAndDecodeHtmlPart(raw: string): string {
+  // Locate the multipart boundary
+  const boundaryMatch = raw.match(
+    /Content-Type:\s*multipart\/[^;]+;\s*(?:[^;]+;\s*)?boundary="?([^"\r\n]+)"?/i
+  );
+  if (!boundaryMatch) {
+    // Not a multipart MHTML — try decoding the whole thing (single-part QP)
+    const isQP =
+      /Content-Transfer-Encoding:\s*quoted-printable/i.test(raw) ||
+      /=3D"/.test(raw);
+    return isQP ? decodeQuotedPrintable(raw) : raw;
+  }
+
+  const boundary = boundaryMatch[1].trim();
+  const delimiter = `--${boundary}`;
+
+  // Split into parts; skip preamble (before first boundary)
+  const parts = raw.split(delimiter);
+  // parts[0]  = preamble (ignored)
+  // parts[1…] = MIME parts (each starts with headers then blank line then body)
+  // parts[last] = "--\r\n" end marker
+
+  for (let i = 1; i < parts.length; i++) {
+    const part = parts[i];
+    if (part.trimStart().startsWith("--")) continue; // end boundary
+
+    // Find where headers end (blank line)
+    const blankLine = part.match(/\r?\n\r?\n/);
+    if (!blankLine || blankLine.index === undefined) continue;
+
+    const headers = part.slice(0, blankLine.index);
+    const body = part.slice(blankLine.index + blankLine[0].length);
+
+    const isHtml = /Content-Type:\s*text\/html/i.test(headers);
+    if (!isHtml) continue;
+
+    const isQP = /Content-Transfer-Encoding:\s*quoted-printable/i.test(headers);
+    return isQP ? decodeQuotedPrintable(body) : body;
+  }
+
+  // Fallback: no text/html part found — decode the whole thing
+  const isQP =
+    /Content-Transfer-Encoding:\s*quoted-printable/i.test(raw) ||
+    /=3D"/.test(raw);
+  return isQP ? decodeQuotedPrintable(raw) : raw;
+}
+
 /** Detect the 11-char public Model ID. */
 function findModelId(text: string): string | null {
   const showMatch = text.match(
@@ -71,35 +138,58 @@ function findModelId(text: string): string | null {
 }
 
 /**
- * Extract every thumbnail-card block. Each block contains the assetId
- * and (optionally) a sibling <img alt="FILENAME.ext"> with the real
- * filename, which is the definitive kind hint.
+ * Extract every thumbnail-card block.
+ *
+ * For each block we capture:
+ *   assetId  — from data-testid="thumbnail-card-{assetId}"
+ *   filename — from the nearby <img alt="FILENAME.ext"> (best kind hint)
+ *   imgSrc   — from the nearby <img src="https://cdn-2.matterport.com/...">
+ *              (a live signed CDN URL valid for ~1 h after the MHTML was saved)
+ *
+ * Strategy:
+ *   1. Walk the text finding all thumbnail-card data-testid matches.
+ *   2. For each match, look ahead up to 2 000 chars to find the first <img>.
+ *   3. Extract both src and alt from that img tag (attribute order-independent).
  */
 interface RawCard {
   assetId: string;
   filename: string | null;
+  /** Direct CDN URL extracted from the MHTML's <img src>. May be null if not found. */
+  imgSrc: string | null;
 }
 
 function extractCards(text: string): RawCard[] {
   const cards: RawCard[] = [];
-  const cardRe = new RegExp(
-    `data-testid="thumbnail-card-(${ID_PATTERN})"[\\s\\S]{0,1500}?<img[^>]*\\salt="([^"]*)"`,
-    "g"
-  );
+  const seen = new Set<string>();
+
+  const cardRe = new RegExp(`data-testid="thumbnail-card-(${ID_PATTERN})"`, "g");
   let m: RegExpExecArray | null;
+
   while ((m = cardRe.exec(text)) !== null) {
-    cards.push({ assetId: m[1], filename: m[2] || null });
-  }
-  // Fallback: any thumbnail-card without a paired <img alt> (defensive).
-  const knownIds = new Set(cards.map((c) => c.assetId));
-  const idOnlyRe = new RegExp(`data-testid="thumbnail-card-(${ID_PATTERN})"`, "g");
-  let im: RegExpExecArray | null;
-  while ((im = idOnlyRe.exec(text)) !== null) {
-    if (!knownIds.has(im[1])) {
-      cards.push({ assetId: im[1], filename: null });
-      knownIds.add(im[1]);
+    const assetId = m[1];
+    if (seen.has(assetId)) continue;
+    seen.add(assetId);
+
+    // Lookahead window: 2 000 chars should cover any inline markup between
+    // the data-testid attribute and its associated <img>.
+    const window = text.slice(m.index, m.index + 2000);
+
+    let filename: string | null = null;
+    let imgSrc: string | null = null;
+
+    // Match the first <img ...> in the window (self-closing or not)
+    const imgTagMatch = window.match(/<img\b([^>]*)>/i);
+    if (imgTagMatch) {
+      const attrs = imgTagMatch[1];
+      const altMatch = attrs.match(/\balt="([^"]*)"/i);
+      const srcMatch = attrs.match(/\bsrc="(https?:\/\/[^"]*)"/i);
+      filename = altMatch?.[1] ?? null;
+      imgSrc = srcMatch?.[1] ?? null;
     }
+
+    cards.push({ assetId, filename, imgSrc });
   }
+
   return cards;
 }
 
@@ -132,10 +222,8 @@ function buildClipEmbedUrl(modelId: string, assetId: string): string {
 
 /** Parse a Matterport MHTML file (as a string). Pure & synchronous. */
 export function parseMatterportMhtml(rawText: string): ParsedMhtml {
-  const isQP =
-    /Content-Transfer-Encoding:\s*quoted-printable/i.test(rawText) ||
-    /=3D"/.test(rawText);
-  const text = isQP ? decodeQuotedPrintable(rawText) : rawText;
+  // Decode only the HTML MIME part to avoid corrupting base64 image parts.
+  const text = extractAndDecodeHtmlPart(rawText);
 
   const modelId = findModelId(text);
   const videos: MediaAsset[] = [];
@@ -160,6 +248,9 @@ export function parseMatterportMhtml(rawText: string): ParsedMhtml {
         id: card.assetId,
         kind: "video",
         embedUrl: buildClipEmbedUrl(modelId, card.assetId),
+        // Use the extracted thumbnail CDN URL for the video thumbnail strip;
+        // fall back to undefined (the carousel will show a play-icon placeholder).
+        proxyUrl: card.imgSrc ?? undefined,
         filename: card.filename ?? undefined,
         label: prettyLabel(card.filename, `Clip ${videoCount}`),
         visible: true,
@@ -169,7 +260,10 @@ export function parseMatterportMhtml(rawText: string): ParsedMhtml {
       gifs.push({
         id: card.assetId,
         kind: "gif",
-        proxyUrl: buildProxyUrl(modelId, card.assetId),
+        // Prefer the direct CDN URL so images display immediately; the proxy
+        // URL is kept as fallback for exported-HTML longevity once the CDN
+        // URL expires (~1 h after the MHTML was saved).
+        proxyUrl: card.imgSrc ?? buildProxyUrl(modelId, card.assetId),
         filename: card.filename ?? undefined,
         label: prettyLabel(card.filename, `GIF ${gifCount}`),
         visible: true,
@@ -179,7 +273,7 @@ export function parseMatterportMhtml(rawText: string): ParsedMhtml {
       photos.push({
         id: card.assetId,
         kind: "photo",
-        proxyUrl: buildProxyUrl(modelId, card.assetId),
+        proxyUrl: card.imgSrc ?? buildProxyUrl(modelId, card.assetId),
         filename: card.filename ?? undefined,
         label: prettyLabel(card.filename, `Photo ${photoCount}`),
         visible: true,
