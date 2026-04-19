@@ -110,18 +110,29 @@ function BrandingPage() {
   // Check Stripe Connect status on return from onboarding
   useEffect(() => {
     const url = new URL(window.location.href);
-    if (url.searchParams.has("stripe_connect_return") && user) {
-      supabase.functions.invoke("stripe-connect-status").then(({ data }) => {
-        if (data?.onboarding_complete) {
-          setBranding((prev) => ({ ...prev, stripe_onboarding_complete: true }));
-          toast.success("Stripe account connected successfully!");
-        }
-      });
+    const hasReturn = url.searchParams.has("stripe_connect_return");
+    const hasSuccess = url.searchParams.get("stripe_connect_success") === "true";
+    if ((hasReturn || hasSuccess) && user) {
+      supabase.functions
+        .invoke("stripe-connect-status", {
+          body: { environment: getStripeEnvironment() },
+        })
+        .then(({ data }) => {
+          if (data?.onboarding_complete) {
+            fetchBranding();
+            toast.success("Stripe account connected successfully!");
+          } else {
+            toast.info(
+              "Stripe onboarding not yet complete. Finish all required steps in Stripe."
+            );
+          }
+        });
       // Clean up the URL
       url.searchParams.delete("stripe_connect_return");
+      url.searchParams.delete("stripe_connect_success");
       window.history.replaceState({}, "", url.toString());
     }
-  }, [user]);
+  }, [user, fetchBranding]);
 
   const handleSave = async () => {
     if (!user) return;
