@@ -1,67 +1,81 @@
 
 
-## Why it still looks like the dashboard
+## Plan: Add Privacy Policy + Terms of Service pages with footer links
 
-Three layered problems compounding visually:
+### Scope
 
-1. **Container is too narrow.** Both `/dashboard/demo` (right column) and `/p/$slug/demo` wrap `HudPreview` in `max-w-7xl` + padding. Result: same boxed iframe at the same width on both pages.
-2. **Redundant brand chrome.** `HudPreview` already renders its own brand header *inside* the iframe overlay (logo + brand name + Contact button). The public demo page then renders **another** brand header bar above it ("brand logo" + "● Live" pill) plus an "A Live 3D Property Presentation by {brandName}" label. Three pieces of identical branding stacked = looks like the same page with extra noise.
-3. **Aspect-video iframe.** `HudPreview` wraps the Matterport iframe in `aspect-video`, so on a wide monitor the tour is letterboxed inside an already-narrow card. A "full width display" requires a full-viewport HUD.
+Two new SEO-indexable, SSR-rendered legal pages tailored to what 3DPS actually does, plus a Legal column added to the landing page footer.
 
-## Fix — true public presentation page
+### What 3DPS does (drives the legal language)
 
-Restructure `/p/$slug/demo` into a **full-bleed cinematic viewer**. Three deliberate departures from the dashboard preview:
+From the codebase:
+- White-label SaaS for MSPs (managed service providers) who resell branded 3D Matterport tour presentations to their clients
+- One-time purchase ($149 Starter / $299 Pro), plus optional annual AI upkeep license
+- Stripe Connect Express payouts to MSPs
+- Hosts MSP & client data in Lovable Cloud (Supabase): branding, sandbox demos, property models, leads
+- Generates self-contained .html presentation files clients download and host anywhere
+- Embeds Matterport tour iframes (third-party content, not hosted by us)
+- AI Concierge (Lovable AI / Gemini) with optional lead capture
+- Email delivery via Resend; user invites via signed tokens
+- Auth via Supabase (email + Google OAuth)
 
-### A. Full-viewport HUD (no max-width, no aspect-video card)
-- Outer wrapper becomes `h-screen w-screen` (or `min-h-dvh`), no `max-w-*`, no `mx-auto`.
-- Render the Matterport iframe at full viewport (`fixed inset-0` behind everything else, or `flex-1` in a column layout). The 3D tour fills the screen edge-to-edge — that alone makes it feel like a real "live presentation" vs. a dashboard widget.
+### Files created (2)
 
-### B. Use `HudPreview`'s built-in brand header — drop the duplicate page-level header
-- Pass `defaultHeaderVisible={true}` (already done) so the in-iframe overlay header carries the brand. That overlay was *designed* for the published end-product look.
-- Remove the page-level `<header>` with logo + "● Live" pill (lines 109–131 of `p.$slug.demo.tsx`).
-- Remove the centered "A Live 3D Property Presentation by {brandName}" label block (lines 141–151) — `HudPreview`'s overlay already shows the brand, and it now sits over a full-viewport tour.
+**`src/routes/privacy.tsx`** — `/privacy`
+- Standard `createFileRoute` with full `head()` block: title, description, og:title, og:description, og:url, twitter:card, canonical link → `https://3dps.transcendencemedia.com/privacy`
+- Sections: Introduction · Information We Collect (account, branding assets, payment metadata via Stripe, viewer leads captured via AI Concierge, usage telemetry) · How We Use It · Third-Party Services (Stripe, Supabase/Lovable Cloud, Matterport iframes, Resend email, Lovable AI/Gemini, Google OAuth) · Cookies & Local Storage · Data Retention · Your Rights (access/delete/export) · Children (not for under-13) · International Transfers · Security · Changes · Contact (legal@transcendencemedia.com placeholder)
+- Same dark-theme styling as landing page so it feels native; fixed header + footer reused inline (no shared layout component exists today, so we inline the minimal nav+back-to-home)
 
-### C. Slim CTA strip at the bottom (not a giant card)
-- Replace the bordered CTA card (lines 169–186) with a compact bottom-anchored strip: small "Powered by {brandName} — Want one like this? [Build Your Own →]" — fixed to bottom, semi-transparent over the iframe, dismissible with an X. Keeps the screen real-estate for the tour, still surfaces the conversion path.
-- Hide entirely on Pro tier (whitelabel).
+**`src/routes/terms.tsx`** — `/terms`
+- Same head() pattern, canonical → `/terms`
+- Sections tailored to 3DPS:
+  1. Acceptance of Terms
+  2. Service Description (white-label studio, generated .html files, AI features behind annual license)
+  3. Accounts & Eligibility (18+, accurate info, account security)
+  4. Subscriptions, Payments & Refunds (one-time tier purchases, AI upkeep license, Stripe Connect for MSP payouts, no automatic refunds on completed digital deliverables, refund window TBD — placeholder 7-day language)
+  5. **Intellectual Property & License Restrictions** — explicit clause:
+     - 3DPS / Transcendence Media owns all rights to the platform code, source files, builder UI, generation engine, and brand assets
+     - MSPs receive a **limited, non-exclusive, non-transferable license** to use the platform and to deliver generated `.html` artifacts to their clients
+     - **Prohibited:** accessing source code, reverse engineering, decompiling, scraping, copying, redistributing, modifying, or creating derivative works of the platform; bypassing tier restrictions or branding gates; reselling platform access; removing "Powered by" attribution on Starter tier
+     - MSPs retain ownership of their own brand assets and client data they upload
+  6. Acceptable Use (no illegal content, no IP infringement in uploaded property data, no malicious models, no spam via lead-capture)
+  7. Third-Party Content (Matterport tours, embedded media — not endorsed/controlled by us)
+  8. AI Features Disclaimer (concierge answers are best-effort, not legal/financial advice)
+  9. Termination (we may suspend for ToS violation; MSP can stop using anytime; generated .html files already delivered remain usable)
+  10. Disclaimers & Limitation of Liability (AS-IS, no warranty, cap at amount paid in last 12 months)
+  11. Indemnification (MSP indemnifies us for client disputes)
+  12. Governing Law (Florida — Transcendence Media's HQ; placeholder, easy to swap)
+  13. Changes to Terms
+  14. Contact
 
-### D. New `HudPreview` prop: `fullViewport?: boolean`
-- Currently `HudPreview` hardcodes `aspect-video` on the iframe wrapper (line 88). Add an optional `fullViewport` prop that switches to `h-full w-full` when true, so the dashboard's contained preview is unaffected.
-- Default `false` → dashboard preview stays exactly as it is (no regression).
-- Public demo page passes `fullViewport={true}`.
-- Outer `HudPreview` wrapper also conditionally drops `rounded-lg border shadow-lg` when full-viewport (no card chrome on a full-screen view).
+### File modified (1)
 
-### E. Property tab strip stays — but moves to overlay
-- Property selector (lines 68–85 of `HudPreview`) stays for multi-property demos but in `fullViewport` mode it overlays the iframe (top-left, glassmorphic) instead of pushing the iframe down. Same component, conditional positioning.
+**`src/routes/index.tsx`** — footer
+- Add a fourth column **Legal** to the existing 3-column grid (change `sm:grid-cols-3` → `sm:grid-cols-4` on line 746)
+- Two `<Link>` items: Privacy Policy → `/privacy`, Terms of Service → `/terms`
+- Use TanStack `<Link to="/privacy">` (already imported on line 1)
 
-## Trace — ripple safety
+### SEO compliance (per knowledge files)
+
+- Both routes get unique `head()` with title, description, og:title, og:description, twitter:card, canonical
+- No `og:image` (no dedicated share images for legal pages — knowledge file says "no image is better than a generic one")
+- SSR by default (no `ssr: false`) so Google indexes the full text
+- Will appear in any future sitemap automatically
+
+### Ripple safety trace
 
 | Touched | Used elsewhere? | Risk | Mitigation |
 |---|---|---|---|
-| `HudPreview` new `fullViewport` prop | Dashboard preview, published end-product (future) | Default false → zero behavior change for existing callers | Prop is opt-in; all current call sites unchanged |
-| `HudPreview` iframe wrapper class | Same | Conditional class swap only when prop true | Default branch identical to today |
-| `p.$slug.demo.tsx` layout | Only this route | None — isolated change | — |
-| Brand overrides merge logic (lines 68–94) | Only this route | Keep as-is | Untouched |
-| `getPublicDemoBySlug` server fn | This route + publish toggle check | Untouched | — |
-| `defaultHeaderVisible={true}` already passed | — | — | — |
-| URL builders / public-url.ts | All studio links | Untouched | — |
-| Dashboard "View Live" URL block | — | Untouched | — |
+| New `/privacy`, `/terms` route files | None | Zero — net-new files | — |
+| `index.tsx` footer grid | Only landing page | Layout shift from 3→4 cols | Tailwind responsive — stacks on mobile, fine on desktop |
+| `routeTree.gen.ts` | Auto-generated | Don't touch (per TanStack rules) | Vite plugin regenerates on build |
+| Auth, dashboard, demo, branding routes | — | Not touched | — |
+| `__root.tsx` | All routes | Not touched | — |
 
-Notes:
-- The "No properties configured" + "No demo published yet" empty states keep the centered card layout (full-viewport doesn't apply when there's nothing to show).
-- Error + notFound components unchanged.
-- No DB, no schema, no server-fn changes.
-- No changes to `HudBuilderSandbox`, `MediaCarouselModal`, `CinemaModal`, `NeighborhoodMapModal`, agent contact panel — they live inside `HudPreview` and inherit the larger canvas automatically.
+### Out of scope
 
-## Files touched (2)
-
-- `src/components/portal/HudPreview.tsx` — add `fullViewport?: boolean` prop; conditionally swap outer wrapper classes (drop card chrome) and iframe wrapper (drop aspect-video → h-full); conditionally absolute-position the property selector when full-viewport.
-- `src/routes/p.$slug.demo.tsx` — restructure to full-viewport layout: remove page-level brand header, remove centered subtitle block, render `HudPreview` with `fullViewport={true}` filling the screen, replace bottom CTA card with slim dismissible bottom strip (hidden on Pro).
-
-## Out of scope
-
-- Dashboard right-column preview — stays exactly as today.
-- Any change to publish/license/slug logic.
-- Custom-domain routing — already handled by `buildDemoUrl`.
-- Mobile-specific tweaks beyond Tailwind responsive defaults (full-viewport already works on mobile).
+- No legal review by an actual attorney — content is a best-effort draft with clear placeholders (`[Last updated: 2026-04-19]`, `[legal@transcendencemedia.com]`, `[Florida]`) the user should review before going live
+- No cookie consent banner (separate effort)
+- No DPA/data processing agreement page (B2B add-on if needed later)
+- No footer link on dashboard/auth pages (legal lives on the public marketing surface only — can extend later)
 
