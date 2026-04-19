@@ -16,7 +16,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { getSandboxDemo, saveSandboxDemo, publishSandboxDemo } from "@/lib/sandbox-demo.functions";
 import { useLusLicense } from "@/hooks/useLusLicense";
 import { toast } from "sonner";
-import { ExternalLink, Save, Globe, Lock } from "lucide-react";
+import { ExternalLink, Save, Globe, Lock, Copy, Check } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/_authenticated/dashboard/demo")({
