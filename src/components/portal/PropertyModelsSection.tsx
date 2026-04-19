@@ -165,6 +165,7 @@ export function PropertyModelsSection({
             {model.multimedia && model.multimedia.length > 0 && (
               <MediaAssetsList
                 assets={model.multimedia}
+                modelId={model.matterportId}
                 onChange={(next) => onMediaChange(model.id, next)}
                 onSyncMore={() => setSyncModelId(model.id)}
               />
@@ -270,11 +271,12 @@ export function PropertyModelsSection({
 
 interface MediaAssetsListProps {
   assets: MediaAsset[];
+  modelId?: string;
   onChange: (next: MediaAsset[]) => void;
   onSyncMore: () => void;
 }
 
-function MediaAssetsList({ assets, onChange, onSyncMore }: MediaAssetsListProps) {
+function MediaAssetsList({ assets, modelId, onChange, onSyncMore }: MediaAssetsListProps) {
   const videoCount = assets.filter((a) => a.kind === "video").length;
   const photoCount = assets.filter((a) => a.kind === "photo").length;
   const gifCount = assets.filter((a) => a.kind === "gif").length;
@@ -303,9 +305,9 @@ function MediaAssetsList({ assets, onChange, onSyncMore }: MediaAssetsListProps)
         {assets.map((a) => (
           <li key={a.id} className="flex items-center gap-2 px-2 py-1.5">
             <span className="flex size-7 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground overflow-hidden">
-              {a.kind !== "video" && a.proxyUrl ? (
+              {a.kind !== "video" && canonicalProxyUrl(a, modelId) ? (
                 <img
-                  src={a.proxyUrl}
+                  src={canonicalProxyUrl(a, modelId)}
                   alt=""
                   className="size-full object-cover"
                   loading="lazy"

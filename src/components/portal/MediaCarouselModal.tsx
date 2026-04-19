@@ -2,12 +2,15 @@ import { useEffect, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { X, ChevronLeft, ChevronRight, Play } from "lucide-react";
 import type { MediaAsset } from "./types";
+import { canonicalProxyUrl } from "@/lib/matterport-mhtml";
 
 interface MediaCarouselModalProps {
   open: boolean;
   onClose: () => void;
   assets: MediaAsset[];
   initialIndex?: number;
+  /** Matterport model id used to rewrite legacy expiring CDN URLs into stable permalinks. */
+  modelId?: string;
 }
 
 export function MediaCarouselModal({
@@ -15,6 +18,7 @@ export function MediaCarouselModal({
   onClose,
   assets,
   initialIndex = 0,
+  modelId,
 }: MediaCarouselModalProps) {
   const [index, setIndex] = useState(initialIndex);
 
@@ -104,10 +108,10 @@ export function MediaCarouselModal({
             />
           )}
 
-          {!isVideo && current.proxyUrl && (
+          {!isVideo && canonicalProxyUrl(current, modelId) && (
             <img
               key={current.id}
-              src={current.proxyUrl}
+              src={canonicalProxyUrl(current, modelId)}
               alt={current.label || `Property ${current.kind}`}
               className="h-full w-full object-contain"
             />
@@ -138,7 +142,7 @@ export function MediaCarouselModal({
         {total > 1 && (
           <div className="mt-4 flex gap-2 overflow-x-auto px-1 pb-1">
             {assets.map((a, i) => {
-              const thumbSrc = a.proxyUrl;
+              const thumbSrc = canonicalProxyUrl(a, modelId);
               return (
                 <button
                   key={a.id}

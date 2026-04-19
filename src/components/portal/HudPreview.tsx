@@ -354,6 +354,7 @@ export function HudPreview({
           open={carouselOpen}
           onClose={() => setCarouselOpen(false)}
           assets={visibleMedia}
+          modelId={currentModel?.matterportId}
         />
       )}
     </div>

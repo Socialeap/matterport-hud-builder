@@ -337,3 +337,26 @@ export function mergeAssets(
 export function sanitizeMediaList(list: MediaAsset[] | undefined): MediaAsset[] {
   return list ?? [];
 }
+
+/**
+ * Normalize a media asset's `proxyUrl` into the stable Matterport permalink.
+ *
+ * Older saved data contains expiring `cdn-2.matterport.com` signed URLs
+ * (with `?t=...-{unixTs}-...` tokens) that 401/403 once the token expires.
+ * The current parser emits stable `/resources/model/{modelId}/image/{assetId}`
+ * permalinks. This helper rewrites legacy URLs into the canonical form at
+ * render time so already-stored demo data renders correctly without a DB
+ * migration. Idempotent: canonical URLs pass through unchanged.
+ */
+export function canonicalProxyUrl(
+  asset: { id: string; proxyUrl?: string },
+  modelId: string | undefined | null,
+): string | undefined {
+  if (!asset.proxyUrl || asset.proxyUrl.includes("/resources/model/")) {
+    return asset.proxyUrl;
+  }
+  if (modelId && /^[A-Za-z0-9]{11}$/.test(modelId) && /^[A-Za-z0-9]{11}$/.test(asset.id)) {
+    return `https://my.matterport.com/resources/model/${modelId}/image/${asset.id}`;
+  }
+  return asset.proxyUrl;
+}
