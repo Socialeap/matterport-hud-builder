@@ -12,6 +12,7 @@ import { Lock, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { uploadBrandAsset } from "@/lib/storage";
 import { useStripeCheckout } from "@/hooks/useStripeCheckout";
+import { getStripeEnvironment } from "@/lib/stripe";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { buildStudioUrl } from "@/lib/public-url";
 
@@ -360,12 +361,18 @@ function BrandingPage() {
                   onClick={async () => {
                     try {
                       const { data, error } = await supabase.functions.invoke("stripe-connect-onboard", {
-                        body: { returnUrl: window.location.href },
+                        body: {
+                          returnUrl: window.location.href,
+                          environment: getStripeEnvironment(),
+                        },
                       });
-                      if (error || !data?.url) throw new Error("Failed to start onboarding");
+                      if (error) throw new Error((data as any)?.error || error.message);
+                      if ((data as any)?.error) throw new Error((data as any).error);
+                      if (!data?.url) throw new Error("Failed to start onboarding");
                       window.location.href = data.url;
-                    } catch {
-                      toast.error("Failed to connect Stripe. Please try again.");
+                    } catch (err: any) {
+                      console.error("Stripe Connect error:", err);
+                      toast.error(err?.message || "Failed to connect Stripe. Please try again.");
                     }
                   }}
                 >

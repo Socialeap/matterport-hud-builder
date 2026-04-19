@@ -1,6 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import Stripe from "https://esm.sh/stripe@18.5.0";
+import { type StripeEnv, createStripeClient } from "../_shared/stripe.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -40,17 +40,12 @@ serve(async (req) => {
       });
     }
 
-    const { returnUrl } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const { returnUrl, environment } = body as { returnUrl?: string; environment?: StripeEnv };
+    const env: StripeEnv = environment === "live" ? "live" : "sandbox";
 
-    // Use the user's own Stripe secret key directly for Connect operations
-    const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY");
-    if (!stripeSecretKey) {
-      return new Response(JSON.stringify({ error: "Stripe secret key not configured. Please add your STRIPE_SECRET_KEY." }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-    const stripe = new Stripe(stripeSecretKey);
+    // Use the gateway-routed Stripe client
+    const stripe = createStripeClient(env);
 
     // Check if user already has a connect account
     const { data: branding } = await supabaseAdmin
@@ -62,13 +57,31 @@ serve(async (req) => {
     let accountId = branding?.stripe_connect_id;
 
     if (!accountId) {
-      // Create a new Express account
-      const account = await stripe.accounts.create({
-        type: "express",
-        email: user.email,
-        metadata: { provider_id: user.id },
-      });
-      accountId = account.id;
+      // Create a new Express account — wrap in try/catch to surface platform-profile errors
+      try {
+        const account = await stripe.accounts.create({
+          type: "express",
+          email: user.email,
+          capabilities: {
+            card_payments: { requested: true },
+            transfers: { requested: true },
+          },
+          metadata: { provider_id: user.id },
+        });
+        accountId = account.id;
+      } catch (stripeErr) {
+        const msg = stripeErr instanceof Error ? stripeErr.message : String(stripeErr);
+        if (msg.includes("managing losses") || msg.includes("platform-profile")) {
+          return new Response(
+            JSON.stringify({
+              error:
+                "Stripe Connect is not yet activated on the platform. The platform owner must complete the Stripe Platform Profile (Loss Liability acknowledgement, set to 'Platform is responsible for losses') before MSPs can connect. Please contact support.",
+            }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        throw stripeErr;
+      }
 
       // Save the account ID
       await supabaseAdmin
@@ -94,9 +107,12 @@ serve(async (req) => {
     });
   } catch (error) {
     console.error("Connect onboard error:", error);
-    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Internal server error" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ error: error instanceof Error ? error.message : "Internal server error" }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
+    );
   }
 });
