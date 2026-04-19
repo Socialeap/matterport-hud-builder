@@ -30,13 +30,25 @@ const allNavItems = [
 export function DashboardSidebar() {
   const { user, roles, signOut } = useAuth();
   const location = useLocation();
+  const [stripeConnected, setStripeConnected] = useState(false);
 
   const isClient = roles.includes("client" as any);
 
-  // Filter nav items based on role; if no roles yet, show all (provider default)
-  const navItems = isClient
+  useEffect(() => {
+    if (!user || isClient) return;
+    supabase
+      .from("branding_settings")
+      .select("stripe_onboarding_complete")
+      .eq("provider_id", user.id)
+      .maybeSingle()
+      .then(({ data }) => setStripeConnected(Boolean(data?.stripe_onboarding_complete)));
+  }, [user, isClient]);
+
+  // Filter nav items based on role and Stripe gating
+  const navItems = (isClient
     ? allNavItems.filter((item) => (item.roles as readonly string[]).includes("client"))
-    : allNavItems;
+    : allNavItems
+  ).filter((item) => !(item as any).requiresStripe || stripeConnected);
 
   return (
     <Sidebar>

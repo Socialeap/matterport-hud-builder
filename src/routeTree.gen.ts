@@ -28,6 +28,7 @@ import { Route as PSlugDemoRouteImport } from './routes/p.$slug.demo'
 import { Route as LovableEmailSuppressionRouteImport } from './routes/lovable/email/suppression'
 import { Route as AuthenticatedDashboardVaultRouteImport } from './routes/_authenticated.dashboard.vault'
 import { Route as AuthenticatedDashboardPricingRouteImport } from './routes/_authenticated.dashboard.pricing'
+import { Route as AuthenticatedDashboardPayoutsRouteImport } from './routes/_authenticated.dashboard.payouts'
 import { Route as AuthenticatedDashboardOrdersRouteImport } from './routes/_authenticated.dashboard.orders'
 import { Route as AuthenticatedDashboardDemoRouteImport } from './routes/_authenticated.dashboard.demo'
 import { Route as AuthenticatedDashboardClientsRouteImport } from './routes/_authenticated.dashboard.clients'
@@ -134,6 +135,12 @@ const AuthenticatedDashboardPricingRoute =
     path: '/pricing',
     getParentRoute: () => AuthenticatedDashboardRoute,
   } as any)
+const AuthenticatedDashboardPayoutsRoute =
+  AuthenticatedDashboardPayoutsRouteImport.update({
+    id: '/payouts',
+    path: '/payouts',
+    getParentRoute: () => AuthenticatedDashboardRoute,
+  } as any)
 const AuthenticatedDashboardOrdersRoute =
   AuthenticatedDashboardOrdersRouteImport.update({
     id: '/orders',
@@ -200,6 +207,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/clients': typeof AuthenticatedDashboardClientsRoute
   '/dashboard/demo': typeof AuthenticatedDashboardDemoRoute
   '/dashboard/orders': typeof AuthenticatedDashboardOrdersRoute
+  '/dashboard/payouts': typeof AuthenticatedDashboardPayoutsRoute
   '/dashboard/pricing': typeof AuthenticatedDashboardPricingRoute
   '/dashboard/vault': typeof AuthenticatedDashboardVaultRouteWithChildren
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
@@ -226,6 +234,7 @@ export interface FileRoutesByTo {
   '/dashboard/clients': typeof AuthenticatedDashboardClientsRoute
   '/dashboard/demo': typeof AuthenticatedDashboardDemoRoute
   '/dashboard/orders': typeof AuthenticatedDashboardOrdersRoute
+  '/dashboard/payouts': typeof AuthenticatedDashboardPayoutsRoute
   '/dashboard/pricing': typeof AuthenticatedDashboardPricingRoute
   '/dashboard/vault': typeof AuthenticatedDashboardVaultRouteWithChildren
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
@@ -256,6 +265,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard/clients': typeof AuthenticatedDashboardClientsRoute
   '/_authenticated/dashboard/demo': typeof AuthenticatedDashboardDemoRoute
   '/_authenticated/dashboard/orders': typeof AuthenticatedDashboardOrdersRoute
+  '/_authenticated/dashboard/payouts': typeof AuthenticatedDashboardPayoutsRoute
   '/_authenticated/dashboard/pricing': typeof AuthenticatedDashboardPricingRoute
   '/_authenticated/dashboard/vault': typeof AuthenticatedDashboardVaultRouteWithChildren
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
@@ -286,6 +296,7 @@ export interface FileRouteTypes {
     | '/dashboard/clients'
     | '/dashboard/demo'
     | '/dashboard/orders'
+    | '/dashboard/payouts'
     | '/dashboard/pricing'
     | '/dashboard/vault'
     | '/lovable/email/suppression'
@@ -312,6 +323,7 @@ export interface FileRouteTypes {
     | '/dashboard/clients'
     | '/dashboard/demo'
     | '/dashboard/orders'
+    | '/dashboard/payouts'
     | '/dashboard/pricing'
     | '/dashboard/vault'
     | '/lovable/email/suppression'
@@ -341,6 +353,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard/clients'
     | '/_authenticated/dashboard/demo'
     | '/_authenticated/dashboard/orders'
+    | '/_authenticated/dashboard/payouts'
     | '/_authenticated/dashboard/pricing'
     | '/_authenticated/dashboard/vault'
     | '/lovable/email/suppression'
@@ -507,6 +520,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardPricingRouteImport
       parentRoute: typeof AuthenticatedDashboardRoute
     }
+    '/_authenticated/dashboard/payouts': {
+      id: '/_authenticated/dashboard/payouts'
+      path: '/payouts'
+      fullPath: '/dashboard/payouts'
+      preLoaderRoute: typeof AuthenticatedDashboardPayoutsRouteImport
+      parentRoute: typeof AuthenticatedDashboardRoute
+    }
     '/_authenticated/dashboard/orders': {
       id: '/_authenticated/dashboard/orders'
       path: '/orders'
@@ -586,6 +606,7 @@ interface AuthenticatedDashboardRouteChildren {
   AuthenticatedDashboardClientsRoute: typeof AuthenticatedDashboardClientsRoute
   AuthenticatedDashboardDemoRoute: typeof AuthenticatedDashboardDemoRoute
   AuthenticatedDashboardOrdersRoute: typeof AuthenticatedDashboardOrdersRoute
+  AuthenticatedDashboardPayoutsRoute: typeof AuthenticatedDashboardPayoutsRoute
   AuthenticatedDashboardPricingRoute: typeof AuthenticatedDashboardPricingRoute
   AuthenticatedDashboardVaultRoute: typeof AuthenticatedDashboardVaultRouteWithChildren
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
@@ -597,6 +618,7 @@ const AuthenticatedDashboardRouteChildren: AuthenticatedDashboardRouteChildren =
     AuthenticatedDashboardClientsRoute: AuthenticatedDashboardClientsRoute,
     AuthenticatedDashboardDemoRoute: AuthenticatedDashboardDemoRoute,
     AuthenticatedDashboardOrdersRoute: AuthenticatedDashboardOrdersRoute,
+    AuthenticatedDashboardPayoutsRoute: AuthenticatedDashboardPayoutsRoute,
     AuthenticatedDashboardPricingRoute: AuthenticatedDashboardPricingRoute,
     AuthenticatedDashboardVaultRoute:
       AuthenticatedDashboardVaultRouteWithChildren,
