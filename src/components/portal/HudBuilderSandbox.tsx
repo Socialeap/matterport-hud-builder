@@ -247,6 +247,10 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
     );
   }, []);
 
+  const handleMediaChange = useCallback((id: string, assets: import("./types").MediaAsset[]) => {
+    setModels((prev) => prev.map((m) => (m.id === id ? { ...m, multimedia: assets } : m)));
+  }, []);
+
   const handleOpenBehavior = useCallback((id: string) => {
     setBehaviorModelId(id);
     setBehaviorModalOpen(true);
@@ -398,6 +402,7 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
               onAdd={handleAddModel}
               onRemove={handleRemoveModel}
               onChange={handleModelChange}
+              onMediaChange={handleMediaChange}
               onOpenBehavior={handleOpenBehavior}
               savedModelId={savedModelId}
             />

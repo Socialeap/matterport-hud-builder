@@ -85,7 +85,12 @@ function PublicDemoPage() {
     typeof rawLogo === "string" && rawLogo.startsWith("blob:") ? null : rawLogo;
   const isPro = branding.tier === "pro";
 
-  const properties = ((demo.properties as unknown) ?? []) as PropertyModel[];
+  const rawProperties = ((demo.properties as unknown) ?? []) as PropertyModel[];
+  // Defensive: strip media URLs with session tokens (?t= / &t=) — they 401 outside the original session.
+  const properties: PropertyModel[] = rawProperties.map((p) => ({
+    ...p,
+    multimedia: (p.multimedia ?? []).filter((a) => !/[?&]t=/.test(a.url)),
+  }));
   const behaviors = ((demo.behaviors as unknown) ?? {}) as Record<string, TourBehavior>;
   const agent = { ...DEFAULT_AGENT, ...(((demo.agent as unknown) ?? {}) as Partial<AgentContact>) };
   // Defensive: clear stale blob: avatar URLs that should never have been persisted.
