@@ -131,12 +131,26 @@ export function PropertyModelsSection({
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label className="text-xs">Matterport Model ID</Label>
-                <Input
-                  value={model.matterportId}
-                  onChange={(e) => onChange(model.id, "matterportId", e.target.value)}
-                  placeholder="e.g. SxQL3iGyoDo"
-                  maxLength={11}
-                />
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={model.matterportId}
+                    onChange={(e) => onChange(model.id, "matterportId", e.target.value)}
+                    placeholder="e.g. SxQL3iGyoDo"
+                    maxLength={11}
+                    className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setSyncModelId(model.id)}
+                    title="Sync videos, photos, and GIFs from a saved Matterport Media page"
+                    className="shrink-0"
+                  >
+                    <Download className="mr-1 size-3.5" />
+                    Sync
+                  </Button>
+                </div>
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Music URL (optional)</Label>
@@ -147,6 +161,14 @@ export function PropertyModelsSection({
                 />
               </div>
             </div>
+
+            {model.multimedia && model.multimedia.length > 0 && (
+              <MediaAssetsList
+                assets={model.multimedia}
+                onChange={(next) => onMediaChange(model.id, next)}
+                onSyncMore={() => setSyncModelId(model.id)}
+              />
+            )}
 
             {(() => {
               const raw = model.cinematicVideoUrl ?? "";
