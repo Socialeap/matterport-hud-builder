@@ -281,6 +281,10 @@ function DemoPage() {
     );
   }, []);
 
+  const handleMediaChange = useCallback((id: string, assets: import("@/components/portal/types").MediaAsset[]) => {
+    setModels((prev) => prev.map((m) => (m.id === id ? { ...m, multimedia: assets } : m)));
+  }, []);
+
   const handleOpenBehavior = useCallback((id: string) => {
     setBehaviorModelId(id);
     setBehaviorModalOpen(true);

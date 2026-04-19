@@ -247,6 +247,91 @@ export function PropertyModelsSection({
           </div>
         ))}
       </CardContent>
+
+      {syncModel && (
+        <MediaSyncModal
+          open={!!syncModelId}
+          onOpenChange={(open) => {
+            if (!open) setSyncModelId(null);
+          }}
+          currentMatterportId={syncModel.matterportId}
+          existing={syncModel.multimedia ?? []}
+          onConfirm={(merged, parsedModelId) => {
+            onMediaChange(syncModel.id, merged);
+            if (!syncModel.matterportId.trim() && parsedModelId) {
+              onChange(syncModel.id, "matterportId", parsedModelId);
+            }
+          }}
+        />
+      )}
     </Card>
+  );
+}
+
+interface MediaAssetsListProps {
+  assets: MediaAsset[];
+  onChange: (next: MediaAsset[]) => void;
+  onSyncMore: () => void;
+}
+
+function MediaAssetsList({ assets, onChange, onSyncMore }: MediaAssetsListProps) {
+  const videoCount = assets.filter((a) => a.kind === "video").length;
+  const photoCount = assets.filter((a) => a.kind === "photo").length;
+  const gifCount = assets.filter((a) => a.kind === "gif").length;
+  const visibleCount = assets.filter((a) => a.visible).length;
+
+  const toggle = (id: string, visible: boolean) =>
+    onChange(assets.map((a) => (a.id === id ? { ...a, visible } : a)));
+  const remove = (id: string) => onChange(assets.filter((a) => a.id !== id));
+
+  return (
+    <div className="rounded-md border border-border/60 bg-muted/20 p-3 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+          <span className="font-medium text-foreground">Synced media</span>
+          <Badge variant="secondary" className="text-[10px]">{videoCount} video</Badge>
+          <Badge variant="secondary" className="text-[10px]">{photoCount} photo</Badge>
+          {gifCount > 0 && <Badge variant="secondary" className="text-[10px]">{gifCount} GIF</Badge>}
+          <span>· {visibleCount} visible</span>
+        </div>
+        <Button type="button" size="sm" variant="ghost" onClick={onSyncMore} className="h-7 text-xs">
+          <Download className="mr-1 size-3" />
+          Sync more
+        </Button>
+      </div>
+      <ul className="divide-y divide-border/50 rounded border border-border/40 bg-background">
+        {assets.map((a) => (
+          <li key={a.id} className="flex items-center gap-2 px-2 py-1.5">
+            <span className="flex size-7 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground">
+              {a.kind === "video" ? (
+                <VideoIcon className="size-3.5" />
+              ) : (
+                <ImageIcon className="size-3.5" />
+              )}
+            </span>
+            <div className="flex-1 min-w-0">
+              <p className="truncate text-xs font-medium text-foreground">{a.label ?? a.id}</p>
+              <p className="truncate text-[10px] text-muted-foreground">{a.id}</p>
+            </div>
+            <Badge variant="outline" className="text-[10px] capitalize">{a.kind}</Badge>
+            <Switch
+              checked={a.visible}
+              onCheckedChange={(checked) => toggle(a.id, checked)}
+              aria-label={`Toggle visibility for ${a.label ?? a.id}`}
+            />
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+              onClick={() => remove(a.id)}
+              aria-label={`Remove ${a.label ?? a.id}`}
+            >
+              <X className="size-3.5" />
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
