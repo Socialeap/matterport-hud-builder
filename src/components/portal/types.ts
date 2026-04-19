@@ -3,9 +3,23 @@ export type MediaAssetKind = "video" | "photo" | "gif";
 export interface MediaAsset {
   id: string;            // 11-char Matterport asset id
   kind: MediaAssetKind;
-  url: string;           // reconstructed durable URL (no ?t= tokens)
-  visible: boolean;      // user toggle for Phase 2 carousel
-  label?: string;        // friendly name (e.g. "Photo 1", "Clip 3")
+  /**
+   * Primary embeddable URL.
+   *  - photo/gif: signed cdn-2 URL (extracted directly from MHTML, includes ?t= token)
+   *  - video:    NOT directly embeddable — Matterport doesn't expose mp4 URLs in MHTML.
+   *              We store the model's public share URL as a fallback "Open in Matterport" link.
+   */
+  url: string;
+  /** True for direct-media URLs (img/gif/video file). False for share-page fallbacks. */
+  embeddable: boolean;
+  /** Optional poster/thumbnail (animation-NNNN-NNN.jpg) — used for video tiles in carousel. */
+  posterUrl?: string;
+  /** Original Matterport filename (e.g. "LONG-INTRO-480p-MP4.mp4") — best label source. */
+  filename?: string;
+  /** ISO timestamp of when this asset was synced (signed URLs expire — re-sync after ~7 days). */
+  syncedAt?: string;
+  visible: boolean;      // user toggle for carousel
+  label?: string;        // friendly name (derived from filename or generic)
 }
 
 export interface PropertyModel {
