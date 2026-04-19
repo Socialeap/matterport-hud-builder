@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { canonicalProxyUrl } from "@/lib/matterport-mhtml";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
