@@ -19,6 +19,7 @@ interface HudPreviewProps {
   agent: AgentContact;
   isPro: boolean;
   defaultHeaderVisible?: boolean;
+  fullViewport?: boolean;
 }
 
 export function HudPreview({
