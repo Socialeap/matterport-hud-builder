@@ -34,6 +34,7 @@ export function HudPreview({
   agent,
   isPro,
   defaultHeaderVisible = false,
+  fullViewport = false,
 }: HudPreviewProps) {
   const [headerVisible, setHeaderVisible] = useState(defaultHeaderVisible);
   const [contactOpen, setContactOpen] = useState(false);
