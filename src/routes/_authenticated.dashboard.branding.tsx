@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { uploadBrandAsset } from "@/lib/storage";
 import { useStripeCheckout } from "@/hooks/useStripeCheckout";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { buildStudioUrl } from "@/lib/public-url";
 
 export const Route = createFileRoute("/_authenticated/dashboard/branding")({
   component: BrandingPage,
@@ -322,7 +323,7 @@ function BrandingPage() {
             {branding.slug && (
               <div className="flex items-center gap-2 mt-1">
                 <p className="text-xs text-muted-foreground">
-                  Your studio: {window.location.origin}/p/{branding.slug}
+                  Your studio: {buildStudioUrl(branding.slug, { tier: branding.tier, customDomain: branding.custom_domain })}
                 </p>
                 <Button
                   type="button"
@@ -330,7 +331,9 @@ function BrandingPage() {
                   size="sm"
                   className="h-6 px-2 text-xs"
                   onClick={() => {
-                    navigator.clipboard.writeText(`${window.location.origin}/p/${branding.slug}`);
+                    navigator.clipboard.writeText(
+                      buildStudioUrl(branding.slug!, { tier: branding.tier, customDomain: branding.custom_domain })
+                    );
                     toast.success("Studio link copied to clipboard!");
                   }}
                 >
