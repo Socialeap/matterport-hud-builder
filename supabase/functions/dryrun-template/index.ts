@@ -11,11 +11,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.103.0";
 
-import { getProvider } from "../extract-property-doc/extractors/index.ts";
+import { getProvider } from "../_shared/extractors/index.ts";
 import type {
   JsonSchema,
   VaultTemplate,
-} from "../extract-property-doc/extractors/types.ts";
+} from "../_shared/extractors/types.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
