@@ -49,7 +49,9 @@ serve(async (req) => {
       });
     }
 
-    const env: StripeEnv = "sandbox";
+    const body = await req.json().catch(() => ({}));
+    const { environment } = body as { environment?: StripeEnv };
+    const env: StripeEnv = environment === "live" ? "live" : "sandbox";
     const stripe = createStripeClient(env);
 
     // Check account status
