@@ -1,77 +1,69 @@
 
 
-## Plan: Fix MP Media Sync — quoted-printable decoding
+## Root cause (revised diagnosis)
 
-### Root cause (confirmed via file inspection)
-The Matterport-saved MHTML uses `Content-Transfer-Encoding: quoted-printable`. In the file body:
-- Every `=` becomes `=3D`, so our regex `data-testid="thumbnail-card-..."` never matches what is actually written as `data-testid=3D"thumbnail-card-..."`.
-- Lines wrap at ~76 chars with a trailing `=` + newline (soft break), which can split asset IDs and image filenames mid-token.
-- The Model ID just happened to match because that pattern occurs in cleanly-written places (URL header / `?m=` query).
-
-That's why the modal showed "Detected Model ID: rMhcQXMdUmc" but "0 videos, 0 photos, 0 GIFs" — assets were there (e.g. `thumbnail-card-6DEGRapXhjY`, `thumbnail-card-wPVZdS6HkVq`, etc., all clearly visible in the file), the parser just couldn't see them.
-
-### Fix (single small change, surgical, safe)
-
-**Decode quoted-printable before parsing.** Add one helper in `src/lib/matterport-mhtml.ts` and call it as the first step of `parseMatterportMhtml(text)`.
-
-```ts
-function decodeQuotedPrintable(input: string): string {
-  // 1) Remove soft line breaks: "=" immediately followed by CRLF or LF
-  // 2) Replace "=HH" hex escapes with the literal byte (UTF-8 safe)
-  const noSoftBreaks = input.replace(/=\r?\n/g, "");
-  // Convert the resulting bytes back to a JS string. We treat =HH as a single
-  // byte and decode the full byte sequence as UTF-8 so multibyte chars
-  // (e.g. "=E2=80=93" → en-dash) are preserved.
-  const bytes: number[] = [];
-  for (let i = 0; i < noSoftBreaks.length; i++) {
-    const c = noSoftBreaks.charCodeAt(i);
-    if (c === 0x3d /* "=" */ && i + 2 < noSoftBreaks.length) {
-      const hex = noSoftBreaks.slice(i + 1, i + 3);
-      if (/^[0-9A-Fa-f]{2}$/.test(hex)) {
-        bytes.push(parseInt(hex, 16));
-        i += 2;
-        continue;
-      }
-    }
-    bytes.push(c & 0xff);
-  }
-  try {
-    return new TextDecoder("utf-8").decode(new Uint8Array(bytes));
-  } catch {
-    return noSoftBreaks; // fallback
-  }
-}
+Looking at your working Gemini-extracted URL:
+```
+https://cdn-2.matterport.com/models/{modelId}/assets/render/animation-0000-240.gif?t=...&k=...
 ```
 
-Then in `parseMatterportMhtml`:
-```ts
-export function parseMatterportMhtml(rawText: string): ParsedMhtml {
-  // Detect QP either by header or by structural fingerprint, then decode.
-  const isQP =
-    /Content-Transfer-Encoding:\s*quoted-printable/i.test(rawText) ||
-    /=3D"/.test(rawText);
-  const text = isQP ? decodeQuotedPrintable(rawText) : rawText;
-  // ...existing logic unchanged
-}
+vs. what we're storing:
+```
+https://cdn-2.matterport.com/apifs/models/{modelId}/images/{assetId}/{assetId}-Photo_NN.jpg
 ```
 
-After decoding, every existing regex (`thumbnail-card-`, `models/{id}/images/...`, `?m=`, `Photo_NN.jpg|gif`) works without modification because the decoded text is the same HTML the browser would render.
+Two separate problems, not one:
 
-### Why this is safe
-- **Pure & local**: still no network, no DOM, no I/O. The function ships in the same module.
-- **Idempotent guard**: we only decode when QP is detected. Plain HTML files (or anything we wrote ourselves) pass through untouched.
-- **Multibyte-correct**: soft breaks removed first, then bytes assembled and passed through `TextDecoder("utf-8")` so titles like "Marriott Marquis – Broadway Ballroom" (`=E2=80=93` → `–`) decode correctly.
-- **Backward-compatible**: any previously-saved data is unaffected (this only changes parsing behavior at upload time).
-- **Defensive ceiling**: the existing 60 MB file size cap remains.
+**1. Photos — wrong CDN path.** The `apifs/...` path I reconstructed is a **private API** path requiring signed `?t=` tokens. The actual public-asset path used by the Matterport viewer is different — it's served from the model's `assets/` tree referenced inside the MHTML itself. We were synthesizing a URL pattern that doesn't exist as a public endpoint.
 
-### Bonus (free win, included)
-Once decoded, `findExplicitPhotoFilename` will now match the per-asset `…/{assetId}-Photo_03.jpg` strings in the file — so each photo gets its **correct** filename (Photo_03, Photo_04, …) instead of always defaulting to `Photo_01.jpg`. This means previously-broken photo URLs after sync will now resolve to real images.
+**2. Videos — embedded in iframe, not a player page.** The `/resources/model/{id}/clip/{id}` URL is a **direct video file/redirect**, not an embeddable HTML page. Matterport's CDN sends `X-Frame-Options: SAMEORIGIN` so an `<iframe src="...">` is blocked ("refused to connect"). The URL itself is valid — you can open it in a new tab — it just can't be iframed. Same applies to the GIF render URL.
 
-### Files touched
-- `src/lib/matterport-mhtml.ts` — add `decodeQuotedPrintable`, call it as first step of `parseMatterportMhtml`. No other file needs changes.
+The good news: **the MHTML file already contains the correct public URLs for every asset.** We're synthesizing when we should be extracting.
 
-### Out of scope
-- No DB/migration changes.
-- No UI changes (existing modal, list, and carousel just start receiving real data).
-- No change to the `Downloads`-vs-`Media` tab guidance — the file the user uploaded does contain the assets, so the existing Quick Guide is already correct.
+## Fix strategy
+
+### A. Stop synthesizing — extract real URLs from the MHTML
+
+Update `src/lib/matterport-mhtml.ts` to scan for actual URL patterns already present in the decoded text and pair them with each `assetId`:
+
+- **Photos**: find `https://cdn-2.matterport.com/...{assetId}...\.(jpg|jpeg|png|webp)` (any path, with or without `?t=` — keep what's there).
+- **GIFs**: find `https://cdn-2.matterport.com/.../animation-...\.gif` near the `assetId`, OR the `render/animation-0000-240.gif` pattern you cited.
+- **Videos**: find `https://cdn-2.matterport.com/.../\.(mp4|webm)` URLs near the `assetId`. If only the share-page URL exists, fall back to it but flag as `embeddable: false`.
+
+Result per asset: `{ id, kind, url, embeddable }` — `embeddable` tells the player how to render it.
+
+### B. Render based on `embeddable` flag (not by `kind`)
+
+Update `src/components/portal/MediaCarouselModal.tsx`:
+
+- **Direct media files** (`.jpg`/`.png`/`.gif`/`.mp4`/`.webm`): render with `<img>` or `<video controls autoplay>` — these don't trip frame-blocking because they're media elements, not iframes.
+- **Share pages only** (no direct media URL found): show a styled card with "Open in Matterport" button that opens in a new tab. No broken iframe.
+
+This handles the `cdn-2.matterport.com` refused-to-connect error completely — `<img>` and `<video>` requests are not subject to `X-Frame-Options`.
+
+### C. Tokenized URL handling — keep them, but warn
+
+Tokens (`?t=...`) are time-limited but typically last hours-to-days and refresh on each MHTML save. For Phase 1's "agent re-syncs when adding new assets" workflow this is acceptable. We:
+- **Keep** the `?t=` tokens (don't strip them — they're required for `cdn-2` to serve the file).
+- Store a `syncedAt` timestamp on each asset.
+- Show a subtle "Re-sync recommended" badge in the dashboard list when assets are >7 days old.
+- Document this clearly in the Sync Modal info popup.
+
+This is the only honest path forward without paying for Matterport's API or running a server-side rehosting pipeline.
+
+### D. One small parser hardening
+Once we extract real URLs from the file, also parse the `<title>` of each thumbnail card so labels become "Long Intro", "Dollhouse View", etc. instead of generic "Photo 1" — UX win that comes free.
+
+## Files touched
+
+- `src/lib/matterport-mhtml.ts` — replace URL synthesis with URL extraction; add `embeddable` flag and optional title parsing.
+- `src/components/portal/types.ts` — add `embeddable?: boolean` and `syncedAt?: string` to `MediaAsset`.
+- `src/components/portal/MediaCarouselModal.tsx` — render `<video>` for mp4/webm, `<img>` for image/gif, fallback "Open in Matterport" card for non-embeddable.
+- `src/components/portal/PropertyModelsSection.tsx` — add "Re-sync recommended" badge when `syncedAt` >7 days old.
+- `src/components/portal/MediaSyncModal.tsx` — add caveat to info popup: "Token-signed URLs refresh each sync; re-sync if assets stop loading."
+
+## Out of scope (explicit)
+
+- **Server-side rehosting to Lovable Cloud storage**: powerful but adds cost + complexity; defer until tokens prove unreliable in practice.
+- **Matterport Bundle/SDK API integration**: requires paid Matterport plan + API key from each agent; rejected per original spec.
 
