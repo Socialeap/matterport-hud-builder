@@ -382,6 +382,32 @@ function VaultPage() {
     fetchAssets();
   };
 
+  if (tier === "starter") {
+    return (
+      <div className="mx-auto max-w-2xl py-16">
+        <Card className="border-dashed">
+          <CardHeader className="items-center text-center">
+            <div className="flex size-12 items-center justify-center rounded-full bg-primary/10">
+              <Lock className="size-6 text-primary" />
+            </div>
+            <CardTitle className="mt-3">Production Vault is a Pro feature</CardTitle>
+            <CardDescription className="max-w-md">
+              Curate sound libraries, HUD filters, interactive widgets, custom
+              icons, property docs, and external links — then offer them as
+              plug-and-play options inside your clients' Presentation Builder.
+              Upgrade to Pro to unlock the Vault.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex justify-center pb-6">
+            <Button onClick={() => navigate({ to: "/dashboard/pricing" })}>
+              Upgrade to Pro
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <div className="flex flex-col gap-1">
