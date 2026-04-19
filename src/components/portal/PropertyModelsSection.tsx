@@ -280,6 +280,16 @@ function MediaAssetsList({ assets, onChange, onSyncMore }: MediaAssetsListProps)
   const gifCount = assets.filter((a) => a.kind === "gif").length;
   const visibleCount = assets.filter((a) => a.visible).length;
 
+  // Signed Matterport URLs typically expire after ~7 days. Flag stale syncs.
+  const STALE_MS = 7 * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  const isStale = (a: MediaAsset) =>
+    a.kind !== "video" &&
+    a.embeddable &&
+    !!a.syncedAt &&
+    now - new Date(a.syncedAt).getTime() > STALE_MS;
+  const staleCount = assets.filter(isStale).length;
+
   const toggle = (id: string, visible: boolean) =>
     onChange(assets.map((a) => (a.id === id ? { ...a, visible } : a)));
   const remove = (id: string) => onChange(assets.filter((a) => a.id !== id));
@@ -299,11 +309,23 @@ function MediaAssetsList({ assets, onChange, onSyncMore }: MediaAssetsListProps)
           Sync more
         </Button>
       </div>
+      {staleCount > 0 && (
+        <p className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-700 dark:text-amber-400">
+          {staleCount} asset{staleCount === 1 ? "" : "s"} signed over 7 days ago — re-sync if any photos stop loading.
+        </p>
+      )}
       <ul className="divide-y divide-border/50 rounded border border-border/40 bg-background">
         {assets.map((a) => (
           <li key={a.id} className="flex items-center gap-2 px-2 py-1.5">
-            <span className="flex size-7 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground">
-              {a.kind === "video" ? (
+            <span className="flex size-7 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground overflow-hidden">
+              {a.posterUrl || (a.kind !== "video" && a.embeddable) ? (
+                <img
+                  src={a.posterUrl ?? a.url}
+                  alt=""
+                  className="size-full object-cover"
+                  loading="lazy"
+                />
+              ) : a.kind === "video" ? (
                 <VideoIcon className="size-3.5" />
               ) : (
                 <ImageIcon className="size-3.5" />
@@ -314,6 +336,11 @@ function MediaAssetsList({ assets, onChange, onSyncMore }: MediaAssetsListProps)
               <p className="truncate text-[10px] text-muted-foreground">{a.id}</p>
             </div>
             <Badge variant="outline" className="text-[10px] capitalize">{a.kind}</Badge>
+            {!a.embeddable && a.kind === "video" && (
+              <Badge variant="outline" className="text-[10px] border-amber-500/40 text-amber-700 dark:text-amber-400" title="Matterport doesn't expose direct video URLs — opens in a new tab">
+                External
+              </Badge>
+            )}
             <Switch
               checked={a.visible}
               onCheckedChange={(checked) => toggle(a.id, checked)}
