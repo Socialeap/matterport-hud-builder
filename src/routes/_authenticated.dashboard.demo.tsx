@@ -357,6 +357,7 @@ function DemoPage() {
                 onAdd={handleAddModel}
                 onRemove={handleRemoveModel}
                 onChange={handleModelChange}
+                onMediaChange={handleMediaChange}
                 onOpenBehavior={handleOpenBehavior}
               />
             </TabsContent>

@@ -398,6 +398,7 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
               onAdd={handleAddModel}
               onRemove={handleRemoveModel}
               onChange={handleModelChange}
+              onMediaChange={handleMediaChange}
               onOpenBehavior={handleOpenBehavior}
               savedModelId={savedModelId}
             />
