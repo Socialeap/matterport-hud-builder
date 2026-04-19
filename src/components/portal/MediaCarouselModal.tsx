@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { X, ChevronLeft, ChevronRight, Play } from "lucide-react";
+import { X, ChevronLeft, ChevronRight, Play, ExternalLink, Film } from "lucide-react";
 import type { MediaAsset } from "./types";
 
 interface MediaCarouselModalProps {
@@ -10,6 +10,15 @@ interface MediaCarouselModalProps {
   initialIndex?: number;
 }
 
+/** Decide HOW to render an asset based on its url/embeddable flag, not just kind. */
+function renderMode(asset: MediaAsset): "image" | "video-file" | "external" {
+  if (!asset.embeddable) return "external";
+  const u = asset.url.toLowerCase();
+  if (/\.(mp4|webm|mov|m4v)(\?|$)/i.test(u)) return "video-file";
+  // Photos and GIFs both render as <img> (browsers animate gifs natively).
+  return "image";
+}
+
 export function MediaCarouselModal({
   open,
   onClose,
@@ -17,25 +26,19 @@ export function MediaCarouselModal({
   initialIndex = 0,
 }: MediaCarouselModalProps) {
   const [index, setIndex] = useState(initialIndex);
-  const [videoPlaying, setVideoPlaying] = useState(false);
 
   const total = assets.length;
 
   const goPrev = useCallback(() => {
-    setVideoPlaying(false);
     setIndex((i) => (i - 1 + total) % total);
   }, [total]);
 
   const goNext = useCallback(() => {
-    setVideoPlaying(false);
     setIndex((i) => (i + 1) % total);
   }, [total]);
 
   useEffect(() => {
-    if (open) {
-      setIndex(initialIndex);
-      setVideoPlaying(false);
-    }
+    if (open) setIndex(initialIndex);
   }, [open, initialIndex]);
 
   useEffect(() => {
@@ -58,7 +61,7 @@ export function MediaCarouselModal({
   if (typeof document === "undefined") return null;
 
   const current = assets[index];
-  const isVideo = current.kind === "video";
+  const mode = renderMode(current);
 
   const overlay = (
     <div
@@ -98,28 +101,19 @@ export function MediaCarouselModal({
 
         {/* Media stage */}
         <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-black shadow-[0_25px_80px_-15px_rgba(0,0,0,0.7)]">
-          {isVideo ? (
-            videoPlaying ? (
-              <iframe
-                key={current.id}
-                src={current.url}
-                className="h-full w-full"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-                allowFullScreen
-                title={current.label || "Property video"}
-              />
-            ) : (
-              <button
-                onClick={() => setVideoPlaying(true)}
-                className="group flex h-full w-full items-center justify-center bg-gradient-to-br from-zinc-900 to-black transition-colors hover:from-zinc-800"
-                aria-label="Play video"
-              >
-                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-white/15 backdrop-blur-md transition-transform group-hover:scale-110">
-                  <Play className="ml-1 h-8 w-8 text-white" fill="currentColor" />
-                </div>
-              </button>
-            )
-          ) : (
+          {mode === "video-file" && (
+            <video
+              key={current.id}
+              src={current.url}
+              poster={current.posterUrl}
+              controls
+              autoPlay
+              playsInline
+              className="h-full w-full object-contain"
+            />
+          )}
+
+          {mode === "image" && (
             <img
               key={current.id}
               src={current.url}
@@ -128,7 +122,46 @@ export function MediaCarouselModal({
             />
           )}
 
-          {/* Arrows (overlay on stage) */}
+          {mode === "external" && (
+            <div
+              key={current.id}
+              className="relative flex h-full w-full items-center justify-center bg-gradient-to-br from-zinc-900 to-black"
+              style={
+                current.posterUrl
+                  ? {
+                      backgroundImage: `linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.55)), url(${current.posterUrl})`,
+                      backgroundSize: "cover",
+                      backgroundPosition: "center",
+                    }
+                  : undefined
+              }
+            >
+              <div className="flex flex-col items-center gap-4 px-6 text-center">
+                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-white/15 backdrop-blur-md">
+                  <Film className="h-9 w-9 text-white" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-base font-semibold text-white">
+                    {current.label || "Matterport video"}
+                  </p>
+                  <p className="max-w-md text-xs text-white/70">
+                    Matterport hosts this video privately — open it on Matterport to play.
+                  </p>
+                </div>
+                <a
+                  href={current.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-2 text-sm font-medium text-black transition-transform hover:scale-105"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Open in Matterport
+                </a>
+              </div>
+            </div>
+          )}
+
+          {/* Arrows */}
           {total > 1 && (
             <>
               <button
@@ -152,34 +185,41 @@ export function MediaCarouselModal({
         {/* Thumbnail strip */}
         {total > 1 && (
           <div className="mt-4 flex gap-2 overflow-x-auto px-1 pb-1">
-            {assets.map((a, i) => (
-              <button
-                key={a.id}
-                onClick={() => {
-                  setVideoPlaying(false);
-                  setIndex(i);
-                }}
-                className={`relative h-14 w-20 shrink-0 overflow-hidden rounded-md border-2 transition-all ${
-                  i === index
-                    ? "border-white opacity-100"
-                    : "border-transparent opacity-60 hover:opacity-90"
-                }`}
-                aria-label={`Go to media ${i + 1}`}
-              >
-                {a.kind === "video" ? (
-                  <div className="flex h-full w-full items-center justify-center bg-zinc-800">
-                    <Play className="h-4 w-4 text-white" fill="currentColor" />
-                  </div>
-                ) : (
-                  <img
-                    src={a.url}
-                    alt=""
-                    className="h-full w-full object-cover"
-                    loading="lazy"
-                  />
-                )}
-              </button>
-            ))}
+            {assets.map((a, i) => {
+              const thumbSrc = a.posterUrl ?? (a.kind !== "video" ? a.url : undefined);
+              return (
+                <button
+                  key={a.id}
+                  onClick={() => setIndex(i)}
+                  className={`relative h-14 w-20 shrink-0 overflow-hidden rounded-md border-2 transition-all ${
+                    i === index
+                      ? "border-white opacity-100"
+                      : "border-transparent opacity-60 hover:opacity-90"
+                  }`}
+                  aria-label={`Go to media ${i + 1}`}
+                >
+                  {thumbSrc ? (
+                    <>
+                      <img
+                        src={thumbSrc}
+                        alt=""
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                      />
+                      {a.kind === "video" && (
+                        <span className="absolute inset-0 flex items-center justify-center bg-black/30">
+                          <Play className="h-4 w-4 text-white" fill="currentColor" />
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center bg-zinc-800">
+                      <Play className="h-4 w-4 text-white" fill="currentColor" />
+                    </div>
+                  )}
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
