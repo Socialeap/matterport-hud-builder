@@ -1,11 +1,26 @@
+import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import { Lock, Plus, Trash2, Home, Settings2, MapPin, Film } from "lucide-react";
-import type { PropertyModel } from "./types";
+import { Badge } from "@/components/ui/badge";
+import {
+  Lock,
+  Plus,
+  Trash2,
+  Home,
+  Settings2,
+  MapPin,
+  Film,
+  Download,
+  Image as ImageIcon,
+  Video as VideoIcon,
+  X,
+} from "lucide-react";
+import type { PropertyModel, MediaAsset } from "./types";
 import { PropertyDocsPanel } from "./PropertyDocsPanel";
+import { MediaSyncModal } from "./MediaSyncModal";
 import { useLusLicense } from "@/hooks/useLusLicense";
 import { parseCinematicVideo } from "@/lib/video-embed";
 
@@ -14,6 +29,7 @@ interface PropertyModelsSectionProps {
   onAdd: () => void;
   onRemove: (id: string) => void;
   onChange: (id: string, field: keyof PropertyModel, value: string | boolean) => void;
+  onMediaChange: (id: string, assets: MediaAsset[]) => void;
   onOpenBehavior: (id: string) => void;
   savedModelId?: string | null;
 }
