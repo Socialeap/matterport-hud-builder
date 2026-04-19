@@ -18,6 +18,7 @@ import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as PSlugRouteImport } from './routes/p.$slug'
 import { Route as EmailUnsubscribeRouteImport } from './routes/email/unsubscribe'
+import { Route as ApiMpImageRouteImport } from './routes/api/mp-image'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated.dashboard'
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated.dashboard.index'
 import { Route as PSlugDemoRouteImport } from './routes/p.$slug.demo'
@@ -75,6 +76,11 @@ const PSlugRoute = PSlugRouteImport.update({
 const EmailUnsubscribeRoute = EmailUnsubscribeRouteImport.update({
   id: '/email/unsubscribe',
   path: '/email/unsubscribe',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiMpImageRoute = ApiMpImageRouteImport.update({
+  id: '/api/mp-image',
+  path: '/api/mp-image',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
@@ -167,6 +173,7 @@ export interface FileRoutesByFullPath {
   '/signup': typeof SignupRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/dashboard': typeof AuthenticatedDashboardRouteWithChildren
+  '/api/mp-image': typeof ApiMpImageRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/p/$slug': typeof PSlugRouteWithChildren
   '/dashboard/branding': typeof AuthenticatedDashboardBrandingRoute
@@ -190,6 +197,7 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/unsubscribe': typeof UnsubscribeRoute
+  '/api/mp-image': typeof ApiMpImageRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/p/$slug': typeof PSlugRouteWithChildren
   '/dashboard/branding': typeof AuthenticatedDashboardBrandingRoute
@@ -216,6 +224,7 @@ export interface FileRoutesById {
   '/signup': typeof SignupRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRouteWithChildren
+  '/api/mp-image': typeof ApiMpImageRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/p/$slug': typeof PSlugRouteWithChildren
   '/_authenticated/dashboard/branding': typeof AuthenticatedDashboardBrandingRoute
@@ -242,6 +251,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/unsubscribe'
     | '/dashboard'
+    | '/api/mp-image'
     | '/email/unsubscribe'
     | '/p/$slug'
     | '/dashboard/branding'
@@ -265,6 +275,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/signup'
     | '/unsubscribe'
+    | '/api/mp-image'
     | '/email/unsubscribe'
     | '/p/$slug'
     | '/dashboard/branding'
@@ -290,6 +301,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/unsubscribe'
     | '/_authenticated/dashboard'
+    | '/api/mp-image'
     | '/email/unsubscribe'
     | '/p/$slug'
     | '/_authenticated/dashboard/branding'
@@ -315,6 +327,7 @@ export interface RootRouteChildren {
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
   UnsubscribeRoute: typeof UnsubscribeRoute
+  ApiMpImageRoute: typeof ApiMpImageRoute
   EmailUnsubscribeRoute: typeof EmailUnsubscribeRoute
   PSlugRoute: typeof PSlugRouteWithChildren
   LovableEmailSuppressionRoute: typeof LovableEmailSuppressionRoute
@@ -386,6 +399,13 @@ declare module '@tanstack/react-router' {
       path: '/email/unsubscribe'
       fullPath: '/email/unsubscribe'
       preLoaderRoute: typeof EmailUnsubscribeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/mp-image': {
+      id: '/api/mp-image'
+      path: '/api/mp-image'
+      fullPath: '/api/mp-image'
+      preLoaderRoute: typeof ApiMpImageRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/dashboard': {
@@ -561,6 +581,7 @@ const rootRouteChildren: RootRouteChildren = {
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
   UnsubscribeRoute: UnsubscribeRoute,
+  ApiMpImageRoute: ApiMpImageRoute,
   EmailUnsubscribeRoute: EmailUnsubscribeRoute,
   PSlugRoute: PSlugRouteWithChildren,
   LovableEmailSuppressionRoute: LovableEmailSuppressionRoute,

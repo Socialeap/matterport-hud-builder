@@ -164,8 +164,8 @@ export function MediaSyncModal({
                   Files never leave your browser — parsing happens locally.
                 </p>
                 <p className="mt-1.5 text-[11px] text-muted-foreground">
-                  <strong className="text-foreground">Note:</strong> Matterport signs photo URLs with short-lived tokens.
-                  Re-sync every ~7 days, or whenever images stop loading. Videos always open in Matterport in a new tab (their CDN blocks embedding).
+                  <strong className="text-foreground">Always fresh:</strong> photo URLs are signed on demand, so they
+                  never expire. Re-sync only when you add or remove media in Matterport.
                 </p>
               </PopoverContent>
             </Popover>
