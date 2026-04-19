@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useAuth } from "@/hooks/use-auth";
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -392,6 +392,25 @@ function BrandingPage() {
               )}
             </div>
           </div>
+
+          {branding.stripe_onboarding_complete && (
+            <div className="rounded-lg border bg-muted/30 p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium">Payouts &amp; Earnings</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    View your balance, manage payout schedule, and request instant payouts (typically arrive within 30 minutes).
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Instant Payout fee: <span className="font-medium">1.50%</span> (set by platform)
+                  </p>
+                </div>
+                <Button asChild size="sm" variant="outline">
+                  <Link to="/dashboard/payouts">Manage payouts →</Link>
+                </Button>
+              </div>
+            </div>
+          )}
 
           {branding.stripe_onboarding_complete && (
             <>

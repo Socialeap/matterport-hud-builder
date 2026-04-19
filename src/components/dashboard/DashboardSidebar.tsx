@@ -12,7 +12,9 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { Palette, Users, Play, LayoutDashboard, LogOut, CreditCard, ShoppingCart, Archive } from "lucide-react";
+import { Palette, Users, Play, LayoutDashboard, LogOut, CreditCard, ShoppingCart, Archive, Banknote } from "lucide-react";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 
 const allNavItems = [
   { label: "Overview", to: "/dashboard", icon: LayoutDashboard, roles: ["provider", "client"] },
@@ -21,19 +23,32 @@ const allNavItems = [
   { label: "Orders", to: "/dashboard/orders", icon: ShoppingCart, roles: ["provider", "client"] },
   { label: "Clients", to: "/dashboard/clients", icon: Users, roles: ["provider"] },
   { label: "Pricing", to: "/dashboard/pricing", icon: CreditCard, roles: ["provider"] },
+  { label: "Payouts", to: "/dashboard/payouts", icon: Banknote, roles: ["provider"], requiresStripe: true },
   { label: "Demo", to: "/dashboard/demo", icon: Play, roles: ["provider"] },
 ] as const;
 
 export function DashboardSidebar() {
   const { user, roles, signOut } = useAuth();
   const location = useLocation();
+  const [stripeConnected, setStripeConnected] = useState(false);
 
   const isClient = roles.includes("client" as any);
 
-  // Filter nav items based on role; if no roles yet, show all (provider default)
-  const navItems = isClient
+  useEffect(() => {
+    if (!user || isClient) return;
+    supabase
+      .from("branding_settings")
+      .select("stripe_onboarding_complete")
+      .eq("provider_id", user.id)
+      .maybeSingle()
+      .then(({ data }) => setStripeConnected(Boolean(data?.stripe_onboarding_complete)));
+  }, [user, isClient]);
+
+  // Filter nav items based on role and Stripe gating
+  const navItems = (isClient
     ? allNavItems.filter((item) => (item.roles as readonly string[]).includes("client"))
-    : allNavItems;
+    : allNavItems
+  ).filter((item) => !(item as any).requiresStripe || stripeConnected);
 
   return (
     <Sidebar>

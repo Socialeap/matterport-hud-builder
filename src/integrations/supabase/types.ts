@@ -26,6 +26,7 @@ export type Database = {
           gate_label: string
           hud_bg_color: string
           id: string
+          instant_payout_fee_bps: number
           logo_url: string | null
           model_threshold: number | null
           provider_id: string
@@ -46,6 +47,7 @@ export type Database = {
           gate_label?: string
           hud_bg_color?: string
           id?: string
+          instant_payout_fee_bps?: number
           logo_url?: string | null
           model_threshold?: number | null
           provider_id: string
@@ -66,6 +68,7 @@ export type Database = {
           gate_label?: string
           hud_bg_color?: string
           id?: string
+          instant_payout_fee_bps?: number
           logo_url?: string | null
           model_threshold?: number | null
           provider_id?: string

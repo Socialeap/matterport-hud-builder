@@ -20,3 +20,6 @@ verify_jwt = false
 
 [functions.handle-lead-capture]
 verify_jwt = false
+
+[functions.stripe-connect-account-session]
+verify_jwt = false
