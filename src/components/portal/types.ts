@@ -1,3 +1,13 @@
+export type MediaAssetKind = "video" | "photo" | "gif";
+
+export interface MediaAsset {
+  id: string;            // 11-char Matterport asset id
+  kind: MediaAssetKind;
+  url: string;           // reconstructed durable URL (no ?t= tokens)
+  visible: boolean;      // user toggle for Phase 2 carousel
+  label?: string;        // friendly name (e.g. "Photo 1", "Clip 3")
+}
+
 export interface PropertyModel {
   id: string;
   name: string;
@@ -7,6 +17,7 @@ export interface PropertyModel {
   musicUrl: string;
   cinematicVideoUrl?: string;
   enableNeighborhoodMap?: boolean;
+  multimedia?: MediaAsset[];
 }
 
 export function buildNeighborhoodMapUrl(location: string): string {
