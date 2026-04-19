@@ -1,104 +1,89 @@
 
 
-## Audit findings — most of this is already done
+## Why thumbnails/photos broke on the demo page
 
-A surgical audit of the three files shows the previous turn already implemented the bulk of the requested work:
+The demo's saved data in the database (visible in the network response) stores **stale, expiring `cdn-2.matterport.com` URLs** as `proxyUrl`:
 
-| Spec item | Status | Evidence |
-|---|---|---|
-| 1.1 Use `createStripeClient(env)` | ✅ Done | `stripe-connect-onboard/index.ts:48` |
-| 1.2 Accept `environment` from body | ✅ Done | lines 44–45 |
-| 1.3 Catch "managing losses" / "platform-profile" → 400 | ✅ Done | lines 72–84 |
-| 1.4 Persist `stripe_connect_id` | ✅ Done | lines 87–90 |
-| 2.1 Pass `environment: getStripeEnvironment()` | ✅ Done | branding.tsx:366 |
-| 2.3 Surface real error in toast | ✅ Done | branding.tsx:373–376 |
-| 3 DB sync of `stripe_connect_id` | ✅ Done | column exists, written on create, read by status function |
-
-**Three real gaps remain** that prevent the "Connected" badge from appearing after redirect:
-
-### Gap A — `stripe-connect-status` is hardcoded to sandbox
-
-`stripe-connect-status/index.ts:52` always uses `env: StripeEnv = "sandbox"`. If the onboarding ran in `live`, the status check retrieves the wrong account (or fails) and `onboarding_complete` never flips to true. **Fix:** accept `environment` from request body, default to `'sandbox'`, pass it to `createStripeClient`.
-
-### Gap B — Frontend only checks for `stripe_connect_return=1`, not `stripe_connect_success=true`
-
-The user's spec explicitly calls out `stripe_connect_success=true`. Today the code checks only `stripe_connect_return`. Stripe always returns to `return_url` regardless of completion, so accepting both markers makes the success path more robust. **Fix:** trigger the status check if **either** query param is present, and pass `environment` into the status invoke call.
-
-### Gap C — On success we patch local state but don't refetch
-
-After a successful return the code does `setBranding(prev => ({ ...prev, stripe_onboarding_complete: true }))`. Better to call `fetchBranding()` so the full DB row reloads — that way we also pick up `stripe_connect_id` and any concurrently-changed fields, and survive a remount cleanly.
-
-## Changes (2 files)
-
-### 1. `supabase/functions/stripe-connect-status/index.ts`
-
-Make environment configurable so it matches whichever environment was used to onboard:
-
-```ts
-const body = await req.json().catch(() => ({}));
-const { environment } = body as { environment?: StripeEnv };
-const env: StripeEnv = environment === "live" ? "live" : "sandbox";
-const stripe = createStripeClient(env);
+```
+https://cdn-2.matterport.com/apifs/models/rMhcQXMdUmc/images/Kf4W95cWko1/...?t=2-edabb99b...-1776558857-1
 ```
 
-(replace the hardcoded `const env: StripeEnv = "sandbox";` on line 52)
+That trailing `1776558857` is a unix timestamp embedded in Matterport's signed token — these URLs expire after a few hours. They were valid when first scraped/synced, but are now dead. Browser fetches return 401/403, so `<img>` renders blank.
 
-Note: Supabase `functions.invoke` always sends a POST with a JSON body, so reading the body is safe.
+But the **current** parser in `src/lib/matterport-mhtml.ts` (lines 240–298) only emits the stable, token-free permalink:
 
-### 2. `src/routes/_authenticated.dashboard.branding.tsx`
+```
+https://my.matterport.com/resources/model/{modelId}/image/{assetId}
+```
 
-Replace the return-handler `useEffect` (lines 110–124) with a version that:
-- Triggers on either `stripe_connect_return` **or** `stripe_connect_success=true`
-- Passes `environment: getStripeEnvironment()` to the status check
-- Calls `fetchBranding()` on success instead of patching state, then shows the toast
-- Cleans up **both** query params from the URL
+That format never expires. So **freshly synced** properties work, but the **already-stored** demo data still contains the old expiring URLs from a previous version of the parser/sync flow.
+
+Why this looks like a regression: the demo row was last saved when the codebase was emitting `cdn-2.matterport.com` URLs directly. Subsequent parser improvements switched to permalinks, but the existing `sandbox_demos.properties` JSON was never re-saved, so it retained the expired URLs. The carousel reads `a.proxyUrl` verbatim — no normalization layer.
+
+## Fix: normalize `proxyUrl` at render time
+
+Add a tiny pure helper that, given a `MediaAsset` with a `matterportId` context, rewrites any legacy `cdn-2.matterport.com` URL into the stable `/resources/model/{modelId}/image/{assetId}` permalink. Apply it everywhere a `proxyUrl` is rendered.
+
+This:
+- Fixes the live demo immediately on next page load (no DB migration needed).
+- Is idempotent — already-canonical URLs pass through unchanged.
+- Costs zero network/server work — pure string transform on the client.
+
+### Changes (3 files)
+
+**1. `src/lib/matterport-mhtml.ts`** — export a new helper:
 
 ```ts
-useEffect(() => {
-  const url = new URL(window.location.href);
-  const hasReturn = url.searchParams.has("stripe_connect_return");
-  const hasSuccess = url.searchParams.get("stripe_connect_success") === "true";
-  if ((hasReturn || hasSuccess) && user) {
-    supabase.functions.invoke("stripe-connect-status", {
-      body: { environment: getStripeEnvironment() },
-    }).then(({ data }) => {
-      if (data?.onboarding_complete) {
-        fetchBranding();
-        toast.success("Stripe account connected successfully!");
-      } else {
-        toast.info("Stripe onboarding not yet complete. Finish all required steps in Stripe.");
-      }
-    });
-    url.searchParams.delete("stripe_connect_return");
-    url.searchParams.delete("stripe_connect_success");
-    window.history.replaceState({}, "", url.toString());
+export function canonicalProxyUrl(asset: { id: string; proxyUrl?: string }, modelId: string): string | undefined {
+  // Already canonical or no URL: pass through
+  if (!asset.proxyUrl || asset.proxyUrl.includes("/resources/model/")) {
+    return asset.proxyUrl;
   }
-}, [user, fetchBranding]);
+  // Legacy stale cdn-2 URL — rebuild from stable permalink
+  if (modelId && /^[A-Za-z0-9]{11}$/.test(asset.id)) {
+    return `https://my.matterport.com/resources/model/${modelId}/image/${asset.id}`;
+  }
+  return asset.proxyUrl;
+}
 ```
 
-That's it — no DB migration needed, the schema already has `stripe_connect_id` and `stripe_onboarding_complete`.
+**2. `src/components/portal/MediaCarouselModal.tsx`** — accept `modelId` prop and normalize on read:
 
-## Ripple safety trace
+- Add `modelId: string` to `MediaCarouselModalProps`.
+- Replace `current.proxyUrl` (line 110) with `canonicalProxyUrl(current, modelId)`.
+- Replace `a.proxyUrl` (line 141) with `canonicalProxyUrl(a, modelId)`.
+
+**3. `src/components/portal/HudPreview.tsx`** — pass `modelId` through:
+
+- In the `<MediaCarouselModal>` JSX (line 352–358), add `modelId={currentModel.matterportId}`.
+
+**4. `src/components/portal/PropertyModelsSection.tsx`** — same normalization for the dashboard list (line 306–308). The component already has access to the parent property's `matterportId` through context; pass it where the asset list is rendered and call `canonicalProxyUrl(a, parent.matterportId)`.
+
+### Optional follow-up (not in this turn)
+
+Add a one-time backfill: a small server function that loads each `sandbox_demos` row, walks `properties[].multimedia[]`, rewrites any legacy `cdn-2.matterport.com` URL to the canonical `/resources/...` permalink, and saves. This permanently cleans the data and removes the need for the runtime normalizer. We can do that after confirming the runtime fix works.
+
+### Ripple safety trace
 
 | Touched | Used by | Risk | Mitigation |
 |---|---|---|---|
-| `stripe-connect-status` body shape | Only the branding page's return handler | None — body is optional, defaults to sandbox | Backward-compatible default |
-| Branding `useEffect` deps | Adds `fetchBranding` (already memoized via `useCallback`) | None | `fetchBranding` is stable across renders |
-| URL cleanup | Only used as a one-time marker | None | `replaceState` doesn't trigger nav |
-| `stripe-connect-onboard` | Untouched in this round | None | — |
-| `branding_settings` schema | Untouched | None | Columns already exist |
+| `canonicalProxyUrl` (new) | Pure helper | None | Idempotent — passes canonical URLs through unchanged |
+| `MediaCarouselModal` | `HudPreview` (only caller) | None | New required prop is added at the only call site |
+| `HudPreview` | `HudBuilderSandbox`, demo page | None | Passes existing `currentModel.matterportId` |
+| `PropertyModelsSection` thumbs | Dashboard builder only | None | Same helper applied to the list rendering |
+| Stored DB data | `sandbox_demos.properties` | Untouched | Renderer normalizes — no migration required |
 
-## Out of scope
+### Out of scope
 
-- Adding a manual "Refresh status" button (current auto-check on return is sufficient).
-- Disconnect / re-onboard flow (not requested).
-- Webhook-driven update of `stripe_onboarding_complete` (the on-return polling already handles the only path that gets a user back to the page).
+- Re-scraping Matterport (not needed — permalink is stable).
+- Changing the MHTML parser (already correct).
+- Changes to video/`embedUrl` paths (those already use stable `/clip/` permalinks and work — only `proxyUrl` is affected).
 
-## Verify after deploy
+### Verify after deploy
 
-1. Click **Connect with Stripe** on `/dashboard/branding`.
-2. Complete Stripe Express onboarding.
-3. Stripe redirects back with `?stripe_connect_return=1`.
-4. The page calls `stripe-connect-status` with the matching environment, the DB flips `stripe_onboarding_complete = true`, `fetchBranding()` reloads, and the badge changes from "Connect with Stripe" button to "Stripe Connected ✅".
-5. If the user closes Stripe early, the toast says "Stripe onboarding not yet complete" instead of silently doing nothing.
+1. Reload `/p/transcendencemedia/demo`.
+2. Open the Media Gallery (Images icon in HUD header).
+3. Thumbnail strip shows poster frames; main viewer shows photos.
+4. The video already worked and continues to work.
+5. Builder thumbnails on `/dashboard/demo` and `/p/transcendencemedia` also display correctly.
 
