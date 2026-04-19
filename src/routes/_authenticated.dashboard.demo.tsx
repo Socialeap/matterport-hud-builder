@@ -385,14 +385,44 @@ function DemoPage() {
     setAgent((prev) => ({ ...prev, [field]: value }));
   }, []);
 
-  const handleAgentAvatarChange = useCallback((file: File | null) => {
-    setAgentAvatarFile(file);
-    if (file) {
-      setAgent((prev) => ({ ...prev, avatarUrl: URL.createObjectURL(file) }));
-    } else {
-      setAgent((prev) => ({ ...prev, avatarUrl: "" }));
+  const handleAgentAvatarChange = useCallback(
+    async (file: File | null) => {
+      if (!file) {
+        setAgentAvatarFile(null);
+        setAgent((prev) => ({ ...prev, avatarUrl: "" }));
+        await persistSilently({ avatarUrl: "" });
+        return;
+      }
+      // Upload immediately so the avatar survives navigation.
+      try {
+        const url = await uploadIfFile(file, null, "avatar");
+        if (!url) return;
+        setAgentAvatarFile(null);
+        setAgent((prev) => ({ ...prev, avatarUrl: url }));
+        await persistSilently({ avatarUrl: url });
+        toast.success("Avatar uploaded");
+      } catch (err) {
+        console.error("Avatar upload failed:", err);
+      }
+    },
+    [uploadIfFile, persistSilently]
+  );
+
+  const publicDemoUrl = studioSlug
+    ? `${typeof window !== "undefined" ? window.location.origin : ""}/p/${studioSlug}/demo`
+    : null;
+
+  const handleCopyUrl = useCallback(async () => {
+    if (!publicDemoUrl) return;
+    try {
+      await navigator.clipboard.writeText(publicDemoUrl);
+      setUrlCopied(true);
+      toast.success("URL copied to clipboard");
+      setTimeout(() => setUrlCopied(false), 2000);
+    } catch {
+      toast.error("Failed to copy URL");
     }
-  }, []);
+  }, [publicDemoUrl]);
 
   const behaviorModel = behaviorModelId ? models.find((m) => m.id === behaviorModelId) : null;
 
