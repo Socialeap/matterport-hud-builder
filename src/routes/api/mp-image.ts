@@ -1,29 +1,31 @@
 /**
- * Stateless 302 redirect proxy for Matterport CDN assets.
+ * Stateless 302 redirect proxy for Matterport image assets.
  *
  *   GET /api/mp-image?m={modelId}&id={assetId}
  *
  * Strategy:
- *   1. Validate modelId + assetId (strict 11-char alphanumeric)
- *   2. Fetch (or cache-hit) the model's public viewer manifest
- *      to get a fresh signed cdn-2 URL for this assetId
- *   3. 302 redirect to the signed URL — browser fetches bytes directly
- *      from Matterport's CDN, no bandwidth cost to us
+ *   Redirect directly to Matterport's stable, token-free resource permalink:
+ *     https://my.matterport.com/resources/model/{modelId}/image/{assetId}
  *
- * Why this works:
- *   - <img> requests follow redirects natively, no CORS/CSP issues
- *   - Tokens stay fresh because we re-mint per request (cached 25 min)
- *   - Standalone HTML files just embed `<img src="https://3dps.../api/mp-image?...">`
- *     and never touch tokens or auth
+ *   This is the same URL pattern Matterport uses for embeddable video clips
+ *   (/resources/model/{modelId}/clip/{assetId}). No signed CDN token is needed;
+ *   Matterport handles access server-side for public models.
+ *
+ * Why this replaces the old manifest-scraping approach:
+ *   The previous implementation fetched the Matterport viewer page and tried
+ *   to extract signed cdn-2.matterport.com URLs. The viewer is a React SPA —
+ *   its initial HTML response contains no CDN URLs. The scraper always returned
+ *   empty results, so the proxy always served the 1×1 fallback PNG.
  *
  * Security:
- *   - Strict input validation
- *   - Whitelist redirect host to cdn-2.matterport.com only
+ *   - Strict 11-char alphanumeric input validation (prevents path traversal)
+ *   - URL is constructed deterministically from validated inputs — not from
+ *     untrusted external data — so SSRF is not a concern
  *   - Simple in-memory rate limit per IP (60 req/min)
- *   - Returns 1×1 transparent PNG on lookup failure (graceful, not broken)
+ *   - Returns 1×1 transparent PNG only on invalid input / rate-limit
  */
 import { createFileRoute } from "@tanstack/react-router";
-import { getSignedAssetUrl, isValidMatterportId } from "@/lib/matterport-manifest";
+import { isValidMatterportId } from "@/lib/matterport-manifest";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -31,8 +33,7 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Content-Type",
 } as const;
 
-// 1×1 transparent PNG (67 bytes) — served when an asset can't be resolved
-// so visitor pages don't show broken-image icons.
+// 1×1 transparent PNG — served on bad input so pages don't show broken-image icons.
 const FALLBACK_PNG = Uint8Array.from(
   atob(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
@@ -40,7 +41,7 @@ const FALLBACK_PNG = Uint8Array.from(
   (c) => c.charCodeAt(0)
 );
 
-// In-memory rate limiter: 60 req/min/IP. Resets on Worker restart.
+// In-memory rate limiter: 60 req/min/IP.
 const RATE_LIMIT = 60;
 const RATE_WINDOW_MS = 60 * 1000;
 const ipBuckets = new Map<string, { count: number; windowStart: number }>();
@@ -78,7 +79,6 @@ export const Route = createFileRoute("/api/mp-image")({
         const modelId = url.searchParams.get("m") ?? "";
         const assetId = url.searchParams.get("id") ?? "";
 
-        // Strict input validation
         if (!isValidMatterportId(modelId) || !isValidMatterportId(assetId)) {
           return new Response("Invalid id", {
             status: 400,
@@ -86,49 +86,25 @@ export const Route = createFileRoute("/api/mp-image")({
           });
         }
 
-        // Rate limit
         const ip =
           request.headers.get("cf-connecting-ip") ??
           request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
           "unknown";
         if (!rateLimitOk(ip)) {
-          return new Response("Too many requests", {
-            status: 429,
-            headers: { "Content-Type": "text/plain", ...CORS_HEADERS },
-          });
-        }
-
-        // Resolve signed URL (cached per model for ~25 min)
-        let signedUrl: string | null;
-        try {
-          signedUrl = await getSignedAssetUrl(modelId, assetId);
-        } catch (err) {
-          console.error("[mp-image] resolve failed:", err);
           return fallbackImage();
         }
 
-        if (!signedUrl) {
-          // Asset truly not found in the manifest — graceful placeholder.
-          return fallbackImage();
-        }
-
-        // Defense-in-depth: only ever redirect to the Matterport CDN.
-        try {
-          const target = new URL(signedUrl);
-          if (target.hostname !== "cdn-2.matterport.com") {
-            console.warn("[mp-image] blocked non-CDN redirect:", target.hostname);
-            return fallbackImage();
-          }
-        } catch {
-          return fallbackImage();
-        }
+        // Redirect to Matterport's stable resource permalink.
+        // The resource URL is constructed from validated 11-char alphanumeric
+        // inputs — path traversal is impossible.
+        const resourceUrl = `https://my.matterport.com/resources/model/${modelId}/image/${assetId}`;
 
         return new Response(null, {
           status: 302,
           headers: {
-            Location: signedUrl,
-            // Short browser cache so a fresh signed URL is fetched periodically.
-            "Cache-Control": "private, max-age=300",
+            Location: resourceUrl,
+            // Resource URLs are stable (no expiring tokens) — cache aggressively.
+            "Cache-Control": "public, max-age=3600",
             ...CORS_HEADERS,
           },
         });
