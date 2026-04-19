@@ -30,6 +30,9 @@ import {
   Boxes,
   CreditCard,
   Wand2,
+  Archive,
+  Film,
+  MapPin,
 } from "lucide-react";
 import heroHudBanner from "@/assets/hero-hud-showcase.png";
 import { toast } from "sonner";
@@ -156,6 +159,24 @@ const clientFeatures = [
     description:
       "Permanent Assets. Clients download and own the self-contained presentation file they can host anywhere, including cost-free platform like Netlify or Github.",
   },
+  {
+    icon: Archive,
+    title: "Production Vault Add-Ons",
+    description:
+      "Pro studios curate a proprietary library of sound, HUD filters, widgets, custom icons, and property docs — surfaced inside every client's builder as plug-and-play upgrades.",
+  },
+  {
+    icon: Film,
+    title: "Matterport Media Sync & Cinema Mode",
+    description:
+      "Each property auto-syncs videos, photos, and GIFs from its Matterport Media page into a built-in carousel — plus a one-click Cinematic Video player for YouTube, Vimeo, Loom, Wistia, or .mp4 links.",
+  },
+  {
+    icon: MapPin,
+    title: "Google-Powered Neighborhood Map",
+    description:
+      "Each listed property gets an embedded interactive map of its surroundings — schools, dining, transit — accessible directly from the HUD without leaving the tour.",
+  },
 ];
 
 
@@ -165,10 +186,13 @@ const starterFeatures = [
   { text: "Client invitation management", included: true },
   { text: "Music & tour behavior config", included: true },
   { text: "AI Property FAQ Assistant*", included: true },
+  { text: "Matterport Media Sync & Cinema Mode", included: true },
+  { text: "Google-Powered Neighborhood Map", included: true },
   { text: "Easy Stripe-Connect payout options", included: true },
   { text: "Per-pricing for multiple property tours", included: true },
   { text: "Custom domain", included: false },
   { text: "Full whitelabel (remove co-branding)", included: false },
+  { text: "Production Vault (curated client add-ons)", included: false },
   { text: "AI Lead Generation for Clients*", included: false },
 ];
 
@@ -178,9 +202,12 @@ const proFeatures = [
   { text: "Client invitation management", included: true },
   { text: "Music & tour behavior config", included: true },
   { text: "AI Property FAQ Assistant*", included: true },
+  { text: "Matterport Media Sync & Cinema Mode", included: true },
+  { text: "Google-Powered Neighborhood Map", included: true },
   { text: "Easy Stripe-Connect payout options", included: true },
   { text: "Per-pricing for multiple property tours", included: true },
   { text: "Custom domain", included: true },
+  { text: "Production Vault (curated client add-ons)", included: true },
   { text: "AI Lead Generation for Clients*", included: true },
   { text: "Priority support", included: true },
 ];

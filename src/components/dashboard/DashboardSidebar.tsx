@@ -19,7 +19,7 @@ import { supabase } from "@/integrations/supabase/client";
 const allNavItems = [
   { label: "Overview", to: "/dashboard", icon: LayoutDashboard, roles: ["provider", "client"] },
   { label: "Branding", to: "/dashboard/branding", icon: Palette, roles: ["provider"] },
-  { label: "Vault", to: "/dashboard/vault", icon: Archive, roles: ["provider"] },
+  { label: "Vault", to: "/dashboard/vault", icon: Archive, roles: ["provider"], requiresPro: true },
   { label: "Orders", to: "/dashboard/orders", icon: ShoppingCart, roles: ["provider", "client"] },
   { label: "Clients", to: "/dashboard/clients", icon: Users, roles: ["provider"] },
   { label: "Pricing", to: "/dashboard/pricing", icon: CreditCard, roles: ["provider"] },
@@ -31,6 +31,7 @@ export function DashboardSidebar() {
   const { user, roles, signOut } = useAuth();
   const location = useLocation();
   const [stripeConnected, setStripeConnected] = useState(false);
+  const [tier, setTier] = useState<"starter" | "pro" | null>(null);
 
   const isClient = roles.includes("client" as any);
 
@@ -38,17 +39,24 @@ export function DashboardSidebar() {
     if (!user || isClient) return;
     supabase
       .from("branding_settings")
-      .select("stripe_onboarding_complete")
+      .select("stripe_onboarding_complete, tier")
       .eq("provider_id", user.id)
       .maybeSingle()
-      .then(({ data }) => setStripeConnected(Boolean(data?.stripe_onboarding_complete)));
+      .then(({ data }) => {
+        setStripeConnected(Boolean(data?.stripe_onboarding_complete));
+        setTier((data?.tier as "starter" | "pro") ?? "starter");
+      });
   }, [user, isClient]);
 
-  // Filter nav items based on role and Stripe gating
+  const isPro = tier === "pro";
+
+  // Filter nav items based on role, Stripe, and Pro tier gating
   const navItems = (isClient
     ? allNavItems.filter((item) => (item.roles as readonly string[]).includes("client"))
     : allNavItems
-  ).filter((item) => !(item as any).requiresStripe || stripeConnected);
+  )
+    .filter((item) => !(item as any).requiresStripe || stripeConnected)
+    .filter((item) => !(item as any).requiresPro || isPro);
 
   return (
     <Sidebar>

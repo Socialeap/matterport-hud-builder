@@ -1,5 +1,6 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Lock } from "lucide-react";
 import {
   Volume2,
   Wand2,
@@ -169,6 +170,7 @@ const emptyForm: AssetFormState = {
 
 function VaultPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [assets, setAssets] = useState<VaultAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<VaultCategory>("spatial_audio");
@@ -176,6 +178,17 @@ function VaultPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<AssetFormState>(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [tier, setTier] = useState<"starter" | "pro" | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("branding_settings")
+      .select("tier")
+      .eq("provider_id", user.id)
+      .maybeSingle()
+      .then(({ data }) => setTier((data?.tier as "starter" | "pro") ?? "starter"));
+  }, [user]);
 
   const fetchAssets = useCallback(async () => {
     if (!user) return;
@@ -368,6 +381,32 @@ function VaultPage() {
     setEditingId(null);
     fetchAssets();
   };
+
+  if (tier === "starter") {
+    return (
+      <div className="mx-auto max-w-2xl py-16">
+        <Card className="border-dashed">
+          <CardHeader className="items-center text-center">
+            <div className="flex size-12 items-center justify-center rounded-full bg-primary/10">
+              <Lock className="size-6 text-primary" />
+            </div>
+            <CardTitle className="mt-3">Production Vault is a Pro feature</CardTitle>
+            <CardDescription className="max-w-md">
+              Curate sound libraries, HUD filters, interactive widgets, custom
+              icons, property docs, and external links — then offer them as
+              plug-and-play options inside your clients' Presentation Builder.
+              Upgrade to Pro to unlock the Vault.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex justify-center pb-6">
+            <Button onClick={() => navigate({ to: "/dashboard/pricing" })}>
+              Upgrade to Pro
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
