@@ -9,17 +9,15 @@
  *   - id        — the 11-char Matterport asset id (extracted from data-testid)
  *   - kind      — video | photo | gif (classified by filename extension)
  *   - label     — friendly name (derived from filename)
- *   - proxyUrl  — for photos/gifs:
+ *   - proxyUrl  — for all asset kinds:
  *                   `https://my.matterport.com/resources/model/{modelId}/image/{assetId}`
- *                   This is Matterport's stable, token-free permalink — the same
- *                   pattern used for video clips (`/clip/{assetId}`). No signed
- *                   token; Matterport handles auth server-side for public models.
- *   - embedUrl  — for videos: Matterport's official iframeable clip player.
+ *                   Matterport's stable, token-free permalink. For photos/gifs this
+ *                   serves the image; for videos it serves the poster frame used in
+ *                   thumbnail strips.
+ *   - embedUrl  — for videos only: same domain, `/clip/{assetId}` path — redirects
+ *                   to the raw .mp4 file, played via a <video> element.
  *
- * Why we use the /resources/ URL instead of the CDN URL:
- *   Signed CDN URLs (cdn-2.matterport.com) extracted from the MHTML expire in
- *   ~1 h and are refused cross-origin. The /resources/ permalink is stable and
- *   works indefinitely for public models — no scraping or token management needed.
+ * All /resources/ URLs are token-free and stable for public models.
  */
 
 import type { MediaAsset, MediaAssetKind } from "@/components/portal/types";
@@ -275,8 +273,9 @@ export function parseMatterportMhtml(rawText: string): ParsedMhtml {
         id: card.assetId,
         kind: "video",
         embedUrl: buildClipEmbedUrl(modelId, card.assetId),
-        // Videos use embedUrl (iframe clip player); no /image/ resource URL.
-        proxyUrl: undefined,
+        // Poster frame for thumbnail strip — same /image/ endpoint Matterport
+        // uses for photos; serves a still frame for clip assets.
+        proxyUrl: buildResourceUrl(modelId, card.assetId),
         filename: card.filename ?? undefined,
         label: prettyLabel(card.filename, `Clip ${videoCount}`),
         visible: true,

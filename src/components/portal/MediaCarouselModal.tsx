@@ -83,7 +83,7 @@ export function MediaCarouselModal({
         <div className="absolute -top-11 left-0 text-sm font-medium text-white/90">
           {index + 1} / {total}
           <span className="ml-3 text-xs uppercase tracking-wider text-white/60">
-            {current.kind}
+            {current.kind === "gif" ? "GIF" : current.kind === "video" ? "Video" : "Photo"}
           </span>
           {current.label && (
             <span className="ml-3 text-xs text-white/70">{current.label}</span>
@@ -101,9 +101,7 @@ export function MediaCarouselModal({
               playsInline
               className="h-full w-full"
               style={{ objectFit: "contain" }}
-            >
-              <source src={current.embedUrl} type="video/mp4" />
-            </video>
+            />
           )}
 
           {!isVideo && current.proxyUrl && (
