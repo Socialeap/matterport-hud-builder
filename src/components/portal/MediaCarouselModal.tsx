@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { X, ChevronLeft, ChevronRight, Play, ExternalLink, Film } from "lucide-react";
+import { X, ChevronLeft, ChevronRight, Play } from "lucide-react";
 import type { MediaAsset } from "./types";
 
 interface MediaCarouselModalProps {
@@ -8,15 +8,6 @@ interface MediaCarouselModalProps {
   onClose: () => void;
   assets: MediaAsset[];
   initialIndex?: number;
-}
-
-/** Decide HOW to render an asset based on its url/embeddable flag, not just kind. */
-function renderMode(asset: MediaAsset): "image" | "video-file" | "external" {
-  if (!asset.embeddable) return "external";
-  const u = asset.url.toLowerCase();
-  if (/\.(mp4|webm|mov|m4v)(\?|$)/i.test(u)) return "video-file";
-  // Photos and GIFs both render as <img> (browsers animate gifs natively).
-  return "image";
 }
 
 export function MediaCarouselModal({
@@ -61,7 +52,7 @@ export function MediaCarouselModal({
   if (typeof document === "undefined") return null;
 
   const current = assets[index];
-  const mode = renderMode(current);
+  const isVideo = current.kind === "video";
 
   const overlay = (
     <div
@@ -101,64 +92,24 @@ export function MediaCarouselModal({
 
         {/* Media stage */}
         <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-black shadow-[0_25px_80px_-15px_rgba(0,0,0,0.7)]">
-          {mode === "video-file" && (
-            <video
+          {isVideo && current.embedUrl && (
+            <iframe
               key={current.id}
-              src={current.url}
-              poster={current.posterUrl}
-              controls
-              autoPlay
-              playsInline
-              className="h-full w-full object-contain"
+              src={current.embedUrl}
+              title={current.label || "Matterport clip"}
+              className="h-full w-full border-0"
+              allow="autoplay; fullscreen; picture-in-picture"
+              allowFullScreen
             />
           )}
 
-          {mode === "image" && (
+          {!isVideo && current.proxyUrl && (
             <img
               key={current.id}
-              src={current.url}
+              src={current.proxyUrl}
               alt={current.label || `Property ${current.kind}`}
               className="h-full w-full object-contain"
             />
-          )}
-
-          {mode === "external" && (
-            <div
-              key={current.id}
-              className="relative flex h-full w-full items-center justify-center bg-gradient-to-br from-zinc-900 to-black"
-              style={
-                current.posterUrl
-                  ? {
-                      backgroundImage: `linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.55)), url(${current.posterUrl})`,
-                      backgroundSize: "cover",
-                      backgroundPosition: "center",
-                    }
-                  : undefined
-              }
-            >
-              <div className="flex flex-col items-center gap-4 px-6 text-center">
-                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-white/15 backdrop-blur-md">
-                  <Film className="h-9 w-9 text-white" />
-                </div>
-                <div className="space-y-1">
-                  <p className="text-base font-semibold text-white">
-                    {current.label || "Matterport video"}
-                  </p>
-                  <p className="max-w-md text-xs text-white/70">
-                    Matterport hosts this video privately — open it on Matterport to play.
-                  </p>
-                </div>
-                <a
-                  href={current.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-2 text-sm font-medium text-black transition-transform hover:scale-105"
-                >
-                  <ExternalLink className="h-4 w-4" />
-                  Open in Matterport
-                </a>
-              </div>
-            </div>
           )}
 
           {/* Arrows */}
@@ -186,7 +137,7 @@ export function MediaCarouselModal({
         {total > 1 && (
           <div className="mt-4 flex gap-2 overflow-x-auto px-1 pb-1">
             {assets.map((a, i) => {
-              const thumbSrc = a.posterUrl ?? (a.kind !== "video" ? a.url : undefined);
+              const thumbSrc = a.proxyUrl;
               return (
                 <button
                   key={a.id}
@@ -199,23 +150,21 @@ export function MediaCarouselModal({
                   aria-label={`Go to media ${i + 1}`}
                 >
                   {thumbSrc ? (
-                    <>
-                      <img
-                        src={thumbSrc}
-                        alt=""
-                        className="h-full w-full object-cover"
-                        loading="lazy"
-                      />
-                      {a.kind === "video" && (
-                        <span className="absolute inset-0 flex items-center justify-center bg-black/30">
-                          <Play className="h-4 w-4 text-white" fill="currentColor" />
-                        </span>
-                      )}
-                    </>
+                    <img
+                      src={thumbSrc}
+                      alt=""
+                      className="h-full w-full object-cover"
+                      loading="lazy"
+                    />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center bg-zinc-800">
                       <Play className="h-4 w-4 text-white" fill="currentColor" />
                     </div>
+                  )}
+                  {a.kind === "video" && (
+                    <span className="absolute inset-0 flex items-center justify-center bg-black/30">
+                      <Play className="h-4 w-4 text-white" fill="currentColor" />
+                    </span>
                   )}
                 </button>
               );

@@ -1,25 +1,27 @@
 export type MediaAssetKind = "video" | "photo" | "gif";
 
 export interface MediaAsset {
-  id: string;            // 11-char Matterport asset id
+  /** 11-char Matterport asset id. */
+  id: string;
   kind: MediaAssetKind;
-  /**
-   * Primary embeddable URL.
-   *  - photo/gif: signed cdn-2 URL (extracted directly from MHTML, includes ?t= token)
-   *  - video:    NOT directly embeddable — Matterport doesn't expose mp4 URLs in MHTML.
-   *              We store the model's public share URL as a fallback "Open in Matterport" link.
-   */
-  url: string;
-  /** True for direct-media URLs (img/gif/video file). False for share-page fallbacks. */
-  embeddable: boolean;
-  /** Optional poster/thumbnail (animation-NNNN-NNN.jpg) — used for video tiles in carousel. */
-  posterUrl?: string;
+  /** User toggle for carousel inclusion. */
+  visible: boolean;
+  /** Friendly display label (derived from filename or generic). */
+  label?: string;
   /** Original Matterport filename (e.g. "LONG-INTRO-480p-MP4.mp4") — best label source. */
   filename?: string;
-  /** ISO timestamp of when this asset was synced (signed URLs expire — re-sync after ~7 days). */
-  syncedAt?: string;
-  visible: boolean;      // user toggle for carousel
-  label?: string;        // friendly name (derived from filename or generic)
+  /**
+   * For photo/gif: stable proxy URL hosted by us that 302-redirects to a
+   * fresh signed Matterport CDN URL on every request. Safe to embed in
+   * exported standalone HTML — never expires.
+   *   e.g. /api/mp-image?m={modelId}&id={assetId}
+   */
+  proxyUrl?: string;
+  /**
+   * For video: Matterport's official iframeable clip player.
+   *   e.g. https://my.matterport.com/resources/model/{modelId}/clip/{assetId}
+   */
+  embedUrl?: string;
 }
 
 export interface PropertyModel {
