@@ -5,8 +5,8 @@
 // FIXTURE_TEMPLATE / expected values below to match that PDF.
 
 import { assert, assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { pdfjsHeuristic } from "./extractors/pdfjs-heuristic.ts";
-import type { VaultTemplate } from "./extractors/types.ts";
+import { pdfjsHeuristic } from "../_shared/extractors/pdfjs-heuristic.ts";
+import type { VaultTemplate } from "../_shared/extractors/types.ts";
 
 const FIXTURE_PATH = new URL("./fixtures/sample.pdf", import.meta.url);
 

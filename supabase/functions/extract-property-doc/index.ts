@@ -11,8 +11,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.103.0";
 
-import { getProvider } from "./extractors/index.ts";
-import type { VaultTemplate } from "./extractors/types.ts";
+import { getProvider } from "../_shared/extractors/index.ts";
+import type { VaultTemplate } from "../_shared/extractors/types.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
