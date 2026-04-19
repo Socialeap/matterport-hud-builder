@@ -529,28 +529,58 @@ function DemoPage() {
               />
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleSave}
-                disabled={saving}
-              >
-                <Save className="mr-2 h-4 w-4" />
-                {saving ? "Saving…" : "Save Draft"}
-              </Button>
-              {isPublished && studioSlug && (
-                <Button variant="ghost" size="sm" asChild>
-                  <a
-                    href={`/p/${studioSlug}/demo`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <ExternalLink className="mr-2 h-4 w-4" />
-                    View Live
-                  </a>
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSave}
+                  disabled={saving}
+                >
+                  <Save className="mr-2 h-4 w-4" />
+                  {saving ? "Saving…" : "Save Draft"}
                 </Button>
+              </div>
+
+              {isPublished && publicDemoUrl && (
+                <div className="space-y-2 rounded-md border bg-background p-3">
+                  <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Live Presentation URL
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 truncate rounded bg-muted px-2 py-1.5 text-xs text-foreground">
+                      {publicDemoUrl}
+                    </code>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleCopyUrl}
+                      title="Copy URL"
+                    >
+                      {urlCopied ? (
+                        <Check className="h-4 w-4 text-green-600" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                    </Button>
+                    <Button variant="default" size="sm" asChild>
+                      <a
+                        href={publicDemoUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Open in new tab
+                        <ExternalLink className="ml-2 h-4 w-4" />
+                      </a>
+                    </Button>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Share this link with prospects — it opens a public, read-only Presentation.
+                  </p>
+                </div>
               )}
+
               {!studioSlug && (
                 <span className="text-xs text-muted-foreground">
                   Set a slug in Branding to enable a public URL.
