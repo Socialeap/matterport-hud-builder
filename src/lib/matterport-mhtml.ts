@@ -197,11 +197,40 @@ function fileExt(filename: string | null): string {
   return m ? m[1].toLowerCase() : "";
 }
 
-function classifyByFilename(filename: string | null): MediaAssetKind {
+/**
+ * Matterport labels video assets with format names in the alt text
+ * (e.g. "LONG INTRO - 480p MP4") rather than a proper file extension.
+ * We check three sources in priority order:
+ *   1. File extension from filename/alt (e.g. ".mp4")
+ *   2. Format name substring in the label (e.g. "MP4", "GIF")
+ *   3. File extension from the CDN URL path (e.g. "animation-0001.mp4")
+ */
+function classifyByFilename(
+  filename: string | null,
+  imgSrc?: string | null
+): MediaAssetKind {
+  const VIDEO_EXTS = ["mp4", "mov", "webm", "m4v"];
+
+  // 1. Extension from the alt/filename
   const ext = fileExt(filename);
-  if (["mp4", "mov", "webm", "m4v"].includes(ext)) return "video";
+  if (VIDEO_EXTS.includes(ext)) return "video";
   if (ext === "gif") return "gif";
-  return "photo"; // jpg/jpeg/png/webp or unknown → safest as photo
+
+  // 2. Format name as a substring of the label (case-insensitive)
+  if (filename) {
+    const upper = filename.toUpperCase();
+    if (VIDEO_EXTS.some((fmt) => upper.includes(fmt.toUpperCase()))) return "video";
+    if (upper.includes("GIF")) return "gif";
+  }
+
+  // 3. Extension from the CDN src URL path (strip query string first)
+  if (imgSrc) {
+    const srcExt = fileExt(imgSrc.split("?")[0]);
+    if (VIDEO_EXTS.includes(srcExt)) return "video";
+    if (srcExt === "gif") return "gif";
+  }
+
+  return "photo";
 }
 
 function prettyLabel(filename: string | null, fallback: string): string {
@@ -238,7 +267,7 @@ export function parseMatterportMhtml(rawText: string): ParsedMhtml {
   let gifCount = 0;
 
   for (const card of cards) {
-    const kind = classifyByFilename(card.filename);
+    const kind = classifyByFilename(card.filename, card.imgSrc);
 
     if (kind === "video") {
       videoCount += 1;
