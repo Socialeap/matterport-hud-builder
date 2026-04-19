@@ -10,18 +10,16 @@
  *   - kind      — video | photo | gif (classified by filename extension)
  *   - label     — friendly name (derived from filename)
  *   - proxyUrl  — for photos/gifs:
- *                   • First choice: the CDN thumbnail URL extracted directly
- *                     from the MHTML <img src> (works for ~1 h after save).
- *                   • Fallback:   `/api/mp-image?m=...&id=...` proxy URL
- *                     (used when no img src found; proxy resolves at request time).
+ *                   `https://my.matterport.com/resources/model/{modelId}/image/{assetId}`
+ *                   This is Matterport's stable, token-free permalink — the same
+ *                   pattern used for video clips (`/clip/{assetId}`). No signed
+ *                   token; Matterport handles auth server-side for public models.
  *   - embedUrl  — for videos: Matterport's official iframeable clip player.
  *
- * Why we prefer the extracted CDN URL over the proxy:
- *   The proxy resolves a fresh signed URL by fetching the Matterport viewer
- *   page and scraping CDN links from it. Because the viewer is a React SPA,
- *   its initial HTML contains no CDN image URLs — so the proxy always falls
- *   back to a 1×1 transparent PNG. The MHTML file itself is the only reliable
- *   source of working CDN URLs at parse time.
+ * Why we use the /resources/ URL instead of the CDN URL:
+ *   Signed CDN URLs (cdn-2.matterport.com) extracted from the MHTML expire in
+ *   ~1 h and are refused cross-origin. The /resources/ permalink is stable and
+ *   works indefinitely for public models — no scraping or token management needed.
  */
 
 import type { MediaAsset, MediaAssetKind } from "@/components/portal/types";
@@ -212,8 +210,8 @@ function prettyLabel(filename: string | null, fallback: string): string {
   return stem.replace(/[-_]+/g, " ").trim() || fallback;
 }
 
-function buildProxyUrl(modelId: string, assetId: string): string {
-  return `/api/mp-image?m=${modelId}&id=${assetId}`;
+function buildResourceUrl(modelId: string, assetId: string): string {
+  return `https://my.matterport.com/resources/model/${modelId}/image/${assetId}`;
 }
 
 function buildClipEmbedUrl(modelId: string, assetId: string): string {
@@ -248,9 +246,8 @@ export function parseMatterportMhtml(rawText: string): ParsedMhtml {
         id: card.assetId,
         kind: "video",
         embedUrl: buildClipEmbedUrl(modelId, card.assetId),
-        // Use the extracted thumbnail CDN URL for the video thumbnail strip;
-        // fall back to undefined (the carousel will show a play-icon placeholder).
-        proxyUrl: card.imgSrc ?? undefined,
+        // Videos use embedUrl (iframe clip player); no /image/ resource URL.
+        proxyUrl: undefined,
         filename: card.filename ?? undefined,
         label: prettyLabel(card.filename, `Clip ${videoCount}`),
         visible: true,
@@ -260,10 +257,7 @@ export function parseMatterportMhtml(rawText: string): ParsedMhtml {
       gifs.push({
         id: card.assetId,
         kind: "gif",
-        // Prefer the direct CDN URL so images display immediately; the proxy
-        // URL is kept as fallback for exported-HTML longevity once the CDN
-        // URL expires (~1 h after the MHTML was saved).
-        proxyUrl: card.imgSrc ?? buildProxyUrl(modelId, card.assetId),
+        proxyUrl: buildResourceUrl(modelId, card.assetId),
         filename: card.filename ?? undefined,
         label: prettyLabel(card.filename, `GIF ${gifCount}`),
         visible: true,
@@ -273,7 +267,7 @@ export function parseMatterportMhtml(rawText: string): ParsedMhtml {
       photos.push({
         id: card.assetId,
         kind: "photo",
-        proxyUrl: card.imgSrc ?? buildProxyUrl(modelId, card.assetId),
+        proxyUrl: buildResourceUrl(modelId, card.assetId),
         filename: card.filename ?? undefined,
         label: prettyLabel(card.filename, `Photo ${photoCount}`),
         visible: true,
