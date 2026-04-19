@@ -97,9 +97,46 @@ function reconstructImageUrl(modelId: string, assetId: string, filename: string)
 }
 
 /**
+ * Decode a quoted-printable-encoded string (per RFC 2045).
+ *
+ * Matterport-saved MHTML uses Content-Transfer-Encoding: quoted-printable,
+ * which escapes "=" as "=3D" and inserts soft line breaks ("=" + newline)
+ * to keep lines under ~76 chars. We must reverse both before regex parsing.
+ */
+function decodeQuotedPrintable(input: string): string {
+  // 1) Remove soft line breaks
+  const noSoftBreaks = input.replace(/=\r?\n/g, "");
+  // 2) Convert "=HH" hex escapes to bytes, then UTF-8 decode the byte stream
+  const bytes: number[] = [];
+  for (let i = 0; i < noSoftBreaks.length; i++) {
+    const c = noSoftBreaks.charCodeAt(i);
+    if (c === 0x3d /* "=" */ && i + 2 < noSoftBreaks.length) {
+      const hex = noSoftBreaks.slice(i + 1, i + 3);
+      if (/^[0-9A-Fa-f]{2}$/.test(hex)) {
+        bytes.push(parseInt(hex, 16));
+        i += 2;
+        continue;
+      }
+    }
+    bytes.push(c & 0xff);
+  }
+  try {
+    return new TextDecoder("utf-8").decode(new Uint8Array(bytes));
+  } catch {
+    return noSoftBreaks;
+  }
+}
+
+/**
  * Parse a Matterport MHTML file (as a string). Pure & synchronous.
  */
-export function parseMatterportMhtml(text: string): ParsedMhtml {
+export function parseMatterportMhtml(rawText: string): ParsedMhtml {
+  // Matterport MHTML is quoted-printable encoded — decode before regex parsing.
+  const isQP =
+    /Content-Transfer-Encoding:\s*quoted-printable/i.test(rawText) ||
+    /=3D"/.test(rawText);
+  const text = isQP ? decodeQuotedPrintable(rawText) : rawText;
+
   const modelId = findModelId(text);
   const videos: MediaAsset[] = [];
   const photos: MediaAsset[] = [];
