@@ -22,6 +22,7 @@ import { Route as PSlugRouteImport } from './routes/p.$slug'
 import { Route as EmailUnsubscribeRouteImport } from './routes/email/unsubscribe'
 import { Route as ApiMpImageRouteImport } from './routes/api/mp-image'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated.dashboard'
+import { Route as PSlugIndexRouteImport } from './routes/p.$slug.index'
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated.dashboard.index'
 import { Route as PSlugDemoRouteImport } from './routes/p.$slug.demo'
 import { Route as LovableEmailSuppressionRouteImport } from './routes/lovable/email/suppression'
@@ -99,6 +100,11 @@ const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
   getParentRoute: () => AuthenticatedRoute,
+} as any)
+const PSlugIndexRoute = PSlugIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => PSlugRoute,
 } as any)
 const AuthenticatedDashboardIndexRoute =
   AuthenticatedDashboardIndexRouteImport.update({
@@ -199,6 +205,7 @@ export interface FileRoutesByFullPath {
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/p/$slug/demo': typeof PSlugDemoRoute
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
+  '/p/$slug/': typeof PSlugIndexRoute
   '/dashboard/vault/templates': typeof AuthenticatedDashboardVaultTemplatesRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
   '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
@@ -215,7 +222,6 @@ export interface FileRoutesByTo {
   '/unsubscribe': typeof UnsubscribeRoute
   '/api/mp-image': typeof ApiMpImageRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
-  '/p/$slug': typeof PSlugRouteWithChildren
   '/dashboard/branding': typeof AuthenticatedDashboardBrandingRoute
   '/dashboard/clients': typeof AuthenticatedDashboardClientsRoute
   '/dashboard/demo': typeof AuthenticatedDashboardDemoRoute
@@ -225,6 +231,7 @@ export interface FileRoutesByTo {
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/p/$slug/demo': typeof PSlugDemoRoute
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
+  '/p/$slug': typeof PSlugIndexRoute
   '/dashboard/vault/templates': typeof AuthenticatedDashboardVaultTemplatesRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
   '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
@@ -254,6 +261,7 @@ export interface FileRoutesById {
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/p/$slug/demo': typeof PSlugDemoRoute
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
+  '/p/$slug/': typeof PSlugIndexRoute
   '/_authenticated/dashboard/vault/templates': typeof AuthenticatedDashboardVaultTemplatesRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
   '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
@@ -283,6 +291,7 @@ export interface FileRouteTypes {
     | '/lovable/email/suppression'
     | '/p/$slug/demo'
     | '/dashboard/'
+    | '/p/$slug/'
     | '/dashboard/vault/templates'
     | '/lovable/email/queue/process'
     | '/lovable/email/transactional/preview'
@@ -299,7 +308,6 @@ export interface FileRouteTypes {
     | '/unsubscribe'
     | '/api/mp-image'
     | '/email/unsubscribe'
-    | '/p/$slug'
     | '/dashboard/branding'
     | '/dashboard/clients'
     | '/dashboard/demo'
@@ -309,6 +317,7 @@ export interface FileRouteTypes {
     | '/lovable/email/suppression'
     | '/p/$slug/demo'
     | '/dashboard'
+    | '/p/$slug'
     | '/dashboard/vault/templates'
     | '/lovable/email/queue/process'
     | '/lovable/email/transactional/preview'
@@ -337,6 +346,7 @@ export interface FileRouteTypes {
     | '/lovable/email/suppression'
     | '/p/$slug/demo'
     | '/_authenticated/dashboard/'
+    | '/p/$slug/'
     | '/_authenticated/dashboard/vault/templates'
     | '/lovable/email/queue/process'
     | '/lovable/email/transactional/preview'
@@ -454,6 +464,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/dashboard'
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
       parentRoute: typeof AuthenticatedRoute
+    }
+    '/p/$slug/': {
+      id: '/p/$slug/'
+      path: '/'
+      fullPath: '/p/$slug/'
+      preLoaderRoute: typeof PSlugIndexRouteImport
+      parentRoute: typeof PSlugRoute
     }
     '/_authenticated/dashboard/': {
       id: '/_authenticated/dashboard/'
@@ -605,10 +622,12 @@ const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
 
 interface PSlugRouteChildren {
   PSlugDemoRoute: typeof PSlugDemoRoute
+  PSlugIndexRoute: typeof PSlugIndexRoute
 }
 
 const PSlugRouteChildren: PSlugRouteChildren = {
   PSlugDemoRoute: PSlugDemoRoute,
+  PSlugIndexRoute: PSlugIndexRoute,
 }
 
 const PSlugRouteWithChildren = PSlugRoute._addFileChildren(PSlugRouteChildren)
