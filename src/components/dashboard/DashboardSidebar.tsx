@@ -12,7 +12,9 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { Palette, Users, Play, LayoutDashboard, LogOut, CreditCard, ShoppingCart, Archive } from "lucide-react";
+import { Palette, Users, Play, LayoutDashboard, LogOut, CreditCard, ShoppingCart, Archive, Banknote } from "lucide-react";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 
 const allNavItems = [
   { label: "Overview", to: "/dashboard", icon: LayoutDashboard, roles: ["provider", "client"] },
@@ -21,6 +23,7 @@ const allNavItems = [
   { label: "Orders", to: "/dashboard/orders", icon: ShoppingCart, roles: ["provider", "client"] },
   { label: "Clients", to: "/dashboard/clients", icon: Users, roles: ["provider"] },
   { label: "Pricing", to: "/dashboard/pricing", icon: CreditCard, roles: ["provider"] },
+  { label: "Payouts", to: "/dashboard/payouts", icon: Banknote, roles: ["provider"], requiresStripe: true },
   { label: "Demo", to: "/dashboard/demo", icon: Play, roles: ["provider"] },
 ] as const;
 
