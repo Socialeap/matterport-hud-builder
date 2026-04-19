@@ -163,6 +163,10 @@ export function MediaSyncModal({
                 <p className="mt-2 text-[11px] text-muted-foreground">
                   Files never leave your browser — parsing happens locally.
                 </p>
+                <p className="mt-1.5 text-[11px] text-muted-foreground">
+                  <strong className="text-foreground">Note:</strong> Matterport signs photo URLs with short-lived tokens.
+                  Re-sync every ~7 days, or whenever images stop loading. Videos always open in Matterport in a new tab (their CDN blocks embedding).
+                </p>
               </PopoverContent>
             </Popover>
           </div>
