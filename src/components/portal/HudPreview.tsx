@@ -19,6 +19,7 @@ interface HudPreviewProps {
   agent: AgentContact;
   isPro: boolean;
   defaultHeaderVisible?: boolean;
+  fullViewport?: boolean;
 }
 
 export function HudPreview({
@@ -33,6 +34,7 @@ export function HudPreview({
   agent,
   isPro,
   defaultHeaderVisible = false,
+  fullViewport = false,
 }: HudPreviewProps) {
   const [headerVisible, setHeaderVisible] = useState(defaultHeaderVisible);
   const [contactOpen, setContactOpen] = useState(false);
@@ -63,10 +65,23 @@ export function HudPreview({
   ].filter((s) => s.url);
 
   return (
-    <div ref={containerRef} className="relative overflow-hidden rounded-lg border border-border shadow-lg">
+    <div
+      ref={containerRef}
+      className={
+        fullViewport
+          ? "relative h-screen w-screen overflow-hidden bg-black"
+          : "relative overflow-hidden rounded-lg border border-border shadow-lg"
+      }
+    >
       {/* Property selector */}
       {models.length > 1 && (
-        <div className="flex gap-1 border-b border-border bg-muted/50 px-4 py-2">
+        <div
+          className={
+            fullViewport
+              ? "absolute left-3 top-3 z-30 flex gap-1 rounded-full border border-white/10 bg-black/40 px-2 py-1 backdrop-blur-md"
+              : "flex gap-1 border-b border-border bg-muted/50 px-4 py-2"
+          }
+        >
           {models.map((m, i) => (
             <button
               key={m.id}
@@ -74,7 +89,9 @@ export function HudPreview({
               className={`rounded px-3 py-1 text-xs font-medium transition-colors ${
                 i === selectedModelIndex
                   ? "text-white"
-                  : "bg-transparent text-muted-foreground hover:bg-muted"
+                  : fullViewport
+                    ? "bg-transparent text-white/70 hover:bg-white/10"
+                    : "bg-transparent text-muted-foreground hover:bg-muted"
               }`}
               style={i === selectedModelIndex ? { backgroundColor: accentColor } : undefined}
             >
@@ -85,7 +102,8 @@ export function HudPreview({
       )}
 
       {/* Matterport iframe */}
-      <div className="relative aspect-video w-full bg-black">
+      <div className={fullViewport ? "relative h-full w-full bg-black" : "relative aspect-video w-full bg-black"}>
+
         {iframeUrl ? (
           <iframe
             src={iframeUrl}
@@ -307,8 +325,8 @@ export function HudPreview({
         </div>
       </div>
 
-      {/* Powered by (Starter only) */}
-      {!isPro && (
+      {/* Powered by (Starter only) — hidden in fullViewport mode (page renders its own footer strip) */}
+      {!isPro && !fullViewport && (
         <div className="bg-muted/30 px-4 py-1.5 text-center text-xs text-muted-foreground">
           Powered by Transcendence Media
         </div>

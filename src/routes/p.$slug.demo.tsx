@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { DEFAULT_BEHAVIOR, DEFAULT_AGENT } from "@/components/portal/types";
 import type { PropertyModel, AgentContact, TourBehavior } from "@/components/portal/types";
 import { useState } from "react";
+import { X } from "lucide-react";
 
 export const Route = createFileRoute("/p/$slug/demo")({
   head: () => ({
@@ -46,6 +47,7 @@ function PublicDemoPage() {
   const { branding, demo } = Route.useLoaderData();
   const { slug } = Route.useParams();
   const [selectedModelIndex, setSelectedModelIndex] = useState(0);
+  const [ctaDismissed, setCtaDismissed] = useState(false);
 
   if (!branding || !demo) {
     return (
@@ -76,7 +78,6 @@ function PublicDemoPage() {
   const brandName = brandOverrides.brandName || branding.brand_name;
   const accentColor = brandOverrides.accentColor || branding.accent_color;
   const hudBgColor = brandOverrides.hudBgColor || branding.hud_bg_color;
-  // Coerce stale blob: URLs (saved before storage upload was wired) to null so brand name fallback renders.
   const rawLogo = brandOverrides.logoUrl ?? branding.logo_url;
   if (typeof rawLogo === "string" && rawLogo.startsWith("blob:")) {
     console.warn("[demo] Ignoring stale blob: logo URL in brand_overrides");
@@ -88,109 +89,77 @@ function PublicDemoPage() {
   const properties = ((demo.properties as unknown) ?? []) as PropertyModel[];
   const behaviors = ((demo.behaviors as unknown) ?? {}) as Record<string, TourBehavior>;
   const agent = { ...DEFAULT_AGENT, ...(((demo.agent as unknown) ?? {}) as Partial<AgentContact>) };
-  // Defensive: clear stale blob: avatar URLs that should never have been persisted.
   if (typeof agent.avatarUrl === "string" && agent.avatarUrl.startsWith("blob:")) {
     agent.avatarUrl = "";
   }
 
-  // Ensure every property has a behavior entry
   const safeBehaviors: Record<string, TourBehavior> = { ...behaviors };
   properties.forEach((p) => {
     if (!safeBehaviors[p.id]) safeBehaviors[p.id] = { ...DEFAULT_BEHAVIOR };
   });
 
+  // Empty state — keep contained card layout
+  if (properties.length === 0) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <div className="rounded-lg border-2 border-dashed p-12 text-center max-w-md">
+          <h1 className="text-2xl font-bold text-foreground">{brandName}</h1>
+          <p className="mt-3 text-muted-foreground">
+            This Presentation has no properties configured yet.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div
-      className="min-h-screen bg-background"
-      style={{
-        backgroundImage: `radial-gradient(ellipse at top, ${accentColor}14, transparent 60%)`,
-      }}
-    >
-      {/* Cinematic brand header */}
-      <header
-        className="border-b backdrop-blur-sm"
-        style={{
-          borderColor: `${accentColor}33`,
-          backgroundColor: `${hudBgColor}cc`,
-        }}
-      >
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
-          <div className="flex items-center gap-3">
-            {logoPreview && (
-              <img src={logoPreview} alt={`${brandName} logo`} className="h-10 object-contain" />
-            )}
-            <span className="text-xl font-bold tracking-tight text-white">{brandName}</span>
-          </div>
-          <span
-            className="rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-white shadow-sm"
-            style={{ backgroundColor: accentColor }}
-          >
-            ● Live
-          </span>
-        </div>
-      </header>
+    <div className="relative h-screen w-screen overflow-hidden bg-black">
+      {/* Full-viewport HUD — fills the screen edge to edge */}
+      <HudPreview
+        models={properties}
+        selectedModelIndex={selectedModelIndex}
+        onSelectModel={setSelectedModelIndex}
+        behaviors={safeBehaviors}
+        brandName={brandName}
+        accentColor={accentColor}
+        hudBgColor={hudBgColor}
+        logoPreview={logoPreview}
+        agent={agent}
+        isPro={isPro}
+        defaultHeaderVisible={true}
+        fullViewport={true}
+      />
 
-      {/* Centered cinematic HUD */}
-      <main className="mx-auto max-w-7xl px-4 py-10">
-        {properties.length === 0 ? (
-          <div className="rounded-lg border-2 border-dashed p-12 text-center">
-            <p className="text-muted-foreground">This Presentation has no properties configured yet.</p>
-          </div>
-        ) : (
-          <>
-            <div className="mb-6 text-center">
-              <p className="text-sm font-medium uppercase tracking-[0.2em] text-muted-foreground">
-                A Live 3D Property Presentation by
-              </p>
-              <p
-                className="mt-1 text-2xl font-bold sm:text-3xl"
-                style={{ color: accentColor }}
-              >
-                {brandName}
-              </p>
-            </div>
-
-            <HudPreview
-              models={properties}
-              selectedModelIndex={selectedModelIndex}
-              onSelectModel={setSelectedModelIndex}
-              behaviors={safeBehaviors}
-              brandName={brandName}
-              accentColor={accentColor}
-              hudBgColor={hudBgColor}
-              logoPreview={logoPreview}
-              agent={agent}
-              isPro={isPro}
-              defaultHeaderVisible={true}
-            />
-          </>
-        )}
-
-        {/* Bottom CTA only — no top duplicate */}
+      {/* Slim bottom CTA strip — hidden on Pro tier (whitelabel) and after dismissal */}
+      {!isPro && !ctaDismissed && (
         <div
-          className="mt-10 rounded-xl border-2 p-8 text-center"
-          style={{
-            borderColor: accentColor,
-            backgroundImage: `linear-gradient(135deg, ${accentColor}10, transparent)`,
-          }}
+          className="absolute inset-x-0 bottom-0 z-30 flex items-center justify-between gap-3 border-t border-white/10 px-4 py-2 text-xs text-white backdrop-blur-md sm:px-6"
+          style={{ backgroundColor: "rgba(0,0,0,0.55)" }}
         >
-          <h2 className="text-2xl font-bold text-foreground">Want a Presentation like this?</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Build your own branded 3D property Presentation in minutes.
-          </p>
-          <Link to="/p/$slug" params={{ slug }}>
-            <Button size="lg" className="mt-5 text-white shadow-lg" style={{ backgroundColor: accentColor }}>
-              Build Your Own →
-            </Button>
-          </Link>
+          <span className="truncate">
+            <span className="opacity-70">Powered by Transcendence Media — </span>
+            <span className="font-medium">Want a Presentation like this?</span>
+          </span>
+          <div className="flex shrink-0 items-center gap-2">
+            <Link to="/p/$slug" params={{ slug }}>
+              <Button
+                size="sm"
+                className="h-7 px-3 text-xs text-white shadow-md"
+                style={{ backgroundColor: accentColor }}
+              >
+                Build Your Own →
+              </Button>
+            </Link>
+            <button
+              onClick={() => setCtaDismissed(true)}
+              aria-label="Dismiss"
+              className="flex h-6 w-6 items-center justify-center rounded-full bg-white/10 text-white/80 transition-colors hover:bg-white/20 hover:text-white"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
-
-        {!isPro && (
-          <p className="mt-6 text-center text-xs text-muted-foreground">
-            Powered by Transcendence Media
-          </p>
-        )}
-      </main>
+      )}
     </div>
   );
 }
