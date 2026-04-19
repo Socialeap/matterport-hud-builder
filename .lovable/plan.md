@@ -1,43 +1,67 @@
 
 
-## Plan: Fix Branding asset persistence + Public Demo "View Live" link
+## Why it still looks like the dashboard
 
-### Issue 1 — Logo & Favicon don't persist
+Three layered problems compounding visually:
 
-**Root cause:** Two compounding problems:
+1. **Container is too narrow.** Both `/dashboard/demo` (right column) and `/p/$slug/demo` wrap `HudPreview` in `max-w-7xl` + padding. Result: same boxed iframe at the same width on both pages.
+2. **Redundant brand chrome.** `HudPreview` already renders its own brand header *inside* the iframe overlay (logo + brand name + Contact button). The public demo page then renders **another** brand header bar above it ("brand logo" + "● Live" pill) plus an "A Live 3D Property Presentation by {brandName}" label. Three pieces of identical branding stacked = looks like the same page with extra noise.
+3. **Aspect-video iframe.** `HudPreview` wraps the Matterport iframe in `aspect-video`, so on a wide monitor the tour is letterboxed inside an already-narrow card. A "full width display" requires a full-viewport HUD.
 
-1. **Files only upload on Save click.** `handleFileChange` only stores a `File` object + a temporary `blob:` URL in component state (lines 252–260 of `_authenticated.dashboard.demo.tsx`). The actual upload to Supabase Storage happens inside `ensureBrandAssetUrls()` which runs only when the user explicitly clicks "Save Draft" or toggles Publish. If the user uploads an image and then navigates away (e.g., switches tabs, leaves the page), nothing is persisted — the `blob:` URL dies with the page.
-2. **Even after Save, blob URLs sometimes get filtered out on reload.** Lines 101–106 correctly skip `blob:` URLs, but if the upload succeeded the durable URL should be in the DB. Current DB row confirms `logoUrl: null, faviconUrl: null` for the test user — meaning the user never successfully completed a Save *with files staged*, OR the upload silently failed and was swallowed.
+## Fix — true public presentation page
 
-**Fix:** Upload-on-select. The moment the user picks a file in `BrandingSection`, immediately upload it to `brand-assets` storage, then set `logoPreview`/`faviconPreview` to the durable public URL (not a `blob:` URL). Show a small inline "Uploading…" spinner during the round trip. This way:
-- The image survives navigation away even without clicking Save (the URL is durable).
-- Save just persists the already-durable URL into `sandbox_demos.brand_overrides`.
-- We auto-trigger a silent `saveDemo` after a successful upload so the URL gets persisted to DB immediately (no manual Save needed for the asset to stick across sessions).
+Restructure `/p/$slug/demo` into a **full-bleed cinematic viewer**. Three deliberate departures from the dashboard preview:
 
-**Files touched:**
-- `src/routes/_authenticated.dashboard.demo.tsx` — rewrite `handleFileChange` to upload immediately via the existing `uploadIfFile` helper, set `logoPreview`/`faviconPreview` to the public URL, then call `saveDemo` to persist. Same treatment for `handleAgentAvatarChange`.
-- `src/components/portal/BrandingSection.tsx` — add `uploading` prop + small spinner overlay on the file input rows. Add tiny "Remove" buttons next to each preview so users can clear an asset (currently impossible).
+### A. Full-viewport HUD (no max-width, no aspect-video card)
+- Outer wrapper becomes `h-screen w-screen` (or `min-h-dvh`), no `max-w-*`, no `mx-auto`.
+- Render the Matterport iframe at full viewport (`fixed inset-0` behind everything else, or `flex-1` in a column layout). The 3D tour fills the screen edge-to-edge — that alone makes it feel like a real "live presentation" vs. a dashboard widget.
 
-### Issue 2 — "View Live" appears to reopen the dashboard
+### B. Use `HudPreview`'s built-in brand header — drop the duplicate page-level header
+- Pass `defaultHeaderVisible={true}` (already done) so the in-iframe overlay header carries the brand. That overlay was *designed* for the published end-product look.
+- Remove the page-level `<header>` with logo + "● Live" pill (lines 109–131 of `p.$slug.demo.tsx`).
+- Remove the centered "A Live 3D Property Presentation by {brandName}" label block (lines 141–151) — `HudPreview`'s overlay already shows the brand, and it now sits over a full-viewport tour.
 
-**Root cause:** The button's href IS correct (`/p/transcendencemedia/demo`, opens in new tab). I verified the slug exists in DB, the demo is published, and `/p/$slug/demo` is a real, distinct route. **However**, the destination page (`src/routes/p.$slug.demo.tsx`) renders the exact same `HudPreview` with the same brand colors and same property data as the dashboard's right-column preview, so it visually looks identical. Combined with both opening to similar layouts, this gives the impression nothing changed. The actual navigation IS happening — but the page itself doesn't differentiate as a public, prospect-facing demo.
+### C. Slim CTA strip at the bottom (not a giant card)
+- Replace the bordered CTA card (lines 169–186) with a compact bottom-anchored strip: small "Powered by {brandName} — Want one like this? [Build Your Own →]" — fixed to bottom, semi-transparent over the iframe, dismissible with an X. Keeps the screen real-estate for the tour, still surfaces the conversion path.
+- Hide entirely on Pro tier (whitelabel).
 
-**Fix (two parts):**
+### D. New `HudPreview` prop: `fullViewport?: boolean`
+- Currently `HudPreview` hardcodes `aspect-video` on the iframe wrapper (line 88). Add an optional `fullViewport` prop that switches to `h-full w-full` when true, so the dashboard's contained preview is unaffected.
+- Default `false` → dashboard preview stays exactly as it is (no regression).
+- Public demo page passes `fullViewport={true}`.
+- Outer `HudPreview` wrapper also conditionally drops `rounded-lg border shadow-lg` when full-viewport (no card chrome on a full-screen view).
 
-A. **Make the public demo page visually distinct as a "live presentation"** (not a builder echo):
-   - Drop the dashboard-style header/labels currently at the top of `/p/$slug/demo`
-   - Replace with a full-bleed cinematic presentation layout: brand header bar at top, large HUD preview centered, a clear "This is a live 3D Property Presentation by {brandName}" subtitle, and a prominent "Build Your Own" CTA at the bottom only.
-   - Remove the redundant "Interactive Demo" title block — the page IS the demo.
+### E. Property tab strip stays — but moves to overlay
+- Property selector (lines 68–85 of `HudPreview`) stays for multi-property demos but in `fullViewport` mode it overlays the iframe (top-left, glassmorphic) instead of pushing the iframe down. Same component, conditional positioning.
 
-B. **Add the actual published-presentation URL prominently in the dashboard**, so the user can see and copy it:
-   - Replace the icon-only "View Live" button with a labeled URL display block: shows `3dps.transcendencemedia.com/p/{slug}/demo`, a copy-to-clipboard button, and a clearer "Open in new tab ↗" button. This makes it unambiguous that it's a different URL/page.
+## Trace — ripple safety
 
-**Files touched:**
-- `src/routes/p.$slug.demo.tsx` — restructure layout into a presentation-first page (kill builder-echo framing, add cinematic header/footer).
-- `src/routes/_authenticated.dashboard.demo.tsx` — replace the "View Live" button block (lines 429–445) with a URL display + copy button + open-in-new-tab button.
+| Touched | Used elsewhere? | Risk | Mitigation |
+|---|---|---|---|
+| `HudPreview` new `fullViewport` prop | Dashboard preview, published end-product (future) | Default false → zero behavior change for existing callers | Prop is opt-in; all current call sites unchanged |
+| `HudPreview` iframe wrapper class | Same | Conditional class swap only when prop true | Default branch identical to today |
+| `p.$slug.demo.tsx` layout | Only this route | None — isolated change | — |
+| Brand overrides merge logic (lines 68–94) | Only this route | Keep as-is | Untouched |
+| `getPublicDemoBySlug` server fn | This route + publish toggle check | Untouched | — |
+| `defaultHeaderVisible={true}` already passed | — | — | — |
+| URL builders / public-url.ts | All studio links | Untouched | — |
+| Dashboard "View Live" URL block | — | Untouched | — |
 
-### Out of scope
-- No DB schema changes.
-- No changes to the HudPreview component itself.
-- No changes to publish/license logic.
+Notes:
+- The "No properties configured" + "No demo published yet" empty states keep the centered card layout (full-viewport doesn't apply when there's nothing to show).
+- Error + notFound components unchanged.
+- No DB, no schema, no server-fn changes.
+- No changes to `HudBuilderSandbox`, `MediaCarouselModal`, `CinemaModal`, `NeighborhoodMapModal`, agent contact panel — they live inside `HudPreview` and inherit the larger canvas automatically.
+
+## Files touched (2)
+
+- `src/components/portal/HudPreview.tsx` — add `fullViewport?: boolean` prop; conditionally swap outer wrapper classes (drop card chrome) and iframe wrapper (drop aspect-video → h-full); conditionally absolute-position the property selector when full-viewport.
+- `src/routes/p.$slug.demo.tsx` — restructure to full-viewport layout: remove page-level brand header, remove centered subtitle block, render `HudPreview` with `fullViewport={true}` filling the screen, replace bottom CTA card with slim dismissible bottom strip (hidden on Pro).
+
+## Out of scope
+
+- Dashboard right-column preview — stays exactly as today.
+- Any change to publish/license/slug logic.
+- Custom-domain routing — already handled by `buildDemoUrl`.
+- Mobile-specific tweaks beyond Tailwind responsive defaults (full-viewport already works on mobile).
 
