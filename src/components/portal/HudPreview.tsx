@@ -170,6 +170,16 @@ export function HudPreview({
                   <Film className="h-3.5 w-3.5" />
                 </button>
               )}
+              {hasMedia && (
+                <button
+                  onClick={() => setCarouselOpen(true)}
+                  className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur-md transition-colors hover:bg-white/25"
+                  title="View Media Gallery"
+                  aria-label="View Media Gallery"
+                >
+                  <Images className="h-3.5 w-3.5" />
+                </button>
+              )}
               {agent.name && (
                 <span className="text-xs text-white/80 drop-shadow-sm">{agent.name}</span>
               )}
@@ -318,6 +328,14 @@ export function HudPreview({
           open={cinemaOpen}
           onClose={() => setCinemaOpen(false)}
           videoUrl={currentModel.cinematicVideoUrl ?? ""}
+        />
+      )}
+
+      {hasMedia && (
+        <MediaCarouselModal
+          open={carouselOpen}
+          onClose={() => setCarouselOpen(false)}
+          assets={visibleMedia}
         />
       )}
     </div>
