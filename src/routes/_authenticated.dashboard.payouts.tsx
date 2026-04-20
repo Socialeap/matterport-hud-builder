@@ -63,6 +63,12 @@ function PayoutsPage() {
           const { data, error } = await supabase.functions.invoke("stripe-connect-account-session", {
             body: { environment: getStripeEnvironment() },
           });
+          if ((data as any)?.code === "stripe_account_missing") {
+            toast.error((data as any).error);
+            setOnboardingComplete(false);
+            setStripeConnectInstance(null);
+            throw new Error((data as any).error);
+          }
           if (error) throw new Error((data as any)?.error || error.message);
           if ((data as any)?.error) throw new Error((data as any).error);
           return (data as any).client_secret as string;

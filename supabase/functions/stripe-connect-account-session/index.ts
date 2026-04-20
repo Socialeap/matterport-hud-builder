@@ -59,29 +59,48 @@ serve(async (req) => {
 
     const stripe = createStripeClient(env);
 
-    // Create an AccountSession with payouts + balances + payouts_list components enabled
-    const accountSession = await stripe.accountSessions.create({
-      account: branding.stripe_connect_id,
-      components: {
-        payouts: {
-          enabled: true,
-          features: {
-            instant_payouts: true,
-            standard_payouts: true,
-            edit_payout_schedule: true,
+    let accountSession;
+    try {
+      accountSession = await stripe.accountSessions.create({
+        account: branding.stripe_connect_id,
+        components: {
+          payouts: {
+            enabled: true,
+            features: {
+              instant_payouts: true,
+              standard_payouts: true,
+              edit_payout_schedule: true,
+            },
           },
-        },
-        balances: {
-          enabled: true,
-          features: {
-            instant_payouts: true,
-            standard_payouts: true,
-            edit_payout_schedule: true,
+          balances: {
+            enabled: true,
+            features: {
+              instant_payouts: true,
+              standard_payouts: true,
+              edit_payout_schedule: true,
+            },
           },
+          payouts_list: { enabled: true },
         },
-        payouts_list: { enabled: true },
-      },
-    });
+      });
+    } catch (stripeErr: any) {
+      // If the stored account no longer exists in this Stripe environment,
+      // clear it so the user can re-onboard.
+      if (stripeErr?.code === "resource_missing" || stripeErr?.raw?.code === "resource_missing") {
+        await supabaseAdmin
+          .from("branding_settings")
+          .update({ stripe_connect_id: null, stripe_onboarding_complete: false })
+          .eq("provider_id", user.id);
+        return new Response(
+          JSON.stringify({
+            error: "Your Stripe account is no longer accessible (it may have been created in a different environment or removed). Please reconnect Stripe.",
+            code: "stripe_account_missing",
+          }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      throw stripeErr;
+    }
 
     return new Response(
       JSON.stringify({ client_secret: accountSession.client_secret }),
