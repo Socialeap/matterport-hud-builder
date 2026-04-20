@@ -1,117 +1,85 @@
 
 
-## Plan: Hybrid Landing Page for `/p/$slug` Provider Portal
+## Plan: Hero Stage for `/p/$slug` Provider Portal
 
-Transform `src/routes/p.$slug.index.tsx` from a builder-only route into a **marketing landing page that anchors down to the builder**. Design language inherits from `src/routes/index.tsx` (notebook grid, organic orbs, glassmorphism), but every accent is **dynamically driven by `branding.accent_color`** instead of the platform's amber.
+Add a cinematic hero background to the existing hybrid landing page, with MSP-controllable image + opacity, then expose those controls via DB migration and the Branding dashboard.
 
 ---
 
-### 1. Loader expansion
+### 1. DB migration — `branding_settings`
 
-Augment the existing `fetchBrandingBySlug` server fn so it returns enough data to render the dynamic "what this MSP can offer" capability card:
+Add two nullable columns:
+- `hero_bg_url text` — public URL (uploaded to existing `brand-assets` bucket, same as logo)
+- `hero_bg_opacity numeric default 0.45` — 0.0–1.0, controls darkening overlay strength
+
+No backfill needed; nulls fall back to defaults in code.
+
+---
+
+### 2. `src/routes/p.$slug.index.tsx` — Hero Stage
+
+Replace the current hero `<section>` with a stacked layered hero:
 
 ```text
-loader returns → {
-  branding,           // existing
-  demoPublished,      // existing
-  lusActive,          // NEW — get_license_info(provider_id) → status==='active' && not expired
-  vaultAssetCount,    // NEW — count from vault_templates where provider_id matches
-}
+┌─────────────────────────────────────────┐
+│ Layer 0: bg image (cover, center)       │
+│          fallback = Unsplash residential│
+│ Layer 1: accent-tinted opacity overlay  │
+│          (driven by hero_bg_opacity)    │
+│ Layer 2: notebook grid (existing)       │
+│ Layer 3: bottom→transparent fade mask   │
+│          (mask-image gradient)          │
+│ Layer 4: brand chip + H1 + sub + CTA    │
+└─────────────────────────────────────────┘
 ```
 
-Tier (`branding.tier`) and LUS active flag drive which capabilities the MSP advertises.
+Key implementation details:
+- Background container uses `relative` + `aspect`/min-height ~`min-h-[85vh]`.
+- Image: `<img>` absolutely positioned `inset-0 h-full w-full object-cover object-center`, with mobile-friendly `object-position: center` (no shift needed at this aspect).
+- Overlay: absolutely-positioned div, `background: rgba(0,0,0,${hero_bg_opacity})` plus a subtle accent tint (`linear-gradient(180deg, ${accent}22, transparent 60%)`) to tie into branding.
+- Fade-out: apply `mask-image: linear-gradient(to bottom, black 70%, transparent 100%)` on the hero wrapper so the image vanishes before the 3-step section. Use Tailwind arbitrary `[mask-image:linear-gradient(...)]` + `[-webkit-mask-image:...]`.
+- Notebook grid stays as a fixed full-page overlay (already global) — no change.
+- Headline + sub-headline switch to `text-white` with `drop-shadow-lg` for legibility on imagery.
+- Existing accent-colored orbs: drop them inside the hero (they would clash with the photo); keep them only for the lower sections.
 
----
-
-### 2. New page structure (in order)
-
-```text
-┌──────────────────────────────────────────────┐
-│ Demo banner (existing, kept — restyled)      │
-├──────────────────────────────────────────────┤
-│ HERO                                         │
-│  • brand logo + name chip                    │
-│  • H1: "Your Properties, Professionally      │
-│    Presented. No Subscriptions."             │
-│  • Sub: build free, pay once to download     │
-│  • CTA "Start Building Your HUD" → #builder  │
-│  • Notebook grid + 2 accent-colored orbs     │
-├──────────────────────────────────────────────┤
-│ 3-STEP ONBOARDING (3 glass cards)            │
-│  1. Paste your Model                         │
-│  2. Design your HUD                          │
-│     └─ NESTED green-bordered card:           │
-│        "What {brand_name} Studio Includes"   │
-│        - dynamic feature list (see §3)       │
-│  3. Download & Own                           │
-├──────────────────────────────────────────────┤
-│ SOVEREIGNTY COMPARISON (2 columns)           │
-│  Generic Matterport  |  {brand_name} Studio  │
-│  ✗ no branding       |  ✓ full white-label   │
-│  ✗ links expire      |  ✓ own the file       │
-│  ✗ no leads          |  ✓ AI lead alerts     │
-│  ✗ subscription      |  ✓ one-time payment   │
-├──────────────────────────────────────────────┤
-│ #builder-start (scroll target)               │
-│  H2 "Studio Presentation Builder"            │
-│  Sub "Configure your 3D experience…"         │
-│  <HudBuilderSandbox branding={branding} />   │
-└──────────────────────────────────────────────┘
+Defaults in code:
+```ts
+const heroBgUrl = branding.hero_bg_url ?? "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=2400&q=80";
+const heroBgOpacity = branding.hero_bg_opacity ?? 0.45;
 ```
 
-Smooth scroll: CTA uses `<a href="#builder-start">` with `scroll-mt-20` on the target and `scroll-behavior: smooth` (already global via Tailwind base or inline style on `<html>` / per-anchor handler).
+Existing 3-step, comparison, and builder sections remain untouched. Only the hero block is replaced.
 
 ---
 
-### 3. Dynamic feature card logic ("Step 2" nested green card)
+### 3. `src/routes/_authenticated.dashboard.branding.tsx` — controls
 
-Always include:
-- ✓ Custom branding (logo, color, contact)
-- ✓ Music & tour behavior config
-- ✓ Matterport Media Sync & Cinema Mode
-- ✓ Google-Powered Neighborhood Map
+Add two new fields to the existing branding form:
+- **Hero Background Image** — file upload (reuses logo upload pattern → `brand-assets` bucket → public URL → save to `hero_bg_url`). Include "Remove" button to null it out and live preview thumbnail.
+- **Hero Image Dimming** — slider 0–100 (%) bound to `hero_bg_opacity`. Show the numeric % next to the slider.
 
-LUS-active → add:
-- ✓ AI Property FAQ Concierge
-- ✓ AI Lead Capture & Email Alerts
-- ✓ Smart Doc Engine (PDF extractions)
-
-Pro tier → add:
-- ✓ Production Vault add-ons (`{vaultAssetCount}` curated plugins available)
-- ✓ Per-model pricing tiers
-- ✓ Custom-domain hosting
-
-If LUS inactive → small muted note: "Premium AI features currently unavailable."
+Both persist on save alongside existing branding fields.
 
 ---
 
-### 4. Visual / theming rules
-
-- **Accent driver**: every button background, icon color, ring, badge accent, comparison checkmark, and "Step N" number badge uses inline `style={{ backgroundColor: branding.accent_color }}` or `color`. No hard-coded `amber-*` from the main landing page.
-- **Glassmorphism**: cards use `backdrop-blur-md bg-white/60 dark:bg-slate-900/60 border border-white/40`.
-- **Notebook grid**: same `bg-[linear-gradient(...)]` overlay as `index.tsx`.
-- **Organic orbs**: 2 absolutely-positioned blurred divs whose color = `branding.accent_color` at low opacity.
-- **Hover lift**: reuse `transition-all duration-300 hover:-translate-y-1 hover:shadow-lg` from the main landing page.
-- **Existing demo banner**: keep, restyled to sit flush above the hero (no behavior change).
-
----
-
-### 5. Files touched
+### 4. Files touched
 
 | File | Change |
 |---|---|
-| `src/routes/p.$slug.index.tsx` | Expand loader (LUS + vault count); replace component body with hero + 3-step + comparison + builder section. Keep `HudBuilderSandbox` import. |
+| `supabase/migrations/<timestamp>_branding_hero.sql` | New: add `hero_bg_url`, `hero_bg_opacity` columns |
+| `src/routes/p.$slug.index.tsx` | Replace hero section with image-backed Hero Stage; read new fields |
+| `src/routes/_authenticated.dashboard.branding.tsx` | Add hero image upload + opacity slider |
 
-No changes to `HudBuilderSandbox.tsx`, no DB migrations, no new components extracted (sections defined inline in the route file to keep one self-contained edit).
+No changes to `HudBuilderSandbox`, no new shared components.
 
 ---
 
-### 6. Acceptance check
+### 5. Acceptance check
 
-1. Visit `/p/{slug}` → see hero with brand logo, brand name in headline, accent-colored CTA.
-2. CTA "Start Building" smooth-scrolls to the builder section.
-3. Step-2 nested card lists capabilities matching the MSP's tier + LUS status (verify by toggling `licenses.license_status` in the DB).
-4. Pro MSP with vault assets sees the "Production Vault" line with the correct count; Starter MSP does not.
-5. Demo banner still appears when `demoPublished === true`.
-6. Existing builder still functions identically once scrolled to.
+1. Visit `/p/{slug}` → hero shows default residential photo, notebook grid visible on top, headline legible.
+2. Photo fades smoothly to transparent before the 3-step cards begin (no hard line).
+3. Upload a custom hero image in `/dashboard/branding` → reload portal → custom image appears.
+4. Drag opacity slider to ~80% → portal headline becomes more legible against busy images.
+5. CTA still smooth-scrolls to `#builder-start`; builder unchanged.
+6. Mobile viewport (375px): image still covers, headline readable, no horizontal scroll.
 
