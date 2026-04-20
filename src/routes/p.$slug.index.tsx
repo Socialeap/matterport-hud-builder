@@ -117,9 +117,9 @@ function PortalPage() {
     );
   }
 
-  const handleScrollToBuilder = (e: React.MouseEvent<HTMLAnchorElement>) => {
+  const handleScrollTo = (id: string) => (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
-    document.getElementById("builder-start")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   return (
