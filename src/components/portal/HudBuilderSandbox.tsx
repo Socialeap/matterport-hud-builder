@@ -629,12 +629,19 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
                               returnUrl: `${window.location.origin}${window.location.pathname}?checkout_model_id=${result.modelId}&session_id={CHECKOUT_SESSION_ID}`,
                             },
                           });
-                          if (checkoutError || !checkoutData?.clientSecret || !checkoutData?.stripeConnectAccountId) {
+                          if (checkoutError) {
                             toast.error("Failed to create checkout session");
-                          } else {
+                          } else if (checkoutData?.free === true) {
+                            // Free client — bypass Stripe entirely; backend already
+                            // marked the model paid + released.
+                            toast.success("Your Presentation is ready — preparing download…");
+                            setIsReleased(true);
+                          } else if (checkoutData?.clientSecret && checkoutData?.stripeConnectAccountId) {
                             setConnectAccountId(checkoutData.stripeConnectAccountId);
                             setCheckoutClientSecret(checkoutData.clientSecret);
                             setShowCheckout(true);
+                          } else {
+                            toast.error("Failed to create checkout session");
                           }
                         } else {
                           toast.error(result.error || "Failed to save presentation");
