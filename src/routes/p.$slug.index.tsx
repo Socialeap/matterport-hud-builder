@@ -3,7 +3,8 @@ import { createServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { HudBuilderSandbox } from "@/components/portal/HudBuilderSandbox";
 import { checkDemoPublished } from "@/lib/sandbox-demo.functions";
-import { Check, X, Link2, Palette, Download, Sparkles } from "lucide-react";
+import { Check, X, Link2, Palette, Download, Sparkles, Menu } from "lucide-react";
+import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 const fetchBrandingBySlug = createServerFn({ method: "GET" })
   .inputValidator((data: { slug: string }) => data)
@@ -115,9 +116,9 @@ function PortalPage() {
     );
   }
 
-  const handleScrollToBuilder = (e: React.MouseEvent<HTMLAnchorElement>) => {
+  const handleScrollTo = (id: string) => (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
-    document.getElementById("builder-start")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   return (
@@ -147,23 +148,14 @@ function PortalPage() {
       </div>
 
       <div className="relative z-10">
-        {/* Demo banner */}
-        {demoPublished && (
-          <div
-            className="flex w-full flex-wrap items-center justify-center gap-3 px-4 py-3 text-center text-sm font-medium text-white"
-            style={{ backgroundColor: accent }}
-          >
-            <span>✨ See a Live Demo of {branding.brand_name}'s 3D Studio</span>
-            <Link
-              to="/p/$slug/demo"
-              params={{ slug }}
-              className="inline-flex items-center gap-1 rounded-md bg-white px-3 py-1.5 text-sm font-semibold shadow-sm transition-transform hover:scale-105"
-              style={{ color: accent }}
-            >
-              View Demo →
-            </Link>
-          </div>
-        )}
+        {/* Sticky glassmorphism header */}
+        <PortalHeader
+          branding={branding}
+          slug={slug}
+          accent={accent}
+          demoPublished={demoPublished}
+          onScrollTo={handleScrollTo}
+        />
 
         {/* HERO STAGE — image-backed cinematic hero */}
         <section
@@ -241,7 +233,7 @@ function PortalPage() {
 
             <a
               href="#builder-start"
-              onClick={handleScrollToBuilder}
+              onClick={handleScrollTo("builder-start")}
               className="mt-10 inline-flex items-center gap-2 rounded-full px-8 py-4 text-base font-semibold text-white shadow-2xl transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl"
               style={{ backgroundColor: accent }}
             >
@@ -252,7 +244,7 @@ function PortalPage() {
         </section>
 
         {/* 3-STEP ONBOARDING */}
-        <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
+        <section id="steps" className="scroll-mt-20 mx-auto max-w-6xl px-4 py-16 sm:px-6">
           <div className="mb-12 text-center">
             <h2 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl dark:text-white">
               Three steps to your branded presentation
@@ -321,7 +313,7 @@ function PortalPage() {
         </section>
 
         {/* SOVEREIGNTY COMPARISON */}
-        <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
+        <section id="compare" className="scroll-mt-20 mx-auto max-w-6xl px-4 py-16 sm:px-6">
           <div className="mb-10 text-center">
             <h2 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl dark:text-white">
               Stop renting. Start owning.
@@ -422,5 +414,125 @@ function ComparisonRow({
         {text}
       </span>
     </li>
+  );
+}
+
+function PortalHeader({
+  branding,
+  slug,
+  accent,
+  demoPublished,
+  onScrollTo,
+}: {
+  branding: { brand_name: string; logo_url: string | null };
+  slug: string;
+  accent: string;
+  demoPublished: boolean;
+  onScrollTo: (id: string) => (e: React.MouseEvent<HTMLAnchorElement>) => void;
+}) {
+  const navLinks = [
+    { id: "steps", label: "Steps" },
+    { id: "compare", label: "Compare" },
+    { id: "builder-start", label: "Builder" },
+  ];
+
+  return (
+    <header className="sticky top-0 z-50 w-full border-b border-white/30 bg-white/40 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/40">
+      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
+        {/* Left: enlarged brand pill */}
+        <div className="flex h-11 items-center gap-3 rounded-full border border-white/40 bg-white/60 px-3 pr-4 shadow-sm backdrop-blur-md dark:border-white/10 dark:bg-slate-900/60">
+          {branding.logo_url ? (
+            <img
+              src={branding.logo_url}
+              alt={`${branding.brand_name} logo`}
+              className="h-8 w-8 rounded-full object-cover"
+            />
+          ) : (
+            <div
+              className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold text-white"
+              style={{ backgroundColor: accent }}
+            >
+              {branding.brand_name?.[0]?.toUpperCase() ?? "S"}
+            </div>
+          )}
+          <span className="text-base font-semibold text-slate-900 dark:text-white">
+            <span className="hidden sm:inline">{branding.brand_name} Studio</span>
+            <span className="sm:hidden">{branding.brand_name}</span>
+          </span>
+        </div>
+
+        {/* Center: View Demo CTA (desktop only) */}
+        <div className="hidden flex-1 justify-center sm:flex">
+          {demoPublished && (
+            <Link
+              to="/p/$slug/demo"
+              params={{ slug }}
+              className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white shadow-md transition-transform hover:scale-105"
+              style={{ backgroundColor: accent }}
+            >
+              <Sparkles className="size-4" />
+              View Demo →
+            </Link>
+          )}
+        </div>
+
+        {/* Right: section nav (desktop) */}
+        <nav className="hidden items-center gap-6 sm:flex">
+          {navLinks.map((link) => (
+            <a
+              key={link.id}
+              href={`#${link.id}`}
+              onClick={onScrollTo(link.id)}
+              className="text-sm font-medium text-slate-700 transition-colors hover:opacity-80 dark:text-slate-200"
+              style={{ color: undefined }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = accent)}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "")}
+            >
+              {link.label}
+            </a>
+          ))}
+        </nav>
+
+        {/* Mobile: hamburger menu */}
+        <Sheet>
+          <SheetTrigger asChild>
+            <button
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/40 bg-white/60 text-slate-900 shadow-sm backdrop-blur-md sm:hidden dark:border-white/10 dark:bg-slate-900/60 dark:text-white"
+              aria-label="Open menu"
+            >
+              <Menu className="size-5" />
+            </button>
+          </SheetTrigger>
+          <SheetContent side="right" className="w-72">
+            <SheetHeader>
+              <SheetTitle>{branding.brand_name} Studio</SheetTitle>
+            </SheetHeader>
+            <div className="mt-6 flex flex-col gap-2">
+              {demoPublished && (
+                <Link
+                  to="/p/$slug/demo"
+                  params={{ slug }}
+                  className="inline-flex items-center justify-center gap-2 rounded-full px-4 py-3 text-sm font-semibold text-white shadow-md"
+                  style={{ backgroundColor: accent }}
+                >
+                  <Sparkles className="size-4" />
+                  View Demo →
+                </Link>
+              )}
+              {navLinks.map((link) => (
+                <a
+                  key={link.id}
+                  href={`#${link.id}`}
+                  onClick={onScrollTo(link.id)}
+                  className="rounded-lg px-4 py-3 text-base font-medium text-slate-800 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-slate-800"
+                >
+                  {link.label}
+                </a>
+              ))}
+            </div>
+          </SheetContent>
+        </Sheet>
+      </div>
+    </header>
   );
 }
