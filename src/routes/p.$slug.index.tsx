@@ -416,3 +416,123 @@ function ComparisonRow({
     </li>
   );
 }
+
+function PortalHeader({
+  branding,
+  slug,
+  accent,
+  demoPublished,
+  onScrollTo,
+}: {
+  branding: { brand_name: string; logo_url: string | null };
+  slug: string;
+  accent: string;
+  demoPublished: boolean;
+  onScrollTo: (id: string) => (e: React.MouseEvent<HTMLAnchorElement>) => void;
+}) {
+  const navLinks = [
+    { id: "steps", label: "Steps" },
+    { id: "compare", label: "Compare" },
+    { id: "builder-start", label: "Builder" },
+  ];
+
+  return (
+    <header className="sticky top-0 z-50 w-full border-b border-white/30 bg-white/40 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/40">
+      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
+        {/* Left: enlarged brand pill */}
+        <div className="flex h-11 items-center gap-3 rounded-full border border-white/40 bg-white/60 px-3 pr-4 shadow-sm backdrop-blur-md dark:border-white/10 dark:bg-slate-900/60">
+          {branding.logo_url ? (
+            <img
+              src={branding.logo_url}
+              alt={`${branding.brand_name} logo`}
+              className="h-8 w-8 rounded-full object-cover"
+            />
+          ) : (
+            <div
+              className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold text-white"
+              style={{ backgroundColor: accent }}
+            >
+              {branding.brand_name?.[0]?.toUpperCase() ?? "S"}
+            </div>
+          )}
+          <span className="text-base font-semibold text-slate-900 dark:text-white">
+            <span className="hidden sm:inline">{branding.brand_name} Studio</span>
+            <span className="sm:hidden">{branding.brand_name}</span>
+          </span>
+        </div>
+
+        {/* Center: View Demo CTA (desktop only) */}
+        <div className="hidden flex-1 justify-center sm:flex">
+          {demoPublished && (
+            <Link
+              to="/p/$slug/demo"
+              params={{ slug }}
+              className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white shadow-md transition-transform hover:scale-105"
+              style={{ backgroundColor: accent }}
+            >
+              <Sparkles className="size-4" />
+              View Demo →
+            </Link>
+          )}
+        </div>
+
+        {/* Right: section nav (desktop) */}
+        <nav className="hidden items-center gap-6 sm:flex">
+          {navLinks.map((link) => (
+            <a
+              key={link.id}
+              href={`#${link.id}`}
+              onClick={onScrollTo(link.id)}
+              className="text-sm font-medium text-slate-700 transition-colors hover:opacity-80 dark:text-slate-200"
+              style={{ color: undefined }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = accent)}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "")}
+            >
+              {link.label}
+            </a>
+          ))}
+        </nav>
+
+        {/* Mobile: hamburger menu */}
+        <Sheet>
+          <SheetTrigger asChild>
+            <button
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/40 bg-white/60 text-slate-900 shadow-sm backdrop-blur-md sm:hidden dark:border-white/10 dark:bg-slate-900/60 dark:text-white"
+              aria-label="Open menu"
+            >
+              <Menu className="size-5" />
+            </button>
+          </SheetTrigger>
+          <SheetContent side="right" className="w-72">
+            <SheetHeader>
+              <SheetTitle>{branding.brand_name} Studio</SheetTitle>
+            </SheetHeader>
+            <div className="mt-6 flex flex-col gap-2">
+              {demoPublished && (
+                <Link
+                  to="/p/$slug/demo"
+                  params={{ slug }}
+                  className="inline-flex items-center justify-center gap-2 rounded-full px-4 py-3 text-sm font-semibold text-white shadow-md"
+                  style={{ backgroundColor: accent }}
+                >
+                  <Sparkles className="size-4" />
+                  View Demo →
+                </Link>
+              )}
+              {navLinks.map((link) => (
+                <a
+                  key={link.id}
+                  href={`#${link.id}`}
+                  onClick={onScrollTo(link.id)}
+                  className="rounded-lg px-4 py-3 text-base font-medium text-slate-800 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-slate-800"
+                >
+                  {link.label}
+                </a>
+              ))}
+            </div>
+          </SheetContent>
+        </Sheet>
+      </div>
+    </header>
+  );
+}
