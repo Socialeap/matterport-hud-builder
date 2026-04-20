@@ -196,15 +196,17 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
   const isPro = branding.tier === "pro";
   const hasPricing = branding.base_price_cents != null && branding.stripe_onboarding_complete;
 
-  // Calculate price
+  // Calculate price (3-tier model: 1-2 = $A, 3 = $B, 4+ = $B + (n-3)*$C)
   const modelCount = models.filter((m) => m.matterportId.trim()).length;
-  const basePriceCents = branding.base_price_cents ?? 0;
-  const threshold = branding.model_threshold ?? 1;
-  const additionalFeeCents = branding.additional_model_fee_cents ?? 0;
-  const totalCents = modelCount <= threshold
-    ? basePriceCents
-    : basePriceCents + ((modelCount - threshold) * additionalFeeCents);
-  const extraModels = Math.max(0, modelCount - threshold);
+  const priceA = branding.base_price_cents ?? 0;
+  const priceB = (branding as { tier3_price_cents?: number | null }).tier3_price_cents;
+  const priceC = branding.additional_model_fee_cents ?? 0;
+  const tier3Total = priceB ?? priceA * 2 + priceC;
+  let totalCents = 0;
+  if (modelCount <= 2) totalCents = priceA;
+  else if (modelCount === 3) totalCents = tier3Total;
+  else totalCents = tier3Total + (modelCount - 3) * priceC;
+  const extraModels = Math.max(0, modelCount - 3);
 
   const handleBrandingChange = useCallback((field: string, value: string) => {
     switch (field) {

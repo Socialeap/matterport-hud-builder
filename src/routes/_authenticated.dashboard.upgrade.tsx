@@ -78,7 +78,7 @@ function PricingPage() {
       priceId,
       customerEmail: user?.email ?? undefined,
       userId: user?.id ?? "",
-      returnUrl: `${window.location.origin}/dashboard?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+      returnUrl: `${window.location.origin}/dashboard/upgrade?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
     });
   };
 

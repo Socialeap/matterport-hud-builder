@@ -12,51 +12,83 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { Palette, Users, Play, LayoutDashboard, LogOut, CreditCard, ShoppingCart, Archive, Banknote } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  Palette,
+  Users,
+  Play,
+  LayoutDashboard,
+  LogOut,
+  ShoppingCart,
+  Archive,
+  Banknote,
+  DollarSign,
+  UserCog,
+  Lock,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
-const allNavItems = [
+type NavRoute =
+  | "/dashboard"
+  | "/dashboard/branding"
+  | "/dashboard/vault"
+  | "/dashboard/pricing"
+  | "/dashboard/orders"
+  | "/dashboard/payouts"
+  | "/dashboard/clients"
+  | "/dashboard/demo"
+  | "/dashboard/account";
+
+interface NavItem {
+  label: string;
+  to: NavRoute;
+  icon: typeof LayoutDashboard;
+  roles: readonly ("provider" | "client")[];
+  requiresPro?: boolean;
+}
+
+const allNavItems: readonly NavItem[] = [
   { label: "Overview", to: "/dashboard", icon: LayoutDashboard, roles: ["provider", "client"] },
   { label: "Branding", to: "/dashboard/branding", icon: Palette, roles: ["provider"] },
-  { label: "Vault", to: "/dashboard/vault", icon: Archive, roles: ["provider"], requiresPro: true },
+  { label: "Production Vault", to: "/dashboard/vault", icon: Archive, roles: ["provider"], requiresPro: true },
+  { label: "Pricing", to: "/dashboard/pricing", icon: DollarSign, roles: ["provider"] },
   { label: "Orders", to: "/dashboard/orders", icon: ShoppingCart, roles: ["provider", "client"] },
+  { label: "Payouts", to: "/dashboard/payouts", icon: Banknote, roles: ["provider"] },
   { label: "Clients", to: "/dashboard/clients", icon: Users, roles: ["provider"] },
-  { label: "Pricing", to: "/dashboard/pricing", icon: CreditCard, roles: ["provider"] },
-  { label: "Payouts", to: "/dashboard/payouts", icon: Banknote, roles: ["provider"], requiresStripe: true },
   { label: "Demo", to: "/dashboard/demo", icon: Play, roles: ["provider"] },
-] as const;
+  { label: "Account", to: "/dashboard/account", icon: UserCog, roles: ["provider", "client"] },
+];
 
 export function DashboardSidebar() {
   const { user, roles, signOut } = useAuth();
   const location = useLocation();
-  const [stripeConnected, setStripeConnected] = useState(false);
   const [tier, setTier] = useState<"starter" | "pro" | null>(null);
 
-  const isClient = roles.includes("client" as any);
+  const isClient = roles.includes("client");
 
   useEffect(() => {
     if (!user || isClient) return;
     supabase
       .from("branding_settings")
-      .select("stripe_onboarding_complete, tier")
+      .select("tier")
       .eq("provider_id", user.id)
       .maybeSingle()
       .then(({ data }) => {
-        setStripeConnected(Boolean(data?.stripe_onboarding_complete));
         setTier((data?.tier as "starter" | "pro") ?? "starter");
       });
   }, [user, isClient]);
 
   const isPro = tier === "pro";
 
-  // Filter nav items based on role, Stripe, and Pro tier gating
-  const navItems = (isClient
-    ? allNavItems.filter((item) => (item.roles as readonly string[]).includes("client"))
-    : allNavItems
-  )
-    .filter((item) => !(item as any).requiresStripe || stripeConnected)
-    .filter((item) => !(item as any).requiresPro || isPro);
+  const navItems = isClient
+    ? allNavItems.filter((item) => item.roles.includes("client"))
+    : allNavItems;
 
   return (
     <Sidebar>
@@ -73,24 +105,53 @@ export function DashboardSidebar() {
         <SidebarGroup>
           <SidebarGroupLabel>Platform</SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu>
-              {navItems.map((item) => {
-                const isActive =
-                  item.to === "/dashboard"
-                    ? location.pathname === "/dashboard"
-                    : location.pathname.startsWith(item.to);
-                return (
-                  <SidebarMenuItem key={item.to}>
-                    <SidebarMenuButton asChild isActive={isActive}>
-                      <Link to={item.to}>
-                        <item.icon className="size-4" />
-                        <span>{item.label}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
+            <TooltipProvider delayDuration={200}>
+              <SidebarMenu>
+                {navItems.map((item) => {
+                  const isActive =
+                    item.to === "/dashboard"
+                      ? location.pathname === "/dashboard"
+                      : location.pathname.startsWith(item.to);
+
+                  // Lock Vault for Starter MSPs
+                  const isLocked = item.requiresPro && !isPro && !isClient;
+
+                  if (isLocked) {
+                    return (
+                      <SidebarMenuItem key={item.to}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <SidebarMenuButton
+                              className="cursor-not-allowed opacity-60"
+                              aria-disabled="true"
+                              onClick={(e) => e.preventDefault()}
+                            >
+                              <item.icon className="size-4" />
+                              <span>{item.label}</span>
+                              <Lock className="ml-auto size-3" />
+                            </SidebarMenuButton>
+                          </TooltipTrigger>
+                          <TooltipContent side="right">
+                            Upgrade to Pro to unlock the Production Vault
+                          </TooltipContent>
+                        </Tooltip>
+                      </SidebarMenuItem>
+                    );
+                  }
+
+                  return (
+                    <SidebarMenuItem key={item.to}>
+                      <SidebarMenuButton asChild isActive={isActive}>
+                        <Link to={item.to}>
+                          <item.icon className="size-4" />
+                          <span>{item.label}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </TooltipProvider>
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>

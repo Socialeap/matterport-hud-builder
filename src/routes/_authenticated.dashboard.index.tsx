@@ -352,7 +352,7 @@ function DashboardOverview() {
                     payouts. Pro adds the Vault (reusable audio, widgets,
                     icons, and property docs) plus AI-powered lead capture.{" "}
                     <Link
-                      to="/dashboard/pricing"
+                      to="/dashboard/upgrade"
                       className="text-primary underline"
                     >
                       Compare plans
@@ -518,7 +518,7 @@ function StepCard({
           <div className="flex flex-wrap items-center gap-2 pt-2">
             {step.locked ? (
               <Button asChild size="sm" variant="outline">
-                <Link to="/dashboard/pricing">
+                <Link to="/dashboard/upgrade">
                   Upgrade to Pro <ArrowRight className="size-3" />
                 </Link>
               </Button>
@@ -538,7 +538,7 @@ function StepCard({
             <ShowMeHowDialog
               title={step.howTo.title}
               steps={step.howTo.steps}
-              ctaTo={step.locked ? "/dashboard/pricing" : step.cta.to}
+              ctaTo={step.locked ? "/dashboard/upgrade" : step.cta.to}
               ctaLabel={
                 step.locked ? "See pricing" : `Go to ${step.title}`
               }

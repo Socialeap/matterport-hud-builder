@@ -399,7 +399,7 @@ function VaultPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="flex justify-center pb-6">
-            <Button onClick={() => navigate({ to: "/dashboard/pricing" })}>
+            <Button onClick={() => navigate({ to: "/dashboard/upgrade" })}>
               Upgrade to Pro
             </Button>
           </CardContent>
