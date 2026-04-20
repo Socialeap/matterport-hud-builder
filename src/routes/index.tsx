@@ -155,9 +155,9 @@ const clientFeatures = [
   },
   {
     icon: Globe,
-    title: "Total Hosting Sovereignty",
+    title: "Brand + SEO/GEO Sovereignty",
     description:
-      "Permanent Assets. Clients download and own the self-contained presentation file they can host anywhere, including cost-free platform like Netlify or Github.",
+      "Clients brand, download, and own the self-contained presentation file, optimized for human & AI search. Host on a variety of platforms,  including cost-free like Netlify or Github.",
   },
   {
     icon: Archive,
