@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Check, X } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
-export const Route = createFileRoute("/_authenticated/dashboard/pricing")({
+export const Route = createFileRoute("/_authenticated/dashboard/upgrade")({
   component: PricingPage,
 });
 
