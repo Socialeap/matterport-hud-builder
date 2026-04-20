@@ -192,7 +192,7 @@ const starterFeatures = [
   { text: "Per-pricing for multiple property tours", included: true },
   { text: "Custom domain", included: false },
   { text: "Full whitelabel (remove co-branding)", included: false },
-  { text: "Production Vault (curated client add-ons)", included: false },
+  { text: "Production Vault (curated plugins/add-ons)", included: false },
   { text: "AI Lead Generation for Clients*", included: false },
 ];
 
@@ -207,7 +207,7 @@ const proFeatures = [
   { text: "Easy Stripe-Connect payout options", included: true },
   { text: "Per-pricing for multiple property tours", included: true },
   { text: "Custom domain", included: true },
-  { text: "Production Vault (curated client add-ons)", included: true },
+  { text: "Production Vault (curated plugins/add-ons)", included: true },
   { text: "AI Lead Generation for Clients*", included: true },
   { text: "Priority support", included: true },
 ];
