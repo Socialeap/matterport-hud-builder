@@ -24,6 +24,7 @@ export type Database = {
           custom_domain: string | null
           favicon_url: string | null
           flat_price_per_model_cents: number | null
+          ga_tracking_id: string | null
           gate_label: string
           hero_bg_opacity: number
           hero_bg_url: string | null
@@ -50,6 +51,7 @@ export type Database = {
           custom_domain?: string | null
           favicon_url?: string | null
           flat_price_per_model_cents?: number | null
+          ga_tracking_id?: string | null
           gate_label?: string
           hero_bg_opacity?: number
           hero_bg_url?: string | null
@@ -76,6 +78,7 @@ export type Database = {
           custom_domain?: string | null
           favicon_url?: string | null
           flat_price_per_model_cents?: number | null
+          ga_tracking_id?: string | null
           gate_label?: string
           hero_bg_opacity?: number
           hero_bg_url?: string | null
@@ -336,6 +339,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      page_visits: {
+        Row: {
+          id: string
+          provider_id: string
+          referrer: string | null
+          slug: string
+          user_agent: string | null
+          visited_at: string
+        }
+        Insert: {
+          id?: string
+          provider_id: string
+          referrer?: string | null
+          slug: string
+          user_agent?: string | null
+          visited_at?: string
+        }
+        Update: {
+          id?: string
+          provider_id?: string
+          referrer?: string | null
+          slug?: string
+          user_agent?: string | null
+          visited_at?: string
+        }
+        Relationships: []
       }
       profiles: {
         Row: {
