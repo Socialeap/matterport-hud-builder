@@ -24,6 +24,8 @@ export type Database = {
           custom_domain: string | null
           favicon_url: string | null
           gate_label: string
+          hero_bg_opacity: number
+          hero_bg_url: string | null
           hud_bg_color: string
           id: string
           instant_payout_fee_bps: number
@@ -45,6 +47,8 @@ export type Database = {
           custom_domain?: string | null
           favicon_url?: string | null
           gate_label?: string
+          hero_bg_opacity?: number
+          hero_bg_url?: string | null
           hud_bg_color?: string
           id?: string
           instant_payout_fee_bps?: number
@@ -66,6 +70,8 @@ export type Database = {
           custom_domain?: string | null
           favicon_url?: string | null
           gate_label?: string
+          hero_bg_opacity?: number
+          hero_bg_url?: string | null
           hud_bg_color?: string
           id?: string
           instant_payout_fee_bps?: number

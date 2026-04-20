@@ -85,6 +85,13 @@ function PortalPage() {
 
   const accent = branding.accent_color || "#3B82F6";
   const isPro = branding.tier === "pro";
+  const heroBgUrl =
+    (branding as any).hero_bg_url ||
+    "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=2400&q=80";
+  const heroBgOpacity =
+    typeof (branding as any).hero_bg_opacity === "number"
+      ? (branding as any).hero_bg_opacity
+      : 0.45;
 
   // Build dynamic feature list
   const features: string[] = [
@@ -127,10 +134,10 @@ function PortalPage() {
         }}
       />
 
-      {/* Accent-colored organic orbs */}
-      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+      {/* Accent-colored organic orbs (lower sections only) */}
+      <div className="pointer-events-none fixed inset-0 top-[85vh] z-0 overflow-hidden">
         <div
-          className="absolute -left-32 -top-20 h-[500px] w-[500px] rounded-full blur-[160px]"
+          className="absolute -left-32 top-20 h-[500px] w-[500px] rounded-full blur-[160px]"
           style={{ background: `${accent}26` }}
         />
         <div
@@ -140,7 +147,7 @@ function PortalPage() {
       </div>
 
       <div className="relative z-10">
-        {/* Demo banner — kept */}
+        {/* Demo banner */}
         {demoPublished && (
           <div
             className="flex w-full flex-wrap items-center justify-center gap-3 px-4 py-3 text-center text-sm font-medium text-white"
@@ -158,11 +165,48 @@ function PortalPage() {
           </div>
         )}
 
-        {/* HERO */}
-        <section className="mx-auto max-w-6xl px-4 pb-16 pt-20 sm:px-6 sm:pt-28">
-          <div className="mx-auto flex max-w-3xl flex-col items-center text-center">
+        {/* HERO STAGE — image-backed cinematic hero */}
+        <section
+          className="relative min-h-[85vh] w-full overflow-hidden [mask-image:linear-gradient(to_bottom,black_70%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_bottom,black_70%,transparent_100%)]"
+        >
+          {/* Layer 0: bg image */}
+          <img
+            src={heroBgUrl}
+            alt=""
+            aria-hidden="true"
+            className="absolute inset-0 h-full w-full object-cover object-center"
+          />
+
+          {/* Layer 1: dark dimming overlay (driven by hero_bg_opacity) */}
+          <div
+            className="absolute inset-0"
+            style={{ backgroundColor: `rgba(0,0,0,${heroBgOpacity})` }}
+          />
+
+          {/* Layer 1b: subtle accent tint */}
+          <div
+            className="absolute inset-0"
+            style={{
+              background: `linear-gradient(180deg, ${accent}22 0%, transparent 60%)`,
+            }}
+          />
+
+          {/* Layer 2: notebook grid overlay */}
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              backgroundImage: `
+                linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px)
+              `,
+              backgroundSize: "70px 70px",
+            }}
+          />
+
+          {/* Layer 4: content */}
+          <div className="relative mx-auto flex min-h-[85vh] max-w-6xl flex-col items-center justify-center px-4 py-20 text-center sm:px-6 sm:py-28">
             {/* Brand chip */}
-            <div className="mb-8 inline-flex items-center gap-3 rounded-full border border-white/40 bg-white/60 px-4 py-2 shadow-sm backdrop-blur-md dark:border-white/10 dark:bg-slate-900/60">
+            <div className="mb-8 inline-flex items-center gap-3 rounded-full border border-white/30 bg-white/15 px-4 py-2 shadow-lg backdrop-blur-md">
               {branding.logo_url ? (
                 <img
                   src={branding.logo_url}
@@ -177,18 +221,20 @@ function PortalPage() {
                   {branding.brand_name?.[0]?.toUpperCase() ?? "S"}
                 </div>
               )}
-              <span className="text-sm font-semibold text-slate-900 dark:text-white">
+              <span className="text-sm font-semibold text-white drop-shadow">
                 {branding.brand_name} Studio
               </span>
             </div>
 
-            <h1 className="text-4xl font-bold leading-tight tracking-tight text-slate-900 sm:text-5xl md:text-6xl dark:text-white">
+            <h1 className="max-w-3xl text-4xl font-bold leading-tight tracking-tight text-white drop-shadow-lg sm:text-5xl md:text-6xl">
               Your Properties,{" "}
-              <span style={{ color: accent }}>Professionally Presented.</span>{" "}
+              <span style={{ color: accent }} className="drop-shadow-lg">
+                Professionally Presented.
+              </span>{" "}
               No Subscriptions.
             </h1>
 
-            <p className="mt-6 max-w-2xl text-lg text-slate-600 dark:text-slate-300">
+            <p className="mt-6 max-w-2xl text-lg text-white/90 drop-shadow-md">
               Create a branded, multi-model HUD for your Matterport tours. Build for free, pay only
               when you're ready to download and host it anywhere.
             </p>
@@ -196,7 +242,7 @@ function PortalPage() {
             <a
               href="#builder-start"
               onClick={handleScrollToBuilder}
-              className="mt-10 inline-flex items-center gap-2 rounded-full px-8 py-4 text-base font-semibold text-white shadow-lg transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
+              className="mt-10 inline-flex items-center gap-2 rounded-full px-8 py-4 text-base font-semibold text-white shadow-2xl transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl"
               style={{ backgroundColor: accent }}
             >
               <Sparkles className="size-5" />

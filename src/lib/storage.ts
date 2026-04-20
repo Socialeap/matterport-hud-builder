@@ -10,7 +10,7 @@ const VAULT_BUCKET = "vault-assets";
 export async function uploadBrandAsset(
   userId: string,
   file: File,
-  assetType: "logo" | "favicon"
+  assetType: "logo" | "favicon" | "hero"
 ): Promise<string | null> {
   const ext = file.name.split(".").pop() || "png";
   const path = `${userId}/${assetType}.${ext}`;
