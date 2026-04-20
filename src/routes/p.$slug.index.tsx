@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
+import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { HudBuilderSandbox } from "@/components/portal/HudBuilderSandbox";
 import { checkDemoPublished } from "@/lib/sandbox-demo.functions";
@@ -46,6 +47,17 @@ const fetchBrandingBySlug = createServerFn({ method: "GET" })
     };
   });
 
+const recordPageVisit = createServerFn({ method: "POST" })
+  .inputValidator((data: { providerId: string; slug: string; referrer: string | null; userAgent: string | null }) => data)
+  .handler(async ({ data }) => {
+    await supabase.from("page_visits").insert({
+      provider_id: data.providerId,
+      slug: data.slug,
+      referrer: data.referrer,
+      user_agent: data.userAgent,
+    });
+  });
+
 export const Route = createFileRoute("/p/$slug/")({
   head: () => ({
     meta: [
@@ -71,6 +83,36 @@ export const Route = createFileRoute("/p/$slug/")({
 function PortalPage() {
   const { branding, demoPublished, lusActive, vaultAssetCount } = Route.useLoaderData();
   const { slug } = Route.useParams();
+
+  useEffect(() => {
+    if (!branding?.provider_id) return;
+    recordPageVisit({
+      data: {
+        providerId: branding.provider_id,
+        slug,
+        referrer: typeof document !== "undefined" ? document.referrer || null : null,
+        userAgent: typeof navigator !== "undefined" ? navigator.userAgent || null : null,
+      },
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [branding?.provider_id, slug]);
+
+  // Inject GA snippet when provider has configured a tracking ID
+  useEffect(() => {
+    const gaId = (branding as any)?.ga_tracking_id as string | null | undefined;
+    if (!gaId || typeof document === "undefined") return;
+    if (document.getElementById("ga-gtag-script")) return;
+    const scriptSrc = document.createElement("script");
+    scriptSrc.id = "ga-gtag-script";
+    scriptSrc.src = `https://www.googletagmanager.com/gtag/js?id=${gaId}`;
+    scriptSrc.async = true;
+    document.head.appendChild(scriptSrc);
+    const scriptInit = document.createElement("script");
+    scriptInit.id = "ga-gtag-init";
+    scriptInit.textContent = `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${gaId}');`;
+    document.head.appendChild(scriptInit);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [(branding as any)?.ga_tracking_id]);
 
   if (!branding) {
     return (
