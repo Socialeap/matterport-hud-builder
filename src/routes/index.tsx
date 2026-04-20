@@ -617,7 +617,7 @@ function Index() {
 
           <div className="mt-12 grid gap-6 sm:grid-cols-2">
             {/* Starter */}
-            <Card className={`relative flex flex-col backdrop-blur bg-white/5`}>
+            <Card className={`relative flex flex-col backdrop-blur bg-white/5 transition-all duration-300 hover:-translate-y-1 hover:border-amber-300/60 hover:shadow-lg hover:shadow-amber-300/10`}>
               <CardHeader className="text-center">
                 <CardTitle className="text-xl text-amber-300">Starter Studio</CardTitle>
                 <p className="text-sm text-white/60">Get started with co-branded studio.</p>
