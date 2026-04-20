@@ -128,8 +128,9 @@ function ClientPricingPage() {
           Client Pricing
         </h1>
         <p className="mt-2 text-muted-foreground">
-          Set what your clients pay per Presentation Portal, based on the
-          number of 3D property models they include.
+          Set what your clients pay per Presentation download.  Cost is based on
+          the number of 3D property models they include in their Presentation.
+          No other charges are included.
         </p>
       </div>
 
@@ -152,9 +153,9 @@ function ClientPricingPage() {
           <CardHeader>
             <div className="flex items-center gap-2">
               <DollarSign className="size-4 text-primary" />
-              <CardTitle className="text-base">Price A</CardTitle>
+              <CardTitle className="text-base">Per Model under 3</CardTitle>
             </div>
-            <CardDescription>For 1 or 2 property models</CardDescription>
+            <CardDescription>For 1 or 2 property models, each model is:</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
             <Label htmlFor="priceA" className="sr-only">
@@ -177,7 +178,7 @@ function ClientPricingPage() {
                 }
               />
             </div>
-            <p className="text-xs text-muted-foreground">Flat fee.</p>
+            <p className="text-xs text-muted-foreground">Flat fee per model.</p>
           </CardContent>
         </Card>
 
@@ -185,10 +186,10 @@ function ClientPricingPage() {
           <CardHeader>
             <div className="flex items-center gap-2">
               <DollarSign className="size-4 text-primary" />
-              <CardTitle className="text-base">Price B</CardTitle>
+              <CardTitle className="text-base">Per Bundle of 3</CardTitle>
             </div>
             <CardDescription>
-              For 3 property models (discounted bundle)
+              For exactly 3 property models. All 3 models for:
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -213,7 +214,7 @@ function ClientPricingPage() {
               />
             </div>
             <p className="text-xs text-muted-foreground">
-              Optional. If empty, falls back to 2 × Price A + Price C.
+              This is usually a discounted bundle.
             </p>
           </CardContent>
         </Card>
@@ -222,10 +223,10 @@ function ClientPricingPage() {
           <CardHeader>
             <div className="flex items-center gap-2">
               <DollarSign className="size-4 text-primary" />
-              <CardTitle className="text-base">Price C</CardTitle>
+              <CardTitle className="text-base">Per Model over 3</CardTitle>
             </div>
             <CardDescription>
-              Per each additional model beyond 3
+              For more than 3 models, each model is:
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -250,7 +251,7 @@ function ClientPricingPage() {
               />
             </div>
             <p className="text-xs text-muted-foreground">
-              Per-model fee for the 4th, 5th, 6th... model.
+              Per-model fee for Presentations that have more than 3 models.
             </p>
           </CardContent>
         </Card>
