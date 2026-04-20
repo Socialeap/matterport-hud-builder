@@ -16,7 +16,7 @@ function DashboardLayout() {
   const [tierChecked, setTierChecked] = useState(false);
   const [hasTier, setHasTier] = useState(false);
 
-  const isPricingPage = location.pathname === "/dashboard/pricing";
+  const isUpgradePage = location.pathname === "/dashboard/upgrade";
   const isClient = roles.includes("client");
 
   useEffect(() => {
@@ -50,12 +50,12 @@ function DashboardLayout() {
         (purchaseRes.data?.length ?? 0) > 0;
       setHasTier(hasAccess);
       setTierChecked(true);
-      if (!hasAccess && !isPricingPage) {
-        navigate({ to: "/dashboard/pricing" });
+      if (!hasAccess && !isUpgradePage) {
+        navigate({ to: "/dashboard/upgrade" });
       }
     };
     checkAccess();
-  }, [user, isPricingPage, navigate, isClient]);
+  }, [user, isUpgradePage, navigate, isClient]);
 
   if (!tierChecked) {
     return (
@@ -72,7 +72,7 @@ function DashboardLayout() {
         <main className="flex-1">
           <div className="flex items-center gap-2 border-b border-border px-6 py-3">
             <SidebarTrigger />
-            {!hasTier && isPricingPage && (
+            {!hasTier && isUpgradePage && (
               <span className="text-sm text-amber-600 font-medium">
                 Purchase a plan to access the full dashboard.
               </span>

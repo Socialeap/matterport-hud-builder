@@ -1,167 +1,298 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useAuth } from "@/hooks/use-auth";
-import { useStripeCheckout } from "@/hooks/useStripeCheckout";
-import { PaymentTestModeBanner } from "@/components/PaymentTestModeBanner";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Check, X } from "lucide-react";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { DollarSign, AlertTriangle, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/dashboard/pricing")({
-  component: PricingPage,
+  component: ClientPricingPage,
 });
 
-const tiers = [
-  {
-    id: "starter",
-    name: "Starter Studio",
-    setupPrice: "$149",
-    annualPrice: "$49",
-    priceId: "starter_annual",
-    description: "Get started with co-branded studio.",
-    features: [
-      { text: 'Co-branded Presentation Portal output ("Powered by Transcendence Media")', included: true },
-      { text: "Full builder access", included: true },
-      { text: "Client invitation management", included: true },
-      { text: "Music & tour behavior config", included: true },
-      { text: "AI-powered property Q&A*", included: true },
-      { text: "Easy Stripe-Connect payout options", included: true },
-      { text: "Per-pricing for multiple property tours", included: true },
-      { text: "Custom domain", included: false },
-      { text: "Full whitelabel (remove co-branding)", included: false },
-      { text: "AI Lead Generation for Clients*", included: false },
-    ],
-    note: "Upgrade to Pro Studio later for just $199 — not the full $299.",
-  },
-  {
-    id: "pro",
-    name: "Pro Studio",
-    setupPrice: "$299",
-    annualPrice: "$49",
-    priceId: "pro_annual",
-    popular: true,
-    description: "Full whitelabel studio and more.",
-    features: [
-      { text: "100% whitelabel — no co-branding", included: true },
-      { text: "Full builder access", included: true },
-      { text: "Client invitation management", included: true },
-      { text: "Music & tour behavior config", included: true },
-      { text: "AI-powered property Q&A*", included: true },
-      { text: "Easy Stripe-Connect payout options", included: true },
-      { text: "Per-pricing for multiple property tours", included: true },
-      { text: "Custom domain support", included: true },
-      { text: "AI Lead Generation for Clients*", included: true },
-      { text: "Priority support", included: true },
-    ],
-  },
-] as const;
+interface PricingState {
+  priceA: string; // 1-2 models
+  priceB: string; // 3 models (discounted)
+  priceC: string; // each additional beyond 3
+}
 
-type Tier = {
-  id: string;
-  name: string;
-  setupPrice: string;
-  annualPrice: string;
-  priceId: string;
-  description: string;
-  features: readonly { text: string; included: boolean }[];
-  popular?: boolean;
-  note?: string;
-};
+function centsToInput(cents: number | null | undefined): string {
+  if (cents == null) return "";
+  return (cents / 100).toString();
+}
 
-function PricingPage() {
+function inputToCents(value: string): number | null {
+  if (!value.trim()) return null;
+  const parsed = parseFloat(value);
+  if (Number.isNaN(parsed) || parsed < 0) return null;
+  return Math.round(parsed * 100);
+}
+
+function formatUSD(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+function ClientPricingPage() {
   const { user } = useAuth();
-  const { openCheckout, closeCheckout, isOpen, CheckoutForm } = useStripeCheckout();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [stripeConnected, setStripeConnected] = useState(false);
+  const [prices, setPrices] = useState<PricingState>({
+    priceA: "",
+    priceB: "",
+    priceC: "",
+  });
 
-  const handlePurchase = (priceId: string) => {
-    openCheckout({
-      priceId,
-      customerEmail: user?.email ?? undefined,
-      userId: user?.id ?? "",
-      returnUrl: `${window.location.origin}/dashboard?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
-    });
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      const { data, error } = await supabase
+        .from("branding_settings")
+        .select(
+          "base_price_cents, additional_model_fee_cents, tier3_price_cents, stripe_onboarding_complete"
+        )
+        .eq("provider_id", user.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Failed to load pricing:", error);
+      }
+
+      setPrices({
+        priceA: centsToInput(data?.base_price_cents),
+        priceB: centsToInput((data as { tier3_price_cents?: number | null } | null)?.tier3_price_cents),
+        priceC: centsToInput(data?.additional_model_fee_cents),
+      });
+      setStripeConnected(Boolean(data?.stripe_onboarding_complete));
+      setLoading(false);
+    })();
+  }, [user]);
+
+  const aCents = inputToCents(prices.priceA);
+  const bCents = inputToCents(prices.priceB);
+  const cCents = inputToCents(prices.priceC);
+
+  const calcCents = (count: number): number => {
+    const a = aCents ?? 0;
+    const b = bCents;
+    const c = cCents ?? 0;
+    if (count <= 2) return a;
+    if (count === 3) return b ?? a * 2 + c;
+    return (b ?? a * 2 + c) + (count - 3) * c;
   };
 
-  return (
-    <div className="mx-auto max-w-4xl space-y-8">
-      <PaymentTestModeBanner />
+  const handleSave = async () => {
+    if (!user) return;
+    if (aCents == null) {
+      toast.error("Please set a price for 1–2 property models.");
+      return;
+    }
+    setSaving(true);
+    const { error } = await supabase
+      .from("branding_settings")
+      .upsert(
+        {
+          provider_id: user.id,
+          base_price_cents: aCents,
+          tier3_price_cents: bCents,
+          additional_model_fee_cents: cCents,
+          model_threshold: 2,
+        } as never,
+        { onConflict: "provider_id" }
+      );
+    setSaving(false);
+    if (error) {
+      console.error(error);
+      toast.error("Failed to save pricing.");
+      return;
+    }
+    toast.success("Client pricing saved.");
+  };
 
-      <div className="text-center">
+  if (loading) {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto max-w-4xl space-y-6">
+      <div>
         <h1 className="text-3xl font-bold tracking-tight text-foreground">
-          Purchase Your Studio
+          Client Pricing
         </h1>
         <p className="mt-2 text-muted-foreground">
-          One-time setup fee · then $49/year upkeep license (first year free).
+          Set what your clients pay per Presentation Portal, based on the
+          number of 3D property models they include.
         </p>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        {(tiers as unknown as Tier[]).map((tier) => (
-          <Card
-            key={tier.id}
-            className={`relative flex flex-col ${tier.popular ? "border-primary shadow-lg" : ""}`}
-          >
-            {tier.popular && (
-              <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">
-                Most Popular
-              </Badge>
-            )}
-            <CardHeader className="text-center">
-              <CardTitle className="text-xl">{tier.name}</CardTitle>
-              <p className="text-sm text-muted-foreground">{tier.description}</p>
-              <div className="mt-4 space-y-1">
-                <div>
-                  <span className="text-4xl font-bold text-foreground">{tier.setupPrice}</span>
-                  <span className="text-sm text-muted-foreground"> setup</span>
+      {!stripeConnected && (
+        <Alert>
+          <AlertTriangle className="size-4" />
+          <AlertTitle>Payouts not connected yet</AlertTitle>
+          <AlertDescription>
+            You can set prices now, but clients won't be able to check out
+            until you connect your payout account.{" "}
+            <Link to="/dashboard/payouts" className="underline font-medium">
+              Connect Payouts →
+            </Link>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <DollarSign className="size-4 text-primary" />
+              <CardTitle className="text-base">Price A</CardTitle>
+            </div>
+            <CardDescription>For 1 or 2 property models</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <Label htmlFor="priceA" className="sr-only">
+              Price A (USD)
+            </Label>
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                $
+              </span>
+              <Input
+                id="priceA"
+                type="number"
+                min={0}
+                step="0.01"
+                placeholder="200"
+                className="pl-7"
+                value={prices.priceA}
+                onChange={(e) =>
+                  setPrices({ ...prices, priceA: e.target.value })
+                }
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">Flat fee.</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <DollarSign className="size-4 text-primary" />
+              <CardTitle className="text-base">Price B</CardTitle>
+            </div>
+            <CardDescription>
+              For 3 property models (discounted bundle)
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <Label htmlFor="priceB" className="sr-only">
+              Price B (USD)
+            </Label>
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                $
+              </span>
+              <Input
+                id="priceB"
+                type="number"
+                min={0}
+                step="0.01"
+                placeholder="450"
+                className="pl-7"
+                value={prices.priceB}
+                onChange={(e) =>
+                  setPrices({ ...prices, priceB: e.target.value })
+                }
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Optional. If empty, falls back to 2 × Price A + Price C.
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <DollarSign className="size-4 text-primary" />
+              <CardTitle className="text-base">Price C</CardTitle>
+            </div>
+            <CardDescription>
+              Per each additional model beyond 3
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <Label htmlFor="priceC" className="sr-only">
+              Price C (USD)
+            </Label>
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                $
+              </span>
+              <Input
+                id="priceC"
+                type="number"
+                min={0}
+                step="0.01"
+                placeholder="100"
+                className="pl-7"
+                value={prices.priceC}
+                onChange={(e) =>
+                  setPrices({ ...prices, priceC: e.target.value })
+                }
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Per-model fee for the 4th, 5th, 6th... model.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Example pricing</CardTitle>
+          <CardDescription>
+            What your clients will see at checkout for typical Portal sizes.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            {[1, 2, 3, 4, 5].map((n) => (
+              <div
+                key={n}
+                className="rounded-md border border-border bg-muted/30 p-3 text-center"
+              >
+                <div className="text-xs font-medium text-muted-foreground">
+                  {n} model{n === 1 ? "" : "s"}
                 </div>
-                <div className="text-sm text-muted-foreground">
-                  <span className="font-semibold text-foreground">{tier.annualPrice}</span>/year upkeep license -{" "}
-                  First year <span className="font-bold text-primary">FREE!</span>
+                <div className="mt-1 text-lg font-bold text-foreground">
+                  {formatUSD(calcCents(n))}
                 </div>
               </div>
-            </CardHeader>
-            <CardContent className="flex flex-1 flex-col justify-between gap-6">
-              <ul className="space-y-3">
-                {tier.features.map((feature, i) => (
-                  <li key={i} className="flex items-start gap-2 text-sm">
-                    {feature.included ? (
-                      <Check className="mt-0.5 size-4 shrink-0 text-primary" />
-                    ) : (
-                      <X className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                    )}
-                    <span className={feature.included ? "text-foreground" : "text-muted-foreground"}>
-                      {feature.text}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              {tier.note && (
-                <p className="text-xs text-muted-foreground italic">{tier.note}</p>
-              )}
-              <Button
-                className="w-full"
-                variant={tier.popular ? "default" : "outline"}
-                onClick={() => handlePurchase(tier.priceId)}
-              >
-                Get {tier.name}
-              </Button>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
-      <div className="text-center text-xs text-muted-foreground">
-        *All AI supported features require an active annual upkeep license to function.
-        <br />
-        Your studio setup (builder, branding, saved presentations) is permanent and never expires.
+      <div className="flex justify-end">
+        <Button onClick={handleSave} disabled={saving}>
+          {saving ? (
+            <>
+              <Loader2 className="size-4 animate-spin" /> Saving…
+            </>
+          ) : (
+            "Save Pricing"
+          )}
+        </Button>
       </div>
-
-      <Dialog open={isOpen} onOpenChange={(open) => !open && closeCheckout()}>
-        <DialogContent className="max-w-2xl">
-          <DialogTitle>Complete Your Purchase</DialogTitle>
-          {CheckoutForm && <CheckoutForm />}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
