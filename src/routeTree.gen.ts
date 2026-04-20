@@ -27,7 +27,7 @@ import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authe
 import { Route as PSlugDemoRouteImport } from './routes/p.$slug.demo'
 import { Route as LovableEmailSuppressionRouteImport } from './routes/lovable/email/suppression'
 import { Route as AuthenticatedDashboardVaultRouteImport } from './routes/_authenticated.dashboard.vault'
-import { Route as AuthenticatedDashboardPricingRouteImport } from './routes/_authenticated.dashboard.pricing'
+import { Route as AuthenticatedDashboardUpgradeRouteImport } from './routes/_authenticated.dashboard.upgrade'
 import { Route as AuthenticatedDashboardPayoutsRouteImport } from './routes/_authenticated.dashboard.payouts'
 import { Route as AuthenticatedDashboardOrdersRouteImport } from './routes/_authenticated.dashboard.orders'
 import { Route as AuthenticatedDashboardDemoRouteImport } from './routes/_authenticated.dashboard.demo'
@@ -129,10 +129,10 @@ const AuthenticatedDashboardVaultRoute =
     path: '/vault',
     getParentRoute: () => AuthenticatedDashboardRoute,
   } as any)
-const AuthenticatedDashboardPricingRoute =
-  AuthenticatedDashboardPricingRouteImport.update({
-    id: '/pricing',
-    path: '/pricing',
+const AuthenticatedDashboardUpgradeRoute =
+  AuthenticatedDashboardUpgradeRouteImport.update({
+    id: '/upgrade',
+    path: '/upgrade',
     getParentRoute: () => AuthenticatedDashboardRoute,
   } as any)
 const AuthenticatedDashboardPayoutsRoute =
@@ -208,7 +208,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/demo': typeof AuthenticatedDashboardDemoRoute
   '/dashboard/orders': typeof AuthenticatedDashboardOrdersRoute
   '/dashboard/payouts': typeof AuthenticatedDashboardPayoutsRoute
-  '/dashboard/pricing': typeof AuthenticatedDashboardPricingRoute
+  '/dashboard/upgrade': typeof AuthenticatedDashboardUpgradeRoute
   '/dashboard/vault': typeof AuthenticatedDashboardVaultRouteWithChildren
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/p/$slug/demo': typeof PSlugDemoRoute
@@ -235,7 +235,7 @@ export interface FileRoutesByTo {
   '/dashboard/demo': typeof AuthenticatedDashboardDemoRoute
   '/dashboard/orders': typeof AuthenticatedDashboardOrdersRoute
   '/dashboard/payouts': typeof AuthenticatedDashboardPayoutsRoute
-  '/dashboard/pricing': typeof AuthenticatedDashboardPricingRoute
+  '/dashboard/upgrade': typeof AuthenticatedDashboardUpgradeRoute
   '/dashboard/vault': typeof AuthenticatedDashboardVaultRouteWithChildren
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/p/$slug/demo': typeof PSlugDemoRoute
@@ -266,7 +266,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard/demo': typeof AuthenticatedDashboardDemoRoute
   '/_authenticated/dashboard/orders': typeof AuthenticatedDashboardOrdersRoute
   '/_authenticated/dashboard/payouts': typeof AuthenticatedDashboardPayoutsRoute
-  '/_authenticated/dashboard/pricing': typeof AuthenticatedDashboardPricingRoute
+  '/_authenticated/dashboard/upgrade': typeof AuthenticatedDashboardUpgradeRoute
   '/_authenticated/dashboard/vault': typeof AuthenticatedDashboardVaultRouteWithChildren
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/p/$slug/demo': typeof PSlugDemoRoute
@@ -297,7 +297,7 @@ export interface FileRouteTypes {
     | '/dashboard/demo'
     | '/dashboard/orders'
     | '/dashboard/payouts'
-    | '/dashboard/pricing'
+    | '/dashboard/upgrade'
     | '/dashboard/vault'
     | '/lovable/email/suppression'
     | '/p/$slug/demo'
@@ -324,7 +324,7 @@ export interface FileRouteTypes {
     | '/dashboard/demo'
     | '/dashboard/orders'
     | '/dashboard/payouts'
-    | '/dashboard/pricing'
+    | '/dashboard/upgrade'
     | '/dashboard/vault'
     | '/lovable/email/suppression'
     | '/p/$slug/demo'
@@ -354,7 +354,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard/demo'
     | '/_authenticated/dashboard/orders'
     | '/_authenticated/dashboard/payouts'
-    | '/_authenticated/dashboard/pricing'
+    | '/_authenticated/dashboard/upgrade'
     | '/_authenticated/dashboard/vault'
     | '/lovable/email/suppression'
     | '/p/$slug/demo'
@@ -513,11 +513,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardVaultRouteImport
       parentRoute: typeof AuthenticatedDashboardRoute
     }
-    '/_authenticated/dashboard/pricing': {
-      id: '/_authenticated/dashboard/pricing'
-      path: '/pricing'
-      fullPath: '/dashboard/pricing'
-      preLoaderRoute: typeof AuthenticatedDashboardPricingRouteImport
+    '/_authenticated/dashboard/upgrade': {
+      id: '/_authenticated/dashboard/upgrade'
+      path: '/upgrade'
+      fullPath: '/dashboard/upgrade'
+      preLoaderRoute: typeof AuthenticatedDashboardUpgradeRouteImport
       parentRoute: typeof AuthenticatedDashboardRoute
     }
     '/_authenticated/dashboard/payouts': {
@@ -607,7 +607,7 @@ interface AuthenticatedDashboardRouteChildren {
   AuthenticatedDashboardDemoRoute: typeof AuthenticatedDashboardDemoRoute
   AuthenticatedDashboardOrdersRoute: typeof AuthenticatedDashboardOrdersRoute
   AuthenticatedDashboardPayoutsRoute: typeof AuthenticatedDashboardPayoutsRoute
-  AuthenticatedDashboardPricingRoute: typeof AuthenticatedDashboardPricingRoute
+  AuthenticatedDashboardUpgradeRoute: typeof AuthenticatedDashboardUpgradeRoute
   AuthenticatedDashboardVaultRoute: typeof AuthenticatedDashboardVaultRouteWithChildren
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
 }
@@ -619,7 +619,7 @@ const AuthenticatedDashboardRouteChildren: AuthenticatedDashboardRouteChildren =
     AuthenticatedDashboardDemoRoute: AuthenticatedDashboardDemoRoute,
     AuthenticatedDashboardOrdersRoute: AuthenticatedDashboardOrdersRoute,
     AuthenticatedDashboardPayoutsRoute: AuthenticatedDashboardPayoutsRoute,
-    AuthenticatedDashboardPricingRoute: AuthenticatedDashboardPricingRoute,
+    AuthenticatedDashboardUpgradeRoute: AuthenticatedDashboardUpgradeRoute,
     AuthenticatedDashboardVaultRoute:
       AuthenticatedDashboardVaultRouteWithChildren,
     AuthenticatedDashboardIndexRoute: AuthenticatedDashboardIndexRoute,
