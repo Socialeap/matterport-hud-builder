@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Lock } from "lucide-react";
 import {
@@ -170,7 +170,7 @@ const emptyForm: AssetFormState = {
 
 function VaultPage() {
   const { user } = useAuth();
-  const navigate = useNavigate();
+  
   const [assets, setAssets] = useState<VaultAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<VaultCategory>("spatial_audio");
@@ -382,31 +382,11 @@ function VaultPage() {
     fetchAssets();
   };
 
-  if (tier === "starter") {
-    return (
-      <div className="mx-auto max-w-2xl py-16">
-        <Card className="border-dashed">
-          <CardHeader className="items-center text-center">
-            <div className="flex size-12 items-center justify-center rounded-full bg-primary/10">
-              <Lock className="size-6 text-primary" />
-            </div>
-            <CardTitle className="mt-3">Production Vault is a Pro feature</CardTitle>
-            <CardDescription className="max-w-md">
-              Curate sound libraries, Portal filters, interactive widgets, custom
-              icons, property docs, and external links — then offer them as
-              plug-and-play options inside your clients' Presentation Builder.
-              Upgrade to Pro to unlock the Vault.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex justify-center pb-6">
-            <Button onClick={() => navigate({ to: "/dashboard/upgrade" })}>
-              Upgrade to Pro
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  const isStarter = tier === "starter";
+  const goToPricing = () => {
+    window.location.href = "/#pricing";
+  };
+
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -421,6 +401,36 @@ function VaultPage() {
         </p>
       </div>
 
+      {isStarter && (
+        <Card className="border-2 border-primary/40 bg-gradient-to-br from-primary/5 to-primary/10">
+          <CardContent className="flex flex-col items-start gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/15">
+                <Lock className="size-5 text-primary" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  Production Vault is a Pro feature
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Browse the categories below to see what you can curate — sound
+                  libraries, Portal filters, interactive widgets, custom icons,
+                  property docs, and external links. Upgrade to Pro to start
+                  adding assets.
+                </p>
+              </div>
+            </div>
+            <Button onClick={goToPricing} className="shrink-0 gap-2">
+              <Lock className="size-4" /> Unlock with Pro
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      <div
+        className={isStarter ? "pointer-events-none select-none opacity-70" : ""}
+        aria-disabled={isStarter}
+      >
       <Tabs
         value={activeTab}
         onValueChange={(v) => setActiveTab(v as VaultCategory)}
@@ -473,8 +483,9 @@ function VaultPage() {
                   {assetsByCategory[c.value].length === 1 ? "" : "s"} in vault
                 </p>
               </div>
-              <Button onClick={openCreate} size="sm">
-                <Plus className="mr-1 size-4" /> Add Asset
+              <Button onClick={openCreate} size="sm" disabled={isStarter}>
+                {isStarter ? <Lock className="mr-1 size-4" /> : <Plus className="mr-1 size-4" />}
+                Add Asset
               </Button>
             </div>
 
@@ -500,9 +511,18 @@ function VaultPage() {
           </TabsContent>
         ))}
       </Tabs>
+      </div>
+
+      {isStarter && (
+        <div className="flex justify-center pt-2">
+          <Button onClick={goToPricing} size="lg" className="gap-2">
+            <Lock className="size-4" /> Unlock the Vault — View Pricing
+          </Button>
+        </div>
+      )}
 
       <AssetEditorDialog
-        open={editorOpen}
+        open={editorOpen && !isStarter}
         onOpenChange={(open) => {
           setEditorOpen(open);
           if (!open) {
