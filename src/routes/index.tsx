@@ -48,7 +48,7 @@ export const Route = createFileRoute("/")({
     meta: [
       { title: OG_TITLE },
       { name: "description", content: OG_DESC },
-      { name: "keywords", content: "Matterport presentation, 3D tour branding, property tour HUD, white-label Matterport, 3D presentation builder, real estate virtual tour" },
+      { name: "keywords", content: "Matterport presentation, 3D tour branding, property presentation portal, white-label Matterport, 3D presentation builder, real estate virtual tour" },
       { property: "og:type", content: "website" },
       { property: "og:url", content: SITE_URL },
       { property: "og:title", content: OG_TITLE },
@@ -131,7 +131,7 @@ const clientFeatures = [
   },
   {
     icon: Layers,
-    title: "Multi-Model HUD",
+    title: "Multi-Model Presentation Portal",
     description:
       "Bundle multiple Matterport tours into a single branded presentation with seamless dropdown navigation.",
   },
@@ -163,7 +163,7 @@ const clientFeatures = [
     icon: Archive,
     title: "Production Vault Add-Ons",
     description:
-      "Pro studios curate a proprietary library of sound, HUD filters, widgets, custom icons, and property docs — surfaced inside every client's builder as plug-and-play upgrades.",
+      "Pro studios curate a proprietary library of sound, Portal filters, widgets, custom icons, and property docs — surfaced inside every client's builder as plug-and-play upgrades.",
   },
   {
     icon: Film,
@@ -175,13 +175,13 @@ const clientFeatures = [
     icon: MapPin,
     title: "Google-Powered Neighborhood Map",
     description:
-      "Each listed property gets an embedded interactive map of its surroundings — schools, dining, transit — accessible directly from the HUD without leaving the tour.",
+      "Each listed property gets an embedded interactive map of its surroundings — schools, dining, transit — accessible directly from the Portal without leaving the tour.",
   },
 ];
 
 
 const starterFeatures = [
-  { text: 'Co-branded HUD output ("Powered by Transcendence Media")', included: true },
+  { text: 'Co-branded Presentation Portal output ("Powered by Transcendence Media")', included: true },
   { text: "Full builder access", included: true },
   { text: "Client invitation management", included: true },
   { text: "Music & tour behavior config", included: true },
@@ -466,7 +466,7 @@ function Index() {
             <div className="relative">
               <img
                 src={heroHudBanner}
-                alt="3D property tour HUD presentation showcase"
+                alt="3D property tour Presentation Portal showcase"
                 className="w-full"
                 loading="eager"
               />
@@ -740,7 +740,7 @@ function Index() {
               {
                 step: "2",
                 title: "Configure Your Brand & Pricing",
-                desc: "Upload your logo, set accent colors, and customize the HUD header. Set a portal slug and (optional) pricing for your client-facing page.",
+                desc: "Upload your logo, set accent colors, and customize the Portal header. Set a portal slug and (optional) pricing for your client-facing page.",
               },
               {
                 step: "3",

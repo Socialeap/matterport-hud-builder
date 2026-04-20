@@ -69,7 +69,7 @@ export function BrandingSection({
             </div>
           </div>
           <div className="space-y-2">
-            <Label>HUD Header Background</Label>
+            <Label>Portal Header Background</Label>
             <div className="flex items-center gap-2">
               <input
                 type="color"

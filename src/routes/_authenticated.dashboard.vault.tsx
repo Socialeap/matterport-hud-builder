@@ -94,7 +94,7 @@ const CATEGORIES: CategoryMeta[] = [
   },
   {
     value: "visual_hud_filter",
-    label: "Visual HUD Filters",
+    label: "Visual Portal Filters",
     utility: "Overlay Layering",
     purpose: "Cinematic \"film\" look",
     format: ".png (transparent) or .css snippet",
@@ -392,7 +392,7 @@ function VaultPage() {
             </div>
             <CardTitle className="mt-3">Production Vault is a Pro feature</CardTitle>
             <CardDescription className="max-w-md">
-              Curate sound libraries, HUD filters, interactive widgets, custom
+              Curate sound libraries, Portal filters, interactive widgets, custom
               icons, property docs, and external links — then offer them as
               plug-and-play options inside your clients' Presentation Builder.
               Upgrade to Pro to unlock the Vault.

@@ -162,7 +162,7 @@ function VaultTemplatesPage() {
           </h1>
           <p className="text-sm text-muted-foreground">
             Define what gets extracted from each property doc kind. Clients'
-            HUDs consume these fields automatically.
+            Presentation Portals consume these fields automatically.
           </p>
         </div>
         <Button
@@ -231,7 +231,7 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
       <FileJson className="mx-auto size-10 text-muted-foreground/60" />
       <p className="mt-3 text-sm font-medium">No templates yet</p>
       <p className="mt-1 text-xs text-muted-foreground">
-        Create your first template to start turning uploaded PDFs into structured HUD data.
+        Create your first template to start turning uploaded PDFs into structured Portal data.
       </p>
       <Button size="sm" variant="outline" className="mt-4" onClick={onAdd}>
         <Plus className="mr-1 size-4" /> New Template
@@ -383,7 +383,7 @@ function EditorDialog({
           </DialogTitle>
           <DialogDescription>
             Fields declared here are extracted from every matching upload and
-            surfaced to the client HUD.
+            surfaced to the client Portal.
           </DialogDescription>
         </DialogHeader>
 

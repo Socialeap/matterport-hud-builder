@@ -650,10 +650,10 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
             )}
           </div>
 
-          {/* Right: Live HUD Preview */}
+          {/* Right: Live Presentation Portal Preview */}
           <div className="lg:sticky lg:top-8 lg:self-start">
             <h2 className="mb-3 text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-              Desktop HUD Preview
+              Desktop Portal Preview
             </h2>
             <HudPreview
               models={models}

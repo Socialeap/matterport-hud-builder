@@ -597,10 +597,10 @@ function DemoPage() {
           </div>
         </div>
 
-        {/* Right: Live HUD Preview */}
+        {/* Right: Live Presentation Portal Preview */}
         <div className="lg:sticky lg:top-8 lg:self-start">
           <h2 className="mb-3 text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-            Live HUD Preview
+            Live Portal Preview
           </h2>
           <HudPreview
             models={models}

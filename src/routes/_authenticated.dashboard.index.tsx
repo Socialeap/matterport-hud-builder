@@ -114,7 +114,7 @@ function DashboardOverview() {
       bullets: [
         "Upload your logo",
         "Pick an accent color",
-        "Choose a HUD background",
+        "Choose a Portal background",
       ],
       cta: { label: "Open Branding", to: "/dashboard/branding" },
       done: !!status.branding?.logo_url,
@@ -123,7 +123,7 @@ function DashboardOverview() {
         steps: [
           "Upload your logo — square works best.",
           "Pick an accent color that pops on dark and light.",
-          "Choose a HUD background — dark colors look most premium.",
+          "Choose a Portal background — dark colors look most premium.",
           "Save. Your portal updates instantly.",
         ],
       },

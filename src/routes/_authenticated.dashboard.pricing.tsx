@@ -21,7 +21,7 @@ const tiers = [
     priceId: "starter_annual",
     description: "Get started with co-branded studio.",
     features: [
-      { text: 'Co-branded HUD output ("Powered by Transcendence Media")', included: true },
+      { text: 'Co-branded Presentation Portal output ("Powered by Transcendence Media")', included: true },
       { text: "Full builder access", included: true },
       { text: "Client invitation management", included: true },
       { text: "Music & tour behavior config", included: true },
