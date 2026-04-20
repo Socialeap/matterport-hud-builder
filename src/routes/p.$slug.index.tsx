@@ -274,6 +274,49 @@ function PortalPage() {
           </div>
         </section>
 
+        {/* STUDIO INCLUDES — features split across 3 columns with glass texture */}
+        <section id="includes" className="scroll-mt-20 mx-auto max-w-6xl px-4 pb-4 sm:px-6">
+          <div
+            className="rounded-2xl border bg-white/50 p-6 shadow-sm backdrop-blur-xl sm:p-8 dark:bg-slate-900/40"
+            style={{ borderColor: `${accent}40` }}
+          >
+            <div className="mb-6 flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center">
+              <h3 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl dark:text-white">
+                What{" "}
+                <span style={{ color: accent }}>{branding.brand_name} Studio</span>{" "}
+                Includes
+              </h3>
+              <span
+                className="text-xs font-bold uppercase tracking-wider"
+                style={{ color: accent }}
+              >
+                Every presentation
+              </span>
+            </div>
+
+            <ul className="grid gap-x-8 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+              {features.map((f) => (
+                <li
+                  key={f}
+                  className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-200"
+                >
+                  <Check
+                    className="mt-0.5 size-4 shrink-0"
+                    style={{ color: accent }}
+                  />
+                  <span>{f}</span>
+                </li>
+              ))}
+            </ul>
+
+            {!lusActive && (
+              <p className="mt-5 text-xs italic text-slate-500 dark:text-slate-400">
+                Premium AI features currently unavailable on this plan.
+              </p>
+            )}
+          </div>
+        </section>
+
         {/* SOVEREIGNTY COMPARISON */}
         <section id="compare" className="scroll-mt-20 mx-auto max-w-6xl px-4 py-16 sm:px-6">
           <div className="mb-10 text-center">
