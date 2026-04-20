@@ -57,19 +57,51 @@ function PayoutsPage() {
       const publishableKey = import.meta.env.VITE_PAYMENTS_CLIENT_TOKEN;
       if (!publishableKey) throw new Error("Stripe publishable key not configured");
 
+      // Probe once: if the stored Stripe account is gone, the edge function will clear it
+      // and return 400 with code "stripe_account_missing". Handle that before initializing.
+      const probe = await supabase.functions.invoke("stripe-connect-account-session", {
+        body: { environment: getStripeEnvironment() },
+      });
+      if (probe.error) {
+        let parsed: any = null;
+        try {
+          parsed = await (probe.error as any).context?.json?.();
+        } catch {}
+        if (parsed?.code === "stripe_account_missing") {
+          toast.error(parsed.error);
+          setOnboardingComplete(false);
+          setStripeConnectInstance(null);
+          setLoading(false);
+          return;
+        }
+        throw new Error(parsed?.error || probe.error.message);
+      }
+      const initialClientSecret = (probe.data as any)?.client_secret as string;
+      let usedInitialSecret = false;
+
       const instance = loadConnectAndInitialize({
         publishableKey,
         fetchClientSecret: async () => {
+          if (!usedInitialSecret && initialClientSecret) {
+            usedInitialSecret = true;
+            return initialClientSecret;
+          }
           const { data, error } = await supabase.functions.invoke("stripe-connect-account-session", {
             body: { environment: getStripeEnvironment() },
           });
-          if ((data as any)?.code === "stripe_account_missing") {
-            toast.error((data as any).error);
-            setOnboardingComplete(false);
-            setStripeConnectInstance(null);
-            throw new Error((data as any).error);
+          if (error) {
+            let parsed: any = null;
+            try {
+              parsed = await (error as any).context?.json?.();
+            } catch {}
+            if (parsed?.code === "stripe_account_missing") {
+              toast.error(parsed.error);
+              setOnboardingComplete(false);
+              setStripeConnectInstance(null);
+              throw new Error(parsed.error);
+            }
+            throw new Error(parsed?.error || error.message);
           }
-          if (error) throw new Error((data as any)?.error || error.message);
           if ((data as any)?.error) throw new Error((data as any).error);
           return (data as any).client_secret as string;
         },
