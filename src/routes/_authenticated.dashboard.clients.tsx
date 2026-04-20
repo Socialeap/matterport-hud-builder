@@ -166,23 +166,19 @@ function ClientsPage() {
               />
             </div>
 
-            <div className="flex flex-col gap-1.5 rounded-md border border-border bg-muted/30 px-3 py-2">
-              <Label htmlFor="invite-free" className="text-xs font-medium">
-                Attribute
-              </Label>
-              <div className="flex items-center gap-2">
-                <span className={`text-sm font-medium ${!inviteFree ? "text-foreground" : "text-muted-foreground"}`}>
-                  Pay
-                </span>
-                <Switch
-                  id="invite-free"
-                  checked={inviteFree}
-                  onCheckedChange={setInviteFree}
-                />
-                <span className={`text-sm font-medium ${inviteFree ? "text-foreground" : "text-muted-foreground"}`}>
-                  Free
-                </span>
-              </div>
+            <div className="flex items-center gap-2">
+              <span className={`text-sm font-medium ${!inviteFree ? "text-foreground" : "text-muted-foreground"}`}>
+                Pay
+              </span>
+              <Switch
+                id="invite-free"
+                checked={inviteFree}
+                onCheckedChange={setInviteFree}
+                aria-label="Toggle Free or Pay"
+              />
+              <span className={`text-sm font-medium ${inviteFree ? "text-foreground" : "text-muted-foreground"}`}>
+                Free
+              </span>
             </div>
 
             <Button onClick={handleInvite} disabled={sending || !email.trim()}>
@@ -210,7 +206,7 @@ function ClientsPage() {
                 <TableRow>
                   <TableHead>Email</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Attribute</TableHead>
+                  <TableHead>Charge</TableHead>
                   <TableHead>Sent</TableHead>
                   <TableHead>Expires</TableHead>
                 </TableRow>
