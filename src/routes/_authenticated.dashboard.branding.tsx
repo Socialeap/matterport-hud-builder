@@ -276,7 +276,7 @@ function BrandingPage() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="hud_bg_color">HUD Background</Label>
+              <Label htmlFor="hud_bg_color">Portal Background</Label>
               <div className="flex items-center gap-2">
                 <input
                   type="color"

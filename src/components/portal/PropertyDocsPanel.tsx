@@ -33,7 +33,7 @@ interface PropertyDocsPanelProps {
 }
 
 /**
- * Per-property extraction control surface inside the HUD builder.
+ * Per-property extraction control surface inside the Presentation Portal builder.
  * Works for both providers (their own vault + templates) and for
  * clients bound to a provider via client_providers (the provider's
  * active vault docs + active templates). RLS does the scoping.
@@ -204,7 +204,7 @@ export function PropertyDocsPanel({
           </div>
         ) : extractions.length === 0 ? (
           <p className="text-[11px] leading-snug text-muted-foreground">
-            No extractions yet. Pick a doc + template and run to populate HUD fields.
+            No extractions yet. Pick a doc + template and run to populate Portal fields.
           </p>
         ) : (
           <ul className="space-y-2">
@@ -236,7 +236,7 @@ export function PropertyDocsPanel({
               <DialogTitle>Run Extraction</DialogTitle>
               <DialogDescription>
                 Pick a doc from your vault and a template to extract against.
-                Fields will populate the HUD for this property.
+                Fields will populate the Portal for this property.
               </DialogDescription>
             </DialogHeader>
 

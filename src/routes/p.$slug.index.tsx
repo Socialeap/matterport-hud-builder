@@ -209,7 +209,7 @@ function PortalPage() {
             </h1>
 
             <p className="mt-6 max-w-2xl text-lg text-white/90 drop-shadow-md">
-              Create a branded, multi-model HUD for your Matterport tours. Build for free, pay only
+              Create a branded, multi-model Presentation Portal for your Matterport tours. Build for free, pay only
               when you're ready to download and host it anywhere.
             </p>
 
@@ -220,7 +220,7 @@ function PortalPage() {
               style={{ backgroundColor: accent }}
             >
               <Sparkles className="size-5" />
-              Start Building Your HUD
+              Start Building Your Portal
             </a>
           </div>
         </section>
@@ -251,7 +251,7 @@ function PortalPage() {
               <StepBadge n={2} accent={accent} />
               <div className="mt-4 flex items-center gap-2 text-slate-900 dark:text-white">
                 <Palette className="size-5" style={{ color: accent }} />
-                <h3 className="text-lg font-semibold">Design your HUD</h3>
+                <h3 className="text-lg font-semibold">Design your Portal</h3>
               </div>
               <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
                 Add your logo, contact info, choose music, and toggle features like the AI
@@ -443,7 +443,7 @@ function PortalHeader({
     { id: "builder-start", label: "Builder" },
   ];
 
-  // Tint header with MSP HUD background color at ~80% opacity (cc hex alpha)
+  // Tint header with MSP Portal background color at ~80% opacity (cc hex alpha)
   const headerBg = `${hudBgColor}cc`;
 
   return (

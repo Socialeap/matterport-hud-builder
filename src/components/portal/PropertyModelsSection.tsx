@@ -193,7 +193,7 @@ export function PropertyModelsSection({
                     </p>
                   ) : (
                     <p className="text-[11px] leading-snug text-muted-foreground">
-                      Adds a "Cinema Mode" button to the HUD. Loads only when clicked — won't slow the tour.
+                      Adds a "Cinema Mode" button to the Portal. Loads only when clicked — won't slow the tour.
                     </p>
                   )}
                 </div>
@@ -222,7 +222,7 @@ export function PropertyModelsSection({
                   </div>
                   <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
                     {model.location.trim()
-                      ? "Adds a map button to the HUD using the Location above."
+                      ? "Adds a map button to the Portal using the Location above."
                     : "Add the address above to enable this feature."}
                   </p>
                 </div>
