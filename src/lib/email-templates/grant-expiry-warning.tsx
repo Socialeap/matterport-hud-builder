@@ -20,7 +20,7 @@ const GrantExpiryWarning = ({
   <Html lang="en" dir="ltr">
     <Head />
     <Preview>
-      Your complimentary Studio access expires in {daysLeft} day{daysLeft !== 1 ? 's' : ''}
+      Your complimentary Studio access expires in {String(daysLeft)} day{daysLeft !== 1 ? 's' : ''}
     </Preview>
     <Body style={main}>
       <Container style={container}>
