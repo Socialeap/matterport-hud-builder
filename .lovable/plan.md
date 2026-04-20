@@ -1,131 +1,130 @@
 
 
-## Plan: Complete the Dashboard Sidebar (Vault, Payouts, Pricing, Account)
+## Plan: Optional Single-Rate Pricing + Public Pricing Section on Studio
 
-Restructure the dashboard left-nav so every MSP-facing area is reachable, repurpose the **Pricing** page to control client/end-user pricing (not MSP tier purchase), and add a new **Account** page.
+Two coordinated changes: (1) give MSPs an optional "single flat rate per model" pricing mode on the Client Pricing page, and (2) surface their chosen pricing model as a public table on their Studio landing page (`/p/$slug`) with a header link.
 
 ---
 
-### 1. Sidebar changes — `src/components/dashboard/DashboardSidebar.tsx`
+### Part 1 — Single-Rate Toggle on `/dashboard/pricing`
 
-New nav order for providers:
+**Goal:** Keep the 3-tier model as the preferred default, but let MSPs flip a switch to use one flat per-model price instead.
 
-| # | Label | Route | Icon | Behavior |
-|---|---|---|---|---|
-| 1 | Overview | `/dashboard` | LayoutDashboard | always |
-| 2 | Branding | `/dashboard/branding` | Palette | always |
-| 3 | Production Vault | `/dashboard/vault` | Archive | **always shown**; disabled + 🔒 icon + "Pro only" tooltip when `tier === 'starter'` |
-| 4 | Pricing | `/dashboard/pricing` | DollarSign | always (NEW purpose — see §3) |
-| 5 | Orders | `/dashboard/orders` | ShoppingCart | always |
-| 6 | Payouts | `/dashboard/payouts` | Banknote | **always shown** (remove `requiresStripe` gate); page itself already handles "not connected yet" state |
-| 7 | Clients | `/dashboard/clients` | Users | always |
-| 8 | Demo | `/dashboard/demo` | Play | always |
-| 9 | Account | `/dashboard/account` | UserCog | always (NEW) |
+**New top-right control (above the 3 tier cards):**
 
-Disabled-row pattern for Starter Vault: render as a non-link `<SidebarMenuButton>` with `opacity-60 cursor-not-allowed`, a small `Lock` icon, and a tooltip "Upgrade to Pro to unlock the Production Vault".
-
-### 2. Move tier-purchase gate off `/dashboard/pricing` — `src/routes/_authenticated.dashboard.tsx`
-
-`/dashboard/pricing` is being repurposed for client pricing, so it can no longer double as the upgrade landing page.
-
-- Rename the existing tier-purchase page from `_authenticated.dashboard.pricing.tsx` → `_authenticated.dashboard.upgrade.tsx` (route `/dashboard/upgrade`).
-- Update the gate redirect in `_authenticated.dashboard.tsx` to `/dashboard/upgrade`.
-- Update the banner text and any internal links currently pointing to `/dashboard/pricing` for the purchase flow (e.g. checkout `returnUrl`s) to use `/dashboard/upgrade`.
-- The Sidebar does NOT show "Upgrade" — users are routed there only via the gate.
-
-### 3. New Pricing page — `src/routes/_authenticated.dashboard.pricing.tsx` (rewrite)
-
-Purpose: MSP sets the per-presentation price their **clients** pay based on the number of 3D property models in a Presentation Portal.
-
-Three tiered fields:
-
-```
-$A — Price for 1–2 property models                (flat fee)
-$B — Price for 3 property models (discounted)     (flat fee, replaces 3 × $A)
-$C — Price per each additional model beyond 3     (per-model fee)
+```text
+┌──────────────────────────────────────────────────────────────────────────┐
+│ Client Pricing                                                           │
+│ Set what your clients pay…                                               │
+│                                                                          │
+│            ┌─────────────────────────────────────────────────────────┐  │
+│            │ Single flat rate per model                               │  │
+│            │ [ $ _____ ] per model    [ Use this rate ◯ OFF ]        │  │
+│            │ When ON, clients pay this × number of models.           │  │
+│            └─────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
-Implementation:
-- Reuse existing `branding_settings` columns:
-  - `base_price_cents` → **$A** (1–2 models)
-  - `additional_model_fee_cents` → **$C** (per additional model)
-- Add ONE new column (migration): `tier3_price_cents int4 NULL` → **$B** (flat price for exactly 3 models).
-- Set `model_threshold` to a fixed `2` server-side on save (treated as a system constant in the new model: 1–2 = base, 3 = discounted bundle, 4+ = base-3 + extra-per-model).
-- UI: three labeled `Input type="number"` (USD) cards with helper text + a live "Example pricing" preview that shows the calculated cost for 1, 2, 3, 4, 5 models.
-- Save handler `upsert` to `branding_settings` for the current `provider_id`.
-- Show inline warning if Stripe Connect is not yet onboarded ("Set prices now; clients can't check out until you connect Payouts").
+- Input: `flatPrice` (USD).
+- `Switch` (shadcn) labeled **"Use this rate"** — default OFF.
+- When toggle is **ON**: the 3 tier cards visually dim (`opacity-50 pointer-events-none`) with a small overlay note "Tier pricing disabled — single rate active."
+- When toggle is **OFF**: tier cards are active, single-rate input remains editable but unused.
 
-### 4. Update price calculator — `src/components/portal/HudBuilderSandbox.tsx`
-
-Replace the current `modelCount <= threshold ? base : base + (modelCount - threshold) * additional` formula with:
+**Calculation behavior (live "Example pricing" row at bottom):**
 
 ```ts
-let totalCents = 0;
-if (modelCount <= 2) totalCents = priceA;                          // $A
-else if (modelCount === 3) totalCents = priceB ?? priceA * 2 + priceC; // $B
-else totalCents = (priceB ?? priceA * 2 + priceC) + (modelCount - 3) * priceC; // $B + extras
+function calcCents(count: number) {
+  if (useFlatRate && flatCents != null) return flatCents * count;
+  // existing 3-tier logic
+  if (count <= 2) return priceA * count;        // <-- FIX: was returning priceA flat regardless
+  if (count === 3) return tier3Total;
+  return tier3Total + (count - 3) * priceC;
+}
 ```
 
-Falls back gracefully if `tier3_price_cents` is null (treats it as `2A + C`).
+> **Bug fix included**: the current `calcCents` returns `priceA` (flat) for both 1 and 2 models, but the card label says "each model is $A". Per the user's existing copy ("Per Model under 3 — each model is:"), 1 model = `$A`, 2 models = `2 × $A`. This plan corrects it.
 
-### 5. Remove pricing fields from Branding page — `src/routes/_authenticated.dashboard.branding.tsx`
-
-Strip the "Base Price", "Model Threshold", and "Additional Model Fee" inputs (lines ~510–565) and replace with a small CTA card: "Pricing has moved → Set client pricing in the Pricing tab" linking to `/dashboard/pricing`. Keeps the save handler intact (those fields just won't be edited here anymore).
-
-### 6. New Account page — `src/routes/_authenticated.dashboard.account.tsx`
-
-Single page with three sections:
-
-**a. Reset Password**
-- Inline form: current password, new password, confirm new password.
-- Uses `supabase.auth.updateUser({ password })` with a re-auth via `signInWithPassword` first if a current password is provided (or just `updateUser` and rely on session).
-- Success toast + clear inputs.
-
-**b. Privacy & Terms**
-- Two read-only links: "View Privacy Policy" → `/privacy`, "View Terms of Service" → `/terms` (both routes already exist).
-- Open in a new tab.
-
-**c. Delete Account** (danger zone, red border card)
-- Button "Delete my account…" opens an `AlertDialog` requiring the user to type their email to confirm.
-- Calls a new server function `deleteOwnAccount` (via `createServerFn` + `requireSupabaseAuth`) that:
-  1. Uses `supabaseAdmin.auth.admin.deleteUser(userId)` (cascades to dependent rows where FKs are set; cleanup of `branding_settings`, `licenses`, `purchases`, `client_providers` for that user happens via existing `on delete cascade` where present).
-  2. Returns success.
-- On success, sign out client-side and redirect to `/`.
-
-### 7. Database migration
+**Database — one new column:**
 
 ```sql
 ALTER TABLE public.branding_settings
-  ADD COLUMN IF NOT EXISTS tier3_price_cents integer;
+  ADD COLUMN IF NOT EXISTS flat_price_per_model_cents integer,
+  ADD COLUMN IF NOT EXISTS use_flat_pricing boolean NOT NULL DEFAULT false;
 ```
 
-No RLS changes needed (existing policies already cover the row).
+Save handler upserts both new fields alongside the existing tier fields. Validation: if toggle is ON, require `flatPrice > 0`; if OFF, require `priceA > 0` as today.
+
+**Files touched:**
+- `src/routes/_authenticated.dashboard.pricing.tsx` — add Switch + flat input, dim tiers when active, fix tier calc, persist new fields.
+- `src/components/portal/HudBuilderSandbox.tsx` — extend the price calculator to respect `use_flat_pricing` + `flat_price_per_model_cents` (lines 199–209), and apply the same 1/2-model fix.
+- Migration file for the two new columns.
 
 ---
 
-### Files touched
+### Part 2 — Public Pricing Section + Header Link on `/p/$slug`
 
-| File | Change |
+**Goal:** Show the MSP's actual configured pricing as a clean, easy-to-read table on their Studio landing page so prospects/clients understand what they'll pay.
+
+**Section placement:** Insert a new `<section id="pricing">` between the existing `#includes` (Studio Includes) and `#compare` (Stop renting) sections.
+
+**Section design (matches existing glassmorphism style used in `#includes`):**
+
+- Heading: "What it costs" + subhead "One-time payment per Presentation. No subscriptions."
+- Glass card (`bg-white/50 backdrop-blur-xl`, accent-tinted border) containing a `<Table>` (shadcn) with two columns: **Number of Models** | **Price**.
+- Footnote in italic: "Prices are per Presentation download. You only pay when you're ready to publish."
+
+**Two render modes — derived from the loaded `branding`:**
+
+**Mode A — Flat rate (`use_flat_pricing = true`):**
+
+| Number of models in your Presentation | Price |
 |---|---|
-| `src/components/dashboard/DashboardSidebar.tsx` | Reorder, always-show Vault (disabled when Starter) + Payouts, add Account, remove Pricing-as-upgrade |
-| `src/routes/_authenticated.dashboard.tsx` | Gate redirects to `/dashboard/upgrade` |
-| `src/routes/_authenticated.dashboard.upgrade.tsx` | NEW — moved from old pricing.tsx (MSP tier purchase) |
-| `src/routes/_authenticated.dashboard.pricing.tsx` | REWRITE — client/end-user pricing form (A/B/C) |
-| `src/routes/_authenticated.dashboard.branding.tsx` | Remove pricing inputs, add link to Pricing tab |
-| `src/routes/_authenticated.dashboard.account.tsx` | NEW — reset password, privacy/terms links, delete account |
-| `src/components/portal/HudBuilderSandbox.tsx` | New 3-tier price calc using `tier3_price_cents` |
-| `src/lib/portal.functions.ts` (or new file) | NEW server fn `deleteOwnAccount` |
-| Migration | Add `tier3_price_cents` column |
+| 1 model | $X |
+| 2 models | $2X |
+| 3 models | $3X |
+| 4 models | $4X |
+| 5 models | $5X |
+| Each additional model | + $X each |
+
+**Mode B — Tier rate (default):**
+
+| Number of models in your Presentation | Price |
+|---|---|
+| 1 model | $A |
+| 2 models | $2A |
+| 3 models (bundle) | $B |
+| 4 models | $B + $C |
+| 5 models | $B + $2C |
+| Each additional model beyond 3 | + $C each |
+
+If pricing has not been configured (`base_price_cents` null and flat null), show a friendly placeholder card: "Your provider hasn't published pricing yet — contact them for a quote."
+
+**Header navigation (`PortalHeader`, lines 440–443):**
+
+Add `Pricing` to the existing `navLinks` array so it appears in both desktop nav and mobile sheet:
+
+```ts
+const navLinks = [
+  { id: "steps",         label: "Steps" },
+  { id: "compare",       label: "Compare" },
+  { id: "pricing",       label: "Pricing" },   // NEW
+  { id: "builder-start", label: "Builder" },
+];
+```
+
+**Files touched:**
+- `src/routes/p.$slug.index.tsx` — extend `fetchBrandingBySlug` select to include `flat_price_per_model_cents`, `use_flat_pricing`, `tier3_price_cents` (already wildcard `*`, so no change needed there); add the `<section id="pricing">` block; add `pricing` to `navLinks`; introduce a `PortalPricingSection` helper component in the same file mirroring the calc logic from the dashboard page.
+
+---
 
 ### Acceptance check
 
-1. Sidebar shows: Overview, Branding, Production Vault, Pricing, Orders, Payouts, Clients, Demo, Account.
-2. Starter MSP sees Vault as a locked/dimmed row with a tooltip; clicking it does nothing.
-3. Pro MSP sees Vault as a normal active link.
-4. Payouts is always visible; clicking it as a not-yet-connected MSP shows the existing "Connect Stripe" CTA.
-5. Pricing page lets MSP enter $A, $B, $C with live example, persists to `branding_settings`.
-6. Branding page no longer shows pricing inputs.
-7. Builder/Sandbox computes price using the new 1-2 / 3 / 4+ formula.
-8. `/dashboard/upgrade` is the new tier-purchase page; gate redirects there for MSPs without a license/purchase.
-9. Account page can change password, links to /privacy and /terms, and can delete the account with confirmation (signs out + redirects to /).
+1. `/dashboard/pricing` shows a "Single flat rate per model" card top-right with a numeric input and a Switch defaulted to OFF.
+2. With Switch OFF: the 3 tier cards behave as today; the "Example pricing" row shows `1m=$A`, `2m=$2A`, `3m=$B`, `4m=$B+$C`, `5m=$B+$2C`.
+3. With Switch ON: tier cards dim and the example row shows `1m=$X`, `2m=$2X`, `3m=$3X`, `4m=$4X`, `5m=$5X`.
+4. Saving persists both modes; reloading the page restores the toggle state.
+5. The builder/sandbox checkout total uses the chosen pricing mode (verified by toggling and adding models in `HudBuilderSandbox`).
+6. `/p/$slug` shows a new "Pricing" link in the header (desktop + mobile menu) that scrolls smoothly to a `#pricing` section.
+7. The pricing section displays the correct table for the MSP's chosen mode, in the same glassmorphism style as the rest of the page.
+8. If no pricing has been set, a friendly placeholder appears instead of a broken/empty table.
 
