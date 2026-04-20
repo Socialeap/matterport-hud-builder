@@ -502,7 +502,7 @@ function Index() {
           </p>
 
           <div className="mt-12 grid gap-6 sm:grid-cols-2">
-            <Card className={`border-red-500/20 ${cardBg} backdrop-blur`}>
+            <Card className={`border-red-500/20 ${cardBg} backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-red-500/60 hover:shadow-lg hover:shadow-red-500/10`}>
               <CardContent className="pt-6">
                 <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
                   <DollarSign className="size-5 text-amber-300" />
@@ -514,7 +514,7 @@ function Index() {
               </CardContent>
             </Card>
 
-            <Card className={`border-red-500/20 ${cardBg} backdrop-blur`}>
+            <Card className={`border-red-500/20 ${cardBg} backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-red-500/60 hover:shadow-lg hover:shadow-red-500/10`}>
               <CardContent className="pt-6">
                 <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
                   <Clock className="size-5 text-amber-300" />
@@ -526,7 +526,7 @@ function Index() {
               </CardContent>
             </Card>
 
-            <Card className={`border-red-500/20 ${cardBg} backdrop-blur`}>
+            <Card className={`border-red-500/20 ${cardBg} backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-red-500/60 hover:shadow-lg hover:shadow-red-500/10`}>
               <CardContent className="pt-6">
                 <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
                   <Lock className="size-5 text-amber-300" />
@@ -538,7 +538,7 @@ function Index() {
               </CardContent>
             </Card>
 
-            <Card className={`border-red-500/20 ${cardBg} backdrop-blur`}>
+            <Card className={`border-red-500/20 ${cardBg} backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-red-500/60 hover:shadow-lg hover:shadow-red-500/10`}>
               <CardContent className="pt-6">
                 <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
                   <PackageX className="size-5 text-amber-300" />
@@ -565,7 +565,7 @@ function Index() {
 
           <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {features.map((f) => (
-              <Card key={f.title} className={`${cardBg} backdrop-blur`}>
+              <Card key={f.title} className={`${cardBg} backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-amber-300/60 hover:shadow-lg hover:shadow-amber-300/10`}>
                 <CardContent className="pt-6">
                   <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
                     <f.icon className="size-5 text-amber-300" />
@@ -591,7 +591,7 @@ function Index() {
 
           <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {clientFeatures.map((f) => (
-              <Card key={f.title} className={`${cardBg} backdrop-blur`}>
+              <Card key={f.title} className={`${cardBg} backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-amber-300/60 hover:shadow-lg hover:shadow-amber-300/10`}>
                 <CardContent className="pt-6">
                   <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
                     <f.icon className="size-5 text-amber-300" />
@@ -617,7 +617,7 @@ function Index() {
 
           <div className="mt-12 grid gap-6 sm:grid-cols-2">
             {/* Starter */}
-            <Card className={`relative flex flex-col backdrop-blur bg-white/5`}>
+            <Card className={`relative flex flex-col backdrop-blur bg-white/5 transition-all duration-300 hover:-translate-y-1 hover:border-amber-300/60 hover:shadow-lg hover:shadow-amber-300/10`}>
               <CardHeader className="text-center">
                 <CardTitle className="text-xl text-amber-300">Starter Studio</CardTitle>
                 <p className="text-sm text-white/60">Get started with co-branded studio.</p>
@@ -665,7 +665,7 @@ function Index() {
             </Card>
 
             {/* Pro */}
-            <Card className={`relative flex flex-col border-primary shadow-lg backdrop-blur bg-white/5`}>
+            <Card className={`relative flex flex-col border-primary shadow-lg backdrop-blur bg-white/5 transition-all duration-300 hover:-translate-y-1 hover:border-primary hover:shadow-xl hover:shadow-primary/20`}>
               <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">
                 Most Popular
               </Badge>
