@@ -398,12 +398,12 @@ function BrandingPage() {
         </CardContent>
       </Card>
 
-      {/* Studio & Payment Settings */}
+      {/* Studio URL */}
       <Card>
         <CardHeader>
-          <CardTitle>Studio & Payment Links</CardTitle>
+          <CardTitle>Studio URL</CardTitle>
           <CardDescription>
-            Configure your site URL and payment details for client orders.
+            Configure the public URL where clients access your Studio.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -445,77 +445,6 @@ function BrandingPage() {
                 </Button>
               </div>
             )}
-          </div>
-
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <Label>Stripe Connect</Label>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Connect your Stripe account to accept payments from clients.
-                </p>
-              </div>
-              {branding.stripe_onboarding_complete ? (
-                <Badge className="bg-green-600 text-white">Stripe Connected ✅</Badge>
-              ) : (
-                <Button
-                  size="sm"
-                  onClick={async () => {
-                    try {
-                      const { data, error } = await supabase.functions.invoke("stripe-connect-onboard", {
-                        body: {
-                          returnUrl: window.location.href,
-                          environment: getStripeEnvironment(),
-                        },
-                      });
-                      if (error) throw new Error((data as any)?.error || error.message);
-                      if ((data as any)?.error) throw new Error((data as any).error);
-                      if (!data?.url) throw new Error("Failed to start onboarding");
-                      window.location.href = data.url;
-                    } catch (err: any) {
-                      console.error("Stripe Connect error:", err);
-                      toast.error(err?.message || "Failed to connect Stripe. Please try again.");
-                    }
-                  }}
-                >
-                  Connect with Stripe
-                </Button>
-              )}
-            </div>
-          </div>
-
-          {branding.stripe_onboarding_complete && (
-            <div className="rounded-lg border bg-muted/30 p-4">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-sm font-medium">Payouts &amp; Earnings</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    View your balance, manage payout schedule, and request instant payouts (typically arrive within 30 minutes).
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Instant Payout fee: <span className="font-medium">1.50%</span> (set by platform)
-                  </p>
-                </div>
-                <Button asChild size="sm" variant="outline">
-                  <Link to="/dashboard/payouts">Manage payouts →</Link>
-                </Button>
-              </div>
-            </div>
-          )}
-
-          <div className="rounded-lg border border-dashed border-border p-4 bg-muted/30">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1">
-                <p className="text-sm font-medium">Client pricing has moved</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Set what your clients pay per Presentation Portal — based on the
-                  number of 3D property models — in the dedicated Pricing tab.
-                </p>
-              </div>
-              <Button asChild size="sm" variant="outline">
-                <Link to="/dashboard/pricing">Open Pricing →</Link>
-              </Button>
-            </div>
           </div>
         </CardContent>
       </Card>
