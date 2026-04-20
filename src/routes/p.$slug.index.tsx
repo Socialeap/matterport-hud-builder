@@ -317,6 +317,9 @@ function PortalPage() {
           </div>
         </section>
 
+        {/* PUBLIC PRICING TABLE */}
+        <PortalPricingSection branding={branding} accent={accent} />
+
         {/* SOVEREIGNTY COMPARISON */}
         <section id="compare" className="scroll-mt-20 mx-auto max-w-6xl px-4 py-16 sm:px-6">
           <div className="mb-10 text-center">
@@ -440,6 +443,7 @@ function PortalHeader({
   const navLinks = [
     { id: "steps", label: "Steps" },
     { id: "compare", label: "Compare" },
+    { id: "pricing", label: "Pricing" },
     { id: "builder-start", label: "Builder" },
   ];
 
