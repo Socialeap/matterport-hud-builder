@@ -257,26 +257,6 @@ function PortalPage() {
                 Add your logo, contact info, choose music, and toggle features like the AI
                 Concierge and more.
               </p>
-
-              {/* Nested green-bordered capabilities card */}
-              <div className="mt-5 rounded-xl border-2 border-emerald-400/60 bg-emerald-50/70 p-4 dark:bg-emerald-950/30">
-                <div className="text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
-                  What {branding.brand_name} Studio Includes
-                </div>
-                <ul className="mt-3 space-y-2">
-                  {features.map((f) => (
-                    <li key={f} className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-200">
-                      <Check className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                      <span>{f}</span>
-                    </li>
-                  ))}
-                </ul>
-                {!lusActive && (
-                  <p className="mt-3 text-xs italic text-slate-500 dark:text-slate-400">
-                    Premium AI features currently unavailable.
-                  </p>
-                )}
-              </div>
             </div>
 
             {/* Step 3 */}
