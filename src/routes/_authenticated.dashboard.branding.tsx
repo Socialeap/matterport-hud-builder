@@ -326,6 +326,75 @@ function BrandingPage() {
               )}
             </div>
           </div>
+
+          {/* Portal hero background */}
+          <div className="space-y-3 rounded-lg border border-dashed border-border p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Portal Hero Background</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  The cinematic image behind your portal headline. Falls back to a default residential photo.
+                </p>
+              </div>
+              {branding.hero_bg_url && !heroFile && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  onClick={() => setBranding({ ...branding, hero_bg_url: null })}
+                >
+                  <X className="h-3 w-3 mr-1" />
+                  Remove
+                </Button>
+              )}
+            </div>
+            <Input
+              type="file"
+              accept=".png,.jpg,.jpeg,.webp"
+              onChange={(e) => setHeroFile(e.target.files?.[0] || null)}
+            />
+            {(heroFile || branding.hero_bg_url) && (
+              <div className="relative h-32 w-full overflow-hidden rounded-md border border-border">
+                <img
+                  src={heroFile ? URL.createObjectURL(heroFile) : branding.hero_bg_url!}
+                  alt="Hero preview"
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
+                <div
+                  className="absolute inset-0"
+                  style={{ backgroundColor: `rgba(0,0,0,${branding.hero_bg_opacity})` }}
+                />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-sm font-semibold text-white drop-shadow-lg">
+                    Headline preview
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2 pt-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="hero_opacity">Image Dimming</Label>
+                <span className="text-xs font-medium text-muted-foreground">
+                  {Math.round(branding.hero_bg_opacity * 100)}%
+                </span>
+              </div>
+              <Slider
+                id="hero_opacity"
+                min={0}
+                max={100}
+                step={1}
+                value={[Math.round(branding.hero_bg_opacity * 100)]}
+                onValueChange={([v]) =>
+                  setBranding({ ...branding, hero_bg_opacity: (v ?? 45) / 100 })
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Increase to keep the headline readable on busy or bright images.
+              </p>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
