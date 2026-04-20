@@ -8,8 +8,9 @@ import { Label } from "@/components/ui/label";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Lock, Copy } from "lucide-react";
+import { Lock, Copy, X } from "lucide-react";
 import { toast } from "sonner";
+import { Slider } from "@/components/ui/slider";
 import { uploadBrandAsset } from "@/lib/storage";
 import { useStripeCheckout } from "@/hooks/useStripeCheckout";
 import { getStripeEnvironment } from "@/lib/stripe";
@@ -35,6 +36,8 @@ interface BrandingData {
   base_price_cents: number | null;
   model_threshold: number;
   additional_model_fee_cents: number | null;
+  hero_bg_url: string | null;
+  hero_bg_opacity: number;
 }
 
 const defaultBranding: BrandingData = {
@@ -52,6 +55,8 @@ const defaultBranding: BrandingData = {
   base_price_cents: null,
   model_threshold: 1,
   additional_model_fee_cents: null,
+  hero_bg_url: null,
+  hero_bg_opacity: 0.45,
 };
 
 function BrandingPage() {
@@ -61,6 +66,7 @@ function BrandingPage() {
   const [saving, setSaving] = useState(false);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [faviconFile, setFaviconFile] = useState<File | null>(null);
+  const [heroFile, setHeroFile] = useState<File | null>(null);
 
   const isPro = branding.tier === "pro";
   const { openCheckout, closeCheckout, isOpen, CheckoutForm } = useStripeCheckout();
@@ -98,6 +104,8 @@ function BrandingPage() {
         base_price_cents: data.base_price_cents,
         model_threshold: data.model_threshold ?? 1,
         additional_model_fee_cents: data.additional_model_fee_cents,
+        hero_bg_url: (data as any).hero_bg_url ?? null,
+        hero_bg_opacity: (data as any).hero_bg_opacity ?? 0.45,
       });
     }
     setLoading(false);
@@ -140,6 +148,7 @@ function BrandingPage() {
 
     let logoUrl = branding.logo_url;
     let faviconUrl = branding.favicon_url;
+    let heroUrl = branding.hero_bg_url;
 
     // Upload files if changed
     if (logoFile) {
@@ -151,6 +160,11 @@ function BrandingPage() {
       const url = await uploadBrandAsset(user.id, faviconFile, "favicon");
       if (url) faviconUrl = url;
       else toast.error("Failed to upload favicon");
+    }
+    if (heroFile) {
+      const url = await uploadBrandAsset(user.id, heroFile, "hero");
+      if (url) heroUrl = url;
+      else toast.error("Failed to upload hero background");
     }
 
     const { error } = await supabase
@@ -169,7 +183,9 @@ function BrandingPage() {
           base_price_cents: branding.base_price_cents,
           model_threshold: branding.model_threshold,
           additional_model_fee_cents: branding.additional_model_fee_cents,
-        },
+          hero_bg_url: heroUrl,
+          hero_bg_opacity: branding.hero_bg_opacity,
+        } as any,
         { onConflict: "provider_id" }
       );
 
@@ -177,9 +193,15 @@ function BrandingPage() {
     if (error) {
       toast.error("Failed to save branding settings");
     } else {
-      setBranding((prev) => ({ ...prev, logo_url: logoUrl, favicon_url: faviconUrl }));
+      setBranding((prev) => ({
+        ...prev,
+        logo_url: logoUrl,
+        favicon_url: faviconUrl,
+        hero_bg_url: heroUrl,
+      }));
       setLogoFile(null);
       setFaviconFile(null);
+      setHeroFile(null);
       toast.success("Branding settings saved");
     }
   };
