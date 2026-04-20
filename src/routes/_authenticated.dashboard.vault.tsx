@@ -88,8 +88,8 @@ const CATEGORIES: CategoryMeta[] = [
     label: "Sound Library",
     utility: "Background Ambience",
     purpose: "Emotional mood setting",
-    format: ".mp3, .wav, or Audio URL",
-    accept: ".mp3,.wav,.ogg,audio/*",
+    format: ".mp3 or Audio URL",
+    accept: ".mp3,audio/mpeg",
     icon: Volume2,
   },
   {
