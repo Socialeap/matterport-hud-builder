@@ -40,6 +40,10 @@ import { Route as LovableEmailTransactionalSendRouteImport } from './routes/lova
 import { Route as LovableEmailTransactionalPreviewRouteImport } from './routes/lovable/email/transactional/preview'
 import { Route as LovableEmailQueueProcessRouteImport } from './routes/lovable/email/queue/process'
 import { Route as AuthenticatedDashboardVaultTemplatesRouteImport } from './routes/_authenticated.dashboard.vault.templates'
+import { Route as AuthenticatedDashboardStatsRouteImport } from './routes/_authenticated.dashboard.stats'
+import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated.admin'
+import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated.admin.index'
+import { Route as AuthenticatedAdminProviderIdRouteImport } from './routes/_authenticated.admin.$providerId'
 
 const UnsubscribeRoute = UnsubscribeRouteImport.update({
   id: '/unsubscribe',
@@ -210,6 +214,28 @@ const AuthenticatedDashboardVaultTemplatesRoute =
     path: '/templates',
     getParentRoute: () => AuthenticatedDashboardVaultRoute,
   } as any)
+const AuthenticatedDashboardStatsRoute =
+  AuthenticatedDashboardStatsRouteImport.update({
+    id: '/stats',
+    path: '/stats',
+    getParentRoute: () => AuthenticatedDashboardRoute,
+  } as any)
+const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AuthenticatedAdminRoute,
+} as any)
+const AuthenticatedAdminProviderIdRoute =
+  AuthenticatedAdminProviderIdRouteImport.update({
+    id: '/$providerId',
+    path: '/$providerId',
+    getParentRoute: () => AuthenticatedAdminRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -221,6 +247,7 @@ export interface FileRoutesByFullPath {
   '/terms': typeof TermsRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/dashboard': typeof AuthenticatedDashboardRouteWithChildren
+  '/admin': typeof AuthenticatedAdminRouteWithChildren
   '/api/mp-image': typeof ApiMpImageRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/p/$slug': typeof PSlugRouteWithChildren
@@ -234,6 +261,9 @@ export interface FileRoutesByFullPath {
   '/dashboard/stats': typeof AuthenticatedDashboardStatsRoute
   '/dashboard/upgrade': typeof AuthenticatedDashboardUpgradeRoute
   '/dashboard/vault': typeof AuthenticatedDashboardVaultRouteWithChildren
+  '/dashboard/stats': typeof AuthenticatedDashboardStatsRoute
+  '/admin/': typeof AuthenticatedAdminIndexRoute
+  '/admin/$providerId': typeof AuthenticatedAdminProviderIdRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/p/$slug/demo': typeof PSlugDemoRoute
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
@@ -264,6 +294,9 @@ export interface FileRoutesByTo {
   '/dashboard/stats': typeof AuthenticatedDashboardStatsRoute
   '/dashboard/upgrade': typeof AuthenticatedDashboardUpgradeRoute
   '/dashboard/vault': typeof AuthenticatedDashboardVaultRouteWithChildren
+  '/dashboard/stats': typeof AuthenticatedDashboardStatsRoute
+  '/admin': typeof AuthenticatedAdminIndexRoute
+  '/admin/$providerId': typeof AuthenticatedAdminProviderIdRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/p/$slug/demo': typeof PSlugDemoRoute
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
@@ -298,6 +331,10 @@ export interface FileRoutesById {
   '/_authenticated/dashboard/stats': typeof AuthenticatedDashboardStatsRoute
   '/_authenticated/dashboard/upgrade': typeof AuthenticatedDashboardUpgradeRoute
   '/_authenticated/dashboard/vault': typeof AuthenticatedDashboardVaultRouteWithChildren
+  '/_authenticated/dashboard/stats': typeof AuthenticatedDashboardStatsRoute
+  '/_authenticated/admin': typeof AuthenticatedAdminRouteWithChildren
+  '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
+  '/_authenticated/admin/$providerId': typeof AuthenticatedAdminProviderIdRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/p/$slug/demo': typeof PSlugDemoRoute
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
@@ -332,6 +369,10 @@ export interface FileRouteTypes {
     | '/dashboard/stats'
     | '/dashboard/upgrade'
     | '/dashboard/vault'
+    | '/dashboard/stats'
+    | '/admin'
+    | '/admin/'
+    | '/admin/$providerId'
     | '/lovable/email/suppression'
     | '/p/$slug/demo'
     | '/dashboard/'
@@ -362,6 +403,9 @@ export interface FileRouteTypes {
     | '/dashboard/stats'
     | '/dashboard/upgrade'
     | '/dashboard/vault'
+    | '/dashboard/stats'
+    | '/admin'
+    | '/admin/$providerId'
     | '/lovable/email/suppression'
     | '/p/$slug/demo'
     | '/dashboard'
@@ -395,6 +439,10 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard/stats'
     | '/_authenticated/dashboard/upgrade'
     | '/_authenticated/dashboard/vault'
+    | '/_authenticated/dashboard/stats'
+    | '/_authenticated/admin'
+    | '/_authenticated/admin/'
+    | '/_authenticated/admin/$providerId'
     | '/lovable/email/suppression'
     | '/p/$slug/demo'
     | '/_authenticated/dashboard/'
@@ -643,6 +691,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardVaultTemplatesRouteImport
       parentRoute: typeof AuthenticatedDashboardVaultRoute
     }
+    '/_authenticated/dashboard/stats': {
+      id: '/_authenticated/dashboard/stats'
+      path: '/stats'
+      fullPath: '/dashboard/stats'
+      preLoaderRoute: typeof AuthenticatedDashboardStatsRouteImport
+      parentRoute: typeof AuthenticatedDashboardRoute
+    }
+    '/_authenticated/admin': {
+      id: '/_authenticated/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AuthenticatedAdminRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/admin/': {
+      id: '/_authenticated/admin/'
+      path: '/'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AuthenticatedAdminIndexRouteImport
+      parentRoute: typeof AuthenticatedAdminRoute
+    }
+    '/_authenticated/admin/$providerId': {
+      id: '/_authenticated/admin/$providerId'
+      path: '/$providerId'
+      fullPath: '/admin/$providerId'
+      preLoaderRoute: typeof AuthenticatedAdminProviderIdRouteImport
+      parentRoute: typeof AuthenticatedAdminRoute
+    }
   }
 }
 
@@ -672,6 +748,7 @@ interface AuthenticatedDashboardRouteChildren {
   AuthenticatedDashboardStatsRoute: typeof AuthenticatedDashboardStatsRoute
   AuthenticatedDashboardUpgradeRoute: typeof AuthenticatedDashboardUpgradeRoute
   AuthenticatedDashboardVaultRoute: typeof AuthenticatedDashboardVaultRouteWithChildren
+  AuthenticatedDashboardStatsRoute: typeof AuthenticatedDashboardStatsRoute
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
 }
 
@@ -688,6 +765,7 @@ const AuthenticatedDashboardRouteChildren: AuthenticatedDashboardRouteChildren =
     AuthenticatedDashboardUpgradeRoute: AuthenticatedDashboardUpgradeRoute,
     AuthenticatedDashboardVaultRoute:
       AuthenticatedDashboardVaultRouteWithChildren,
+    AuthenticatedDashboardStatsRoute: AuthenticatedDashboardStatsRoute,
     AuthenticatedDashboardIndexRoute: AuthenticatedDashboardIndexRoute,
   }
 
@@ -696,12 +774,27 @@ const AuthenticatedDashboardRouteWithChildren =
     AuthenticatedDashboardRouteChildren,
   )
 
+interface AuthenticatedAdminRouteChildren {
+  AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
+  AuthenticatedAdminProviderIdRoute: typeof AuthenticatedAdminProviderIdRoute
+}
+
+const AuthenticatedAdminRouteChildren: AuthenticatedAdminRouteChildren = {
+  AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
+  AuthenticatedAdminProviderIdRoute: AuthenticatedAdminProviderIdRoute,
+}
+
+const AuthenticatedAdminRouteWithChildren =
+  AuthenticatedAdminRoute._addFileChildren(AuthenticatedAdminRouteChildren)
+
 interface AuthenticatedRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRouteWithChildren
+  AuthenticatedAdminRoute: typeof AuthenticatedAdminRouteWithChildren
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRouteWithChildren,
+  AuthenticatedAdminRoute: AuthenticatedAdminRouteWithChildren,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
