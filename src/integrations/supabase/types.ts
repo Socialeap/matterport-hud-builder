@@ -23,6 +23,7 @@ export type Database = {
           created_at: string
           custom_domain: string | null
           favicon_url: string | null
+          flat_price_per_model_cents: number | null
           gate_label: string
           hero_bg_opacity: number
           hero_bg_url: string | null
@@ -38,6 +39,7 @@ export type Database = {
           tier: Database["public"]["Enums"]["app_tier"]
           tier3_price_cents: number | null
           updated_at: string
+          use_flat_pricing: boolean
         }
         Insert: {
           accent_color?: string
@@ -47,6 +49,7 @@ export type Database = {
           created_at?: string
           custom_domain?: string | null
           favicon_url?: string | null
+          flat_price_per_model_cents?: number | null
           gate_label?: string
           hero_bg_opacity?: number
           hero_bg_url?: string | null
@@ -62,6 +65,7 @@ export type Database = {
           tier?: Database["public"]["Enums"]["app_tier"]
           tier3_price_cents?: number | null
           updated_at?: string
+          use_flat_pricing?: boolean
         }
         Update: {
           accent_color?: string
@@ -71,6 +75,7 @@ export type Database = {
           created_at?: string
           custom_domain?: string | null
           favicon_url?: string | null
+          flat_price_per_model_cents?: number | null
           gate_label?: string
           hero_bg_opacity?: number
           hero_bg_url?: string | null
@@ -86,6 +91,7 @@ export type Database = {
           tier?: Database["public"]["Enums"]["app_tier"]
           tier3_price_cents?: number | null
           updated_at?: string
+          use_flat_pricing?: boolean
         }
         Relationships: []
       }
