@@ -128,7 +128,7 @@ function ClientPricingPage() {
           Client Pricing
         </h1>
         <p className="mt-2 text-muted-foreground">
-          Set what your clients pay per Presentation download. Cost is based on
+          Set what your clients pay per Presentation download.  Cost is based on
           the number of 3D property models they include in their Presentation.
           No other charges are included.
         </p>
