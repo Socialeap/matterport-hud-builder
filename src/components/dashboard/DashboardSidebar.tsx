@@ -30,6 +30,7 @@ import {
   DollarSign,
   UserCog,
   Lock,
+  BarChart2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -43,6 +44,7 @@ type NavRoute =
   | "/dashboard/payouts"
   | "/dashboard/clients"
   | "/dashboard/demo"
+  | "/dashboard/stats"
   | "/dashboard/account";
 
 interface NavItem {
@@ -62,6 +64,7 @@ const allNavItems: readonly NavItem[] = [
   { label: "Payouts", to: "/dashboard/payouts", icon: Banknote, roles: ["provider"] },
   { label: "Clients", to: "/dashboard/clients", icon: Users, roles: ["provider"] },
   { label: "Demo", to: "/dashboard/demo", icon: Play, roles: ["provider"] },
+  { label: "Stats", to: "/dashboard/stats", icon: BarChart2, roles: ["provider"] },
   { label: "Account", to: "/dashboard/account", icon: UserCog, roles: ["provider", "client"] },
 ];
 
