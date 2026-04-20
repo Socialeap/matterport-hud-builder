@@ -1,139 +1,117 @@
 
 
-## Plan: Instant Payouts via Stripe Embedded Components + 1.5% Application Fee
+## Plan: Hybrid Landing Page for `/p/$slug` Provider Portal
 
-Three deliverables: an account-session endpoint, a Payouts dashboard page hosting Stripe's `payouts` embedded component, and a balance summary on the Branding page. Application fee is set on the platform Pricing Tool side (Stripe Dashboard) and configurable per-MSP via a new column.
+Transform `src/routes/p.$slug.index.tsx` from a builder-only route into a **marketing landing page that anchors down to the builder**. Design language inherits from `src/routes/index.tsx` (notebook grid, organic orbs, glassmorphism), but every accent is **dynamically driven by `branding.accent_color`** instead of the platform's amber.
 
 ---
 
-### 1. Database (1 migration)
+### 1. Loader expansion
 
-Add per-MSP fee override on `branding_settings`:
+Augment the existing `fetchBrandingBySlug` server fn so it returns enough data to render the dynamic "what this MSP can offer" capability card:
 
-```sql
-ALTER TABLE public.branding_settings
-  ADD COLUMN instant_payout_fee_bps integer NOT NULL DEFAULT 150;
--- 150 basis points = 1.5%. Must be 0-1000 (0%–10%).
-ALTER TABLE public.branding_settings
-  ADD CONSTRAINT instant_payout_fee_bps_range CHECK (instant_payout_fee_bps BETWEEN 0 AND 1000);
+```text
+loader returns → {
+  branding,           // existing
+  demoPublished,      // existing
+  lusActive,          // NEW — get_license_info(provider_id) → status==='active' && not expired
+  vaultAssetCount,    // NEW — count from vault_templates where provider_id matches
+}
 ```
 
-This value is passed to Stripe's Platform Pricing Tool config later. For phase 1 we'll store it; the actual application fee is set platform-wide in Stripe Dashboard → Connect → Platform Pricing → Instant Payouts. We surface and store it so MSPs see what they're being charged.
-
-**Note**: Stripe's embedded `payouts` component reads pricing from the platform-level Pricing Tool, not per-call. Per-MSP variable pricing requires the API-driven path. For MVP we display the platform default (1.5%) and MSPs cannot override it — column exists for future per-MSP tuning.
+Tier (`branding.tier`) and LUS active flag drive which capabilities the MSP advertises.
 
 ---
 
-### 2. New edge function: `stripe-connect-account-session`
+### 2. New page structure (in order)
 
-Creates an [AccountSession](https://docs.stripe.com/api/account_sessions/create) for embedded components with `payouts`, `balances`, and `instant_payouts_promotion` features enabled.
-
-```ts
-// supabase/functions/stripe-connect-account-session/index.ts
-// - Auth: required (uses caller's branding_settings.stripe_connect_id)
-// - Body: { environment: 'sandbox' | 'live' }
-// - Returns: { client_secret: string }
-//
-// stripe.accountSessions.create({
-//   account: branding.stripe_connect_id,
-//   components: {
-//     payouts: { enabled: true, features: { instant_payouts: true, standard_payouts: true, edit_payout_schedule: true } },
-//     balances: { enabled: true, features: { instant_payouts: true } },
-//     payouts_list: { enabled: true },
-//   },
-// })
+```text
+┌──────────────────────────────────────────────┐
+│ Demo banner (existing, kept — restyled)      │
+├──────────────────────────────────────────────┤
+│ HERO                                         │
+│  • brand logo + name chip                    │
+│  • H1: "Your Properties, Professionally      │
+│    Presented. No Subscriptions."             │
+│  • Sub: build free, pay once to download     │
+│  • CTA "Start Building Your HUD" → #builder  │
+│  • Notebook grid + 2 accent-colored orbs     │
+├──────────────────────────────────────────────┤
+│ 3-STEP ONBOARDING (3 glass cards)            │
+│  1. Paste your Model                         │
+│  2. Design your HUD                          │
+│     └─ NESTED green-bordered card:           │
+│        "What {brand_name} Studio Includes"   │
+│        - dynamic feature list (see §3)       │
+│  3. Download & Own                           │
+├──────────────────────────────────────────────┤
+│ SOVEREIGNTY COMPARISON (2 columns)           │
+│  Generic Matterport  |  {brand_name} Studio  │
+│  ✗ no branding       |  ✓ full white-label   │
+│  ✗ links expire      |  ✓ own the file       │
+│  ✗ no leads          |  ✓ AI lead alerts     │
+│  ✗ subscription      |  ✓ one-time payment   │
+├──────────────────────────────────────────────┤
+│ #builder-start (scroll target)               │
+│  H2 "Studio Presentation Builder"            │
+│  Sub "Configure your 3D experience…"         │
+│  <HudBuilderSandbox branding={branding} />   │
+└──────────────────────────────────────────────┘
 ```
 
-Add to `supabase/config.toml`:
-```toml
-[functions.stripe-connect-account-session]
-verify_jwt = false
-```
-
-(Function does its own auth via Authorization header, matching the pattern used by the other connect functions.)
+Smooth scroll: CTA uses `<a href="#builder-start">` with `scroll-mt-20` on the target and `scroll-behavior: smooth` (already global via Tailwind base or inline style on `<html>` / per-anchor handler).
 
 ---
 
-### 3. New dashboard route: `/dashboard/payouts`
+### 3. Dynamic feature card logic ("Step 2" nested green card)
 
-File: `src/routes/_authenticated.dashboard.payouts.tsx`
+Always include:
+- ✓ Custom branding (logo, color, contact)
+- ✓ Music & tour behavior config
+- ✓ Matterport Media Sync & Cinema Mode
+- ✓ Google-Powered Neighborhood Map
 
-- Loads `branding_settings` for the current user; if `stripe_onboarding_complete = false`, shows an empty state with a CTA back to `/dashboard/branding` to finish Stripe Connect.
-- Calls `stripe-connect-account-session` to get `client_secret`.
-- Initializes `loadConnectAndInitialize` from `@stripe/connect-js` with our publishable key + the client_secret + brand color from `branding.accent_color`.
-- Renders `<ConnectComponentsProvider>` wrapping:
-  - `<ConnectBalances />` — shows available + instant_available
-  - `<ConnectPayouts />` — full payouts UI with Instant Payout button
-- Loading + error fallbacks; toast on initialization failure.
+LUS-active → add:
+- ✓ AI Property FAQ Concierge
+- ✓ AI Lead Capture & Email Alerts
+- ✓ Smart Doc Engine (PDF extractions)
 
----
+Pro tier → add:
+- ✓ Production Vault add-ons (`{vaultAssetCount}` curated plugins available)
+- ✓ Per-model pricing tiers
+- ✓ Custom-domain hosting
 
-### 4. Branding page summary
-
-Below the existing "Stripe Connected ✅" badge (around line 393 in `_authenticated.dashboard.branding.tsx`), when `stripe_onboarding_complete = true`, render a compact card with:
-- The same `<ConnectBalances />` embedded component, scoped down (no payouts list).
-- A `<Link to="/dashboard/payouts">` button: "Manage payouts →"
-- A read-only line: "Instant Payout fee: 1.5% (set by platform)"
-
-Reuses the same account-session call (single fetch, cached in component state).
+If LUS inactive → small muted note: "Premium AI features currently unavailable."
 
 ---
 
-### 5. Sidebar entry
+### 4. Visual / theming rules
 
-Add to `src/components/dashboard/DashboardSidebar.tsx`:
-- New nav item "Payouts" (icon: `Banknote` from lucide), pointing to `/dashboard/payouts`.
-- Visible only when `tier` is `pro` AND `stripe_onboarding_complete` is true (gated, since Starter tier doesn't accept payments). Hidden otherwise.
-
----
-
-### 6. Dependency
-
-Install `@stripe/connect-js` (Stripe's loader for embedded Connect components — separate from `@stripe/stripe-js`).
+- **Accent driver**: every button background, icon color, ring, badge accent, comparison checkmark, and "Step N" number badge uses inline `style={{ backgroundColor: branding.accent_color }}` or `color`. No hard-coded `amber-*` from the main landing page.
+- **Glassmorphism**: cards use `backdrop-blur-md bg-white/60 dark:bg-slate-900/60 border border-white/40`.
+- **Notebook grid**: same `bg-[linear-gradient(...)]` overlay as `index.tsx`.
+- **Organic orbs**: 2 absolutely-positioned blurred divs whose color = `branding.accent_color` at low opacity.
+- **Hover lift**: reuse `transition-all duration-300 hover:-translate-y-1 hover:shadow-lg` from the main landing page.
+- **Existing demo banner**: keep, restyled to sit flush above the hero (no behavior change).
 
 ---
 
-### 7. Stripe Dashboard configuration (manual, one-time)
-
-After deploy, you'll need to:
-1. Stripe Dashboard → Settings → Connect → **Platform Pricing Tool → Instant Payouts** → set 1.5% application fee on USD payouts (matches `instant_payout_fee_bps = 150`).
-2. Confirm "Allow debit cards" is enabled under Connect → External Accounts so MSPs without eligible bank accounts can still receive instant payouts via debit card.
-
-I'll surface these as a one-time setup checklist after the build completes.
-
----
-
-### Files touched
+### 5. Files touched
 
 | File | Change |
 |---|---|
-| `supabase/migrations/<ts>_instant_payout_fee.sql` | New — adds `instant_payout_fee_bps` column |
-| `supabase/functions/stripe-connect-account-session/index.ts` | New — account session endpoint |
-| `supabase/config.toml` | Append `[functions.stripe-connect-account-session]` |
-| `src/routes/_authenticated.dashboard.payouts.tsx` | New — full Payouts page |
-| `src/routes/_authenticated.dashboard.branding.tsx` | Add balance summary + "Manage payouts" link |
-| `src/components/dashboard/DashboardSidebar.tsx` | Add "Payouts" nav item (gated) |
-| `package.json` | Add `@stripe/connect-js` |
+| `src/routes/p.$slug.index.tsx` | Expand loader (LUS + vault count); replace component body with hero + 3-step + comparison + builder section. Keep `HudBuilderSandbox` import. |
 
-### Ripple safety
+No changes to `HudBuilderSandbox.tsx`, no DB migrations, no new components extracted (sections defined inline in the route file to keep one self-contained edit).
 
-- No change to existing checkout, lead capture, or webhook flows.
-- Account session is per-request and short-lived; no caching, no DB write.
-- Embedded components run client-side in an iframe — they do NOT receive your platform secret key, only the short-lived `client_secret`.
-- Pro-tier gating prevents Starter MSPs from seeing payouts they can't use.
+---
 
-### Out of scope (call out as follow-ups)
+### 6. Acceptance check
 
-- Per-MSP variable pricing (requires custom UI + API path, not embedded component).
-- Webhook handling for `payout.paid` / `payout.failed` events to send MSP notification emails.
-- Reporting/exports of historical payouts (the embedded `payouts` component already shows history; CSV export is a future enhancement).
-- Eligibility-tools dashboard configuration (private preview from Stripe).
-
-### Verification after deploy
-
-1. As a Pro MSP with a connected Stripe account, click "Payouts" in the sidebar.
-2. Page loads with balance card and payouts component.
-3. If there's an instant-eligible balance (use Stripe sandbox to simulate a charge → wait for funds), the "Instant Payout" button appears.
-4. Initiating an instant payout shows a confirmation modal, processes, and appears in the payouts history.
-5. On `/dashboard/branding`, the balance summary mirrors what's shown on the Payouts page.
+1. Visit `/p/{slug}` → see hero with brand logo, brand name in headline, accent-colored CTA.
+2. CTA "Start Building" smooth-scrolls to the builder section.
+3. Step-2 nested card lists capabilities matching the MSP's tier + LUS status (verify by toggling `licenses.license_status` in the DB).
+4. Pro MSP with vault assets sees the "Production Vault" line with the correct count; Starter MSP does not.
+5. Demo banner still appears when `demoPublished === true`.
+6. Existing builder still functions identically once scrolled to.
 
