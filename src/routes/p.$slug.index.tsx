@@ -153,6 +153,7 @@ function PortalPage() {
           branding={branding}
           slug={slug}
           accent={accent}
+          hudBgColor={branding.hud_bg_color || "#0f172a"}
           demoPublished={demoPublished}
           onScrollTo={handleScrollTo}
         />
