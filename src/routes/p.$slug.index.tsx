@@ -3,6 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { HudBuilderSandbox } from "@/components/portal/HudBuilderSandbox";
 import { checkDemoPublished } from "@/lib/sandbox-demo.functions";
+import { Check, X, Link2, Palette, Download, Sparkles } from "lucide-react";
 
 const fetchBrandingBySlug = createServerFn({ method: "GET" })
   .inputValidator((data: { slug: string }) => data)
@@ -14,10 +15,33 @@ const fetchBrandingBySlug = createServerFn({ method: "GET" })
       .maybeSingle();
 
     if (error || !branding) {
-      return { branding: null, demoPublished: false };
+      return { branding: null, demoPublished: false, lusActive: false, vaultAssetCount: 0 };
     }
-    const demoCheck = await checkDemoPublished({ data: { providerId: branding.provider_id } });
-    return { branding, demoPublished: demoCheck.published };
+
+    const [demoCheck, licenseRes, vaultRes] = await Promise.all([
+      checkDemoPublished({ data: { providerId: branding.provider_id } }),
+      supabase.rpc("get_license_info", { user_uuid: branding.provider_id }),
+      supabase
+        .from("vault_templates")
+        .select("id", { count: "exact", head: true })
+        .eq("provider_id", branding.provider_id)
+        .eq("is_active", true),
+    ]);
+
+    let lusActive = false;
+    const lic = licenseRes.data?.[0];
+    if (lic && lic.license_status === "active") {
+      if (!lic.license_expiry || new Date(lic.license_expiry).getTime() > Date.now()) {
+        lusActive = true;
+      }
+    }
+
+    return {
+      branding,
+      demoPublished: demoCheck.published,
+      lusActive,
+      vaultAssetCount: vaultRes.count ?? 0,
+    };
   });
 
 export const Route = createFileRoute("/p/$slug/")({
@@ -43,7 +67,7 @@ export const Route = createFileRoute("/p/$slug/")({
 });
 
 function PortalPage() {
-  const { branding, demoPublished } = Route.useLoaderData();
+  const { branding, demoPublished, lusActive, vaultAssetCount } = Route.useLoaderData();
   const { slug } = Route.useParams();
 
   if (!branding) {
@@ -51,31 +75,306 @@ function PortalPage() {
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center">
           <h1 className="text-4xl font-bold text-foreground">Portal Not Found</h1>
-          <p className="mt-2 text-muted-foreground">This provider portal does not exist or hasn't been configured yet.</p>
+          <p className="mt-2 text-muted-foreground">
+            This provider portal does not exist or hasn't been configured yet.
+          </p>
         </div>
       </div>
     );
   }
 
+  const accent = branding.accent_color || "#3B82F6";
+  const isPro = branding.tier === "pro";
+
+  // Build dynamic feature list
+  const features: string[] = [
+    "Custom branding (logo, color, contact)",
+    "Music & tour behavior config",
+    "Matterport Media Sync & Cinema Mode",
+    "Google-Powered Neighborhood Map",
+  ];
+  if (lusActive) {
+    features.push(
+      "AI Property FAQ Concierge",
+      "AI Lead Capture & Email Alerts",
+      "Smart Doc Engine (PDF extractions)",
+    );
+  }
+  if (isPro) {
+    features.push(
+      `Production Vault add-ons (${vaultAssetCount} curated plugin${vaultAssetCount === 1 ? "" : "s"} available)`,
+      "Per-model pricing tiers",
+      "Custom-domain hosting",
+    );
+  }
+
+  const handleScrollToBuilder = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    document.getElementById("builder-start")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   return (
-    <>
-      {demoPublished && (
+    <div className="relative min-h-screen overflow-hidden bg-slate-50 dark:bg-slate-950">
+      {/* Notebook grid overlay */}
+      <div
+        className="pointer-events-none fixed inset-0 z-0"
+        style={{
+          backgroundImage: `
+            linear-gradient(rgba(0,0,0,0.04) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(0,0,0,0.04) 1px, transparent 1px)
+          `,
+          backgroundSize: "70px 70px",
+        }}
+      />
+
+      {/* Accent-colored organic orbs */}
+      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
         <div
-          className="flex w-full flex-wrap items-center justify-center gap-3 px-4 py-3 text-center text-sm font-medium text-white"
-          style={{ backgroundColor: branding.accent_color }}
-        >
-          <span>✨ See a Live Demo of {branding.brand_name}'s 3D Studio</span>
-          <Link
-            to="/p/$slug/demo"
-            params={{ slug }}
-            className="inline-flex items-center gap-1 rounded-md bg-white px-3 py-1.5 text-sm font-semibold shadow-sm transition-transform hover:scale-105"
-            style={{ color: branding.accent_color }}
+          className="absolute -left-32 -top-20 h-[500px] w-[500px] rounded-full blur-[160px]"
+          style={{ background: `${accent}26` }}
+        />
+        <div
+          className="absolute -right-20 top-[40%] h-[400px] w-[450px] rounded-full blur-[150px]"
+          style={{ background: `${accent}1f` }}
+        />
+      </div>
+
+      <div className="relative z-10">
+        {/* Demo banner — kept */}
+        {demoPublished && (
+          <div
+            className="flex w-full flex-wrap items-center justify-center gap-3 px-4 py-3 text-center text-sm font-medium text-white"
+            style={{ backgroundColor: accent }}
           >
-            View Demo →
-          </Link>
-        </div>
+            <span>✨ See a Live Demo of {branding.brand_name}'s 3D Studio</span>
+            <Link
+              to="/p/$slug/demo"
+              params={{ slug }}
+              className="inline-flex items-center gap-1 rounded-md bg-white px-3 py-1.5 text-sm font-semibold shadow-sm transition-transform hover:scale-105"
+              style={{ color: accent }}
+            >
+              View Demo →
+            </Link>
+          </div>
+        )}
+
+        {/* HERO */}
+        <section className="mx-auto max-w-6xl px-4 pb-16 pt-20 sm:px-6 sm:pt-28">
+          <div className="mx-auto flex max-w-3xl flex-col items-center text-center">
+            {/* Brand chip */}
+            <div className="mb-8 inline-flex items-center gap-3 rounded-full border border-white/40 bg-white/60 px-4 py-2 shadow-sm backdrop-blur-md dark:border-white/10 dark:bg-slate-900/60">
+              {branding.logo_url ? (
+                <img
+                  src={branding.logo_url}
+                  alt={`${branding.brand_name} logo`}
+                  className="h-7 w-7 rounded-full object-cover"
+                />
+              ) : (
+                <div
+                  className="flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold text-white"
+                  style={{ backgroundColor: accent }}
+                >
+                  {branding.brand_name?.[0]?.toUpperCase() ?? "S"}
+                </div>
+              )}
+              <span className="text-sm font-semibold text-slate-900 dark:text-white">
+                {branding.brand_name} Studio
+              </span>
+            </div>
+
+            <h1 className="text-4xl font-bold leading-tight tracking-tight text-slate-900 sm:text-5xl md:text-6xl dark:text-white">
+              Your Properties,{" "}
+              <span style={{ color: accent }}>Professionally Presented.</span>{" "}
+              No Subscriptions.
+            </h1>
+
+            <p className="mt-6 max-w-2xl text-lg text-slate-600 dark:text-slate-300">
+              Create a branded, multi-model HUD for your Matterport tours. Build for free, pay only
+              when you're ready to download and host it anywhere.
+            </p>
+
+            <a
+              href="#builder-start"
+              onClick={handleScrollToBuilder}
+              className="mt-10 inline-flex items-center gap-2 rounded-full px-8 py-4 text-base font-semibold text-white shadow-lg transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
+              style={{ backgroundColor: accent }}
+            >
+              <Sparkles className="size-5" />
+              Start Building Your HUD
+            </a>
+          </div>
+        </section>
+
+        {/* 3-STEP ONBOARDING */}
+        <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
+          <div className="mb-12 text-center">
+            <h2 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl dark:text-white">
+              Three steps to your branded presentation
+            </h2>
+          </div>
+
+          <div className="grid gap-6 md:grid-cols-3">
+            {/* Step 1 */}
+            <div className="rounded-2xl border border-white/40 bg-white/60 p-6 shadow-sm backdrop-blur-md transition-all duration-300 hover:-translate-y-1 hover:shadow-lg dark:border-white/10 dark:bg-slate-900/60">
+              <StepBadge n={1} accent={accent} />
+              <div className="mt-4 flex items-center gap-2 text-slate-900 dark:text-white">
+                <Link2 className="size-5" style={{ color: accent }} />
+                <h3 className="text-lg font-semibold">Paste your Model</h3>
+              </div>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                Drop in your Matterport URL(s). Single tour or a portfolio — your call.
+              </p>
+            </div>
+
+            {/* Step 2 with nested capabilities */}
+            <div className="rounded-2xl border border-white/40 bg-white/60 p-6 shadow-sm backdrop-blur-md transition-all duration-300 hover:-translate-y-1 hover:shadow-lg dark:border-white/10 dark:bg-slate-900/60">
+              <StepBadge n={2} accent={accent} />
+              <div className="mt-4 flex items-center gap-2 text-slate-900 dark:text-white">
+                <Palette className="size-5" style={{ color: accent }} />
+                <h3 className="text-lg font-semibold">Design your HUD</h3>
+              </div>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                Add your logo, contact info, choose music, and toggle features like the AI
+                Concierge and more.
+              </p>
+
+              {/* Nested green-bordered capabilities card */}
+              <div className="mt-5 rounded-xl border-2 border-emerald-400/60 bg-emerald-50/70 p-4 dark:bg-emerald-950/30">
+                <div className="text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                  What {branding.brand_name} Studio Includes
+                </div>
+                <ul className="mt-3 space-y-2">
+                  {features.map((f) => (
+                    <li key={f} className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-200">
+                      <Check className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                      <span>{f}</span>
+                    </li>
+                  ))}
+                </ul>
+                {!lusActive && (
+                  <p className="mt-3 text-xs italic text-slate-500 dark:text-slate-400">
+                    Premium AI features currently unavailable.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Step 3 */}
+            <div className="rounded-2xl border border-white/40 bg-white/60 p-6 shadow-sm backdrop-blur-md transition-all duration-300 hover:-translate-y-1 hover:shadow-lg dark:border-white/10 dark:bg-slate-900/60">
+              <StepBadge n={3} accent={accent} />
+              <div className="mt-4 flex items-center gap-2 text-slate-900 dark:text-white">
+                <Download className="size-5" style={{ color: accent }} />
+                <h3 className="text-lg font-semibold">Download & Own</h3>
+              </div>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                Preview your presentation. Once satisfied, make a one-time payment to get your
+                self-contained file — no monthly fees to keep it online.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* SOVEREIGNTY COMPARISON */}
+        <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
+          <div className="mb-10 text-center">
+            <h2 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl dark:text-white">
+              Stop renting. Start owning.
+            </h2>
+            <p className="mt-3 text-slate-600 dark:text-slate-300">
+              Generic tours expire. {branding.brand_name} presentations are yours forever.
+            </p>
+          </div>
+
+          <div className="grid gap-6 md:grid-cols-2">
+            {/* Generic */}
+            <div className="rounded-2xl border border-slate-200 bg-white/60 p-8 backdrop-blur-md transition-all duration-300 hover:-translate-y-1 hover:shadow-lg dark:border-slate-800 dark:bg-slate-900/60">
+              <h3 className="text-xl font-bold text-slate-500 dark:text-slate-400">
+                Generic Matterport
+              </h3>
+              <ul className="mt-5 space-y-3">
+                <ComparisonRow negative text="No branding — Matterport's logo, not yours" />
+                <ComparisonRow negative text="Hosted links can expire or change" />
+                <ComparisonRow negative text="No lead capture or instant alerts" />
+                <ComparisonRow negative text="Ongoing subscription fees" />
+              </ul>
+            </div>
+
+            {/* Brand */}
+            <div
+              className="rounded-2xl border-2 bg-white/70 p-8 backdrop-blur-md transition-all duration-300 hover:-translate-y-1 hover:shadow-xl dark:bg-slate-900/70"
+              style={{ borderColor: accent }}
+            >
+              <h3 className="text-xl font-bold" style={{ color: accent }}>
+                {branding.brand_name} Studio
+              </h3>
+              <ul className="mt-5 space-y-3">
+                <ComparisonRow accent={accent} text="Full white-label — your brand, front and center" />
+                <ComparisonRow accent={accent} text="You own the presentation file forever" />
+                <ComparisonRow accent={accent} text="AI lead alerts straight to your inbox" />
+                <ComparisonRow accent={accent} text="One-time payment per tour. No subscriptions." />
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        {/* BUILDER ANCHOR */}
+        <section id="builder-start" className="scroll-mt-20 px-4 pb-8 pt-12 sm:px-6">
+          <div className="mx-auto max-w-6xl text-center">
+            <h2 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl dark:text-white">
+              Studio Presentation Builder
+            </h2>
+            <p className="mt-3 text-slate-600 dark:text-slate-300">
+              Configure your 3D experience below. Your progress is saved as you work.
+            </p>
+            <div
+              className="mx-auto mt-6 h-1 w-24 rounded-full"
+              style={{ backgroundColor: accent }}
+            />
+          </div>
+        </section>
+
+        <HudBuilderSandbox branding={branding} />
+      </div>
+    </div>
+  );
+}
+
+function StepBadge({ n, accent }: { n: number; accent: string }) {
+  return (
+    <div
+      className="flex h-10 w-10 items-center justify-center rounded-full text-base font-bold text-white shadow-md"
+      style={{ backgroundColor: accent }}
+    >
+      {n}
+    </div>
+  );
+}
+
+function ComparisonRow({
+  text,
+  negative,
+  accent,
+}: {
+  text: string;
+  negative?: boolean;
+  accent?: string;
+}) {
+  return (
+    <li className="flex items-start gap-3">
+      {negative ? (
+        <X className="mt-0.5 size-5 shrink-0 text-slate-400" />
+      ) : (
+        <Check className="mt-0.5 size-5 shrink-0" style={{ color: accent }} />
       )}
-      <HudBuilderSandbox branding={branding} />
-    </>
+      <span
+        className={
+          negative
+            ? "text-slate-500 line-through dark:text-slate-500"
+            : "text-slate-800 dark:text-slate-100"
+        }
+      >
+        {text}
+      </span>
+    </li>
   );
 }
