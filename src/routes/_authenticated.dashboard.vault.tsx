@@ -383,14 +383,10 @@ function VaultPage() {
   };
 
   const isStarter = tier === "starter";
-  const lockedHandler = (e: React.MouseEvent | React.ChangeEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    toast.info("Production Vault is a Pro feature. Upgrade to unlock.");
-  };
   const goToPricing = () => {
     window.location.href = "/#pricing";
   };
+
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
