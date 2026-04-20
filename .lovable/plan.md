@@ -1,85 +1,66 @@
 
 
-## Plan: Hero Stage for `/p/$slug` Provider Portal
+## Plan: Glassmorphism Header for `/p/$slug` Portal
 
-Add a cinematic hero background to the existing hybrid landing page, with MSP-controllable image + opacity, then expose those controls via DB migration and the Branding dashboard.
-
----
-
-### 1. DB migration — `branding_settings`
-
-Add two nullable columns:
-- `hero_bg_url text` — public URL (uploaded to existing `brand-assets` bucket, same as logo)
-- `hero_bg_opacity numeric default 0.45` — 0.0–1.0, controls darkening overlay strength
-
-No backfill needed; nulls fall back to defaults in code.
+Replace the current top "View Demo" banner with a sticky, glassmorphism header that holds the MSP brand pill (left), section nav (right), and View Demo CTA (center).
 
 ---
 
-### 2. `src/routes/p.$slug.index.tsx` — Hero Stage
-
-Replace the current hero `<section>` with a stacked layered hero:
+### Layout
 
 ```text
-┌─────────────────────────────────────────┐
-│ Layer 0: bg image (cover, center)       │
-│          fallback = Unsplash residential│
-│ Layer 1: accent-tinted opacity overlay  │
-│          (driven by hero_bg_opacity)    │
-│ Layer 2: notebook grid (existing)       │
-│ Layer 3: bottom→transparent fade mask   │
-│          (mask-image gradient)          │
-│ Layer 4: brand chip + H1 + sub + CTA    │
-└─────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────┐
+│ [logo + Brand Studio]    [✨ View Demo →]    Steps · Compare · Build│
+└────────────────────────────────────────────────────────────────────┘
+   ← left                    ← center                ← right
 ```
 
-Key implementation details:
-- Background container uses `relative` + `aspect`/min-height ~`min-h-[85vh]`.
-- Image: `<img>` absolutely positioned `inset-0 h-full w-full object-cover object-center`, with mobile-friendly `object-position: center` (no shift needed at this aspect).
-- Overlay: absolutely-positioned div, `background: rgba(0,0,0,${hero_bg_opacity})` plus a subtle accent tint (`linear-gradient(180deg, ${accent}22, transparent 60%)`) to tie into branding.
-- Fade-out: apply `mask-image: linear-gradient(to bottom, black 70%, transparent 100%)` on the hero wrapper so the image vanishes before the 3-step section. Use Tailwind arbitrary `[mask-image:linear-gradient(...)]` + `[-webkit-mask-image:...]`.
-- Notebook grid stays as a fixed full-page overlay (already global) — no change.
-- Headline + sub-headline switch to `text-white` with `drop-shadow-lg` for legibility on imagery.
-- Existing accent-colored orbs: drop them inside the hero (they would clash with the photo); keep them only for the lower sections.
+- **Position**: `sticky top-0 z-50` so it stays in view as the user scrolls past the hero.
+- **Glass**: `backdrop-blur-xl bg-white/40 dark:bg-slate-950/40 border-b border-white/30 shadow-sm`.
+- **Container**: `mx-auto max-w-6xl px-4 sm:px-6 h-16 flex items-center justify-between gap-4`.
 
-Defaults in code:
-```ts
-const heroBgUrl = branding.hero_bg_url ?? "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=2400&q=80";
-const heroBgOpacity = branding.hero_bg_opacity ?? 0.45;
-```
+### Three regions
 
-Existing 3-step, comparison, and builder sections remain untouched. Only the hero block is replaced.
+1. **Left — MSP brand pill (enlarged)**  
+   Re-uses the chip pattern from the hero but bigger: `h-11 rounded-full px-4`, logo `h-8 w-8`, brand name in `text-base font-semibold`. Wrapped in a subtle border to read as a pill on the glass bar.
 
----
+2. **Center — View Demo CTA (only when `demoPublished === true`)**  
+   Pill button: `inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold shadow-md`, background = `accent`, text white, with a sparkle/arrow icon. Routes via `<Link to="/p/$slug/demo" params={{ slug }}>`. Hidden on mobile (`hidden sm:inline-flex`); falls into the mobile menu instead.  
+   When demo is not published, center stays empty (no element rendered).
 
-### 3. `src/routes/_authenticated.dashboard.branding.tsx` — controls
+3. **Right — section nav**  
+   Three anchor links to in-page sections:
+   - `Steps` → `#steps` (add id to the 3-step section)
+   - `Compare` → `#compare` (add id to the comparison section)
+   - `Builder` → `#builder-start` (already exists)  
+   Styled as subtle text buttons: `text-sm font-medium text-slate-700 dark:text-slate-200 hover:text-[accent]` with smooth scroll handler reusing the existing `handleScrollToBuilder` pattern (generalized to take a target id).
 
-Add two new fields to the existing branding form:
-- **Hero Background Image** — file upload (reuses logo upload pattern → `brand-assets` bucket → public URL → save to `hero_bg_url`). Include "Remove" button to null it out and live preview thumbnail.
-- **Hero Image Dimming** — slider 0–100 (%) bound to `hero_bg_opacity`. Show the numeric % next to the slider.
+### Mobile behavior (≤ `sm`)
 
-Both persist on save alongside existing branding fields.
+- Brand pill stays left (logo + shortened name).
+- Center "View Demo" hidden.
+- Right nav collapses into a `Menu` icon button → opens an existing `Sheet` (already in `components/ui/sheet.tsx`) listing: View Demo (if published), Steps, Compare, Builder.
 
----
+### Removals / changes
 
-### 4. Files touched
+- Delete the current full-width accent-colored banner block at the top of `PortalPage` (the one wrapped in `{demoPublished && (...)}`). Its CTA migrates into the header center slot.
+- Hero section keeps its own brand chip — it still reads as a hero element distinct from the persistent header. (No duplication concern; header is sticky, hero chip is one-time.)
+- Add `id="steps"` to the 3-step section wrapper and `id="compare"` to the comparison section wrapper.
+
+### Files touched
 
 | File | Change |
 |---|---|
-| `supabase/migrations/<timestamp>_branding_hero.sql` | New: add `hero_bg_url`, `hero_bg_opacity` columns |
-| `src/routes/p.$slug.index.tsx` | Replace hero section with image-backed Hero Stage; read new fields |
-| `src/routes/_authenticated.dashboard.branding.tsx` | Add hero image upload + opacity slider |
+| `src/routes/p.$slug.index.tsx` | Add `<PortalHeader />` inline component above hero; remove old demo banner; add ids to Steps & Compare sections; generalize smooth-scroll helper. |
 
-No changes to `HudBuilderSandbox`, no new shared components.
+No new dependencies, no DB changes, no other files touched.
 
----
+### Acceptance check
 
-### 5. Acceptance check
-
-1. Visit `/p/{slug}` → hero shows default residential photo, notebook grid visible on top, headline legible.
-2. Photo fades smoothly to transparent before the 3-step cards begin (no hard line).
-3. Upload a custom hero image in `/dashboard/branding` → reload portal → custom image appears.
-4. Drag opacity slider to ~80% → portal headline becomes more legible against busy images.
-5. CTA still smooth-scrolls to `#builder-start`; builder unchanged.
-6. Mobile viewport (375px): image still covers, headline readable, no horizontal scroll.
+1. Header is visible on first paint, stays pinned while scrolling.
+2. MSP logo + name appear in a noticeably larger pill on the left.
+3. When demo is published, the centered "View Demo →" button routes to `/p/{slug}/demo`.
+4. Right-side links smooth-scroll to Steps / Compare / Builder.
+5. Glass effect: header is translucent with blur over both the hero image and the white sections below.
+6. Mobile (375px): brand pill left, hamburger right opens a sheet with all links + demo.
 
