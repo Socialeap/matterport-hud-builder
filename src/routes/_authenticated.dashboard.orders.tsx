@@ -156,7 +156,7 @@ function OrdersPage() {
             <Clock className="mx-auto h-10 w-10 text-muted-foreground/50" />
             <h3 className="mt-4 text-lg font-semibold text-foreground">No orders yet</h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              When clients request presentations through your portal, they'll appear here.
+              When clients request presentations through your Studio, they'll appear here.
             </p>
           </CardContent>
         </Card>

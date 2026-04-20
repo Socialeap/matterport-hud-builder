@@ -740,7 +740,7 @@ function Index() {
               {
                 step: "2",
                 title: "Configure Your Brand & Pricing",
-                desc: "Upload your logo, set accent colors, and customize the Portal header. Set a portal slug and (optional) pricing for your client-facing page.",
+                desc: "Upload your logo, set accent colors, and customize your Presentation Portal's header. Set a Studio URL slug and (optional) pricing for your client-facing page.",
               },
               {
                 step: "3",

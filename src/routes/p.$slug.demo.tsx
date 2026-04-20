@@ -114,7 +114,7 @@ function PublicDemoPage() {
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-black">
-      {/* Full-viewport Presentation Portal — fills the screen edge to edge */}
+      {/* Full-viewport Demo Portal — fills the screen edge to edge */}
       <HudPreview
         models={properties}
         selectedModelIndex={selectedModelIndex}
