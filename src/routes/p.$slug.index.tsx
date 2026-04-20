@@ -403,12 +403,14 @@ function PortalHeader({
   branding,
   slug,
   accent,
+  hudBgColor,
   demoPublished,
   onScrollTo,
 }: {
   branding: { brand_name: string; logo_url: string | null };
   slug: string;
   accent: string;
+  hudBgColor: string;
   demoPublished: boolean;
   onScrollTo: (id: string) => (e: React.MouseEvent<HTMLAnchorElement>) => void;
 }) {
@@ -418,11 +420,17 @@ function PortalHeader({
     { id: "builder-start", label: "Builder" },
   ];
 
+  // Tint header with MSP HUD background color at ~80% opacity (cc hex alpha)
+  const headerBg = `${hudBgColor}cc`;
+
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-white/30 bg-white/40 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/40">
+    <header
+      className="sticky top-0 z-50 w-full border-b border-white/15 shadow-sm backdrop-blur-xl"
+      style={{ backgroundColor: headerBg }}
+    >
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
-        {/* Left: enlarged brand pill */}
-        <div className="flex h-11 items-center gap-3 rounded-full border border-white/40 bg-white/60 px-3 pr-4 shadow-sm backdrop-blur-md dark:border-white/10 dark:bg-slate-900/60">
+        {/* Left: enlarged brand pill (translucent over tinted bar) */}
+        <div className="flex h-11 items-center gap-3 rounded-full border border-white/25 bg-white/15 px-3 pr-4 shadow-sm backdrop-blur-md">
           {branding.logo_url ? (
             <img
               src={branding.logo_url}
@@ -437,7 +445,7 @@ function PortalHeader({
               {branding.brand_name?.[0]?.toUpperCase() ?? "S"}
             </div>
           )}
-          <span className="text-base font-semibold text-slate-900 dark:text-white">
+          <span className="text-base font-semibold text-white drop-shadow">
             <span className="hidden sm:inline">{branding.brand_name} Studio</span>
             <span className="sm:hidden">{branding.brand_name}</span>
           </span>
@@ -465,8 +473,7 @@ function PortalHeader({
               key={link.id}
               href={`#${link.id}`}
               onClick={onScrollTo(link.id)}
-              className="text-sm font-medium text-slate-700 transition-colors hover:opacity-80 dark:text-slate-200"
-              style={{ color: undefined }}
+              className="text-sm font-medium text-white/90 drop-shadow transition-colors hover:text-white"
               onMouseEnter={(e) => (e.currentTarget.style.color = accent)}
               onMouseLeave={(e) => (e.currentTarget.style.color = "")}
             >
@@ -479,7 +486,7 @@ function PortalHeader({
         <Sheet>
           <SheetTrigger asChild>
             <button
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/40 bg-white/60 text-slate-900 shadow-sm backdrop-blur-md sm:hidden dark:border-white/10 dark:bg-slate-900/60 dark:text-white"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/25 bg-white/15 text-white shadow-sm backdrop-blur-md sm:hidden"
               aria-label="Open menu"
             >
               <Menu className="size-5" />
