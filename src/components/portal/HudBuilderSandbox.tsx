@@ -540,17 +540,23 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
                 <div className="mt-4 rounded-md bg-muted/50 p-4 text-left text-sm space-y-1">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">
-                      Base Package ({threshold} model{threshold > 1 ? "s" : ""} included)
+                      {modelCount <= 2
+                        ? `${modelCount || 1} model${modelCount === 1 ? "" : "s"} (Tier A)`
+                        : modelCount === 3
+                          ? "3 models (Tier B — bundle)"
+                          : "3 models (Tier B — bundle)"}
                     </span>
-                    <span className="font-medium text-foreground">${(basePriceCents / 100).toFixed(2)}</span>
+                    <span className="font-medium text-foreground">
+                      ${(modelCount <= 2 ? priceA / 100 : tier3Total / 100).toFixed(2)}
+                    </span>
                   </div>
                   {extraModels > 0 && (
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">
-                        + {extraModels} extra model{extraModels > 1 ? "s" : ""} × ${(additionalFeeCents / 100).toFixed(2)}
+                        + {extraModels} extra model{extraModels > 1 ? "s" : ""} × ${(priceC / 100).toFixed(2)}
                       </span>
                       <span className="font-medium text-foreground">
-                        ${((extraModels * additionalFeeCents) / 100).toFixed(2)}
+                        ${((extraModels * priceC) / 100).toFixed(2)}
                       </span>
                     </div>
                   )}
