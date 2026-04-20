@@ -170,7 +170,7 @@ const emptyForm: AssetFormState = {
 
 function VaultPage() {
   const { user } = useAuth();
-  const navigate = useNavigate();
+  
   const [assets, setAssets] = useState<VaultAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<VaultCategory>("spatial_audio");
