@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_grants: {
+        Row: {
+          created_at: string
+          expires_at: string | null
+          granted_by: string
+          id: string
+          provider_id: string
+          revoked_at: string | null
+          tier: Database["public"]["Enums"]["app_tier"]
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string | null
+          granted_by: string
+          id?: string
+          provider_id: string
+          revoked_at?: string | null
+          tier: Database["public"]["Enums"]["app_tier"]
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string | null
+          granted_by?: string
+          id?: string
+          provider_id?: string
+          revoked_at?: string | null
+          tier?: Database["public"]["Enums"]["app_tier"]
+        }
+        Relationships: []
+      }
       branding_settings: {
         Row: {
           accent_color: string
@@ -752,6 +782,14 @@ export type Database = {
           provider_id: string
           studio_id: string
           tier: Database["public"]["Enums"]["app_tier"]
+        }[]
+      }
+      get_providers_for_admin: {
+        Args: never
+        Returns: {
+          email: string
+          provider_id: string
+          start_date: string
         }[]
       }
       get_user_tier: {
