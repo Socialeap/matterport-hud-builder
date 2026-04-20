@@ -198,26 +198,7 @@ function PortalPage() {
 
           {/* Layer 4: content */}
           <div className="relative mx-auto flex min-h-[85vh] max-w-6xl flex-col items-center justify-center px-4 py-20 text-center sm:px-6 sm:py-28">
-            {/* Brand chip */}
-            <div className="mb-8 inline-flex items-center gap-3 rounded-full border border-white/30 bg-white/15 px-4 py-2 shadow-lg backdrop-blur-md">
-              {branding.logo_url ? (
-                <img
-                  src={branding.logo_url}
-                  alt={`${branding.brand_name} logo`}
-                  className="h-7 w-7 rounded-full object-cover"
-                />
-              ) : (
-                <div
-                  className="flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold text-white"
-                  style={{ backgroundColor: accent }}
-                >
-                  {branding.brand_name?.[0]?.toUpperCase() ?? "S"}
-                </div>
-              )}
-              <span className="text-sm font-semibold text-white drop-shadow">
-                {branding.brand_name} Studio
-              </span>
-            </div>
+            {/* Brand chip moved into sticky header */}
 
             <h1 className="max-w-3xl text-4xl font-bold leading-tight tracking-tight text-white drop-shadow-lg sm:text-5xl md:text-6xl">
               Your Properties,{" "}
