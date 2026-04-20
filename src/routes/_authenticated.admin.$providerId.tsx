@@ -24,7 +24,7 @@ export const Route = createFileRoute("/_authenticated/admin/$providerId")({
 interface ProviderDetail {
   provider_id: string;
   brand_name: string;
-  slug: string;
+  slug: string | null;
   tier: "starter" | "pro";
   email: string;
   start_date: string;
