@@ -149,23 +149,14 @@ function PortalPage() {
       </div>
 
       <div className="relative z-10">
-        {/* Demo banner */}
-        {demoPublished && (
-          <div
-            className="flex w-full flex-wrap items-center justify-center gap-3 px-4 py-3 text-center text-sm font-medium text-white"
-            style={{ backgroundColor: accent }}
-          >
-            <span>✨ See a Live Demo of {branding.brand_name}'s 3D Studio</span>
-            <Link
-              to="/p/$slug/demo"
-              params={{ slug }}
-              className="inline-flex items-center gap-1 rounded-md bg-white px-3 py-1.5 text-sm font-semibold shadow-sm transition-transform hover:scale-105"
-              style={{ color: accent }}
-            >
-              View Demo →
-            </Link>
-          </div>
-        )}
+        {/* Sticky glassmorphism header */}
+        <PortalHeader
+          branding={branding}
+          slug={slug}
+          accent={accent}
+          demoPublished={demoPublished}
+          onScrollTo={handleScrollTo}
+        />
 
         {/* HERO STAGE — image-backed cinematic hero */}
         <section
@@ -243,7 +234,7 @@ function PortalPage() {
 
             <a
               href="#builder-start"
-              onClick={handleScrollToBuilder}
+              onClick={handleScrollTo("builder-start")}
               className="mt-10 inline-flex items-center gap-2 rounded-full px-8 py-4 text-base font-semibold text-white shadow-2xl transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl"
               style={{ backgroundColor: accent }}
             >
@@ -254,7 +245,7 @@ function PortalPage() {
         </section>
 
         {/* 3-STEP ONBOARDING */}
-        <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
+        <section id="steps" className="scroll-mt-20 mx-auto max-w-6xl px-4 py-16 sm:px-6">
           <div className="mb-12 text-center">
             <h2 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl dark:text-white">
               Three steps to your branded presentation
@@ -323,7 +314,7 @@ function PortalPage() {
         </section>
 
         {/* SOVEREIGNTY COMPARISON */}
-        <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
+        <section id="compare" className="scroll-mt-20 mx-auto max-w-6xl px-4 py-16 sm:px-6">
           <div className="mb-10 text-center">
             <h2 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl dark:text-white">
               Stop renting. Start owning.
