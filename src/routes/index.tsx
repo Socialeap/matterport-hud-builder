@@ -591,7 +591,7 @@ function Index() {
 
           <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {clientFeatures.map((f) => (
-              <Card key={f.title} className={`${cardBg} backdrop-blur`}>
+              <Card key={f.title} className={`${cardBg} backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-amber-300/60 hover:shadow-lg hover:shadow-amber-300/10`}>
                 <CardContent className="pt-6">
                   <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
                     <f.icon className="size-5 text-amber-300" />
