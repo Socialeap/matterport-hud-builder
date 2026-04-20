@@ -60,8 +60,8 @@ export const Route = createFileRoute("/p/$slug/")({
   notFoundComponent: () => (
     <div className="flex min-h-screen items-center justify-center bg-background">
       <div className="text-center">
-        <h1 className="text-4xl font-bold text-foreground">Portal Not Found</h1>
-        <p className="mt-2 text-muted-foreground">This provider portal does not exist.</p>
+        <h1 className="text-4xl font-bold text-foreground">Studio Not Found</h1>
+        <p className="mt-2 text-muted-foreground">This provider's Studio does not exist.</p>
       </div>
     </div>
   ),
@@ -75,9 +75,9 @@ function PortalPage() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center">
-          <h1 className="text-4xl font-bold text-foreground">Portal Not Found</h1>
+          <h1 className="text-4xl font-bold text-foreground">Studio Not Found</h1>
           <p className="mt-2 text-muted-foreground">
-            This provider portal does not exist or hasn't been configured yet.
+            This provider's Studio does not exist or hasn't been configured yet.
           </p>
         </div>
       </div>

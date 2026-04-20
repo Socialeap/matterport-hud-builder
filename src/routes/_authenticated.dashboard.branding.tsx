@@ -327,13 +327,13 @@ function BrandingPage() {
             </div>
           </div>
 
-          {/* Portal hero background */}
+          {/* Studio hero background */}
           <div className="space-y-3 rounded-lg border border-dashed border-border p-4">
             <div className="flex items-center justify-between">
               <div>
-                <Label>Portal Hero Background</Label>
+                <Label>Studio Hero Background</Label>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  The cinematic image behind your portal headline. Falls back to a default residential photo.
+                  The cinematic image behind your Studio's headline. Falls back to a default residential photo.
                 </p>
               </div>
               {branding.hero_bg_url && !heroFile && (

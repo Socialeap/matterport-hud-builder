@@ -346,7 +346,7 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Portal header */}
+      {/* Sandbox header */}
       <header
         className="border-b px-6 py-4"
         style={{ borderColor: `${accentColor}33` }}
