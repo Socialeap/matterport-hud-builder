@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { getStripeEnvironment } from "@/lib/stripe";
@@ -12,7 +12,8 @@ import {
 } from "@stripe/react-connect-js";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Banknote, ArrowRight } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/dashboard/payouts")({
@@ -26,66 +27,112 @@ function PayoutsPage() {
   const [onboardingComplete, setOnboardingComplete] = useState(false);
   const [feeBps, setFeeBps] = useState(150);
   const [stripeConnectInstance, setStripeConnectInstance] = useState<ReturnType<typeof loadConnectAndInitialize> | null>(null);
+  const [connecting, setConnecting] = useState(false);
   const initRef = useRef(false);
+
+  const loadStatus = useCallback(async () => {
+    if (!user) return;
+    setLoading(true);
+    try {
+      const { data: branding, error: brandingErr } = await supabase
+        .from("branding_settings")
+        .select("stripe_onboarding_complete, accent_color, instant_payout_fee_bps")
+        .eq("provider_id", user.id)
+        .maybeSingle();
+
+      if (brandingErr) throw brandingErr;
+
+      const accent = branding?.accent_color || "#2563EB";
+      setFeeBps((branding as any)?.instant_payout_fee_bps ?? 150);
+
+      if (!branding?.stripe_onboarding_complete) {
+        setOnboardingComplete(false);
+        setStripeConnectInstance(null);
+        setLoading(false);
+        return;
+      }
+
+      setOnboardingComplete(true);
+
+      const publishableKey = import.meta.env.VITE_PAYMENTS_CLIENT_TOKEN;
+      if (!publishableKey) throw new Error("Stripe publishable key not configured");
+
+      const instance = loadConnectAndInitialize({
+        publishableKey,
+        fetchClientSecret: async () => {
+          const { data, error } = await supabase.functions.invoke("stripe-connect-account-session", {
+            body: { environment: getStripeEnvironment() },
+          });
+          if (error) throw new Error((data as any)?.error || error.message);
+          if ((data as any)?.error) throw new Error((data as any).error);
+          return (data as any).client_secret as string;
+        },
+        appearance: {
+          overlays: "dialog",
+          variables: { colorPrimary: accent },
+        },
+      });
+
+      setStripeConnectInstance(instance);
+      setLoading(false);
+    } catch (err: any) {
+      console.error("Payouts init error:", err);
+      setError(err?.message || "Failed to initialize payouts");
+      toast.error(err?.message || "Failed to initialize payouts");
+      setLoading(false);
+    }
+  }, [user]);
 
   useEffect(() => {
     if (!user || initRef.current) return;
     initRef.current = true;
+    loadStatus();
+  }, [user, loadStatus]);
 
-    const init = async () => {
-      try {
-        const { data: branding, error: brandingErr } = await supabase
-          .from("branding_settings")
-          .select("stripe_onboarding_complete, accent_color, instant_payout_fee_bps")
-          .eq("provider_id", user.id)
-          .maybeSingle();
-
-        if (brandingErr) throw brandingErr;
-
-        if (!branding?.stripe_onboarding_complete) {
-          setOnboardingComplete(false);
-          setLoading(false);
-          return;
-        }
-
-        setOnboardingComplete(true);
-        setFeeBps((branding as any).instant_payout_fee_bps ?? 150);
-
-        const publishableKey = import.meta.env.VITE_PAYMENTS_CLIENT_TOKEN;
-        if (!publishableKey) throw new Error("Stripe publishable key not configured");
-
-        const accent = branding.accent_color || "#2563EB";
-
-        const instance = loadConnectAndInitialize({
-          publishableKey,
-          fetchClientSecret: async () => {
-            const { data, error } = await supabase.functions.invoke("stripe-connect-account-session", {
-              body: { environment: getStripeEnvironment() },
-            });
-            if (error) throw new Error((data as any)?.error || error.message);
-            if ((data as any)?.error) throw new Error((data as any).error);
-            return (data as any).client_secret as string;
-          },
-          appearance: {
-            overlays: "dialog",
-            variables: {
-              colorPrimary: accent,
-            },
-          },
+  // Handle return from Stripe Connect onboarding
+  useEffect(() => {
+    if (!user) return;
+    const url = new URL(window.location.href);
+    const hasReturn = url.searchParams.has("stripe_connect_return");
+    const hasSuccess = url.searchParams.get("stripe_connect_success") === "true";
+    if (hasReturn || hasSuccess) {
+      supabase.functions
+        .invoke("stripe-connect-status", {
+          body: { environment: getStripeEnvironment() },
+        })
+        .then(({ data }) => {
+          if (data?.onboarding_complete) {
+            toast.success("Stripe account connected successfully!");
+            loadStatus();
+          } else {
+            toast.info("Stripe onboarding not yet complete. Finish all required steps in Stripe.");
+          }
         });
+      url.searchParams.delete("stripe_connect_return");
+      url.searchParams.delete("stripe_connect_success");
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, [user, loadStatus]);
 
-        setStripeConnectInstance(instance);
-        setLoading(false);
-      } catch (err: any) {
-        console.error("Payouts init error:", err);
-        setError(err?.message || "Failed to initialize payouts");
-        toast.error(err?.message || "Failed to initialize payouts");
-        setLoading(false);
-      }
-    };
-
-    init();
-  }, [user]);
+  const handleConnect = async () => {
+    setConnecting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("stripe-connect-onboard", {
+        body: {
+          returnUrl: window.location.href,
+          environment: getStripeEnvironment(),
+        },
+      });
+      if (error) throw new Error((data as any)?.error || error.message);
+      if ((data as any)?.error) throw new Error((data as any).error);
+      if (!data?.url) throw new Error("Failed to start onboarding");
+      window.location.href = data.url;
+    } catch (err: any) {
+      console.error("Stripe Connect error:", err);
+      toast.error(err?.message || "Failed to connect Stripe. Please try again.");
+      setConnecting(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -95,30 +142,50 @@ function PayoutsPage() {
     );
   }
 
+  const header = (
+    <div>
+      <h1 className="text-2xl font-bold">Payouts</h1>
+      <p className="text-muted-foreground">
+        Connect Stripe, view your balance, and manage payouts to your bank account.
+      </p>
+    </div>
+  );
+
   if (!onboardingComplete) {
     return (
-      <div className="container max-w-2xl space-y-6 p-6">
-        <div>
-          <h1 className="text-2xl font-bold">Payouts</h1>
-          <p className="text-muted-foreground">Manage your earnings and instant payouts.</p>
-        </div>
+      <div className="container max-w-3xl space-y-6 p-6">
+        {header}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Banknote className="size-5" />
-              Connect Stripe to receive payouts
-            </CardTitle>
-            <CardDescription>
-              You need to complete Stripe Connect onboarding before you can view balances or initiate payouts.
-            </CardDescription>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <CardTitle>Stripe Connect</CardTitle>
+                <CardDescription>
+                  Connect your Stripe account to accept payments from clients and receive payouts.
+                </CardDescription>
+              </div>
+              <Button size="sm" onClick={handleConnect} disabled={connecting}>
+                {connecting ? "Connecting…" : "Connect with Stripe"}
+              </Button>
+            </div>
           </CardHeader>
-          <CardContent>
-            <Button asChild>
-              <Link to="/dashboard/branding">
-                Go to Stripe Connect setup <ArrowRight className="ml-2 size-4" />
-              </Link>
-            </Button>
-          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <CardTitle>Client Pricing</CardTitle>
+                <CardDescription>
+                  Set what your clients pay per Presentation Portal — based on the
+                  number of 3D property models — in the dedicated Pricing tab.
+                </CardDescription>
+              </div>
+              <Button asChild size="sm" variant="outline">
+                <Link to="/dashboard/pricing">Open Pricing →</Link>
+              </Button>
+            </div>
+          </CardHeader>
         </Card>
       </div>
     );
@@ -126,8 +193,8 @@ function PayoutsPage() {
 
   if (error || !stripeConnectInstance) {
     return (
-      <div className="container max-w-2xl space-y-6 p-6">
-        <h1 className="text-2xl font-bold">Payouts</h1>
+      <div className="container max-w-3xl space-y-6 p-6">
+        {header}
         <Card>
           <CardContent className="pt-6">
             <p className="text-destructive">{error || "Unable to load payouts."}</p>
@@ -139,15 +206,38 @@ function PayoutsPage() {
 
   return (
     <div className="container max-w-5xl space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-bold">Payouts</h1>
-        <p className="text-muted-foreground">
-          View your balance, manage payout schedule, and request instant payouts.
-        </p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Instant Payout fee: <span className="font-medium">{(feeBps / 100).toFixed(2)}%</span> (set by platform)
-        </p>
-      </div>
+      {header}
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <CardTitle>Stripe Connect</CardTitle>
+              <CardDescription>
+                Your Stripe account is connected. Instant Payout fee:{" "}
+                <span className="font-medium">{(feeBps / 100).toFixed(2)}%</span> (set by platform).
+              </CardDescription>
+            </div>
+            <Badge className="bg-green-600 text-white">Stripe Connected ✅</Badge>
+          </div>
+        </CardHeader>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <CardTitle>Client Pricing</CardTitle>
+              <CardDescription>
+                Set what your clients pay per Presentation Portal in the dedicated Pricing tab.
+              </CardDescription>
+            </div>
+            <Button asChild size="sm" variant="outline">
+              <Link to="/dashboard/pricing">Open Pricing →</Link>
+            </Button>
+          </div>
+        </CardHeader>
+      </Card>
 
       <ConnectComponentsProvider connectInstance={stripeConnectInstance}>
         <Card>
