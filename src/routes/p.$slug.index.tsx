@@ -5,6 +5,7 @@ import { HudBuilderSandbox } from "@/components/portal/HudBuilderSandbox";
 import { checkDemoPublished } from "@/lib/sandbox-demo.functions";
 import { Check, X, Link2, Palette, Download, Sparkles, Menu } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 const fetchBrandingBySlug = createServerFn({ method: "GET" })
   .inputValidator((data: { slug: string }) => data)
@@ -552,3 +553,177 @@ function PortalHeader({
     </header>
   );
 }
+
+// ============ Public pricing section ============
+
+interface PricingBranding {
+  brand_name: string;
+  base_price_cents?: number | null;
+  tier3_price_cents?: number | null;
+  additional_model_fee_cents?: number | null;
+  flat_price_per_model_cents?: number | null;
+  use_flat_pricing?: boolean | null;
+}
+
+function fmtUSD(cents: number): string {
+  return `$${(cents / 100).toFixed(cents % 100 === 0 ? 0 : 2)}`;
+}
+
+function PortalPricingSection({
+  branding,
+  accent,
+}: {
+  branding: PricingBranding;
+  accent: string;
+}) {
+  const useFlat = Boolean(branding.use_flat_pricing);
+  const flat = branding.flat_price_per_model_cents ?? null;
+  const a = branding.base_price_cents ?? null;
+  const b = branding.tier3_price_cents ?? null;
+  const c = branding.additional_model_fee_cents ?? null;
+
+  const configured = useFlat ? flat != null && flat > 0 : a != null && a > 0;
+
+  return (
+    <section
+      id="pricing"
+      className="scroll-mt-20 mx-auto max-w-6xl px-4 py-16 sm:px-6"
+    >
+      <div className="mb-8 text-center">
+        <h2 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl dark:text-white">
+          What it costs
+        </h2>
+        <p className="mt-3 text-slate-600 dark:text-slate-300">
+          One-time payment per Presentation. No subscriptions.
+        </p>
+      </div>
+
+      <div
+        className="rounded-2xl border bg-white/50 p-6 shadow-sm backdrop-blur-xl sm:p-8 dark:bg-slate-900/40"
+        style={{ borderColor: `${accent}40` }}
+      >
+        {!configured ? (
+          <div className="text-center text-slate-700 dark:text-slate-200">
+            <p className="text-base font-medium">
+              {branding.brand_name} hasn't published pricing yet.
+            </p>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              Contact your provider for a quote.
+            </p>
+          </div>
+        ) : useFlat ? (
+          <FlatRateTable flatCents={flat as number} accent={accent} />
+        ) : (
+          <TieredRateTable
+            a={a as number}
+            b={b}
+            c={c ?? 0}
+            accent={accent}
+          />
+        )}
+
+        {configured && (
+          <p className="mt-5 text-center text-xs italic text-slate-500 dark:text-slate-400">
+            Prices are per Presentation download. You only pay when you're
+            ready to publish.
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function FlatRateTable({ flatCents, accent }: { flatCents: number; accent: string }) {
+  const rows: { label: string; price: string }[] = [
+    { label: "1 model", price: fmtUSD(flatCents) },
+    { label: "2 models", price: fmtUSD(flatCents * 2) },
+    { label: "3 models", price: fmtUSD(flatCents * 3) },
+    { label: "4 models", price: fmtUSD(flatCents * 4) },
+    { label: "5 models", price: fmtUSD(flatCents * 5) },
+    { label: "Each additional model", price: `+ ${fmtUSD(flatCents)} each` },
+  ];
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead className="text-slate-700 dark:text-slate-200">
+            Number of models in your Presentation
+          </TableHead>
+          <TableHead
+            className="text-right font-bold"
+            style={{ color: accent }}
+          >
+            Price
+          </TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {rows.map((r) => (
+          <TableRow key={r.label}>
+            <TableCell className="text-slate-800 dark:text-slate-100">
+              {r.label}
+            </TableCell>
+            <TableCell className="text-right font-semibold text-slate-900 dark:text-white">
+              {r.price}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
+
+function TieredRateTable({
+  a,
+  b,
+  c,
+  accent,
+}: {
+  a: number;
+  b: number | null;
+  c: number;
+  accent: string;
+}) {
+  const tier3Total = b ?? a * 2 + c;
+  const rows: { label: string; price: string }[] = [
+    { label: "1 model", price: fmtUSD(a) },
+    { label: "2 models", price: fmtUSD(a * 2) },
+    { label: "3 models (bundle)", price: fmtUSD(tier3Total) },
+    { label: "4 models", price: fmtUSD(tier3Total + c) },
+    { label: "5 models", price: fmtUSD(tier3Total + c * 2) },
+    {
+      label: "Each additional model beyond 3",
+      price: `+ ${fmtUSD(c)} each`,
+    },
+  ];
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead className="text-slate-700 dark:text-slate-200">
+            Number of models in your Presentation
+          </TableHead>
+          <TableHead
+            className="text-right font-bold"
+            style={{ color: accent }}
+          >
+            Price
+          </TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {rows.map((r) => (
+          <TableRow key={r.label}>
+            <TableCell className="text-slate-800 dark:text-slate-100">
+              {r.label}
+            </TableCell>
+            <TableCell className="text-right font-semibold text-slate-900 dark:text-white">
+              {r.price}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
+
