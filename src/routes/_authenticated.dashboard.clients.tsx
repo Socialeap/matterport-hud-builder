@@ -1,11 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useAuth } from "@/hooks/use-auth";
 import { useEffect, useState, useCallback } from "react";
+import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { sendTransactionalEmail } from "@/lib/email/send";
+import { setClientFreeFlag } from "@/lib/portal.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -23,20 +26,24 @@ interface Invitation {
   status: "pending" | "accepted" | "expired";
   created_at: string;
   expires_at: string;
+  is_free: boolean;
 }
 
 function ClientsPage() {
   const { user } = useAuth();
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [email, setEmail] = useState("");
+  const [inviteFree, setInviteFree] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const setFreeFlagFn = useServerFn(setClientFreeFlag);
 
   const fetchInvitations = useCallback(async () => {
     if (!user) return;
     const { data } = await supabase
       .from("invitations")
-      .select("id, email, status, created_at, expires_at")
+      .select("id, email, status, created_at, expires_at, is_free")
       .eq("provider_id", user.id)
       .order("created_at", { ascending: false });
 
@@ -58,6 +65,7 @@ function ClientsPage() {
     const { data: inserted, error } = await supabase.from("invitations").insert({
       provider_id: user.id,
       email: trimmedEmail,
+      is_free: inviteFree,
     }).select("id, token").single();
 
     if (error) {
@@ -88,7 +96,28 @@ function ClientsPage() {
     setSending(false);
     toast.success(`Invitation sent to ${email}`);
     setEmail("");
+    setInviteFree(false);
     fetchInvitations();
+  };
+
+  const handleToggleFree = async (inv: Invitation, next: boolean) => {
+    setTogglingId(inv.id);
+    // Optimistic update
+    setInvitations((prev) =>
+      prev.map((i) => (i.id === inv.id ? { ...i, is_free: next } : i))
+    );
+    try {
+      await setFreeFlagFn({ data: { invitationId: inv.id, isFree: next } });
+      toast.success(`${inv.email} is now ${next ? "Free" : "Pay"}`);
+    } catch (err) {
+      // Revert on failure
+      setInvitations((prev) =>
+        prev.map((i) => (i.id === inv.id ? { ...i, is_free: !next } : i))
+      );
+      toast.error(err instanceof Error ? err.message : "Failed to update attribute");
+    } finally {
+      setTogglingId(null);
+    }
   };
 
   const statusIcon = (status: string) => {
@@ -124,7 +153,7 @@ function ClientsPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex items-end gap-3">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
             <div className="flex-1 space-y-2">
               <Label htmlFor="invite-email">Client Email</Label>
               <Input
@@ -136,10 +165,33 @@ function ClientsPage() {
                 onKeyDown={(e) => e.key === "Enter" && handleInvite()}
               />
             </div>
+
+            <div className="flex flex-col gap-1.5 rounded-md border border-border bg-muted/30 px-3 py-2">
+              <Label htmlFor="invite-free" className="text-xs font-medium">
+                Attribute
+              </Label>
+              <div className="flex items-center gap-2">
+                <span className={`text-sm font-medium ${!inviteFree ? "text-foreground" : "text-muted-foreground"}`}>
+                  Pay
+                </span>
+                <Switch
+                  id="invite-free"
+                  checked={inviteFree}
+                  onCheckedChange={setInviteFree}
+                />
+                <span className={`text-sm font-medium ${inviteFree ? "text-foreground" : "text-muted-foreground"}`}>
+                  Free
+                </span>
+              </div>
+            </div>
+
             <Button onClick={handleInvite} disabled={sending || !email.trim()}>
               {sending ? "Sending…" : "Send Invite"}
             </Button>
           </div>
+          <p className="mt-3 text-xs text-muted-foreground">
+            Free clients can download their Presentation at no cost. Default is <strong>Pay</strong>.
+          </p>
         </CardContent>
       </Card>
 
@@ -158,6 +210,7 @@ function ClientsPage() {
                 <TableRow>
                   <TableHead>Email</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Attribute</TableHead>
                   <TableHead>Sent</TableHead>
                   <TableHead>Expires</TableHead>
                 </TableRow>
@@ -179,6 +232,19 @@ function ClientsPage() {
                           }
                         >
                           {inv.status}
+                        </Badge>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={inv.is_free}
+                          disabled={togglingId === inv.id}
+                          onCheckedChange={(next) => handleToggleFree(inv, next)}
+                          aria-label={`Toggle Free/Pay for ${inv.email}`}
+                        />
+                        <Badge variant={inv.is_free ? "default" : "outline"}>
+                          {inv.is_free ? "Free" : "Pay"}
                         </Badge>
                       </div>
                     </TableCell>

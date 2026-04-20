@@ -1211,3 +1211,78 @@ export const deleteOwnAccount = createServerFn({ method: "POST" })
     }
     return { success: true };
   });
+
+// ============================================================================
+// Free/Pay client attribute management
+// ============================================================================
+
+/**
+ * Update the `is_free` attribute on an invitation. If the invitation has
+ * already been accepted (i.e. there's a matching client_providers link
+ * for this provider + the email's owning user), propagate the flag onto
+ * that link too so the checkout fulfilment path sees it.
+ */
+export const setClientFreeFlag = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { invitationId: string; isFree: boolean }) => d)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+
+    // 1) Update invitation row (RLS confirms the caller owns it).
+    const { data: invRow, error: invErr } = await supabase
+      .from("invitations")
+      .update({ is_free: data.isFree })
+      .eq("id", data.invitationId)
+      .eq("provider_id", userId)
+      .select("email, status")
+      .maybeSingle();
+
+    if (invErr || !invRow) {
+      throw new Error(invErr?.message || "Invitation not found");
+    }
+
+    // 2) If accepted, propagate to the client_providers link by looking
+    //    up the auth user that owns that email (admin lookup — bypasses RLS).
+    if (invRow.status === "accepted" && invRow.email) {
+      try {
+        const { data: usersList } = await supabaseAdmin.auth.admin.listUsers({
+          page: 1,
+          perPage: 200,
+        });
+        const match = usersList?.users?.find(
+          (u) => u.email?.toLowerCase() === invRow.email.toLowerCase()
+        );
+        if (match) {
+          await supabaseAdmin
+            .from("client_providers")
+            .update({ is_free: data.isFree })
+            .eq("provider_id", userId)
+            .eq("client_id", match.id);
+        }
+      } catch (e) {
+        console.warn("client_providers free-flag propagation failed:", e);
+      }
+    }
+
+    return { success: true };
+  });
+
+/**
+ * Returns whether the currently logged-in client has the `is_free`
+ * attribute set against the given provider. Used by the builder to
+ * swap the Purchase button label.
+ */
+export const getClientFreeStatus = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { providerId: string }) => d)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { data: link } = await supabase
+      .from("client_providers")
+      .select("is_free")
+      .eq("provider_id", data.providerId)
+      .eq("client_id", userId)
+      .maybeSingle();
+    return { isFree: link?.is_free === true };
+  });
+

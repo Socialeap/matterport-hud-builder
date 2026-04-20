@@ -88,8 +88,8 @@ const CATEGORIES: CategoryMeta[] = [
     label: "Sound Library",
     utility: "Background Ambience",
     purpose: "Emotional mood setting",
-    format: ".mp3, .wav, or Audio URL",
-    accept: ".mp3,.wav,.ogg,audio/*",
+    format: ".mp3 or Audio URL",
+    accept: ".mp3,audio/mpeg",
     icon: Volume2,
   },
   {
@@ -427,10 +427,6 @@ function VaultPage() {
         </Card>
       )}
 
-      <div
-        className={isStarter ? "pointer-events-none select-none opacity-70" : ""}
-        aria-disabled={isStarter}
-      >
       <Tabs
         value={activeTab}
         onValueChange={(v) => setActiveTab(v as VaultCategory)}
@@ -466,12 +462,18 @@ function VaultPage() {
                 <span className="text-muted-foreground">
                   Define what gets extracted from each uploaded doc.
                 </span>
-                <Link
-                  to="/dashboard/vault/templates"
-                  className="inline-flex items-center gap-1 font-medium hover:text-foreground"
-                >
-                  <FileJson className="size-3.5" /> Manage Templates
-                </Link>
+                {isStarter ? (
+                  <span className="inline-flex items-center gap-1 font-medium text-muted-foreground">
+                    <Lock className="size-3.5" /> Manage Templates
+                  </span>
+                ) : (
+                  <Link
+                    to="/dashboard/vault/templates"
+                    className="inline-flex items-center gap-1 font-medium hover:text-foreground"
+                  >
+                    <FileJson className="size-3.5" /> Manage Templates
+                  </Link>
+                )}
               </div>
             )}
 
@@ -489,7 +491,17 @@ function VaultPage() {
               </Button>
             </div>
 
-            {loading ? (
+            {isStarter ? (
+              <div className="rounded-lg border border-dashed border-border bg-muted/20 py-12 text-center opacity-70">
+                <c.icon className="mx-auto size-10 text-muted-foreground/60" />
+                <p className="mt-3 text-sm font-medium">
+                  Sample {c.label.toLowerCase()} appear here for Pro members
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Upgrade to Pro to start curating assets in this category.
+                </p>
+              </div>
+            ) : loading ? (
               <div className="flex items-center justify-center py-10">
                 <div className="h-6 w-6 animate-spin rounded-full border-4 border-primary border-t-transparent" />
               </div>
@@ -511,7 +523,6 @@ function VaultPage() {
           </TabsContent>
         ))}
       </Tabs>
-      </div>
 
       {isStarter && (
         <div className="flex justify-center pt-2">

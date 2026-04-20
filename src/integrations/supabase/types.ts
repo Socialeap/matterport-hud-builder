@@ -100,18 +100,21 @@ export type Database = {
           client_id: string
           created_at: string
           id: string
+          is_free: boolean
           provider_id: string
         }
         Insert: {
           client_id: string
           created_at?: string
           id?: string
+          is_free?: boolean
           provider_id: string
         }
         Update: {
           client_id?: string
           created_at?: string
           id?: string
+          is_free?: boolean
           provider_id?: string
         }
         Relationships: []
@@ -209,6 +212,7 @@ export type Database = {
           email: string
           expires_at: string
           id: string
+          is_free: boolean
           provider_id: string
           status: Database["public"]["Enums"]["invitation_status"]
           token: string
@@ -219,6 +223,7 @@ export type Database = {
           email: string
           expires_at?: string
           id?: string
+          is_free?: boolean
           provider_id: string
           status?: Database["public"]["Enums"]["invitation_status"]
           token?: string
@@ -229,6 +234,7 @@ export type Database = {
           email?: string
           expires_at?: string
           id?: string
+          is_free?: boolean
           provider_id?: string
           status?: Database["public"]["Enums"]["invitation_status"]
           token?: string

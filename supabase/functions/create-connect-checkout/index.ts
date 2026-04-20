@@ -94,6 +94,34 @@ serve(async (req) => {
       ? basePriceCents
       : basePriceCents + ((modelCount - threshold) * additionalFeeCents);
 
+    // ── Free-client bypass ──────────────────────────────────────────────
+    // If this client was invited as a "Free" client, skip Stripe entirely
+    // and immediately mark the saved_model paid + released so they can
+    // generate/download their Presentation at no cost.
+    const { data: link } = await supabaseAdmin
+      .from("client_providers")
+      .select("is_free")
+      .eq("provider_id", providerId)
+      .eq("client_id", user.id)
+      .maybeSingle();
+
+    if (link?.is_free === true) {
+      await supabaseAdmin
+        .from("saved_models")
+        .update({
+          amount_cents: 0,
+          model_count: modelCount,
+          status: "paid",
+          is_released: true,
+        })
+        .eq("id", modelId);
+
+      return new Response(
+        JSON.stringify({ free: true, modelId }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const env: StripeEnv = "sandbox";
     const stripe = createStripeClient(env);
 
