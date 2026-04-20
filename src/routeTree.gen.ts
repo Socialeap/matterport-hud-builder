@@ -34,6 +34,7 @@ import { Route as AuthenticatedDashboardOrdersRouteImport } from './routes/_auth
 import { Route as AuthenticatedDashboardDemoRouteImport } from './routes/_authenticated.dashboard.demo'
 import { Route as AuthenticatedDashboardClientsRouteImport } from './routes/_authenticated.dashboard.clients'
 import { Route as AuthenticatedDashboardBrandingRouteImport } from './routes/_authenticated.dashboard.branding'
+import { Route as AuthenticatedDashboardAccountRouteImport } from './routes/_authenticated.dashboard.account'
 import { Route as LovableEmailTransactionalSendRouteImport } from './routes/lovable/email/transactional/send'
 import { Route as LovableEmailTransactionalPreviewRouteImport } from './routes/lovable/email/transactional/preview'
 import { Route as LovableEmailQueueProcessRouteImport } from './routes/lovable/email/queue/process'
@@ -172,6 +173,12 @@ const AuthenticatedDashboardBrandingRoute =
     path: '/branding',
     getParentRoute: () => AuthenticatedDashboardRoute,
   } as any)
+const AuthenticatedDashboardAccountRoute =
+  AuthenticatedDashboardAccountRouteImport.update({
+    id: '/account',
+    path: '/account',
+    getParentRoute: () => AuthenticatedDashboardRoute,
+  } as any)
 const LovableEmailTransactionalSendRoute =
   LovableEmailTransactionalSendRouteImport.update({
     id: '/lovable/email/transactional/send',
@@ -210,6 +217,7 @@ export interface FileRoutesByFullPath {
   '/api/mp-image': typeof ApiMpImageRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/p/$slug': typeof PSlugRouteWithChildren
+  '/dashboard/account': typeof AuthenticatedDashboardAccountRoute
   '/dashboard/branding': typeof AuthenticatedDashboardBrandingRoute
   '/dashboard/clients': typeof AuthenticatedDashboardClientsRoute
   '/dashboard/demo': typeof AuthenticatedDashboardDemoRoute
@@ -238,6 +246,7 @@ export interface FileRoutesByTo {
   '/unsubscribe': typeof UnsubscribeRoute
   '/api/mp-image': typeof ApiMpImageRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
+  '/dashboard/account': typeof AuthenticatedDashboardAccountRoute
   '/dashboard/branding': typeof AuthenticatedDashboardBrandingRoute
   '/dashboard/clients': typeof AuthenticatedDashboardClientsRoute
   '/dashboard/demo': typeof AuthenticatedDashboardDemoRoute
@@ -270,6 +279,7 @@ export interface FileRoutesById {
   '/api/mp-image': typeof ApiMpImageRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/p/$slug': typeof PSlugRouteWithChildren
+  '/_authenticated/dashboard/account': typeof AuthenticatedDashboardAccountRoute
   '/_authenticated/dashboard/branding': typeof AuthenticatedDashboardBrandingRoute
   '/_authenticated/dashboard/clients': typeof AuthenticatedDashboardClientsRoute
   '/_authenticated/dashboard/demo': typeof AuthenticatedDashboardDemoRoute
@@ -302,6 +312,7 @@ export interface FileRouteTypes {
     | '/api/mp-image'
     | '/email/unsubscribe'
     | '/p/$slug'
+    | '/dashboard/account'
     | '/dashboard/branding'
     | '/dashboard/clients'
     | '/dashboard/demo'
@@ -330,6 +341,7 @@ export interface FileRouteTypes {
     | '/unsubscribe'
     | '/api/mp-image'
     | '/email/unsubscribe'
+    | '/dashboard/account'
     | '/dashboard/branding'
     | '/dashboard/clients'
     | '/dashboard/demo'
@@ -361,6 +373,7 @@ export interface FileRouteTypes {
     | '/api/mp-image'
     | '/email/unsubscribe'
     | '/p/$slug'
+    | '/_authenticated/dashboard/account'
     | '/_authenticated/dashboard/branding'
     | '/_authenticated/dashboard/clients'
     | '/_authenticated/dashboard/demo'
@@ -575,6 +588,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardBrandingRouteImport
       parentRoute: typeof AuthenticatedDashboardRoute
     }
+    '/_authenticated/dashboard/account': {
+      id: '/_authenticated/dashboard/account'
+      path: '/account'
+      fullPath: '/dashboard/account'
+      preLoaderRoute: typeof AuthenticatedDashboardAccountRouteImport
+      parentRoute: typeof AuthenticatedDashboardRoute
+    }
     '/lovable/email/transactional/send': {
       id: '/lovable/email/transactional/send'
       path: '/lovable/email/transactional/send'
@@ -622,6 +642,7 @@ const AuthenticatedDashboardVaultRouteWithChildren =
   )
 
 interface AuthenticatedDashboardRouteChildren {
+  AuthenticatedDashboardAccountRoute: typeof AuthenticatedDashboardAccountRoute
   AuthenticatedDashboardBrandingRoute: typeof AuthenticatedDashboardBrandingRoute
   AuthenticatedDashboardClientsRoute: typeof AuthenticatedDashboardClientsRoute
   AuthenticatedDashboardDemoRoute: typeof AuthenticatedDashboardDemoRoute
@@ -635,6 +656,7 @@ interface AuthenticatedDashboardRouteChildren {
 
 const AuthenticatedDashboardRouteChildren: AuthenticatedDashboardRouteChildren =
   {
+    AuthenticatedDashboardAccountRoute: AuthenticatedDashboardAccountRoute,
     AuthenticatedDashboardBrandingRoute: AuthenticatedDashboardBrandingRoute,
     AuthenticatedDashboardClientsRoute: AuthenticatedDashboardClientsRoute,
     AuthenticatedDashboardDemoRoute: AuthenticatedDashboardDemoRoute,
