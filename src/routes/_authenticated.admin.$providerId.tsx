@@ -24,7 +24,7 @@ export const Route = createFileRoute("/_authenticated/admin/$providerId")({
 interface ProviderDetail {
   provider_id: string;
   brand_name: string;
-  slug: string;
+  slug: string | null;
   tier: "starter" | "pro";
   email: string;
   start_date: string;
@@ -249,7 +249,7 @@ export default function AdminProviderDetail() {
     );
   }
 
-  const studioUrl = buildStudioUrl(detail.slug, { tier: detail.tier });
+  const studioUrl = buildStudioUrl(detail.slug ?? "", { tier: detail.tier });
   const activeGrant = grant && !grant.revoked_at ? grant : null;
   const isExpired = activeGrant?.expires_at
     ? new Date(activeGrant.expires_at) < new Date()
