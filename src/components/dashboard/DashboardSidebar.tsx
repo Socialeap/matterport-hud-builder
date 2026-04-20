@@ -31,6 +31,7 @@ import {
   UserCog,
   Lock,
   BarChart2,
+  Shield,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -74,6 +75,7 @@ export function DashboardSidebar() {
   const [tier, setTier] = useState<"starter" | "pro" | null>(null);
 
   const isClient = roles.includes("client");
+  const isAdmin = roles.includes("admin");
 
   useEffect(() => {
     if (!user || isClient) return;
@@ -157,6 +159,27 @@ export function DashboardSidebar() {
             </TooltipProvider>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {isAdmin && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Admin</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={location.pathname.startsWith("/admin")}
+                  >
+                    <Link to="/admin">
+                      <Shield className="size-4" />
+                      <span>Admin Portal</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border p-4">
