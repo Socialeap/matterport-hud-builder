@@ -665,7 +665,7 @@ function Index() {
             </Card>
 
             {/* Pro */}
-            <Card className={`relative flex flex-col border-primary shadow-lg backdrop-blur bg-white/5`}>
+            <Card className={`relative flex flex-col border-primary shadow-lg backdrop-blur bg-white/5 transition-all duration-300 hover:-translate-y-1 hover:border-primary hover:shadow-xl hover:shadow-primary/20`}>
               <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">
                 Most Popular
               </Badge>
