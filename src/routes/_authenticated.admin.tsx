@@ -1,7 +1,8 @@
-import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Outlet, useNavigate, Link } from "@tanstack/react-router";
 import { useAuth } from "@/hooks/use-auth";
 import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { ArrowLeft } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/admin")({
   component: AdminLayout,
@@ -36,7 +37,16 @@ function AdminLayout() {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card px-6 py-3 flex items-center justify-between">
-        <span className="font-semibold text-foreground">Admin Portal</span>
+        <div className="flex items-center gap-4">
+          <Link
+            to="/dashboard"
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="size-4" />
+            Back to Dashboard
+          </Link>
+          <span className="font-semibold text-foreground">Admin Portal</span>
+        </div>
         <div className="flex items-center gap-4 text-sm text-muted-foreground">
           <span>{user?.email}</span>
           <button
