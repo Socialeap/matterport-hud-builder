@@ -1,98 +1,131 @@
 
 
-## Plan: MSP Onboarding Guide for Dashboard Overview
+## Plan: Complete the Dashboard Sidebar (Vault, Payouts, Pricing, Account)
 
-Replace the redundant card-link grid in `src/routes/_authenticated.dashboard.index.tsx` with a sequential, jargon-free **Quick Start Guide + FAQ** that walks MSPs through their workflow from sign-up to getting paid.
+Restructure the dashboard left-nav so every MSP-facing area is reachable, repurpose the **Pricing** page to control client/end-user pricing (not MSP tier purchase), and add a new **Account** page.
 
 ---
 
-### Page structure
+### 1. Sidebar changes — `src/components/dashboard/DashboardSidebar.tsx`
 
-```text
-┌─ Welcome strip (brand, current tier badge, "Your Studio at /p/{slug}" link)
-│
-├─ Quick Start: 6-step workflow (numbered, vertical timeline)
-│   1. Brand Your Studio          → /dashboard/branding
-│   2. Set Your Pricing           → /dashboard/branding (pricing block)
-│   3. Connect Payouts            → /dashboard/payouts
-│   4. (Pro) Stock Your Vault     → /dashboard/vault   (Pro-only, dimmed if Starter)
-│   5. Invite Your Clients        → /dashboard/clients
-│   6. Track Orders & Get Paid    → /dashboard/orders + /dashboard/payouts
-│
-├─ Pro Tips strip (3 short tips with icons)
-│
-├─ FAQ accordion (8–10 plain-language Q&As)
-│
-└─ Need more help? (link to demo + support email)
+New nav order for providers:
+
+| # | Label | Route | Icon | Behavior |
+|---|---|---|---|---|
+| 1 | Overview | `/dashboard` | LayoutDashboard | always |
+| 2 | Branding | `/dashboard/branding` | Palette | always |
+| 3 | Production Vault | `/dashboard/vault` | Archive | **always shown**; disabled + 🔒 icon + "Pro only" tooltip when `tier === 'starter'` |
+| 4 | Pricing | `/dashboard/pricing` | DollarSign | always (NEW purpose — see §3) |
+| 5 | Orders | `/dashboard/orders` | ShoppingCart | always |
+| 6 | Payouts | `/dashboard/payouts` | Banknote | **always shown** (remove `requiresStripe` gate); page itself already handles "not connected yet" state |
+| 7 | Clients | `/dashboard/clients` | Users | always |
+| 8 | Demo | `/dashboard/demo` | Play | always |
+| 9 | Account | `/dashboard/account` | UserCog | always (NEW) |
+
+Disabled-row pattern for Starter Vault: render as a non-link `<SidebarMenuButton>` with `opacity-60 cursor-not-allowed`, a small `Lock` icon, and a tooltip "Upgrade to Pro to unlock the Production Vault".
+
+### 2. Move tier-purchase gate off `/dashboard/pricing` — `src/routes/_authenticated.dashboard.tsx`
+
+`/dashboard/pricing` is being repurposed for client pricing, so it can no longer double as the upgrade landing page.
+
+- Rename the existing tier-purchase page from `_authenticated.dashboard.pricing.tsx` → `_authenticated.dashboard.upgrade.tsx` (route `/dashboard/upgrade`).
+- Update the gate redirect in `_authenticated.dashboard.tsx` to `/dashboard/upgrade`.
+- Update the banner text and any internal links currently pointing to `/dashboard/pricing` for the purchase flow (e.g. checkout `returnUrl`s) to use `/dashboard/upgrade`.
+- The Sidebar does NOT show "Upgrade" — users are routed there only via the gate.
+
+### 3. New Pricing page — `src/routes/_authenticated.dashboard.pricing.tsx` (rewrite)
+
+Purpose: MSP sets the per-presentation price their **clients** pay based on the number of 3D property models in a Presentation Portal.
+
+Three tiered fields:
+
+```
+$A — Price for 1–2 property models                (flat fee)
+$B — Price for 3 property models (discounted)     (flat fee, replaces 3 × $A)
+$C — Price per each additional model beyond 3     (per-model fee)
 ```
 
-### Step card (repeats 6 times)
+Implementation:
+- Reuse existing `branding_settings` columns:
+  - `base_price_cents` → **$A** (1–2 models)
+  - `additional_model_fee_cents` → **$C** (per additional model)
+- Add ONE new column (migration): `tier3_price_cents int4 NULL` → **$B** (flat price for exactly 3 models).
+- Set `model_threshold` to a fixed `2` server-side on save (treated as a system constant in the new model: 1–2 = base, 3 = discounted bundle, 4+ = base-3 + extra-per-model).
+- UI: three labeled `Input type="number"` (USD) cards with helper text + a live "Example pricing" preview that shows the calculated cost for 1, 2, 3, 4, 5 models.
+- Save handler `upsert` to `branding_settings` for the current `provider_id`.
+- Show inline warning if Stripe Connect is not yet onboarded ("Set prices now; clients can't check out until you connect Payouts").
 
-Each step is a horizontal card with:
-- Large numbered circle (1–6) tinted with `accent`
-- Lucide icon (Palette, DollarSign, Banknote, Archive, Users, ShoppingCart)
-- Title + 1-sentence plain-English description
-- "What you'll do" bullet list (2–3 items, no jargon)
-- Primary action button → routes to the relevant dashboard page
-- Optional **"Show me how" secondary button** → opens an interactive popup (`Dialog`) with a short walkthrough (3–5 numbered tips, screenshots optional later)
-- Live status pill where detectable: e.g. "Done" (green Check) when step is complete, "Not started" (gray) otherwise
+### 4. Update price calculator — `src/components/portal/HudBuilderSandbox.tsx`
 
-### Status detection (lightweight, single query on mount)
+Replace the current `modelCount <= threshold ? base : base + (modelCount - threshold) * additional` formula with:
 
-One Supabase fetch from `branding_settings` for the current user pulls everything needed:
-- `logo_url` set → Step 1 complete
-- `base_price_cents` set → Step 2 complete
-- `stripe_onboarding_complete` true → Step 3 complete
-- `tier === "pro"` → Step 4 unlocked (otherwise show "Pro feature — upgrade to unlock")
-- Plus a count from `invitations` → Step 5 progress ("3 clients invited")
-- Plus a count from `order_notifications` → Step 6 progress ("2 orders received")
+```ts
+let totalCents = 0;
+if (modelCount <= 2) totalCents = priceA;                          // $A
+else if (modelCount === 3) totalCents = priceB ?? priceA * 2 + priceC; // $B
+else totalCents = (priceB ?? priceA * 2 + priceC) + (modelCount - 3) * priceC; // $B + extras
+```
 
-### Pro Tips strip
+Falls back gracefully if `tier3_price_cents` is null (treats it as `2A + C`).
 
-Three short cards, e.g.:
-- **Preview before you publish** — Use Demo Mode to see exactly what your clients will see.
-- **Your accent color is everywhere** — It tints buttons, links, and the View Demo CTA across your portal.
-- **Pro adds AI lead capture** — Upgrade to let your clients capture buyer info automatically.
+### 5. Remove pricing fields from Branding page — `src/routes/_authenticated.dashboard.branding.tsx`
 
-### FAQ accordion (using existing `@/components/ui/accordion`)
+Strip the "Base Price", "Model Threshold", and "Additional Model Fee" inputs (lines ~510–565) and replace with a small CTA card: "Pricing has moved → Set client pricing in the Pricing tab" linking to `/dashboard/pricing`. Keeps the save handler intact (those fields just won't be edited here anymore).
 
-Plain questions, plain answers. Examples:
-- What's the difference between Starter and Pro?
-- Can I change my brand colors after my clients have built tours?
-- How do my clients pay me?
-- What is the Vault and do I need it?
-- How do invitations work?
-- What does the "Demo Mode" do?
-- Can I use my own domain?
-- How do I get help?
+### 6. New Account page — `src/routes/_authenticated.dashboard.account.tsx`
 
-Each answer is 1–3 sentences, conversational tone, with inline `<Link>`s to the right dashboard page when relevant.
+Single page with three sections:
 
-### Interactive "Show me how" popups
+**a. Reset Password**
+- Inline form: current password, new password, confirm new password.
+- Uses `supabase.auth.updateUser({ password })` with a re-auth via `signInWithPassword` first if a current password is provided (or just `updateUser` and rely on session).
+- Success toast + clear inputs.
 
-Reusable `Dialog` triggered from each step's secondary button. Content is a short numbered checklist for that step (e.g. for Branding: "1. Upload your logo (square works best). 2. Pick an accent color that pops. 3. Choose a HUD background — dark colors look most premium. 4. Hit Save."). Closes with a "Got it" button that navigates to the page.
+**b. Privacy & Terms**
+- Two read-only links: "View Privacy Policy" → `/privacy`, "View Terms of Service" → `/terms` (both routes already exist).
+- Open in a new tab.
 
-### Visual / styling
+**c. Delete Account** (danger zone, red border card)
+- Button "Delete my account…" opens an `AlertDialog` requiring the user to type their email to confirm.
+- Calls a new server function `deleteOwnAccount` (via `createServerFn` + `requireSupabaseAuth`) that:
+  1. Uses `supabaseAdmin.auth.admin.deleteUser(userId)` (cascades to dependent rows where FKs are set; cleanup of `branding_settings`, `licenses`, `purchases`, `client_providers` for that user happens via existing `on delete cascade` where present).
+  2. Returns success.
+- On success, sign out client-side and redirect to `/`.
 
-- Mirror the marketing aesthetic from `src/routes/p.$slug.index.tsx` lightly: rounded-2xl cards, subtle accent-tinted left borders for each step, Check icons in green for done, soft hover lift.
-- Numbered timeline: vertical connector line behind the step cards on `sm+` so they read as sequential.
-- All copy in plain English — no mention of "Supabase", "Stripe Connect", "branding_settings", "RLS", etc. (e.g. say "payouts" not "Stripe Connect").
+### 7. Database migration
+
+```sql
+ALTER TABLE public.branding_settings
+  ADD COLUMN IF NOT EXISTS tier3_price_cents integer;
+```
+
+No RLS changes needed (existing policies already cover the row).
+
+---
 
 ### Files touched
 
 | File | Change |
 |---|---|
-| `src/routes/_authenticated.dashboard.index.tsx` | Full rewrite: replace the 3-card overview with the Guide + Tips + FAQ above. |
-
-No new components, no new dependencies (uses existing `card`, `accordion`, `dialog`, `badge`, `button`, lucide icons), no DB changes.
+| `src/components/dashboard/DashboardSidebar.tsx` | Reorder, always-show Vault (disabled when Starter) + Payouts, add Account, remove Pricing-as-upgrade |
+| `src/routes/_authenticated.dashboard.tsx` | Gate redirects to `/dashboard/upgrade` |
+| `src/routes/_authenticated.dashboard.upgrade.tsx` | NEW — moved from old pricing.tsx (MSP tier purchase) |
+| `src/routes/_authenticated.dashboard.pricing.tsx` | REWRITE — client/end-user pricing form (A/B/C) |
+| `src/routes/_authenticated.dashboard.branding.tsx` | Remove pricing inputs, add link to Pricing tab |
+| `src/routes/_authenticated.dashboard.account.tsx` | NEW — reset password, privacy/terms links, delete account |
+| `src/components/portal/HudBuilderSandbox.tsx` | New 3-tier price calc using `tier3_price_cents` |
+| `src/lib/portal.functions.ts` (or new file) | NEW server fn `deleteOwnAccount` |
+| Migration | Add `tier3_price_cents` column |
 
 ### Acceptance check
 
-1. Overview page no longer duplicates the sidebar links.
-2. Six numbered steps render with icons, descriptions, and CTAs to the correct dashboard pages.
-3. Completed steps show a green "Done" pill (verified by toggling `stripe_onboarding_complete` or uploading a logo).
-4. Step 4 (Vault) is locked/dimmed for Starter MSPs and clickable for Pro MSPs.
-5. "Show me how" buttons open a dialog with plain-language tips.
-6. FAQ accordion expands/collapses individual items.
-7. No technical jargon visible anywhere on the page.
+1. Sidebar shows: Overview, Branding, Production Vault, Pricing, Orders, Payouts, Clients, Demo, Account.
+2. Starter MSP sees Vault as a locked/dimmed row with a tooltip; clicking it does nothing.
+3. Pro MSP sees Vault as a normal active link.
+4. Payouts is always visible; clicking it as a not-yet-connected MSP shows the existing "Connect Stripe" CTA.
+5. Pricing page lets MSP enter $A, $B, $C with live example, persists to `branding_settings`.
+6. Branding page no longer shows pricing inputs.
+7. Builder/Sandbox computes price using the new 1-2 / 3 / 4+ formula.
+8. `/dashboard/upgrade` is the new tier-purchase page; gate redirects there for MSPs without a license/purchase.
+9. Account page can change password, links to /privacy and /terms, and can delete the account with confirmation (signs out + redirects to /).
 
