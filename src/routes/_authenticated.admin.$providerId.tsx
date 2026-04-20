@@ -249,7 +249,7 @@ export default function AdminProviderDetail() {
     );
   }
 
-  const studioUrl = buildStudioUrl(detail.slug, { tier: detail.tier });
+  const studioUrl = buildStudioUrl(detail.slug ?? "", { tier: detail.tier });
   const activeGrant = grant && !grant.revoked_at ? grant : null;
   const isExpired = activeGrant?.expires_at
     ? new Date(activeGrant.expires_at) < new Date()
