@@ -1,66 +1,59 @@
 
 
-## Plan: Glassmorphism Header for `/p/$slug` Portal
+## Plan: Fix Portal Header — single pill, branded glass
 
-Replace the current top "View Demo" banner with a sticky, glassmorphism header that holds the MSP brand pill (left), section nav (right), and View Demo CTA (center).
+Three targeted fixes to the sticky header in `src/routes/p.$slug.index.tsx`:
 
----
+### 1. One brand pill, not two
+- **Remove** the smaller header brand pill currently rendered in the left slot of `<PortalHeader />`.
+- **Move** the larger hero brand pill (logo + "{brand} Studio") from the hero section into the header's left slot, preserving its existing styling (size, rounded-full, border, logo dimensions).
+- Hero section keeps its headline + sub + CTA but no longer renders a brand chip — eliminates duplication.
 
-### Layout
+### 2. Glassmorphism header tinted by HUD background color
+Replace the current `bg-white/40` with a translucent layer driven by `branding.hud_bg_color`:
 
-```text
-┌────────────────────────────────────────────────────────────────────┐
-│ [logo + Brand Studio]    [✨ View Demo →]    Steps · Compare · Build│
-└────────────────────────────────────────────────────────────────────┘
-   ← left                    ← center                ← right
+```tsx
+<header
+  className="sticky top-0 z-50 w-full border-b border-white/20 shadow-sm backdrop-blur-xl"
+  style={{
+    backgroundColor: `${branding.hud_bg_color}cc`, // ~80% opacity hex alpha
+  }}
+>
 ```
 
-- **Position**: `sticky top-0 z-50` so it stays in view as the user scrolls past the hero.
-- **Glass**: `backdrop-blur-xl bg-white/40 dark:bg-slate-950/40 border-b border-white/30 shadow-sm`.
-- **Container**: `mx-auto max-w-6xl px-4 sm:px-6 h-16 flex items-center justify-between gap-4`.
+- Uses 8-digit hex alpha (`cc` ≈ 80%) so the MSP's chosen HUD background tints the bar while blur preserves the glass effect over the hero image and lower sections.
+- Border softened to `border-white/20` so it reads on dark or light tints.
+- Right-side nav links switch to a neutral text color that works on either tint (`text-white/90 hover:text-white` with a subtle text-shadow), since `hud_bg_color` is typically dark.
+- Brand pill inside the header gets a slightly translucent inner background (`bg-white/15`) so the logo + name remain legible against the tinted bar.
 
-### Three regions
+### 3. View Demo CTA uses accent color
+The center "View Demo →" pill background switches to `branding.accent_color`:
 
-1. **Left — MSP brand pill (enlarged)**  
-   Re-uses the chip pattern from the hero but bigger: `h-11 rounded-full px-4`, logo `h-8 w-8`, brand name in `text-base font-semibold`. Wrapped in a subtle border to read as a pill on the glass bar.
+```tsx
+<Link
+  to="/p/$slug/demo"
+  params={{ slug }}
+  style={{ backgroundColor: branding.accent_color, color: "#fff" }}
+  className="hidden sm:inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold shadow-md transition-all hover:-translate-y-0.5 hover:shadow-lg"
+>
+  <Sparkles className="h-4 w-4" /> View Demo <ArrowRight className="h-4 w-4" />
+</Link>
+```
 
-2. **Center — View Demo CTA (only when `demoPublished === true`)**  
-   Pill button: `inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold shadow-md`, background = `accent`, text white, with a sparkle/arrow icon. Routes via `<Link to="/p/$slug/demo" params={{ slug }}>`. Hidden on mobile (`hidden sm:inline-flex`); falls into the mobile menu instead.  
-   When demo is not published, center stays empty (no element rendered).
-
-3. **Right — section nav**  
-   Three anchor links to in-page sections:
-   - `Steps` → `#steps` (add id to the 3-step section)
-   - `Compare` → `#compare` (add id to the comparison section)
-   - `Builder` → `#builder-start` (already exists)  
-   Styled as subtle text buttons: `text-sm font-medium text-slate-700 dark:text-slate-200 hover:text-[accent]` with smooth scroll handler reusing the existing `handleScrollToBuilder` pattern (generalized to take a target id).
-
-### Mobile behavior (≤ `sm`)
-
-- Brand pill stays left (logo + shortened name).
-- Center "View Demo" hidden.
-- Right nav collapses into a `Menu` icon button → opens an existing `Sheet` (already in `components/ui/sheet.tsx`) listing: View Demo (if published), Steps, Compare, Builder.
-
-### Removals / changes
-
-- Delete the current full-width accent-colored banner block at the top of `PortalPage` (the one wrapped in `{demoPublished && (...)}`). Its CTA migrates into the header center slot.
-- Hero section keeps its own brand chip — it still reads as a hero element distinct from the persistent header. (No duplication concern; header is sticky, hero chip is one-time.)
-- Add `id="steps"` to the 3-step section wrapper and `id="compare"` to the comparison section wrapper.
+Same treatment applied to the View Demo entry inside the mobile `Sheet` menu.
 
 ### Files touched
 
 | File | Change |
 |---|---|
-| `src/routes/p.$slug.index.tsx` | Add `<PortalHeader />` inline component above hero; remove old demo banner; add ids to Steps & Compare sections; generalize smooth-scroll helper. |
+| `src/routes/p.$slug.index.tsx` | Header: swap small pill for the hero pill, tint with `hud_bg_color`+alpha, set Demo CTA bg to `accent_color`. Hero: remove brand chip block. |
 
-No new dependencies, no DB changes, no other files touched.
+No DB, no new components, no other files.
 
 ### Acceptance check
-
-1. Header is visible on first paint, stays pinned while scrolling.
-2. MSP logo + name appear in a noticeably larger pill on the left.
-3. When demo is published, the centered "View Demo →" button routes to `/p/{slug}/demo`.
-4. Right-side links smooth-scroll to Steps / Compare / Builder.
-5. Glass effect: header is translucent with blur over both the hero image and the white sections below.
-6. Mobile (375px): brand pill left, hamburger right opens a sheet with all links + demo.
+1. Only one brand pill visible at any scroll position.
+2. Header background takes on the MSP's HUD color (e.g., dark navy) with visible blur over the hero image.
+3. View Demo button is filled with the MSP's accent color.
+4. Header text/icons remain legible on dark HUD colors.
+5. Mobile sheet still works; demo entry uses accent color.
 
