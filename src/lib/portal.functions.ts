@@ -1168,3 +1168,46 @@ ${qaModuleScript}
 
     return { success: true, html };
   });
+
+// ============================================================================
+// Account deletion (server function — uses admin client to fully remove user)
+// ============================================================================
+import { supabaseAdmin } from "@/integrations/supabase/client.server";
+
+export const deleteOwnAccount = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { userId } = context;
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    // Best-effort cleanup of provider-owned rows that don't have FK cascades to auth.users.
+    // Failures here should not block account deletion — the auth.admin.deleteUser
+    // call is the authoritative removal step.
+    try {
+      await supabaseAdmin.from("branding_settings").delete().eq("provider_id", userId);
+    } catch (e) {
+      console.warn("branding cleanup failed:", e);
+    }
+    try {
+      await supabaseAdmin.from("licenses").delete().eq("user_id", userId);
+    } catch (e) {
+      console.warn("license cleanup failed:", e);
+    }
+    try {
+      await supabaseAdmin
+        .from("client_providers")
+        .delete()
+        .or(`client_id.eq.${userId},provider_id.eq.${userId}`);
+    } catch (e) {
+      console.warn("client_providers cleanup failed:", e);
+    }
+
+    const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
+    if (error) {
+      console.error("Failed to delete user:", error);
+      throw new Error(error.message);
+    }
+    return { success: true };
+  });

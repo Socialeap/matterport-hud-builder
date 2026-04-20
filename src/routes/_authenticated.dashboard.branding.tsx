@@ -503,72 +503,20 @@ function BrandingPage() {
             </div>
           )}
 
-          {branding.stripe_onboarding_complete && (
-            <>
-              <div className="space-y-2">
-                <Label htmlFor="base_price">Base Price ($)</Label>
-                <Input
-                  id="base_price"
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={branding.base_price_cents != null ? (branding.base_price_cents / 100).toString() : ""}
-                  onChange={(e) =>
-                    setBranding({
-                      ...branding,
-                      base_price_cents: e.target.value ? Math.round(parseFloat(e.target.value) * 100) : null,
-                    })
-                  }
-                  placeholder="200"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Flat fee for the starting package.
+          <div className="rounded-lg border border-dashed border-border p-4 bg-muted/30">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <p className="text-sm font-medium">Client pricing has moved</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Set what your clients pay per Presentation Portal — based on the
+                  number of 3D property models — in the dedicated Pricing tab.
                 </p>
               </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="model_threshold">Model Threshold</Label>
-                <Input
-                  id="model_threshold"
-                  type="number"
-                  min={1}
-                  step={1}
-                  value={branding.model_threshold}
-                  onChange={(e) =>
-                    setBranding({
-                      ...branding,
-                      model_threshold: parseInt(e.target.value) || 1,
-                    })
-                  }
-                  placeholder="3"
-                />
-                <p className="text-xs text-muted-foreground">
-                  How many models are included in the base price.
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="additional_fee">Additional Model Fee ($)</Label>
-                <Input
-                  id="additional_fee"
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={branding.additional_model_fee_cents != null ? (branding.additional_model_fee_cents / 100).toString() : ""}
-                  onChange={(e) =>
-                    setBranding({
-                      ...branding,
-                      additional_model_fee_cents: e.target.value ? Math.round(parseFloat(e.target.value) * 100) : null,
-                    })
-                  }
-                  placeholder="50"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Price for each model beyond the threshold.
-                </p>
-              </div>
-            </>
-          )}
+              <Button asChild size="sm" variant="outline">
+                <Link to="/dashboard/pricing">Open Pricing →</Link>
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
