@@ -203,7 +203,6 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
     setModels(draft.models?.length ? draft.models : [createEmptyModel()]);
     setBehaviors(draft.behaviors || {});
     setAgent(draft.agent || { ...DEFAULT_AGENT });
-    setReviewApproved(!!draft.reviewApproved);
   }, []);
 
   const handleResumeDraft = useCallback(() => {
@@ -232,10 +231,10 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
       models,
       behaviors,
       agent,
-      reviewApproved,
+      reviewApproved: false,
     });
     toast.success("Draft exported");
-  }, [providerSlug, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent, reviewApproved]);
+  }, [providerSlug, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent]);
 
   const handleImportDraft = useCallback(async (file: File) => {
     const draft = await importDraftFile(file);
@@ -262,11 +261,11 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
         models,
         behaviors,
         agent,
-        reviewApproved,
+        reviewApproved: false,
       });
     }, 500);
     return () => window.clearTimeout(handle);
-  }, [providerSlug, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent, reviewApproved]);
+  }, [providerSlug, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent]);
 
   // Post-payment polling: detect return from Stripe checkout
   useEffect(() => {
