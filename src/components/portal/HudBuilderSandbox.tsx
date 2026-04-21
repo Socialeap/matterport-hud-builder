@@ -843,6 +843,7 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
                             // marked the model paid + released.
                             toast.success("Your Presentation is ready — preparing download…");
                             setIsReleased(true);
+                            clearDraft(providerSlug);
                           } else if (checkoutData?.clientSecret && checkoutData?.stripeConnectAccountId) {
                             setConnectAccountId(checkoutData.stripeConnectAccountId);
                             setCheckoutClientSecret(checkoutData.clientSecret);
