@@ -172,6 +172,82 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
   const generatePresentationFn = useServerFn(generatePresentation);
   const workerRef = useRef<EmbeddingWorkerClient | null>(null);
 
+  // ── Draft autosave (client-side only, no backend) ─────────────────
+  const providerSlug = branding.slug || branding.provider_id;
+  const draftHydratedRef = useRef(false);
+  const [draftBannerOpen, setDraftBannerOpen] = useState(false);
+  const [pendingDraft, setPendingDraft] = useState<{ data: DraftState; savedAt: string } | null>(null);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
+
+  // On mount: check for an existing draft and offer to resume.
+  useEffect(() => {
+    const existing = loadDraft(providerSlug);
+    if (existing) {
+      setPendingDraft(existing);
+      setDraftBannerOpen(true);
+    } else {
+      // Nothing to restore → mark hydrated so autosave can engage.
+      draftHydratedRef.current = true;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [providerSlug]);
+
+  const applyDraft = useCallback((draft: DraftState) => {
+    setBrandName(draft.brandName);
+    setAccentColor(draft.accentColor);
+    setHudBgColor(draft.hudBgColor);
+    setGateLabel(draft.gateLabel);
+    setModels(draft.models?.length ? draft.models : [createEmptyModel()]);
+    setBehaviors(draft.behaviors || {});
+    setAgent(draft.agent || { ...DEFAULT_AGENT });
+    setReviewApproved(!!draft.reviewApproved);
+  }, []);
+
+  const handleResumeDraft = useCallback(() => {
+    if (pendingDraft) {
+      applyDraft(pendingDraft.data);
+      toast.success("Draft restored");
+    }
+    setDraftBannerOpen(false);
+    setPendingDraft(null);
+    draftHydratedRef.current = true;
+  }, [pendingDraft, applyDraft]);
+
+  const handleDiscardDraft = useCallback(() => {
+    clearDraft(providerSlug);
+    setDraftBannerOpen(false);
+    setPendingDraft(null);
+    draftHydratedRef.current = true;
+  }, [providerSlug]);
+
+  const handleExportDraft = useCallback(() => {
+    exportDraftFile(providerSlug, {
+      brandName,
+      accentColor,
+      hudBgColor,
+      gateLabel,
+      models,
+      behaviors,
+      agent,
+      reviewApproved,
+    });
+    toast.success("Draft exported");
+  }, [providerSlug, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent, reviewApproved]);
+
+  const handleImportDraft = useCallback(async (file: File) => {
+    const draft = await importDraftFile(file);
+    if (!draft) {
+      toast.error("Could not read draft file");
+      return;
+    }
+    applyDraft(draft);
+    draftHydratedRef.current = true;
+    setDraftBannerOpen(false);
+    setPendingDraft(null);
+    toast.success("Draft imported");
+  }, [applyDraft]);
+
+
   // Post-payment polling: detect return from Stripe checkout
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
