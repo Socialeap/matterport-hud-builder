@@ -420,24 +420,119 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
     [userId]
   );
 
-  const submitRequest = useCallback(async (authenticatedUserId: string) => {
-    setSubmitting(true);
+  // ── Free-client status lookup ─────────────────────────────────────
+  // Determines whether the bottom button is "Download" (free) or
+  // "Pay $X & Download" (paid). Server is the authority — this is
+  // only used for UI labelling.
+  useEffect(() => {
+    if (!userId) {
+      setIsFreeClient(false);
+      return;
+    }
+    let cancelled = false;
+    getClientFreeStatusFn({ data: { providerId: branding.provider_id } })
+      .then((res) => {
+        if (!cancelled) setIsFreeClient(!!res?.isFree);
+      })
+      .catch(() => {
+        if (!cancelled) setIsFreeClient(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, branding.provider_id, getClientFreeStatusFn]);
+
+  /**
+   * Generate the .html and trigger a browser download for the given
+   * saved_model. Pre-condition: the model is `paid` + `is_released`
+   * (server enforces this in `generatePresentation`).
+   */
+  const runDownload = useCallback(async (modelId: string) => {
+    setDownloading(true);
+    setDownloadStep("Generating Q&A dictionary…");
     try {
-      // If a local avatar file is still pending (picked before sign-in), upload it now.
-      let finalAgent = agent;
-      if (agentAvatarFile) {
-        try {
-          const url = await uploadBrandAsset(authenticatedUserId, agentAvatarFile, "avatar");
-          if (url) {
-            finalAgent = { ...agent, avatarUrl: url };
-            setAgent(finalAgent);
-            setAgentAvatarFile(null);
-          }
-        } catch (err) {
-          console.error("Avatar upload (deferred) failed:", err);
+      // Step 1: Build property Q&A pairs locally (deterministic, no LLM).
+      const entries: QAEntry[] = buildPropertyQAEntries(models, agent);
+
+      // Step 2: Embed questions via Web Worker.
+      let qaDatabase: QADatabaseEntry[] = [];
+      if (entries.length > 0) {
+        setDownloadStep(`Embedding ${entries.length} Q&A pairs…`);
+        if (!workerRef.current) {
+          workerRef.current = new EmbeddingWorkerClient();
         }
+        await workerRef.current.init();
+        const questions = entries.map((e) => e.question);
+        const embeddings = await workerRef.current.embedBatch(questions);
+        qaDatabase = entries.map((entry, i) => ({
+          id: `qa-${i}`,
+          question: entry.question,
+          answer: entry.answer,
+          source_anchor_id: entry.source_anchor_id,
+          embedding: embeddings[i],
+        }));
       }
 
+      // Step 3: Generate presentation HTML with Q&A baked in.
+      setDownloadStep("Building presentation…");
+      const result = await generatePresentationFn({
+        data: { modelId, qaDatabase },
+      });
+      if (!result.success || !result.html) {
+        toast.error(result.error || "Failed to generate presentation");
+        return;
+      }
+
+      const blob = new Blob([result.html], { type: "text/html" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const safeName = (models[0]?.name || "presentation").replace(/[^a-zA-Z0-9_-]/g, "_");
+      a.download = `${safeName}.html`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      clearDraft(providerSlug);
+      toast.success("Presentation downloaded");
+    } catch (err) {
+      console.error("Download failed:", err);
+      toast.error("Download failed. Please try again.");
+    }
+    setDownloading(false);
+    setDownloadStep("");
+  }, [models, agent, generatePresentationFn, providerSlug]);
+
+  /**
+   * Single entry-point for the bottom "Download" / "Pay & Download"
+   * button. Branches on auth + is_free + pricing.
+   */
+  const handleDownload = useCallback(async () => {
+    // 1) Anonymous → open signup modal; flow re-runs after auth.
+    if (!userId) {
+      setSignupOpen(true);
+      return;
+    }
+
+    // 2) Save / upsert the saved_model row first (and re-run avatar upload
+    //    if a local file is still pending from pre-auth).
+    setSubmitting(true);
+    let finalAgent = agent;
+    if (agentAvatarFile) {
+      try {
+        const url = await uploadBrandAsset(userId, agentAvatarFile, "avatar");
+        if (url) {
+          finalAgent = { ...agent, avatarUrl: url };
+          setAgent(finalAgent);
+          setAgentAvatarFile(null);
+        }
+      } catch (err) {
+        console.error("Avatar upload (deferred) failed:", err);
+      }
+    }
+
+    let modelId = savedModelId;
+    try {
       const result = await savePresentationRequest({
         data: {
           providerId: branding.provider_id,
@@ -445,69 +540,91 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
           properties: models,
           tourConfig: behaviors as unknown as Record<string, unknown>,
           agent: finalAgent as unknown as Record<string, string>,
-          brandingOverrides: {
-            brandName,
-            accentColor,
-            hudBgColor,
-            gateLabel,
-          },
+          brandingOverrides: { brandName, accentColor, hudBgColor, gateLabel },
         },
       });
-
-      if (result.success) {
-        clearDraft(providerSlug);
-        setShowConfirmation(true);
-      } else {
-        toast.error(result.error || "Failed to submit request");
+      if (!result.success || !result.modelId) {
+        toast.error(result.error || "Failed to save presentation");
+        setSubmitting(false);
+        return;
       }
+      modelId = result.modelId;
+      setSavedModelId(modelId);
     } catch (err) {
-      toast.error("An error occurred. Please try again.");
       console.error(err);
+      toast.error("An error occurred. Please try again.");
+      setSubmitting(false);
+      return;
+    }
+
+    // 3) Hit create-connect-checkout. Server decides free vs paid.
+    try {
+      const { data: checkoutData, error: checkoutError } =
+        await supabase.functions.invoke("create-connect-checkout", {
+          body: {
+            providerId: branding.provider_id,
+            modelId,
+            modelCount,
+            returnUrl: `${window.location.origin}${window.location.pathname}?checkout_model_id=${modelId}&session_id={CHECKOUT_SESSION_ID}`,
+          },
+        });
+
+      if (checkoutError) {
+        toast.error("Failed to create checkout session");
+        setSubmitting(false);
+        return;
+      }
+
+      // Free client → backend already marked paid + released.
+      if (checkoutData?.free === true) {
+        setIsReleased(true);
+        setSubmitting(false);
+        await runDownload(modelId);
+        return;
+      }
+
+      // Paid client → embedded checkout.
+      if (checkoutData?.clientSecret && checkoutData?.stripeConnectAccountId) {
+        setConnectAccountId(checkoutData.stripeConnectAccountId);
+        setCheckoutClientSecret(checkoutData.clientSecret);
+        setShowCheckout(true);
+        setSubmitting(false);
+        return;
+      }
+
+      toast.error(checkoutData?.error || "Failed to create checkout session");
+    } catch (err) {
+      console.error(err);
+      toast.error("An error occurred. Please try again.");
     }
     setSubmitting(false);
-  }, [branding.provider_id, providerSlug, models, behaviors, agent, agentAvatarFile, brandName, accentColor, hudBgColor, gateLabel]);
-
-  const handleConfirmIntent = useCallback(() => {
-    if (!userId) {
-      // Not logged in — show signup modal
-      setSignupOpen(true);
-    } else {
-      // Already logged in — submit directly
-      submitRequest(userId);
-    }
-  }, [userId, submitRequest]);
+  }, [
+    userId,
+    agent,
+    agentAvatarFile,
+    savedModelId,
+    branding.provider_id,
+    models,
+    behaviors,
+    brandName,
+    accentColor,
+    hudBgColor,
+    gateLabel,
+    modelCount,
+    runDownload,
+  ]);
 
   const handleAuthenticated = useCallback((newUserId: string) => {
     setUserId(newUserId);
     setSignupOpen(false);
-    submitRequest(newUserId);
-  }, [submitRequest]);
+    // After successful auth, re-run the download flow.
+    // Defer to next tick so userId state has a chance to settle.
+    setTimeout(() => {
+      handleDownload();
+    }, 0);
+  }, [handleDownload]);
 
   const behaviorModel = behaviorModelId ? models.find((m) => m.id === behaviorModelId) : null;
-
-  if (showConfirmation) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background px-4">
-        <div className="mx-auto max-w-lg text-center">
-          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-          </div>
-          <h2 className="text-2xl font-bold text-foreground">Request Submitted!</h2>
-          <p className="mt-2 text-muted-foreground">
-            Your presentation configuration has been saved. To proceed, complete payment using the link below.
-          </p>
-           <p className="mt-4 text-sm text-muted-foreground">
-              Your presentation has been submitted. You will be notified when it is ready for download.
-            </p>
-          {!isPro && (
-            <p className="mt-6 text-xs text-muted-foreground">Powered by Transcendence Media</p>
-          )}
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-background">
