@@ -301,32 +301,24 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
   }, []);
 
   const isPro = branding.tier === "pro";
-  const hasPricing = branding.base_price_cents != null && branding.stripe_onboarding_complete;
 
-  // Calculate price — supports flat-rate or 3-tier model
-  // Tier: 1m=$A, 2m=2*$A, 3m=$B (bundle), 4+m=$B + (n-3)*$C
+  // Single source of truth for pricing — same function the edge function uses.
   const modelCount = models.filter((m) => m.matterportId.trim()).length;
-  const priceA = branding.base_price_cents ?? 0;
-  const priceB = (branding as { tier3_price_cents?: number | null }).tier3_price_cents;
-  const priceC = branding.additional_model_fee_cents ?? 0;
-  const useFlatRate = Boolean(
-    (branding as { use_flat_pricing?: boolean | null }).use_flat_pricing
-  );
-  const flatCents =
-    (branding as { flat_price_per_model_cents?: number | null })
-      .flat_price_per_model_cents ?? 0;
-  const tier3Total = priceB ?? priceA * 2 + priceC;
-  let totalCents = 0;
-  if (useFlatRate) {
-    totalCents = flatCents * modelCount;
-  } else if (modelCount <= 2) {
-    totalCents = priceA * modelCount;
-  } else if (modelCount === 3) {
-    totalCents = tier3Total;
-  } else {
-    totalCents = tier3Total + (modelCount - 3) * priceC;
-  }
-  const extraModels = Math.max(0, modelCount - 3);
+  const pricing = calculatePresentationPrice({
+    modelCount,
+    use_flat_pricing: Boolean(
+      (branding as { use_flat_pricing?: boolean | null }).use_flat_pricing
+    ),
+    flat_price_per_model_cents:
+      (branding as { flat_price_per_model_cents?: number | null })
+        .flat_price_per_model_cents ?? null,
+    base_price_cents: branding.base_price_cents ?? null,
+    tier3_price_cents:
+      (branding as { tier3_price_cents?: number | null }).tier3_price_cents ?? null,
+    additional_model_fee_cents: branding.additional_model_fee_cents ?? null,
+  });
+  const totalCents = pricing.totalCents;
+  const hasPricing = pricing.configured && Boolean(branding.stripe_onboarding_complete);
 
   const handleBrandingChange = useCallback((field: string, value: string) => {
     switch (field) {
