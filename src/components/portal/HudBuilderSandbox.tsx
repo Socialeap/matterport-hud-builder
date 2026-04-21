@@ -20,6 +20,14 @@ import { useServerFn } from "@tanstack/react-start";
 import { EmbeddingWorkerClient } from "@/lib/rag/embedding-worker-client";
 import { buildPropertyQAEntries } from "@/lib/rag/property-qa-builder";
 import type { QAEntry, QADatabaseEntry } from "@/lib/rag/types";
+import {
+  saveDraft,
+  loadDraft,
+  clearDraft,
+  exportDraftFile,
+  importDraftFile,
+  type DraftState,
+} from "@/lib/portal/draft-storage";
 
 interface HudBuilderSandboxProps {
   branding: Tables<"branding_settings">;
@@ -164,6 +172,99 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
   const generatePresentationFn = useServerFn(generatePresentation);
   const workerRef = useRef<EmbeddingWorkerClient | null>(null);
 
+  // ── Draft autosave (client-side only, no backend) ─────────────────
+  const providerSlug = branding.slug || branding.provider_id;
+  const draftHydratedRef = useRef(false);
+  const [draftBannerOpen, setDraftBannerOpen] = useState(false);
+  const [pendingDraft, setPendingDraft] = useState<{ data: DraftState; savedAt: string } | null>(null);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
+
+  // On mount: check for an existing draft and offer to resume.
+  useEffect(() => {
+    const existing = loadDraft(providerSlug);
+    if (existing) {
+      setPendingDraft(existing);
+      setDraftBannerOpen(true);
+    } else {
+      // Nothing to restore → mark hydrated so autosave can engage.
+      draftHydratedRef.current = true;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [providerSlug]);
+
+  const applyDraft = useCallback((draft: DraftState) => {
+    setBrandName(draft.brandName);
+    setAccentColor(draft.accentColor);
+    setHudBgColor(draft.hudBgColor);
+    setGateLabel(draft.gateLabel);
+    setModels(draft.models?.length ? draft.models : [createEmptyModel()]);
+    setBehaviors(draft.behaviors || {});
+    setAgent(draft.agent || { ...DEFAULT_AGENT });
+    setReviewApproved(!!draft.reviewApproved);
+  }, []);
+
+  const handleResumeDraft = useCallback(() => {
+    if (pendingDraft) {
+      applyDraft(pendingDraft.data);
+      toast.success("Draft restored");
+    }
+    setDraftBannerOpen(false);
+    setPendingDraft(null);
+    draftHydratedRef.current = true;
+  }, [pendingDraft, applyDraft]);
+
+  const handleDiscardDraft = useCallback(() => {
+    clearDraft(providerSlug);
+    setDraftBannerOpen(false);
+    setPendingDraft(null);
+    draftHydratedRef.current = true;
+  }, [providerSlug]);
+
+  const handleExportDraft = useCallback(() => {
+    exportDraftFile(providerSlug, {
+      brandName,
+      accentColor,
+      hudBgColor,
+      gateLabel,
+      models,
+      behaviors,
+      agent,
+      reviewApproved,
+    });
+    toast.success("Draft exported");
+  }, [providerSlug, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent, reviewApproved]);
+
+  const handleImportDraft = useCallback(async (file: File) => {
+    const draft = await importDraftFile(file);
+    if (!draft) {
+      toast.error("Could not read draft file");
+      return;
+    }
+    applyDraft(draft);
+    draftHydratedRef.current = true;
+    setDraftBannerOpen(false);
+    setPendingDraft(null);
+    toast.success("Draft imported");
+  }, [applyDraft]);
+
+  // Debounced autosave whenever any tracked field changes (after hydration).
+  useEffect(() => {
+    if (!draftHydratedRef.current) return;
+    const handle = window.setTimeout(() => {
+      saveDraft(providerSlug, {
+        brandName,
+        accentColor,
+        hudBgColor,
+        gateLabel,
+        models,
+        behaviors,
+        agent,
+        reviewApproved,
+      });
+    }, 500);
+    return () => window.clearTimeout(handle);
+  }, [providerSlug, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent, reviewApproved]);
+
   // Post-payment polling: detect return from Stripe checkout
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -186,6 +287,7 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
         setIsReleased(true);
         setIsPolling(false);
         clearInterval(interval);
+        clearDraft(providerSlug);
       }
       if (attempts >= maxAttempts) {
         setIsPolling(false);
@@ -359,6 +461,7 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
       });
 
       if (result.success) {
+        clearDraft(providerSlug);
         setShowConfirmation(true);
       } else {
         toast.error(result.error || "Failed to submit request");
@@ -368,7 +471,7 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
       console.error(err);
     }
     setSubmitting(false);
-  }, [branding.provider_id, models, behaviors, agent, agentAvatarFile, brandName, accentColor, hudBgColor, gateLabel]);
+  }, [branding.provider_id, providerSlug, models, behaviors, agent, agentAvatarFile, brandName, accentColor, hudBgColor, gateLabel]);
 
   const handleConfirmIntent = useCallback(() => {
     if (!userId) {
@@ -432,12 +535,62 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
             {userId && (
               <span className="text-xs text-muted-foreground">Signed in</span>
             )}
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".json,application/json"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleImportDraft(f);
+                e.target.value = "";
+              }}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => importInputRef.current?.click()}
+            >
+              Import Draft
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleExportDraft}
+            >
+              Export Draft
+            </Button>
             {!isPro && (
               <span className="text-xs text-muted-foreground">Powered by Transcendence Media</span>
             )}
           </div>
         </div>
       </header>
+
+      {/* Resume-draft banner */}
+      {draftBannerOpen && pendingDraft && (
+        <div className="border-b bg-muted/40 px-6 py-3">
+          <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
+            <div className="text-sm text-foreground">
+              <span className="font-medium">Resume your saved draft?</span>{" "}
+              <span className="text-muted-foreground">
+                Last saved {new Date(pendingDraft.savedAt).toLocaleString()}.
+                Note: uploaded logo, favicon, and profile photo will need to be re-added.
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button size="sm" onClick={handleResumeDraft} style={{ backgroundColor: accentColor, color: "white" }}>
+                Resume
+              </Button>
+              <Button size="sm" variant="outline" onClick={handleDiscardDraft}>
+                Start fresh
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="mx-auto max-w-7xl px-4 py-8">
         <div className="grid gap-8 lg:grid-cols-[1fr,1fr]">
@@ -690,6 +843,7 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
                             // marked the model paid + released.
                             toast.success("Your Presentation is ready — preparing download…");
                             setIsReleased(true);
+                            clearDraft(providerSlug);
                           } else if (checkoutData?.clientSecret && checkoutData?.stripeConnectAccountId) {
                             setConnectAccountId(checkoutData.stripeConnectAccountId);
                             setCheckoutClientSecret(checkoutData.clientSecret);
