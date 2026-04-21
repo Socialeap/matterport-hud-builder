@@ -75,3 +75,12 @@ export function buildPlatformUrl(path: string): string {
   const normalized = path.startsWith("/") ? path : `/${path}`;
   return `${base}${normalized}`;
 }
+
+/**
+ * Build a public invitation acceptance URL. Always uses the canonical
+ * platform domain so the same link works across browsers, devices, and
+ * messaging apps regardless of which MSP studio sent it.
+ */
+export function buildInvitationUrl(token: string): string {
+  return buildPlatformUrl(`/invite/${token}`);
+}
