@@ -1,98 +1,249 @@
 
+## Fix the Free-Client Download Entitlement Flow
 
-## Critical Addition: Server-Side Price Calculation Must Match Client Display
+### What is actually broken
 
-You're right — pricing is the missing piece. After investigation, the bug is bigger than just UI rewiring: **the edge function's price calculation does not match the pricing model the client sees**. If we wire the new "Pay & Download" button without fixing this, Stripe will charge the wrong amount.
+There are two separate conditions being mixed together today:
 
-### The pricing model (what MSPs actually configure)
+1. **MSP pricing is configured**
+2. **The signed-in client is entitled to a free download**
 
-`branding_settings` supports **two mutually exclusive modes**:
+Those are not the same thing.
 
-**Mode A — Flat rate** (`use_flat_pricing = true`)
-- `flat_price_per_model_cents` × `modelCount`
-- e.g. $50/model → 4 models = $200
+The current Studio card uses:
+- `pricingConfigured` from MSP branding/pricing
+- `checkoutReady` from payout connection state
+- `isFreeClient` from `client_providers.is_free`
 
-**Mode B — Tiered bundle** (`use_flat_pricing = false`, the default)
-- `base_price_cents` (A), `tier3_price_cents` (B, optional bundle), `additional_model_fee_cents` (C)
-- 1 model = A
-- 2 models = 2 × A
-- 3 models = B (bundle price; falls back to `2A + C` if B is null)
-- 4+ models = B + (n − 3) × C
+The backend currently shows:
+- the MSP **does have pricing configured**
+- the MSP **does not have payouts connected yet**
+- the “free client” path only works if `client_providers.is_free = true`
 
-This is implemented correctly in `HudBuilderSandbox.tsx` (lines 304–327) and rendered in the price-breakdown card. It's also rendered correctly on the public `/p/{slug}` pricing section.
+So the “Payment Temporarily Unavailable” message appears whenever the UI believes the client is **not free** and the MSP has no live payout connection. That message is correct for a paid client, but incorrect for a client who should have inherited a free entitlement.
 
-### The bug
+### Root causes to fix
 
-`supabase/functions/create-connect-checkout/index.ts` uses a **completely different formula**:
+#### 1) Legacy studio signup path bypasses invitation entitlement
+`PortalSignupModal.tsx` can create a `client_providers` row directly with:
 
-```ts
-totalCents = modelCount <= threshold
-  ? basePriceCents
-  : basePriceCents + ((modelCount - threshold) * additionalFeeCents);
+- `provider_id`
+- `client_id`
+- default `is_free = false`
+
+That path does **not** use the invitation token and does **not** propagate the MSP’s Free/Pay assignment.
+
+So a client invited as Free can still end up linked as Pay if they authenticate through the old modal instead of the invitation flow.
+
+#### 2) Invitation acceptance does not heal existing links
+Both database paths currently do:
+
+```sql
+INSERT INTO client_providers (...) VALUES (...) ON CONFLICT DO NOTHING
 ```
 
-It ignores `use_flat_pricing`, `flat_price_per_model_cents`, and `tier3_price_cents` entirely. For a flat-rate MSP at $50/model with 3 models, the UI shows $150 but Stripe charges $0 + … (actually `basePriceCents` which may be null → the function returns "Provider has not configured pricing" and blocks the sale).
+That means if a non-free link already exists, accepting the invitation later does **not** update `is_free` to `true`.
 
-For a tiered MSP, the UI may show the bundle price ($B) but Stripe charges `A + (n-1) × C`. Different number, and the MSP gets paid differently than the client was quoted. This is a trust/legal issue, not just a bug.
+So once a wrong `client_providers` row exists, the system can stay wrong permanently.
 
-### Updated plan — pricing is part of the fix
+#### 3) There are accepted invitations without a matching client-provider link
+The data already contains accepted invitations that are not backed by a `client_providers` row. In those cases the Studio cannot resolve free status correctly at all.
 
-**1. Extract a shared pricing function** — `src/lib/portal/pricing.ts`
+#### 4) The Studio trusts a narrow free-status lookup
+`HudBuilderSandbox` only asks `getClientFreeStatus(providerId)` and treats “no row found” as “not free”.
+That is too brittle when the invitation was accepted but linkage is missing or stale.
 
-Single source of truth, importable from both the React component and (as a copy-paste port to Deno) the edge function. Pure function, no side effects:
+### Safe, comprehensive fix
 
-```ts
-export interface PricingInput {
-  modelCount: number;
-  use_flat_pricing: boolean;
-  flat_price_per_model_cents: number | null;
-  base_price_cents: number | null;
-  tier3_price_cents: number | null;
-  additional_model_fee_cents: number | null;
-}
-export interface PricingResult {
-  totalCents: number;
-  mode: "flat" | "tiered";
-  breakdown: { label: string; cents: number }[];
-  configured: boolean;
-}
-export function calculatePresentationPrice(input: PricingInput): PricingResult;
+## 1) Make invitation acceptance the single source of truth for client entitlement
+
+Update both database acceptance paths so they **upsert** the client-provider link and **synchronize** `is_free` instead of silently doing nothing.
+
+### Change in database functions
+Update:
+- `public.handle_new_user()`
+- `public.accept_invitation_self(uuid)`
+
+Replace:
+```sql
+INSERT ... ON CONFLICT DO NOTHING
 ```
 
-The function implements both modes exactly as the existing UI does, returns a structured breakdown so the price card can render without inline math, and signals `configured: false` when neither pricing mode is set up.
+with:
+```sql
+INSERT INTO public.client_providers (client_id, provider_id, is_free)
+VALUES (...)
+ON CONFLICT (client_id, provider_id)
+DO UPDATE SET is_free = EXCLUDED.is_free;
+```
 
-**2. Refactor `HudBuilderSandbox.tsx`** to call `calculatePresentationPrice()` instead of inlining the math. Delete the duplicated `priceA / priceB / priceC / tier3Total / totalCents` block. Keep the existing breakdown card UI but feed it from `result.breakdown`.
+Also keep:
+- `user_roles` upsert
+- `profiles.provider_id` update
+- invitation status update
 
-**3. Port the same logic into the edge function** — `supabase/functions/_shared/pricing.ts` (Deno copy), then have `create-connect-checkout/index.ts` call it. The edge function already loads `branding_settings`; just include the missing columns (`use_flat_pricing`, `flat_price_per_model_cents`, `tier3_price_cents`) in the SELECT and pass them in.
+This ensures:
+- new invited clients inherit Free/Pay correctly
+- pre-existing links are repaired automatically
+- re-accepting or completing auth cannot leave stale entitlement behind
 
-**4. Server is the source of truth.** The Stripe `unit_amount` is whatever `calculatePresentationPrice()` returns server-side. The client passes `modelCount` (already does); the server never trusts a client-supplied `totalCents`. Free-client bypass logic is unchanged.
+## 2) Add a one-time backend repair migration for already-broken rows
 
-**5. Display sync guard.** Before opening Stripe, the client re-runs `calculatePresentationPrice()` against the just-counted `modelCount` and shows the breakdown. If somehow the server returns a different `amount_cents` after `savePresentationRequest` updates the row, the post-payment "Payment Confirmed" card will show the actual charged amount. (No mismatch should occur once #3 is in place.)
+Create a migration that repairs historical data by reconciling accepted invitations into `client_providers`.
 
-### Combined with the "Download Presentation" UX rewire
+### Migration responsibilities
+- For every accepted invitation where an auth user exists with the same email:
+  - insert missing `client_providers` row
+  - update existing `client_providers.is_free` to match the accepted invitation
+  - update `profiles.provider_id`
+- Prefer accepted invitation data as the authority for invite-based client access
 
-Everything from the previous plan still applies:
+This fixes existing clients who are already stuck in the wrong state.
 
-- Replace the misleading "Satisfied with your preview? — I Want This" fallback card with a single **Download Presentation** card.
-- Drop the `reviewApproved` checkbox gate.
-- Branch on `isFreeClient` (from `getClientFreeStatus`):
-  - **Free** → button reads "Download Presentation" (no price), goes straight to the generator after the free-bypass round-trip.
-  - **Pay** → button reads "Pay $X.XX & Download" using the **shared pricing function's total**, opens embedded Stripe checkout, auto-runs the generator on payment success.
-  - **Anonymous** → opens `PortalSignupModal` (with the corrected "Sign in to download…" copy), then re-runs the flow.
-- Extract the existing generator logic into `runDownload(modelId)` so both branches share it.
-- "No pricing configured" fallback becomes a muted notice ("Contact {brand} to receive your presentation"), unless the client is `is_free` — in which case the Download button still works.
+## 3) Replace the Studio’s free-check with an authoritative “download eligibility” resolver
 
-### Files to be edited
+Create a new server function for the Studio, e.g.:
+- `getClientDownloadEntitlement`
+or
+- `getStudioAccessState`
 
-- `src/lib/portal/pricing.ts` — new, shared pricing function.
-- `supabase/functions/_shared/pricing.ts` — new, Deno port of the same logic.
-- `supabase/functions/create-connect-checkout/index.ts` — load all five pricing columns; replace inline math with the shared function; keep server as the source of truth.
-- `src/components/portal/HudBuilderSandbox.tsx` — call `calculatePresentationPrice()`, rewire the bottom card per the UX plan, add `isFreeClient` lookup, extract `runDownload()`.
-- `src/components/portal/PortalSignupModal.tsx` — copy fix only ("Sign in to download…").
+It should return one authoritative payload for the current signed-in user + provider:
 
-### What this does NOT change
+```ts
+{
+  linked: boolean
+  invitationMatched: boolean
+  invitationStatus: "pending" | "accepted" | "expired" | "declined" | null
+  isFree: boolean
+  pricingConfigured: boolean
+  payoutsReady: boolean
+  providerBrandName: string
+}
+```
 
-- No DB migration. All pricing columns already exist on `branding_settings`.
-- No changes to `payments-webhook`, the Connect onboarding flow, or the public `/p/{slug}` pricing section.
-- No changes to the generated `.html` end-product.
+### Server logic
+For the authenticated user and provider:
+1. read `client_providers`
+2. read accepted/pending invitation by matching the user email + provider
+3. if invitation is accepted but link is missing or stale, auto-heal it server-side
+4. compute effective `isFree`
+5. compute pricing/payout readiness from `branding_settings`
 
+This replaces the current fragile split between:
+- `getClientFreeStatus`
+- client-side pricing checks
+- UI guesses
+
+## 4) Rewire the Studio card to branch from entitlement first
+
+Update `HudBuilderSandbox.tsx` so the bottom section uses the new entitlement result.
+
+### Correct branch order
+1. `licenseExpired` → block
+2. `isReleased` / polling / checkout states → existing fulfillment states
+3. `effective isFree === true` → always show **Download Presentation**
+4. else if `pricingConfigured && payoutsReady` → show **Pay $X & Download**
+5. else if `pricingConfigured && !payoutsReady` → show payment unavailable contact message
+6. else → show pricing unavailable message
+
+This guarantees that a Free client never falls into a payment branch simply because payouts are disconnected.
+
+## 5) Remove the legacy “create client link without invitation” behavior from the Studio modal
+
+`PortalSignupModal.tsx` should no longer insert directly into `client_providers` for Studio access.
+
+### Safer behavior
+- If the user is not authenticated in the Studio:
+  - send them through the invitation-aware auth path when an invite token exists
+  - otherwise allow sign-in only, and let the server resolve whether they actually belong to this MSP
+- Do not create provider links client-side
+- Do not assign entitlement client-side
+
+If a lightweight Studio auth modal remains, it should authenticate only, then let the server determine access and free/pay entitlement.
+
+## 6) Add server-side provider-link validation before save and checkout
+
+To make this flow safe end-to-end, add server validation in:
+
+- `savePresentationRequest`
+- `create-connect-checkout`
+
+### Required checks
+For the current user and `providerId`:
+- confirm the client is actually linked to that MSP, or auto-heal from a valid accepted invitation before proceeding
+- ensure the `saved_models` row being checked out belongs to the same `client_id` and `provider_id`
+
+This prevents:
+- arbitrary users creating models under any MSP
+- checkout being created for a mismatched model/provider pair
+- free bypass being applied to the wrong record
+
+## 7) Tighten the UI copy
+
+Update the messages so they reflect the actual business rule:
+
+- **Free client:** no payment language at all
+- **Paid client + payouts unavailable:** “If you need help completing payment, please contact {MSP brand name}.”
+- Do not imply the client should contact the MSP for general Studio issues unless the issue is payment-related
+
+## Files / areas to update
+
+### Database migration
+- Update `handle_new_user`
+- Update `accept_invitation_self`
+- Add one-time reconciliation SQL for accepted invitations → client links
+
+### Server functions
+- `src/lib/portal.functions.ts`
+  - add authoritative entitlement resolver
+  - validate provider-link access in `savePresentationRequest`
+  - optionally retire or replace `getClientFreeStatus`
+
+### Studio UI
+- `src/components/portal/HudBuilderSandbox.tsx`
+  - replace narrow free lookup with entitlement payload
+  - re-order gating so Free wins before payment/payout states
+
+### Studio auth modal
+- `src/components/portal/PortalSignupModal.tsx`
+  - remove direct `client_providers` insertion
+  - route through invitation-aware/authenticated server resolution instead
+
+### Checkout edge function
+- `supabase/functions/create-connect-checkout/index.ts`
+  - verify `saved_models` ownership/provider match before free bypass or checkout creation
+  - keep server-side free bypass as the final authority
+
+## Expected result after the fix
+
+- MSP marks client as **Free**
+- client accepts invite and signs in
+- backend link is created or repaired with `is_free = true`
+- Studio resolves entitlement as Free
+- bottom card shows **Download Presentation**
+- clicking it saves/releases the model and downloads immediately
+- no Stripe flow
+- no payment unavailable state
+- no dependency on payout connection for free clients
+
+For paid clients, the current payment-unavailable message remains valid when payouts are not connected.
+
+## Verification checklist
+
+1. Invite a brand-new client as **Free**
+2. Accept invite via Google
+3. Open MSP Studio
+4. Confirm bottom card says **Download Presentation**
+5. Confirm no payment UI appears
+6. Download successfully
+
+7. Invite an existing client who was previously linked as Pay, then flip to **Free**
+8. Re-open Studio
+9. Confirm the link is auto-repaired and the card changes to **Download Presentation**
+
+10. Test a normal paid client
+11. Confirm they still see:
+   - pay-and-download when payouts are ready
+   - payment-unavailable contact message only when payouts are not ready
+
+12. Confirm model save + checkout cannot be invoked for an unrelated MSP/provider pair
