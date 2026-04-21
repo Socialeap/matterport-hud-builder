@@ -20,6 +20,15 @@ export function SignupForm({ inviteToken, inviteEmail }: SignupFormProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
 
+  // Where the user should land after auth completes. For invited clients we
+  // bounce them back to the invite acceptance page — it auto-finalizes the
+  // invitation for the now-signed-in user and routes them into the MSP's
+  // Studio (/p/{slug}). Without this, OAuth would dump them on the platform
+  // landing page (default redirect = window.location.origin).
+  const postAuthRedirect = inviteToken
+    ? `${window.location.origin}/invite/${inviteToken}`
+    : window.location.origin;
+
   const handleSignup = async (e: FormEvent) => {
     e.preventDefault();
     if (!inviteToken) {
@@ -32,7 +41,7 @@ export function SignupForm({ inviteToken, inviteEmail }: SignupFormProps) {
         email,
         password,
         options: {
-          emailRedirectTo: window.location.origin,
+          emailRedirectTo: postAuthRedirect,
           data: {
             full_name: fullName,
             invite_token: inviteToken,
@@ -60,7 +69,13 @@ export function SignupForm({ inviteToken, inviteEmail }: SignupFormProps) {
     setIsLoading(true);
     try {
       const result = await lovable.auth.signInWithOAuth("google", {
-        redirect_uri: window.location.origin,
+        redirect_uri: postAuthRedirect,
+        // Surface the invite token to the handle_new_user trigger via
+        // raw_user_meta_data so first-time Google signups are auto-linked
+        // to the inviting MSP and assigned the client role.
+        extraParams: {
+          invite_token: inviteToken,
+        },
       });
       if (result.error) {
         toast.error(result.error instanceof Error ? result.error.message : "Google sign-up failed");
