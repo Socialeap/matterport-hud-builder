@@ -27,6 +27,24 @@ export const savePresentationRequest = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
 
+    // Provider-link guard: ensure the client is actually linked to this MSP.
+    // resolve_studio_access auto-heals from accepted invitations server-side.
+    const { data: accessRows, error: accessError } = await supabase.rpc(
+      "resolve_studio_access",
+      { _provider_id: data.providerId },
+    );
+    if (accessError) {
+      console.error("resolve_studio_access failed:", accessError);
+      return { success: false, error: "Could not verify Studio access" };
+    }
+    const access = Array.isArray(accessRows) ? accessRows[0] : null;
+    if (!access?.linked) {
+      return {
+        success: false,
+        error: "You are not linked to this provider. Please use your invitation link to access this Studio.",
+      };
+    }
+
     const { data: model, error: modelError } = await supabase
       .from("saved_models")
       .insert({
