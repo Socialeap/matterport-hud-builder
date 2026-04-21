@@ -20,6 +20,14 @@ import { useServerFn } from "@tanstack/react-start";
 import { EmbeddingWorkerClient } from "@/lib/rag/embedding-worker-client";
 import { buildPropertyQAEntries } from "@/lib/rag/property-qa-builder";
 import type { QAEntry, QADatabaseEntry } from "@/lib/rag/types";
+import {
+  saveDraft,
+  loadDraft,
+  clearDraft,
+  exportDraftFile,
+  importDraftFile,
+  type DraftState,
+} from "@/lib/portal/draft-storage";
 
 interface HudBuilderSandboxProps {
   branding: Tables<"branding_settings">;
