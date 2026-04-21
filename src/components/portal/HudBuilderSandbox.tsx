@@ -287,6 +287,7 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
         setIsReleased(true);
         setIsPolling(false);
         clearInterval(interval);
+        clearDraft(providerSlug);
       }
       if (attempts >= maxAttempts) {
         setIsPolling(false);
@@ -460,6 +461,7 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
       });
 
       if (result.success) {
+        clearDraft(providerSlug);
         setShowConfirmation(true);
       } else {
         toast.error(result.error || "Failed to submit request");
