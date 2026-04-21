@@ -247,6 +247,23 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
     toast.success("Draft imported");
   }, [applyDraft]);
 
+  // Debounced autosave whenever any tracked field changes (after hydration).
+  useEffect(() => {
+    if (!draftHydratedRef.current) return;
+    const handle = window.setTimeout(() => {
+      saveDraft(providerSlug, {
+        brandName,
+        accentColor,
+        hudBgColor,
+        gateLabel,
+        models,
+        behaviors,
+        agent,
+        reviewApproved,
+      });
+    }, 500);
+    return () => window.clearTimeout(handle);
+  }, [providerSlug, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent, reviewApproved]);
 
   // Post-payment polling: detect return from Stripe checkout
   useEffect(() => {
