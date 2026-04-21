@@ -10,7 +10,7 @@ import type { PropertyModel, AgentContact, TourBehavior } from "./types";
 import { DEFAULT_BEHAVIOR, DEFAULT_AGENT } from "./types";
 import type { Tables } from "@/integrations/supabase/types";
 import { supabase } from "@/integrations/supabase/client";
-import { savePresentationRequest, generatePresentation, getClientFreeStatus } from "@/lib/portal.functions";
+import { savePresentationRequest, generatePresentation, getStudioAccessState } from "@/lib/portal.functions";
 import { uploadBrandAsset } from "@/lib/storage";
 import { toast } from "sonner";
 import { calculatePresentationPrice } from "@/lib/portal/pricing";
@@ -158,8 +158,23 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
   // Submission/download state
   const [submitting, setSubmitting] = useState(false);
 
-  // Free-client status (from client_providers.is_free)
-  const [isFreeClient, setIsFreeClient] = useState(false);
+  // Authoritative Studio access state (from resolve_studio_access RPC).
+  // Replaces narrow client-side free/pricing/payout checks.
+  const [accessState, setAccessState] = useState<{
+    linked: boolean;
+    isFree: boolean;
+    pricingConfigured: boolean;
+    payoutsReady: boolean;
+    providerBrandName: string;
+    loaded: boolean;
+  }>({
+    linked: false,
+    isFree: false,
+    pricingConfigured: false,
+    payoutsReady: false,
+    providerBrandName: "",
+    loaded: false,
+  });
 
   // Purchase / checkout state
   const [showCheckout, setShowCheckout] = useState(false);
@@ -171,7 +186,7 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
   const [connectAccountId, setConnectAccountId] = useState<string | null>(null);
   const [checkoutClientSecret, setCheckoutClientSecret] = useState<string | null>(null);
   const generatePresentationFn = useServerFn(generatePresentation);
-  const getClientFreeStatusFn = useServerFn(getClientFreeStatus);
+  const getStudioAccessStateFn = useServerFn(getStudioAccessState);
   const workerRef = useRef<EmbeddingWorkerClient | null>(null);
   const autoDownloadTriggeredRef = useRef(false);
 
