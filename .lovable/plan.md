@@ -1,80 +1,98 @@
 
 
-## Save & Resume Configuration Progress
+## Critical Addition: Server-Side Price Calculation Must Match Client Display
 
-### The question: client-side vs downloadable file?
+You're right — pricing is the missing piece. After investigation, the bug is bigger than just UI rewiring: **the edge function's price calculation does not match the pricing model the client sees**. If we wire the new "Pay & Download" button without fixing this, Stripe will charge the wrong amount.
 
-Both work, but they solve different problems. My recommendation is **client-side autosave by default, with an optional "Export progress file" for portability**. Here's why and how each fits.
+### The pricing model (what MSPs actually configure)
 
-### Option A — Client-side autosave (recommended default)
+`branding_settings` supports **two mutually exclusive modes**:
 
-Store the in-progress configuration in the browser's `localStorage` (or `IndexedDB` for files). Zero backend involvement, zero user effort.
+**Mode A — Flat rate** (`use_flat_pricing = true`)
+- `flat_price_per_model_cents` × `modelCount`
+- e.g. $50/model → 4 models = $200
 
-**Pros**
-- Invisible to the user — works automatically, like Google Docs.
-- Survives tab close, browser close, and crashes.
-- No "I forgot to save" failure mode.
-- Honors your "nothing on our servers" constraint.
+**Mode B — Tiered bundle** (`use_flat_pricing = false`, the default)
+- `base_price_cents` (A), `tier3_price_cents` (B, optional bundle), `additional_model_fee_cents` (C)
+- 1 model = A
+- 2 models = 2 × A
+- 3 models = B (bundle price; falls back to `2A + C` if B is null)
+- 4+ models = B + (n − 3) × C
 
-**Cons**
-- Tied to one browser on one device. Clearing site data wipes it.
-- Doesn't transfer to another machine.
-- Storage cap (~5 MB for `localStorage`, ~hundreds of MB for `IndexedDB`).
+This is implemented correctly in `HudBuilderSandbox.tsx` (lines 304–327) and rendered in the price-breakdown card. It's also rendered correctly on the public `/p/{slug}` pricing section.
 
-### Option B — Downloadable progress file (`.3dps-draft.json`)
+### The bug
 
-User clicks "Save Progress" → downloads a JSON file. To resume, they click "Load Progress" and pick the file.
+`supabase/functions/create-connect-checkout/index.ts` uses a **completely different formula**:
 
-**Pros**
-- Portable across devices/browsers.
-- User owns the file — true client-side sovereignty.
-- Can be emailed, backed up, or attached to a project folder.
+```ts
+totalCents = modelCount <= threshold
+  ? basePriceCents
+  : basePriceCents + ((modelCount - threshold) * additionalFeeCents);
+```
 
-**Cons**
-- Manual — user must remember to save before closing.
-- Friction every session.
-- Easy to lose the file or load the wrong version.
+It ignores `use_flat_pricing`, `flat_price_per_model_cents`, and `tier3_price_cents` entirely. For a flat-rate MSP at $50/model with 3 models, the UI shows $150 but Stripe charges $0 + … (actually `basePriceCents` which may be null → the function returns "Provider has not configured pricing" and blocks the sale).
 
-### Recommended approach — do both, layered
+For a tiered MSP, the UI may show the bundle price ($B) but Stripe charges `A + (n-1) × C`. Different number, and the MSP gets paid differently than the client was quoted. This is a trust/legal issue, not just a bug.
 
-1. **Autosave to `localStorage`** every time a field changes (debounced ~500 ms). On mount, if a draft exists, show a small banner: *"Resume your saved draft? [Resume] [Start fresh]"*.
-2. **Manual "Export draft / Import draft"** buttons in the sandbox header for cross-device portability.
+### Updated plan — pricing is part of the fix
 
-This gives the safety net of autosave plus the portability of file export, with no backend storage.
+**1. Extract a shared pricing function** — `src/lib/portal/pricing.ts`
 
-### Scope of what gets saved
+Single source of truth, importable from both the React component and (as a copy-paste port to Deno) the edge function. Pure function, no side effects:
 
-From `HudBuilderSandbox.tsx` state:
-- Branding overrides: `brandName`, `accentColor`, `hudBgColor`, `gateLabel`
-- `models[]` (PropertyModel array — names, locations, Matterport IDs, music/cinematic URLs, multimedia toggles)
-- `behaviors` (per-model TourBehavior settings)
-- `agent` (AgentContact fields)
-- `reviewApproved` checkbox
+```ts
+export interface PricingInput {
+  modelCount: number;
+  use_flat_pricing: boolean;
+  flat_price_per_model_cents: number | null;
+  base_price_cents: number | null;
+  tier3_price_cents: number | null;
+  additional_model_fee_cents: number | null;
+}
+export interface PricingResult {
+  totalCents: number;
+  mode: "flat" | "tiered";
+  breakdown: { label: string; cents: number }[];
+  configured: boolean;
+}
+export function calculatePresentationPrice(input: PricingInput): PricingResult;
+```
 
-### Handling files (logo, favicon, agent avatar)
+The function implements both modes exactly as the existing UI does, returns a structured breakdown so the price card can render without inline math, and signals `configured: false` when neither pricing mode is set up.
 
-`File` objects can't be `JSON.stringify`'d. Three honest options, ordered by simplicity:
+**2. Refactor `HudBuilderSandbox.tsx`** to call `calculatePresentationPrice()` instead of inlining the math. Delete the duplicated `priceA / priceB / priceC / tier3Total / totalCents` block. Keep the existing breakdown card UI but feed it from `result.breakdown`.
 
-1. **Skip files in the draft (simplest, recommended)** — Save everything *except* uploaded files. On resume, show a small "Re-upload your logo / favicon / avatar" hint next to those fields. Files are usually re-uploadable in seconds, and most users only upload once at the start.
-2. **Base64-encode small files into the draft** — Works for `localStorage` (with a size guard, e.g. skip files > 1 MB) and the export file. Larger payloads, but full restore.
-3. **IndexedDB for files + `localStorage` for the rest** — Most robust, more code. Only worth it if users frequently restart mid-session with large uploads.
+**3. Port the same logic into the edge function** — `supabase/functions/_shared/pricing.ts` (Deno copy), then have `create-connect-checkout/index.ts` call it. The edge function already loads `branding_settings`; just include the missing columns (`use_flat_pricing`, `flat_price_per_model_cents`, `tier3_price_cents`) in the SELECT and pass them in.
 
-Recommendation: **Option 1** for v1 — ship fast, see if anyone complains. Upgrade to Option 2 if needed.
+**4. Server is the source of truth.** The Stripe `unit_amount` is whatever `calculatePresentationPrice()` returns server-side. The client passes `modelCount` (already does); the server never trusts a client-supplied `totalCents`. Free-client bypass logic is unchanged.
 
-### Technical implementation outline
+**5. Display sync guard.** Before opening Stripe, the client re-runs `calculatePresentationPrice()` against the just-counted `modelCount` and shows the breakdown. If somehow the server returns a different `amount_cents` after `savePresentationRequest` updates the row, the post-payment "Payment Confirmed" card will show the actual charged amount. (No mismatch should occur once #3 is in place.)
 
-- New file `src/lib/portal/draft-storage.ts` with `saveDraft(state)`, `loadDraft()`, `clearDraft()`, `exportDraftFile(state)`, `importDraftFile(file)`. Use a versioned schema (`{ version: 1, savedAt, data: {...} }`) so future field changes don't crash old drafts.
-- In `HudBuilderSandbox.tsx`:
-  - On mount: check for existing draft; if found, show a top banner with *Resume* / *Start fresh* actions.
-  - `useEffect` watching `[brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent, reviewApproved]` → debounced `saveDraft()`.
-  - On successful submission/payment: `clearDraft()`.
-  - Add small "Export draft" / "Import draft" buttons near the existing action buttons.
-- Storage key includes the provider slug (e.g. `3dps:draft:{providerSlug}`) so a client browsing two MSP studios doesn't get drafts crossed.
-- Add a discreet "Clear saved draft" link inside the banner or in a footer area.
+### Combined with the "Download Presentation" UX rewire
+
+Everything from the previous plan still applies:
+
+- Replace the misleading "Satisfied with your preview? — I Want This" fallback card with a single **Download Presentation** card.
+- Drop the `reviewApproved` checkbox gate.
+- Branch on `isFreeClient` (from `getClientFreeStatus`):
+  - **Free** → button reads "Download Presentation" (no price), goes straight to the generator after the free-bypass round-trip.
+  - **Pay** → button reads "Pay $X.XX & Download" using the **shared pricing function's total**, opens embedded Stripe checkout, auto-runs the generator on payment success.
+  - **Anonymous** → opens `PortalSignupModal` (with the corrected "Sign in to download…" copy), then re-runs the flow.
+- Extract the existing generator logic into `runDownload(modelId)` so both branches share it.
+- "No pricing configured" fallback becomes a muted notice ("Contact {brand} to receive your presentation"), unless the client is `is_free` — in which case the Download button still works.
+
+### Files to be edited
+
+- `src/lib/portal/pricing.ts` — new, shared pricing function.
+- `supabase/functions/_shared/pricing.ts` — new, Deno port of the same logic.
+- `supabase/functions/create-connect-checkout/index.ts` — load all five pricing columns; replace inline math with the shared function; keep server as the source of truth.
+- `src/components/portal/HudBuilderSandbox.tsx` — call `calculatePresentationPrice()`, rewire the bottom card per the UX plan, add `isFreeClient` lookup, extract `runDownload()`.
+- `src/components/portal/PortalSignupModal.tsx` — copy fix only ("Sign in to download…").
 
 ### What this does NOT change
 
-- No database tables, no Supabase calls, no edge functions.
-- No changes to the generated end-product `.html` file.
-- Existing payment/generation flow is untouched.
+- No DB migration. All pricing columns already exist on `branding_settings`.
+- No changes to `payments-webhook`, the Connect onboarding flow, or the public `/p/{slug}` pricing section.
+- No changes to the generated `.html` end-product.
 
