@@ -757,6 +757,13 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      accept_invitation_self: {
+        Args: { _token: string }
+        Returns: {
+          provider_id: string
+        }[]
+      }
+      decline_invitation: { Args: { _token: string }; Returns: boolean }
       delete_email: {
         Args: { message_id: number; queue_name: string }
         Returns: boolean
@@ -764,6 +771,16 @@ export type Database = {
       enqueue_email: {
         Args: { payload: Json; queue_name: string }
         Returns: number
+      }
+      get_invitation_by_token: {
+        Args: { _token: string }
+        Returns: {
+          email: string
+          expires_at: string
+          is_free: boolean
+          provider_id: string
+          status: Database["public"]["Enums"]["invitation_status"]
+        }[]
       }
       get_license_info: {
         Args: { user_uuid: string }
@@ -824,7 +841,7 @@ export type Database = {
     Enums: {
       app_role: "admin" | "provider" | "client"
       app_tier: "starter" | "pro"
-      invitation_status: "pending" | "accepted" | "expired"
+      invitation_status: "pending" | "accepted" | "expired" | "declined"
       license_status: "active" | "past_due" | "expired"
       model_status: "preview" | "pending_payment" | "paid"
       vault_category:
@@ -963,7 +980,7 @@ export const Constants = {
     Enums: {
       app_role: ["admin", "provider", "client"],
       app_tier: ["starter", "pro"],
-      invitation_status: ["pending", "accepted", "expired"],
+      invitation_status: ["pending", "accepted", "expired", "declined"],
       license_status: ["active", "past_due", "expired"],
       model_status: ["preview", "pending_payment", "paid"],
       vault_category: [
