@@ -756,104 +756,22 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
               </div>
             )}
 
-            {/* Purchase / Download Card */}
+            {/* Download / Payment Card */}
             {isPolling ? (
               <div className="rounded-lg border-2 border-primary/50 bg-primary/5 p-6 text-center">
                 <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
                 <h3 className="text-lg font-semibold text-foreground">Verifying Payment…</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Please wait while we confirm your payment. This may take a few seconds.
+                  Please wait while we confirm your payment, then your download will start automatically.
                 </p>
-              </div>
-            ) : isReleased ? (
-              <div className="rounded-lg border-2 border-green-500 bg-green-500/5 p-6 text-center">
-                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-green-500/10">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-semibold text-foreground">Payment Confirmed!</h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Your presentation is ready for download.
-                </p>
-                <Button
-                  size="lg"
-                  className="mt-4 text-white"
-                  style={{ backgroundColor: accentColor }}
-                  disabled={downloading || !savedModelId || licenseExpired}
-                  onClick={async () => {
-                    if (!savedModelId) return;
-                    setDownloading(true);
-                    setDownloadStep("Generating Q&A dictionary…");
-                    try {
-                      // ── Step 1: Build property Q&A pairs locally ─────────
-                      //   Deterministic rule-based generation from typed
-                      //   builder state — zero LLM, zero network. Covers the
-                      //   "Ask AI" panel's top-of-funnel metadata questions;
-                      //   the docs-qa panel (Phase 5) handles content-grounded
-                      //   questions via chunk embeddings.
-                      const entries: QAEntry[] = buildPropertyQAEntries(models, agent);
-
-                      // ── Step 2: Embed questions via Web Worker ───────────
-                      let qaDatabase: QADatabaseEntry[] = [];
-                      if (entries.length > 0) {
-                        setDownloadStep(`Embedding ${entries.length} Q&A pairs…`);
-
-                        if (!workerRef.current) {
-                          workerRef.current = new EmbeddingWorkerClient();
-                        }
-                        await workerRef.current.init();
-
-                        const questions = entries.map((e) => e.question);
-                        const embeddings = await workerRef.current.embedBatch(questions);
-
-                        qaDatabase = entries.map((entry, i) => ({
-                          id: `qa-${i}`,
-                          question: entry.question,
-                          answer: entry.answer,
-                          source_anchor_id: entry.source_anchor_id,
-                          embedding: embeddings[i],
-                        }));
-                      }
-
-                      // ── Step 3: Generate presentation HTML with Q&A baked in ─
-                      //   Per-property-doc chunk embeddings + canonical Q&As
-                      //   are persisted at extraction time (see
-                      //   usePropertyExtractions.extract) while authenticated
-                      //   as the provider. This code path runs as the client
-                      //   (read-only on property_extractions), so we just
-                      //   consume what the provider already cached.
-                      setDownloadStep("Building presentation…");
-                      const result = await generatePresentationFn({
-                        data: { modelId: savedModelId, qaDatabase },
-                      });
-                      if (!result.success || !result.html) {
-                        toast.error(result.error || "Failed to generate presentation");
-                        return;
-                      }
-                      const blob = new Blob([result.html], { type: "text/html" });
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement("a");
-                      a.href = url;
-                      const safeName = (models[0]?.name || "presentation").replace(/[^a-zA-Z0-9_-]/g, "_");
-                      a.download = `${safeName}.html`;
-                      document.body.appendChild(a);
-                      a.click();
-                      document.body.removeChild(a);
-                      URL.revokeObjectURL(url);
-                    } catch {
-                      toast.error("Download failed. Please try again.");
-                    }
-                    setDownloading(false);
-                    setDownloadStep("");
-                  }}
-                >
-                  {downloading ? (downloadStep || "Generating…") : "Download Presentation File"}
-                </Button>
               </div>
             ) : showCheckout && savedModelId && connectAccountId && checkoutClientSecret ? (
               <div className="rounded-lg border p-6">
                 <h3 className="text-lg font-semibold text-foreground mb-4">Complete Payment</h3>
+                <p className="mb-4 text-sm text-muted-foreground">
+                  Total: <span className="font-semibold text-foreground">${(totalCents / 100).toFixed(2)}</span>
+                  {" "}— your presentation will download automatically once payment is confirmed.
+                </p>
                 <EmbeddedCheckoutProvider
                   stripe={getStripeForConnect(connectAccountId)}
                   options={{ clientSecret: checkoutClientSecret }}
@@ -861,36 +779,78 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
                   <EmbeddedCheckout />
                 </EmbeddedCheckoutProvider>
               </div>
+            ) : isReleased && downloading ? (
+              <div className="rounded-lg border-2 border-primary/50 bg-primary/5 p-6 text-center">
+                <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+                <h3 className="text-lg font-semibold text-foreground">Preparing Your Download…</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {downloadStep || "Generating your presentation file…"}
+                </p>
+              </div>
+            ) : isReleased ? (
+              /* Re-download fallback (e.g. user closed the auto-download). */
+              <div className="rounded-lg border-2 border-green-500 bg-green-500/5 p-6 text-center">
+                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-green-500/10">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-foreground">Presentation Ready</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Your presentation is unlocked. Click below to download again.
+                </p>
+                <Button
+                  size="lg"
+                  className="mt-4 text-white"
+                  style={{ backgroundColor: accentColor }}
+                  disabled={!savedModelId || licenseExpired}
+                  onClick={() => savedModelId && runDownload(savedModelId)}
+                >
+                  Download Presentation
+                </Button>
+              </div>
+            ) : isFreeClient ? (
+              /* Free client — Download with no price. */
+              <div className="rounded-lg border-2 p-6 text-center" style={{ borderColor: accentColor }}>
+                <h3 className="text-lg font-semibold text-foreground">
+                  Download Your Presentation
+                </h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Included with your account — no payment required.
+                </p>
+                <Button
+                  size="lg"
+                  className="mt-4 w-full text-white"
+                  style={{ backgroundColor: accentColor }}
+                  disabled={submitting || downloading || modelCount < 1 || licenseExpired}
+                  onClick={handleDownload}
+                >
+                  {submitting
+                    ? "Preparing…"
+                    : downloading
+                      ? (downloadStep || "Generating…")
+                      : modelCount < 1
+                        ? "Add a property to download"
+                        : "Download Presentation"}
+                </Button>
+              </div>
             ) : hasPricing ? (
+              /* Paid client — Pay $X.XX & Download. */
               <div className="rounded-lg border-2 p-6" style={{ borderColor: accentColor }}>
                 <h3 className="text-lg font-semibold text-foreground">
-                  Purchase & Download Your Presentation
+                  Download Your Presentation
                 </h3>
 
-                {/* Price breakdown */}
+                {/* Price breakdown — driven by the shared pricing function. */}
                 <div className="mt-4 rounded-md bg-muted/50 p-4 text-left text-sm space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">
-                      {modelCount <= 2
-                        ? `${modelCount || 1} model${modelCount === 1 ? "" : "s"} (Tier A)`
-                        : modelCount === 3
-                          ? "3 models (Tier B — bundle)"
-                          : "3 models (Tier B — bundle)"}
-                    </span>
-                    <span className="font-medium text-foreground">
-                      ${(modelCount <= 2 ? priceA / 100 : tier3Total / 100).toFixed(2)}
-                    </span>
-                  </div>
-                  {extraModels > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">
-                        + {extraModels} extra model{extraModels > 1 ? "s" : ""} × ${(priceC / 100).toFixed(2)}
-                      </span>
+                  {pricing.breakdown.map((line, i) => (
+                    <div key={i} className="flex justify-between">
+                      <span className="text-muted-foreground">{line.label}</span>
                       <span className="font-medium text-foreground">
-                        ${((extraModels * priceC) / 100).toFixed(2)}
+                        ${(line.cents / 100).toFixed(2)}
                       </span>
                     </div>
-                  )}
+                  ))}
                   <div className="border-t border-border pt-2 mt-2 flex justify-between font-semibold">
                     <span>Total</span>
                     <span>${(totalCents / 100).toFixed(2)}</span>
@@ -900,99 +860,31 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
                   </p>
                 </div>
 
-                {/* Review checkbox */}
-                <div className="mt-4 flex items-start gap-3">
-                  <Checkbox
-                    id="review-approved"
-                    checked={reviewApproved}
-                    onCheckedChange={(v) => setReviewApproved(v === true)}
-                  />
-                  <label htmlFor="review-approved" className="text-sm text-muted-foreground cursor-pointer leading-snug">
-                    I have reviewed and approve this as my finalized presentation.
-                  </label>
-                </div>
-
-                {/* Purchase button */}
-                {reviewApproved && (
-                  <Button
-                    size="lg"
-                    className="mt-4 w-full text-white"
-                    style={{ backgroundColor: accentColor }}
-                    disabled={submitting || modelCount < 1}
-                    onClick={async () => {
-                      if (!userId) {
-                        setSignupOpen(true);
-                        return;
-                      }
-                      setSubmitting(true);
-                      try {
-                        const result = await savePresentationRequest({
-                          data: {
-                            providerId: branding.provider_id,
-                            name: models[0]?.name || "Untitled Presentation",
-                            properties: models,
-                            tourConfig: behaviors as unknown as Record<string, unknown>,
-                            agent: agent as unknown as Record<string, string>,
-                            brandingOverrides: { brandName, accentColor, hudBgColor, gateLabel },
-                          },
-                        });
-                        if (result.success && result.modelId) {
-                          setSavedModelId(result.modelId);
-                          // Pre-fetch checkout session to get Connect account ID + client secret
-                          const { data: checkoutData, error: checkoutError } = await supabase.functions.invoke("create-connect-checkout", {
-                            body: {
-                              providerId: branding.provider_id,
-                              modelId: result.modelId,
-                              modelCount,
-                              returnUrl: `${window.location.origin}${window.location.pathname}?checkout_model_id=${result.modelId}&session_id={CHECKOUT_SESSION_ID}`,
-                            },
-                          });
-                          if (checkoutError) {
-                            toast.error("Failed to create checkout session");
-                          } else if (checkoutData?.free === true) {
-                            // Free client — bypass Stripe entirely; backend already
-                            // marked the model paid + released.
-                            toast.success("Your Presentation is ready — preparing download…");
-                            setIsReleased(true);
-                            clearDraft(providerSlug);
-                          } else if (checkoutData?.clientSecret && checkoutData?.stripeConnectAccountId) {
-                            setConnectAccountId(checkoutData.stripeConnectAccountId);
-                            setCheckoutClientSecret(checkoutData.clientSecret);
-                            setShowCheckout(true);
-                          } else {
-                            toast.error("Failed to create checkout session");
-                          }
-                        } else {
-                          toast.error(result.error || "Failed to save presentation");
-                        }
-                      } catch {
-                        toast.error("An error occurred. Please try again.");
-                      }
-                      setSubmitting(false);
-                    }}
-                  >
-                    {submitting ? "Preparing…" : `Purchase — $${(totalCents / 100).toFixed(2)}`}
-                  </Button>
-                )}
-              </div>
-            ) : (
-              /* Fallback: no pricing configured, use old flow */
-              <div className="rounded-lg border-2 p-6 text-center" style={{ borderColor: accentColor }}>
-                <h3 className="text-lg font-semibold text-foreground">
-                  Satisfied with your preview?
-                </h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Request your professional presentation and receive it once payment is confirmed.
-                </p>
                 <Button
                   size="lg"
-                  className="mt-4 text-white"
+                  className="mt-4 w-full text-white"
                   style={{ backgroundColor: accentColor }}
-                  onClick={handleConfirmIntent}
-                  disabled={submitting}
+                  disabled={submitting || downloading || modelCount < 1 || licenseExpired}
+                  onClick={handleDownload}
                 >
-                  {submitting ? "Submitting…" : "I Want This — Request Presentation"}
+                  {submitting
+                    ? "Preparing checkout…"
+                    : modelCount < 1
+                      ? "Add a property to continue"
+                      : `Pay $${(totalCents / 100).toFixed(2)} & Download`}
                 </Button>
+              </div>
+            ) : (
+              /* No pricing configured + not free — informative notice only. */
+              <div className="rounded-lg border-2 border-muted p-6 text-center">
+                <h3 className="text-lg font-semibold text-foreground">
+                  Pricing Not Yet Available
+                </h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  This Studio's pricing isn't set up yet. Please contact{" "}
+                  <span className="font-medium text-foreground">{brandName || "the provider"}</span>{" "}
+                  to receive your presentation.
+                </p>
               </div>
             )}
           </div>
