@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useAuth } from "@/hooks/use-auth";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { sendTransactionalEmail } from "@/lib/email/send";
@@ -12,9 +12,21 @@ import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { UserPlus, Mail, Clock, CheckCircle2 } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  UserPlus,
+  Mail,
+  Clock,
+  CheckCircle2,
+  Copy,
+  ExternalLink,
+  QrCode,
+  Link2,
+  XCircle,
+} from "lucide-react";
 import { toast } from "sonner";
-import { buildPlatformUrl } from "@/lib/public-url";
+import { buildPlatformUrl, buildInvitationUrl } from "@/lib/public-url";
+import { QRCodeSVG } from "qrcode.react";
 
 export const Route = createFileRoute("/_authenticated/dashboard/clients")({
   component: ClientsPage,
@@ -23,10 +35,11 @@ export const Route = createFileRoute("/_authenticated/dashboard/clients")({
 interface Invitation {
   id: string;
   email: string;
-  status: "pending" | "accepted" | "expired";
+  status: "pending" | "accepted" | "expired" | "declined";
   created_at: string;
   expires_at: string;
   is_free: boolean;
+  token: string;
 }
 
 function ClientsPage() {
@@ -43,7 +56,7 @@ function ClientsPage() {
     if (!user) return;
     const { data } = await supabase
       .from("invitations")
-      .select("id, email, status, created_at, expires_at, is_free")
+      .select("id, email, status, created_at, expires_at, is_free, token")
       .eq("provider_id", user.id)
       .order("created_at", { ascending: false });
 
@@ -76,7 +89,9 @@ function ClientsPage() {
       return;
     }
 
-    // Send the invitation email
+    // Always attempt to send the email; log + toast separately so the manual
+    // link is still usable even when email delivery fails (e.g. unverified DNS).
+    let emailSent = true;
     try {
       const signupUrl = buildPlatformUrl(`/signup?token=${inserted.token}`);
       await sendTransactionalEmail({
@@ -89,12 +104,18 @@ function ClientsPage() {
         },
       });
     } catch (emailError) {
+      emailSent = false;
       console.error("Failed to send invitation email:", emailError);
-      // Invitation was recorded, just the email failed
     }
 
     setSending(false);
-    toast.success(`Invitation sent to ${email}`);
+    if (emailSent) {
+      toast.success(`Invitation sent to ${trimmedEmail}. You can also share the manual link below.`);
+    } else {
+      toast.warning(
+        `Invitation recorded for ${trimmedEmail}, but the email did not send. Copy the manual link to share it directly.`,
+      );
+    }
     setEmail("");
     setInviteFree(false);
     fetchInvitations();
@@ -102,7 +123,6 @@ function ClientsPage() {
 
   const handleToggleFree = async (inv: Invitation, next: boolean) => {
     setTogglingId(inv.id);
-    // Optimistic update
     setInvitations((prev) =>
       prev.map((i) => (i.id === inv.id ? { ...i, is_free: next } : i))
     );
@@ -110,7 +130,6 @@ function ClientsPage() {
       await setFreeFlagFn({ data: { invitationId: inv.id, isFree: next } });
       toast.success(`${inv.email} is now ${next ? "Free" : "Pay"}`);
     } catch (err) {
-      // Revert on failure
       setInvitations((prev) =>
         prev.map((i) => (i.id === inv.id ? { ...i, is_free: !next } : i))
       );
@@ -120,10 +139,11 @@ function ClientsPage() {
     }
   };
 
-  const statusIcon = (status: string) => {
+  const statusIcon = (status: Invitation["status"]) => {
     switch (status) {
       case "accepted": return <CheckCircle2 className="size-4 text-green-500" />;
       case "expired": return <Clock className="size-4 text-destructive" />;
+      case "declined": return <XCircle className="size-4 text-muted-foreground" />;
       default: return <Mail className="size-4 text-muted-foreground" />;
     }
   };
@@ -137,11 +157,11 @@ function ClientsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="mx-auto max-w-5xl space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-foreground">Clients</h1>
         <p className="text-sm text-muted-foreground">
-          Invite clients to your platform. They'll receive an email with a signup link.
+          Invite clients to your platform. We'll email them automatically — and you'll also get a copyable link to share via SMS, Slack, WhatsApp, or anywhere else.
         </p>
       </div>
 
@@ -207,6 +227,7 @@ function ClientsPage() {
                   <TableHead>Email</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Charge</TableHead>
+                  <TableHead>Invite Link</TableHead>
                   <TableHead>Sent</TableHead>
                   <TableHead>Expires</TableHead>
                 </TableRow>
@@ -222,7 +243,7 @@ function ClientsPage() {
                           variant={
                             inv.status === "accepted"
                               ? "default"
-                              : inv.status === "expired"
+                              : inv.status === "expired" || inv.status === "declined"
                                 ? "destructive"
                                 : "secondary"
                           }
@@ -244,6 +265,9 @@ function ClientsPage() {
                         </Badge>
                       </div>
                     </TableCell>
+                    <TableCell>
+                      <InviteLinkActions invitation={inv} />
+                    </TableCell>
                     <TableCell className="text-muted-foreground">
                       {new Date(inv.created_at).toLocaleDateString()}
                     </TableCell>
@@ -257,6 +281,67 @@ function ClientsPage() {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function InviteLinkActions({ invitation }: { invitation: Invitation }) {
+  const url = useMemo(() => buildInvitationUrl(invitation.token), [invitation.token]);
+  const disabled = invitation.status !== "pending";
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success("Link copied to clipboard");
+    } catch {
+      toast.error("Could not copy link — please copy it manually");
+    }
+  };
+
+  if (disabled) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+        <Link2 className="size-3.5" />
+        n/a
+      </span>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <Button size="sm" variant="outline" onClick={copy} className="h-8 gap-1.5">
+        <Copy className="size-3.5" />
+        Copy
+      </Button>
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button size="sm" variant="ghost" className="h-8 w-8 p-0" aria-label="Show QR code">
+            <QrCode className="size-4" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-3">
+          <div className="space-y-2">
+            <p className="text-center text-xs font-medium text-foreground">
+              Scan to open invitation
+            </p>
+            <div className="rounded-md bg-white p-3">
+              <QRCodeSVG value={url} size={160} level="M" />
+            </div>
+            <p className="break-all text-center text-[10px] text-muted-foreground">{url}</p>
+          </div>
+        </PopoverContent>
+      </Popover>
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-8 w-8 p-0"
+        asChild
+        aria-label="Open invitation page in new tab"
+      >
+        <a href={url} target="_blank" rel="noopener noreferrer">
+          <ExternalLink className="size-4" />
+        </a>
+      </Button>
     </div>
   );
 }
