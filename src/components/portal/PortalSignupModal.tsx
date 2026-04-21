@@ -40,11 +40,16 @@ export function PortalSignupModal({
     setLoading(true);
 
     if (mode === "signup") {
+      // Note: We do NOT pre-create a client_providers link here. Studio
+      // access entitlement (free vs paid) is resolved server-side by
+      // `resolve_studio_access`, which heals from accepted invitations.
+      // Pre-creating a row here with `is_free = false` would override an
+      // MSP's "free" assignment.
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          data: { full_name: name, provider_id: providerId },
+          data: { full_name: name },
         },
       });
 
@@ -55,18 +60,9 @@ export function PortalSignupModal({
       }
 
       if (data.user) {
-        // Assign client role and link to provider
-        // The handle_new_user trigger creates the profile
-        // We need to update provider_id on the profile and add client role
-        await supabase
-          .from("profiles")
-          .update({ provider_id: providerId })
-          .eq("user_id", data.user.id);
-
-        await supabase
-          .from("client_providers")
-          .insert({ client_id: data.user.id, provider_id: providerId });
-
+        toast.info(
+          `If ${brandName || "the provider"} has invited you, please use the invitation link in your email to link your account. Otherwise, contact them for an invitation.`,
+        );
         onAuthenticated(data.user.id);
       } else {
         toast.info("Check your email to confirm your account, then sign in.");

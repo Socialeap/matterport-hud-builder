@@ -27,6 +27,24 @@ export const savePresentationRequest = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
 
+    // Provider-link guard: ensure the client is actually linked to this MSP.
+    // resolve_studio_access auto-heals from accepted invitations server-side.
+    const { data: accessRows, error: accessError } = await supabase.rpc(
+      "resolve_studio_access",
+      { _provider_id: data.providerId },
+    );
+    if (accessError) {
+      console.error("resolve_studio_access failed:", accessError);
+      return { success: false, error: "Could not verify Studio access" };
+    }
+    const access = Array.isArray(accessRows) ? accessRows[0] : null;
+    if (!access?.linked) {
+      return {
+        success: false,
+        error: "You are not linked to this provider. Please use your invitation link to access this Studio.",
+      };
+    }
+
     const { data: model, error: modelError } = await supabase
       .from("saved_models")
       .insert({
@@ -1276,14 +1294,50 @@ export const getClientFreeStatus = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: { providerId: string }) => d)
   .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
-    const { data: link } = await supabase
-      .from("client_providers")
-      .select("is_free")
-      .eq("provider_id", data.providerId)
-      .eq("client_id", userId)
-      .maybeSingle();
-    return { isFree: link?.is_free === true };
+    const { supabase } = context;
+    const { data: rows } = await supabase.rpc("resolve_studio_access", {
+      _provider_id: data.providerId,
+    });
+    const row = Array.isArray(rows) ? rows[0] : null;
+    return { isFree: row?.is_free === true };
+  });
+
+/**
+ * Authoritative entitlement resolver for the Studio. Returns one payload
+ * combining link status, invitation state, free/paid eligibility, and
+ * MSP pricing/payout readiness. Auto-heals stale links from accepted
+ * invitations on the server.
+ */
+export interface StudioAccessState {
+  linked: boolean;
+  invitationStatus: "pending" | "accepted" | "expired" | "declined" | null;
+  isFree: boolean;
+  pricingConfigured: boolean;
+  payoutsReady: boolean;
+  providerBrandName: string;
+}
+
+export const getStudioAccessState = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { providerId: string }) => d)
+  .handler(async ({ data, context }): Promise<StudioAccessState> => {
+    const { supabase } = context;
+    const { data: rows, error } = await supabase.rpc("resolve_studio_access", {
+      _provider_id: data.providerId,
+    });
+    if (error) {
+      console.error("getStudioAccessState rpc failed:", error);
+    }
+    const row = Array.isArray(rows) ? rows[0] : null;
+    return {
+      linked: row?.linked === true,
+      invitationStatus:
+        (row?.invitation_status as StudioAccessState["invitationStatus"]) ?? null,
+      isFree: row?.is_free === true,
+      pricingConfigured: row?.pricing_configured === true,
+      payoutsReady: row?.payouts_ready === true,
+      providerBrandName: String(row?.provider_brand_name ?? ""),
+    };
   });
 
 // ============================================================================

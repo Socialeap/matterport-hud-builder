@@ -77,17 +77,39 @@ serve(async (req) => {
       });
     }
 
-    // ── Free-client bypass ──────────────────────────────────────────────
-    // Check this BEFORE any Stripe / pricing checks so free clients can
-    // download even when pricing or Stripe Connect aren't configured.
-    const { data: link } = await supabaseAdmin
-      .from("client_providers")
-      .select("is_free")
-      .eq("provider_id", providerId)
-      .eq("client_id", user.id)
+    // ── Ownership guard ────────────────────────────────────────────────
+    // Confirm the saved_models row belongs to this client AND this provider.
+    // Prevents arbitrary users creating checkouts for unrelated models.
+    const { data: ownedModel, error: ownedError } = await supabaseAdmin
+      .from("saved_models")
+      .select("id, client_id, provider_id")
+      .eq("id", modelId)
       .maybeSingle();
 
-    if (link?.is_free === true) {
+    if (ownedError || !ownedModel) {
+      return new Response(JSON.stringify({ error: "Model not found" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (ownedModel.client_id !== user.id || ownedModel.provider_id !== providerId) {
+      return new Response(JSON.stringify({ error: "Model does not belong to this client/provider" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ── Free-client bypass ──────────────────────────────────────────────
+    // Resolve free status via the authoritative server-side resolver.
+    // This auto-heals from accepted invitations and is the single source
+    // of truth for free vs paid.
+    const { data: accessRows } = await supabaseClient.rpc("resolve_studio_access", {
+      _provider_id: providerId,
+    });
+    const access = Array.isArray(accessRows) ? accessRows[0] : null;
+    const isFree = access?.is_free === true;
+
+    if (isFree) {
       await supabaseAdmin
         .from("saved_models")
         .update({

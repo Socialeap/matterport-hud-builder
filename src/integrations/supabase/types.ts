@@ -837,6 +837,17 @@ export type Database = {
           read_ct: number
         }[]
       }
+      resolve_studio_access: {
+        Args: { _provider_id: string }
+        Returns: {
+          invitation_status: string
+          is_free: boolean
+          linked: boolean
+          payouts_ready: boolean
+          pricing_configured: boolean
+          provider_brand_name: string
+        }[]
+      }
     }
     Enums: {
       app_role: "admin" | "provider" | "client"

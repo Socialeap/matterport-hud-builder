@@ -10,7 +10,7 @@ import type { PropertyModel, AgentContact, TourBehavior } from "./types";
 import { DEFAULT_BEHAVIOR, DEFAULT_AGENT } from "./types";
 import type { Tables } from "@/integrations/supabase/types";
 import { supabase } from "@/integrations/supabase/client";
-import { savePresentationRequest, generatePresentation, getClientFreeStatus } from "@/lib/portal.functions";
+import { savePresentationRequest, generatePresentation, getStudioAccessState } from "@/lib/portal.functions";
 import { uploadBrandAsset } from "@/lib/storage";
 import { toast } from "sonner";
 import { calculatePresentationPrice } from "@/lib/portal/pricing";
@@ -158,8 +158,23 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
   // Submission/download state
   const [submitting, setSubmitting] = useState(false);
 
-  // Free-client status (from client_providers.is_free)
-  const [isFreeClient, setIsFreeClient] = useState(false);
+  // Authoritative Studio access state (from resolve_studio_access RPC).
+  // Replaces narrow client-side free/pricing/payout checks.
+  const [accessState, setAccessState] = useState<{
+    linked: boolean;
+    isFree: boolean;
+    pricingConfigured: boolean;
+    payoutsReady: boolean;
+    providerBrandName: string;
+    loaded: boolean;
+  }>({
+    linked: false,
+    isFree: false,
+    pricingConfigured: false,
+    payoutsReady: false,
+    providerBrandName: "",
+    loaded: false,
+  });
 
   // Purchase / checkout state
   const [showCheckout, setShowCheckout] = useState(false);
@@ -171,7 +186,7 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
   const [connectAccountId, setConnectAccountId] = useState<string | null>(null);
   const [checkoutClientSecret, setCheckoutClientSecret] = useState<string | null>(null);
   const generatePresentationFn = useServerFn(generatePresentation);
-  const getClientFreeStatusFn = useServerFn(getClientFreeStatus);
+  const getStudioAccessStateFn = useServerFn(getStudioAccessState);
   const workerRef = useRef<EmbeddingWorkerClient | null>(null);
   const autoDownloadTriggeredRef = useRef(false);
 
@@ -312,7 +327,11 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
 
   // Single source of truth for pricing — same function the edge function uses.
   const modelCount = models.filter((m) => m.matterportId.trim()).length;
-  const providerBrandName = branding.brand_name?.trim() || brandName || "the provider";
+  const providerBrandName =
+    accessState.providerBrandName?.trim() ||
+    branding.brand_name?.trim() ||
+    brandName ||
+    "the provider";
   const pricing = calculatePresentationPrice({
     modelCount,
     use_flat_pricing: Boolean(
@@ -327,11 +346,19 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
     additional_model_fee_cents: branding.additional_model_fee_cents ?? null,
   });
   const totalCents = pricing.totalCents;
-  const pricingConfigured = pricing.configured;
-  const payoutsReady = Boolean(
-    branding.stripe_onboarding_complete &&
-      (branding as { stripe_connect_id?: string | null }).stripe_connect_id
-  );
+  // Server-resolved truth (from resolve_studio_access). Falls back to
+  // client-derived branding values during the brief pre-load window so the
+  // UI doesn't flash an incorrect "unavailable" state.
+  const isFreeClient = accessState.isFree;
+  const pricingConfigured = accessState.loaded
+    ? accessState.pricingConfigured
+    : pricing.configured;
+  const payoutsReady = accessState.loaded
+    ? accessState.payoutsReady
+    : Boolean(
+        branding.stripe_onboarding_complete &&
+          (branding as { stripe_connect_id?: string | null }).stripe_connect_id,
+      );
   const checkoutReady = pricingConfigured && payoutsReady;
 
   const handleBrandingChange = useCallback((field: string, value: string) => {
@@ -434,27 +461,38 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
     [userId]
   );
 
-  // ── Free-client status lookup ─────────────────────────────────────
-  // Determines whether the bottom button is "Download" (free) or
-  // "Pay $X & Download" (paid). Server is the authority — this is
-  // only used for UI labelling.
+  // ── Authoritative Studio access lookup ─────────────────────────────
+  // Single server-side resolver determines: link status, invitation state,
+  // free/paid eligibility, MSP pricing config, and payout readiness.
+  // Auto-heals stale `client_providers` rows from accepted invitations.
   useEffect(() => {
     if (!userId) {
-      setIsFreeClient(false);
+      setAccessState((s) => ({ ...s, loaded: true, linked: false, isFree: false }));
       return;
     }
     let cancelled = false;
-    getClientFreeStatusFn({ data: { providerId: branding.provider_id } })
+    getStudioAccessStateFn({ data: { providerId: branding.provider_id } })
       .then((res) => {
-        if (!cancelled) setIsFreeClient(!!res?.isFree);
+        if (cancelled) return;
+        setAccessState({
+          linked: !!res.linked,
+          isFree: !!res.isFree,
+          pricingConfigured: !!res.pricingConfigured,
+          payoutsReady: !!res.payoutsReady,
+          providerBrandName: res.providerBrandName || "",
+          loaded: true,
+        });
       })
-      .catch(() => {
-        if (!cancelled) setIsFreeClient(false);
+      .catch((err) => {
+        console.warn("getStudioAccessState failed:", err);
+        if (!cancelled) {
+          setAccessState((s) => ({ ...s, loaded: true }));
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [userId, branding.provider_id, getClientFreeStatusFn]);
+  }, [userId, branding.provider_id, getStudioAccessStateFn]);
 
   /**
    * Generate the .html and trigger a browser download for the given
