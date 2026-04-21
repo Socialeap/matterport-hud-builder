@@ -327,13 +327,28 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
   const submitRequest = useCallback(async (authenticatedUserId: string) => {
     setSubmitting(true);
     try {
+      // If a local avatar file is still pending (picked before sign-in), upload it now.
+      let finalAgent = agent;
+      if (agentAvatarFile) {
+        try {
+          const url = await uploadBrandAsset(authenticatedUserId, agentAvatarFile, "avatar");
+          if (url) {
+            finalAgent = { ...agent, avatarUrl: url };
+            setAgent(finalAgent);
+            setAgentAvatarFile(null);
+          }
+        } catch (err) {
+          console.error("Avatar upload (deferred) failed:", err);
+        }
+      }
+
       const result = await savePresentationRequest({
         data: {
           providerId: branding.provider_id,
           name: models[0]?.name || "Untitled Presentation",
           properties: models,
           tourConfig: behaviors as unknown as Record<string, unknown>,
-          agent: agent as unknown as Record<string, string>,
+          agent: finalAgent as unknown as Record<string, string>,
           brandingOverrides: {
             brandName,
             accentColor,
@@ -353,7 +368,7 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
       console.error(err);
     }
     setSubmitting(false);
-  }, [branding.provider_id, models, behaviors, agent, brandName, accentColor, hudBgColor, gateLabel]);
+  }, [branding.provider_id, models, behaviors, agent, agentAvatarFile, brandName, accentColor, hudBgColor, gateLabel]);
 
   const handleConfirmIntent = useCallback(() => {
     if (!userId) {
