@@ -11,6 +11,7 @@ import { DEFAULT_BEHAVIOR, DEFAULT_AGENT } from "./types";
 import type { Tables } from "@/integrations/supabase/types";
 import { supabase } from "@/integrations/supabase/client";
 import { savePresentationRequest, generatePresentation } from "@/lib/portal.functions";
+import { uploadBrandAsset } from "@/lib/storage";
 import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe-js";
@@ -133,6 +134,8 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
 
   // Agent
   const [agent, setAgent] = useState<AgentContact>({ ...DEFAULT_AGENT });
+  const [agentAvatarFile, setAgentAvatarFile] = useState<File | null>(null);
+  const [agentAvatarUploading, setAgentAvatarUploading] = useState(false);
 
   // Behavior modal
   const [behaviorModalOpen, setBehaviorModalOpen] = useState(false);
@@ -286,6 +289,41 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
     setAgent((prev) => ({ ...prev, [field]: value }));
   }, []);
 
+  const handleAgentAvatarChange = useCallback(
+    async (file: File | null) => {
+      if (!file) {
+        setAgentAvatarFile(null);
+        setAgent((prev) => ({ ...prev, avatarUrl: "" }));
+        return;
+      }
+      // Show local preview immediately so the user gets feedback even before auth/upload.
+      const previewUrl = URL.createObjectURL(file);
+      setAgentAvatarFile(file);
+      setAgent((prev) => ({ ...prev, avatarUrl: previewUrl }));
+
+      // If signed in, upload right away so the URL is permanent.
+      if (userId) {
+        setAgentAvatarUploading(true);
+        try {
+          const url = await uploadBrandAsset(userId, file, "avatar");
+          if (url) {
+            setAgent((prev) => ({ ...prev, avatarUrl: url }));
+            setAgentAvatarFile(null);
+            toast.success("Profile photo uploaded");
+          } else {
+            toast.error("Profile photo upload failed. It will be retried on submit.");
+          }
+        } catch (err) {
+          console.error("Avatar upload failed:", err);
+          toast.error("Profile photo upload failed. It will be retried on submit.");
+        } finally {
+          setAgentAvatarUploading(false);
+        }
+      }
+    },
+    [userId]
+  );
+
   const submitRequest = useCallback(async (authenticatedUserId: string) => {
     setSubmitting(true);
     try {
@@ -425,6 +463,7 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
             <AgentContactSection
               agent={agent}
               onChange={handleAgentChange}
+              onAvatarFileChange={handleAgentAvatarChange}
             />
 
             {/* License Expired Banner */}
