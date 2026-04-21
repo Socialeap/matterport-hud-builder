@@ -449,27 +449,38 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
     [userId]
   );
 
-  // ── Free-client status lookup ─────────────────────────────────────
-  // Determines whether the bottom button is "Download" (free) or
-  // "Pay $X & Download" (paid). Server is the authority — this is
-  // only used for UI labelling.
+  // ── Authoritative Studio access lookup ─────────────────────────────
+  // Single server-side resolver determines: link status, invitation state,
+  // free/paid eligibility, MSP pricing config, and payout readiness.
+  // Auto-heals stale `client_providers` rows from accepted invitations.
   useEffect(() => {
     if (!userId) {
-      setIsFreeClient(false);
+      setAccessState((s) => ({ ...s, loaded: true, linked: false, isFree: false }));
       return;
     }
     let cancelled = false;
-    getClientFreeStatusFn({ data: { providerId: branding.provider_id } })
+    getStudioAccessStateFn({ data: { providerId: branding.provider_id } })
       .then((res) => {
-        if (!cancelled) setIsFreeClient(!!res?.isFree);
+        if (cancelled) return;
+        setAccessState({
+          linked: !!res.linked,
+          isFree: !!res.isFree,
+          pricingConfigured: !!res.pricingConfigured,
+          payoutsReady: !!res.payoutsReady,
+          providerBrandName: res.providerBrandName || "",
+          loaded: true,
+        });
       })
-      .catch(() => {
-        if (!cancelled) setIsFreeClient(false);
+      .catch((err) => {
+        console.warn("getStudioAccessState failed:", err);
+        if (!cancelled) {
+          setAccessState((s) => ({ ...s, loaded: true }));
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [userId, branding.provider_id, getClientFreeStatusFn]);
+  }, [userId, branding.provider_id, getStudioAccessStateFn]);
 
   /**
    * Generate the .html and trigger a browser download for the given
