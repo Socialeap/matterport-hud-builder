@@ -10,10 +10,10 @@ import type { PropertyModel, AgentContact, TourBehavior } from "./types";
 import { DEFAULT_BEHAVIOR, DEFAULT_AGENT } from "./types";
 import type { Tables } from "@/integrations/supabase/types";
 import { supabase } from "@/integrations/supabase/client";
-import { savePresentationRequest, generatePresentation } from "@/lib/portal.functions";
+import { savePresentationRequest, generatePresentation, getClientFreeStatus } from "@/lib/portal.functions";
 import { uploadBrandAsset } from "@/lib/storage";
 import { toast } from "sonner";
-import { Checkbox } from "@/components/ui/checkbox";
+import { calculatePresentationPrice } from "@/lib/portal/pricing";
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe-js";
 import { getStripeForConnect } from "@/lib/stripe";
 import { useServerFn } from "@tanstack/react-start";
@@ -155,12 +155,13 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
   // Signup modal
   const [signupOpen, setSignupOpen] = useState(false);
 
-  // Intent/submission state
+  // Submission/download state
   const [submitting, setSubmitting] = useState(false);
-  const [showConfirmation, setShowConfirmation] = useState(false);
 
-  // Purchase state
-  const [reviewApproved, setReviewApproved] = useState(false);
+  // Free-client status (from client_providers.is_free)
+  const [isFreeClient, setIsFreeClient] = useState(false);
+
+  // Purchase / checkout state
   const [showCheckout, setShowCheckout] = useState(false);
   const [savedModelId, setSavedModelId] = useState<string | null>(null);
   const [isReleased, setIsReleased] = useState(false);
@@ -170,7 +171,9 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
   const [connectAccountId, setConnectAccountId] = useState<string | null>(null);
   const [checkoutClientSecret, setCheckoutClientSecret] = useState<string | null>(null);
   const generatePresentationFn = useServerFn(generatePresentation);
+  const getClientFreeStatusFn = useServerFn(getClientFreeStatus);
   const workerRef = useRef<EmbeddingWorkerClient | null>(null);
+  const autoDownloadTriggeredRef = useRef(false);
 
   // ── Draft autosave (client-side only, no backend) ─────────────────
   const providerSlug = branding.slug || branding.provider_id;
@@ -200,7 +203,6 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
     setModels(draft.models?.length ? draft.models : [createEmptyModel()]);
     setBehaviors(draft.behaviors || {});
     setAgent(draft.agent || { ...DEFAULT_AGENT });
-    setReviewApproved(!!draft.reviewApproved);
   }, []);
 
   const handleResumeDraft = useCallback(() => {
@@ -229,10 +231,10 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
       models,
       behaviors,
       agent,
-      reviewApproved,
+      reviewApproved: false,
     });
     toast.success("Draft exported");
-  }, [providerSlug, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent, reviewApproved]);
+  }, [providerSlug, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent]);
 
   const handleImportDraft = useCallback(async (file: File) => {
     const draft = await importDraftFile(file);
@@ -259,13 +261,14 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
         models,
         behaviors,
         agent,
-        reviewApproved,
+        reviewApproved: false,
       });
     }, 500);
     return () => window.clearTimeout(handle);
-  }, [providerSlug, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent, reviewApproved]);
+  }, [providerSlug, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent]);
 
-  // Post-payment polling: detect return from Stripe checkout
+  // Post-payment polling: detect return from Stripe checkout and
+  // auto-trigger the download once the webhook flips status to "paid".
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const checkoutModelId = params.get("checkout_model_id");
@@ -288,6 +291,12 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
         setIsPolling(false);
         clearInterval(interval);
         clearDraft(providerSlug);
+        if (!autoDownloadTriggeredRef.current) {
+          autoDownloadTriggeredRef.current = true;
+          // Strip the query param so a refresh doesn't re-trigger polling.
+          window.history.replaceState({}, "", window.location.pathname);
+          runDownload(checkoutModelId);
+        }
       }
       if (attempts >= maxAttempts) {
         setIsPolling(false);
@@ -296,35 +305,28 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
       }
     }, 2000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const isPro = branding.tier === "pro";
-  const hasPricing = branding.base_price_cents != null && branding.stripe_onboarding_complete;
 
-  // Calculate price — supports flat-rate or 3-tier model
-  // Tier: 1m=$A, 2m=2*$A, 3m=$B (bundle), 4+m=$B + (n-3)*$C
+  // Single source of truth for pricing — same function the edge function uses.
   const modelCount = models.filter((m) => m.matterportId.trim()).length;
-  const priceA = branding.base_price_cents ?? 0;
-  const priceB = (branding as { tier3_price_cents?: number | null }).tier3_price_cents;
-  const priceC = branding.additional_model_fee_cents ?? 0;
-  const useFlatRate = Boolean(
-    (branding as { use_flat_pricing?: boolean | null }).use_flat_pricing
-  );
-  const flatCents =
-    (branding as { flat_price_per_model_cents?: number | null })
-      .flat_price_per_model_cents ?? 0;
-  const tier3Total = priceB ?? priceA * 2 + priceC;
-  let totalCents = 0;
-  if (useFlatRate) {
-    totalCents = flatCents * modelCount;
-  } else if (modelCount <= 2) {
-    totalCents = priceA * modelCount;
-  } else if (modelCount === 3) {
-    totalCents = tier3Total;
-  } else {
-    totalCents = tier3Total + (modelCount - 3) * priceC;
-  }
-  const extraModels = Math.max(0, modelCount - 3);
+  const pricing = calculatePresentationPrice({
+    modelCount,
+    use_flat_pricing: Boolean(
+      (branding as { use_flat_pricing?: boolean | null }).use_flat_pricing
+    ),
+    flat_price_per_model_cents:
+      (branding as { flat_price_per_model_cents?: number | null })
+        .flat_price_per_model_cents ?? null,
+    base_price_cents: branding.base_price_cents ?? null,
+    tier3_price_cents:
+      (branding as { tier3_price_cents?: number | null }).tier3_price_cents ?? null,
+    additional_model_fee_cents: branding.additional_model_fee_cents ?? null,
+  });
+  const totalCents = pricing.totalCents;
+  const hasPricing = pricing.configured && Boolean(branding.stripe_onboarding_complete);
 
   const handleBrandingChange = useCallback((field: string, value: string) => {
     switch (field) {
@@ -426,24 +428,119 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
     [userId]
   );
 
-  const submitRequest = useCallback(async (authenticatedUserId: string) => {
-    setSubmitting(true);
+  // ── Free-client status lookup ─────────────────────────────────────
+  // Determines whether the bottom button is "Download" (free) or
+  // "Pay $X & Download" (paid). Server is the authority — this is
+  // only used for UI labelling.
+  useEffect(() => {
+    if (!userId) {
+      setIsFreeClient(false);
+      return;
+    }
+    let cancelled = false;
+    getClientFreeStatusFn({ data: { providerId: branding.provider_id } })
+      .then((res) => {
+        if (!cancelled) setIsFreeClient(!!res?.isFree);
+      })
+      .catch(() => {
+        if (!cancelled) setIsFreeClient(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, branding.provider_id, getClientFreeStatusFn]);
+
+  /**
+   * Generate the .html and trigger a browser download for the given
+   * saved_model. Pre-condition: the model is `paid` + `is_released`
+   * (server enforces this in `generatePresentation`).
+   */
+  const runDownload = useCallback(async (modelId: string) => {
+    setDownloading(true);
+    setDownloadStep("Generating Q&A dictionary…");
     try {
-      // If a local avatar file is still pending (picked before sign-in), upload it now.
-      let finalAgent = agent;
-      if (agentAvatarFile) {
-        try {
-          const url = await uploadBrandAsset(authenticatedUserId, agentAvatarFile, "avatar");
-          if (url) {
-            finalAgent = { ...agent, avatarUrl: url };
-            setAgent(finalAgent);
-            setAgentAvatarFile(null);
-          }
-        } catch (err) {
-          console.error("Avatar upload (deferred) failed:", err);
+      // Step 1: Build property Q&A pairs locally (deterministic, no LLM).
+      const entries: QAEntry[] = buildPropertyQAEntries(models, agent);
+
+      // Step 2: Embed questions via Web Worker.
+      let qaDatabase: QADatabaseEntry[] = [];
+      if (entries.length > 0) {
+        setDownloadStep(`Embedding ${entries.length} Q&A pairs…`);
+        if (!workerRef.current) {
+          workerRef.current = new EmbeddingWorkerClient();
         }
+        await workerRef.current.init();
+        const questions = entries.map((e) => e.question);
+        const embeddings = await workerRef.current.embedBatch(questions);
+        qaDatabase = entries.map((entry, i) => ({
+          id: `qa-${i}`,
+          question: entry.question,
+          answer: entry.answer,
+          source_anchor_id: entry.source_anchor_id,
+          embedding: embeddings[i],
+        }));
       }
 
+      // Step 3: Generate presentation HTML with Q&A baked in.
+      setDownloadStep("Building presentation…");
+      const result = await generatePresentationFn({
+        data: { modelId, qaDatabase },
+      });
+      if (!result.success || !result.html) {
+        toast.error(result.error || "Failed to generate presentation");
+        return;
+      }
+
+      const blob = new Blob([result.html], { type: "text/html" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const safeName = (models[0]?.name || "presentation").replace(/[^a-zA-Z0-9_-]/g, "_");
+      a.download = `${safeName}.html`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      clearDraft(providerSlug);
+      toast.success("Presentation downloaded");
+    } catch (err) {
+      console.error("Download failed:", err);
+      toast.error("Download failed. Please try again.");
+    }
+    setDownloading(false);
+    setDownloadStep("");
+  }, [models, agent, generatePresentationFn, providerSlug]);
+
+  /**
+   * Single entry-point for the bottom "Download" / "Pay & Download"
+   * button. Branches on auth + is_free + pricing.
+   */
+  const handleDownload = useCallback(async () => {
+    // 1) Anonymous → open signup modal; flow re-runs after auth.
+    if (!userId) {
+      setSignupOpen(true);
+      return;
+    }
+
+    // 2) Save / upsert the saved_model row first (and re-run avatar upload
+    //    if a local file is still pending from pre-auth).
+    setSubmitting(true);
+    let finalAgent = agent;
+    if (agentAvatarFile) {
+      try {
+        const url = await uploadBrandAsset(userId, agentAvatarFile, "avatar");
+        if (url) {
+          finalAgent = { ...agent, avatarUrl: url };
+          setAgent(finalAgent);
+          setAgentAvatarFile(null);
+        }
+      } catch (err) {
+        console.error("Avatar upload (deferred) failed:", err);
+      }
+    }
+
+    let modelId = savedModelId;
+    try {
       const result = await savePresentationRequest({
         data: {
           providerId: branding.provider_id,
@@ -451,69 +548,91 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
           properties: models,
           tourConfig: behaviors as unknown as Record<string, unknown>,
           agent: finalAgent as unknown as Record<string, string>,
-          brandingOverrides: {
-            brandName,
-            accentColor,
-            hudBgColor,
-            gateLabel,
-          },
+          brandingOverrides: { brandName, accentColor, hudBgColor, gateLabel },
         },
       });
-
-      if (result.success) {
-        clearDraft(providerSlug);
-        setShowConfirmation(true);
-      } else {
-        toast.error(result.error || "Failed to submit request");
+      if (!result.success || !result.modelId) {
+        toast.error(result.error || "Failed to save presentation");
+        setSubmitting(false);
+        return;
       }
+      modelId = result.modelId;
+      setSavedModelId(modelId);
     } catch (err) {
-      toast.error("An error occurred. Please try again.");
       console.error(err);
+      toast.error("An error occurred. Please try again.");
+      setSubmitting(false);
+      return;
+    }
+
+    // 3) Hit create-connect-checkout. Server decides free vs paid.
+    try {
+      const { data: checkoutData, error: checkoutError } =
+        await supabase.functions.invoke("create-connect-checkout", {
+          body: {
+            providerId: branding.provider_id,
+            modelId,
+            modelCount,
+            returnUrl: `${window.location.origin}${window.location.pathname}?checkout_model_id=${modelId}&session_id={CHECKOUT_SESSION_ID}`,
+          },
+        });
+
+      if (checkoutError) {
+        toast.error("Failed to create checkout session");
+        setSubmitting(false);
+        return;
+      }
+
+      // Free client → backend already marked paid + released.
+      if (checkoutData?.free === true) {
+        setIsReleased(true);
+        setSubmitting(false);
+        await runDownload(modelId);
+        return;
+      }
+
+      // Paid client → embedded checkout.
+      if (checkoutData?.clientSecret && checkoutData?.stripeConnectAccountId) {
+        setConnectAccountId(checkoutData.stripeConnectAccountId);
+        setCheckoutClientSecret(checkoutData.clientSecret);
+        setShowCheckout(true);
+        setSubmitting(false);
+        return;
+      }
+
+      toast.error(checkoutData?.error || "Failed to create checkout session");
+    } catch (err) {
+      console.error(err);
+      toast.error("An error occurred. Please try again.");
     }
     setSubmitting(false);
-  }, [branding.provider_id, providerSlug, models, behaviors, agent, agentAvatarFile, brandName, accentColor, hudBgColor, gateLabel]);
-
-  const handleConfirmIntent = useCallback(() => {
-    if (!userId) {
-      // Not logged in — show signup modal
-      setSignupOpen(true);
-    } else {
-      // Already logged in — submit directly
-      submitRequest(userId);
-    }
-  }, [userId, submitRequest]);
+  }, [
+    userId,
+    agent,
+    agentAvatarFile,
+    savedModelId,
+    branding.provider_id,
+    models,
+    behaviors,
+    brandName,
+    accentColor,
+    hudBgColor,
+    gateLabel,
+    modelCount,
+    runDownload,
+  ]);
 
   const handleAuthenticated = useCallback((newUserId: string) => {
     setUserId(newUserId);
     setSignupOpen(false);
-    submitRequest(newUserId);
-  }, [submitRequest]);
+    // After successful auth, re-run the download flow.
+    // Defer to next tick so userId state has a chance to settle.
+    setTimeout(() => {
+      handleDownload();
+    }, 0);
+  }, [handleDownload]);
 
   const behaviorModel = behaviorModelId ? models.find((m) => m.id === behaviorModelId) : null;
-
-  if (showConfirmation) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background px-4">
-        <div className="mx-auto max-w-lg text-center">
-          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-          </div>
-          <h2 className="text-2xl font-bold text-foreground">Request Submitted!</h2>
-          <p className="mt-2 text-muted-foreground">
-            Your presentation configuration has been saved. To proceed, complete payment using the link below.
-          </p>
-           <p className="mt-4 text-sm text-muted-foreground">
-              Your presentation has been submitted. You will be notified when it is ready for download.
-            </p>
-          {!isPro && (
-            <p className="mt-6 text-xs text-muted-foreground">Powered by Transcendence Media</p>
-          )}
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -645,104 +764,22 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
               </div>
             )}
 
-            {/* Purchase / Download Card */}
+            {/* Download / Payment Card */}
             {isPolling ? (
               <div className="rounded-lg border-2 border-primary/50 bg-primary/5 p-6 text-center">
                 <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
                 <h3 className="text-lg font-semibold text-foreground">Verifying Payment…</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Please wait while we confirm your payment. This may take a few seconds.
+                  Please wait while we confirm your payment, then your download will start automatically.
                 </p>
-              </div>
-            ) : isReleased ? (
-              <div className="rounded-lg border-2 border-green-500 bg-green-500/5 p-6 text-center">
-                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-green-500/10">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-semibold text-foreground">Payment Confirmed!</h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Your presentation is ready for download.
-                </p>
-                <Button
-                  size="lg"
-                  className="mt-4 text-white"
-                  style={{ backgroundColor: accentColor }}
-                  disabled={downloading || !savedModelId || licenseExpired}
-                  onClick={async () => {
-                    if (!savedModelId) return;
-                    setDownloading(true);
-                    setDownloadStep("Generating Q&A dictionary…");
-                    try {
-                      // ── Step 1: Build property Q&A pairs locally ─────────
-                      //   Deterministic rule-based generation from typed
-                      //   builder state — zero LLM, zero network. Covers the
-                      //   "Ask AI" panel's top-of-funnel metadata questions;
-                      //   the docs-qa panel (Phase 5) handles content-grounded
-                      //   questions via chunk embeddings.
-                      const entries: QAEntry[] = buildPropertyQAEntries(models, agent);
-
-                      // ── Step 2: Embed questions via Web Worker ───────────
-                      let qaDatabase: QADatabaseEntry[] = [];
-                      if (entries.length > 0) {
-                        setDownloadStep(`Embedding ${entries.length} Q&A pairs…`);
-
-                        if (!workerRef.current) {
-                          workerRef.current = new EmbeddingWorkerClient();
-                        }
-                        await workerRef.current.init();
-
-                        const questions = entries.map((e) => e.question);
-                        const embeddings = await workerRef.current.embedBatch(questions);
-
-                        qaDatabase = entries.map((entry, i) => ({
-                          id: `qa-${i}`,
-                          question: entry.question,
-                          answer: entry.answer,
-                          source_anchor_id: entry.source_anchor_id,
-                          embedding: embeddings[i],
-                        }));
-                      }
-
-                      // ── Step 3: Generate presentation HTML with Q&A baked in ─
-                      //   Per-property-doc chunk embeddings + canonical Q&As
-                      //   are persisted at extraction time (see
-                      //   usePropertyExtractions.extract) while authenticated
-                      //   as the provider. This code path runs as the client
-                      //   (read-only on property_extractions), so we just
-                      //   consume what the provider already cached.
-                      setDownloadStep("Building presentation…");
-                      const result = await generatePresentationFn({
-                        data: { modelId: savedModelId, qaDatabase },
-                      });
-                      if (!result.success || !result.html) {
-                        toast.error(result.error || "Failed to generate presentation");
-                        return;
-                      }
-                      const blob = new Blob([result.html], { type: "text/html" });
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement("a");
-                      a.href = url;
-                      const safeName = (models[0]?.name || "presentation").replace(/[^a-zA-Z0-9_-]/g, "_");
-                      a.download = `${safeName}.html`;
-                      document.body.appendChild(a);
-                      a.click();
-                      document.body.removeChild(a);
-                      URL.revokeObjectURL(url);
-                    } catch {
-                      toast.error("Download failed. Please try again.");
-                    }
-                    setDownloading(false);
-                    setDownloadStep("");
-                  }}
-                >
-                  {downloading ? (downloadStep || "Generating…") : "Download Presentation File"}
-                </Button>
               </div>
             ) : showCheckout && savedModelId && connectAccountId && checkoutClientSecret ? (
               <div className="rounded-lg border p-6">
                 <h3 className="text-lg font-semibold text-foreground mb-4">Complete Payment</h3>
+                <p className="mb-4 text-sm text-muted-foreground">
+                  Total: <span className="font-semibold text-foreground">${(totalCents / 100).toFixed(2)}</span>
+                  {" "}— your presentation will download automatically once payment is confirmed.
+                </p>
                 <EmbeddedCheckoutProvider
                   stripe={getStripeForConnect(connectAccountId)}
                   options={{ clientSecret: checkoutClientSecret }}
@@ -750,36 +787,78 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
                   <EmbeddedCheckout />
                 </EmbeddedCheckoutProvider>
               </div>
+            ) : isReleased && downloading ? (
+              <div className="rounded-lg border-2 border-primary/50 bg-primary/5 p-6 text-center">
+                <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+                <h3 className="text-lg font-semibold text-foreground">Preparing Your Download…</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {downloadStep || "Generating your presentation file…"}
+                </p>
+              </div>
+            ) : isReleased ? (
+              /* Re-download fallback (e.g. user closed the auto-download). */
+              <div className="rounded-lg border-2 border-green-500 bg-green-500/5 p-6 text-center">
+                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-green-500/10">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-foreground">Presentation Ready</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Your presentation is unlocked. Click below to download again.
+                </p>
+                <Button
+                  size="lg"
+                  className="mt-4 text-white"
+                  style={{ backgroundColor: accentColor }}
+                  disabled={!savedModelId || licenseExpired}
+                  onClick={() => savedModelId && runDownload(savedModelId)}
+                >
+                  Download Presentation
+                </Button>
+              </div>
+            ) : isFreeClient ? (
+              /* Free client — Download with no price. */
+              <div className="rounded-lg border-2 p-6 text-center" style={{ borderColor: accentColor }}>
+                <h3 className="text-lg font-semibold text-foreground">
+                  Download Your Presentation
+                </h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Included with your account — no payment required.
+                </p>
+                <Button
+                  size="lg"
+                  className="mt-4 w-full text-white"
+                  style={{ backgroundColor: accentColor }}
+                  disabled={submitting || downloading || modelCount < 1 || licenseExpired}
+                  onClick={handleDownload}
+                >
+                  {submitting
+                    ? "Preparing…"
+                    : downloading
+                      ? (downloadStep || "Generating…")
+                      : modelCount < 1
+                        ? "Add a property to download"
+                        : "Download Presentation"}
+                </Button>
+              </div>
             ) : hasPricing ? (
+              /* Paid client — Pay $X.XX & Download. */
               <div className="rounded-lg border-2 p-6" style={{ borderColor: accentColor }}>
                 <h3 className="text-lg font-semibold text-foreground">
-                  Purchase & Download Your Presentation
+                  Download Your Presentation
                 </h3>
 
-                {/* Price breakdown */}
+                {/* Price breakdown — driven by the shared pricing function. */}
                 <div className="mt-4 rounded-md bg-muted/50 p-4 text-left text-sm space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">
-                      {modelCount <= 2
-                        ? `${modelCount || 1} model${modelCount === 1 ? "" : "s"} (Tier A)`
-                        : modelCount === 3
-                          ? "3 models (Tier B — bundle)"
-                          : "3 models (Tier B — bundle)"}
-                    </span>
-                    <span className="font-medium text-foreground">
-                      ${(modelCount <= 2 ? priceA / 100 : tier3Total / 100).toFixed(2)}
-                    </span>
-                  </div>
-                  {extraModels > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">
-                        + {extraModels} extra model{extraModels > 1 ? "s" : ""} × ${(priceC / 100).toFixed(2)}
-                      </span>
+                  {pricing.breakdown.map((line, i) => (
+                    <div key={i} className="flex justify-between">
+                      <span className="text-muted-foreground">{line.label}</span>
                       <span className="font-medium text-foreground">
-                        ${((extraModels * priceC) / 100).toFixed(2)}
+                        ${(line.cents / 100).toFixed(2)}
                       </span>
                     </div>
-                  )}
+                  ))}
                   <div className="border-t border-border pt-2 mt-2 flex justify-between font-semibold">
                     <span>Total</span>
                     <span>${(totalCents / 100).toFixed(2)}</span>
@@ -789,99 +868,31 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
                   </p>
                 </div>
 
-                {/* Review checkbox */}
-                <div className="mt-4 flex items-start gap-3">
-                  <Checkbox
-                    id="review-approved"
-                    checked={reviewApproved}
-                    onCheckedChange={(v) => setReviewApproved(v === true)}
-                  />
-                  <label htmlFor="review-approved" className="text-sm text-muted-foreground cursor-pointer leading-snug">
-                    I have reviewed and approve this as my finalized presentation.
-                  </label>
-                </div>
-
-                {/* Purchase button */}
-                {reviewApproved && (
-                  <Button
-                    size="lg"
-                    className="mt-4 w-full text-white"
-                    style={{ backgroundColor: accentColor }}
-                    disabled={submitting || modelCount < 1}
-                    onClick={async () => {
-                      if (!userId) {
-                        setSignupOpen(true);
-                        return;
-                      }
-                      setSubmitting(true);
-                      try {
-                        const result = await savePresentationRequest({
-                          data: {
-                            providerId: branding.provider_id,
-                            name: models[0]?.name || "Untitled Presentation",
-                            properties: models,
-                            tourConfig: behaviors as unknown as Record<string, unknown>,
-                            agent: agent as unknown as Record<string, string>,
-                            brandingOverrides: { brandName, accentColor, hudBgColor, gateLabel },
-                          },
-                        });
-                        if (result.success && result.modelId) {
-                          setSavedModelId(result.modelId);
-                          // Pre-fetch checkout session to get Connect account ID + client secret
-                          const { data: checkoutData, error: checkoutError } = await supabase.functions.invoke("create-connect-checkout", {
-                            body: {
-                              providerId: branding.provider_id,
-                              modelId: result.modelId,
-                              modelCount,
-                              returnUrl: `${window.location.origin}${window.location.pathname}?checkout_model_id=${result.modelId}&session_id={CHECKOUT_SESSION_ID}`,
-                            },
-                          });
-                          if (checkoutError) {
-                            toast.error("Failed to create checkout session");
-                          } else if (checkoutData?.free === true) {
-                            // Free client — bypass Stripe entirely; backend already
-                            // marked the model paid + released.
-                            toast.success("Your Presentation is ready — preparing download…");
-                            setIsReleased(true);
-                            clearDraft(providerSlug);
-                          } else if (checkoutData?.clientSecret && checkoutData?.stripeConnectAccountId) {
-                            setConnectAccountId(checkoutData.stripeConnectAccountId);
-                            setCheckoutClientSecret(checkoutData.clientSecret);
-                            setShowCheckout(true);
-                          } else {
-                            toast.error("Failed to create checkout session");
-                          }
-                        } else {
-                          toast.error(result.error || "Failed to save presentation");
-                        }
-                      } catch {
-                        toast.error("An error occurred. Please try again.");
-                      }
-                      setSubmitting(false);
-                    }}
-                  >
-                    {submitting ? "Preparing…" : `Purchase — $${(totalCents / 100).toFixed(2)}`}
-                  </Button>
-                )}
-              </div>
-            ) : (
-              /* Fallback: no pricing configured, use old flow */
-              <div className="rounded-lg border-2 p-6 text-center" style={{ borderColor: accentColor }}>
-                <h3 className="text-lg font-semibold text-foreground">
-                  Satisfied with your preview?
-                </h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Request your professional presentation and receive it once payment is confirmed.
-                </p>
                 <Button
                   size="lg"
-                  className="mt-4 text-white"
+                  className="mt-4 w-full text-white"
                   style={{ backgroundColor: accentColor }}
-                  onClick={handleConfirmIntent}
-                  disabled={submitting}
+                  disabled={submitting || downloading || modelCount < 1 || licenseExpired}
+                  onClick={handleDownload}
                 >
-                  {submitting ? "Submitting…" : "I Want This — Request Presentation"}
+                  {submitting
+                    ? "Preparing checkout…"
+                    : modelCount < 1
+                      ? "Add a property to continue"
+                      : `Pay $${(totalCents / 100).toFixed(2)} & Download`}
                 </Button>
+              </div>
+            ) : (
+              /* No pricing configured + not free — informative notice only. */
+              <div className="rounded-lg border-2 border-muted p-6 text-center">
+                <h3 className="text-lg font-semibold text-foreground">
+                  Pricing Not Yet Available
+                </h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  This Studio's pricing isn't set up yet. Please contact{" "}
+                  <span className="font-medium text-foreground">{brandName || "the provider"}</span>{" "}
+                  to receive your presentation.
+                </p>
               </div>
             )}
           </div>

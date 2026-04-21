@@ -2,6 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { type StripeEnv, createStripeClient } from "../_shared/stripe.ts";
+import { calculatePresentationPrice } from "../_shared/pricing.ts";
 
 const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -57,10 +58,15 @@ serve(async (req) => {
       });
     }
 
-    // Look up MSP's branding/pricing and Stripe Connect ID
+    // Look up MSP's branding/pricing and Stripe Connect ID — load all five
+    // pricing columns so the shared pricing function has what it needs.
     const { data: branding, error: brandingError } = await supabaseAdmin
       .from("branding_settings")
-      .select("stripe_connect_id, stripe_onboarding_complete, base_price_cents, model_threshold, additional_model_fee_cents, brand_name")
+      .select(
+        "stripe_connect_id, stripe_onboarding_complete, brand_name, " +
+        "use_flat_pricing, flat_price_per_model_cents, " +
+        "base_price_cents, tier3_price_cents, additional_model_fee_cents"
+      )
       .eq("provider_id", providerId)
       .single();
 
@@ -71,33 +77,9 @@ serve(async (req) => {
       });
     }
 
-    if (!branding.stripe_connect_id || !branding.stripe_onboarding_complete) {
-      return new Response(JSON.stringify({ error: "Provider has not connected Stripe" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    if (branding.base_price_cents == null) {
-      return new Response(JSON.stringify({ error: "Provider has not configured pricing" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Calculate total price server-side
-    const basePriceCents = branding.base_price_cents;
-    const threshold = branding.model_threshold ?? 1;
-    const additionalFeeCents = branding.additional_model_fee_cents ?? 0;
-
-    const totalCents = modelCount <= threshold
-      ? basePriceCents
-      : basePriceCents + ((modelCount - threshold) * additionalFeeCents);
-
     // ── Free-client bypass ──────────────────────────────────────────────
-    // If this client was invited as a "Free" client, skip Stripe entirely
-    // and immediately mark the saved_model paid + released so they can
-    // generate/download their Presentation at no cost.
+    // Check this BEFORE any Stripe / pricing checks so free clients can
+    // download even when pricing or Stripe Connect aren't configured.
     const { data: link } = await supabaseAdmin
       .from("client_providers")
       .select("is_free")
@@ -121,6 +103,33 @@ serve(async (req) => {
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    if (!branding.stripe_connect_id || !branding.stripe_onboarding_complete) {
+      return new Response(JSON.stringify({ error: "Provider has not connected Stripe" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Calculate price using the shared pricing function — server is the
+    // source of truth. Client-supplied totals are never trusted.
+    const pricing = calculatePresentationPrice({
+      modelCount,
+      use_flat_pricing: !!branding.use_flat_pricing,
+      flat_price_per_model_cents: branding.flat_price_per_model_cents ?? null,
+      base_price_cents: branding.base_price_cents ?? null,
+      tier3_price_cents: branding.tier3_price_cents ?? null,
+      additional_model_fee_cents: branding.additional_model_fee_cents ?? null,
+    });
+
+    if (!pricing.configured || pricing.totalCents < 1) {
+      return new Response(JSON.stringify({ error: "Provider has not configured pricing" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const totalCents = pricing.totalCents;
 
     const env: StripeEnv = "sandbox";
     const stripe = createStripeClient(env);

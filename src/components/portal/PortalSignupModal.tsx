@@ -100,8 +100,8 @@ export function PortalSignupModal({
           </DialogTitle>
           <DialogDescription>
             {mode === "signup"
-              ? `Sign up to save your presentation and request it from ${brandName || "the provider"}.`
-              : "Sign in to continue with your request."}
+              ? `Sign in to download your presentation from ${brandName || "the provider"}.`
+              : `Sign in to download your presentation from ${brandName || "the provider"}.`}
           </DialogDescription>
         </DialogHeader>
 
