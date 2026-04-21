@@ -88,6 +88,71 @@ function InviteAcceptancePage() {
     };
   }, [token, lookupFn]);
 
+  // Post-auth auto-finalize: if the invitee returns here already signed in
+  // (e.g. after Google OAuth or email verification), automatically accept the
+  // invitation and route them into the MSP's Studio. This avoids dumping
+  // newly-signed-up clients on the platform landing page.
+  useEffect(() => {
+    if (authLoading || loading || !user || !invitation) return;
+    if (submitting !== null) return;
+    if (
+      !user.email ||
+      user.email.toLowerCase() !== invitation.email.toLowerCase()
+    )
+      return;
+
+    const status = localStatus ?? invitation.status;
+
+    if (status === "accepted") {
+      if (invitation.brand?.slug) {
+        navigate({
+          to: "/p/$slug",
+          params: { slug: invitation.brand.slug },
+          replace: true,
+        });
+      } else {
+        navigate({ to: "/dashboard", replace: true });
+      }
+      return;
+    }
+
+    if (
+      status === "pending" &&
+      new Date(invitation.expiresAt).getTime() > Date.now()
+    ) {
+      setSubmitting("accept");
+      acceptFn({ data: { token } })
+        .then((res) => {
+          setLocalStatus("accepted");
+          if (res.slug) {
+            navigate({
+              to: "/p/$slug",
+              params: { slug: res.slug },
+              replace: true,
+            });
+          } else {
+            navigate({ to: "/dashboard", replace: true });
+          }
+        })
+        .catch((err) => {
+          toast.error(
+            err instanceof Error ? err.message : "Failed to accept invitation",
+          );
+          setSubmitting(null);
+        });
+    }
+  }, [
+    authLoading,
+    loading,
+    user,
+    invitation,
+    localStatus,
+    submitting,
+    token,
+    acceptFn,
+    navigate,
+  ]);
+
   const brand = invitation?.brand;
   const accent = brand?.accentColor || "#3B82F6";
   const bg = brand?.hudBgColor || "#0f172a";
