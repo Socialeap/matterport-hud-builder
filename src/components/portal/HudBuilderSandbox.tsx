@@ -155,12 +155,13 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
   // Signup modal
   const [signupOpen, setSignupOpen] = useState(false);
 
-  // Intent/submission state
+  // Submission/download state
   const [submitting, setSubmitting] = useState(false);
-  const [showConfirmation, setShowConfirmation] = useState(false);
 
-  // Purchase state
-  const [reviewApproved, setReviewApproved] = useState(false);
+  // Free-client status (from client_providers.is_free)
+  const [isFreeClient, setIsFreeClient] = useState(false);
+
+  // Purchase / checkout state
   const [showCheckout, setShowCheckout] = useState(false);
   const [savedModelId, setSavedModelId] = useState<string | null>(null);
   const [isReleased, setIsReleased] = useState(false);
@@ -170,7 +171,9 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
   const [connectAccountId, setConnectAccountId] = useState<string | null>(null);
   const [checkoutClientSecret, setCheckoutClientSecret] = useState<string | null>(null);
   const generatePresentationFn = useServerFn(generatePresentation);
+  const getClientFreeStatusFn = useServerFn(getClientFreeStatus);
   const workerRef = useRef<EmbeddingWorkerClient | null>(null);
+  const autoDownloadTriggeredRef = useRef(false);
 
   // ── Draft autosave (client-side only, no backend) ─────────────────
   const providerSlug = branding.slug || branding.provider_id;
