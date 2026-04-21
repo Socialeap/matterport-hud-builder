@@ -312,6 +312,7 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
 
   // Single source of truth for pricing — same function the edge function uses.
   const modelCount = models.filter((m) => m.matterportId.trim()).length;
+  const providerBrandName = branding.brand_name?.trim() || brandName || "the provider";
   const pricing = calculatePresentationPrice({
     modelCount,
     use_flat_pricing: Boolean(
@@ -326,7 +327,12 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
     additional_model_fee_cents: branding.additional_model_fee_cents ?? null,
   });
   const totalCents = pricing.totalCents;
-  const hasPricing = pricing.configured && Boolean(branding.stripe_onboarding_complete);
+  const pricingConfigured = pricing.configured;
+  const payoutsReady = Boolean(
+    branding.stripe_onboarding_complete &&
+      (branding as { stripe_connect_id?: string | null }).stripe_connect_id
+  );
+  const checkoutReady = pricingConfigured && payoutsReady;
 
   const handleBrandingChange = useCallback((field: string, value: string) => {
     switch (field) {
@@ -842,7 +848,7 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
                         : "Download Presentation"}
                 </Button>
               </div>
-            ) : hasPricing ? (
+            ) : checkoutReady ? (
               /* Paid client — Pay $X.XX & Download. */
               <div className="rounded-lg border-2 p-6" style={{ borderColor: accentColor }}>
                 <h3 className="text-lg font-semibold text-foreground">
@@ -882,16 +888,51 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
                       : `Pay $${(totalCents / 100).toFixed(2)} & Download`}
                 </Button>
               </div>
+            ) : pricingConfigured ? (
+              /* Pricing exists, but payment routing is unavailable. */
+              <div className="rounded-lg border-2 border-muted p-6">
+                <h3 className="text-lg font-semibold text-foreground">
+                  Payment Temporarily Unavailable
+                </h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  This Studio's pricing is configured, but online checkout is not available right now.
+                  If you need help completing payment, please contact{" "}
+                  <span className="font-medium text-foreground">{providerBrandName}</span>.
+                </p>
+
+                <div className="mt-4 rounded-md bg-muted/50 p-4 text-left text-sm space-y-1">
+                  {pricing.breakdown.map((line, i) => (
+                    <div key={i} className="flex justify-between">
+                      <span className="text-muted-foreground">{line.label}</span>
+                      <span className="font-medium text-foreground">
+                        ${(line.cents / 100).toFixed(2)}
+                      </span>
+                    </div>
+                  ))}
+                  <div className="border-t border-border pt-2 mt-2 flex justify-between font-semibold">
+                    <span>Total</span>
+                    <span>${(totalCents / 100).toFixed(2)}</span>
+                  </div>
+                </div>
+
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="mt-4 w-full"
+                  disabled
+                >
+                  Payment Unavailable
+                </Button>
+              </div>
             ) : (
               /* No pricing configured + not free — informative notice only. */
               <div className="rounded-lg border-2 border-muted p-6 text-center">
                 <h3 className="text-lg font-semibold text-foreground">
-                  Pricing Not Yet Available
+                  Pricing Unavailable
                 </h3>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  This Studio's pricing isn't set up yet. Please contact{" "}
-                  <span className="font-medium text-foreground">{brandName || "the provider"}</span>{" "}
-                  to receive your presentation.
+                  We couldn't load pricing for this Studio right now. If you need help completing payment,
+                  please contact <span className="font-medium text-foreground">{providerBrandName}</span>.
                 </p>
               </div>
             )}
@@ -937,7 +978,7 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
         onAuthenticated={handleAuthenticated}
         providerId={branding.provider_id}
         accentColor={accentColor}
-        brandName={brandName}
+        brandName={providerBrandName}
       />
     </div>
   );
