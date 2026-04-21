@@ -471,7 +471,7 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
       console.error(err);
     }
     setSubmitting(false);
-  }, [branding.provider_id, models, behaviors, agent, agentAvatarFile, brandName, accentColor, hudBgColor, gateLabel]);
+  }, [branding.provider_id, providerSlug, models, behaviors, agent, agentAvatarFile, brandName, accentColor, hudBgColor, gateLabel]);
 
   const handleConfirmIntent = useCallback(() => {
     if (!userId) {
@@ -535,12 +535,62 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
             {userId && (
               <span className="text-xs text-muted-foreground">Signed in</span>
             )}
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".json,application/json"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleImportDraft(f);
+                e.target.value = "";
+              }}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => importInputRef.current?.click()}
+            >
+              Import Draft
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleExportDraft}
+            >
+              Export Draft
+            </Button>
             {!isPro && (
               <span className="text-xs text-muted-foreground">Powered by Transcendence Media</span>
             )}
           </div>
         </div>
       </header>
+
+      {/* Resume-draft banner */}
+      {draftBannerOpen && pendingDraft && (
+        <div className="border-b bg-muted/40 px-6 py-3">
+          <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
+            <div className="text-sm text-foreground">
+              <span className="font-medium">Resume your saved draft?</span>{" "}
+              <span className="text-muted-foreground">
+                Last saved {new Date(pendingDraft.savedAt).toLocaleString()}.
+                Note: uploaded logo, favicon, and profile photo will need to be re-added.
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button size="sm" onClick={handleResumeDraft} style={{ backgroundColor: accentColor, color: "white" }}>
+                Resume
+              </Button>
+              <Button size="sm" variant="outline" onClick={handleDiscardDraft}>
+                Start fresh
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="mx-auto max-w-7xl px-4 py-8">
         <div className="grid gap-8 lg:grid-cols-[1fr,1fr]">
