@@ -1,120 +1,80 @@
 
 
-## Plan: Vault preview polish + Free/Pay invitation attribute
+## Save & Resume Configuration Progress
 
-Three coordinated changes: (A) fully expose Vault category content to Starter MSPs as a read‑only preview, (B) drop `.wav` from the Sound Library, (C) add a Free/Pay attribute to invitations + clients that controls whether a client's Presentation download is free.
+### The question: client-side vs downloadable file?
 
----
+Both work, but they solve different problems. My recommendation is **client-side autosave by default, with an optional "Export progress file" for portability**. Here's why and how each fits.
 
-### A. Production Vault — full preview for Starter
+### Option A — Client-side autosave (recommended default)
 
-**File:** `src/routes/_authenticated.dashboard.vault.tsx`
+Store the in-progress configuration in the browser's `localStorage` (or `IndexedDB` for files). Zero backend involvement, zero user effort.
 
-Today the Tabs component is wrapped in `pointer-events-none` for Starters, so they cannot click through tabs. Fix:
+**Pros**
+- Invisible to the user — works automatically, like Google Docs.
+- Survives tab close, browser close, and crashes.
+- No "I forgot to save" failure mode.
+- Honors your "nothing on our servers" constraint.
 
-- **Remove** the `pointer-events-none select-none opacity-70` wrapper around `<Tabs>` so Starters can switch between all 6 category tabs and read each Category Guide.
-- Keep the existing top "Pro feature" banner and bottom "Unlock — View Pricing" CTA.
-- Inside each tab, keep these disabled for Starter:
-  - "Add Asset" button (already `disabled={isStarter}`).
-  - The asset cards section: render a small dimmed placeholder block "Sample assets appear here for Pro members" instead of the empty/asset list (so they see the structure but cannot create or interact with rows).
-  - `AssetEditorDialog` stays gated by `open && !isStarter` (already correct).
-- For the `property_doc` tab, the "Manage Templates" link is also blocked: render the row as a non‑link with a `Lock` icon for Starter.
+**Cons**
+- Tied to one browser on one device. Clearing site data wipes it.
+- Doesn't transfer to another machine.
+- Storage cap (~5 MB for `localStorage`, ~hundreds of MB for `IndexedDB`).
 
-Net result: Starters can browse all 6 tabs, read the Category Guides, but cannot add assets or open the editor / templates page.
+### Option B — Downloadable progress file (`.3dps-draft.json`)
 
-### B. Sound Library — remove `.wav`
+User clicks "Save Progress" → downloads a JSON file. To resume, they click "Load Progress" and pick the file.
 
-**File:** `src/routes/_authenticated.dashboard.vault.tsx` (line ~91‑92)
+**Pros**
+- Portable across devices/browsers.
+- User owns the file — true client-side sovereignty.
+- Can be emailed, backed up, or attached to a project folder.
 
-Change the `spatial_audio` entry:
-- `format: ".mp3 or Audio URL"`
-- `accept: ".mp3,audio/mpeg"`
+**Cons**
+- Manual — user must remember to save before closing.
+- Friction every session.
+- Easy to lose the file or load the wrong version.
 
-(Existing `.wav` uploads in the database are unaffected; new uploads simply can't pick `.wav`.)
+### Recommended approach — do both, layered
 
-### C. Free/Pay attribute for invited clients
+1. **Autosave to `localStorage`** every time a field changes (debounced ~500 ms). On mount, if a draft exists, show a small banner: *"Resume your saved draft? [Resume] [Start fresh]"*.
+2. **Manual "Export draft / Import draft"** buttons in the sandbox header for cross-device portability.
 
-#### C.1 Database migration
+This gives the safety net of autosave plus the portability of file export, with no backend storage.
 
-```sql
--- Default behavior on a brand-new invite is "Pay"
-ALTER TABLE public.invitations
-  ADD COLUMN IF NOT EXISTS is_free boolean NOT NULL DEFAULT false;
+### Scope of what gets saved
 
--- Mirror the attribute onto the actual client↔provider link so the
--- download fulfilment path can read it after signup.
-ALTER TABLE public.client_providers
-  ADD COLUMN IF NOT EXISTS is_free boolean NOT NULL DEFAULT false;
-```
+From `HudBuilderSandbox.tsx` state:
+- Branding overrides: `brandName`, `accentColor`, `hudBgColor`, `gateLabel`
+- `models[]` (PropertyModel array — names, locations, Matterport IDs, music/cinematic URLs, multimedia toggles)
+- `behaviors` (per-model TourBehavior settings)
+- `agent` (AgentContact fields)
+- `reviewApproved` checkbox
 
-Update `handle_new_user()` so when a signup consumes an invite token, the matching `is_free` value is copied from the invitation onto the newly created `client_providers` row (single line change inside the existing INSERT).
+### Handling files (logo, favicon, agent avatar)
 
-No new RLS policies needed — existing provider-owns-row policies on both tables already allow the MSP to UPDATE these columns for their rows.
+`File` objects can't be `JSON.stringify`'d. Three honest options, ordered by simplicity:
 
-#### C.2 Clients page UI — `src/routes/_authenticated.dashboard.clients.tsx`
+1. **Skip files in the draft (simplest, recommended)** — Save everything *except* uploaded files. On resume, show a small "Re-upload your logo / favicon / avatar" hint next to those fields. Files are usually re-uploadable in seconds, and most users only upload once at the start.
+2. **Base64-encode small files into the draft** — Works for `localStorage` (with a size guard, e.g. skip files > 1 MB) and the export file. Larger payloads, but full restore.
+3. **IndexedDB for files + `localStorage` for the rest** — Most robust, more code. Only worth it if users frequently restart mid-session with large uploads.
 
-**Send Invitation card**
-- Add a `Switch` (shadcn) to the right of the email input labeled **"Free"** / **"Pay"** (default OFF = "Pay"). Helper text under it: "Free clients can download their Presentation at no cost."
-- `handleInvite` includes `is_free: inviteFree` in the insert payload.
+Recommendation: **Option 1** for v1 — ship fast, see if anyone complains. Upgrade to Option 2 if needed.
 
-**Invitations table**
-- Add a new column **"Attribute"** between Status and Sent.
-- Each row renders a small interactive `Switch` (or a click‑to‑toggle Badge: `Free` ↔ `Pay`) bound to `inv.is_free`.
-- Toggling calls `supabase.from("invitations").update({ is_free: next }).eq("id", inv.id)` and, if the invite has been accepted, ALSO updates the matching `client_providers` row (`provider_id = me, client_id = inv.accepted_client_id`). Because we don't currently store `accepted_client_id` on the invite row, the simpler approach is to update by email-join: run a follow‑up update against `client_providers` for any client whose `auth.users.email` matches `inv.email` AND `provider_id = me`. This match happens server-side via a new server function `setClientFreeFlag` to avoid leaking emails through RLS.
+### Technical implementation outline
 
-**New server function (in `src/lib/portal.functions.ts`):**
+- New file `src/lib/portal/draft-storage.ts` with `saveDraft(state)`, `loadDraft()`, `clearDraft()`, `exportDraftFile(state)`, `importDraftFile(file)`. Use a versioned schema (`{ version: 1, savedAt, data: {...} }`) so future field changes don't crash old drafts.
+- In `HudBuilderSandbox.tsx`:
+  - On mount: check for existing draft; if found, show a top banner with *Resume* / *Start fresh* actions.
+  - `useEffect` watching `[brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent, reviewApproved]` → debounced `saveDraft()`.
+  - On successful submission/payment: `clearDraft()`.
+  - Add small "Export draft" / "Import draft" buttons near the existing action buttons.
+- Storage key includes the provider slug (e.g. `3dps:draft:{providerSlug}`) so a client browsing two MSP studios doesn't get drafts crossed.
+- Add a discreet "Clear saved draft" link inside the banner or in a footer area.
 
-```ts
-setClientFreeFlag = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d: { invitationId: string; isFree: boolean }) => d)
-  .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
-    // 1) update invitation row (RLS confirms ownership)
-    await supabase.from("invitations")
-      .update({ is_free: data.isFree })
-      .eq("id", data.invitationId)
-      .eq("provider_id", userId);
-    // 2) propagate to client_providers link via service role lookup by email
-    //    (uses supabaseAdmin to look up auth user by invitation.email,
-    //    then updates client_providers where provider_id=userId)
-    return { success: true };
-  });
-```
+### What this does NOT change
 
-#### C.3 Enforce Free vs Pay during checkout
-
-The download checkout path is `HudBuilderSandbox.tsx` → `create-connect-checkout` edge function → on payment → `payments-webhook` flips `saved_models.status='paid'`.
-
-- **Edge function `supabase/functions/create-connect-checkout/index.ts`** (server‑side, authoritative):
-  - After resolving `user.id` (the client) and `providerId`, look up `client_providers` for `(provider_id, client_id)` and read `is_free`.
-  - If `is_free === true`: skip Stripe entirely. Directly `update saved_models set status='paid', is_released=true, amount_cents=0, model_count=:n`. Return `{ free: true, modelId }` instead of `{ clientSecret }`.
-  - Otherwise: existing Stripe flow.
-- **Client `HudBuilderSandbox.tsx`** (around line 624–638):
-  - If response includes `free: true`, do NOT open the Stripe modal. Instead show a success toast ("Your Presentation is ready") and trigger the existing post‑payment "download / generate" flow against `result.modelId`.
-  - Update the purchase button label preview: when the loaded branding/clientProvider link indicates the user is a free client, render `Get Presentation — Free` (instead of `Purchase — $X`). To know this on the client, `fetchBrandingBySlug` (or a small new server fn `getClientFreeStatus({ providerId })`) returns the `is_free` flag for the current logged-in user.
-
-> Non-invited clients (anyone whose signup did NOT consume an invite token, or anonymous prospects on the public Studio page) have no `client_providers` row — `is_free` defaults to false / not found, so they always go through Stripe. Requirement satisfied automatically.
-
----
-
-### Files touched
-
-| File | Change |
-|---|---|
-| Migration | Add `is_free` to `invitations` + `client_providers`; update `handle_new_user` |
-| `src/routes/_authenticated.dashboard.vault.tsx` | Unwrap Tabs from pointer-blocking, dim asset list area only, drop `.wav` from sound library |
-| `src/routes/_authenticated.dashboard.clients.tsx` | Free/Pay switch on send form + interactive column in table |
-| `src/lib/portal.functions.ts` | New `setClientFreeFlag` + `getClientFreeStatus` server fns |
-| `src/components/portal/HudBuilderSandbox.tsx` | Recognize `free: true` checkout response, skip Stripe, swap button label when free |
-| `supabase/functions/create-connect-checkout/index.ts` | Branch on `client_providers.is_free` → bypass Stripe & mark paid+released |
-
-### Acceptance check
-
-1. Starter MSP can click each of the 6 Vault tabs, see the Category Guide, and the Add Asset button is disabled with a 🔒 icon.
-2. New `.wav` files are no longer accepted on the Sound Library upload picker.
-3. Clients page shows a Free/Pay switch in Send Invitation (default Pay) and a new Attribute column with a Switch on every row.
-4. Toggling the row Switch immediately persists for both pending and accepted invitations.
-5. A client invited as Free, on clicking Purchase in the Builder, sees no Stripe modal — the Presentation is immediately marked paid+released and downloads.
-6. A client invited as Pay (or any non‑invited Studio visitor) goes through the normal Stripe checkout.
+- No database tables, no Supabase calls, no edge functions.
+- No changes to the generated end-product `.html` file.
+- Existing payment/generation flow is untouched.
 
