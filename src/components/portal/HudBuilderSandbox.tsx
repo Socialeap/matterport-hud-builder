@@ -267,7 +267,8 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
     return () => window.clearTimeout(handle);
   }, [providerSlug, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent]);
 
-  // Post-payment polling: detect return from Stripe checkout
+  // Post-payment polling: detect return from Stripe checkout and
+  // auto-trigger the download once the webhook flips status to "paid".
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const checkoutModelId = params.get("checkout_model_id");
@@ -290,6 +291,12 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
         setIsPolling(false);
         clearInterval(interval);
         clearDraft(providerSlug);
+        if (!autoDownloadTriggeredRef.current) {
+          autoDownloadTriggeredRef.current = true;
+          // Strip the query param so a refresh doesn't re-trigger polling.
+          window.history.replaceState({}, "", window.location.pathname);
+          runDownload(checkoutModelId);
+        }
       }
       if (attempts >= maxAttempts) {
         setIsPolling(false);
@@ -298,6 +305,7 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
       }
     }, 2000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const isPro = branding.tier === "pro";
