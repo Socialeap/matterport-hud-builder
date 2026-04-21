@@ -19,6 +19,7 @@ import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as PSlugRouteImport } from './routes/p.$slug'
+import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as EmailUnsubscribeRouteImport } from './routes/email/unsubscribe'
 import { Route as ApiMpImageRouteImport } from './routes/api/mp-image'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated.dashboard'
@@ -91,6 +92,11 @@ const IndexRoute = IndexRouteImport.update({
 const PSlugRoute = PSlugRouteImport.update({
   id: '/p/$slug',
   path: '/p/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InviteTokenRoute = InviteTokenRouteImport.update({
+  id: '/invite/$token',
+  path: '/invite/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
 const EmailUnsubscribeRoute = EmailUnsubscribeRouteImport.update({
@@ -243,6 +249,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof AuthenticatedDashboardRouteWithChildren
   '/api/mp-image': typeof ApiMpImageRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/p/$slug': typeof PSlugRouteWithChildren
   '/admin/$providerId': typeof AuthenticatedAdminProviderIdRoute
   '/dashboard/account': typeof AuthenticatedDashboardAccountRoute
@@ -276,6 +283,7 @@ export interface FileRoutesByTo {
   '/unsubscribe': typeof UnsubscribeRoute
   '/api/mp-image': typeof ApiMpImageRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/admin/$providerId': typeof AuthenticatedAdminProviderIdRoute
   '/dashboard/account': typeof AuthenticatedDashboardAccountRoute
   '/dashboard/branding': typeof AuthenticatedDashboardBrandingRoute
@@ -312,6 +320,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRouteWithChildren
   '/api/mp-image': typeof ApiMpImageRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/p/$slug': typeof PSlugRouteWithChildren
   '/_authenticated/admin/$providerId': typeof AuthenticatedAdminProviderIdRoute
   '/_authenticated/dashboard/account': typeof AuthenticatedDashboardAccountRoute
@@ -349,6 +358,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/api/mp-image'
     | '/email/unsubscribe'
+    | '/invite/$token'
     | '/p/$slug'
     | '/admin/$providerId'
     | '/dashboard/account'
@@ -382,6 +392,7 @@ export interface FileRouteTypes {
     | '/unsubscribe'
     | '/api/mp-image'
     | '/email/unsubscribe'
+    | '/invite/$token'
     | '/admin/$providerId'
     | '/dashboard/account'
     | '/dashboard/branding'
@@ -417,6 +428,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard'
     | '/api/mp-image'
     | '/email/unsubscribe'
+    | '/invite/$token'
     | '/p/$slug'
     | '/_authenticated/admin/$providerId'
     | '/_authenticated/dashboard/account'
@@ -452,6 +464,7 @@ export interface RootRouteChildren {
   UnsubscribeRoute: typeof UnsubscribeRoute
   ApiMpImageRoute: typeof ApiMpImageRoute
   EmailUnsubscribeRoute: typeof EmailUnsubscribeRoute
+  InviteTokenRoute: typeof InviteTokenRoute
   PSlugRoute: typeof PSlugRouteWithChildren
   LovableEmailSuppressionRoute: typeof LovableEmailSuppressionRoute
   LovableEmailQueueProcessRoute: typeof LovableEmailQueueProcessRoute
@@ -529,6 +542,13 @@ declare module '@tanstack/react-router' {
       path: '/p/$slug'
       fullPath: '/p/$slug'
       preLoaderRoute: typeof PSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/invite/$token': {
+      id: '/invite/$token'
+      path: '/invite/$token'
+      fullPath: '/invite/$token'
+      preLoaderRoute: typeof InviteTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/email/unsubscribe': {
@@ -803,6 +823,7 @@ const rootRouteChildren: RootRouteChildren = {
   UnsubscribeRoute: UnsubscribeRoute,
   ApiMpImageRoute: ApiMpImageRoute,
   EmailUnsubscribeRoute: EmailUnsubscribeRoute,
+  InviteTokenRoute: InviteTokenRoute,
   PSlugRoute: PSlugRouteWithChildren,
   LovableEmailSuppressionRoute: LovableEmailSuppressionRoute,
   LovableEmailQueueProcessRoute: LovableEmailQueueProcessRoute,
