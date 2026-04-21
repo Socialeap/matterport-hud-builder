@@ -342,11 +342,19 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
     additional_model_fee_cents: branding.additional_model_fee_cents ?? null,
   });
   const totalCents = pricing.totalCents;
-  const pricingConfigured = pricing.configured;
-  const payoutsReady = Boolean(
-    branding.stripe_onboarding_complete &&
-      (branding as { stripe_connect_id?: string | null }).stripe_connect_id
-  );
+  // Server-resolved truth (from resolve_studio_access). Falls back to
+  // client-derived branding values during the brief pre-load window so the
+  // UI doesn't flash an incorrect "unavailable" state.
+  const isFreeClient = accessState.isFree;
+  const pricingConfigured = accessState.loaded
+    ? accessState.pricingConfigured
+    : pricing.configured;
+  const payoutsReady = accessState.loaded
+    ? accessState.payoutsReady
+    : Boolean(
+        branding.stripe_onboarding_complete &&
+          (branding as { stripe_connect_id?: string | null }).stripe_connect_id,
+      );
   const checkoutReady = pricingConfigured && payoutsReady;
 
   const handleBrandingChange = useCallback((field: string, value: string) => {
