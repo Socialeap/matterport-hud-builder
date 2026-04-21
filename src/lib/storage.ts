@@ -10,10 +10,11 @@ const VAULT_BUCKET = "vault-assets";
 export async function uploadBrandAsset(
   userId: string,
   file: File,
-  assetType: "logo" | "favicon" | "hero"
+  assetType: "logo" | "favicon" | "hero" | "avatar"
 ): Promise<string | null> {
-  const ext = file.name.split(".").pop() || "png";
-  const path = `${userId}/${assetType}.${ext}`;
+  const ext = (file.name.split(".").pop() || "png").toLowerCase();
+  // Cache-bust by appending a timestamp suffix so re-uploads aren't masked by CDN cache
+  const path = `${userId}/${assetType}-${Date.now()}.${ext}`;
 
   const { error } = await supabase.storage
     .from(BUCKET)
