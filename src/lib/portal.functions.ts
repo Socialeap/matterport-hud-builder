@@ -1286,3 +1286,128 @@ export const getClientFreeStatus = createServerFn({ method: "POST" })
     return { isFree: link?.is_free === true };
   });
 
+// ============================================================================
+// Public invitation acceptance (token-based) — used by /invite/$token route
+// ============================================================================
+
+interface InvitationDetails {
+  email: string;
+  status: "pending" | "accepted" | "expired" | "declined";
+  isFree: boolean;
+  expiresAt: string;
+  providerId: string;
+  brand: {
+    brandName: string;
+    accentColor: string;
+    hudBgColor: string;
+    logoUrl: string | null;
+    faviconUrl: string | null;
+    slug: string | null;
+  } | null;
+}
+
+const INVITATION_TOKEN_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Public lookup of invitation by token. No auth required — the token
+ * itself is the bearer credential. Returns the safe subset plus the
+ * inviting MSP's branding so the acceptance page can match their look.
+ */
+export const getInvitationByToken = createServerFn({ method: "POST" })
+  .inputValidator((d: { token: string }) => d)
+  .handler(async ({ data }): Promise<{
+    found: boolean;
+    invitation?: InvitationDetails;
+    error?: string;
+  }> => {
+    if (!data.token || !INVITATION_TOKEN_RE.test(data.token)) {
+      return { found: false, error: "Invalid invitation token format" };
+    }
+
+    const { data: rows, error } = await supabaseAdmin.rpc(
+      "get_invitation_by_token",
+      { _token: data.token },
+    );
+    if (error) {
+      console.error("get_invitation_by_token failed:", error);
+      return { found: false, error: "Failed to look up invitation" };
+    }
+    const inv = Array.isArray(rows) ? rows[0] : null;
+    if (!inv) return { found: false };
+
+    const { data: brand } = await supabaseAdmin
+      .from("branding_settings")
+      .select("brand_name, accent_color, hud_bg_color, logo_url, favicon_url, slug")
+      .eq("provider_id", inv.provider_id)
+      .maybeSingle();
+
+    return {
+      found: true,
+      invitation: {
+        email: inv.email,
+        status: inv.status,
+        isFree: inv.is_free,
+        expiresAt: inv.expires_at,
+        providerId: inv.provider_id,
+        brand: brand
+          ? {
+              brandName: brand.brand_name || "",
+              accentColor: brand.accent_color || "#3B82F6",
+              hudBgColor: brand.hud_bg_color || "#1a1a2e",
+              logoUrl: brand.logo_url,
+              faviconUrl: brand.favicon_url,
+              slug: brand.slug,
+            }
+          : null,
+      },
+    };
+  });
+
+/**
+ * Accept invitation as the currently logged-in user. Returns providerSlug
+ * for redirect to /p/{slug}.
+ */
+export const acceptInvitationForUser = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { token: string }) => d)
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    const { data: rows, error } = await supabase.rpc("accept_invitation_self", {
+      _token: data.token,
+    });
+    if (error) {
+      throw new Error(error.message || "Failed to accept invitation");
+    }
+    const providerId = Array.isArray(rows) ? rows[0]?.provider_id : null;
+    let slug: string | null = null;
+    if (providerId) {
+      const { data: brand } = await supabaseAdmin
+        .from("branding_settings")
+        .select("slug")
+        .eq("provider_id", providerId)
+        .maybeSingle();
+      slug = brand?.slug ?? null;
+    }
+    return { success: true, providerId, slug };
+  });
+
+/**
+ * Decline invitation. Public — invitee may not have an account.
+ */
+export const declineInvitationByToken = createServerFn({ method: "POST" })
+  .inputValidator((d: { token: string }) => d)
+  .handler(async ({ data }) => {
+    if (!data.token || !INVITATION_TOKEN_RE.test(data.token)) {
+      throw new Error("Invalid invitation token");
+    }
+    const { data: ok, error } = await supabaseAdmin.rpc("decline_invitation", {
+      _token: data.token,
+    });
+    if (error) {
+      console.error("decline_invitation failed:", error);
+      throw new Error("Failed to decline invitation");
+    }
+    return { success: ok === true };
+  });
+
