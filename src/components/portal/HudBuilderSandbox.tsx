@@ -327,7 +327,11 @@ export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
 
   // Single source of truth for pricing — same function the edge function uses.
   const modelCount = models.filter((m) => m.matterportId.trim()).length;
-  const providerBrandName = branding.brand_name?.trim() || brandName || "the provider";
+  const providerBrandName =
+    accessState.providerBrandName?.trim() ||
+    branding.brand_name?.trim() ||
+    brandName ||
+    "the provider";
   const pricing = calculatePresentationPrice({
     modelCount,
     use_flat_pricing: Boolean(
