@@ -18,6 +18,8 @@ interface BrandingSectionProps {
   onChange: (field: string, value: string) => void;
   onFileChange: (field: "logo" | "favicon", file: File | null) => void;
   onRemoveAsset?: (field: "logo" | "favicon") => void;
+  /** When true, render only the inner form (no Card/Header wrapper) — used inside Accordion. */
+  headless?: boolean;
 }
 
 export function BrandingSection({
@@ -32,16 +34,10 @@ export function BrandingSection({
   onChange,
   onFileChange,
   onRemoveAsset,
+  headless,
 }: BrandingSectionProps) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Palette className="size-5 text-primary" />
-          Branding
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
+  const body = (
+    <div className="space-y-4">
         <div className="space-y-2">
           <Label>Brand / Brokerage Name</Label>
           <Input
@@ -153,7 +149,20 @@ export function BrandingSection({
             )}
           </div>
         </div>
-      </CardContent>
+    </div>
+  );
+
+  if (headless) return body;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Palette className="size-5 text-primary" />
+          Branding
+        </CardTitle>
+      </CardHeader>
+      <CardContent>{body}</CardContent>
     </Card>
   );
 }

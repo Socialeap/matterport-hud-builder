@@ -18,6 +18,10 @@ interface SavePresentationInput {
     accentColor: string;
     hudBgColor: string;
     gateLabel: string;
+    /** Optional client-supplied logo URL (already uploaded to storage). */
+    logoUrl?: string;
+    /** Optional client-supplied favicon URL (already uploaded to storage). */
+    faviconUrl?: string;
   };
 }
 
@@ -482,7 +486,11 @@ export const generatePresentation = createServerFn({ method: "POST" })
     const hudBgColor = overrides.hudBgColor || brandingData?.hud_bg_color || "#1a1a2e";
     const gateLabel = overrides.gateLabel || brandingData?.gate_label || "Enter";
     const isPro = brandingData?.tier === "pro";
-    const logoUrl = brandingData?.logo_url || "";
+    // Prefer client-uploaded brand assets (in overrides) over the MSP defaults.
+    // Empty/missing overrides cleanly fall back to no logo/favicon — we do NOT
+    // bake in the MSP's brand assets behind the client's back.
+    const logoUrl = overrides.logoUrl || "";
+    const faviconUrl = overrides.faviconUrl || "";
 
     // Build iframe URLs for each property
     const propertyEntries = properties
@@ -774,6 +782,7 @@ init();
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+${faviconUrl ? `<link rel="icon" href="${escapeHtml(faviconUrl)}">` : ""}
 <title>${escapeHtml(model.name || "3D Presentation")}</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}

@@ -13,6 +13,8 @@ interface AgentContactSectionProps {
   agent: AgentContact;
   onChange: (field: keyof AgentContact, value: string) => void;
   onAvatarFileChange?: (file: File | null) => void;
+  /** When true, render only the inner form (no Card/Header wrapper) — used inside Accordion. */
+  headless?: boolean;
 }
 
 const MAX_AVATAR_BYTES = 500 * 1024; // 500 KB
@@ -27,7 +29,7 @@ const socialFields: { key: keyof AgentContact; label: string; placeholder: strin
   { key: "website", label: "Website", placeholder: "https://yourwebsite.com" },
 ];
 
-export function AgentContactSection({ agent, onChange, onAvatarFileChange }: AgentContactSectionProps) {
+export function AgentContactSection({ agent, onChange, onAvatarFileChange, headless }: AgentContactSectionProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleAvatarSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -58,16 +60,9 @@ export function AgentContactSection({ agent, onChange, onAvatarFileChange }: Age
     .map((s) => s.charAt(0).toUpperCase())
     .join("");
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <UserCircle className="size-5 text-primary" />
-          Agent/Manager Contact
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Avatar */}
+  const body = (
+    <div className="space-y-4">
+      {/* Avatar */}
         <div className="flex items-center gap-4">
           <Avatar className="h-16 w-16 border border-border">
             {agent.avatarUrl ? <AvatarImage src={agent.avatarUrl} alt={agent.name || "Avatar"} /> : null}
@@ -193,7 +188,20 @@ export function AgentContactSection({ agent, onChange, onAvatarFileChange }: Age
             </p>
           </div>
         </div>
-      </CardContent>
+    </div>
+  );
+
+  if (headless) return body;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <UserCircle className="size-5 text-primary" />
+          Agent/Manager Contact
+        </CardTitle>
+      </CardHeader>
+      <CardContent>{body}</CardContent>
     </Card>
   );
 }

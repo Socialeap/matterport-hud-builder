@@ -10,6 +10,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { Palette, Home, UserCircle } from "lucide-react";
 import { BrandingSection } from "./BrandingSection";
 import { PropertyModelsSection } from "./PropertyModelsSection";
 import { AgentContactSection } from "./AgentContactSection";
@@ -168,8 +175,13 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
   const [gateLabel, setGateLabel] = useState(branding.gate_label);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [faviconFile, setFaviconFile] = useState<File | null>(null);
-  const [logoPreview, setLogoPreview] = useState<string | null>(branding.logo_url);
-  const [faviconPreview, setFaviconPreview] = useState<string | null>(branding.favicon_url);
+  // Start empty — the client/end-user must add their own logo/favicon for the
+  // generated presentation. Do NOT default to the MSP's branding assets.
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [faviconPreview, setFaviconPreview] = useState<string | null>(null);
+  // Permanent storage URLs — populated after upload to brand-assets bucket.
+  const [logoStorageUrl, setLogoStorageUrl] = useState<string | null>(null);
+  const [faviconStorageUrl, setFaviconStorageUrl] = useState<string | null>(null);
 
   // Models
   const [models, setModels] = useState<PropertyModel[]>(() => {
@@ -438,12 +450,27 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
   const handleFileChange = useCallback((field: "logo" | "favicon", file: File | null) => {
     if (field === "logo") {
       setLogoFile(file);
-      setLogoPreview(file ? URL.createObjectURL(file) : branding.logo_url);
+      setLogoPreview(file ? URL.createObjectURL(file) : null);
+      // Reset stored URL whenever the source file changes — re-upload on save.
+      if (file) setLogoStorageUrl(null);
     } else {
       setFaviconFile(file);
-      setFaviconPreview(file ? URL.createObjectURL(file) : branding.favicon_url);
+      setFaviconPreview(file ? URL.createObjectURL(file) : null);
+      if (file) setFaviconStorageUrl(null);
     }
-  }, [branding.logo_url, branding.favicon_url]);
+  }, []);
+
+  const handleRemoveBrandAsset = useCallback((field: "logo" | "favicon") => {
+    if (field === "logo") {
+      setLogoFile(null);
+      setLogoPreview(null);
+      setLogoStorageUrl(null);
+    } else {
+      setFaviconFile(null);
+      setFaviconPreview(null);
+      setFaviconStorageUrl(null);
+    }
+  }, []);
 
   const handleAddModel = useCallback(() => {
     const newModel = createEmptyModel();
@@ -654,8 +681,8 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
       return;
     }
 
-    // 2) Save / upsert the saved_model row first (and re-run avatar upload
-    //    if a local file is still pending from pre-auth).
+    // 2) Save / upsert the saved_model row first (and re-run logo/favicon/avatar
+    //    upload if local files are still pending from pre-auth).
     setSubmitting(true);
     let finalAgent = agent;
     if (agentAvatarFile) {
@@ -671,6 +698,37 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
       }
     }
 
+    // Upload pending logo/favicon files so the generated HTML can reference
+    // permanent storage URLs (not blob: URLs that vanish on reload).
+    let finalLogoUrl = logoStorageUrl;
+    let finalFaviconUrl = faviconStorageUrl;
+    if (logoFile) {
+      try {
+        const url = await uploadBrandAsset(userId, logoFile, "logo");
+        if (url) {
+          finalLogoUrl = url;
+          setLogoStorageUrl(url);
+          setLogoPreview(url);
+          setLogoFile(null);
+        }
+      } catch (err) {
+        console.error("Logo upload failed:", err);
+      }
+    }
+    if (faviconFile) {
+      try {
+        const url = await uploadBrandAsset(userId, faviconFile, "favicon");
+        if (url) {
+          finalFaviconUrl = url;
+          setFaviconStorageUrl(url);
+          setFaviconPreview(url);
+          setFaviconFile(null);
+        }
+      } catch (err) {
+        console.error("Favicon upload failed:", err);
+      }
+    }
+
     let modelId = savedModelId;
     try {
       const result = await savePresentationRequest({
@@ -680,7 +738,14 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
           properties: models,
           tourConfig: behaviors as unknown as Record<string, unknown>,
           agent: finalAgent as unknown as Record<string, string>,
-          brandingOverrides: { brandName, accentColor, hudBgColor, gateLabel },
+          brandingOverrides: {
+            brandName,
+            accentColor,
+            hudBgColor,
+            gateLabel,
+            logoUrl: finalLogoUrl ?? "",
+            faviconUrl: finalFaviconUrl ?? "",
+          },
         },
       });
       if (!result.success || !result.modelId) {
@@ -750,6 +815,10 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     accentColor,
     hudBgColor,
     gateLabel,
+    logoFile,
+    faviconFile,
+    logoStorageUrl,
+    faviconStorageUrl,
     modelCount,
     runDownload,
   ]);
@@ -839,25 +908,8 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
             </Button>
           </div>
 
-          {/* Far right: Client (Presentation) logo + name + signed-in identity */}
+          {/* Far right: signed-in identity (logo/name removed — already shown in builder body & preview) */}
           <div className="ml-auto flex items-center gap-3 min-w-0">
-            {logoPreview ? (
-              <img
-                src={logoPreview}
-                alt="Presentation logo"
-                className="h-8 w-8 rounded-md object-contain"
-              />
-            ) : (
-              <div
-                className="flex h-8 w-8 items-center justify-center rounded-md text-xs font-bold text-white"
-                style={{ backgroundColor: accentColor }}
-              >
-                {(brandName || "P")[0]?.toUpperCase()}
-              </div>
-            )}
-            <span className="hidden truncate text-sm font-semibold text-foreground sm:inline max-w-[10rem]">
-              {brandName || "Untitled Presentation"}
-            </span>
 
             {/* Identity: profile dropdown when signed in, or "Sign In" when not. */}
             {!authChecked ? (
@@ -970,34 +1022,85 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
               </p>
             </div>
 
-            <BrandingSection
-              brandName={brandName}
-              accentColor={accentColor}
-              hudBgColor={hudBgColor}
-              gateLabel={gateLabel}
-              logoFile={logoFile}
-              faviconFile={faviconFile}
-              logoPreview={logoPreview}
-              faviconPreview={faviconPreview}
-              onChange={handleBrandingChange}
-              onFileChange={handleFileChange}
-            />
+            {/* Collapsible sections — only one open at a time. Closed by default
+                so the live Preview stays high on the page. */}
+            <Accordion
+              type="single"
+              collapsible
+              className="space-y-3"
+            >
+              <AccordionItem
+                value="branding"
+                className="rounded-lg border bg-card shadow-sm"
+              >
+                <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                  <span className="flex items-center gap-2 text-base font-semibold text-foreground">
+                    <Palette className="size-5 text-primary" />
+                    Branding
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent className="px-4 pb-4">
+                  <BrandingSection
+                    headless
+                    brandName={brandName}
+                    accentColor={accentColor}
+                    hudBgColor={hudBgColor}
+                    gateLabel={gateLabel}
+                    logoFile={logoFile}
+                    faviconFile={faviconFile}
+                    logoPreview={logoPreview}
+                    faviconPreview={faviconPreview}
+                    onChange={handleBrandingChange}
+                    onFileChange={handleFileChange}
+                    onRemoveAsset={handleRemoveBrandAsset}
+                  />
+                </AccordionContent>
+              </AccordionItem>
 
-            <PropertyModelsSection
-              models={models}
-              onAdd={handleAddModel}
-              onRemove={handleRemoveModel}
-              onChange={handleModelChange}
-              onMediaChange={handleMediaChange}
-              onOpenBehavior={handleOpenBehavior}
-              savedModelId={savedModelId}
-            />
+              <AccordionItem
+                value="properties"
+                className="rounded-lg border bg-card shadow-sm"
+              >
+                <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                  <span className="flex items-center gap-2 text-base font-semibold text-foreground">
+                    <Home className="size-5 text-primary" />
+                    Property Models
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent className="px-4 pb-4">
+                  <PropertyModelsSection
+                    headless
+                    models={models}
+                    onAdd={handleAddModel}
+                    onRemove={handleRemoveModel}
+                    onChange={handleModelChange}
+                    onMediaChange={handleMediaChange}
+                    onOpenBehavior={handleOpenBehavior}
+                    savedModelId={savedModelId}
+                  />
+                </AccordionContent>
+              </AccordionItem>
 
-            <AgentContactSection
-              agent={agent}
-              onChange={handleAgentChange}
-              onAvatarFileChange={handleAgentAvatarChange}
-            />
+              <AccordionItem
+                value="agent"
+                className="rounded-lg border bg-card shadow-sm"
+              >
+                <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                  <span className="flex items-center gap-2 text-base font-semibold text-foreground">
+                    <UserCircle className="size-5 text-primary" />
+                    Agent / Manager Contact
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent className="px-4 pb-4">
+                  <AgentContactSection
+                    headless
+                    agent={agent}
+                    onChange={handleAgentChange}
+                    onAvatarFileChange={handleAgentAvatarChange}
+                  />
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
 
             {/* License Expired Banner */}
             {licenseExpired && (

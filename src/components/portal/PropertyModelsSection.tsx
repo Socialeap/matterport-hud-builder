@@ -33,6 +33,8 @@ interface PropertyModelsSectionProps {
   onMediaChange: (id: string, assets: MediaAsset[]) => void;
   onOpenBehavior: (id: string) => void;
   savedModelId?: string | null;
+  /** When true, render only the inner body (no Card/Header wrapper) — used inside Accordion. */
+  headless?: boolean;
 }
 
 export function PropertyModelsSection({
@@ -43,26 +45,22 @@ export function PropertyModelsSection({
   onMediaChange,
   onOpenBehavior,
   savedModelId,
+  headless,
 }: PropertyModelsSectionProps) {
   const { isActive: lusActive, loading: lusLoading } = useLusLicense();
   const showPremium = lusLoading || lusActive;
   const [syncModelId, setSyncModelId] = useState<string | null>(null);
   const syncModel = syncModelId ? models.find((m) => m.id === syncModelId) ?? null : null;
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Home className="size-5 text-primary" />
-            Property Models
-          </CardTitle>
-          <Button size="sm" variant="outline" onClick={onAdd}>
-            <Plus className="mr-1 size-3" />
-            Add Property
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
+
+  const addButton = (
+    <Button size="sm" variant="outline" onClick={onAdd}>
+      <Plus className="mr-1 size-3" />
+      Add Property
+    </Button>
+  );
+
+  const body = (
+    <div className="space-y-4">
         {models.length === 0 && (
           <p className="py-6 text-center text-sm text-muted-foreground">
             No properties added yet. Click "Add Property" to get started.
@@ -248,24 +246,49 @@ export function PropertyModelsSection({
             />
           </div>
         ))}
-      </CardContent>
+    </div>
+  );
 
-      {syncModel && (
-        <MediaSyncModal
-          open={!!syncModelId}
-          onOpenChange={(open) => {
-            if (!open) setSyncModelId(null);
-          }}
-          currentMatterportId={syncModel.matterportId}
-          existing={syncModel.multimedia ?? []}
-          onConfirm={(merged, parsedModelId) => {
-            onMediaChange(syncModel.id, merged);
-            if (!syncModel.matterportId.trim() && parsedModelId) {
-              onChange(syncModel.id, "matterportId", parsedModelId);
-            }
-          }}
-        />
-      )}
+  const syncModalEl = syncModel && (
+    <MediaSyncModal
+      open={!!syncModelId}
+      onOpenChange={(open) => {
+        if (!open) setSyncModelId(null);
+      }}
+      currentMatterportId={syncModel.matterportId}
+      existing={syncModel.multimedia ?? []}
+      onConfirm={(merged, parsedModelId) => {
+        onMediaChange(syncModel.id, merged);
+        if (!syncModel.matterportId.trim() && parsedModelId) {
+          onChange(syncModel.id, "matterportId", parsedModelId);
+        }
+      }}
+    />
+  );
+
+  if (headless) {
+    return (
+      <>
+        <div className="flex justify-end">{addButton}</div>
+        {body}
+        {syncModalEl}
+      </>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Home className="size-5 text-primary" />
+            Property Models
+          </CardTitle>
+          {addButton}
+        </div>
+      </CardHeader>
+      <CardContent>{body}</CardContent>
+      {syncModalEl}
     </Card>
   );
 }
