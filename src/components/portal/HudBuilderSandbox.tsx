@@ -482,7 +482,17 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
   // Auto-heals stale `client_providers` rows from accepted invitations.
   useEffect(() => {
     if (!userId) {
-      setAccessState((s) => ({ ...s, loaded: true, linked: false, isFree: false }));
+      setAccessState({
+        linked: false,
+        isFree: false,
+        pricingConfigured: false,
+        payoutsReady: false,
+        providerBrandName: "",
+        viewerRole: "unknown",
+        viewerMatchesProvider: false,
+        loaded: true,
+        error: null,
+      });
       return;
     }
     let cancelled = false;
@@ -495,19 +505,32 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
           pricingConfigured: !!res.pricingConfigured,
           payoutsReady: !!res.payoutsReady,
           providerBrandName: res.providerBrandName || "",
+          viewerRole: res.viewerRole ?? "unknown",
+          viewerMatchesProvider: !!res.viewerMatchesProvider,
           loaded: true,
+          error: null,
         });
       })
       .catch((err) => {
-        console.warn("getStudioAccessState failed:", err);
+        console.error("getStudioAccessState failed:", err);
         if (!cancelled) {
-          setAccessState((s) => ({ ...s, loaded: true }));
+          // IMPORTANT: do NOT collapse this into "all-false". Keep `loaded: false`
+          // and surface a real error so the UI can show a retry state instead
+          // of falsely claiming pricing is unavailable.
+          setAccessState((s) => ({
+            ...s,
+            loaded: false,
+            error:
+              err instanceof Error
+                ? err.message
+                : "Failed to verify Studio access.",
+          }));
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [userId, branding.provider_id, getStudioAccessStateFn]);
+  }, [userId, branding.provider_id, getStudioAccessStateFn, accessRetryNonce]);
 
   /**
    * Generate the .html and trigger a browser download for the given
