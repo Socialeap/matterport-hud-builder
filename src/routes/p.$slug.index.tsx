@@ -754,6 +754,32 @@ function PortalHeader({
               >
                 Builder
               </Link>
+
+              {/* Mobile sign-in / sign-out */}
+              <div className="mt-2 border-t pt-2">
+                {!authChecked ? null : viewer ? (
+                  <button
+                    type="button"
+                    onClick={onSignOut}
+                    className="flex w-full items-center gap-2 rounded-lg px-4 py-3 text-left text-base font-medium text-slate-800 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-slate-800"
+                  >
+                    <LogOut className="size-4" />
+                    <span className="truncate">
+                      Sign Out{viewer.email ? ` (${viewer.email})` : ""}
+                    </span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={onSignIn}
+                    className="flex w-full items-center gap-2 rounded-lg px-4 py-3 text-left text-base font-medium text-white"
+                    style={{ backgroundColor: accent }}
+                  >
+                    <LogIn className="size-4" />
+                    Sign In
+                  </button>
+                )}
+              </div>
             </div>
           </SheetContent>
         </Sheet>
