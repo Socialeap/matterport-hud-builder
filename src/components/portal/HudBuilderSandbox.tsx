@@ -16,10 +16,11 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { Palette, Home, UserCircle } from "lucide-react";
+import { Palette, Home, UserCircle, BookOpen } from "lucide-react";
 import { BrandingSection } from "./BrandingSection";
 import { PropertyModelsSection } from "./PropertyModelsSection";
 import { AgentContactSection } from "./AgentContactSection";
+import { PropertyIntelligenceSection } from "./PropertyIntelligenceSection";
 import { TourBehaviorModal } from "./TourBehaviorModal";
 import { HudPreview } from "./HudPreview";
 import { PortalSignupModal } from "./PortalSignupModal";
@@ -1076,6 +1077,24 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
                     onChange={handleModelChange}
                     onMediaChange={handleMediaChange}
                     onOpenBehavior={handleOpenBehavior}
+                    savedModelId={savedModelId}
+                  />
+                </AccordionContent>
+              </AccordionItem>
+
+              <AccordionItem
+                value="intelligence"
+                className="rounded-lg border bg-card shadow-sm"
+              >
+                <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                  <span className="flex items-center gap-2 text-base font-semibold text-foreground">
+                    <BookOpen className="size-5 text-primary" />
+                    Property Intelligence (Ask AI)
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent className="px-4 pb-4">
+                  <PropertyIntelligenceSection
+                    models={models}
                     savedModelId={savedModelId}
                   />
                 </AccordionContent>

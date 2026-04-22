@@ -62,11 +62,7 @@ serve(async (req) => {
     // pricing columns so the shared pricing function has what it needs.
     const { data: branding, error: brandingError } = await supabaseAdmin
       .from("branding_settings")
-      .select(
-        "stripe_connect_id, stripe_onboarding_complete, brand_name, " +
-        "use_flat_pricing, flat_price_per_model_cents, " +
-        "base_price_cents, tier3_price_cents, additional_model_fee_cents"
-      )
+      .select("stripe_connect_id, stripe_onboarding_complete, brand_name, use_flat_pricing, flat_price_per_model_cents, base_price_cents, tier3_price_cents, additional_model_fee_cents")
       .eq("provider_id", providerId)
       .single();
 
