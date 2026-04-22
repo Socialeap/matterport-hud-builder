@@ -60,16 +60,9 @@ export function AgentContactSection({ agent, onChange, onAvatarFileChange, headl
     .map((s) => s.charAt(0).toUpperCase())
     .join("");
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <UserCircle className="size-5 text-primary" />
-          Agent/Manager Contact
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Avatar */}
+  const body = (
+    <div className="space-y-4">
+      {/* Avatar */}
         <div className="flex items-center gap-4">
           <Avatar className="h-16 w-16 border border-border">
             {agent.avatarUrl ? <AvatarImage src={agent.avatarUrl} alt={agent.name || "Avatar"} /> : null}
