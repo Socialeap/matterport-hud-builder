@@ -427,13 +427,26 @@ async function ensureUrlTemplate(
   return inserted.id as string;
 }
 
+// ── Structured error helper ────────────────────────────────────────────
+type Stage = "auth" | "input" | "freeze" | "asset" | "ssrf" | "fetch"
+  | "parse" | "thin_content" | "template" | "llm" | "persist";
+
+function fail(
+  stage: Stage,
+  detail: string,
+  status: number,
+  diagnostics: Record<string, unknown> = {},
+) {
+  return jsonResponse({ ok: false, stage, detail, diagnostics }, status);
+}
+
 // ── Handler ────────────────────────────────────────────────────────────
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
   if (req.method !== "POST") {
-    return jsonResponse({ error: "method_not_allowed" }, 405);
+    return fail("input", "method_not_allowed", 405);
   }
 
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
@@ -441,19 +454,19 @@ serve(async (req) => {
   const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
   const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY || !ANON_KEY) {
-    return jsonResponse({ error: "supabase_env_missing" }, 500);
+    return fail("auth", "supabase_env_missing", 500);
   }
 
   const authHeader = req.headers.get("Authorization") ?? "";
   const jwt = authHeader.replace(/^Bearer\s+/i, "");
-  if (!jwt) return jsonResponse({ error: "unauthorized" }, 401);
+  if (!jwt) return fail("auth", "unauthorized_no_jwt", 401);
 
   const userClient = createClient(SUPABASE_URL, ANON_KEY, {
     global: { headers: { Authorization: authHeader } },
   });
   const { data: userData, error: userErr } = await userClient.auth.getUser();
   if (userErr || !userData.user) {
-    return jsonResponse({ error: "unauthorized" }, 401);
+    return fail("auth", "unauthorized_invalid_jwt", 401);
   }
   const userId = userData.user.id;
 
@@ -463,10 +476,10 @@ serve(async (req) => {
   try {
     body = (await req.json()) as RequestBody;
   } catch {
-    return jsonResponse({ error: "invalid_json" }, 400);
+    return fail("input", "invalid_json", 400);
   }
   if (!body.vault_asset_id || !body.property_uuid || !body.url) {
-    return jsonResponse({ error: "missing_fields" }, 400);
+    return fail("input", "missing_fields", 400);
   }
 
   // ── 1. Freeze check ──────────────────────────────────────────────────
@@ -476,10 +489,7 @@ serve(async (req) => {
     .eq("property_uuid", body.property_uuid)
     .maybeSingle();
   if (freeze) {
-    return jsonResponse(
-      { error: "lus_frozen", property_uuid: body.property_uuid },
-      423,
-    );
+    return fail("freeze", "lus_frozen", 423, { property_uuid: body.property_uuid });
   }
 
   // ── 2. Asset ownership / authorisation ───────────────────────────────
@@ -489,7 +499,7 @@ serve(async (req) => {
     .eq("id", body.vault_asset_id)
     .single();
   if (assetErr || !asset) {
-    return jsonResponse({ error: "asset_not_found" }, 404);
+    return fail("asset", "asset_not_found", 404);
   }
 
   let authorised = asset.provider_id === userId;
@@ -502,38 +512,45 @@ serve(async (req) => {
       .maybeSingle();
     authorised = !!link;
   }
-  if (!authorised) return jsonResponse({ error: "forbidden" }, 403);
+  if (!authorised) return fail("asset", "forbidden", 403);
 
   if (asset.category_type !== "property_doc") {
-    return jsonResponse({ error: "wrong_category" }, 400);
+    return fail("asset", "wrong_category", 400, { category: asset.category_type });
   }
 
   // ── 3. Validate URL (SSRF guard) ─────────────────────────────────────
   const urlCheck = validateUrl(body.url);
   if (!urlCheck.ok) {
-    return jsonResponse({ error: "invalid_url", reason: urlCheck.reason }, 400);
+    return fail("ssrf", urlCheck.reason, 400);
   }
+  const domain = urlCheck.url.hostname;
 
   // ── 4. Fetch HTML ────────────────────────────────────────────────────
   let html: string;
+  let finalUrl: string;
   try {
     const result = await fetchHtmlSafe(urlCheck.url.toString());
     html = result.html;
+    finalUrl = result.finalUrl;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return jsonResponse({ error: "fetch_failed", detail: msg }, 502);
+    console.warn(`[extract-url-content] ${domain} stage=fetch detail=${msg}`);
+    return fail("fetch", msg, 502, { domain });
   }
 
   // ── 5. HTML → text + chunks ──────────────────────────────────────────
   const { text, sections } = htmlToText(html);
-  console.info(
-    `[extract-url-content] ${urlCheck.url.hostname}: text_len=${text.length}`,
-  );
+  const lowContent = text.length < 200;
   if (!text || text.length < 40) {
-    return jsonResponse(
-      { error: "thin_content", text_length: text.length },
-      422,
+    console.warn(
+      `[extract-url-content] ${domain} stage=thin_content text_len=${text.length}`,
     );
+    return fail("thin_content", "page_text_too_short", 422, {
+      domain,
+      html_length: html.length,
+      text_length: text.length,
+      final_url: finalUrl,
+    });
   }
   const chunks = buildChunks(text, sections);
 
@@ -552,17 +569,19 @@ serve(async (req) => {
     activeTemplateId = await ensureUrlTemplate(
       serviceClient,
       asset.provider_id,
-      urlCheck.url.hostname,
+      domain,
     );
   }
   if (!activeTemplateId) {
-    return jsonResponse({ error: "template_resolve_failed" }, 500);
+    return fail("template", "template_resolve_failed", 500, { domain });
   }
 
   // ── 7. Structure fields with the LLM (best-effort) ───────────────────
-  const fields = OPENAI_API_KEY
-    ? await structureFields(text, OPENAI_API_KEY)
-    : {};
+  const llmResult = OPENAI_API_KEY
+    ? await structureFields(text, OPENAI_API_KEY, domain)
+    : { fields: {} as Record<string, unknown>, llm_stage: "no_api_key" };
+  const fields = llmResult.fields;
+  const fieldKeys = Object.keys(fields);
 
   // ── 8. Persist ───────────────────────────────────────────────────────
   const { data: upserted, error: upErr } = await serviceClient
@@ -583,10 +602,15 @@ serve(async (req) => {
     .select("id")
     .single();
   if (upErr || !upserted) {
-    return jsonResponse(
-      { error: "persist_failed", detail: upErr?.message ?? "unknown" },
-      500,
+    console.error(
+      `[extract-url-content] ${domain} stage=persist detail=${upErr?.message ?? "unknown"}`,
     );
+    return fail("persist", upErr?.message ?? "upsert_returned_no_row", 500, {
+      domain,
+      text_length: text.length,
+      chunks: chunks.length,
+      field_keys: fieldKeys.length,
+    });
   }
 
   await serviceClient
@@ -594,10 +618,22 @@ serve(async (req) => {
     .update({ embedding_status: "pending" })
     .eq("id", body.vault_asset_id);
 
+  console.info(
+    `[extract-url-content] ${domain} text_len=${text.length} fields=${fieldKeys.length} chunks=${chunks.length} llm=${llmResult.llm_stage} ok`,
+  );
+
   return jsonResponse({
+    ok: true,
     extraction_id: upserted.id,
     fields,
     chunks_indexed: chunks.length,
     embedding_status: "pending" as const,
+    diagnostics: {
+      domain,
+      text_length: text.length,
+      field_keys: fieldKeys.length,
+      llm_stage: llmResult.llm_stage,
+      low_content_warning: lowContent,
+    },
   });
 });
