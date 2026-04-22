@@ -364,17 +364,25 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
   // Server-resolved truth (from resolve_studio_access). Falls back to
   // client-derived branding values during the brief pre-load window so the
   // UI doesn't flash an incorrect "unavailable" state.
-  const isFreeClient = accessState.isFree;
-  const pricingConfigured = accessState.loaded
+  // IMPORTANT: when the resolver itself errored, we DO NOT trust its access
+  // flags. We still keep the branding-derived `pricingConfigured` fallback
+  // so the UI shows an honest "verification failed" message instead of
+  // collapsing into "Pricing Unavailable".
+  const accessVerified = accessState.loaded && !accessState.error;
+  const accessFailed = !!accessState.error;
+  const isFreeClient = accessVerified && accessState.isFree;
+  const pricingConfigured = accessVerified
     ? accessState.pricingConfigured
     : pricing.configured;
-  const payoutsReady = accessState.loaded
+  const payoutsReady = accessVerified
     ? accessState.payoutsReady
-    : Boolean(
-        branding.stripe_onboarding_complete &&
-          (branding as { stripe_connect_id?: string | null }).stripe_connect_id,
-      );
-  const checkoutReady = pricingConfigured && payoutsReady;
+    : false; // never imply payouts work until the resolver confirms
+  const checkoutReady = accessVerified && pricingConfigured && payoutsReady;
+  const isWrongAccount =
+    accessVerified &&
+    (accessState.viewerRole === "provider" ||
+      accessState.viewerRole === "admin" ||
+      accessState.viewerMatchesProvider);
 
   const handleBrandingChange = useCallback((field: string, value: string) => {
     switch (field) {
