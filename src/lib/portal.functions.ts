@@ -962,15 +962,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 
 /* ── Powered-by footer ────────────────────────────────────────────── */
 #powered-by{position:fixed;bottom:0;left:0;right:0;height:34px;display:flex;align-items:center;justify-content:center;font-size:11px;color:rgba(255,255,255,0.4);border-top:1px solid rgba(255,255,255,0.06);background:${escapeHtml(hudBgColor)}cc;z-index:499}
-${isPro ? "" : `/* Bottom toolbar above footer; viewer above footer */
-#hud-bottom{bottom:34px}
+${isPro ? "" : `/* Viewer above powered-by footer */
 #viewer{bottom:34px}`}
 
-/* ── Panel z-index overrides (ensure panels render above bottom toolbar) */
+/* ── Panel z-index overrides ───────────────────────────────────── */
 #docs-qa-panel,#property-docs{z-index:1500}
-/* Adjust panel anchors to clear the bottom toolbar (~44px) */
-#docs-qa-panel{bottom:${isPro ? "52" : "86"}px}
-#property-docs{bottom:${isPro ? "56" : "90"}px}
+/* Property-docs panel still anchored bottom-left; clear powered-by footer when present */
+#property-docs{bottom:${isPro ? "16" : "50"}px}
 
 ${qaCss}
 ${docsQaAssets.css}
