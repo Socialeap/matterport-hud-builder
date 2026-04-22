@@ -18,6 +18,10 @@ interface SavePresentationInput {
     accentColor: string;
     hudBgColor: string;
     gateLabel: string;
+    /** Optional client-supplied logo URL (already uploaded to storage). */
+    logoUrl?: string;
+    /** Optional client-supplied favicon URL (already uploaded to storage). */
+    faviconUrl?: string;
   };
 }
 
