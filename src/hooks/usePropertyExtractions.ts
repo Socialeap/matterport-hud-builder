@@ -2,9 +2,20 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
-import { invokeExtraction, invokeUrlExtraction } from "@/lib/extraction/client";
+import {
+  ExtractionError,
+  invokeExtraction,
+  invokeUrlExtraction,
+} from "@/lib/extraction/client";
 import { ensureExtractionEmbeddings } from "@/lib/rag/extraction-hydrator";
 import type { PropertyChunk } from "@/lib/rag/types";
+
+export interface ExtractionFailure {
+  stage: string;
+  detail: string;
+  status: number;
+  at: number;
+}
 
 export interface PropertyExtraction {
   id: string;
