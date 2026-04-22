@@ -255,6 +255,7 @@ export function usePropertyExtractions(propertyUuid: string | null) {
     loading,
     running,
     backfilling,
+    failuresByAsset,
     refresh,
     extract,
     extractFromUrl,
