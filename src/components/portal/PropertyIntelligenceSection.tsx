@@ -197,9 +197,54 @@ function ModelRow({
   };
 
   const handleUpload = async () => {
-    if (!user || !file || !label.trim()) return;
+    if (!user) return;
+    if (submitDisabled) return;
     setBusy(true);
     try {
+      // ── URL-only branch ──────────────────────────────────────────────
+      if (urlMode && parsedUrl) {
+        setBusyMessage("Registering URL…");
+        const finalLabel = effectiveLabel;
+        const { data: newAsset, error: insertErr } = await supabase
+          .from("vault_assets")
+          .insert({
+            provider_id: user.id,
+            category_type: "property_doc" as const,
+            label: finalLabel,
+            asset_url: parsedUrl.toString(),
+            storage_path: null,
+            mime_type: "text/uri-list",
+            file_size_bytes: 0,
+            is_active: true,
+          })
+          .select()
+          .single();
+        if (insertErr || !newAsset) {
+          toast.error("Failed to register URL — try again.");
+          return;
+        }
+
+        await refreshDocs();
+        closeDialog();
+
+        setBusyMessage("Fetching & indexing URL…");
+        const res = await extractFromUrl({
+          vault_asset_id: newAsset.id,
+          url: parsedUrl.toString(),
+          template_id: templateId || null,
+          saved_model_id: savedModelId,
+        });
+        if (res) {
+          toast.success(
+            `Indexed ${res.chunks_indexed} chunks from ${parsedUrl.hostname}`,
+          );
+        }
+        return;
+      }
+
+      // ── File branch (unchanged behaviour) ────────────────────────────
+      if (!file || !label.trim()) return;
+
       // 1. Determine template — curated pick OR auto-induced for walk-ins.
       let activeTemplateId: string = templateId;
 
