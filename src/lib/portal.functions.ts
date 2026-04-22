@@ -393,9 +393,9 @@ function buildDocsQaAssets(
   }
 
   const css = `
-#docs-qa-toggle{padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;background:${escapeHtml(accentColor)};border:none;color:#fff;display:flex;align-items:center;gap:6px}
-#docs-qa-toggle svg{width:14px;height:14px}
-#docs-qa-panel{display:none;position:fixed;bottom:56px;right:16px;width:380px;max-width:calc(100vw - 32px);height:480px;max-height:calc(100vh - 80px);background:${escapeHtml(hudBgColor)};border:1px solid #333;border-radius:12px;z-index:99;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.5);overflow:hidden}
+#docs-qa-toggle{padding:4px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;background:${escapeHtml(accentColor)};border:none;color:#fff;display:inline-flex;align-items:center;gap:5px;flex-shrink:0}
+#docs-qa-toggle svg{width:13px;height:13px}
+#docs-qa-panel{display:none;position:fixed;top:72px;right:16px;width:380px;max-width:calc(100vw - 32px);height:480px;max-height:calc(100vh - 96px);background:${escapeHtml(hudBgColor)};border:1px solid #333;border-radius:12px;z-index:1500;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.5);overflow:hidden}
 #docs-qa-panel.open{display:flex}
 #docs-qa-header{padding:12px 16px;border-bottom:1px solid #333;display:flex;align-items:center;justify-content:space-between}
 #docs-qa-header h4{font-size:14px;font-weight:600;color:#fff;margin:0}
