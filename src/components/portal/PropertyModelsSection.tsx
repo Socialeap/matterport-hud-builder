@@ -33,6 +33,8 @@ interface PropertyModelsSectionProps {
   onMediaChange: (id: string, assets: MediaAsset[]) => void;
   onOpenBehavior: (id: string) => void;
   savedModelId?: string | null;
+  /** When true, render only the inner body (no Card/Header wrapper) — used inside Accordion. */
+  headless?: boolean;
 }
 
 export function PropertyModelsSection({
