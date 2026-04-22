@@ -831,8 +831,8 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
             </Button>
           </div>
 
-          {/* Far right: Client (Presentation) logo + name */}
-          <div className="ml-auto flex items-center gap-2 min-w-0">
+          {/* Far right: Client (Presentation) logo + name + signed-in identity */}
+          <div className="ml-auto flex items-center gap-3 min-w-0">
             {logoPreview ? (
               <img
                 src={logoPreview}
@@ -847,9 +847,68 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
                 {(brandName || "P")[0]?.toUpperCase()}
               </div>
             )}
-            <span className="hidden truncate text-sm font-semibold text-foreground sm:inline">
+            <span className="hidden truncate text-sm font-semibold text-foreground sm:inline max-w-[10rem]">
               {brandName || "Untitled Presentation"}
             </span>
+
+            {/* Identity pill: shows email + Sign Out when signed in, or "Sign In" when not. */}
+            {!authChecked ? (
+              <div className="hidden h-8 w-24 animate-pulse rounded-full bg-muted sm:block" />
+            ) : viewer ? (
+              <div
+                className="flex h-9 items-center gap-2 rounded-full border border-border bg-muted/40 pl-1 pr-1 shadow-sm"
+                title={viewer.email || viewer.displayName || "Signed in"}
+              >
+                {viewer.avatarUrl ? (
+                  <img
+                    src={viewer.avatarUrl}
+                    alt=""
+                    className="h-7 w-7 rounded-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div
+                    className="flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                    style={{ backgroundColor: accentColor }}
+                  >
+                    {(viewer.displayName || viewer.email || "U")
+                      .trim()[0]
+                      ?.toUpperCase() || "U"}
+                  </div>
+                )}
+                <span className="hidden max-w-[12rem] truncate text-xs font-medium text-foreground sm:inline">
+                  {viewer.email || viewer.displayName || "Signed in"}
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 px-2 text-xs"
+                  onClick={async () => {
+                    await supabase.auth.signOut();
+                    setUserId(null);
+                    setViewer(null);
+                    setAccessRetryNonce((n) => n + 1);
+                    toast.success("Signed out");
+                  }}
+                  aria-label="Sign out"
+                >
+                  <LogOut className="size-3.5" />
+                  <span className="ml-1 hidden md:inline">Sign Out</span>
+                </Button>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                size="sm"
+                className="h-9 gap-1.5 rounded-full text-white"
+                style={{ backgroundColor: accentColor }}
+                onClick={() => setSignupOpen(true)}
+              >
+                <LogIn className="size-4" />
+                Sign In
+              </Button>
+            )}
           </div>
         </div>
       </header>
