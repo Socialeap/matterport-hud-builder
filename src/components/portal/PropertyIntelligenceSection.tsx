@@ -115,6 +115,15 @@ interface ModelRowProps {
   templates: ReturnType<typeof useAvailableTemplates>["templates"];
   savedModelId: string | null;
   onTemplatesChanged: () => void;
+  onExtractionSuccess?: () => void;
+}
+
+/** Lightweight asset descriptor used for rendering the per-asset status list. */
+interface AssetMeta {
+  id: string;
+  label: string;
+  asset_url: string;
+  mime_type: string | null;
 }
 
 function ModelRow({
@@ -123,12 +132,65 @@ function ModelRow({
   templates,
   savedModelId,
   onTemplatesChanged,
+  onExtractionSuccess,
 }: ModelRowProps) {
   const { user } = useAuth();
-  const { extractions, loading, running, extract, extractFromUrl, remove } =
-    usePropertyExtractions(model.id);
+  const {
+    extractions,
+    loading,
+    running,
+    failuresByAsset,
+    extract,
+    extractFromUrl,
+    remove,
+  } = usePropertyExtractions(model.id);
   const { refresh: refreshDocs } = useAvailablePropertyDocs();
   const { isFrozen, freeze: freezeRow } = useLusFreeze(model.id);
+
+  // Tracks vault_assets uploaded/registered in this session for this property.
+  // Merged with extractions to render the truth: pending / failed / indexed.
+  const [trackedAssets, setTrackedAssets] = useState<AssetMeta[]>([]);
+  const trackAsset = (a: AssetMeta) =>
+    setTrackedAssets((prev) =>
+      prev.some((p) => p.id === a.id) ? prev : [a, ...prev],
+    );
+
+  // On mount, hydrate trackedAssets from already-existing extractions for this
+  // property AND any provider-owned property_doc vault_assets that match the
+  // ones we have extractions for. This keeps post-reload state honest.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      // 1) Pull asset metadata for any extraction rows this property has.
+      const ids = Array.from(
+        new Set(extractions.map((e) => e.vault_asset_id)),
+      );
+      if (ids.length === 0) return;
+      const { data } = await supabase
+        .from("vault_assets")
+        .select("id, label, asset_url, mime_type")
+        .in("id", ids);
+      if (cancelled || !data) return;
+      setTrackedAssets((prev) => {
+        const next = [...prev];
+        for (const a of data) {
+          if (!next.some((p) => p.id === a.id)) {
+            next.push({
+              id: a.id,
+              label: a.label,
+              asset_url: a.asset_url,
+              mime_type: a.mime_type,
+            });
+          }
+        }
+        return next;
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, extractions]);
 
   const [open, setOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
