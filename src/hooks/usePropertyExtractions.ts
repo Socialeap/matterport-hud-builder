@@ -149,10 +149,8 @@ export function usePropertyExtractions(propertyUuid: string | null) {
           property_uuid: propertyUuid,
           saved_model_id: input.saved_model_id ?? null,
         });
+        clearFailure(input.vault_asset_id);
         toast.success(`Extracted ${res.chunks_indexed} chunks`);
-        // Enrich the new extraction with chunk embeddings + canonical
-        // Q&As so the delivered tour runs a zero-LLM answer pipeline.
-        // Non-fatal on failure — the tour falls back to BM25-only Q&A.
         try {
           await ensureExtractionEmbeddings([propertyUuid]);
         } catch (err) {
@@ -161,14 +159,14 @@ export function usePropertyExtractions(propertyUuid: string | null) {
         await refresh();
         return res;
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        toast.error(`Extraction failed: ${msg}`);
+        const f = recordFailure(input.vault_asset_id, err);
+        toast.error(`Extraction failed (${f.stage}): ${f.detail}`);
         return null;
       } finally {
         setRunning(false);
       }
     },
-    [propertyUuid, refresh],
+    [propertyUuid, refresh, clearFailure, recordFailure],
   );
 
   const extractFromUrl = useCallback(
@@ -191,6 +189,7 @@ export function usePropertyExtractions(propertyUuid: string | null) {
           template_id: input.template_id ?? null,
           saved_model_id: input.saved_model_id ?? null,
         });
+        clearFailure(input.vault_asset_id);
         toast.success(`Extracted ${res.chunks_indexed} chunks from URL`);
         try {
           await ensureExtractionEmbeddings([propertyUuid]);
@@ -200,14 +199,14 @@ export function usePropertyExtractions(propertyUuid: string | null) {
         await refresh();
         return res;
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        toast.error(`URL extraction failed: ${msg}`);
+        const f = recordFailure(input.vault_asset_id, err);
+        toast.error(`URL extraction failed (${f.stage}): ${f.detail}`);
         return null;
       } finally {
         setRunning(false);
       }
     },
-    [propertyUuid, refresh],
+    [propertyUuid, refresh, clearFailure, recordFailure],
   );
 
   const remove = useCallback(
