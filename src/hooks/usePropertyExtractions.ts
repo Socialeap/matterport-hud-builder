@@ -35,12 +35,36 @@ export function usePropertyExtractions(propertyUuid: string | null) {
   const [loading, setLoading] = useState(false);
   const [running, setRunning] = useState(false);
   const [backfilling, setBackfilling] = useState(false);
+  const [failuresByAsset, setFailuresByAsset] = useState<
+    Record<string, ExtractionFailure>
+  >({});
 
-  // Track which propertyUuids have already been backfill-checked this
-  // session so we don't re-spin the embedding worker on every refresh.
-  // Already-enriched rows fast-path in ensureExtractionEmbeddings, but
-  // skipping the extra SELECT + re-fetch keeps tab switches snappy.
   const backfilledRef = useRef<Set<string>>(new Set());
+
+  const recordFailure = useCallback(
+    (vault_asset_id: string, err: unknown) => {
+      const f: ExtractionFailure =
+        err instanceof ExtractionError
+          ? { stage: err.stage, detail: err.detail, status: err.status, at: Date.now() }
+          : {
+              stage: "unknown",
+              detail: err instanceof Error ? err.message : String(err),
+              status: 0,
+              at: Date.now(),
+            };
+      setFailuresByAsset((prev) => ({ ...prev, [vault_asset_id]: f }));
+      return f;
+    },
+    [],
+  );
+
+  const clearFailure = useCallback((vault_asset_id: string) => {
+    setFailuresByAsset((prev) => {
+      if (!(vault_asset_id in prev)) return prev;
+      const { [vault_asset_id]: _drop, ...rest } = prev;
+      return rest;
+    });
+  }, []);
 
   const fetchRows = useCallback(async (uuid: string) => {
     const { data, error } = await supabase
