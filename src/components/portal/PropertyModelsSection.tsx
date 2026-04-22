@@ -246,24 +246,49 @@ export function PropertyModelsSection({
             />
           </div>
         ))}
-      </CardContent>
+    </div>
+  );
 
-      {syncModel && (
-        <MediaSyncModal
-          open={!!syncModelId}
-          onOpenChange={(open) => {
-            if (!open) setSyncModelId(null);
-          }}
-          currentMatterportId={syncModel.matterportId}
-          existing={syncModel.multimedia ?? []}
-          onConfirm={(merged, parsedModelId) => {
-            onMediaChange(syncModel.id, merged);
-            if (!syncModel.matterportId.trim() && parsedModelId) {
-              onChange(syncModel.id, "matterportId", parsedModelId);
-            }
-          }}
-        />
-      )}
+  const syncModalEl = syncModel && (
+    <MediaSyncModal
+      open={!!syncModelId}
+      onOpenChange={(open) => {
+        if (!open) setSyncModelId(null);
+      }}
+      currentMatterportId={syncModel.matterportId}
+      existing={syncModel.multimedia ?? []}
+      onConfirm={(merged, parsedModelId) => {
+        onMediaChange(syncModel.id, merged);
+        if (!syncModel.matterportId.trim() && parsedModelId) {
+          onChange(syncModel.id, "matterportId", parsedModelId);
+        }
+      }}
+    />
+  );
+
+  if (headless) {
+    return (
+      <>
+        <div className="flex justify-end">{addButton}</div>
+        {body}
+        {syncModalEl}
+      </>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Home className="size-5 text-primary" />
+            Property Models
+          </CardTitle>
+          {addButton}
+        </div>
+      </CardHeader>
+      <CardContent>{body}</CardContent>
+      {syncModalEl}
     </Card>
   );
 }
