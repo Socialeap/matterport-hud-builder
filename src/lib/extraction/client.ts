@@ -10,6 +10,92 @@ import type {
   ExtractionResponse,
 } from "./provider";
 
+/**
+ * Structured error thrown by the invoke helpers when the edge function
+ * returns a non-2xx status. Carries the JSON-decoded `stage`/`detail`/
+ * `diagnostics` payload so toasts and badges can surface real reasons
+ * instead of "non-2xx status code".
+ */
+export class ExtractionError extends Error {
+  status: number;
+  stage: string;
+  detail: string;
+  diagnostics: Record<string, unknown>;
+  constructor(opts: {
+    status: number;
+    stage: string;
+    detail: string;
+    diagnostics?: Record<string, unknown>;
+  }) {
+    super(`${opts.stage}: ${opts.detail}`);
+    this.name = "ExtractionError";
+    this.status = opts.status;
+    this.stage = opts.stage;
+    this.detail = opts.detail;
+    this.diagnostics = opts.diagnostics ?? {};
+  }
+}
+
+/** Decode the JSON body sitting inside a FunctionsHttpError. */
+async function decodeFunctionError(
+  err: unknown,
+  fallbackName: string,
+): Promise<ExtractionError> {
+  // supabase-js attaches the raw `Response` on `error.context` for
+  // FunctionsHttpError. Read it once and parse as JSON.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const e = err as any;
+  const ctx: Response | undefined = e?.context;
+  const status: number = ctx?.status ?? 500;
+
+  if (status === 423) {
+    return new ExtractionError({
+      status: 423,
+      stage: "freeze",
+      detail:
+        "LUS freeze active for this property — unfreeze to continue",
+    });
+  }
+
+  if (ctx && typeof ctx.text === "function") {
+    try {
+      const txt = await ctx.text();
+      if (txt) {
+        try {
+          const body = JSON.parse(txt) as {
+            ok?: boolean;
+            stage?: string;
+            detail?: string;
+            error?: string;
+            diagnostics?: Record<string, unknown>;
+          };
+          return new ExtractionError({
+            status,
+            stage: body.stage ?? "unknown",
+            detail: body.detail ?? body.error ?? `HTTP ${status}`,
+            diagnostics: body.diagnostics ?? {},
+          });
+        } catch {
+          return new ExtractionError({
+            status,
+            stage: "unknown",
+            detail: txt.slice(0, 200),
+          });
+        }
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+
+  const msg = e?.message ?? `${fallbackName} returned a non-2xx status`;
+  return new ExtractionError({
+    status,
+    stage: "unknown",
+    detail: msg,
+  });
+}
+
 export async function invokeExtraction(
   req: ExtractionRequest,
 ): Promise<ExtractionResponse> {
@@ -19,12 +105,13 @@ export async function invokeExtraction(
   );
 
   if (error) {
-    if (error.context?.status === 423) {
-      throw new Error("LUS freeze active for this property — unfreeze to continue");
-    }
-    throw error;
+    throw await decodeFunctionError(error, "extract-property-doc");
   }
-  if (!data) throw new Error("extract-property-doc returned no data");
+  if (!data) throw new ExtractionError({
+    status: 500,
+    stage: "unknown",
+    detail: "extract-property-doc returned no data",
+  });
   return data;
 }
 
@@ -51,11 +138,12 @@ export async function invokeUrlExtraction(
   );
 
   if (error) {
-    if (error.context?.status === 423) {
-      throw new Error("LUS freeze active for this property — unfreeze to continue");
-    }
-    throw error;
+    throw await decodeFunctionError(error, "extract-url-content");
   }
-  if (!data) throw new Error("extract-url-content returned no data");
+  if (!data) throw new ExtractionError({
+    status: 500,
+    stage: "unknown",
+    detail: "extract-url-content returned no data",
+  });
   return data;
 }
