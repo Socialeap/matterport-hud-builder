@@ -6,7 +6,7 @@ import { checkDemoPublished } from "@/lib/sandbox-demo.functions";
 import { Check, X, Link2, Palette, Download, Sparkles, Menu, LogIn, LogOut } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
+
 import { PortalSignupModal } from "@/components/portal/PortalSignupModal";
 import { toast } from "sonner";
 
