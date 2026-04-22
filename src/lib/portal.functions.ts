@@ -393,9 +393,9 @@ function buildDocsQaAssets(
   }
 
   const css = `
-#docs-qa-toggle{padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;background:${escapeHtml(accentColor)};border:none;color:#fff;display:flex;align-items:center;gap:6px}
-#docs-qa-toggle svg{width:14px;height:14px}
-#docs-qa-panel{display:none;position:fixed;bottom:56px;right:16px;width:380px;max-width:calc(100vw - 32px);height:480px;max-height:calc(100vh - 80px);background:${escapeHtml(hudBgColor)};border:1px solid #333;border-radius:12px;z-index:99;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.5);overflow:hidden}
+#docs-qa-toggle{padding:4px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;background:${escapeHtml(accentColor)};border:none;color:#fff;display:inline-flex;align-items:center;gap:5px;flex-shrink:0}
+#docs-qa-toggle svg{width:13px;height:13px}
+#docs-qa-panel{display:none;position:fixed;top:72px;right:16px;width:380px;max-width:calc(100vw - 32px);height:480px;max-height:calc(100vh - 96px);background:${escapeHtml(hudBgColor)};border:1px solid #333;border-radius:12px;z-index:1500;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.5);overflow:hidden}
 #docs-qa-panel.open{display:flex}
 #docs-qa-header{padding:12px 16px;border-bottom:1px solid #333;display:flex;align-items:center;justify-content:space-between}
 #docs-qa-header h4{font-size:14px;font-weight:600;color:#fff;margin:0}
@@ -643,9 +643,9 @@ export const generatePresentation = createServerFn({ method: "POST" })
     // ── Chat Q&A CSS (only when qaDatabase is present) ────────────────
     const qaCss = hasQA
       ? `
-#qa-toggle{padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;background:${escapeHtml(accentColor)};border:none;color:#fff;display:flex;align-items:center;gap:6px}
-#qa-toggle svg{width:16px;height:16px}
-#qa-panel{display:none;position:fixed;bottom:52px;right:16px;width:380px;max-width:calc(100vw - 32px);height:480px;max-height:calc(100vh - 80px);background:${escapeHtml(hudBgColor)};border:1px solid #333;border-radius:12px;z-index:1500;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.5);overflow:hidden}
+#qa-toggle{padding:4px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;background:${escapeHtml(accentColor)};border:none;color:#fff;display:inline-flex;align-items:center;gap:5px;flex-shrink:0}
+#qa-toggle svg{width:14px;height:14px}
+#qa-panel{display:none;position:fixed;top:72px;right:16px;width:380px;max-width:calc(100vw - 32px);height:480px;max-height:calc(100vh - 96px);background:${escapeHtml(hudBgColor)};border:1px solid #333;border-radius:12px;z-index:1500;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.5);overflow:hidden}
 #qa-panel.open{display:flex}
 #qa-header{padding:12px 16px;border-bottom:1px solid #333;display:flex;align-items:center;justify-content:space-between}
 #qa-header h4{font-size:14px;font-weight:600;color:#fff;margin:0}
@@ -910,8 +910,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .tab{padding:4px 12px;border-radius:999px;cursor:pointer;font-size:12px;font-weight:500;background:transparent;border:none;color:rgba(255,255,255,0.65);transition:background 0.2s,color 0.2s}
 .tab.active{background:${escapeHtml(accentColor)};color:#fff}
 
-/* ── Bottom toolbar (AI / Docs buttons) ──────────────────────────── */
-#hud-bottom{position:fixed;bottom:0;left:0;right:0;z-index:500;padding:8px 14px;display:flex;align-items:center;justify-content:flex-end;gap:8px;background:${escapeHtml(hudBgColor)}cc;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid rgba(255,255,255,0.06)}
+/* (Bottom toolbar removed — Ask AI / Ask docs buttons now live in the HUD header to keep the Matterport logo unobstructed.) */
 
 /* ── Agent contact panel (slide from right) ──────────────────────── */
 #agent-drawer{position:fixed;top:0;right:0;width:min(300px,88vw);height:100%;z-index:2000;overflow-y:auto;transform:translateX(100%);transition:transform 0.3s ease;background:${escapeHtml(hudBgColor)}cc;backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);border-left:1px solid rgba(255,255,255,0.08);box-shadow:-8px 0 32px rgba(0,0,0,0.25)}
@@ -963,15 +962,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 
 /* ── Powered-by footer ────────────────────────────────────────────── */
 #powered-by{position:fixed;bottom:0;left:0;right:0;height:34px;display:flex;align-items:center;justify-content:center;font-size:11px;color:rgba(255,255,255,0.4);border-top:1px solid rgba(255,255,255,0.06);background:${escapeHtml(hudBgColor)}cc;z-index:499}
-${isPro ? "" : `/* Bottom toolbar above footer; viewer above footer */
-#hud-bottom{bottom:34px}
+${isPro ? "" : `/* Viewer above powered-by footer */
 #viewer{bottom:34px}`}
 
-/* ── Panel z-index overrides (ensure panels render above bottom toolbar) */
+/* ── Panel z-index overrides ───────────────────────────────────── */
 #docs-qa-panel,#property-docs{z-index:1500}
-/* Adjust panel anchors to clear the bottom toolbar (~44px) */
-#docs-qa-panel{bottom:${isPro ? "52" : "86"}px}
-#property-docs{bottom:${isPro ? "56" : "90"}px}
+/* Property-docs panel still anchored bottom-left; clear powered-by footer when present */
+#property-docs{bottom:${isPro ? "16" : "50"}px}
 
 ${qaCss}
 ${docsQaAssets.css}
@@ -1029,6 +1026,8 @@ ${docsQaAssets.css}
       <button id="hud-media-btn" class="hud-icon-btn" style="display:none" aria-label="Media gallery" title="View Media Gallery" onclick="window.__openModal&&window.__openModal('carousel',0)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
       </button>
+      ${docsQaAssets.toggleBtn}
+      ${qaToggleBtn}
       <span id="hud-agent-name"></span>
       ${(agent.phone || agent.email || agent.name) ? `<button class="hud-contact-btn" onclick="window.__openContact&&window.__openContact()">Contact</button>` : ""}
     </div>
@@ -1038,11 +1037,7 @@ ${docsQaAssets.css}
 <!-- ── Property tabs (top-left, shown only when >1 property) ─────── -->
 <div id="tabs"></div>
 
-<!-- ── Bottom toolbar ────────────────────────────────────────────── -->
-<div id="hud-bottom">
-  ${docsQaAssets.toggleBtn}
-  ${qaToggleBtn}
-</div>
+<!-- (Bottom toolbar removed: Ask AI / Ask docs are now in the HUD header to keep the Matterport logo unobstructed.) -->
 
 <!-- ── Agent contact panel ───────────────────────────────────────── -->
 ${(agent.phone || agent.email || agent.name) ? `<div id="agent-drawer">
