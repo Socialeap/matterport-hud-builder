@@ -155,22 +155,23 @@ function ModelRow({
     setBusy(true);
     try {
       // 1. Determine template — curated pick OR auto-induced for walk-ins.
-      let activeTemplateId = templateId;
+      let activeTemplateId: string = templateId;
 
       if (!activeTemplateId) {
         setBusyMessage("Analyzing document structure…");
-        activeTemplateId = await ensureAutoTemplate({
+        const auto = await ensureAutoTemplate({
           providerId: user.id,
           file,
           label: label.trim(),
           mimeType: detectedMime,
         });
-        if (!activeTemplateId) {
+        if (!auto) {
           toast.error(
             "Could not auto-detect a template. Try a different file or contact your provider for a curated template.",
           );
           return;
         }
+        activeTemplateId = auto;
         onTemplatesChanged();
       }
 
