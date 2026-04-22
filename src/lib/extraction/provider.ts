@@ -57,5 +57,6 @@ export interface ExtractionProvider {
   extract(input: {
     bytes: Uint8Array;
     template: VaultTemplate;
+    mimeType?: string;
   }): Promise<ExtractionResult>;
 }
