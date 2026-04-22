@@ -29,7 +29,7 @@ const socialFields: { key: keyof AgentContact; label: string; placeholder: strin
   { key: "website", label: "Website", placeholder: "https://yourwebsite.com" },
 ];
 
-export function AgentContactSection({ agent, onChange, onAvatarFileChange }: AgentContactSectionProps) {
+export function AgentContactSection({ agent, onChange, onAvatarFileChange, headless }: AgentContactSectionProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleAvatarSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
