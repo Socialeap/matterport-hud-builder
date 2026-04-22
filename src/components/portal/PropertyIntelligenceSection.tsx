@@ -1,9 +1,12 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  AlertTriangle,
   BookOpen,
+  CheckCircle2,
   FileText,
   Loader2,
   Lock,
+  RefreshCw,
   Snowflake,
   Sparkles,
   Trash2,
@@ -39,6 +42,8 @@ import type { PropertyModel } from "./types";
 interface Props {
   models: PropertyModel[];
   savedModelId?: string | null;
+  /** Fired only when an extraction completes successfully (URL or file). */
+  onExtractionSuccess?: () => void;
 }
 
 /**
