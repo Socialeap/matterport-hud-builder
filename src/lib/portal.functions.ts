@@ -774,8 +774,7 @@ ${isPro ? "" : `/* Viewer above powered-by footer */
 /* Property-docs panel still anchored bottom-left; clear powered-by footer when present */
 #property-docs{bottom:${isPro ? "16" : "50"}px}
 
-${qaCss}
-${docsQaAssets.css}
+${askAssets.css}
 </style>
 </head>
 <body>
