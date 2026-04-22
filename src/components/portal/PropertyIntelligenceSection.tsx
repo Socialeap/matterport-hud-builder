@@ -61,9 +61,10 @@ export function PropertyIntelligenceSection({ models, savedModelId }: Props) {
         <p className="flex items-start gap-2">
           <Sparkles className="mt-0.5 size-3.5 shrink-0 text-primary" />
           <span>
-            Upload a property datasheet (PDF, DOCX, TXT, RTF) for each model.
-            Extracted text is indexed locally so visitors can ask questions
-            via the <strong>Ask</strong> button on the published tour.
+            Upload a property datasheet (PDF, DOCX, TXT, RTF) <em>or</em>
+            paste a public listing URL for each model. Extracted text is
+            indexed locally so visitors can ask questions via the{" "}
+            <strong>Ask</strong> button on the published tour.
           </span>
         </p>
       </div>
@@ -114,13 +115,15 @@ function ModelRow({
   onTemplatesChanged,
 }: ModelRowProps) {
   const { user } = useAuth();
-  const { extractions, loading, running, extract, remove } =
+  const { extractions, loading, running, extract, extractFromUrl, remove } =
     usePropertyExtractions(model.id);
   const { refresh: refreshDocs } = useAvailablePropertyDocs();
   const { isFrozen, freeze: freezeRow } = useLusFreeze(model.id);
 
   const [open, setOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
+  const [sourceUrl, setSourceUrl] = useState("");
+  const [urlError, setUrlError] = useState<string | null>(null);
   const [label, setLabel] = useState("");
   const [templateId, setTemplateId] = useState<string>("");
   const [busy, setBusy] = useState(false);
@@ -135,6 +138,8 @@ function ModelRow({
 
   const openDialog = () => {
     setFile(null);
+    setSourceUrl("");
+    setUrlError(null);
     setLabel("");
     setTemplateId(hasTemplates ? templates[0].id : "");
     setOpen(true);
@@ -143,6 +148,8 @@ function ModelRow({
   const closeDialog = () => {
     setOpen(false);
     setFile(null);
+    setSourceUrl("");
+    setUrlError(null);
     setLabel("");
     setTemplateId("");
     if (inputRef.current) inputRef.current.value = "";
@@ -150,10 +157,94 @@ function ModelRow({
 
   const detectedMime = useMemo(() => detectMimeFromFile(file), [file]);
 
+  const trimmedUrl = sourceUrl.trim();
+  const parsedUrl = useMemo(() => {
+    if (!trimmedUrl) return null;
+    try {
+      const u = new URL(trimmedUrl);
+      if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+      return u;
+    } catch {
+      return null;
+    }
+  }, [trimmedUrl]);
+  const urlMode = !file && !!trimmedUrl;
+  const effectiveLabel =
+    label.trim() || (urlMode && parsedUrl ? parsedUrl.hostname : "");
+  const submitDisabled =
+    busy ||
+    (!file && !trimmedUrl) ||
+    (file != null && !label.trim()) ||
+    (urlMode && !parsedUrl) ||
+    !effectiveLabel;
+
+  const handleUrlChange = (val: string) => {
+    setSourceUrl(val);
+    if (!val.trim()) {
+      setUrlError(null);
+      return;
+    }
+    try {
+      const u = new URL(val.trim());
+      if (u.protocol !== "http:" && u.protocol !== "https:") {
+        setUrlError("URL must start with http:// or https://");
+      } else {
+        setUrlError(null);
+      }
+    } catch {
+      setUrlError("Enter a valid URL (e.g. https://...)");
+    }
+  };
+
   const handleUpload = async () => {
-    if (!user || !file || !label.trim()) return;
+    if (!user) return;
+    if (submitDisabled) return;
     setBusy(true);
     try {
+      // ── URL-only branch ──────────────────────────────────────────────
+      if (urlMode && parsedUrl) {
+        setBusyMessage("Registering URL…");
+        const finalLabel = effectiveLabel;
+        const { data: newAsset, error: insertErr } = await supabase
+          .from("vault_assets")
+          .insert({
+            provider_id: user.id,
+            category_type: "property_doc" as const,
+            label: finalLabel,
+            asset_url: parsedUrl.toString(),
+            storage_path: null,
+            mime_type: "text/uri-list",
+            file_size_bytes: 0,
+            is_active: true,
+          })
+          .select()
+          .single();
+        if (insertErr || !newAsset) {
+          toast.error("Failed to register URL — try again.");
+          return;
+        }
+
+        await refreshDocs();
+        closeDialog();
+
+        setBusyMessage("Fetching & indexing URL…");
+        const res = await extractFromUrl({
+          vault_asset_id: newAsset.id,
+          url: parsedUrl.toString(),
+          template_id: templateId || null,
+          saved_model_id: savedModelId,
+        });
+        if (res) {
+          toast.success(
+            `Indexed ${res.chunks_indexed} chunks from ${parsedUrl.hostname}`,
+          );
+        }
+        return;
+      }
+
+      // ── File branch (unchanged behaviour) ────────────────────────────
+      if (!file || !label.trim()) return;
+
       // 1. Determine template — curated pick OR auto-induced for walk-ins.
       let activeTemplateId: string = templateId;
 
@@ -290,11 +381,11 @@ function ModelRow({
       <Dialog open={open} onOpenChange={(o) => { if (!o) closeDialog(); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Upload Property Document</DialogTitle>
+            <DialogTitle>Add Property Intelligence</DialogTitle>
             <DialogDescription>
-              Attach a datasheet for <strong>{displayName}</strong>.
-              Accepted: PDF, DOCX, TXT, RTF. Legacy <code>.doc</code> is
-              not supported — please save as <code>.docx</code> first.
+              Attach a datasheet (PDF, DOCX, TXT, RTF) <em>or</em> paste a
+              public listing URL for <strong>{displayName}</strong>. Legacy{" "}
+              <code>.doc</code> is not supported — save as <code>.docx</code>.
             </DialogDescription>
           </DialogHeader>
 
@@ -327,13 +418,48 @@ function ModelRow({
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor={`pis-label-${model.id}`} className="text-xs">Label</Label>
+              <Label htmlFor={`pis-url-${model.id}`} className="text-xs">
+                Source URL <span className="text-muted-foreground">(optional)</span>
+              </Label>
+              <input
+                id={`pis-url-${model.id}`}
+                type="url"
+                value={sourceUrl}
+                onChange={(e) => handleUrlChange(e.target.value)}
+                disabled={!!file}
+                placeholder="https://www.zillow.com/homedetails/..."
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm disabled:opacity-50"
+              />
+              {urlError ? (
+                <p className="text-[10px] leading-snug text-destructive">
+                  {urlError}
+                </p>
+              ) : (
+                <p className="text-[10px] leading-snug text-muted-foreground">
+                  {file
+                    ? "URL ignored when a file is attached."
+                    : "Paste a public listing page (Zillow, Realtor.com, agent site, etc.)."}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor={`pis-label-${model.id}`} className="text-xs">
+                Label{" "}
+                {urlMode && (
+                  <span className="text-muted-foreground">(optional)</span>
+                )}
+              </Label>
               <input
                 id={`pis-label-${model.id}`}
                 type="text"
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
-                placeholder="e.g. Floor Plan — Unit 4B"
+                placeholder={
+                  urlMode && parsedUrl
+                    ? parsedUrl.hostname
+                    : "e.g. Floor Plan — Unit 4B"
+                }
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
               />
             </div>
@@ -372,7 +498,7 @@ function ModelRow({
             </Button>
             <Button
               onClick={handleUpload}
-              disabled={busy || !file || !label.trim()}
+              disabled={submitDisabled}
             >
               {busy ? (
                 <>

@@ -117,7 +117,13 @@ serve(async (req) => {
     return jsonResponse({ error: "wrong_category" }, 400);
   }
   if (!asset.storage_path) {
-    return jsonResponse({ error: "no_storage_path" }, 400);
+    return jsonResponse(
+      {
+        error: "no_storage_path",
+        hint: "use extract-url-content for URL-based assets",
+      },
+      400,
+    );
   }
 
   // Template must belong to the same provider as the asset — no

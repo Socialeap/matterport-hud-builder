@@ -27,3 +27,35 @@ export async function invokeExtraction(
   if (!data) throw new Error("extract-property-doc returned no data");
   return data;
 }
+
+export interface UrlExtractionRequest {
+  vault_asset_id: string;
+  property_uuid: string;
+  url: string;
+  saved_model_id?: string | null;
+  template_id?: string | null;
+}
+
+/**
+ * Companion to invokeExtraction for URL-based assets. The server-side
+ * extract-url-content function fetches the page, runs SSRF guards,
+ * structures fields via the LLM, chunks the cleaned text, and writes a
+ * property_extractions row identical in shape to the file path's output.
+ */
+export async function invokeUrlExtraction(
+  req: UrlExtractionRequest,
+): Promise<ExtractionResponse> {
+  const { data, error } = await supabase.functions.invoke<ExtractionResponse>(
+    "extract-url-content",
+    { body: req },
+  );
+
+  if (error) {
+    if (error.context?.status === 423) {
+      throw new Error("LUS freeze active for this property — unfreeze to continue");
+    }
+    throw error;
+  }
+  if (!data) throw new Error("extract-url-content returned no data");
+  return data;
+}
