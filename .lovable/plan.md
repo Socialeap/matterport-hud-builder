@@ -1,73 +1,129 @@
 
 
-## Merge "Ask AI" and "Ask Docs" into a single unified chat button
+## Property-doc upload entrypoint in the Builder
 
-### Why this is the right move
+### What's actually there today (so we don't regress it)
 
-Both buttons open chat panels that answer the visitor's questions about the property. The split is an internal artefact of two backend pipelines, not a meaningful user distinction:
+The Builder already has a working extraction pipeline:
 
-| Surface | Source data | Engine |
-|---|---|---|
-| **Ask AI** | `qaDatabase` — pre-computed canonical Q&A pairs the host wrote/curated | Orama hybrid search over MiniLM embeddings (CDN) |
-| **Ask docs** | Per-property doc extractions (chunks + extracted fields + canonical QAs) | Orama hybrid/BM25 over the same MiniLM pipeline |
+```text
+[Upload Doc dialog] → uploadVaultAsset() → vault_assets row →
+extract-property-doc edge fn → property_extractions row →
+ensureExtractionEmbeddings (chunks + canonical Q&As) → Ask panel
+```
 
-To the end visitor, both are "ask a question about this property." Showing two near-identical chat icons in the header is confusing, wastes header real estate, and forces the visitor to guess which pipeline knows the answer. They should not have to.
+The dialog lives **inside** `PropertyDocsPanel`, which is rendered **per-property** inside the Property Models accordion. It's gated behind `lusActive && !isFrozen && user && templates.length > 0` and only accepts `application/pdf`.
 
-### Goal
+So the user's complaint is real for two concrete reasons:
+1. The upload button is **buried** inside a per-property panel inside a closed accordion — visually invisible.
+2. It **disappears entirely** when the client has no active templates (the common case for a walk-in client).
+3. It **rejects DOC/TXT/RTF** even though those are easier to parse than PDFs.
 
-One button labelled **Ask** in the HUD header that opens a single chat panel. When the visitor sends a question, the runtime queries **both knowledge sources in parallel**, picks the highest-confidence answer, and falls back to the other source if the first has no good hit. The visitor never sees the split.
+The fix is targeted: surface the upload entrypoint, broaden accepted formats, and ensure the extractor can handle the new formats — without re-plumbing the extraction pipeline that already works.
 
-### What changes
+### Plan
 
-**File to edit:** `src/lib/portal.functions.ts` (only — the merge is fully contained in the generated HTML pipeline).
+#### 1. New surface — promote upload to a first-class Builder section
 
-#### 1. Header — collapse two buttons into one
+Add a fourth Accordion item in `HudBuilderSandbox.tsx` titled **Property Intelligence (Ask AI)** with a `BookOpen` icon, sibling to Branding / Property Models / Agent. Closed by default like the others. Inside it: a new `PropertyIntelligenceSection` that lists every property model's docs in one place (one row per `models[i]`) with an inline "Upload Doc" button and live extraction status. This solves the visibility problem without tearing out the per-property `PropertyDocsPanel` (which still ships embedded inside Property Models for power users).
 
-Replace the two adjacent buttons in the `#hud-right` strip (currently `${docsQaAssets.toggleBtn}${qaToggleBtn}`) with a single `#ask-toggle` button. Show it whenever **either** `hasQA` is true **or** `docsQaAssets.enabled` is true. Use the chat-bubble icon currently used by Ask AI; label it "Ask".
+**File to add:** `src/components/portal/PropertyIntelligenceSection.tsx`
 
-#### 2. Panels — collapse two panels into one `#ask-panel`
+The section uses the **same hooks the existing panel uses** — `usePropertyExtractions`, `useAvailableTemplates`, `useAvailablePropertyDocs`, `useLusFreeze`, `useLusLicense` — so behaviour is identical and there's no new state machine.
 
-Build a single panel using the existing CSS patterns (reuse `#qa-*` styling). Single message list, single input row, single Send button. Keep the same z-index, same `top:72px;right:16px` glass card, same accent-coloured user bubbles and dark assistant bubbles. Drop both `#qa-panel` and `#docs-qa-panel` shells from the output.
+#### 2. Auto-template fallback — never block on "no template"
 
-#### 3. Engine — unified `__ask` handler that fans out and merges
+The current dialog requires a pre-published `vault_templates` row. Walk-in clients don't have one. Add a second code path: if `templates.length === 0`, the section's CTA reads **"Upload & Auto-Detect"** and calls `induceSchema(file)` first, then writes a per-provider hidden template row (`is_active: true`, `label: "Auto: <filename>"`, `extractor: "pdfjs_heuristic"`), then runs extraction against it. The existing `induce-schema` edge function already exists and returns a sanitised JSON Schema — we just wire it in. Providers with curated templates are unaffected (they keep the picker UI).
 
-Combine the two existing IIFEs into one initialiser keyed off the new `#ask-*` DOM ids. The unified handler:
+For **non-PDF** uploads (TXT/RTF/DOCX), induction is skipped and we use a synthetic minimal template (`{ properties: {}, required: [] }`) — extraction still produces text chunks, which is what feeds the Ask panel's vector search.
 
-1. Lazily loads Orama + transformers.js once (currently both pipelines load them separately — saves a redundant ~30 MB download path).
-2. On open, builds **both** indexes that apply to the active property:
-   - the global `qaDatabase` Orama DB (only if `hasQA`)
-   - the per-property docs DB (only if that property has extractions/canonical QAs)
-3. On send, runs the query against every available source in parallel:
-   - Tier 1: canonical-QA cosine over docs canonical QAs (highest precision)
-   - Tier 2: hybrid Orama search over the host-curated `qaDatabase`
-   - Tier 3: hybrid/BM25 Orama search over the per-property doc chunks
-4. Picks the result with the highest score; if no source crosses its existing threshold, returns the existing "I couldn't find that" message.
-5. Source-link rendering reuses the existing per-tier behaviour: anchor scroll for `qaDatabase` hits, plain source label for doc hits.
+#### 3. Broader file-format support — PDF, TXT, RTF, DOCX
 
-The thresholds, embedding pipeline, WebGPU→WASM fallback, and per-property re-indexing on tab change all carry over unchanged — they were already shared by both surfaces, just duplicated.
+Update both client-side accept filter and the server-side extractor.
 
-#### 4. Cleanup
+**Client (`<input accept>`):**
 
-- Delete `qaToggleBtn`, `qaPanelHtml`, `qaModuleScript`, `docsQaAssets.toggleBtn`, `docsQaAssets.panelHtml`, and the standalone `__openDocsQa` window export from the output.
-- Replace with a single `askAssets = { toggleBtn, panelHtml, css, moduleScript, enabled }` builder. The `enabled` flag is `hasQA || docsQaEnabled`.
-- Keep `buildDocsQaAssets`'s data-shape helpers (`__dqaCollectCanonicalQAs`, `__dqaCollectChunkDocs`, etc.) — they move into the unified module unchanged.
+```text
+.pdf,.txt,.rtf,.doc,.docx,
+application/pdf,text/plain,text/rtf,application/rtf,
+application/msword,
+application/vnd.openxmlformats-officedocument.wordprocessingml.document
+```
 
-### Why this is safe
+**Server (`supabase/functions/_shared/extractors/pdfjs-heuristic.ts`):**
 
-- Pure consolidation in one generator file. No backend, schema, auth, or React UI changes.
-- Both pipelines already use the **same** Orama version, **same** MiniLM model, **same** WebGPU/WASM fallback, **same** CDN URLs — there is no model conflict to reconcile.
-- The merged engine only adds branching at query time (which sources to consult); the per-source ranking math is identical to today's.
-- Per-property tab-change reset logic (currently in `load(i)`) keeps working because there is now a single `__ask` state object to clear instead of two.
-- Backslash-escape rules for the embedded template literal (the regex bug we already fixed) carry over by reusing the same patterns — no new regex literals introduced.
-- Matterport logo remains unobstructed: still one button in the header, no bottom toolbar reintroduced.
+Branch on the asset's `mime_type` (already stored on `vault_assets`):
+
+| MIME / extension | Reader |
+|---|---|
+| `application/pdf` | unpdf (existing) |
+| `text/plain` | `new TextDecoder().decode(bytes)` |
+| `text/rtf`, `application/rtf` | strip RTF control words via small regex pass, then decode |
+| `application/msword` (`.doc`) | not safe to parse server-side without a Deno-compatible converter — return a clear `unsupported_legacy_doc` error and ask the user to save as `.docx` or `.pdf` |
+| `application/vnd.openxmlformats-...wordprocessingml.document` (`.docx`) | unzip via `https://esm.sh/fflate@0.8.2`, read `word/document.xml`, strip tags |
+
+The extractor signature stays the same; only the text-extraction step branches. Field coercion + chunking are reused as-is.
+
+To pass MIME through, the extract-property-doc edge function already has `asset.mime_type` after step 2; we extend the `extract({ bytes, template })` call to `extract({ bytes, template, mimeType })` and add `mimeType?: string` to `ExtractionProvider.extract`'s input shape (both the Deno-side `_shared/extractors/types.ts` and the client mirror in `src/lib/extraction/provider.ts` — kept in lock-step as the existing comment in those files mandates).
+
+#### 4. Pre-existing build error — fix as part of the same diff
+
+The build is currently red on:
+
+```text
+TS2339: Property 'stripe_connect_id' does not exist on type 'GenericStringError'.
+  supabase/functions/create-connect-checkout/index.ts:129
+```
+
+Root cause: the `.select(string)` call uses **string concatenation across three lines**, which trips Supabase JS v2's TS inference and resolves the row type to the error union instead of the expected row shape.
+
+```ts
+.select(
+  "stripe_connect_id, stripe_onboarding_complete, brand_name, " +
+  "use_flat_pricing, flat_price_per_model_cents, " +
+  "base_price_cents, tier3_price_cents, additional_model_fee_cents"
+)
+```
+
+Fix: collapse to a single string literal so the inference path picks the row shape:
+
+```ts
+.select("stripe_connect_id, stripe_onboarding_complete, brand_name, use_flat_pricing, flat_price_per_model_cents, base_price_cents, tier3_price_cents, additional_model_fee_cents")
+```
+
+Zero behaviour change. The whole edge-function suite typechecks again, unblocking deploy of the new flow.
+
+#### 5. Make the new section behave correctly per-tab (no leaks)
+
+`usePropertyExtractions` re-keys on `propertyUuid` (via `model.id`). The new section iterates `models.map(...)` and renders one collapsible row per model, each with its own `usePropertyExtractions(model.id)` instance — same isolation contract as the existing `PropertyDocsPanel`. No global cache, no cross-property leak.
+
+The Ask panel in the generated HTML re-indexes on tab change (already in place from the prior merge work) — nothing to change there.
+
+### Files touched
+
+- **add** `src/components/portal/PropertyIntelligenceSection.tsx` — the new accordion section
+- **edit** `src/components/portal/HudBuilderSandbox.tsx` — add the 4th `AccordionItem`
+- **edit** `src/lib/extraction/provider.ts` — add `mimeType?: string` to the provider input
+- **edit** `supabase/functions/_shared/extractors/types.ts` — same shape (mirror)
+- **edit** `supabase/functions/_shared/extractors/pdfjs-heuristic.ts` — MIME branching for TXT / RTF / DOCX
+- **edit** `supabase/functions/extract-property-doc/index.ts` — pass `asset.mime_type` to the provider
+- **edit** `supabase/functions/create-connect-checkout/index.ts` — collapse the multi-line `.select(...)` literal (build-error fix)
+
+### What this plan deliberately does NOT do
+
+- **No DB migration.** `vault_assets`, `vault_templates`, `property_extractions`, and `lus_freezes` already model everything we need.
+- **No change to the Ask panel runtime** in `portal.functions.ts`. The generator already consumes whatever `property_extractions` rows exist. Adding more rows simply makes Ask smarter.
+- **No removal** of the in-`PropertyDocsPanel` upload button. Power users keep it; the new section is additive.
+- **No DOC (legacy `.doc`) parsing.** Deno has no safe path to read `.doc` binary in a Worker; we return a clear, single-sentence error and accept `.docx` / PDF / TXT / RTF only. Communicated in the dialog hint text.
 
 ### Verification checklist
 
-1. Re-generate and download a presentation HTML for a property that has **only** curated Q&A pairs (no doc extractions). Confirm the **Ask** button appears in the header and answers from `qaDatabase` with anchor links working.
-2. Re-generate for a property that has **only** doc extractions (no curated Q&A). Confirm **Ask** appears, answers come from doc chunks, and the source label renders.
-3. Re-generate for a property that has **both**. Ask a question that only the curated DB knows → curated answer wins. Ask a question that only the docs know → docs answer wins. Confirm only one button is in the header.
-4. Re-generate for a property with **neither**. Confirm no Ask button is rendered at all.
-5. Switch between properties via the tabs. Confirm the message list resets and the next question re-indexes for the new property.
-6. Confirm DevTools shows transformers.js loaded **once**, not twice.
-7. Confirm the Matterport logo in the bottom-right is still unobstructed.
+1. Walk-in client with **no templates and no docs** opens the Builder → sees the new "Property Intelligence (Ask AI)" accordion → uploads a PDF → "Upload & Auto-Detect" runs `induce-schema`, writes a hidden template, runs extraction, shows the resulting field list inline.
+2. Same client uploads a `.txt` and a `.docx` → extraction runs (auto-template path), chunks are written, no errors.
+3. Same client uploads a legacy `.doc` → friendly error, not a crash.
+4. Existing provider with curated templates → upload dialog still offers the template picker (no regression).
+5. After upload, generate the Presentation HTML, open it, ask the unified **Ask** button a question covered by the doc → answer surfaces from the new chunks.
+6. `npm run build` (or the equivalent Deno typecheck) passes — the `create-connect-checkout` `TS2339` errors are gone.
+7. LUS-frozen property still blocks new uploads in the new section (same gate as existing panel) and shows the "Frozen" badge.
+8. LUS license inactive → new section hides upload UI but still shows existing extractions read-only, matching the existing panel's contract.
 
