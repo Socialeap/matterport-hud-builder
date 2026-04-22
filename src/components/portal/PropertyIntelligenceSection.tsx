@@ -61,9 +61,10 @@ export function PropertyIntelligenceSection({ models, savedModelId }: Props) {
         <p className="flex items-start gap-2">
           <Sparkles className="mt-0.5 size-3.5 shrink-0 text-primary" />
           <span>
-            Upload a property datasheet (PDF, DOCX, TXT, RTF) for each model.
-            Extracted text is indexed locally so visitors can ask questions
-            via the <strong>Ask</strong> button on the published tour.
+            Upload a property datasheet (PDF, DOCX, TXT, RTF) <em>or</em>
+            paste a public listing URL for each model. Extracted text is
+            indexed locally so visitors can ask questions via the{" "}
+            <strong>Ask</strong> button on the published tour.
           </span>
         </p>
       </div>
@@ -114,13 +115,15 @@ function ModelRow({
   onTemplatesChanged,
 }: ModelRowProps) {
   const { user } = useAuth();
-  const { extractions, loading, running, extract, remove } =
+  const { extractions, loading, running, extract, extractFromUrl, remove } =
     usePropertyExtractions(model.id);
   const { refresh: refreshDocs } = useAvailablePropertyDocs();
   const { isFrozen, freeze: freezeRow } = useLusFreeze(model.id);
 
   const [open, setOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
+  const [sourceUrl, setSourceUrl] = useState("");
+  const [urlError, setUrlError] = useState<string | null>(null);
   const [label, setLabel] = useState("");
   const [templateId, setTemplateId] = useState<string>("");
   const [busy, setBusy] = useState(false);
@@ -135,6 +138,8 @@ function ModelRow({
 
   const openDialog = () => {
     setFile(null);
+    setSourceUrl("");
+    setUrlError(null);
     setLabel("");
     setTemplateId(hasTemplates ? templates[0].id : "");
     setOpen(true);
@@ -143,12 +148,53 @@ function ModelRow({
   const closeDialog = () => {
     setOpen(false);
     setFile(null);
+    setSourceUrl("");
+    setUrlError(null);
     setLabel("");
     setTemplateId("");
     if (inputRef.current) inputRef.current.value = "";
   };
 
   const detectedMime = useMemo(() => detectMimeFromFile(file), [file]);
+
+  const trimmedUrl = sourceUrl.trim();
+  const parsedUrl = useMemo(() => {
+    if (!trimmedUrl) return null;
+    try {
+      const u = new URL(trimmedUrl);
+      if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+      return u;
+    } catch {
+      return null;
+    }
+  }, [trimmedUrl]);
+  const urlMode = !file && !!trimmedUrl;
+  const effectiveLabel =
+    label.trim() || (urlMode && parsedUrl ? parsedUrl.hostname : "");
+  const submitDisabled =
+    busy ||
+    (!file && !trimmedUrl) ||
+    (file != null && !label.trim()) ||
+    (urlMode && !parsedUrl) ||
+    !effectiveLabel;
+
+  const handleUrlChange = (val: string) => {
+    setSourceUrl(val);
+    if (!val.trim()) {
+      setUrlError(null);
+      return;
+    }
+    try {
+      const u = new URL(val.trim());
+      if (u.protocol !== "http:" && u.protocol !== "https:") {
+        setUrlError("URL must start with http:// or https://");
+      } else {
+        setUrlError(null);
+      }
+    } catch {
+      setUrlError("Enter a valid URL (e.g. https://...)");
+    }
+  };
 
   const handleUpload = async () => {
     if (!user || !file || !label.trim()) return;
