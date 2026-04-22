@@ -491,6 +491,16 @@ function PortalPage() {
           </div>
         </section>
       </div>
+
+      {/* Sign in / sign up modal — shared with the Builder. */}
+      <PortalSignupModal
+        open={signupOpen}
+        onOpenChange={setSignupOpen}
+        onAuthenticated={handleAuthenticated}
+        providerId={branding.provider_id}
+        accentColor={accent}
+        brandName={branding.brand_name}
+      />
     </div>
   );
 }
