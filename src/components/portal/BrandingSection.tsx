@@ -149,7 +149,20 @@ export function BrandingSection({
             )}
           </div>
         </div>
-      </CardContent>
+    </div>
+  );
+
+  if (headless) return body;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Palette className="size-5 text-primary" />
+          Branding
+        </CardTitle>
+      </CardHeader>
+      <CardContent>{body}</CardContent>
     </Card>
   );
 }
