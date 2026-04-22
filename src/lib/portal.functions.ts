@@ -1511,7 +1511,8 @@ if(frame){
 }
 })();
 </script>
-${qaModuleScript}
+${hasQA ? `<script>window.__QA_DATABASE__=${safeJsonScriptLiteral(qaDatabase)};</script>` : ""}
+${askAssets.moduleScript}
 </body>
 </html>`;
 
