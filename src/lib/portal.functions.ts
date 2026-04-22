@@ -1571,14 +1571,14 @@ props.forEach(function(p,i){
 if(props.length>1) tabsEl.classList.add("multi");
 if(props.length>0) load(0);
 
-// Pre-warm the docs-qa pipeline after the Matterport iframe has finished
-// its initial load. Gated on the panel actually existing so tours with
-// no extractions skip the ~23 MB model download. requestIdleCallback
-// keeps the work off the critical path; a short setTimeout covers
-// browsers (Safari) that haven't shipped it yet.
+// Pre-warm the Ask pipeline after the Matterport iframe has finished
+// its initial load. Gated on the panel actually existing so tours
+// without QA or doc extractions skip the ~23 MB model download.
+// requestIdleCallback keeps the work off the critical path; a short
+// setTimeout covers browsers (Safari) that haven't shipped it yet.
 function __dqaPrewarm(){
-  if(!document.getElementById("docs-qa-panel")) return;
-  __dqaInit().catch(function(err){console.warn("docs-qa prewarm failed:",err);});
+  if(!document.getElementById("ask-panel")) return;
+  __dqaInit().catch(function(err){console.warn("ask prewarm failed:",err);});
 }
 if(frame){
   frame.addEventListener("load",function(){
