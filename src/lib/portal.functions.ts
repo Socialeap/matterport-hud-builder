@@ -1363,7 +1363,7 @@ async function __dqaEmbedQuery(q){
     var out=await __docsQa.embedPipeline(q,{pooling:"mean",normalize:true});
     return Array.from(out.data);
   }catch(err){
-    console.warn("docs-qa query embed failed:",err);
+    console.warn("ask: query embed failed:",err);
     return null;
   }
 }
