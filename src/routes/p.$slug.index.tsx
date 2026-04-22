@@ -668,44 +668,55 @@ function PortalHeader({
           </Link>
         </nav>
 
-        {/* Far right: identity pill (signed in) or Sign In button. */}
+        {/* Far right: profile dropdown (signed in) or Sign In button. */}
         <div className="hidden items-center sm:flex">
           {!authChecked ? (
             <div className="h-9 w-24 animate-pulse rounded-full bg-white/15" />
           ) : viewer ? (
-            <div
-              className="flex h-9 items-center gap-2 rounded-full border border-white/25 bg-white/15 pl-1 pr-1 shadow-sm backdrop-blur-md"
-              title={viewerLabel || "Signed in"}
-              aria-label={viewerLabel ? `Signed in as ${viewerLabel}` : "Signed in"}
-            >
-              {viewer.avatarUrl ? (
-                <img
-                  src={viewer.avatarUrl}
-                  alt={viewerLabel || "Profile"}
-                  className="h-7 w-7 rounded-full object-cover"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <div
-                  className="flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-bold text-white"
-                  style={{ backgroundColor: accent }}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="flex h-9 items-center gap-2 rounded-full border border-white/25 bg-white/15 pl-1 pr-3 shadow-sm backdrop-blur-md transition-colors hover:bg-white/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+                  title={viewerLabel || "Signed in"}
+                  aria-label={viewerLabel ? `Account menu for ${viewerLabel}` : "Account menu"}
                 >
-                  {viewerInitials || "U"}
-                </div>
-              )}
-              <span className="hidden max-w-[12rem] truncate text-xs font-medium text-white drop-shadow md:inline">
-                {viewer.email || viewer.displayName || "Signed in"}
-              </span>
-              <button
-                type="button"
-                onClick={onSignOut}
-                className="inline-flex h-7 items-center gap-1 rounded-full px-2 text-xs font-medium text-white/90 hover:bg-white/15"
-                aria-label="Sign out"
-              >
-                <LogOut className="size-3.5" />
-                <span className="hidden md:inline">Sign Out</span>
-              </button>
-            </div>
+                  {viewer.avatarUrl ? (
+                    <img
+                      src={viewer.avatarUrl}
+                      alt={viewerLabel || "Profile"}
+                      className="h-7 w-7 rounded-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div
+                      className="flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                      style={{ backgroundColor: accent }}
+                    >
+                      {viewerInitials || "U"}
+                    </div>
+                  )}
+                  <span className="hidden max-w-[12rem] truncate text-xs font-medium text-white drop-shadow md:inline">
+                    {viewer.email || viewer.displayName || "Signed in"}
+                  </span>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuLabel className="flex flex-col gap-0.5 py-2">
+                  <span className="text-xs font-normal text-muted-foreground">
+                    Signed in as
+                  </span>
+                  <span className="truncate text-sm font-semibold text-foreground">
+                    {viewer.email || viewer.displayName || "Account"}
+                  </span>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={onSignOut} className="cursor-pointer">
+                  <LogOut className="size-4" />
+                  Sign Out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           ) : (
             <button
               type="button"
