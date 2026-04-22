@@ -28,6 +28,7 @@ import { Route as PSlugIndexRouteImport } from './routes/p.$slug.index'
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated.dashboard.index'
 import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated.admin.index'
 import { Route as PSlugDemoRouteImport } from './routes/p.$slug.demo'
+import { Route as PSlugBuilderRouteImport } from './routes/p.$slug.builder'
 import { Route as LovableEmailSuppressionRouteImport } from './routes/lovable/email/suppression'
 import { Route as AuthenticatedDashboardVaultRouteImport } from './routes/_authenticated.dashboard.vault'
 import { Route as AuthenticatedDashboardUpgradeRouteImport } from './routes/_authenticated.dashboard.upgrade'
@@ -138,6 +139,11 @@ const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
 const PSlugDemoRoute = PSlugDemoRouteImport.update({
   id: '/demo',
   path: '/demo',
+  getParentRoute: () => PSlugRoute,
+} as any)
+const PSlugBuilderRoute = PSlugBuilderRouteImport.update({
+  id: '/builder',
+  path: '/builder',
   getParentRoute: () => PSlugRoute,
 } as any)
 const LovableEmailSuppressionRoute = LovableEmailSuppressionRouteImport.update({
@@ -263,6 +269,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/upgrade': typeof AuthenticatedDashboardUpgradeRoute
   '/dashboard/vault': typeof AuthenticatedDashboardVaultRouteWithChildren
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
+  '/p/$slug/builder': typeof PSlugBuilderRoute
   '/p/$slug/demo': typeof PSlugDemoRoute
   '/admin/': typeof AuthenticatedAdminIndexRoute
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
@@ -296,6 +303,7 @@ export interface FileRoutesByTo {
   '/dashboard/upgrade': typeof AuthenticatedDashboardUpgradeRoute
   '/dashboard/vault': typeof AuthenticatedDashboardVaultRouteWithChildren
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
+  '/p/$slug/builder': typeof PSlugBuilderRoute
   '/p/$slug/demo': typeof PSlugDemoRoute
   '/admin': typeof AuthenticatedAdminIndexRoute
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
@@ -334,6 +342,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard/upgrade': typeof AuthenticatedDashboardUpgradeRoute
   '/_authenticated/dashboard/vault': typeof AuthenticatedDashboardVaultRouteWithChildren
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
+  '/p/$slug/builder': typeof PSlugBuilderRoute
   '/p/$slug/demo': typeof PSlugDemoRoute
   '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
@@ -372,6 +381,7 @@ export interface FileRouteTypes {
     | '/dashboard/upgrade'
     | '/dashboard/vault'
     | '/lovable/email/suppression'
+    | '/p/$slug/builder'
     | '/p/$slug/demo'
     | '/admin/'
     | '/dashboard/'
@@ -405,6 +415,7 @@ export interface FileRouteTypes {
     | '/dashboard/upgrade'
     | '/dashboard/vault'
     | '/lovable/email/suppression'
+    | '/p/$slug/builder'
     | '/p/$slug/demo'
     | '/admin'
     | '/dashboard'
@@ -442,6 +453,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard/upgrade'
     | '/_authenticated/dashboard/vault'
     | '/lovable/email/suppression'
+    | '/p/$slug/builder'
     | '/p/$slug/demo'
     | '/_authenticated/admin/'
     | '/_authenticated/dashboard/'
@@ -605,6 +617,13 @@ declare module '@tanstack/react-router' {
       path: '/demo'
       fullPath: '/p/$slug/demo'
       preLoaderRoute: typeof PSlugDemoRouteImport
+      parentRoute: typeof PSlugRoute
+    }
+    '/p/$slug/builder': {
+      id: '/p/$slug/builder'
+      path: '/builder'
+      fullPath: '/p/$slug/builder'
+      preLoaderRoute: typeof PSlugBuilderRouteImport
       parentRoute: typeof PSlugRoute
     }
     '/lovable/email/suppression': {
@@ -800,11 +819,13 @@ const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
 )
 
 interface PSlugRouteChildren {
+  PSlugBuilderRoute: typeof PSlugBuilderRoute
   PSlugDemoRoute: typeof PSlugDemoRoute
   PSlugIndexRoute: typeof PSlugIndexRoute
 }
 
 const PSlugRouteChildren: PSlugRouteChildren = {
+  PSlugBuilderRoute: PSlugBuilderRoute,
   PSlugDemoRoute: PSlugDemoRoute,
   PSlugIndexRoute: PSlugIndexRoute,
 }

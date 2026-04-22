@@ -1,12 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { HudBuilderSandbox } from "@/components/portal/HudBuilderSandbox";
 import { checkDemoPublished } from "@/lib/sandbox-demo.functions";
 import { Check, X, Link2, Palette, Download, Sparkles, Menu } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+
 
 const fetchBrandingBySlug = createServerFn({ method: "GET" })
   .inputValidator((data: { slug: string }) => data)
@@ -83,6 +83,44 @@ export const Route = createFileRoute("/p/$slug/")({
 function PortalPage() {
   const { branding, demoPublished, lusActive, vaultAssetCount } = Route.useLoaderData();
   const { slug } = Route.useParams();
+  const [viewer, setViewer] = useState<{
+    avatarUrl: string | null;
+    displayName: string | null;
+    email: string | null;
+  } | null>(null);
+
+  // Resolve the signed-in user (if any) and their profile, for the header avatar.
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (cancelled) return;
+      if (!session?.user) {
+        setViewer(null);
+        return;
+      }
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("avatar_url, display_name")
+        .eq("user_id", session.user.id)
+        .maybeSingle();
+      if (cancelled) return;
+      setViewer({
+        avatarUrl: profile?.avatar_url ?? (session.user.user_metadata?.avatar_url as string | null) ?? null,
+        displayName:
+          profile?.display_name ??
+          (session.user.user_metadata?.full_name as string | null) ??
+          null,
+        email: session.user.email ?? null,
+      });
+    };
+    load();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => load());
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     if (!branding?.provider_id) return;
@@ -199,6 +237,7 @@ function PortalPage() {
           hudBgColor={branding.hud_bg_color || "#0f172a"}
           demoPublished={demoPublished}
           onScrollTo={handleScrollTo}
+          viewer={viewer}
         />
 
         {/* HERO STAGE — image-backed cinematic hero */}
@@ -406,23 +445,30 @@ function PortalPage() {
           </div>
         </section>
 
-        {/* BUILDER ANCHOR */}
-        <section id="builder-start" className="scroll-mt-20 px-4 pb-8 pt-12 sm:px-6">
-          <div className="mx-auto max-w-6xl text-center">
+        {/* BUILDER CTA — links to dedicated /p/{slug}/builder route */}
+        <section id="builder-start" className="scroll-mt-20 px-4 pb-16 pt-12 sm:px-6">
+          <div className="mx-auto max-w-3xl text-center">
             <h2 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl dark:text-white">
-              Studio Presentation Builder
+              Ready to build?
             </h2>
             <p className="mt-3 text-slate-600 dark:text-slate-300">
-              Configure your 3D experience below. Your progress is saved as you work.
+              Open the Presentation Builder to configure your 3D experience. Your progress is saved as you work.
             </p>
             <div
               className="mx-auto mt-6 h-1 w-24 rounded-full"
               style={{ backgroundColor: accent }}
             />
+            <Link
+              to="/p/$slug/builder"
+              params={{ slug }}
+              className="mt-8 inline-flex items-center gap-2 rounded-full px-8 py-4 text-base font-semibold text-white shadow-2xl transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl"
+              style={{ backgroundColor: accent }}
+            >
+              <Sparkles className="size-5" />
+              Open the Builder →
+            </Link>
           </div>
         </section>
-
-        <HudBuilderSandbox branding={branding} />
       </div>
     </div>
   );
@@ -475,6 +521,7 @@ function PortalHeader({
   hudBgColor,
   demoPublished,
   onScrollTo,
+  viewer,
 }: {
   branding: { brand_name: string; logo_url: string | null };
   slug: string;
@@ -482,16 +529,31 @@ function PortalHeader({
   hudBgColor: string;
   demoPublished: boolean;
   onScrollTo: (id: string) => (e: React.MouseEvent<HTMLAnchorElement>) => void;
+  viewer: {
+    avatarUrl: string | null;
+    displayName: string | null;
+    email: string | null;
+  } | null;
 }) {
   const navLinks = [
     { id: "steps", label: "Steps" },
     { id: "compare", label: "Compare" },
     { id: "pricing", label: "Pricing" },
-    { id: "builder-start", label: "Builder" },
   ];
 
   // Tint header with MSP Portal background color at ~80% opacity (cc hex alpha)
   const headerBg = `${hudBgColor}cc`;
+
+  // Compute initials for the avatar fallback.
+  const viewerLabel = viewer?.displayName || viewer?.email || "";
+  const viewerInitials = viewerLabel
+    ? viewerLabel
+        .split(/\s+|@/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((s) => s[0]!.toUpperCase())
+        .join("") || "U"
+    : "";
 
   return (
     <header
@@ -550,7 +612,41 @@ function PortalHeader({
               {link.label}
             </a>
           ))}
+          <Link
+            to="/p/$slug/builder"
+            params={{ slug }}
+            className="text-sm font-medium text-white/90 drop-shadow transition-colors hover:text-white"
+            onMouseEnter={(e) => (e.currentTarget.style.color = accent)}
+            onMouseLeave={(e) => (e.currentTarget.style.color = "")}
+          >
+            Builder
+          </Link>
         </nav>
+
+        {/* Far right: signed-in viewer avatar (only shown when authenticated) */}
+        {viewer && (
+          <div
+            className="hidden items-center sm:flex"
+            title={viewerLabel || "Signed in"}
+            aria-label={viewerLabel ? `Signed in as ${viewerLabel}` : "Signed in"}
+          >
+            {viewer.avatarUrl ? (
+              <img
+                src={viewer.avatarUrl}
+                alt={viewerLabel || "Profile"}
+                className="h-9 w-9 rounded-full border-2 border-white/40 object-cover shadow-md"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <div
+                className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-white/40 text-xs font-bold text-white shadow-md"
+                style={{ backgroundColor: accent }}
+              >
+                {viewerInitials || "U"}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Mobile: hamburger menu */}
         <Sheet>
@@ -588,6 +684,13 @@ function PortalHeader({
                   {link.label}
                 </a>
               ))}
+              <Link
+                to="/p/$slug/builder"
+                params={{ slug }}
+                className="rounded-lg px-4 py-3 text-base font-medium text-slate-800 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-slate-800"
+              >
+                Builder
+              </Link>
             </div>
           </SheetContent>
         </Sheet>
