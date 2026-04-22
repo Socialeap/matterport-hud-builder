@@ -256,6 +256,9 @@ function PortalPage() {
           demoPublished={demoPublished}
           onScrollTo={handleScrollTo}
           viewer={viewer}
+          authChecked={authChecked}
+          onSignIn={() => setSignupOpen(true)}
+          onSignOut={handleSignOut}
         />
 
         {/* HERO STAGE — image-backed cinematic hero */}
