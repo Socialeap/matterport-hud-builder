@@ -252,6 +252,11 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
   const [isReleased, setIsReleased] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [downloadStep, setDownloadStep] = useState("");
+  // Set true after a successful Property Intelligence extraction so we can
+  // nudge the agent to re-generate the standalone HTML (which embeds the
+  // newly-indexed __PROPERTY_EXTRACTIONS__ payload).
+  const [extractionDirty, setExtractionDirty] = useState(false);
+  const [extractionDirtyDismissed, setExtractionDirtyDismissed] = useState(false);
   const [isPolling, setIsPolling] = useState(false);
   const [connectAccountId, setConnectAccountId] = useState<string | null>(null);
   const [checkoutClientSecret, setCheckoutClientSecret] = useState<string | null>(null);
@@ -1096,6 +1101,10 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
                   <PropertyIntelligenceSection
                     models={models}
                     savedModelId={savedModelId}
+                    onExtractionSuccess={() => {
+                      setExtractionDirty(true);
+                      setExtractionDirtyDismissed(false);
+                    }}
                   />
                 </AccordionContent>
               </AccordionItem>
