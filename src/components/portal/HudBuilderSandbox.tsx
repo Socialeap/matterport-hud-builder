@@ -165,21 +165,31 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
 
   // Authoritative Studio access state (from resolve_studio_access RPC).
   // Replaces narrow client-side free/pricing/payout checks.
+  // `loaded` = the RPC completed successfully. `error` = the RPC failed and
+  // the access fields below should NOT be trusted as authoritative.
   const [accessState, setAccessState] = useState<{
     linked: boolean;
     isFree: boolean;
     pricingConfigured: boolean;
     payoutsReady: boolean;
     providerBrandName: string;
+    viewerRole: "client" | "provider" | "admin" | "unknown";
+    viewerMatchesProvider: boolean;
     loaded: boolean;
+    error: string | null;
   }>({
     linked: false,
     isFree: false,
     pricingConfigured: false,
     payoutsReady: false,
     providerBrandName: "",
+    viewerRole: "unknown",
+    viewerMatchesProvider: false,
     loaded: false,
+    error: null,
   });
+  // Bumped to retry the access RPC on demand.
+  const [accessRetryNonce, setAccessRetryNonce] = useState(0);
 
   // Purchase / checkout state
   const [showCheckout, setShowCheckout] = useState(false);
