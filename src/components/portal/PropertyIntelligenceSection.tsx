@@ -687,37 +687,135 @@ function ModelRow({
   );
 }
 
-function DocRow({
+/**
+ * Row that renders the merged status for a single vault_asset:
+ *   - Indexed (green) if a successful extraction exists with chunks
+ *   - Failed  (red, with Re-index) if failuresByAsset has an entry
+ *   - Pending (amber, animated) otherwise
+ *
+ * Also surfaces the diagnostics.low_content_warning chip when the function
+ * indicated that the page text was thin (e.g. SPA with hydration content).
+ */
+function AssetStatusRow({
+  asset,
   extraction,
+  failure,
+  running,
+  onReindex,
   onDelete,
 }: {
-  extraction: PropertyExtraction;
-  onDelete: () => void;
+  asset: AssetMeta;
+  extraction: PropertyExtraction | null;
+  failure: { stage: string; detail: string; status: number; at: number } | null;
+  running: boolean;
+  onReindex: () => void;
+  onDelete?: () => void;
 }) {
-  const fieldCount = Object.keys(extraction.fields ?? {}).length;
-  const chunkCount = Array.isArray(extraction.chunks)
-    ? extraction.chunks.length
+  const isUrl = /^https?:\/\//i.test(asset.asset_url);
+  const fieldCount = extraction
+    ? Object.keys(extraction.fields ?? {}).length
     : 0;
+  const chunkCount =
+    extraction && Array.isArray(extraction.chunks)
+      ? extraction.chunks.length
+      : 0;
+
+  // Determine status. Failure beats Pending; Indexed beats both when
+  // chunks are present.
+  let status: "indexed" | "failed" | "pending";
+  if (extraction && chunkCount > 0) status = "indexed";
+  else if (failure) status = "failed";
+  else status = "pending";
+
+  // Diagnostics chip — best-effort: the function's success payload may
+  // surface diagnostics.low_content_warning in the toast detail; for failed
+  // rows we don't have it here, but the failure tooltip already explains.
+  const lowContent =
+    extraction &&
+    chunkCount < 3 &&
+    isUrl &&
+    status === "indexed";
+
   return (
     <li className="flex items-center justify-between gap-2 rounded-md bg-background/60 px-2 py-1.5">
       <div className="flex min-w-0 items-center gap-2 text-xs">
         <FileText className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="truncate">
-          {fieldCount} field{fieldCount === 1 ? "" : "s"} · {chunkCount} chunks
+        <span className="truncate" title={asset.label}>
+          {asset.label}
         </span>
-        <span className="shrink-0 text-[10px] text-muted-foreground">
-          {new Date(extraction.extracted_at).toLocaleDateString()}
-        </span>
+
+        {status === "indexed" && (
+          <Badge
+            variant="outline"
+            className="h-5 shrink-0 gap-1 border-emerald-500/40 bg-emerald-500/10 px-1.5 text-[10px] text-emerald-700 dark:text-emerald-300"
+            title={`${fieldCount} field${fieldCount === 1 ? "" : "s"} · ${chunkCount} chunks`}
+          >
+            <CheckCircle2 className="size-2.5" />
+            Indexed
+          </Badge>
+        )}
+        {status === "pending" && (
+          <Badge
+            variant="outline"
+            className="h-5 shrink-0 gap-1 border-amber-500/40 bg-amber-500/10 px-1.5 text-[10px] text-amber-700 dark:text-amber-300"
+            title="Indexing in progress…"
+          >
+            <Loader2 className="size-2.5 animate-spin" />
+            Pending
+          </Badge>
+        )}
+        {status === "failed" && failure && (
+          <Badge
+            variant="outline"
+            className="h-5 shrink-0 gap-1 border-destructive/40 bg-destructive/10 px-1.5 text-[10px] text-destructive"
+            title={`${failure.stage}: ${failure.detail}`}
+          >
+            <AlertTriangle className="size-2.5" />
+            Failed
+          </Badge>
+        )}
+        {lowContent && (
+          <span
+            className="shrink-0 rounded border border-amber-500/30 bg-amber-500/10 px-1 text-[10px] text-amber-700 dark:text-amber-300"
+            title="Page text was thin — consider uploading a PDF for better answers."
+          >
+            Thin page
+          </span>
+        )}
+
+        {extraction && (
+          <span className="shrink-0 text-[10px] text-muted-foreground">
+            {new Date(extraction.extracted_at).toLocaleDateString()}
+          </span>
+        )}
       </div>
-      <Button
-        size="sm"
-        variant="ghost"
-        className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
-        onClick={onDelete}
-        title="Remove this extraction"
-      >
-        <Trash2 className="size-3" />
-      </Button>
+
+      <div className="flex shrink-0 items-center gap-1">
+        {status === "failed" && isUrl && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 px-1 text-[10px] text-muted-foreground hover:text-foreground"
+            onClick={onReindex}
+            disabled={running}
+            title={`Retry: ${failure?.stage ?? "extraction"}`}
+          >
+            <RefreshCw className="mr-1 size-3" />
+            Re-index
+          </Button>
+        )}
+        {onDelete && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+            onClick={onDelete}
+            title="Remove this extraction"
+          >
+            <Trash2 className="size-3" />
+          </Button>
+        )}
+      </div>
     </li>
   );
 }
