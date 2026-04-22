@@ -1083,6 +1083,24 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
               </AccordionItem>
 
               <AccordionItem
+                value="intelligence"
+                className="rounded-lg border bg-card shadow-sm"
+              >
+                <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                  <span className="flex items-center gap-2 text-base font-semibold text-foreground">
+                    <BookOpen className="size-5 text-primary" />
+                    Property Intelligence (Ask AI)
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent className="px-4 pb-4">
+                  <PropertyIntelligenceSection
+                    models={models}
+                    savedModelId={savedModelId}
+                  />
+                </AccordionContent>
+              </AccordionItem>
+
+              <AccordionItem
                 value="agent"
                 className="rounded-lg border bg-card shadow-sm"
               >
