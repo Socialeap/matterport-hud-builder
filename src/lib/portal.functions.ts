@@ -432,8 +432,9 @@ function buildAskAssets(
   <div id="ask-input-row"><input id="ask-input" type="text" placeholder="Initializing AI Assistant..." disabled /><button id="ask-send" disabled>Send</button></div>
 </div>`;
 
-  // The unified runtime is emitted by the caller alongside qaDatabase data.
-  // We only declare flags here so the main IIFE knows which sources to wire.
+  // Flags consumed by the unified runtime in the main IIFE. The qaDatabase
+  // payload itself is injected separately by the caller (so we don't have
+  // to thread it through this builder's signature).
   const moduleScript = `<script>window.__ASK_HAS_QA__=${hasQA ? "true" : "false"};window.__ASK_HAS_DOCS__=${docsEnabled ? "true" : "false"};</script>`;
 
   return { css, toggleBtn, panelHtml, moduleScript, enabled: true };
