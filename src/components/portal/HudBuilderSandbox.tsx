@@ -815,6 +815,10 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     accentColor,
     hudBgColor,
     gateLabel,
+    logoFile,
+    faviconFile,
+    logoStorageUrl,
+    faviconStorageUrl,
     modelCount,
     runDownload,
   ]);
