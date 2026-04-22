@@ -1,4 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
+import { Link } from "@tanstack/react-router";
+import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BrandingSection } from "./BrandingSection";
 import { PropertyModelsSection } from "./PropertyModelsSection";
@@ -31,6 +33,8 @@ import {
 
 interface HudBuilderSandboxProps {
   branding: Tables<"branding_settings">;
+  /** Slug used to wire the back-button link in the Builder header. Optional for legacy callers. */
+  slug?: string;
 }
 
 function createEmptyModel(): PropertyModel {
@@ -45,7 +49,8 @@ function createEmptyModel(): PropertyModel {
   };
 }
 
-export function HudBuilderSandbox({ branding }: HudBuilderSandboxProps) {
+export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
+  const backSlug = slug ?? branding.slug ?? "";
   // Auth state
   const [userId, setUserId] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
