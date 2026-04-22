@@ -866,25 +866,8 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
             </Button>
           </div>
 
-          {/* Far right: Client (Presentation) logo + name + signed-in identity */}
+          {/* Far right: signed-in identity (logo/name removed — already shown in builder body & preview) */}
           <div className="ml-auto flex items-center gap-3 min-w-0">
-            {logoPreview ? (
-              <img
-                src={logoPreview}
-                alt="Presentation logo"
-                className="h-8 w-8 rounded-md object-contain"
-              />
-            ) : (
-              <div
-                className="flex h-8 w-8 items-center justify-center rounded-md text-xs font-bold text-white"
-                style={{ backgroundColor: accentColor }}
-              >
-                {(brandName || "P")[0]?.toUpperCase()}
-              </div>
-            )}
-            <span className="hidden truncate text-sm font-semibold text-foreground sm:inline max-w-[10rem]">
-              {brandName || "Untitled Presentation"}
-            </span>
 
             {/* Identity: profile dropdown when signed in, or "Sign In" when not. */}
             {!authChecked ? (
