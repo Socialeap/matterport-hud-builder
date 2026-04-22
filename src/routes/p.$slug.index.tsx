@@ -1,12 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { HudBuilderSandbox } from "@/components/portal/HudBuilderSandbox";
 import { checkDemoPublished } from "@/lib/sandbox-demo.functions";
 import { Check, X, Link2, Palette, Download, Sparkles, Menu } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const fetchBrandingBySlug = createServerFn({ method: "GET" })
   .inputValidator((data: { slug: string }) => data)
