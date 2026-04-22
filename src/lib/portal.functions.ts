@@ -1,15 +1,29 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
+interface SavePresentationMediaAsset {
+  id: string;
+  kind: "video" | "photo" | "gif";
+  visible: boolean;
+  label?: string;
+  filename?: string;
+  proxyUrl?: string;
+  embedUrl?: string;
+}
+
 interface SavePresentationInput {
   providerId: string;
   name: string;
   properties: Array<{
     id: string;
     name: string;
+    propertyName?: string;
     location: string;
     matterportId: string;
     musicUrl: string;
+    cinematicVideoUrl?: string;
+    enableNeighborhoodMap?: boolean;
+    multimedia?: SavePresentationMediaAsset[];
   }>;
   tourConfig: Record<string, unknown>;
   agent: Record<string, string>;
@@ -126,12 +140,25 @@ export const checkFulfillmentStatus = createServerFn({ method: "POST" })
     };
   });
 
+interface PropertyMediaAsset {
+  id: string;
+  kind: "video" | "photo" | "gif";
+  visible: boolean;
+  label?: string;
+  proxyUrl?: string;
+  embedUrl?: string;
+}
+
 interface PropertyData {
   id: string;
   name: string;
+  propertyName?: string;
   location: string;
   matterportId: string;
   musicUrl: string;
+  cinematicVideoUrl?: string;
+  enableNeighborhoodMap?: boolean;
+  multimedia?: PropertyMediaAsset[];
 }
 
 interface TourConfigData {
@@ -497,11 +524,37 @@ export const generatePresentation = createServerFn({ method: "POST" })
       .filter((p) => p.matterportId?.trim())
       .map((p) => {
         const behavior = behaviors[p.id] || {};
+        // Resolve canonical image URLs for media assets so they never expire
+        const multimedia = (p.multimedia ?? [])
+          .filter((m) => m.visible)
+          .map((m) => {
+            let proxyUrl = m.proxyUrl;
+            if (
+              proxyUrl &&
+              !proxyUrl.includes("/resources/model/") &&
+              p.matterportId &&
+              /^[A-Za-z0-9]{11}$/.test(p.matterportId) &&
+              /^[A-Za-z0-9]{11}$/.test(m.id)
+            ) {
+              proxyUrl = `https://my.matterport.com/resources/model/${p.matterportId}/image/${m.id}`;
+            }
+            return {
+              id: m.id,
+              kind: m.kind,
+              label: m.label ?? "",
+              proxyUrl: proxyUrl ?? "",
+              embedUrl: m.embedUrl ?? "",
+            };
+          });
         return {
           name: p.name || "Untitled",
+          propertyName: p.propertyName || "",
           location: p.location || "",
           iframeUrl: buildMatterportUrlServer(p.matterportId, behavior),
           musicUrl: p.musicUrl || "",
+          cinematicVideoUrl: p.cinematicVideoUrl || "",
+          enableNeighborhoodMap: !!(p.enableNeighborhoodMap && (p.location || "").trim()),
+          multimedia,
         };
       });
 
@@ -527,6 +580,8 @@ export const generatePresentation = createServerFn({ method: "POST" })
       .map((p) => p.id);
 
     // Base64-encode config for obfuscation
+    const gaTrackingId = typeof agent.gaTrackingId === "string" ? agent.gaTrackingId.trim() : "";
+    const agentAvatarUrl = typeof agent.avatarUrl === "string" ? agent.avatarUrl.trim() : "";
     const configObj = {
       properties: propertyEntries,
       agent,
@@ -536,6 +591,8 @@ export const generatePresentation = createServerFn({ method: "POST" })
       gateLabel,
       logoUrl,
       propertyUuidByIndex,
+      gaTrackingId,
+      agentAvatarUrl,
     };
     const configB64 = Buffer.from(JSON.stringify(configObj)).toString("base64");
 
@@ -556,43 +613,55 @@ export const generatePresentation = createServerFn({ method: "POST" })
       accentColor,
     );
 
-    const poweredBy = isPro
+    const poweredByFooter = isPro
       ? ""
-      : `<div style="text-align:center;padding:8px;font-size:11px;color:#888;border-top:1px solid #333;">Powered by Transcendence Media</div>`;
+      : `<footer id="powered-by">Powered by Transcendence Media</footer>`;
 
-    const agentDrawer = agent.name
-      ? `<div id="agent-drawer" style="display:none;position:fixed;top:0;right:0;width:320px;height:100%;background:${escapeHtml(hudBgColor)};color:#fff;z-index:1000;box-shadow:-4px 0 20px rgba(0,0,0,0.5);padding:24px;overflow-y:auto;">
-          <button onclick="document.getElementById('agent-drawer').style.display='none'" style="position:absolute;top:12px;right:12px;background:none;border:none;color:#fff;font-size:20px;cursor:pointer;">&times;</button>
-          <h3 style="margin-top:32px;font-size:18px;">${escapeHtml(String(agent.name))}</h3>
-          ${agent.titleRole ? `<p style="color:#aaa;font-size:13px;">${escapeHtml(String(agent.titleRole))}</p>` : ""}
-          ${agent.email ? `<p style="margin-top:12px;"><a href="mailto:${escapeHtml(String(agent.email))}" style="color:${escapeHtml(accentColor)};">${escapeHtml(String(agent.email))}</a></p>` : ""}
-          ${agent.phone ? `<p><a href="tel:${escapeHtml(String(agent.phone))}" style="color:${escapeHtml(accentColor)};">${escapeHtml(String(agent.phone))}</a></p>` : ""}
-          ${agent.welcomeNote ? `<p style="margin-top:16px;font-size:13px;color:#ccc;">${escapeHtml(String(agent.welcomeNote))}</p>` : ""}
-        </div>`
-      : "";
+    // Build social links HTML for the contact panel
+    const socialDefs: Array<{ key: string; label: string }> = [
+      { key: "linkedin", label: "LinkedIn" },
+      { key: "twitter", label: "X / Twitter" },
+      { key: "instagram", label: "Instagram" },
+      { key: "facebook", label: "Facebook" },
+      { key: "tiktok", label: "TikTok" },
+      { key: "website", label: "Website" },
+      { key: "other", label: "Other" },
+    ];
+    const socialLinksHtml = socialDefs
+      .filter((s) => agent[s.key as keyof typeof agent])
+      .map((s) => {
+        const url = String(agent[s.key as keyof typeof agent] || "");
+        const href = url.startsWith("http") ? url : `https://${url}`;
+        return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" class="social-pill">${escapeHtml(s.label)}</a>`;
+      })
+      .join("");
+
+    const avatarHtml = agent.avatarUrl
+      ? `<img src="${escapeHtml(String(agent.avatarUrl))}" alt="${escapeHtml(String(agent.name || "Agent"))}" class="agent-avatar-img">`
+      : `<div class="agent-avatar-init">${escapeHtml((String(agent.name || "?")).charAt(0).toUpperCase())}</div>`;
 
     // ── Chat Q&A CSS (only when qaDatabase is present) ────────────────
     const qaCss = hasQA
       ? `
-#qa-toggle{padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;background:${accentColor};border:none;color:#fff;display:flex;align-items:center;gap:6px}
+#qa-toggle{padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;background:${escapeHtml(accentColor)};border:none;color:#fff;display:flex;align-items:center;gap:6px}
 #qa-toggle svg{width:16px;height:16px}
-#qa-panel{display:none;position:fixed;bottom:56px;right:16px;width:380px;max-width:calc(100vw - 32px);height:480px;max-height:calc(100vh - 80px);background:${hudBgColor};border:1px solid #333;border-radius:12px;z-index:999;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.5);overflow:hidden}
+#qa-panel{display:none;position:fixed;bottom:52px;right:16px;width:380px;max-width:calc(100vw - 32px);height:480px;max-height:calc(100vh - 80px);background:${escapeHtml(hudBgColor)};border:1px solid #333;border-radius:12px;z-index:1500;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.5);overflow:hidden}
 #qa-panel.open{display:flex}
 #qa-header{padding:12px 16px;border-bottom:1px solid #333;display:flex;align-items:center;justify-content:space-between}
-#qa-header h4{font-size:14px;font-weight:600;color:#fff}
+#qa-header h4{font-size:14px;font-weight:600;color:#fff;margin:0}
 #qa-close{background:none;border:none;color:#999;font-size:18px;cursor:pointer;padding:0 4px}
 #qa-messages{flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:10px}
 .qa-msg{max-width:88%;padding:8px 12px;border-radius:10px;font-size:13px;line-height:1.5;word-wrap:break-word}
-.qa-msg.user{align-self:flex-end;background:${accentColor};color:#fff;border-bottom-right-radius:4px}
+.qa-msg.user{align-self:flex-end;background:${escapeHtml(accentColor)};color:#fff;border-bottom-right-radius:4px}
 .qa-msg.assistant{align-self:flex-start;background:#2a2a3e;color:#ddd;border-bottom-left-radius:4px}
-.qa-msg .source-link{display:inline-block;margin-top:6px;padding:2px 8px;font-size:11px;background:${accentColor}33;color:${accentColor};border-radius:4px;cursor:pointer;border:1px solid ${accentColor}55;text-decoration:none}
-.qa-msg .source-link:hover{background:${accentColor}55}
+.qa-msg .source-link{display:inline-block;margin-top:6px;padding:2px 8px;font-size:11px;background:${escapeHtml(accentColor)}33;color:${escapeHtml(accentColor)};border-radius:4px;cursor:pointer;border:1px solid ${escapeHtml(accentColor)}55;text-decoration:none}
+.qa-msg .source-link:hover{background:${escapeHtml(accentColor)}55}
 .qa-msg.loading{color:#999;font-style:italic}
 #qa-input-row{padding:10px 12px;border-top:1px solid #333;display:flex;gap:8px;align-items:center}
 #qa-input{flex:1;background:#1e1e30;border:1px solid #444;border-radius:8px;padding:8px 12px;color:#fff;font-size:13px;outline:none}
-#qa-input:focus{border-color:${accentColor}}
+#qa-input:focus{border-color:${escapeHtml(accentColor)}}
 #qa-input:disabled{opacity:0.5;cursor:not-allowed}
-#qa-send{background:${accentColor};border:none;color:#fff;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:13px;font-weight:600}
+#qa-send{background:${escapeHtml(accentColor)};border:none;color:#fff;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:13px;font-weight:600}
 #qa-send:disabled{opacity:0.4;cursor:not-allowed}
 @keyframes qa-pulse{0%,100%{opacity:0.4}50%{opacity:1}}
 .qa-loading-dots span{animation:qa-pulse 1.4s infinite;animation-delay:calc(var(--i)*0.2s)}
@@ -784,46 +853,270 @@ init();
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 ${faviconUrl ? `<link rel="icon" href="${escapeHtml(faviconUrl)}">` : ""}
 <title>${escapeHtml(model.name || "3D Presentation")}</title>
+${gaTrackingId ? `<script async src="https://www.googletagmanager.com/gtag/js?id=${escapeHtml(gaTrackingId)}"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${escapeHtml(gaTrackingId)}');</script>` : ""}
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#000;color:#fff;overflow:hidden}
-#gate{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:${hudBgColor};z-index:2000;transition:opacity 0.5s}
+html,body{width:100%;height:100%;overflow:hidden}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#000;color:#fff}
+
+/* ── Welcome gate ─────────────────────────────────────────────────── */
+#gate{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:3000;background:${escapeHtml(hudBgColor)}cc;backdrop-filter:blur(24px) saturate(160%);-webkit-backdrop-filter:blur(24px) saturate(160%);transition:opacity 0.5s ease}
 #gate.hidden{opacity:0;pointer-events:none}
-#gate h1{font-size:28px;margin-bottom:8px}
-#gate p{color:#aaa;font-size:14px;margin-bottom:24px}
-#gate button{padding:12px 32px;font-size:16px;border:none;border-radius:8px;cursor:pointer;background:${accentColor};color:#fff;font-weight:600}
-#hud{position:fixed;bottom:0;left:0;right:0;background:${hudBgColor}ee;backdrop-filter:blur(12px);z-index:100;padding:8px 16px;display:flex;align-items:center;gap:8px}
-#hud .tab{padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;background:transparent;border:1px solid #555;color:#ccc;transition:all 0.2s}
-#hud .tab.active{background:${accentColor};border-color:${accentColor};color:#fff}
-#hud .spacer{flex:1}
-#hud .agent-btn{padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;background:${accentColor};border:none;color:#fff}
-#viewer{position:fixed;inset:0;bottom:50px}
+#gate-inner{display:flex;flex-direction:column;align-items:center;text-align:center;padding:40px 32px;max-width:480px;width:90%}
+#gate-inner .gate-logo{max-height:72px;max-width:200px;object-fit:contain;margin-bottom:20px}
+#gate-inner h1{font-size:clamp(22px,4vw,32px);font-weight:700;margin-bottom:8px;letter-spacing:-0.02em}
+#gate-inner .gate-subtitle{color:rgba(255,255,255,0.65);font-size:14px;margin-bottom:32px;line-height:1.5}
+.gate-actions{display:flex;flex-direction:column;gap:12px;width:100%}
+.gate-btn-primary{padding:13px 28px;font-size:15px;font-weight:600;border:none;border-radius:10px;cursor:pointer;background:${escapeHtml(accentColor)};color:#fff;transition:opacity 0.2s,transform 0.15s;display:flex;align-items:center;justify-content:center;gap:8px}
+.gate-btn-primary:hover{opacity:0.88;transform:translateY(-1px)}
+.gate-btn-secondary{padding:11px 28px;font-size:14px;font-weight:500;border:1px solid rgba(255,255,255,0.25);border-radius:10px;cursor:pointer;background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.8);transition:opacity 0.2s,background 0.2s}
+.gate-btn-secondary:hover{background:rgba(255,255,255,0.14)}
+
+/* ── Viewer (full-screen iframe) ──────────────────────────────────── */
+#viewer{position:fixed;inset:0;bottom:0}
 #viewer iframe{width:100%;height:100%;border:none}
-${logoUrl ? `#gate img.logo{max-height:64px;margin-bottom:16px}` : ""}
+
+/* ── HUD header (top glassmorphism overlay) ──────────────────────── */
+#hud-header{position:fixed;top:0;left:0;right:0;z-index:500;overflow:hidden;transition:max-height 0.3s ease,opacity 0.3s ease}
+#hud-header.visible{max-height:80px;opacity:1}
+#hud-header.hidden{max-height:0;opacity:0}
+#hud-inner{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:${escapeHtml(hudBgColor)}99;backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid rgba(255,255,255,0.08);box-shadow:0 4px 24px rgba(0,0,0,0.15),inset 0 1px 0 rgba(255,255,255,0.06)}
+#hud-left{display:flex;align-items:center;gap:10px;min-width:0}
+#hud-logo{height:32px;object-fit:contain;flex-shrink:0}
+#hud-text{min-width:0}
+#hud-brand{font-size:13px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 3px rgba(0,0,0,0.4)}
+#hud-prop-name{font-size:11px;font-weight:500;color:rgba(255,255,255,0.9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#hud-prop-loc{font-size:11px;color:rgba(255,255,255,0.65);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#hud-right{display:flex;align-items:center;gap:6px;flex-shrink:0;margin-right:32px}
+.hud-icon-btn{width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.12);border:none;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background 0.2s;flex-shrink:0;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+.hud-icon-btn:hover{background:rgba(255,255,255,0.22)}
+.hud-icon-btn svg{width:14px;height:14px}
+#hud-agent-name{font-size:12px;color:rgba(255,255,255,0.75);white-space:nowrap;display:none}
+@media(min-width:520px){#hud-agent-name{display:block}}
+.hud-contact-btn{padding:5px 12px;border-radius:6px;font-size:12px;font-weight:600;border:none;color:#fff;cursor:pointer;background:${escapeHtml(accentColor)};transition:opacity 0.2s}
+.hud-contact-btn:hover{opacity:0.85}
+#hud-mute-btn{display:none}
+#hud-mute-btn.visible{display:flex}
+
+/* ── HUD toggle chevron ───────────────────────────────────────────── */
+#hud-toggle{position:fixed;top:8px;right:8px;z-index:501;width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,0.18);border:none;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background 0.2s;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+#hud-toggle:hover{background:rgba(255,255,255,0.28)}
+#hud-toggle svg{width:12px;height:12px}
+
+/* ── Property tabs (top-left overlay) ────────────────────────────── */
+#tabs{position:fixed;top:8px;left:8px;z-index:600;display:none;gap:4px;background:rgba(0,0,0,0.35);padding:4px 6px;border-radius:999px;border:1px solid rgba(255,255,255,0.08);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+#tabs.multi{display:flex}
+.tab{padding:4px 12px;border-radius:999px;cursor:pointer;font-size:12px;font-weight:500;background:transparent;border:none;color:rgba(255,255,255,0.65);transition:background 0.2s,color 0.2s}
+.tab.active{background:${escapeHtml(accentColor)};color:#fff}
+
+/* ── Bottom toolbar (AI / Docs buttons) ──────────────────────────── */
+#hud-bottom{position:fixed;bottom:0;left:0;right:0;z-index:500;padding:8px 14px;display:flex;align-items:center;justify-content:flex-end;gap:8px;background:${escapeHtml(hudBgColor)}cc;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid rgba(255,255,255,0.06)}
+
+/* ── Agent contact panel (slide from right) ──────────────────────── */
+#agent-drawer{position:fixed;top:0;right:0;width:min(300px,88vw);height:100%;z-index:2000;overflow-y:auto;transform:translateX(100%);transition:transform 0.3s ease;background:${escapeHtml(hudBgColor)}cc;backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);border-left:1px solid rgba(255,255,255,0.08);box-shadow:-8px 0 32px rgba(0,0,0,0.25)}
+#agent-drawer.open{transform:translateX(0)}
+#drawer-inner{padding:16px}
+#drawer-close{position:absolute;top:10px;right:10px;width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,0.1);border:none;color:rgba(255,255,255,0.7);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.2s}
+#drawer-close:hover{background:rgba(255,255,255,0.2)}
+#drawer-title{font-size:13px;font-weight:600;color:#fff;margin-bottom:14px}
+.drawer-agent-row{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.agent-avatar-img{width:48px;height:48px;border-radius:50%;object-fit:cover;border:1px solid rgba(255,255,255,0.18);flex-shrink:0}
+.agent-avatar-init{width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#fff;flex-shrink:0;background:${escapeHtml(accentColor)};border:1px solid rgba(255,255,255,0.18)}
+.drawer-agent-name{font-size:13px;font-weight:600;color:#fff}
+.drawer-agent-role{font-size:11px;color:rgba(255,255,255,0.55);margin-top:2px}
+.drawer-welcome{border-radius:8px;background:rgba(255,255,255,0.08);padding:10px 12px;margin-bottom:14px}
+.drawer-welcome p{font-size:12px;color:rgba(255,255,255,0.85);line-height:1.55;white-space:pre-wrap}
+.drawer-actions{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.drawer-action-link{display:flex;align-items:center;gap:8px;border-radius:8px;background:rgba(255,255,255,0.08);padding:9px 11px;font-size:12px;font-weight:500;color:#fff;text-decoration:none;transition:background 0.2s}
+.drawer-action-link:hover{background:rgba(255,255,255,0.15)}
+.drawer-action-link svg{width:14px;height:14px;color:rgba(255,255,255,0.6);flex-shrink:0}
+.drawer-social-label{font-size:10px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:rgba(255,255,255,0.4);margin-bottom:6px}
+.drawer-social-pills{display:flex;flex-wrap:wrap;gap:6px}
+.social-pill{display:inline-flex;align-items:center;border-radius:999px;background:rgba(255,255,255,0.1);padding:4px 10px;font-size:11px;font-weight:500;color:#fff;text-decoration:none;transition:background 0.2s}
+.social-pill:hover{background:rgba(255,255,255,0.18)}
+
+/* ── Shared modal backdrop ────────────────────────────────────────── */
+.modal-backdrop{position:fixed;inset:0;z-index:2500;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.65);backdrop-filter:blur(14px) brightness(0.55);-webkit-backdrop-filter:blur(14px) brightness(0.55);padding:16px}
+.modal-backdrop.open{display:flex}
+.modal-box{position:relative;width:min(60vw,900px);background:rgba(18,18,32,0.92);border-radius:16px;overflow:hidden;box-shadow:0 25px 80px -15px rgba(0,0,0,0.75)}
+@media(max-width:768px){.modal-box{width:94vw}}
+.modal-top-bar{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,0.08)}
+.modal-title{font-size:14px;font-weight:600;color:#fff}
+.modal-close-btn{width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.1);border:none;color:rgba(255,255,255,0.7);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.2s}
+.modal-close-btn:hover{background:rgba(255,255,255,0.2)}
+.modal-body{padding:16px}
+
+/* ── Carousel-specific ────────────────────────────────────────────── */
+#carousel-media-stage{position:relative;aspect-ratio:16/9;width:100%;background:#000;border-radius:10px;overflow:hidden}
+#carousel-media-stage img,#carousel-media-stage video,#carousel-media-stage iframe{width:100%;height:100%;object-fit:contain}
+#carousel-counter{font-size:12px;color:rgba(255,255,255,0.7)}
+.carousel-arrow{position:absolute;top:50%;transform:translateY(-50%);width:40px;height:40px;border-radius:50%;background:rgba(0,0,0,0.5);border:none;color:#fff;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5;transition:background 0.2s;backdrop-filter:blur(8px)}
+.carousel-arrow:hover{background:rgba(0,0,0,0.75)}
+#carousel-prev{left:10px}
+#carousel-next{right:10px}
+.carousel-thumbs{display:flex;gap:6px;overflow-x:auto;padding:10px 0 2px;scrollbar-width:thin}
+.carousel-thumb{width:72px;height:48px;border-radius:6px;overflow:hidden;border:2px solid transparent;cursor:pointer;flex-shrink:0;background:#222;transition:border-color 0.2s}
+.carousel-thumb.active{border-color:#fff}
+.carousel-thumb img{width:100%;height:100%;object-fit:cover}
+.carousel-thumb-play{width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#333}
+
+/* ── Powered-by footer ────────────────────────────────────────────── */
+#powered-by{position:fixed;bottom:0;left:0;right:0;height:34px;display:flex;align-items:center;justify-content:center;font-size:11px;color:rgba(255,255,255,0.4);border-top:1px solid rgba(255,255,255,0.06);background:${escapeHtml(hudBgColor)}cc;z-index:499}
+${isPro ? "" : `/* Bottom toolbar above footer; viewer above footer */
+#hud-bottom{bottom:34px}
+#viewer{bottom:34px}`}
+
+/* ── Panel z-index overrides (ensure panels render above bottom toolbar) */
+#docs-qa-panel,#property-docs{z-index:1500}
+/* Adjust panel anchors to clear the bottom toolbar (~44px) */
+#docs-qa-panel{bottom:${isPro ? "52" : "86"}px}
+#property-docs{bottom:${isPro ? "56" : "90"}px}
+
 ${qaCss}
 ${docsQaAssets.css}
 </style>
 </head>
 <body>
+
+<!-- ── Welcome / sound gate ─────────────────────────────────────── -->
 <div id="gate">
-  ${logoUrl ? `<img class="logo" src="${escapeHtml(logoUrl)}" alt="Logo">` : ""}
-  <h1>${escapeHtml(brandName)}</h1>
-  <p>${escapeHtml(model.name || "")}</p>
-  <button onclick="document.getElementById('gate').classList.add('hidden')">${escapeHtml(gateLabel)}</button>
+  <div id="gate-inner">
+    ${logoUrl ? `<img class="gate-logo" src="${escapeHtml(logoUrl)}" alt="Logo">` : ""}
+    <h1>${escapeHtml(brandName)}</h1>
+    <div class="gate-subtitle">${escapeHtml(model.name || "")}</div>
+    <div class="gate-actions">
+      <button class="gate-btn-primary" id="gate-sound-btn">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+        Start with Sound
+      </button>
+      <button class="gate-btn-secondary" id="gate-silent-btn">${escapeHtml(gateLabel)} (No Sound)</button>
+    </div>
+  </div>
 </div>
-<div id="viewer"><iframe id="matterport-frame" allowfullscreen></iframe></div>
-<div id="hud">
-  <div id="tabs"></div>
-  <div class="spacer"></div>
+
+<!-- ── Matterport iframe ─────────────────────────────────────────── -->
+<div id="viewer"><iframe id="matterport-frame" allowfullscreen allow="xr-spatial-tracking; fullscreen"></iframe></div>
+
+<!-- ── HUD toggle button ─────────────────────────────────────────── -->
+<button id="hud-toggle" aria-label="Toggle header">
+  <svg id="hud-chevron-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="display:none"><polyline points="18 15 12 9 6 15"/></svg>
+  <svg id="hud-chevron-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+</button>
+
+<!-- ── HUD top header ─────────────────────────────────────────────── -->
+<div id="hud-header" class="hidden">
+  <div id="hud-inner">
+    <div id="hud-left">
+      ${logoUrl ? `<img id="hud-logo" src="${escapeHtml(logoUrl)}" alt="Logo">` : ""}
+      <div id="hud-text">
+        <div id="hud-brand">${escapeHtml(brandName)}</div>
+        <div id="hud-prop-name"></div>
+        <div id="hud-prop-loc"></div>
+      </div>
+    </div>
+    <div id="hud-right">
+      <button id="hud-mute-btn" class="hud-icon-btn" aria-label="Toggle sound" title="Toggle sound">
+        <svg id="mute-icon-on" viewBox="0 0 24 24" fill="currentColor" style="display:none"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+        <svg id="mute-icon-off" viewBox="0 0 24 24" fill="currentColor"><path d="M16.5 12A4.5 4.5 0 0 0 14 7.97v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06A9.0 9.0 0 0 0 17.73 18l1.73 1.73L21 18.46 5.54 3 4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>
+      </button>
+      <button id="hud-map-btn" class="hud-icon-btn" style="display:none" aria-label="Neighborhood map" title="Neighborhood Map" onclick="window.__openModal&&window.__openModal('map')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 1 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+      </button>
+      <button id="hud-cinema-btn" class="hud-icon-btn" style="display:none" aria-label="Cinematic video" title="Watch Cinematic Video" onclick="window.__openModal&&window.__openModal('cinema')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="15" rx="2"/><path d="M16 3l-4 4-4-4"/></svg>
+      </button>
+      <button id="hud-media-btn" class="hud-icon-btn" style="display:none" aria-label="Media gallery" title="View Media Gallery" onclick="window.__openModal&&window.__openModal('carousel',0)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      </button>
+      <span id="hud-agent-name"></span>
+      ${(agent.phone || agent.email || agent.name) ? `<button class="hud-contact-btn" onclick="window.__openContact&&window.__openContact()">Contact</button>` : ""}
+    </div>
+  </div>
+</div>
+
+<!-- ── Property tabs (top-left, shown only when >1 property) ─────── -->
+<div id="tabs"></div>
+
+<!-- ── Bottom toolbar ────────────────────────────────────────────── -->
+<div id="hud-bottom">
   ${docsQaAssets.toggleBtn}
   ${qaToggleBtn}
-  ${agent.name ? `<button class="agent-btn" onclick="document.getElementById('agent-drawer').style.display='block'">Contact</button>` : ""}
 </div>
-${agentDrawer}
+
+<!-- ── Agent contact panel ───────────────────────────────────────── -->
+${(agent.phone || agent.email || agent.name) ? `<div id="agent-drawer">
+  <div id="drawer-inner">
+    <button id="drawer-close" onclick="window.__closeContact&&window.__closeContact()" aria-label="Close">&times;</button>
+    <div id="drawer-title">Get in Touch</div>
+    <div class="drawer-agent-row">
+      ${avatarHtml}
+      <div>
+        <div class="drawer-agent-name">${escapeHtml(String(agent.name || ""))}</div>
+        ${agent.titleRole ? `<div class="drawer-agent-role">${escapeHtml(String(agent.titleRole))}</div>` : agent.name ? `<div class="drawer-agent-role">${escapeHtml(brandName)}</div>` : ""}
+      </div>
+    </div>
+    ${agent.welcomeNote ? `<div class="drawer-welcome"><p>${escapeHtml(String(agent.welcomeNote))}</p></div>` : ""}
+    <div class="drawer-actions">
+      ${agent.phone ? `<a href="tel:${escapeHtml(String(agent.phone))}" class="drawer-action-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.27h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.61a16 16 0 0 0 6 6l.91-.91a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.73 16l.19.92z"/></svg>Call ${escapeHtml(String(agent.phone))}</a>` : ""}
+      ${agent.phone ? `<a href="sms:${escapeHtml(String(agent.phone))}" class="drawer-action-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Text ${escapeHtml(String(agent.phone))}</a>` : ""}
+      ${agent.email ? `<a href="mailto:${escapeHtml(String(agent.email))}" class="drawer-action-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>${escapeHtml(String(agent.email))}</a>` : ""}
+    </div>
+    ${socialLinksHtml ? `<div class="drawer-social-label">Social</div><div class="drawer-social-pills">${socialLinksHtml}</div>` : ""}
+  </div>
+</div>` : ""}
+
+<!-- ── Neighborhood Map modal ─────────────────────────────────────── -->
+<div id="map-modal" class="modal-backdrop" onclick="if(event.target===this)window.__closeModal('map')">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div class="modal-top-bar">
+      <span class="modal-title" id="map-modal-title">Neighborhood</span>
+      <button class="modal-close-btn" onclick="window.__closeModal('map')">&times;</button>
+    </div>
+    <div class="modal-body" style="padding:12px">
+      <div style="position:relative;padding-top:56.25%;border-radius:10px;overflow:hidden;background:#111">
+        <iframe id="map-frame" src="" title="Neighborhood Map" style="position:absolute;inset:0;width:100%;height:100%;border:none" loading="lazy" referrerpolicy="no-referrer-when-downgrade" allowfullscreen></iframe>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Cinematic video modal ─────────────────────────────────────── -->
+<div id="cinema-modal" class="modal-backdrop" onclick="if(event.target===this)window.__closeModal('cinema')">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div class="modal-top-bar">
+      <span class="modal-title">Cinematic Video</span>
+      <button class="modal-close-btn" onclick="window.__closeModal('cinema')">&times;</button>
+    </div>
+    <div class="modal-body" style="padding:12px">
+      <div style="position:relative;padding-top:56.25%;border-radius:10px;overflow:hidden;background:#000">
+        <div id="cinema-content" style="position:absolute;inset:0"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Media carousel modal ──────────────────────────────────────── -->
+<div id="carousel-modal" class="modal-backdrop" onclick="if(event.target===this)window.__closeModal('carousel')">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div class="modal-top-bar">
+      <span class="modal-title">Media Gallery &nbsp;<span id="carousel-counter" style="font-weight:400;font-size:11px;color:rgba(255,255,255,0.5)"></span></span>
+      <button class="modal-close-btn" onclick="window.__closeModal('carousel')">&times;</button>
+    </div>
+    <div class="modal-body" style="padding:12px">
+      <div id="carousel-media-stage">
+        <button class="carousel-arrow" id="carousel-prev" onclick="window.__carouselNav(-1)">&#8249;</button>
+        <button class="carousel-arrow" id="carousel-next" onclick="window.__carouselNav(1)">&#8250;</button>
+      </div>
+      <div class="carousel-thumbs" id="carousel-thumbs"></div>
+    </div>
+  </div>
+</div>
+
 ${qaPanelHtml}
 ${docsQaAssets.panelHtml}
 ${propertyDocsPanelHtml}
-${poweredBy}
+${poweredByFooter}
 ${
   propertyDocsData
     ? `<script>window.__PROPERTY_EXTRACTIONS__=${safeJsonScriptLiteral(propertyDocsData)};</script>`
@@ -837,6 +1130,10 @@ var uuidByIndex=C.propertyUuidByIndex||[];
 var frame=document.getElementById("matterport-frame");
 var tabsEl=document.getElementById("tabs");
 var current=0;
+var soundEnabled=false;
+var audioEl=null;
+var carouselIndex=0;
+var carouselMedia=[];
 
 function escapeText(s){
   return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
@@ -846,6 +1143,227 @@ function formatFieldValue(v){
   if(typeof v==="object") return JSON.stringify(v);
   return String(v);
 }
+
+// \u2500\u2500 Cinematic video URL parser
+function parseCinematicUrl(url){
+  if(!url) return null;
+  url=url.trim();
+  if(/\.mp4(\?.*)?$/i.test(url)) return {kind:"mp4",src:url};
+  var yt=url.match(/youtu\.be\/([\w-]{6,})/i)||url.match(/youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|v\/)([\w-]{6,})/i);
+  if(yt&&yt[1]) return {kind:"iframe",src:"https://www.youtube.com/embed/"+yt[1]+"?rel=0&modestbranding=1&autoplay=1"};
+  var vi=url.match(/player\.vimeo\.com\/video\/(\d+)/i)||url.match(/vimeo\.com\/(?:video\/)?(\d+)/i);
+  if(vi&&vi[1]) return {kind:"iframe",src:"https://player.vimeo.com/video/"+vi[1]+"?title=0&byline=0&portrait=0&autoplay=1"};
+  var wi=url.match(/wistia\.com\/medias\/([\w-]+)/i)||url.match(/wistia\.net\/(?:embed\/iframe|medias)\/([\w-]+)/i);
+  if(wi&&wi[1]) return {kind:"iframe",src:"https://fast.wistia.net/embed/iframe/"+wi[1]+"?autoPlay=true"};
+  var lo=url.match(/loom\.com\/(?:share|embed)\/([\w-]+)/i);
+  if(lo&&lo[1]) return {kind:"iframe",src:"https://www.loom.com/embed/"+lo[1]+"?autoplay=1"};
+  return null;
+}
+
+// \u2500\u2500 Ambient audio
+function initAudio(musicUrl,play){
+  if(!musicUrl) return;
+  if(!audioEl){
+    audioEl=document.createElement("audio");
+    audioEl.loop=true;
+    audioEl.volume=0.4;
+    document.body.appendChild(audioEl);
+  }
+  if(audioEl.src!==musicUrl) audioEl.src=musicUrl;
+  if(play){audioEl.play().catch(function(){});soundEnabled=true;}
+  updateMuteBtn();
+}
+function toggleMute(){
+  if(!audioEl) return;
+  if(audioEl.paused){audioEl.play().catch(function(){});soundEnabled=true;}
+  else{audioEl.pause();soundEnabled=false;}
+  updateMuteBtn();
+}
+function updateMuteBtn(){
+  var btn=document.getElementById("hud-mute-btn");
+  var iconOn=document.getElementById("mute-icon-on");
+  var iconOff=document.getElementById("mute-icon-off");
+  if(!btn) return;
+  var hasSrc=audioEl&&audioEl.src&&audioEl.src!==window.location.href;
+  btn.classList.toggle("visible",!!hasSrc);
+  if(iconOn) iconOn.style.display=(hasSrc&&soundEnabled)?"":"none";
+  if(iconOff) iconOff.style.display=(hasSrc&&!soundEnabled)?"":"none";
+}
+var muteBtn=document.getElementById("hud-mute-btn");
+if(muteBtn) muteBtn.addEventListener("click",toggleMute);
+
+// \u2500\u2500 HUD header update
+function updateHud(i){
+  var p=props[i];
+  if(!p) return;
+  var elName=document.getElementById("hud-prop-name");
+  var elLoc=document.getElementById("hud-prop-loc");
+  var elAgent=document.getElementById("hud-agent-name");
+  if(elName) elName.textContent=p.propertyName||"";
+  if(elLoc) elLoc.textContent=(p.name||"")+(p.location?" \u2014 "+p.location:"");
+  if(elAgent) elAgent.textContent=(C.agent&&C.agent.name)?C.agent.name:"";
+  var mapBtn=document.getElementById("hud-map-btn");
+  if(mapBtn) mapBtn.style.display=(p.enableNeighborhoodMap&&p.location)?"":"none";
+  var cinBtn=document.getElementById("hud-cinema-btn");
+  if(cinBtn) cinBtn.style.display=(p.cinematicVideoUrl&&parseCinematicUrl(p.cinematicVideoUrl))?"":"none";
+  var mediaBtn=document.getElementById("hud-media-btn");
+  if(mediaBtn) mediaBtn.style.display=(p.multimedia&&p.multimedia.length>0)?"":"none";
+  if(p.musicUrl){initAudio(p.musicUrl,soundEnabled);}
+  else if(audioEl){audioEl.pause();audioEl.src="";updateMuteBtn();}
+}
+
+// \u2500\u2500 HUD toggle
+var hudHeader=document.getElementById("hud-header");
+var hudToggle=document.getElementById("hud-toggle");
+var chevUp=document.getElementById("hud-chevron-up");
+var chevDown=document.getElementById("hud-chevron-down");
+var hudVisible=false;
+function setHudVisible(v){
+  hudVisible=v;
+  if(hudHeader){hudHeader.className="hud-header "+(v?"visible":"hidden");}
+  if(chevUp) chevUp.style.display=v?"":"none";
+  if(chevDown) chevDown.style.display=v?"none":"";
+}
+if(hudToggle) hudToggle.addEventListener("click",function(){setHudVisible(!hudVisible);});
+
+// \u2500\u2500 Welcome gate
+function dismissGate(){
+  var gate=document.getElementById("gate");
+  if(gate){gate.classList.add("hidden");setTimeout(function(){gate.style.display="none";},500);}
+  setHudVisible(true);
+}
+var soundBtn=document.getElementById("gate-sound-btn");
+var silentBtn=document.getElementById("gate-silent-btn");
+if(soundBtn) soundBtn.addEventListener("click",function(){
+  soundEnabled=true;
+  var p=props[current];
+  if(p&&p.musicUrl) initAudio(p.musicUrl,true);
+  dismissGate();
+});
+if(silentBtn) silentBtn.addEventListener("click",function(){
+  soundEnabled=false;
+  dismissGate();
+});
+
+// \u2500\u2500 Contact panel
+window.__openContact=function(){
+  var d=document.getElementById("agent-drawer");
+  if(d) d.classList.add("open");
+};
+window.__closeContact=function(){
+  var d=document.getElementById("agent-drawer");
+  if(d) d.classList.remove("open");
+};
+
+// \u2500\u2500 Modal helpers
+window.__openModal=function(name,idx){
+  var el=document.getElementById(name+"-modal");
+  if(!el) return;
+  if(name==="map"){
+    var p=props[current];
+    var mapFrame=document.getElementById("map-frame");
+    var titleEl=document.getElementById("map-modal-title");
+    if(mapFrame&&p&&p.location){
+      mapFrame.src="https://maps.google.com/maps?q="+encodeURIComponent(p.location)+"&t=&z=15&ie=UTF8&iwloc=&output=embed";
+    }
+    if(titleEl&&p) titleEl.textContent=(p.propertyName||p.name||"Property")+" \u2014 Neighborhood";
+  }
+  if(name==="cinema"){
+    var p2=props[current];
+    var content=document.getElementById("cinema-content");
+    if(content&&p2&&p2.cinematicVideoUrl){
+      var parsed=parseCinematicUrl(p2.cinematicVideoUrl);
+      if(parsed){
+        content.innerHTML=parsed.kind==="mp4"
+          ?'<video src="'+escapeText(parsed.src)+'" controls autoplay style="position:absolute;inset:0;width:100%;height:100%;border-radius:10px"></video>'
+          :'<iframe src="'+escapeText(parsed.src)+'" style="position:absolute;inset:0;width:100%;height:100%;border:none" allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture;fullscreen" allowfullscreen></iframe>';
+      }
+    }
+  }
+  if(name==="carousel"){
+    var p3=props[current];
+    carouselMedia=p3&&p3.multimedia?p3.multimedia:[];
+    carouselIndex=typeof idx==="number"?idx:0;
+    renderCarousel();
+  }
+  el.classList.add("open");
+};
+window.__closeModal=function(name){
+  var el=document.getElementById(name+"-modal");
+  if(!el) return;
+  el.classList.remove("open");
+  if(name==="map"){var mf=document.getElementById("map-frame");if(mf)mf.src="";}
+  if(name==="cinema"){var cc=document.getElementById("cinema-content");if(cc)cc.innerHTML="";}
+};
+
+// \u2500\u2500 Carousel render
+function renderCarousel(){
+  var stage=document.getElementById("carousel-media-stage");
+  var counter=document.getElementById("carousel-counter");
+  var thumbsEl=document.getElementById("carousel-thumbs");
+  if(!stage||!carouselMedia.length) return;
+  var total=carouselMedia.length;
+  var item=carouselMedia[carouselIndex];
+  var kindLabel=item.kind==="video"?"Video":item.kind==="gif"?"GIF":"Photo";
+  if(counter) counter.textContent=(carouselIndex+1)+" / "+total+" \u00b7 "+kindLabel+(item.label?" \u00b7 "+item.label:"");
+  var prevBtn=document.getElementById("carousel-prev");
+  var nextBtn=document.getElementById("carousel-next");
+  var children=Array.prototype.slice.call(stage.childNodes);
+  children.forEach(function(c){if(c.id!=="carousel-prev"&&c.id!=="carousel-next")stage.removeChild(c);});
+  var media;
+  if(item.kind==="video"&&item.embedUrl){
+    media=document.createElement("video");
+    media.src=item.embedUrl;media.controls=true;media.autoplay=true;media.playsInline=true;
+    media.style.cssText="position:absolute;inset:0;width:100%;height:100%;object-fit:contain";
+  }else{
+    media=document.createElement("img");
+    media.src=item.proxyUrl||"";
+    media.alt=item.label||"Media";
+    media.style.cssText="position:absolute;inset:0;width:100%;height:100%;object-fit:contain";
+  }
+  stage.insertBefore(media,stage.firstChild);
+  if(prevBtn){prevBtn.style.display=total>1?"flex":"none";}
+  if(nextBtn){nextBtn.style.display=total>1?"flex":"none";}
+  if(thumbsEl){
+    thumbsEl.innerHTML="";
+    for(var t=0;t<carouselMedia.length;t++){
+      (function(ti){
+        var a=carouselMedia[ti];
+        var btn=document.createElement("button");
+        btn.className="carousel-thumb"+(ti===carouselIndex?" active":"");
+        btn.setAttribute("aria-label","Go to media "+(ti+1));
+        btn.addEventListener("click",function(){carouselIndex=ti;renderCarousel();});
+        if(a.kind==="video"){
+          btn.innerHTML='<div class="carousel-thumb-play"><svg width="14" height="14" viewBox="0 0 24 24" fill="white"><polygon points="5,3 19,12 5,21"/></svg></div>';
+        }else if(a.proxyUrl){
+          var img=document.createElement("img");
+          img.src=a.proxyUrl;img.style.cssText="width:100%;height:100%;object-fit:cover";img.loading="lazy";
+          btn.appendChild(img);
+        }else{
+          btn.innerHTML='<div class="carousel-thumb-play"></div>';
+        }
+        thumbsEl.appendChild(btn);
+      })(t);
+    }
+  }
+}
+window.__carouselNav=function(delta){
+  if(!carouselMedia.length) return;
+  carouselIndex=(carouselIndex+delta+carouselMedia.length)%carouselMedia.length;
+  renderCarousel();
+};
+
+// \u2500\u2500 Keyboard shortcuts
+document.addEventListener("keydown",function(e){
+  if(e.key!=="Escape") return;
+  ["map","cinema","carousel"].forEach(function(n){
+    var el=document.getElementById(n+"-modal");
+    if(el&&el.classList.contains("open")) window.__closeModal(n);
+  });
+  var dr=document.getElementById("agent-drawer");
+  if(dr&&dr.classList.contains("open")) window.__closeContact();
+});
+
 function renderPropertyDocs(i){
   var container=document.getElementById("property-docs");
   if(!container) return;
@@ -1153,6 +1671,10 @@ function load(i){
   var tabs=tabsEl.querySelectorAll(".tab");
   tabs.forEach(function(t,j){t.classList.toggle("active",j===i)});
   renderPropertyDocs(i);
+  updateHud(i);
+  // Reset carousel context for new property
+  carouselMedia=props[i].multimedia||[];
+  carouselIndex=0;
   // Reset Docs Q&A state so next open re-indexes for this property.
   __docsQa.currentIndexKey=null;
   if(__docsQa.messages){
@@ -1167,6 +1689,7 @@ props.forEach(function(p,i){
   btn.onclick=function(){load(i)};
   tabsEl.appendChild(btn);
 });
+if(props.length>1) tabsEl.classList.add("multi");
 if(props.length>0) load(0);
 
 // Pre-warm the docs-qa pipeline after the Matterport iframe has finished
