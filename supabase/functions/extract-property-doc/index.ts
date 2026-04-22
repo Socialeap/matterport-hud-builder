@@ -34,6 +34,21 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
+type Stage = "auth" | "input" | "freeze" | "asset" | "no_storage_path"
+  | "template" | "download" | "extraction" | "persist";
+
+function fail(
+  stage: Stage,
+  detail: string,
+  status: number,
+  diagnostics: Record<string, unknown> = {},
+) {
+  return jsonResponse(
+    { ok: false, stage, detail, error: detail, diagnostics },
+    status,
+  );
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
