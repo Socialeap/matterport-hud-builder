@@ -8,6 +8,7 @@ import {
   Pencil,
   Play,
   Plus,
+  Sparkles,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -21,6 +22,7 @@ import type {
   ExtractorId,
 } from "@/lib/extraction/provider";
 import { dryRunTemplate, type DryRunSuccess } from "@/lib/extraction/dryrun";
+import { induceSchema, type InduceSchemaResult } from "@/lib/extraction/induce";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -308,6 +310,11 @@ function EditorDialog({
   const [dryRunResult, setDryRunResult] = useState<DryRunSuccess | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
 
+  const [induceFile, setInduceFile] = useState<File | null>(null);
+  const [induceBusy, setInduceBusy] = useState(false);
+  const [induceResult, setInduceResult] = useState<InduceSchemaResult | null>(null);
+  const [induceError, setInduceError] = useState<string | null>(null);
+
   const resetDryRun = () => {
     setDryRunFile(null);
     setDryRunResult(null);
@@ -315,21 +322,51 @@ function EditorDialog({
     setDryRunBusy(false);
   };
 
+  const resetInduction = () => {
+    setInduceFile(null);
+    setInduceResult(null);
+    setInduceError(null);
+    setInduceBusy(false);
+  };
+
+  const closeDialog = () => {
+    setState(null);
+    resetDryRun();
+    resetInduction();
+  };
+
   if (!state) {
     return (
-      <Dialog
-        open={open}
-        onOpenChange={(o) => {
-          if (!o) {
-            setState(null);
-            resetDryRun();
-          }
-        }}
-      >
+      <Dialog open={open} onOpenChange={(o) => { if (!o) closeDialog(); }}>
         <DialogContent />
       </Dialog>
     );
   }
+
+  const handleInduce = async () => {
+    if (!induceFile || induceBusy) return;
+    setInduceBusy(true);
+    setInduceResult(null);
+    setInduceError(null);
+    try {
+      const res = await induceSchema(induceFile);
+      setInduceResult(res);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setInduceError(msg);
+    } finally {
+      setInduceBusy(false);
+    }
+  };
+
+  const handleApplyInducedSchema = () => {
+    if (!induceResult || !state) return;
+    setState({
+      ...state,
+      schema_text: JSON.stringify(induceResult.schema, null, 2),
+    });
+    toast.success("Schema applied to editor — review and save when ready.");
+  };
 
   const runDryRun = async () => {
     if (!state || !dryRunFile) return;
@@ -369,12 +406,7 @@ function EditorDialog({
   return (
     <Dialog
       open={open}
-      onOpenChange={(o) => {
-        if (!o) {
-          setState(null);
-          resetDryRun();
-        }
-      }}
+      onOpenChange={(o) => { if (!o) closeDialog(); }}
     >
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -449,6 +481,17 @@ function EditorDialog({
             </p>
           </div>
 
+          <SchemaInductionSection
+            file={induceFile}
+            setFile={setInduceFile}
+            busy={induceBusy}
+            result={induceResult}
+            error={induceError}
+            onInduce={handleInduce}
+            onApply={handleApplyInducedSchema}
+            disabled={saving}
+          />
+
           <DryRunSection
             file={dryRunFile}
             setFile={setDryRunFile}
@@ -463,7 +506,7 @@ function EditorDialog({
         <DialogFooter>
           <Button
             variant="outline"
-            onClick={() => setState(null)}
+            onClick={closeDialog}
             disabled={saving}
           >
             Cancel
@@ -474,6 +517,125 @@ function EditorDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function SchemaInductionSection({
+  file,
+  setFile,
+  busy,
+  result,
+  error,
+  onInduce,
+  onApply,
+  disabled,
+}: {
+  file: File | null;
+  setFile: (f: File | null) => void;
+  busy: boolean;
+  result: InduceSchemaResult | null;
+  error: string | null;
+  onInduce: () => void;
+  onApply: () => void;
+  disabled: boolean;
+}) {
+  const canInduce = !!file && !busy && !disabled;
+  const fieldEntries = result ? Object.entries(result.schema.properties) : [];
+
+  return (
+    <div className="space-y-2 rounded-md border border-dashed border-primary/30 bg-primary/5 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-1.5">
+            <Sparkles className="size-3.5 text-primary" />
+            <Label className="text-xs font-medium">Auto-Generate from Document</Label>
+          </div>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            Upload an example PDF and AI will detect its fields and draft a schema for you.
+          </p>
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onInduce}
+          disabled={!canInduce}
+          className="h-7 shrink-0 text-xs"
+        >
+          <Sparkles className="mr-1 size-3" />
+          {busy ? "Generating…" : "Generate"}
+        </Button>
+      </div>
+
+      <label
+        htmlFor="induce-file"
+        className="flex cursor-pointer items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-xs hover:bg-accent"
+      >
+        <Upload className="size-3.5 text-muted-foreground" />
+        <span className="truncate">
+          {file ? file.name : "Choose an example PDF…"}
+        </span>
+        <input
+          id="induce-file"
+          type="file"
+          accept="application/pdf,.pdf"
+          className="hidden"
+          onChange={(e) => {
+            setFile(e.target.files?.[0] ?? null);
+          }}
+        />
+      </label>
+
+      {error && (
+        <p className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-[11px] text-destructive">
+          {error}
+        </p>
+      )}
+
+      {result && (
+        <div className="space-y-2 rounded-md border border-border bg-background p-2 text-xs">
+          <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+            <span>{fieldEntries.length} field{fieldEntries.length === 1 ? "" : "s"} detected</span>
+            <Button
+              size="sm"
+              variant="default"
+              className="h-6 px-2 text-[11px]"
+              onClick={onApply}
+            >
+              Apply to Editor
+            </Button>
+          </div>
+          <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5">
+            {fieldEntries.map(([key, field]) => (
+              <InducedFieldRow key={key} name={key} fieldType={field.type} description={field.description} />
+            ))}
+          </dl>
+          {result.schema.required && result.schema.required.length > 0 && (
+            <p className="text-[10px] text-muted-foreground">
+              Required: {result.schema.required.join(", ")}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InducedFieldRow({
+  name,
+  fieldType,
+  description,
+}: {
+  name: string;
+  fieldType: string;
+  description?: string;
+}) {
+  return (
+    <>
+      <dt className="font-mono text-[11px] text-muted-foreground" title={description}>
+        {name}
+      </dt>
+      <dd className="text-[11px] text-muted-foreground">{fieldType}</dd>
+    </>
   );
 }
 
