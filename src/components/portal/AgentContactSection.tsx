@@ -188,7 +188,20 @@ export function AgentContactSection({ agent, onChange, onAvatarFileChange, headl
             </p>
           </div>
         </div>
-      </CardContent>
+    </div>
+  );
+
+  if (headless) return body;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <UserCircle className="size-5 text-primary" />
+          Agent/Manager Contact
+        </CardTitle>
+      </CardHeader>
+      <CardContent>{body}</CardContent>
     </Card>
   );
 }
