@@ -553,6 +553,9 @@ function PortalHeader({
   demoPublished,
   onScrollTo,
   viewer,
+  authChecked,
+  onSignIn,
+  onSignOut,
 }: {
   branding: { brand_name: string; logo_url: string | null };
   slug: string;
@@ -565,6 +568,9 @@ function PortalHeader({
     displayName: string | null;
     email: string | null;
   } | null;
+  authChecked: boolean;
+  onSignIn: () => void;
+  onSignOut: () => void;
 }) {
   const navLinks = [
     { id: "steps", label: "Steps" },
