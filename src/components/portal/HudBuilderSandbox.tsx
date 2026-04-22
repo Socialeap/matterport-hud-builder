@@ -980,34 +980,85 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
               </p>
             </div>
 
-            <BrandingSection
-              brandName={brandName}
-              accentColor={accentColor}
-              hudBgColor={hudBgColor}
-              gateLabel={gateLabel}
-              logoFile={logoFile}
-              faviconFile={faviconFile}
-              logoPreview={logoPreview}
-              faviconPreview={faviconPreview}
-              onChange={handleBrandingChange}
-              onFileChange={handleFileChange}
-            />
+            {/* Collapsible sections — only one open at a time. Closed by default
+                so the live Preview stays high on the page. */}
+            <Accordion
+              type="single"
+              collapsible
+              className="space-y-3"
+            >
+              <AccordionItem
+                value="branding"
+                className="rounded-lg border bg-card shadow-sm"
+              >
+                <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                  <span className="flex items-center gap-2 text-base font-semibold text-foreground">
+                    <Palette className="size-5 text-primary" />
+                    Branding
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent className="px-4 pb-4">
+                  <BrandingSection
+                    headless
+                    brandName={brandName}
+                    accentColor={accentColor}
+                    hudBgColor={hudBgColor}
+                    gateLabel={gateLabel}
+                    logoFile={logoFile}
+                    faviconFile={faviconFile}
+                    logoPreview={logoPreview}
+                    faviconPreview={faviconPreview}
+                    onChange={handleBrandingChange}
+                    onFileChange={handleFileChange}
+                    onRemoveAsset={handleRemoveBrandAsset}
+                  />
+                </AccordionContent>
+              </AccordionItem>
 
-            <PropertyModelsSection
-              models={models}
-              onAdd={handleAddModel}
-              onRemove={handleRemoveModel}
-              onChange={handleModelChange}
-              onMediaChange={handleMediaChange}
-              onOpenBehavior={handleOpenBehavior}
-              savedModelId={savedModelId}
-            />
+              <AccordionItem
+                value="properties"
+                className="rounded-lg border bg-card shadow-sm"
+              >
+                <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                  <span className="flex items-center gap-2 text-base font-semibold text-foreground">
+                    <Home className="size-5 text-primary" />
+                    Property Models
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent className="px-4 pb-4">
+                  <PropertyModelsSection
+                    headless
+                    models={models}
+                    onAdd={handleAddModel}
+                    onRemove={handleRemoveModel}
+                    onChange={handleModelChange}
+                    onMediaChange={handleMediaChange}
+                    onOpenBehavior={handleOpenBehavior}
+                    savedModelId={savedModelId}
+                  />
+                </AccordionContent>
+              </AccordionItem>
 
-            <AgentContactSection
-              agent={agent}
-              onChange={handleAgentChange}
-              onAvatarFileChange={handleAgentAvatarChange}
-            />
+              <AccordionItem
+                value="agent"
+                className="rounded-lg border bg-card shadow-sm"
+              >
+                <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                  <span className="flex items-center gap-2 text-base font-semibold text-foreground">
+                    <UserCircle className="size-5 text-primary" />
+                    Agent / Manager Contact
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent className="px-4 pb-4">
+                  <AgentContactSection
+                    headless
+                    agent={agent}
+                    onChange={handleAgentChange}
+                    onAvatarFileChange={handleAgentAvatarChange}
+                  />
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
 
             {/* License Expired Banner */}
             {licenseExpired && (
