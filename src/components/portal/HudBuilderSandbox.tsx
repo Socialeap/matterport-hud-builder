@@ -175,8 +175,13 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
   const [gateLabel, setGateLabel] = useState(branding.gate_label);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [faviconFile, setFaviconFile] = useState<File | null>(null);
-  const [logoPreview, setLogoPreview] = useState<string | null>(branding.logo_url);
-  const [faviconPreview, setFaviconPreview] = useState<string | null>(branding.favicon_url);
+  // Start empty — the client/end-user must add their own logo/favicon for the
+  // generated presentation. Do NOT default to the MSP's branding assets.
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [faviconPreview, setFaviconPreview] = useState<string | null>(null);
+  // Permanent storage URLs — populated after upload to brand-assets bucket.
+  const [logoStorageUrl, setLogoStorageUrl] = useState<string | null>(null);
+  const [faviconStorageUrl, setFaviconStorageUrl] = useState<string | null>(null);
 
   // Models
   const [models, setModels] = useState<PropertyModel[]>(() => {
