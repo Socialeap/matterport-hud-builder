@@ -910,8 +910,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .tab{padding:4px 12px;border-radius:999px;cursor:pointer;font-size:12px;font-weight:500;background:transparent;border:none;color:rgba(255,255,255,0.65);transition:background 0.2s,color 0.2s}
 .tab.active{background:${escapeHtml(accentColor)};color:#fff}
 
-/* ── Bottom toolbar (AI / Docs buttons) ──────────────────────────── */
-#hud-bottom{position:fixed;bottom:0;left:0;right:0;z-index:500;padding:8px 14px;display:flex;align-items:center;justify-content:flex-end;gap:8px;background:${escapeHtml(hudBgColor)}cc;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid rgba(255,255,255,0.06)}
+/* (Bottom toolbar removed — Ask AI / Ask docs buttons now live in the HUD header to keep the Matterport logo unobstructed.) */
 
 /* ── Agent contact panel (slide from right) ──────────────────────── */
 #agent-drawer{position:fixed;top:0;right:0;width:min(300px,88vw);height:100%;z-index:2000;overflow-y:auto;transform:translateX(100%);transition:transform 0.3s ease;background:${escapeHtml(hudBgColor)}cc;backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);border-left:1px solid rgba(255,255,255,0.08);box-shadow:-8px 0 32px rgba(0,0,0,0.25)}
