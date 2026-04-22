@@ -949,6 +949,48 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
                   Download Presentation
                 </Button>
               </div>
+            ) : isWrongAccount ? (
+              /* Wrong account — provider/admin signed in instead of invited client. */
+              <div className="rounded-lg border-2 border-amber-500/60 bg-amber-500/5 p-6">
+                <h3 className="text-lg font-semibold text-foreground">
+                  Wrong Account Signed In
+                </h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  You're signed in as the MSP/admin account, not the invited client.
+                  Please sign out and sign back in with the invited client account
+                  to download this presentation.
+                </p>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="mt-4 w-full"
+                  onClick={async () => {
+                    await supabase.auth.signOut();
+                    setUserId(null);
+                    setAccessRetryNonce((n) => n + 1);
+                  }}
+                >
+                  Sign Out
+                </Button>
+              </div>
+            ) : accessFailed ? (
+              /* Access verification failed — do NOT claim pricing is unavailable. */
+              <div className="rounded-lg border-2 border-muted p-6 text-center">
+                <h3 className="text-lg font-semibold text-foreground">
+                  Couldn't Verify Studio Access
+                </h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  We couldn't verify your Studio access right now. Please try again.
+                </p>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="mt-4"
+                  onClick={() => setAccessRetryNonce((n) => n + 1)}
+                >
+                  Retry
+                </Button>
+              </div>
             ) : isFreeClient ? (
               /* Free client — Download with no price. */
               <div className="rounded-lg border-2 p-6 text-center" style={{ borderColor: accentColor }}>
