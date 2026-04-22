@@ -1380,16 +1380,37 @@ function __dqaTier1(queryVec){
   }
   return null;
 }
+async function __askBuildCuratedDb(){
+  // Build the host-curated qaDatabase Orama DB once. The data is the same
+  // regardless of which property tab is active.
+  if(__docsQa.qaDb||!window.__ASK_HAS_QA__) return;
+  var om=__docsQa.oramaModule;
+  if(!om) return;
+  var data=window.__QA_DATABASE__||[];
+  if(!data.length) return;
+  __docsQa.qaDb=await om.create({
+    schema:{id:"string",question:"string",answer:"string",source_anchor_id:"string",embedding:"vector[384]"}
+  });
+  for(var i=0;i<data.length;i++){
+    var entry=data[i];
+    await om.insert(__docsQa.qaDb,{
+      id:entry.id,
+      question:entry.question,
+      answer:entry.answer,
+      source_anchor_id:entry.source_anchor_id,
+      embedding:entry.embedding
+    });
+  }
+}
 async function __dqaInit(){
   if(__docsQa.initPromise) return __docsQa.initPromise;
-  __docsQa.input=document.getElementById("docs-qa-input");
-  __docsQa.send=document.getElementById("docs-qa-send");
-  __docsQa.messages=document.getElementById("docs-qa-messages");
+  __docsQa.input=document.getElementById("ask-input");
+  __docsQa.send=document.getElementById("ask-send");
+  __docsQa.messages=document.getElementById("ask-messages");
   if(!__docsQa.input||!__docsQa.send) return;
   __docsQa.initPromise=(async function(){
     // Load Orama first (tiny), then transformers.js (heavy, WASM + ONNX
-    // weights). Transformers is cached across the Q&A surface by URL so
-    // a second import() here is instant after the first.
+    // weights). One shared download for both knowledge sources.
     var oramaModule=await import("https://cdn.jsdelivr.net/npm/@orama/orama@3.0.0/+esm");
     __docsQa.oramaModule=oramaModule;
     __docsQa.MODE_HYBRID=oramaModule.MODE_HYBRID_SEARCH;
@@ -1413,32 +1434,56 @@ async function __dqaInit(){
       __docsQa.embedPipeline=pipe;
     }catch(err){
       // Network or WASM failure — graceful degradation to BM25-only.
-      console.warn("docs-qa transformers load failed, falling back to BM25:",err);
+      console.warn("ask: transformers load failed, falling back to BM25:",err);
       __docsQa.embedPipeline=null;
     }
   })();
   await __docsQa.initPromise;
-  await __dqaRebuildIndex(current);
-  __docsQa.input.placeholder="Ask about this property's docs\u2026";
+  // Build both indexes (whichever apply to this presentation).
+  if(window.__ASK_HAS_DOCS__) await __dqaRebuildIndex(current);
+  await __askBuildCuratedDb();
+  __docsQa.input.placeholder="Ask a question about this property\u2026";
   __docsQa.input.disabled=false;
   __docsQa.send.disabled=false;
   async function handleAsk(){
     var q=(__docsQa.input.value||"").trim();
-    if(!q||!__docsQa.db) return;
+    if(!q) return;
     __docsQa.input.value="";
-    __dqaAppendMsg(q,"user",null);
+    __dqaAppendMsg(q,"user",null,null);
     __docsQa.input.disabled=true;
     __docsQa.send.disabled=true;
     try{
-      // Embed the query once; tiers 1 + 2 share the vector.
+      // Embed the query once; all tiers share the vector.
       var queryVec=await __dqaEmbedQuery(q);
 
       // Tier 1 — canonical-QA cosine (deterministic, templated).
       var tier1=__dqaTier1(queryVec);
-      if(tier1){
-        __dqaAppendMsg(tier1.answer,"assistant",tier1.source);
-      }else{
-        // Tier 2 (hybrid) or Tier 3 (BM25) via Orama.
+      var tier1Score=tier1?tier1.score:-1;
+
+      // Tier 2 — hybrid Orama over the host-curated qaDatabase.
+      var tier2=null;
+      if(__docsQa.qaDb&&queryVec){
+        try{
+          var qaRes=await __docsQa.oramaModule.search(__docsQa.qaDb,{
+            mode:__docsQa.MODE_HYBRID,
+            term:q,
+            vector:{value:queryVec,property:"embedding"},
+            limit:1,
+            similarity:0
+          });
+          var qaHits=(qaRes&&qaRes.hits)||[];
+          if(qaHits.length>0&&qaHits[0].score>0.3){
+            var qaDoc=qaHits[0].document;
+            tier2={answer:qaDoc.answer,anchorId:qaDoc.source_anchor_id,score:qaHits[0].score};
+          }
+        }catch(qaErr){
+          console.warn("ask: curated qa search failed:",qaErr);
+        }
+      }
+
+      // Tier 3 — hybrid (or BM25) over per-property doc chunks.
+      var tier3=null;
+      if(__docsQa.db){
         var searchArgs;
         if(__docsQa.mode==="hybrid"&&queryVec){
           searchArgs={
@@ -1452,18 +1497,38 @@ async function __dqaInit(){
         }else{
           searchArgs={term:q,properties:["content"],limit:1};
         }
-        var res=await __docsQa.oramaModule.search(__docsQa.db,searchArgs);
-        var hits=(res&&res.hits)||[];
-        if(hits.length>0){
-          var hit=hits[0].document;
-          __dqaAppendMsg(String(hit.content||""),"assistant",String(hit.source||""));
-        }else{
-          __dqaAppendMsg("I couldn't find that in the docs for this property. Try rephrasing or switch to another property.","assistant",null);
+        try{
+          var res=await __docsQa.oramaModule.search(__docsQa.db,searchArgs);
+          var hits=(res&&res.hits)||[];
+          if(hits.length>0){
+            var hit=hits[0].document;
+            tier3={content:String(hit.content||""),source:String(hit.source||""),score:hits[0].score};
+          }
+        }catch(docsErr){
+          console.warn("ask: docs search failed:",docsErr);
         }
       }
+
+      // Pick the highest-scoring result. Tier 1 wins outright when it
+      // crossed its threshold (deterministic canonical match).
+      if(tier1){
+        __dqaAppendMsg(tier1.answer,"assistant",tier1.source,null);
+      }else{
+        var t2=tier2?tier2.score:-1;
+        var t3=tier3?tier3.score:-1;
+        if(tier2&&t2>=t3){
+          __dqaAppendMsg(tier2.answer,"assistant",null,tier2.anchorId);
+        }else if(tier3){
+          __dqaAppendMsg(tier3.content,"assistant",tier3.source,null);
+        }else{
+          __dqaAppendMsg("I couldn't find that for this property. Try rephrasing, or reach out via Contact.","assistant",null,null);
+        }
+      }
+      // Suppress unused-var lint for tier1Score (kept for future tuning).
+      void tier1Score;
     }catch(err){
-      console.error("docs-qa search failed:",err);
-      __dqaAppendMsg("Search failed. Please try again.","assistant",null);
+      console.error("ask: search failed:",err);
+      __dqaAppendMsg("Search failed. Please try again.","assistant",null,null);
     }
     __docsQa.input.disabled=false;
     __docsQa.send.disabled=false;
@@ -1472,8 +1537,8 @@ async function __dqaInit(){
   __docsQa.send.addEventListener("click",handleAsk);
   __docsQa.input.addEventListener("keydown",function(e){if(e.key==="Enter") handleAsk();});
 }
-window.__openDocsQa=function(){
-  var panel=document.getElementById("docs-qa-panel");
+window.__openAsk=function(){
+  var panel=document.getElementById("ask-panel");
   if(!panel) return;
   panel.classList.add("open");
   __dqaInit();
