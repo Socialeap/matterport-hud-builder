@@ -165,21 +165,31 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
 
   // Authoritative Studio access state (from resolve_studio_access RPC).
   // Replaces narrow client-side free/pricing/payout checks.
+  // `loaded` = the RPC completed successfully. `error` = the RPC failed and
+  // the access fields below should NOT be trusted as authoritative.
   const [accessState, setAccessState] = useState<{
     linked: boolean;
     isFree: boolean;
     pricingConfigured: boolean;
     payoutsReady: boolean;
     providerBrandName: string;
+    viewerRole: "client" | "provider" | "admin" | "unknown";
+    viewerMatchesProvider: boolean;
     loaded: boolean;
+    error: string | null;
   }>({
     linked: false,
     isFree: false,
     pricingConfigured: false,
     payoutsReady: false,
     providerBrandName: "",
+    viewerRole: "unknown",
+    viewerMatchesProvider: false,
     loaded: false,
+    error: null,
   });
+  // Bumped to retry the access RPC on demand.
+  const [accessRetryNonce, setAccessRetryNonce] = useState(0);
 
   // Purchase / checkout state
   const [showCheckout, setShowCheckout] = useState(false);
@@ -354,17 +364,25 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
   // Server-resolved truth (from resolve_studio_access). Falls back to
   // client-derived branding values during the brief pre-load window so the
   // UI doesn't flash an incorrect "unavailable" state.
-  const isFreeClient = accessState.isFree;
-  const pricingConfigured = accessState.loaded
+  // IMPORTANT: when the resolver itself errored, we DO NOT trust its access
+  // flags. We still keep the branding-derived `pricingConfigured` fallback
+  // so the UI shows an honest "verification failed" message instead of
+  // collapsing into "Pricing Unavailable".
+  const accessVerified = accessState.loaded && !accessState.error;
+  const accessFailed = !!accessState.error;
+  const isFreeClient = accessVerified && accessState.isFree;
+  const pricingConfigured = accessVerified
     ? accessState.pricingConfigured
     : pricing.configured;
-  const payoutsReady = accessState.loaded
+  const payoutsReady = accessVerified
     ? accessState.payoutsReady
-    : Boolean(
-        branding.stripe_onboarding_complete &&
-          (branding as { stripe_connect_id?: string | null }).stripe_connect_id,
-      );
-  const checkoutReady = pricingConfigured && payoutsReady;
+    : false; // never imply payouts work until the resolver confirms
+  const checkoutReady = accessVerified && pricingConfigured && payoutsReady;
+  const isWrongAccount =
+    accessVerified &&
+    (accessState.viewerRole === "provider" ||
+      accessState.viewerRole === "admin" ||
+      accessState.viewerMatchesProvider);
 
   const handleBrandingChange = useCallback((field: string, value: string) => {
     switch (field) {
@@ -472,7 +490,17 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
   // Auto-heals stale `client_providers` rows from accepted invitations.
   useEffect(() => {
     if (!userId) {
-      setAccessState((s) => ({ ...s, loaded: true, linked: false, isFree: false }));
+      setAccessState({
+        linked: false,
+        isFree: false,
+        pricingConfigured: false,
+        payoutsReady: false,
+        providerBrandName: "",
+        viewerRole: "unknown",
+        viewerMatchesProvider: false,
+        loaded: true,
+        error: null,
+      });
       return;
     }
     let cancelled = false;
@@ -485,19 +513,32 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
           pricingConfigured: !!res.pricingConfigured,
           payoutsReady: !!res.payoutsReady,
           providerBrandName: res.providerBrandName || "",
+          viewerRole: res.viewerRole ?? "unknown",
+          viewerMatchesProvider: !!res.viewerMatchesProvider,
           loaded: true,
+          error: null,
         });
       })
       .catch((err) => {
-        console.warn("getStudioAccessState failed:", err);
+        console.error("getStudioAccessState failed:", err);
         if (!cancelled) {
-          setAccessState((s) => ({ ...s, loaded: true }));
+          // IMPORTANT: do NOT collapse this into "all-false". Keep `loaded: false`
+          // and surface a real error so the UI can show a retry state instead
+          // of falsely claiming pricing is unavailable.
+          setAccessState((s) => ({
+            ...s,
+            loaded: false,
+            error:
+              err instanceof Error
+                ? err.message
+                : "Failed to verify Studio access.",
+          }));
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [userId, branding.provider_id, getStudioAccessStateFn]);
+  }, [userId, branding.provider_id, getStudioAccessStateFn, accessRetryNonce]);
 
   /**
    * Generate the .html and trigger a browser download for the given
@@ -906,6 +947,48 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
                   onClick={() => savedModelId && runDownload(savedModelId)}
                 >
                   Download Presentation
+                </Button>
+              </div>
+            ) : isWrongAccount ? (
+              /* Wrong account — provider/admin signed in instead of invited client. */
+              <div className="rounded-lg border-2 border-amber-500/60 bg-amber-500/5 p-6">
+                <h3 className="text-lg font-semibold text-foreground">
+                  Wrong Account Signed In
+                </h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  You're signed in as the MSP/admin account, not the invited client.
+                  Please sign out and sign back in with the invited client account
+                  to download this presentation.
+                </p>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="mt-4 w-full"
+                  onClick={async () => {
+                    await supabase.auth.signOut();
+                    setUserId(null);
+                    setAccessRetryNonce((n) => n + 1);
+                  }}
+                >
+                  Sign Out
+                </Button>
+              </div>
+            ) : accessFailed ? (
+              /* Access verification failed — do NOT claim pricing is unavailable. */
+              <div className="rounded-lg border-2 border-muted p-6 text-center">
+                <h3 className="text-lg font-semibold text-foreground">
+                  Couldn't Verify Studio Access
+                </h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  We couldn't verify your Studio access right now. Please try again.
+                </p>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="mt-4"
+                  onClick={() => setAccessRetryNonce((n) => n + 1)}
+                >
+                  Retry
                 </Button>
               </div>
             ) : isFreeClient ? (

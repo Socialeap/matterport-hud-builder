@@ -1315,6 +1315,8 @@ export interface StudioAccessState {
   pricingConfigured: boolean;
   payoutsReady: boolean;
   providerBrandName: string;
+  viewerRole: "client" | "provider" | "admin" | "unknown";
+  viewerMatchesProvider: boolean;
 }
 
 export const getStudioAccessState = createServerFn({ method: "POST" })
@@ -1327,8 +1329,18 @@ export const getStudioAccessState = createServerFn({ method: "POST" })
     });
     if (error) {
       console.error("getStudioAccessState rpc failed:", error);
+      // Surface the failure to the caller instead of returning a fake "all-false"
+      // payload that the UI would mistake for "pricing unavailable".
+      throw new Error(
+        `Failed to resolve Studio access: ${error.message ?? "unknown error"}`,
+      );
     }
     const row = Array.isArray(rows) ? rows[0] : null;
+    const rawRole = String(row?.viewer_role ?? "unknown");
+    const viewerRole: StudioAccessState["viewerRole"] =
+      rawRole === "client" || rawRole === "provider" || rawRole === "admin"
+        ? rawRole
+        : "unknown";
     return {
       linked: row?.linked === true,
       invitationStatus:
@@ -1337,6 +1349,8 @@ export const getStudioAccessState = createServerFn({ method: "POST" })
       pricingConfigured: row?.pricing_configured === true,
       payoutsReady: row?.payouts_ready === true,
       providerBrandName: String(row?.provider_brand_name ?? ""),
+      viewerRole,
+      viewerMatchesProvider: row?.viewer_matches_provider === true,
     };
   });
 
