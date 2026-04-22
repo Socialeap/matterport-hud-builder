@@ -681,8 +681,8 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
       return;
     }
 
-    // 2) Save / upsert the saved_model row first (and re-run avatar upload
-    //    if a local file is still pending from pre-auth).
+    // 2) Save / upsert the saved_model row first (and re-run logo/favicon/avatar
+    //    upload if local files are still pending from pre-auth).
     setSubmitting(true);
     let finalAgent = agent;
     if (agentAvatarFile) {
@@ -698,6 +698,37 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
       }
     }
 
+    // Upload pending logo/favicon files so the generated HTML can reference
+    // permanent storage URLs (not blob: URLs that vanish on reload).
+    let finalLogoUrl = logoStorageUrl;
+    let finalFaviconUrl = faviconStorageUrl;
+    if (logoFile) {
+      try {
+        const url = await uploadBrandAsset(userId, logoFile, "logo");
+        if (url) {
+          finalLogoUrl = url;
+          setLogoStorageUrl(url);
+          setLogoPreview(url);
+          setLogoFile(null);
+        }
+      } catch (err) {
+        console.error("Logo upload failed:", err);
+      }
+    }
+    if (faviconFile) {
+      try {
+        const url = await uploadBrandAsset(userId, faviconFile, "favicon");
+        if (url) {
+          finalFaviconUrl = url;
+          setFaviconStorageUrl(url);
+          setFaviconPreview(url);
+          setFaviconFile(null);
+        }
+      } catch (err) {
+        console.error("Favicon upload failed:", err);
+      }
+    }
+
     let modelId = savedModelId;
     try {
       const result = await savePresentationRequest({
@@ -707,7 +738,14 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
           properties: models,
           tourConfig: behaviors as unknown as Record<string, unknown>,
           agent: finalAgent as unknown as Record<string, string>,
-          brandingOverrides: { brandName, accentColor, hudBgColor, gateLabel },
+          brandingOverrides: {
+            brandName,
+            accentColor,
+            hudBgColor,
+            gateLabel,
+            logoUrl: finalLogoUrl ?? "",
+            faviconUrl: finalFaviconUrl ?? "",
+          },
         },
       });
       if (!result.success || !result.modelId) {
