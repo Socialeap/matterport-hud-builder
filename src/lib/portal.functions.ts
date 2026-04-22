@@ -861,9 +861,9 @@ html,body{width:100%;height:100%;overflow:hidden}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#000;color:#fff}
 
 /* ── Welcome gate ─────────────────────────────────────────────────── */
-#gate{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:3000;background:${escapeHtml(hudBgColor)}cc;backdrop-filter:blur(24px) saturate(160%);-webkit-backdrop-filter:blur(24px) saturate(160%);transition:opacity 0.5s ease}
+#gate{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:3000;background:${escapeHtml(hudBgColor)}40;backdrop-filter:blur(8px) saturate(140%);-webkit-backdrop-filter:blur(8px) saturate(140%);transition:opacity 0.5s ease}
 #gate.hidden{opacity:0;pointer-events:none}
-#gate-inner{display:flex;flex-direction:column;align-items:center;text-align:center;padding:40px 32px;max-width:480px;width:90%}
+#gate-inner{display:flex;flex-direction:column;align-items:center;text-align:center;padding:40px 32px;max-width:480px;width:90%;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.08);border-radius:18px;backdrop-filter:blur(10px) saturate(160%);-webkit-backdrop-filter:blur(10px) saturate(160%);box-shadow:0 12px 48px rgba(0,0,0,0.35)}
 #gate-inner .gate-logo{max-height:72px;max-width:200px;object-fit:contain;margin-bottom:20px}
 #gate-inner h1{font-size:clamp(22px,4vw,32px);font-weight:700;margin-bottom:8px;letter-spacing:-0.02em}
 #gate-inner .gate-subtitle{color:rgba(255,255,255,0.65);font-size:14px;margin-bottom:32px;line-height:1.5}
@@ -1146,18 +1146,20 @@ function formatFieldValue(v){
 
 // \u2500\u2500 Cinematic video URL parser
 function parseCinematicUrl(url){
-  if(!url) return null;
-  url=url.trim();
-  if(/\.mp4(\?.*)?$/i.test(url)) return {kind:"mp4",src:url};
-  var yt=url.match(/youtu\.be\/([\w-]{6,})/i)||url.match(/youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|v\/)([\w-]{6,})/i);
-  if(yt&&yt[1]) return {kind:"iframe",src:"https://www.youtube.com/embed/"+yt[1]+"?rel=0&modestbranding=1&autoplay=1"};
-  var vi=url.match(/player\.vimeo\.com\/video\/(\d+)/i)||url.match(/vimeo\.com\/(?:video\/)?(\d+)/i);
-  if(vi&&vi[1]) return {kind:"iframe",src:"https://player.vimeo.com/video/"+vi[1]+"?title=0&byline=0&portrait=0&autoplay=1"};
-  var wi=url.match(/wistia\.com\/medias\/([\w-]+)/i)||url.match(/wistia\.net\/(?:embed\/iframe|medias)\/([\w-]+)/i);
-  if(wi&&wi[1]) return {kind:"iframe",src:"https://fast.wistia.net/embed/iframe/"+wi[1]+"?autoPlay=true"};
-  var lo=url.match(/loom\.com\/(?:share|embed)\/([\w-]+)/i);
-  if(lo&&lo[1]) return {kind:"iframe",src:"https://www.loom.com/embed/"+lo[1]+"?autoplay=1"};
-  return null;
+  try{
+    if(!url) return null;
+    url=url.trim();
+    if(/\\.mp4(\\?.*)?$/i.test(url)) return {kind:"mp4",src:url};
+    var yt=url.match(/youtu\\.be\\/([\\w-]{6,})/i)||url.match(/youtube\\.com\\/(?:watch\\?(?:.*&)?v=|embed\\/|shorts\\/|v\\/)([\\w-]{6,})/i);
+    if(yt&&yt[1]) return {kind:"iframe",src:"https://www.youtube.com/embed/"+yt[1]+"?rel=0&modestbranding=1&autoplay=1"};
+    var vi=url.match(/player\\.vimeo\\.com\\/video\\/(\\d+)/i)||url.match(/vimeo\\.com\\/(?:video\\/)?(\\d+)/i);
+    if(vi&&vi[1]) return {kind:"iframe",src:"https://player.vimeo.com/video/"+vi[1]+"?title=0&byline=0&portrait=0&autoplay=1"};
+    var wi=url.match(/wistia\\.com\\/medias\\/([\\w-]+)/i)||url.match(/wistia\\.net\\/(?:embed\\/iframe|medias)\\/([\\w-]+)/i);
+    if(wi&&wi[1]) return {kind:"iframe",src:"https://fast.wistia.net/embed/iframe/"+wi[1]+"?autoPlay=true"};
+    var lo=url.match(/loom\\.com\\/(?:share|embed)\\/([\\w-]+)/i);
+    if(lo&&lo[1]) return {kind:"iframe",src:"https://www.loom.com/embed/"+lo[1]+"?autoplay=1"};
+    return null;
+  }catch(_e){return null;}
 }
 
 // \u2500\u2500 Ambient audio
