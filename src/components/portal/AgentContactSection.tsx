@@ -13,6 +13,8 @@ interface AgentContactSectionProps {
   agent: AgentContact;
   onChange: (field: keyof AgentContact, value: string) => void;
   onAvatarFileChange?: (file: File | null) => void;
+  /** When true, render only the inner form (no Card/Header wrapper) — used inside Accordion. */
+  headless?: boolean;
 }
 
 const MAX_AVATAR_BYTES = 500 * 1024; // 500 KB
