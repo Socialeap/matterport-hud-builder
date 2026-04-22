@@ -1,11 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { checkDemoPublished } from "@/lib/sandbox-demo.functions";
-import { Check, X, Link2, Palette, Download, Sparkles, Menu } from "lucide-react";
+import { Check, X, Link2, Palette, Download, Sparkles, Menu, LogIn, LogOut } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { PortalSignupModal } from "@/components/portal/PortalSignupModal";
+import { toast } from "sonner";
 
 
 const fetchBrandingBySlug = createServerFn({ method: "GET" })
