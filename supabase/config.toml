@@ -23,3 +23,6 @@ verify_jwt = false
 
 [functions.stripe-connect-account-session]
 verify_jwt = false
+
+[functions.extract-url-content]
+verify_jwt = true
