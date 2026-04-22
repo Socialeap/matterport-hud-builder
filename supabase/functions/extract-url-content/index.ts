@@ -292,10 +292,54 @@ function stripFences(raw: string): string {
   return raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
 }
 
+/** Pull the first balanced {...} block out of a noisy LLM response. */
+function extractJsonObject(raw: string): Record<string, unknown> | null {
+  if (!raw) return null;
+  const cleaned = stripFences(raw);
+  // Quick path
+  try {
+    const v = JSON.parse(cleaned);
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+      return v as Record<string, unknown>;
+    }
+  } catch { /* fall through to balanced scan */ }
+  // Balanced-brace fallback (handles trailing prose / truncation pre-LAST }).
+  const start = cleaned.indexOf("{");
+  if (start < 0) return null;
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = start; i < cleaned.length; i++) {
+    const ch = cleaned[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === "\\") esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) {
+        try {
+          const v = JSON.parse(cleaned.slice(start, i + 1));
+          if (v && typeof v === "object" && !Array.isArray(v)) {
+            return v as Record<string, unknown>;
+          }
+          return null;
+        } catch { return null; }
+      }
+    }
+  }
+  return null;
+}
+
 async function structureFields(
   text: string,
   apiKey: string,
-): Promise<Record<string, unknown>> {
+  domain: string,
+): Promise<{ fields: Record<string, unknown>; llm_stage: string }> {
   const truncated = text.length > MAX_TEXT_CHARS ? text.slice(0, MAX_TEXT_CHARS) : text;
   try {
     const resp = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -310,28 +354,36 @@ async function structureFields(
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: truncated },
         ],
-        max_tokens: 1500,
+        max_tokens: 4000,
         temperature: 0.1,
         response_format: { type: "json_object" },
       }),
     });
     if (!resp.ok) {
-      console.warn("[extract-url-content] openai non-2xx:", resp.status);
-      return {};
+      const body = await resp.text().catch(() => "");
+      console.warn(`[extract-url-content] ${domain} openai_${resp.status}: ${body.slice(0, 200)}`);
+      return { fields: {}, llm_stage: `openai_${resp.status}` };
     }
     const completion = (await resp.json()) as {
-      choices: Array<{ message: { content: string } }>;
+      choices?: Array<{ message?: { content?: string }; finish_reason?: string }>;
     };
     const raw = completion.choices?.[0]?.message?.content ?? "";
-    if (!raw.trim()) return {};
-    const parsed = JSON.parse(stripFences(raw)) as unknown;
-    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>;
+    const finish = completion.choices?.[0]?.finish_reason ?? "stop";
+    if (!raw.trim()) {
+      return { fields: {}, llm_stage: "empty_response" };
     }
-    return {};
+    const parsed = extractJsonObject(raw);
+    if (!parsed) {
+      console.warn(
+        `[extract-url-content] ${domain} json_parse_failed (finish=${finish}, len=${raw.length})`,
+      );
+      return { fields: {}, llm_stage: `parse_failed_${finish}` };
+    }
+    return { fields: parsed, llm_stage: finish === "length" ? "ok_truncated" : "ok" };
   } catch (err) {
-    console.warn("[extract-url-content] structuring failed:", err);
-    return {};
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[extract-url-content] ${domain} structuring exception: ${msg}`);
+    return { fields: {}, llm_stage: `exception:${msg.slice(0, 80)}` };
   }
 }
 
@@ -352,6 +404,10 @@ async function ensureUrlTemplate(
     .maybeSingle();
   if (existing?.id) return existing.id as string;
 
+  // NOTE: vault_templates.extractor has a CHECK constraint allowing only
+  // 'pdfjs_heuristic' or 'donut'. We use 'pdfjs_heuristic' here as the
+  // template-row metadata; the actual URL extraction logic is selected by
+  // the calling edge function and recorded in property_extractions.extractor.
   const { data: inserted, error } = await serviceClient
     .from("vault_templates")
     .insert({
@@ -359,7 +415,7 @@ async function ensureUrlTemplate(
       label,
       doc_kind: "web_url",
       field_schema: { type: "object", properties: {}, required: [] },
-      extractor: "web_url",
+      extractor: "pdfjs_heuristic",
       is_active: true,
     })
     .select("id")
