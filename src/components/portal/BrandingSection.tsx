@@ -34,16 +34,10 @@ export function BrandingSection({
   onChange,
   onFileChange,
   onRemoveAsset,
+  headless,
 }: BrandingSectionProps) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Palette className="size-5 text-primary" />
-          Branding
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
+  const body = (
+    <div className="space-y-4">
         <div className="space-y-2">
           <Label>Brand / Brokerage Name</Label>
           <Input
