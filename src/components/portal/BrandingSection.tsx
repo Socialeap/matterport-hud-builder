@@ -18,6 +18,8 @@ interface BrandingSectionProps {
   onChange: (field: string, value: string) => void;
   onFileChange: (field: "logo" | "favicon", file: File | null) => void;
   onRemoveAsset?: (field: "logo" | "favicon") => void;
+  /** When true, render only the inner form (no Card/Header wrapper) — used inside Accordion. */
+  headless?: boolean;
 }
 
 export function BrandingSection({
