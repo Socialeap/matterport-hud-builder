@@ -829,8 +829,7 @@ ${askAssets.css}
       <button id="hud-media-btn" class="hud-icon-btn" style="display:none" aria-label="Media gallery" title="View Media Gallery" onclick="window.__openModal&&window.__openModal('carousel',0)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
       </button>
-      ${docsQaAssets.toggleBtn}
-      ${qaToggleBtn}
+      ${askAssets.toggleBtn}
       <span id="hud-agent-name"></span>
       ${(agent.phone || agent.email || agent.name) ? `<button class="hud-contact-btn" onclick="window.__openContact&&window.__openContact()">Contact</button>` : ""}
     </div>
