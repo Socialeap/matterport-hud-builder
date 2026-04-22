@@ -1,6 +1,7 @@
-import { useState } from "react";
-import { FileText, Loader2, Lock, Play, RefreshCw, Snowflake, Trash2 } from "lucide-react";
+import { useRef, useState } from "react";
+import { FileText, Loader2, Lock, Play, RefreshCw, Snowflake, Trash2, Upload } from "lucide-react";
 import { Link } from "@tanstack/react-router";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -20,12 +21,15 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
+import { useAuth } from "@/hooks/use-auth";
 import { usePropertyExtractions } from "@/hooks/usePropertyExtractions";
 import { useAvailableTemplates } from "@/hooks/useAvailableTemplates";
 import { useAvailablePropertyDocs } from "@/hooks/useAvailablePropertyDocs";
 import { useLusFreeze } from "@/hooks/useLusFreeze";
 import { useLusLicense } from "@/hooks/useLusLicense";
 import type { PropertyExtraction } from "@/hooks/usePropertyExtractions";
+import { supabase } from "@/integrations/supabase/client";
+import { uploadVaultAsset } from "@/lib/storage";
 
 interface PropertyDocsPanelProps {
   propertyUuid: string;
@@ -49,16 +53,86 @@ export function PropertyDocsPanel({
   propertyUuid,
   savedModelId,
 }: PropertyDocsPanelProps) {
+  const { user } = useAuth();
   const { extractions, loading, running, backfilling, extract, remove, reindex } =
     usePropertyExtractions(propertyUuid);
   const { templates } = useAvailableTemplates();
-  const { docs } = useAvailablePropertyDocs();
+  const { docs, refresh: refreshDocs } = useAvailablePropertyDocs();
   const { isFrozen, freeze: freezeRow } = useLusFreeze(propertyUuid);
   const { isActive: lusActive, loading: lusLoading } = useLusLicense();
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [vaultAssetId, setVaultAssetId] = useState<string>("");
   const [templateId, setTemplateId] = useState<string>("");
+
+  // Upload-and-extract flow state
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadLabel, setUploadLabel] = useState("");
+  const [uploadTemplateId, setUploadTemplateId] = useState<string>("");
+  const [uploadBusy, setUploadBusy] = useState(false);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+
+  const openUploadDialog = () => {
+    setUploadFile(null);
+    setUploadLabel("");
+    setUploadTemplateId(templates[0]?.id ?? "");
+    setUploadOpen(true);
+  };
+
+  const closeUploadDialog = () => {
+    setUploadOpen(false);
+    setUploadFile(null);
+    setUploadLabel("");
+    setUploadTemplateId("");
+    if (uploadInputRef.current) uploadInputRef.current.value = "";
+  };
+
+  const handleUploadAndExtract = async () => {
+    if (!user || !uploadFile || !uploadLabel.trim() || !uploadTemplateId) return;
+    setUploadBusy(true);
+    try {
+      const uploaded = await uploadVaultAsset(user.id, "property_doc", uploadFile);
+      if (!uploaded) {
+        toast.error("File upload failed — check your connection and try again.");
+        return;
+      }
+
+      const { data: newAsset, error: insertErr } = await supabase
+        .from("vault_assets")
+        .insert({
+          provider_id: user.id,
+          category_type: "property_doc" as const,
+          label: uploadLabel.trim(),
+          asset_url: uploaded.url,
+          storage_path: uploaded.path,
+          mime_type: uploadFile.type || "application/pdf",
+          file_size_bytes: uploadFile.size,
+          is_active: true,
+        })
+        .select()
+        .single();
+
+      if (insertErr || !newAsset) {
+        toast.error("Failed to register document — try again.");
+        return;
+      }
+
+      await refreshDocs();
+      closeUploadDialog();
+
+      const res = await extract({
+        vault_asset_id: newAsset.id,
+        template_id: uploadTemplateId,
+        saved_model_id: savedModelId ?? null,
+      });
+      if (res) {
+        toast.success("Document uploaded and extraction complete.");
+      }
+    } finally {
+      setUploadBusy(false);
+    }
+  };
 
   const canRun = !!vaultAssetId && !!templateId && !running && !isFrozen && lusActive;
 
@@ -162,6 +236,18 @@ export function PropertyDocsPanel({
                 <RefreshCw
                   className={`size-3 ${backfilling ? "animate-spin" : ""}`}
                 />
+              </Button>
+            )}
+            {lusActive && !isFrozen && user && templates.length > 0 && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs"
+                onClick={openUploadDialog}
+                disabled={uploadBusy || running}
+                title="Upload a property document and run extraction immediately"
+              >
+                <Upload className="mr-1 size-3" /> Upload Doc
               </Button>
             )}
             <Tooltip>
@@ -289,6 +375,97 @@ export function PropertyDocsPanel({
                   </>
                 ) : (
                   "Run"
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Upload & Extract dialog — lets providers upload a property doc
+            directly from the builder without visiting the vault separately. */}
+        <Dialog open={uploadOpen} onOpenChange={(o) => { if (!o) closeUploadDialog(); }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Upload Property Document</DialogTitle>
+              <DialogDescription>
+                Upload a PDF for this property. It will be added to your vault
+                and extracted immediately using the selected template.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">File</Label>
+                <label
+                  htmlFor="upload-doc-file"
+                  className="flex cursor-pointer items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm hover:bg-accent"
+                >
+                  <Upload className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="truncate text-sm">
+                    {uploadFile ? uploadFile.name : "Choose a PDF…"}
+                  </span>
+                  <input
+                    ref={uploadInputRef}
+                    id="upload-doc-file"
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] ?? null;
+                      setUploadFile(f);
+                      if (f && !uploadLabel) {
+                        setUploadLabel(f.name.replace(/\.pdf$/i, ""));
+                      }
+                    }}
+                  />
+                </label>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="upload-doc-label" className="text-xs">Label</Label>
+                <input
+                  id="upload-doc-label"
+                  type="text"
+                  value={uploadLabel}
+                  onChange={(e) => setUploadLabel(e.target.value)}
+                  placeholder="e.g. Floor Plan — Unit 4B"
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs">Template</Label>
+                <select
+                  value={uploadTemplateId}
+                  onChange={(e) => setUploadTemplateId(e.target.value)}
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="">Select a template…</option>
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.label} ({t.doc_kind})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={closeUploadDialog} disabled={uploadBusy}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleUploadAndExtract}
+                disabled={uploadBusy || !uploadFile || !uploadLabel.trim() || !uploadTemplateId}
+              >
+                {uploadBusy ? (
+                  <>
+                    <Loader2 className="mr-1 size-3.5 animate-spin" /> Uploading…
+                  </>
+                ) : (
+                  <>
+                    <Upload className="mr-1 size-3.5" /> Upload & Extract
+                  </>
                 )}
               </Button>
             </DialogFooter>
