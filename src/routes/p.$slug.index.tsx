@@ -91,6 +91,8 @@ function PortalPage() {
     displayName: string | null;
     email: string | null;
   } | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [signupOpen, setSignupOpen] = useState(false);
 
   // Resolve the signed-in user (if any) and their profile, for the header avatar.
   useEffect(() => {
@@ -100,6 +102,7 @@ function PortalPage() {
       if (cancelled) return;
       if (!session?.user) {
         setViewer(null);
+        setAuthChecked(true);
         return;
       }
       const { data: profile } = await supabase
@@ -116,6 +119,7 @@ function PortalPage() {
           null,
         email: session.user.email ?? null,
       });
+      setAuthChecked(true);
     };
     load();
     const { data: { subscription } } = supabase.auth.onAuthStateChange(() => load());
@@ -123,6 +127,17 @@ function PortalPage() {
       cancelled = true;
       subscription.unsubscribe();
     };
+  }, []);
+
+  const handleSignOut = useCallback(async () => {
+    await supabase.auth.signOut();
+    setViewer(null);
+    toast.success("Signed out");
+  }, []);
+
+  const handleAuthenticated = useCallback(() => {
+    setSignupOpen(false);
+    // onAuthStateChange will refresh viewer.
   }, []);
 
   useEffect(() => {
