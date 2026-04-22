@@ -94,7 +94,7 @@ serve(async (req) => {
   //     (b) a client linked to that provider via client_providers.
   const { data: asset, error: assetErr } = await serviceClient
     .from("vault_assets")
-    .select("id, provider_id, storage_path, category_type")
+    .select("id, provider_id, storage_path, category_type, mime_type")
     .eq("id", body.vault_asset_id)
     .single();
   if (assetErr || !asset) return jsonResponse({ error: "asset_not_found" }, 404);
