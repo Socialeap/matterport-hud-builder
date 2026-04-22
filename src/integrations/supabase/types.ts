@@ -846,6 +846,8 @@ export type Database = {
           payouts_ready: boolean
           pricing_configured: boolean
           provider_brand_name: string
+          viewer_matches_provider: boolean
+          viewer_role: string
         }[]
       }
     }
