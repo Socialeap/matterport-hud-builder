@@ -450,12 +450,27 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
   const handleFileChange = useCallback((field: "logo" | "favicon", file: File | null) => {
     if (field === "logo") {
       setLogoFile(file);
-      setLogoPreview(file ? URL.createObjectURL(file) : branding.logo_url);
+      setLogoPreview(file ? URL.createObjectURL(file) : null);
+      // Reset stored URL whenever the source file changes — re-upload on save.
+      if (file) setLogoStorageUrl(null);
     } else {
       setFaviconFile(file);
-      setFaviconPreview(file ? URL.createObjectURL(file) : branding.favicon_url);
+      setFaviconPreview(file ? URL.createObjectURL(file) : null);
+      if (file) setFaviconStorageUrl(null);
     }
-  }, [branding.logo_url, branding.favicon_url]);
+  }, []);
+
+  const handleRemoveBrandAsset = useCallback((field: "logo" | "favicon") => {
+    if (field === "logo") {
+      setLogoFile(null);
+      setLogoPreview(null);
+      setLogoStorageUrl(null);
+    } else {
+      setFaviconFile(null);
+      setFaviconPreview(null);
+      setFaviconStorageUrl(null);
+    }
+  }, []);
 
   const handleAddModel = useCallback(() => {
     const newModel = createEmptyModel();
