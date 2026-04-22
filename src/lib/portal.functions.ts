@@ -910,8 +910,7 @@ ${(agent.phone || agent.email || agent.name) ? `<div id="agent-drawer">
   </div>
 </div>
 
-${qaPanelHtml}
-${docsQaAssets.panelHtml}
+${askAssets.panelHtml}
 ${propertyDocsPanelHtml}
 ${poweredByFooter}
 ${
