@@ -381,11 +381,11 @@ function ModelRow({
       <Dialog open={open} onOpenChange={(o) => { if (!o) closeDialog(); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Upload Property Document</DialogTitle>
+            <DialogTitle>Add Property Intelligence</DialogTitle>
             <DialogDescription>
-              Attach a datasheet for <strong>{displayName}</strong>.
-              Accepted: PDF, DOCX, TXT, RTF. Legacy <code>.doc</code> is
-              not supported — please save as <code>.docx</code> first.
+              Attach a datasheet (PDF, DOCX, TXT, RTF) <em>or</em> paste a
+              public listing URL for <strong>{displayName}</strong>. Legacy{" "}
+              <code>.doc</code> is not supported — save as <code>.docx</code>.
             </DialogDescription>
           </DialogHeader>
 
@@ -418,13 +418,48 @@ function ModelRow({
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor={`pis-label-${model.id}`} className="text-xs">Label</Label>
+              <Label htmlFor={`pis-url-${model.id}`} className="text-xs">
+                Source URL <span className="text-muted-foreground">(optional)</span>
+              </Label>
+              <input
+                id={`pis-url-${model.id}`}
+                type="url"
+                value={sourceUrl}
+                onChange={(e) => handleUrlChange(e.target.value)}
+                disabled={!!file}
+                placeholder="https://www.zillow.com/homedetails/..."
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm disabled:opacity-50"
+              />
+              {urlError ? (
+                <p className="text-[10px] leading-snug text-destructive">
+                  {urlError}
+                </p>
+              ) : (
+                <p className="text-[10px] leading-snug text-muted-foreground">
+                  {file
+                    ? "URL ignored when a file is attached."
+                    : "Paste a public listing page (Zillow, Realtor.com, agent site, etc.)."}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor={`pis-label-${model.id}`} className="text-xs">
+                Label{" "}
+                {urlMode && (
+                  <span className="text-muted-foreground">(optional)</span>
+                )}
+              </Label>
               <input
                 id={`pis-label-${model.id}`}
                 type="text"
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
-                placeholder="e.g. Floor Plan — Unit 4B"
+                placeholder={
+                  urlMode && parsedUrl
+                    ? parsedUrl.hostname
+                    : "e.g. Floor Plan — Unit 4B"
+                }
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
               />
             </div>
@@ -463,7 +498,7 @@ function ModelRow({
             </Button>
             <Button
               onClick={handleUpload}
-              disabled={busy || !file || !label.trim()}
+              disabled={submitDisabled}
             >
               {busy ? (
                 <>
