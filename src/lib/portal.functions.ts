@@ -782,6 +782,7 @@ init();
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+${faviconUrl ? `<link rel="icon" href="${escapeHtml(faviconUrl)}">` : ""}
 <title>${escapeHtml(model.name || "3D Presentation")}</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
