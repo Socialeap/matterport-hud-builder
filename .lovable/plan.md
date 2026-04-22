@@ -1,249 +1,242 @@
 
-## Fix the Free-Client Download Entitlement Flow
+## Root cause and safe fix for the incorrect “Pricing Unavailable” state
 
 ### What is actually broken
 
-There are two separate conditions being mixed together today:
+There are two bugs overlapping here:
 
-1. **MSP pricing is configured**
-2. **The signed-in client is entitled to a free download**
+1. **The Studio absolutely does know who is signed in**
+   - It uses the browser’s persisted auth session and sends that JWT to server functions.
+   - No auth token in the URL is required.
+   - So the problem is not “missing URL identity”; it is **how the current signed-in user is being resolved and handled**.
 
-Those are not the same thing.
+2. **The authoritative access resolver is still invalid**
+   - `public.resolve_studio_access` is currently declared **`STABLE`**.
+   - But its body performs an `INSERT ... ON CONFLICT DO UPDATE` to auto-heal `client_providers`.
+   - PostgreSQL does not allow writes inside a `STABLE` function.
+   - When that RPC fails, `HudBuilderSandbox` catches the error and marks access as `loaded: true` while leaving:
+     - `isFree = false`
+     - `pricingConfigured = false`
+     - `payoutsReady = false`
+   - That forces the UI into the misleading **“Pricing Unavailable”** branch.
 
-The current Studio card uses:
-- `pricingConfigured` from MSP branding/pricing
-- `checkoutReady` from payout connection state
-- `isFreeClient` from `client_providers.is_free`
+### Why this explains the current symptom
 
-The backend currently shows:
-- the MSP **does have pricing configured**
-- the MSP **does not have payouts connected yet**
-- the “free client” path only works if `client_providers.is_free = true`
+The MSP pricing is in fact configured:
+- `use_flat_pricing = false`
+- `base_price_cents = 7900`
+- `tier3_price_cents = 15000`
+- `additional_model_fee_cents = 5900`
 
-So the “Payment Temporarily Unavailable” message appears whenever the UI believes the client is **not free** and the MSP has no live payout connection. That message is correct for a paid client, but incorrect for a client who should have inherited a free entitlement.
+So the page should never say pricing is unavailable just because pricing is missing.
 
-### Root causes to fix
+Instead, what is happening is:
+- the access-state request fails
+- the component falls back to “all false”
+- the UI renders the wrong final fallback message
 
-#### 1) Legacy studio signup path bypasses invitation entitlement
-`PortalSignupModal.tsx` can create a `client_providers` row directly with:
+### Additional identity issue to fix
 
-- `provider_id`
-- `client_id`
-- default `is_free = false`
+The current preview session is also showing a logged-in user with **provider/admin roles**, not a client role.
 
-That path does **not** use the invitation token and does **not** propagate the MSP’s Free/Pay assignment.
+That means the builder may be running under the wrong account entirely. Today the builder has no clear role-aware handling for:
+- provider viewing their own public Studio
+- admin viewing a provider Studio
+- actual invited client viewing the builder
 
-So a client invited as Free can still end up linked as Pay if they authenticate through the old modal instead of the invitation flow.
+So even after fixing the resolver, the Studio still needs a **role-aware identity guard**. Otherwise the provider account can land in a client payment/download flow and produce confusing states.
 
-#### 2) Invitation acceptance does not heal existing links
-Both database paths currently do:
+---
 
-```sql
-INSERT INTO client_providers (...) VALUES (...) ON CONFLICT DO NOTHING
+## Implementation plan
+
+### 1) Repair the backend access resolver
+
+Create a migration that drops and recreates `public.resolve_studio_access` as a write-capable function.
+
+#### Required changes
+- Change from `STABLE SECURITY DEFINER` to **`VOLATILE SECURITY DEFINER`**
+- Keep the current auto-heal behavior:
+  - look up authenticated user
+  - look up existing `client_providers` link
+  - look up invitation by provider + email
+  - if accepted invitation exists, upsert `client_providers.is_free`
+  - compute `linked`, `is_free`, `pricing_configured`, `payouts_ready`, `provider_brand_name`
+
+#### Add one more field to the resolver
+Return enough identity context for the UI to branch correctly:
+```ts
+viewer_role: "client" | "provider" | "admin" | "unknown"
+viewer_matches_provider: boolean
 ```
 
-That means if a non-free link already exists, accepting the invitation later does **not** update `is_free` to `true`.
+This avoids guessing on the client.
 
-So once a wrong `client_providers` row exists, the system can stay wrong permanently.
+### 2) Stop converting RPC failure into fake “pricing unavailable”
 
-#### 3) There are accepted invitations without a matching client-provider link
-The data already contains accepted invitations that are not backed by a `client_providers` row. In those cases the Studio cannot resolve free status correctly at all.
+Update `src/lib/portal.functions.ts` and `src/components/portal/HudBuilderSandbox.tsx`.
 
-#### 4) The Studio trusts a narrow free-status lookup
-`HudBuilderSandbox` only asks `getClientFreeStatus(providerId)` and treats “no row found” as “not free”.
-That is too brittle when the invitation was accepted but linkage is missing or stale.
+#### In `getStudioAccessState`
+- If the RPC errors, do **not** silently convert that to a normal-looking payload.
+- Return or throw a typed failure so the UI can distinguish:
+  - access verified
+  - access failed to verify
 
-### Safe, comprehensive fix
-
-## 1) Make invitation acceptance the single source of truth for client entitlement
-
-Update both database acceptance paths so they **upsert** the client-provider link and **synchronize** `is_free` instead of silently doing nothing.
-
-### Change in database functions
-Update:
-- `public.handle_new_user()`
-- `public.accept_invitation_self(uuid)`
-
-Replace:
-```sql
-INSERT ... ON CONFLICT DO NOTHING
-```
-
-with:
-```sql
-INSERT INTO public.client_providers (client_id, provider_id, is_free)
-VALUES (...)
-ON CONFLICT (client_id, provider_id)
-DO UPDATE SET is_free = EXCLUDED.is_free;
-```
-
-Also keep:
-- `user_roles` upsert
-- `profiles.provider_id` update
-- invitation status update
-
-This ensures:
-- new invited clients inherit Free/Pay correctly
-- pre-existing links are repaired automatically
-- re-accepting or completing auth cannot leave stale entitlement behind
-
-## 2) Add a one-time backend repair migration for already-broken rows
-
-Create a migration that repairs historical data by reconciling accepted invitations into `client_providers`.
-
-### Migration responsibilities
-- For every accepted invitation where an auth user exists with the same email:
-  - insert missing `client_providers` row
-  - update existing `client_providers.is_free` to match the accepted invitation
-  - update `profiles.provider_id`
-- Prefer accepted invitation data as the authority for invite-based client access
-
-This fixes existing clients who are already stuck in the wrong state.
-
-## 3) Replace the Studio’s free-check with an authoritative “download eligibility” resolver
-
-Create a new server function for the Studio, e.g.:
-- `getClientDownloadEntitlement`
-or
-- `getStudioAccessState`
-
-It should return one authoritative payload for the current signed-in user + provider:
-
+#### In `HudBuilderSandbox`
+Replace the current “loaded but false everything” catch path with explicit state:
 ```ts
 {
-  linked: boolean
-  invitationMatched: boolean
-  invitationStatus: "pending" | "accepted" | "expired" | "declined" | null
-  isFree: boolean
-  pricingConfigured: boolean
-  payoutsReady: boolean
-  providerBrandName: string
+  loaded: false,
+  error: string | null,
+  ...
 }
 ```
 
-### Server logic
-For the authenticated user and provider:
-1. read `client_providers`
-2. read accepted/pending invitation by matching the user email + provider
-3. if invitation is accepted but link is missing or stale, auto-heal it server-side
-4. compute effective `isFree`
-5. compute pricing/payout readiness from `branding_settings`
+#### Correct fallback behavior
+- If access verification fails, do **not** set `pricingConfigured` to false
+- Keep pricing derived from branding for display-only fallback
+- Show a dedicated message such as:
+  - “We couldn’t verify your Studio access right now.”
+  - “Retry”
+- Do not show “Pricing Unavailable” unless pricing is truly not configured
 
-This replaces the current fragile split between:
-- `getClientFreeStatus`
-- client-side pricing checks
-- UI guesses
+### 3) Separate three concerns in the Studio UI
 
-## 4) Rewire the Studio card to branch from entitlement first
+Right now these are mixed together:
 
-Update `HudBuilderSandbox.tsx` so the bottom section uses the new entitlement result.
+1. Who is signed in
+2. Whether that user is entitled to this Studio
+3. Whether payment is required
 
-### Correct branch order
-1. `licenseExpired` → block
-2. `isReleased` / polling / checkout states → existing fulfillment states
-3. `effective isFree === true` → always show **Download Presentation**
-4. else if `pricingConfigured && payoutsReady` → show **Pay $X & Download**
-5. else if `pricingConfigured && !payoutsReady` → show payment unavailable contact message
-6. else → show pricing unavailable message
+They should be rendered independently.
 
-This guarantees that a Free client never falls into a payment branch simply because payouts are disconnected.
+#### New UI state order
+1. **Auth not yet resolved** → loading
+2. **No signed-in user** → sign-in prompt
+3. **Signed in as provider/admin** → role mismatch message
+4. **Signed in client but access verification failed** → retry/error state
+5. **Signed in client, linked, `isFree = true`** → **Download Presentation**
+6. **Signed in client, linked, paid, payouts ready** → **Pay $X & Download**
+7. **Signed in client, linked, paid, payouts unavailable** → payment contact message
+8. **Signed in client, not linked** → invitation-required message
 
-## 5) Remove the legacy “create client link without invitation” behavior from the Studio modal
+This prevents every failure from collapsing into a fake pricing message.
 
-`PortalSignupModal.tsx` should no longer insert directly into `client_providers` for Studio access.
+### 4) Add a role-aware guard for wrong-account sessions
 
-### Safer behavior
-- If the user is not authenticated in the Studio:
-  - send them through the invitation-aware auth path when an invite token exists
-  - otherwise allow sign-in only, and let the server resolve whether they actually belong to this MSP
-- Do not create provider links client-side
-- Do not assign entitlement client-side
+The builder should not quietly behave like a client flow when the current user is actually the provider/admin.
 
-If a lightweight Studio auth modal remains, it should authenticate only, then let the server determine access and free/pay entitlement.
+#### Add a clear builder guard
+If:
+- `viewer_role` is `provider` or `admin`, or
+- `viewer_matches_provider = true`
 
-## 6) Add server-side provider-link validation before save and checkout
+then show:
+- “You’re signed in as the provider account, not the invited client.”
+- CTA to sign out / switch account
+- no pricing or checkout UI
 
-To make this flow safe end-to-end, add server validation in:
+This is important because the current session evidence shows a provider/admin account, which would never correctly resolve as a free invited client.
 
+### 5) Make the messaging accurate
+
+Update the bottom section copy so it reflects the real state:
+
+#### Free client
+- “Download Presentation”
+- “Included with your account — no payment required.”
+
+#### Paid client, payout unavailable
+- “Payment Temporarily Unavailable”
+- “If you need help completing payment, please contact {MSP brand}.”
+
+#### Access verification error
+- “We couldn’t verify your Studio access right now.”
+- Retry button
+- no payment-specific language
+
+#### Wrong account
+- “You’re signed in as the MSP account, not the invited client.”
+- “Please switch to the invited client account to continue.”
+
+### 6) Keep the free-download path authoritative on the server
+
+The final download/payment branch must still be enforced server-side:
 - `savePresentationRequest`
-- `create-connect-checkout`
+- checkout creation
+- free bypass
 
-### Required checks
-For the current user and `providerId`:
-- confirm the client is actually linked to that MSP, or auto-heal from a valid accepted invitation before proceeding
-- ensure the `saved_models` row being checked out belongs to the same `client_id` and `provider_id`
+Those should continue to rely on the repaired resolver so the client cannot spoof free status.
 
-This prevents:
-- arbitrary users creating models under any MSP
-- checkout being created for a mismatched model/provider pair
-- free bypass being applied to the wrong record
+---
 
-## 7) Tighten the UI copy
+## Files to update
 
-Update the messages so they reflect the actual business rule:
-
-- **Free client:** no payment language at all
-- **Paid client + payouts unavailable:** “If you need help completing payment, please contact {MSP brand name}.”
-- Do not imply the client should contact the MSP for general Studio issues unless the issue is payment-related
-
-## Files / areas to update
-
-### Database migration
-- Update `handle_new_user`
-- Update `accept_invitation_self`
-- Add one-time reconciliation SQL for accepted invitations → client links
+### Database
+- `supabase/migrations/<new_migration>.sql`
+  - recreate `public.resolve_studio_access` as `VOLATILE SECURITY DEFINER`
+  - add `viewer_role`
+  - add `viewer_matches_provider`
 
 ### Server functions
 - `src/lib/portal.functions.ts`
-  - add authoritative entitlement resolver
-  - validate provider-link access in `savePresentationRequest`
-  - optionally retire or replace `getClientFreeStatus`
+  - update `StudioAccessState` type
+  - update `getStudioAccessState`
+  - preserve real errors instead of flattening them into false flags
 
 ### Studio UI
 - `src/components/portal/HudBuilderSandbox.tsx`
-  - replace narrow free lookup with entitlement payload
-  - re-order gating so Free wins before payment/payout states
+  - separate `accessError` from valid access data
+  - stop treating resolver failure as “pricing unavailable”
+  - add wrong-account / provider-account guard
+  - re-order bottom-card gating
+  - keep branding-based pricing display independent from access verification failure
 
-### Studio auth modal
-- `src/components/portal/PortalSignupModal.tsx`
-  - remove direct `client_providers` insertion
-  - route through invitation-aware/authenticated server resolution instead
-
-### Checkout edge function
-- `supabase/functions/create-connect-checkout/index.ts`
-  - verify `saved_models` ownership/provider match before free bypass or checkout creation
-  - keep server-side free bypass as the final authority
+---
 
 ## Expected result after the fix
 
-- MSP marks client as **Free**
-- client accepts invite and signs in
-- backend link is created or repaired with `is_free = true`
-- Studio resolves entitlement as Free
-- bottom card shows **Download Presentation**
-- clicking it saves/releases the model and downloads immediately
-- no Stripe flow
-- no payment unavailable state
-- no dependency on payout connection for free clients
+### Correct free-client flow
+Invited client → signed in as the invited client account → resolver heals/accesses link → `isFree = true` → builder shows:
 
-For paid clients, the current payment-unavailable message remains valid when payouts are not connected.
+- **Download Presentation**
+- no Stripe
+- no pricing warning
+- no payment contact message
+
+### Correct provider/admin flow
+Provider/admin signed into the public Studio → builder shows:
+
+- wrong-account notice
+- switch-account guidance
+- no client payment/download UI
+
+### Correct paid-client flow
+Paid client + payouts ready → **Pay $X & Download**
+
+Paid client + payouts unavailable → **Payment Temporarily Unavailable**
+
+### Correct failure behavior
+If access resolution fails again for any backend reason:
+- user sees a retryable access-verification message
+- not the false “Pricing Unavailable” fallback
+
+---
 
 ## Verification checklist
 
-1. Invite a brand-new client as **Free**
-2. Accept invite via Google
-3. Open MSP Studio
-4. Confirm bottom card says **Download Presentation**
-5. Confirm no payment UI appears
-6. Download successfully
+1. Sign in as an invited **free client**
+2. Open `/p/{slug}/builder`
+3. Confirm the bottom section shows **Download Presentation**
+4. Confirm no payment messaging appears
 
-7. Invite an existing client who was previously linked as Pay, then flip to **Free**
-8. Re-open Studio
-9. Confirm the link is auto-repaired and the card changes to **Download Presentation**
+5. Sign in as the **provider/admin**
+6. Open the same builder
+7. Confirm the page shows a **wrong-account** message instead of pricing/payment UI
 
-10. Test a normal paid client
-11. Confirm they still see:
-   - pay-and-download when payouts are ready
-   - payment-unavailable contact message only when payouts are not ready
+8. Sign in as a normal **paid client**
+9. Confirm price breakdown appears
+10. Confirm checkout only appears when payouts are ready
 
-12. Confirm model save + checkout cannot be invoked for an unrelated MSP/provider pair
+11. Force the resolver to fail
+12. Confirm the UI shows an **access verification error**, not “Pricing Unavailable”
