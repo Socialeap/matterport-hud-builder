@@ -1,242 +1,141 @@
 
-## Root cause and safe fix for the incorrect “Pricing Unavailable” state
 
-### What is actually broken
+## Fix the broken Welcome gate buttons and solid-blue background
 
-There are two bugs overlapping here:
+### Root cause #1 — buttons are dead because the embedded script throws a SyntaxError
 
-1. **The Studio absolutely does know who is signed in**
-   - It uses the browser’s persisted auth session and sends that JWT to server functions.
-   - No auth token in the URL is required.
-   - So the problem is not “missing URL identity”; it is **how the current signed-in user is being resolved and handled**.
+The generated HTML embeds an inline `<script>` block built inside a JavaScript **template literal** in `src/lib/portal.functions.ts` (the big `const html = \`...\``).
 
-2. **The authoritative access resolver is still invalid**
-   - `public.resolve_studio_access` is currently declared **`STABLE`**.
-   - But its body performs an `INSERT ... ON CONFLICT DO UPDATE` to auto-heal `client_providers`.
-   - PostgreSQL does not allow writes inside a `STABLE` function.
-   - When that RPC fails, `HudBuilderSandbox` catches the error and marks access as `loaded: true` while leaving:
-     - `isFree = false`
-     - `pricingConfigured = false`
-     - `payoutsReady = false`
-   - That forces the UI into the misleading **“Pricing Unavailable”** branch.
+Inside a template literal, backslashes that precede non-recognized escape characters (like `\.`, `\?`, `\w`, `\d`, `\/`, `\(`) are silently stripped by JavaScript. So the source code:
 
-### Why this explains the current symptom
+```js
+if(/\.mp4(\?.*)?$/i.test(url)) ...
+url.match(/youtu\.be\/([\w-]{6,})/i)
+url.match(/player\.vimeo\.com\/video\/(\d+)/i)
+```
 
-The MSP pricing is in fact configured:
-- `use_flat_pricing = false`
-- `base_price_cents = 7900`
-- `tier3_price_cents = 15000`
-- `additional_model_fee_cents = 5900`
+ends up in the downloaded HTML as:
 
-So the page should never say pricing is unavailable just because pricing is missing.
+```js
+if(/.mp4(?.*)?$/i.test(url)) ...
+url.match(/youtu.be/([w-]{6,})/i)
+url.match(/player.vimeo.com/video/(d+)/i)
+```
 
-Instead, what is happening is:
-- the access-state request fails
-- the component falls back to “all false”
-- the UI renders the wrong final fallback message
+Confirmed against the uploaded `1535_Broadway_New_York_NY_10036.html` lines 326–334.
 
-### Additional identity issue to fix
+`/.mp4(?.*)?$/i` is an **invalid regex** — `(?` starts a non-capturing/lookaround group and the next char must be `:`, `=`, `!`, etc. So the browser throws `SyntaxError: Invalid regular expression` while parsing the IIFE. **Every single line in that IIFE is lost**, including:
 
-The current preview session is also showing a logged-in user with **provider/admin roles**, not a client role.
+- `gate-sound-btn` and `gate-silent-btn` `addEventListener` registrations
+- `frame.src = props[0].iframeUrl` (so the Matterport tour never loads)
+- `__openModal`, `__openContact`, mute toggle, carousel — all of it
 
-That means the builder may be running under the wrong account entirely. Today the builder has no clear role-aware handling for:
-- provider viewing their own public Studio
-- admin viewing a provider Studio
-- actual invited client viewing the builder
+Result: both gate buttons are unresponsive and nothing happens on click.
 
-So even after fixing the resolver, the Studio still needs a **role-aware identity guard**. Otherwise the provider account can land in a client payment/download flow and produce confusing states.
+This is also why earlier escape-style fixes worked in dev preview (the React preview uses the regex via `src/lib/video-embed.ts`, not the template-literal copy). The bug is unique to the **generated standalone HTML**.
+
+### Root cause #2 — solid blue background instead of glass over the tour
+
+Two problems combine:
+
+1. The gate's CSS is `background:${hudBgColor}cc` → `#0c0cb6cc` ≈ 80 % opaque, plus a heavy `backdrop-filter: blur(24px)`. That's already too opaque to see through.
+2. Because the script throws, `frame.src` is never assigned, so even if the gate were translucent there would be nothing behind it. After fix #1 the iframe will render, but the gate is still too opaque.
+
+We need to lower the gate's background alpha and soften the blur so the live 3D tour shows through with a slight glassmorphism overlay.
 
 ---
 
-## Implementation plan
+## Plan
 
-### 1) Repair the backend access resolver
+### File to edit
+- `src/lib/portal.functions.ts`
 
-Create a migration that drops and recreates `public.resolve_studio_access` as a write-capable function.
+### Change 1 — Make embedded regex literals survive the template-literal escape stripping
 
-#### Required changes
-- Change from `STABLE SECURITY DEFINER` to **`VOLATILE SECURITY DEFINER`**
-- Keep the current auto-heal behavior:
-  - look up authenticated user
-  - look up existing `client_providers` link
-  - look up invitation by provider + email
-  - if accepted invitation exists, upsert `client_providers.is_free`
-  - compute `linked`, `is_free`, `pricing_configured`, `payouts_ready`, `provider_brand_name`
+Inside the big `const html = \`...\`` block (around lines 1147–1160), replace every regex backslash with a **double backslash** so the template literal emits a single backslash into the runtime script.
 
-#### Add one more field to the resolver
-Return enough identity context for the UI to branch correctly:
-```ts
-viewer_role: "client" | "provider" | "admin" | "unknown"
-viewer_matches_provider: boolean
+Before (source):
+```js
+if(/\.mp4(\?.*)?$/i.test(url)) return {kind:"mp4",src:url};
+var yt=url.match(/youtu\.be\/([\w-]{6,})/i)||url.match(/youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|v\/)([\w-]{6,})/i);
+var vi=url.match(/player\.vimeo\.com\/video\/(\d+)/i)||url.match(/vimeo\.com\/(?:video\/)?(\d+)/i);
+var wi=url.match(/wistia\.com\/medias\/([\w-]+)/i)||url.match(/wistia\.net\/(?:embed\/iframe|medias)\/([\w-]+)/i);
+var lo=url.match(/loom\.com\/(?:share|embed)\/([\w-]+)/i);
 ```
 
-This avoids guessing on the client.
+After (source — note doubled backslashes):
+```js
+if(/\\.mp4(\\?.*)?$/i.test(url)) return {kind:"mp4",src:url};
+var yt=url.match(/youtu\\.be\\/([\\w-]{6,})/i)||url.match(/youtube\\.com\\/(?:watch\\?(?:.*&)?v=|embed\\/|shorts\\/|v\\/)([\\w-]{6,})/i);
+var vi=url.match(/player\\.vimeo\\.com\\/video\\/(\\d+)/i)||url.match(/vimeo\\.com\\/(?:video\\/)?(\\d+)/i);
+var wi=url.match(/wistia\\.com\\/medias\\/([\\w-]+)/i)||url.match(/wistia\\.net\\/(?:embed\\/iframe|medias)\\/([\\w-]+)/i);
+var lo=url.match(/loom\\.com\\/(?:share|embed)\\/([\\w-]+)/i);
+```
 
-### 2) Stop converting RPC failure into fake “pricing unavailable”
+Then audit the rest of the template literal for any other backslashed character that needs to survive into the runtime script. Anywhere we see a single `\` that is not part of a valid string escape (`\n`, `\t`, `\\`, `\u####`, `\x##`, `\'`, `\"`, `` \` ``, `\$`), double it. Search the file for `\.`, `\w`, `\d`, `\/`, `\?`, `\(`, `\)`, `\b`, `\s` occurrences inside the `const html = \`...\`` block and double each one.
 
-Update `src/lib/portal.functions.ts` and `src/components/portal/HudBuilderSandbox.tsx`.
+Pre-existing usages of `\u2500`, `\u2014`, `\u003c`, `\u2028`, `\u2029` are valid Unicode escapes and stay as-is.
 
-#### In `getStudioAccessState`
-- If the RPC errors, do **not** silently convert that to a normal-looking payload.
-- Return or throw a typed failure so the UI can distinguish:
-  - access verified
-  - access failed to verify
+### Change 2 — Glassmorphism gate so the 3D tour is visible behind it
 
-#### In `HudBuilderSandbox`
-Replace the current “loaded but false everything” catch path with explicit state:
-```ts
-{
-  loaded: false,
-  error: string | null,
-  ...
+In the same file, change the `#gate` CSS rule (around line 864):
+
+Before:
+```css
+#gate{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:3000;background:${escapeHtml(hudBgColor)}cc;backdrop-filter:blur(24px) saturate(160%);-webkit-backdrop-filter:blur(24px) saturate(160%);transition:opacity 0.5s ease}
+```
+
+After:
+```css
+#gate{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:3000;background:${escapeHtml(hudBgColor)}40;backdrop-filter:blur(8px) saturate(140%);-webkit-backdrop-filter:blur(8px) saturate(140%);transition:opacity 0.5s ease}
+```
+
+Then add a soft inner-content card so text and buttons stay legible against the moving tour behind:
+
+```css
+#gate-inner{display:flex;flex-direction:column;align-items:center;text-align:center;padding:40px 32px;max-width:480px;width:90%;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.08);border-radius:18px;backdrop-filter:blur(10px) saturate(160%);-webkit-backdrop-filter:blur(10px) saturate(160%);box-shadow:0 12px 48px rgba(0,0,0,0.35)}
+```
+
+Also load the iframe immediately (it already does via `load(0)` at the bottom of the IIFE — once Change 1 is in place, the iframe paints behind the gate and the glass effect becomes visible).
+
+### Change 3 — Defensive guard so a future regex typo can never kill the whole IIFE again
+
+Wrap only the `parseCinematicUrl` body in a `try/catch` so a bad URL or malformed pattern degrades gracefully:
+
+```js
+function parseCinematicUrl(url){
+  try{
+    if(!url) return null;
+    url=url.trim();
+    // …regex matching…
+    return null;
+  }catch(_e){return null;}
 }
 ```
 
-#### Correct fallback behavior
-- If access verification fails, do **not** set `pricingConfigured` to false
-- Keep pricing derived from branding for display-only fallback
-- Show a dedicated message such as:
-  - “We couldn’t verify your Studio access right now.”
-  - “Retry”
-- Do not show “Pricing Unavailable” unless pricing is truly not configured
-
-### 3) Separate three concerns in the Studio UI
-
-Right now these are mixed together:
-
-1. Who is signed in
-2. Whether that user is entitled to this Studio
-3. Whether payment is required
-
-They should be rendered independently.
-
-#### New UI state order
-1. **Auth not yet resolved** → loading
-2. **No signed-in user** → sign-in prompt
-3. **Signed in as provider/admin** → role mismatch message
-4. **Signed in client but access verification failed** → retry/error state
-5. **Signed in client, linked, `isFree = true`** → **Download Presentation**
-6. **Signed in client, linked, paid, payouts ready** → **Pay $X & Download**
-7. **Signed in client, linked, paid, payouts unavailable** → payment contact message
-8. **Signed in client, not linked** → invitation-required message
-
-This prevents every failure from collapsing into a fake pricing message.
-
-### 4) Add a role-aware guard for wrong-account sessions
-
-The builder should not quietly behave like a client flow when the current user is actually the provider/admin.
-
-#### Add a clear builder guard
-If:
-- `viewer_role` is `provider` or `admin`, or
-- `viewer_matches_provider = true`
-
-then show:
-- “You’re signed in as the provider account, not the invited client.”
-- CTA to sign out / switch account
-- no pricing or checkout UI
-
-This is important because the current session evidence shows a provider/admin account, which would never correctly resolve as a free invited client.
-
-### 5) Make the messaging accurate
-
-Update the bottom section copy so it reflects the real state:
-
-#### Free client
-- “Download Presentation”
-- “Included with your account — no payment required.”
-
-#### Paid client, payout unavailable
-- “Payment Temporarily Unavailable”
-- “If you need help completing payment, please contact {MSP brand}.”
-
-#### Access verification error
-- “We couldn’t verify your Studio access right now.”
-- Retry button
-- no payment-specific language
-
-#### Wrong account
-- “You’re signed in as the MSP account, not the invited client.”
-- “Please switch to the invited client account to continue.”
-
-### 6) Keep the free-download path authoritative on the server
-
-The final download/payment branch must still be enforced server-side:
-- `savePresentationRequest`
-- checkout creation
-- free bypass
-
-Those should continue to rely on the repaired resolver so the client cannot spoof free status.
+This is local to one function and does not change normal behavior. It only protects the rest of the IIFE if something else slips past in the future.
 
 ---
 
-## Files to update
+## Why this is safe
 
-### Database
-- `supabase/migrations/<new_migration>.sql`
-  - recreate `public.resolve_studio_access` as `VOLATILE SECURITY DEFINER`
-  - add `viewer_role`
-  - add `viewer_matches_provider`
-
-### Server functions
-- `src/lib/portal.functions.ts`
-  - update `StudioAccessState` type
-  - update `getStudioAccessState`
-  - preserve real errors instead of flattening them into false flags
-
-### Studio UI
-- `src/components/portal/HudBuilderSandbox.tsx`
-  - separate `accessError` from valid access data
-  - stop treating resolver failure as “pricing unavailable”
-  - add wrong-account / provider-account guard
-  - re-order bottom-card gating
-  - keep branding-based pricing display independent from access verification failure
-
----
-
-## Expected result after the fix
-
-### Correct free-client flow
-Invited client → signed in as the invited client account → resolver heals/accesses link → `isFree = true` → builder shows:
-
-- **Download Presentation**
-- no Stripe
-- no pricing warning
-- no payment contact message
-
-### Correct provider/admin flow
-Provider/admin signed into the public Studio → builder shows:
-
-- wrong-account notice
-- switch-account guidance
-- no client payment/download UI
-
-### Correct paid-client flow
-Paid client + payouts ready → **Pay $X & Download**
-
-Paid client + payouts unavailable → **Payment Temporarily Unavailable**
-
-### Correct failure behavior
-If access resolution fails again for any backend reason:
-- user sees a retryable access-verification message
-- not the false “Pricing Unavailable” fallback
+- Change 1 is purely a string-literal escaping fix — no runtime logic changes. The regex patterns it produces in the downloaded HTML match the originals already used by the working preview (`src/lib/video-embed.ts`).
+- Change 2 only touches gate CSS — no JS, no behavior change. The gate still dismisses on click; only its visual opacity changes.
+- Change 3 only narrows blast-radius for future bugs; happy-path output is identical.
+- No backend, schema, or auth changes.
+- No other components consume the embedded script — it lives only inside the generated standalone HTML file.
 
 ---
 
 ## Verification checklist
 
-1. Sign in as an invited **free client**
-2. Open `/p/{slug}/builder`
-3. Confirm the bottom section shows **Download Presentation**
-4. Confirm no payment messaging appears
+1. Re-generate and download a presentation HTML for the same property.
+2. Open the file directly from disk (no server).
+3. Confirm the 3D Matterport tour is visible behind the welcome gate with a soft frosted-glass overlay.
+4. Click **Start with Sound** → gate dismisses, audio begins, HUD header reveals.
+5. Reload, click **Enter 3D Tour (No Sound)** → gate dismisses silently, HUD header reveals.
+6. Click the **Contact** button → agent drawer slides in from the right.
+7. Confirm the cinema, map, and media-gallery icon buttons each open their modals.
+8. View source of the downloaded HTML and confirm the `parseCinematicUrl` regexes contain real backslashes (`/\.mp4(\?.*)?$/i`, `/youtu\.be\/…/i`, etc.).
+9. Open the browser DevTools console on the standalone HTML — there should be no `SyntaxError: Invalid regular expression`.
 
-5. Sign in as the **provider/admin**
-6. Open the same builder
-7. Confirm the page shows a **wrong-account** message instead of pricing/payment UI
-
-8. Sign in as a normal **paid client**
-9. Confirm price breakdown appears
-10. Confirm checkout only appears when payouts are ready
-
-11. Force the resolver to fail
-12. Confirm the UI shows an **access verification error**, not “Pricing Unavailable”
