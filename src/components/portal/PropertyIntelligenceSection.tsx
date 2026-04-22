@@ -478,9 +478,10 @@ function ModelRow({
         <div className="flex min-w-0 items-center gap-2">
           <BookOpen className="size-4 shrink-0 text-primary" />
           <span className="truncate text-sm font-medium">{displayName}</span>
-          {extractions.length > 0 && (
+          {mergedAssets.length > 0 && (
             <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
-              {extractions.length} doc{extractions.length === 1 ? "" : "s"}
+              {mergedAssets.length} doc{mergedAssets.length === 1 ? "" : "s"}
+              {indexedCount > 0 && ` · ${indexedCount} indexed`}
             </Badge>
           )}
           {isFrozen && (
@@ -522,15 +523,27 @@ function ModelRow({
         <div className="flex items-center justify-center py-2 text-xs text-muted-foreground">
           <Loader2 className="mr-1 size-3 animate-spin" /> Loading…
         </div>
-      ) : extractions.length === 0 ? (
+      ) : mergedAssets.length === 0 ? (
         <p className="text-[11px] leading-snug text-muted-foreground">
           No documents attached yet. Upload a datasheet to enable Ask.
         </p>
       ) : (
         <ul className="space-y-1.5">
-          {extractions.map((ex) => (
-            <DocRow key={ex.id} extraction={ex} onDelete={() => remove(ex.id)} />
-          ))}
+          {mergedAssets.map((asset) => {
+            const ex = extractionByAsset.get(asset.id) ?? null;
+            const failure = failuresByAsset[asset.id] ?? null;
+            return (
+              <AssetStatusRow
+                key={asset.id}
+                asset={asset}
+                extraction={ex}
+                failure={failure}
+                running={running && busy}
+                onReindex={() => handleReindex(asset)}
+                onDelete={ex ? () => remove(ex.id) : undefined}
+              />
+            );
+          })}
         </ul>
       )}
 
