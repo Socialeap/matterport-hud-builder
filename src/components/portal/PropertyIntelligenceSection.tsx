@@ -296,20 +296,31 @@ function ModelRow({
           return;
         }
 
+        // Track immediately so the row shows "Pending" while we extract.
+        trackAsset({
+          id: newAsset.id,
+          label: finalLabel,
+          asset_url: parsedUrl.toString(),
+          mime_type: "text/uri-list",
+        });
+
         await refreshDocs();
         closeDialog();
 
         setBusyMessage("Fetching & indexing URL…");
+        // URL submissions ALWAYS use the per-host auto template the function
+        // creates internally — never the curated picker (semantic mismatch).
         const res = await extractFromUrl({
           vault_asset_id: newAsset.id,
           url: parsedUrl.toString(),
-          template_id: templateId || null,
+          template_id: null,
           saved_model_id: savedModelId,
         });
         if (res) {
           toast.success(
             `Indexed ${res.chunks_indexed} chunks from ${parsedUrl.hostname}`,
           );
+          onExtractionSuccess?.();
         }
         return;
       }
@@ -366,6 +377,13 @@ function ModelRow({
         return;
       }
 
+      trackAsset({
+        id: newAsset.id,
+        label: label.trim(),
+        asset_url: uploaded.url,
+        mime_type: detectedMime,
+      });
+
       await refreshDocs();
       closeDialog();
 
@@ -378,10 +396,76 @@ function ModelRow({
       });
       if (res) {
         toast.success(`Indexed ${res.chunks_indexed} chunks for ${displayName}`);
+        onExtractionSuccess?.();
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       toast.error(`Upload failed: ${msg}`);
+    } finally {
+      setBusy(false);
+      setBusyMessage("");
+    }
+  };
+
+  // ── Build the merged asset view: union(trackedAssets, extractions) ────
+  const assetById = useMemo(() => {
+    const m = new Map<string, AssetMeta>();
+    for (const a of trackedAssets) m.set(a.id, a);
+    // Make sure every extraction has at least a stub asset entry so it
+    // renders even if the metadata fetch hasn't returned yet.
+    for (const ex of extractions) {
+      if (!m.has(ex.vault_asset_id)) {
+        m.set(ex.vault_asset_id, {
+          id: ex.vault_asset_id,
+          label: "Document",
+          asset_url: "",
+          mime_type: null,
+        });
+      }
+    }
+    return m;
+  }, [trackedAssets, extractions]);
+
+  const extractionByAsset = useMemo(() => {
+    const m = new Map<string, PropertyExtraction>();
+    for (const ex of extractions) m.set(ex.vault_asset_id, ex);
+    return m;
+  }, [extractions]);
+
+  const mergedAssets = useMemo(
+    () => Array.from(assetById.values()),
+    [assetById],
+  );
+
+  const indexedCount = extractions.filter(
+    (e) => Array.isArray(e.chunks) && e.chunks.length > 0,
+  ).length;
+
+  const handleReindex = async (asset: AssetMeta) => {
+    if (!asset.asset_url) {
+      toast.error("Cannot re-index: source URL/path missing.");
+      return;
+    }
+    const isUrl = /^https?:\/\//i.test(asset.asset_url);
+    if (!isUrl) {
+      toast.message(
+        "Re-index from file is not supported yet — re-upload the file instead.",
+      );
+      return;
+    }
+    setBusy(true);
+    setBusyMessage("Re-indexing…");
+    try {
+      const res = await extractFromUrl({
+        vault_asset_id: asset.id,
+        url: asset.asset_url,
+        template_id: null,
+        saved_model_id: savedModelId,
+      });
+      if (res) {
+        toast.success(`Re-indexed ${res.chunks_indexed} chunks`);
+        onExtractionSuccess?.();
+      }
     } finally {
       setBusy(false);
       setBusyMessage("");
