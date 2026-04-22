@@ -1,141 +1,73 @@
 
 
-## Fix the broken Welcome gate buttons and solid-blue background
+## Merge "Ask AI" and "Ask Docs" into a single unified chat button
 
-### Root cause #1 — buttons are dead because the embedded script throws a SyntaxError
+### Why this is the right move
 
-The generated HTML embeds an inline `<script>` block built inside a JavaScript **template literal** in `src/lib/portal.functions.ts` (the big `const html = \`...\``).
+Both buttons open chat panels that answer the visitor's questions about the property. The split is an internal artefact of two backend pipelines, not a meaningful user distinction:
 
-Inside a template literal, backslashes that precede non-recognized escape characters (like `\.`, `\?`, `\w`, `\d`, `\/`, `\(`) are silently stripped by JavaScript. So the source code:
+| Surface | Source data | Engine |
+|---|---|---|
+| **Ask AI** | `qaDatabase` — pre-computed canonical Q&A pairs the host wrote/curated | Orama hybrid search over MiniLM embeddings (CDN) |
+| **Ask docs** | Per-property doc extractions (chunks + extracted fields + canonical QAs) | Orama hybrid/BM25 over the same MiniLM pipeline |
 
-```js
-if(/\.mp4(\?.*)?$/i.test(url)) ...
-url.match(/youtu\.be\/([\w-]{6,})/i)
-url.match(/player\.vimeo\.com\/video\/(\d+)/i)
-```
+To the end visitor, both are "ask a question about this property." Showing two near-identical chat icons in the header is confusing, wastes header real estate, and forces the visitor to guess which pipeline knows the answer. They should not have to.
 
-ends up in the downloaded HTML as:
+### Goal
 
-```js
-if(/.mp4(?.*)?$/i.test(url)) ...
-url.match(/youtu.be/([w-]{6,})/i)
-url.match(/player.vimeo.com/video/(d+)/i)
-```
+One button labelled **Ask** in the HUD header that opens a single chat panel. When the visitor sends a question, the runtime queries **both knowledge sources in parallel**, picks the highest-confidence answer, and falls back to the other source if the first has no good hit. The visitor never sees the split.
 
-Confirmed against the uploaded `1535_Broadway_New_York_NY_10036.html` lines 326–334.
+### What changes
 
-`/.mp4(?.*)?$/i` is an **invalid regex** — `(?` starts a non-capturing/lookaround group and the next char must be `:`, `=`, `!`, etc. So the browser throws `SyntaxError: Invalid regular expression` while parsing the IIFE. **Every single line in that IIFE is lost**, including:
+**File to edit:** `src/lib/portal.functions.ts` (only — the merge is fully contained in the generated HTML pipeline).
 
-- `gate-sound-btn` and `gate-silent-btn` `addEventListener` registrations
-- `frame.src = props[0].iframeUrl` (so the Matterport tour never loads)
-- `__openModal`, `__openContact`, mute toggle, carousel — all of it
+#### 1. Header — collapse two buttons into one
 
-Result: both gate buttons are unresponsive and nothing happens on click.
+Replace the two adjacent buttons in the `#hud-right` strip (currently `${docsQaAssets.toggleBtn}${qaToggleBtn}`) with a single `#ask-toggle` button. Show it whenever **either** `hasQA` is true **or** `docsQaAssets.enabled` is true. Use the chat-bubble icon currently used by Ask AI; label it "Ask".
 
-This is also why earlier escape-style fixes worked in dev preview (the React preview uses the regex via `src/lib/video-embed.ts`, not the template-literal copy). The bug is unique to the **generated standalone HTML**.
+#### 2. Panels — collapse two panels into one `#ask-panel`
 
-### Root cause #2 — solid blue background instead of glass over the tour
+Build a single panel using the existing CSS patterns (reuse `#qa-*` styling). Single message list, single input row, single Send button. Keep the same z-index, same `top:72px;right:16px` glass card, same accent-coloured user bubbles and dark assistant bubbles. Drop both `#qa-panel` and `#docs-qa-panel` shells from the output.
 
-Two problems combine:
+#### 3. Engine — unified `__ask` handler that fans out and merges
 
-1. The gate's CSS is `background:${hudBgColor}cc` → `#0c0cb6cc` ≈ 80 % opaque, plus a heavy `backdrop-filter: blur(24px)`. That's already too opaque to see through.
-2. Because the script throws, `frame.src` is never assigned, so even if the gate were translucent there would be nothing behind it. After fix #1 the iframe will render, but the gate is still too opaque.
+Combine the two existing IIFEs into one initialiser keyed off the new `#ask-*` DOM ids. The unified handler:
 
-We need to lower the gate's background alpha and soften the blur so the live 3D tour shows through with a slight glassmorphism overlay.
+1. Lazily loads Orama + transformers.js once (currently both pipelines load them separately — saves a redundant ~30 MB download path).
+2. On open, builds **both** indexes that apply to the active property:
+   - the global `qaDatabase` Orama DB (only if `hasQA`)
+   - the per-property docs DB (only if that property has extractions/canonical QAs)
+3. On send, runs the query against every available source in parallel:
+   - Tier 1: canonical-QA cosine over docs canonical QAs (highest precision)
+   - Tier 2: hybrid Orama search over the host-curated `qaDatabase`
+   - Tier 3: hybrid/BM25 Orama search over the per-property doc chunks
+4. Picks the result with the highest score; if no source crosses its existing threshold, returns the existing "I couldn't find that" message.
+5. Source-link rendering reuses the existing per-tier behaviour: anchor scroll for `qaDatabase` hits, plain source label for doc hits.
 
----
+The thresholds, embedding pipeline, WebGPU→WASM fallback, and per-property re-indexing on tab change all carry over unchanged — they were already shared by both surfaces, just duplicated.
 
-## Plan
+#### 4. Cleanup
 
-### File to edit
-- `src/lib/portal.functions.ts`
+- Delete `qaToggleBtn`, `qaPanelHtml`, `qaModuleScript`, `docsQaAssets.toggleBtn`, `docsQaAssets.panelHtml`, and the standalone `__openDocsQa` window export from the output.
+- Replace with a single `askAssets = { toggleBtn, panelHtml, css, moduleScript, enabled }` builder. The `enabled` flag is `hasQA || docsQaEnabled`.
+- Keep `buildDocsQaAssets`'s data-shape helpers (`__dqaCollectCanonicalQAs`, `__dqaCollectChunkDocs`, etc.) — they move into the unified module unchanged.
 
-### Change 1 — Make embedded regex literals survive the template-literal escape stripping
+### Why this is safe
 
-Inside the big `const html = \`...\`` block (around lines 1147–1160), replace every regex backslash with a **double backslash** so the template literal emits a single backslash into the runtime script.
+- Pure consolidation in one generator file. No backend, schema, auth, or React UI changes.
+- Both pipelines already use the **same** Orama version, **same** MiniLM model, **same** WebGPU/WASM fallback, **same** CDN URLs — there is no model conflict to reconcile.
+- The merged engine only adds branching at query time (which sources to consult); the per-source ranking math is identical to today's.
+- Per-property tab-change reset logic (currently in `load(i)`) keeps working because there is now a single `__ask` state object to clear instead of two.
+- Backslash-escape rules for the embedded template literal (the regex bug we already fixed) carry over by reusing the same patterns — no new regex literals introduced.
+- Matterport logo remains unobstructed: still one button in the header, no bottom toolbar reintroduced.
 
-Before (source):
-```js
-if(/\.mp4(\?.*)?$/i.test(url)) return {kind:"mp4",src:url};
-var yt=url.match(/youtu\.be\/([\w-]{6,})/i)||url.match(/youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|v\/)([\w-]{6,})/i);
-var vi=url.match(/player\.vimeo\.com\/video\/(\d+)/i)||url.match(/vimeo\.com\/(?:video\/)?(\d+)/i);
-var wi=url.match(/wistia\.com\/medias\/([\w-]+)/i)||url.match(/wistia\.net\/(?:embed\/iframe|medias)\/([\w-]+)/i);
-var lo=url.match(/loom\.com\/(?:share|embed)\/([\w-]+)/i);
-```
+### Verification checklist
 
-After (source — note doubled backslashes):
-```js
-if(/\\.mp4(\\?.*)?$/i.test(url)) return {kind:"mp4",src:url};
-var yt=url.match(/youtu\\.be\\/([\\w-]{6,})/i)||url.match(/youtube\\.com\\/(?:watch\\?(?:.*&)?v=|embed\\/|shorts\\/|v\\/)([\\w-]{6,})/i);
-var vi=url.match(/player\\.vimeo\\.com\\/video\\/(\\d+)/i)||url.match(/vimeo\\.com\\/(?:video\\/)?(\\d+)/i);
-var wi=url.match(/wistia\\.com\\/medias\\/([\\w-]+)/i)||url.match(/wistia\\.net\\/(?:embed\\/iframe|medias)\\/([\\w-]+)/i);
-var lo=url.match(/loom\\.com\\/(?:share|embed)\\/([\\w-]+)/i);
-```
-
-Then audit the rest of the template literal for any other backslashed character that needs to survive into the runtime script. Anywhere we see a single `\` that is not part of a valid string escape (`\n`, `\t`, `\\`, `\u####`, `\x##`, `\'`, `\"`, `` \` ``, `\$`), double it. Search the file for `\.`, `\w`, `\d`, `\/`, `\?`, `\(`, `\)`, `\b`, `\s` occurrences inside the `const html = \`...\`` block and double each one.
-
-Pre-existing usages of `\u2500`, `\u2014`, `\u003c`, `\u2028`, `\u2029` are valid Unicode escapes and stay as-is.
-
-### Change 2 — Glassmorphism gate so the 3D tour is visible behind it
-
-In the same file, change the `#gate` CSS rule (around line 864):
-
-Before:
-```css
-#gate{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:3000;background:${escapeHtml(hudBgColor)}cc;backdrop-filter:blur(24px) saturate(160%);-webkit-backdrop-filter:blur(24px) saturate(160%);transition:opacity 0.5s ease}
-```
-
-After:
-```css
-#gate{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:3000;background:${escapeHtml(hudBgColor)}40;backdrop-filter:blur(8px) saturate(140%);-webkit-backdrop-filter:blur(8px) saturate(140%);transition:opacity 0.5s ease}
-```
-
-Then add a soft inner-content card so text and buttons stay legible against the moving tour behind:
-
-```css
-#gate-inner{display:flex;flex-direction:column;align-items:center;text-align:center;padding:40px 32px;max-width:480px;width:90%;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.08);border-radius:18px;backdrop-filter:blur(10px) saturate(160%);-webkit-backdrop-filter:blur(10px) saturate(160%);box-shadow:0 12px 48px rgba(0,0,0,0.35)}
-```
-
-Also load the iframe immediately (it already does via `load(0)` at the bottom of the IIFE — once Change 1 is in place, the iframe paints behind the gate and the glass effect becomes visible).
-
-### Change 3 — Defensive guard so a future regex typo can never kill the whole IIFE again
-
-Wrap only the `parseCinematicUrl` body in a `try/catch` so a bad URL or malformed pattern degrades gracefully:
-
-```js
-function parseCinematicUrl(url){
-  try{
-    if(!url) return null;
-    url=url.trim();
-    // …regex matching…
-    return null;
-  }catch(_e){return null;}
-}
-```
-
-This is local to one function and does not change normal behavior. It only protects the rest of the IIFE if something else slips past in the future.
-
----
-
-## Why this is safe
-
-- Change 1 is purely a string-literal escaping fix — no runtime logic changes. The regex patterns it produces in the downloaded HTML match the originals already used by the working preview (`src/lib/video-embed.ts`).
-- Change 2 only touches gate CSS — no JS, no behavior change. The gate still dismisses on click; only its visual opacity changes.
-- Change 3 only narrows blast-radius for future bugs; happy-path output is identical.
-- No backend, schema, or auth changes.
-- No other components consume the embedded script — it lives only inside the generated standalone HTML file.
-
----
-
-## Verification checklist
-
-1. Re-generate and download a presentation HTML for the same property.
-2. Open the file directly from disk (no server).
-3. Confirm the 3D Matterport tour is visible behind the welcome gate with a soft frosted-glass overlay.
-4. Click **Start with Sound** → gate dismisses, audio begins, HUD header reveals.
-5. Reload, click **Enter 3D Tour (No Sound)** → gate dismisses silently, HUD header reveals.
-6. Click the **Contact** button → agent drawer slides in from the right.
-7. Confirm the cinema, map, and media-gallery icon buttons each open their modals.
-8. View source of the downloaded HTML and confirm the `parseCinematicUrl` regexes contain real backslashes (`/\.mp4(\?.*)?$/i`, `/youtu\.be\/…/i`, etc.).
-9. Open the browser DevTools console on the standalone HTML — there should be no `SyntaxError: Invalid regular expression`.
+1. Re-generate and download a presentation HTML for a property that has **only** curated Q&A pairs (no doc extractions). Confirm the **Ask** button appears in the header and answers from `qaDatabase` with anchor links working.
+2. Re-generate for a property that has **only** doc extractions (no curated Q&A). Confirm **Ask** appears, answers come from doc chunks, and the source label renders.
+3. Re-generate for a property that has **both**. Ask a question that only the curated DB knows → curated answer wins. Ask a question that only the docs know → docs answer wins. Confirm only one button is in the header.
+4. Re-generate for a property with **neither**. Confirm no Ask button is rendered at all.
+5. Switch between properties via the tabs. Confirm the message list resets and the next question re-indexes for the new property.
+6. Confirm DevTools shows transformers.js loaded **once**, not twice.
+7. Confirm the Matterport logo in the bottom-right is still unobstructed.
 
