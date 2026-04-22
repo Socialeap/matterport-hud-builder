@@ -615,10 +615,11 @@ export const generatePresentation = createServerFn({ method: "POST" })
       ? extractionsByProperty
       : null;
 
-    const docsQaAssets = buildDocsQaAssets(
+    const askAssets = buildAskAssets(
       extractionsByProperty,
       hudBgColor,
       accentColor,
+      hasQA,
     );
 
     const poweredByFooter = isPro
