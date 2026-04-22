@@ -1198,22 +1198,23 @@ function renderPropertyDocs(i){
   body.innerHTML=parts.join("");
 }
 
-// ── Docs Q&A (Phase 5): three-tier answer pipeline, fully local.
-//    Tier 1 — cosine over pre-embedded canonical Q&As derived from
-//      structured fields. Deterministic, high-precision.
-//    Tier 2 — Orama hybrid (BM25 + vector) search over chunks. Uses
-//      per-chunk embeddings baked into the tour HTML.
-//    Tier 3 — BM25-only fallback for extraction rows that predate
-//      Phase 5 and therefore lack embeddings.
+// ── Unified Ask pipeline: fans out across the host-curated qaDatabase
+//    AND per-property doc extractions. Single panel, single button.
+//    Tier 1 — cosine over pre-embedded canonical Q&As from doc extractions.
+//    Tier 2 — hybrid Orama search over the host-curated qaDatabase
+//             (anchor-link answers).
+//    Tier 3 — hybrid (or BM25 fallback) over per-property doc chunks.
+//    The runtime picks the highest-scoring result across all tiers.
 //    All embedding / search happens client-side; no LLM at view time.
 var __docsQa={
   initPromise:null,
   oramaModule:null,
   embedPipeline:null,
   MODE_HYBRID:null,
-  db:null,
-  mode:null,            // "hybrid" | "bm25"
-  canonicalQAs:[],      // [{id, field, question, answer, source_anchor_id, embedding}]
+  db:null,                // per-property docs DB
+  qaDb:null,              // global host-curated qaDatabase DB
+  mode:null,              // "hybrid" | "bm25" (for docs DB)
+  canonicalQAs:[],        // [{id, field, question, answer, source_anchor_id, embedding}]
   currentIndexKey:null,
   input:null,
   send:null,
