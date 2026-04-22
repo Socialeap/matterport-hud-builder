@@ -919,6 +919,8 @@ ${
     ? `<script>window.__PROPERTY_EXTRACTIONS__=${safeJsonScriptLiteral(propertyDocsData)};</script>`
     : ""
 }
+${hasQA ? `<script>window.__QA_DATABASE__=${safeJsonScriptLiteral(qaDatabase)};</script>` : ""}
+${askAssets.moduleScript}
 <script>
 (function(){
 var C=JSON.parse(atob("${configB64}"));
