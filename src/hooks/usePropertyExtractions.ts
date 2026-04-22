@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
-import { invokeExtraction } from "@/lib/extraction/client";
+import { invokeExtraction, invokeUrlExtraction } from "@/lib/extraction/client";
 import { ensureExtractionEmbeddings } from "@/lib/rag/extraction-hydrator";
 import type { PropertyChunk } from "@/lib/rag/types";
 
@@ -136,6 +136,45 @@ export function usePropertyExtractions(propertyUuid: string | null) {
     [propertyUuid, refresh],
   );
 
+  const extractFromUrl = useCallback(
+    async (input: {
+      vault_asset_id: string;
+      url: string;
+      template_id?: string | null;
+      saved_model_id?: string | null;
+    }) => {
+      if (!propertyUuid) {
+        toast.error("No property selected");
+        return null;
+      }
+      setRunning(true);
+      try {
+        const res = await invokeUrlExtraction({
+          vault_asset_id: input.vault_asset_id,
+          url: input.url,
+          property_uuid: propertyUuid,
+          template_id: input.template_id ?? null,
+          saved_model_id: input.saved_model_id ?? null,
+        });
+        toast.success(`Extracted ${res.chunks_indexed} chunks from URL`);
+        try {
+          await ensureExtractionEmbeddings([propertyUuid]);
+        } catch (err) {
+          console.warn("Post-extraction embedding enrichment failed:", err);
+        }
+        await refresh();
+        return res;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        toast.error(`URL extraction failed: ${msg}`);
+        return null;
+      } finally {
+        setRunning(false);
+      }
+    },
+    [propertyUuid, refresh],
+  );
+
   const remove = useCallback(
     async (extractionId: string) => {
       const { error } = await supabase
@@ -184,6 +223,7 @@ export function usePropertyExtractions(propertyUuid: string | null) {
     backfilling,
     refresh,
     extract,
+    extractFromUrl,
     remove,
     reindex,
   };
