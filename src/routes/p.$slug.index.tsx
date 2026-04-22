@@ -83,6 +83,44 @@ export const Route = createFileRoute("/p/$slug/")({
 function PortalPage() {
   const { branding, demoPublished, lusActive, vaultAssetCount } = Route.useLoaderData();
   const { slug } = Route.useParams();
+  const [viewer, setViewer] = useState<{
+    avatarUrl: string | null;
+    displayName: string | null;
+    email: string | null;
+  } | null>(null);
+
+  // Resolve the signed-in user (if any) and their profile, for the header avatar.
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (cancelled) return;
+      if (!session?.user) {
+        setViewer(null);
+        return;
+      }
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("avatar_url, display_name")
+        .eq("user_id", session.user.id)
+        .maybeSingle();
+      if (cancelled) return;
+      setViewer({
+        avatarUrl: profile?.avatar_url ?? (session.user.user_metadata?.avatar_url as string | null) ?? null,
+        displayName:
+          profile?.display_name ??
+          (session.user.user_metadata?.full_name as string | null) ??
+          null,
+        email: session.user.email ?? null,
+      });
+    };
+    load();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => load());
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     if (!branding?.provider_id) return;
