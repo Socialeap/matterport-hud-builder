@@ -1028,6 +1028,43 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
               </p>
             </div>
 
+            {extractionDirty && !extractionDirtyDismissed && !downloading && (
+              <div className="sticky top-2 z-10 mb-3 flex items-start gap-2 rounded-lg border border-primary/40 bg-primary/10 p-3 text-sm shadow-sm">
+                <BookOpen className="mt-0.5 size-4 shrink-0 text-primary" />
+                <div className="flex-1">
+                  <p className="font-medium text-foreground">Index updated</p>
+                  <p className="text-xs text-muted-foreground">
+                    Re-generate your presentation HTML so visitors can ask the new questions.
+                  </p>
+                </div>
+                <div className="flex shrink-0 gap-1">
+                  <Button
+                    size="sm"
+                    className="h-7 text-xs"
+                    disabled={!savedModelId || downloading}
+                    onClick={() => {
+                      if (savedModelId) {
+                        runDownload(savedModelId);
+                        setExtractionDirty(false);
+                      } else {
+                        toast.message("Save your presentation first, then re-generate.");
+                      }
+                    }}
+                  >
+                    Re-generate now
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-xs"
+                    onClick={() => setExtractionDirtyDismissed(true)}
+                  >
+                    Dismiss
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {/* Collapsible sections — only one open at a time. Closed by default
                 so the live Preview stays high on the page. */}
             <Accordion
