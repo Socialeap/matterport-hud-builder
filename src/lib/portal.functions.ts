@@ -370,17 +370,20 @@ function safeJsonScriptLiteral(value: unknown): string {
 }
 
 /**
- * Docs Q&A panel (Phase 3). A lazily-initialised chat surface that
- * BM25-searches the active property's chunks + fields-as-text via Orama.
- * Emits CSS, the DOM shell, and the toggle button. The runtime
- * initialisation lives in the main IIFE below so it shares the
- * `load(i)` tab-change hook. Empty string when no property has docs.
+ * Unified "Ask" panel — single chat surface that fans out across both
+ * the host-curated qaDatabase (anchor-link answers) and per-property doc
+ * extractions (canonical QAs + chunks). Emits CSS, the DOM shell, the
+ * toggle button, and the runtime module script. The runtime initialises
+ * lazily on first open and re-indexes per-property docs on tab change
+ * via the `load(i)` hook in the main IIFE. Empty when neither knowledge
+ * source is available.
  */
-function buildDocsQaAssets(
+function buildAskAssets(
   extractionsByProperty: ExtractionsByProperty,
   hudBgColor: string,
   accentColor: string,
-): { css: string; toggleBtn: string; panelHtml: string; enabled: boolean } {
+  hasQA: boolean,
+): { css: string; toggleBtn: string; panelHtml: string; moduleScript: string; enabled: boolean } {
   const anyDocs = Object.values(extractionsByProperty).some((arr) =>
     arr.some(
       (e) =>
@@ -388,47 +391,53 @@ function buildDocsQaAssets(
         Object.keys(e.fields ?? {}).length > 0,
     ),
   );
-  if (!anyDocs) {
-    return { css: "", toggleBtn: "", panelHtml: "", enabled: false };
+  const docsEnabled = anyDocs;
+  const enabled = hasQA || docsEnabled;
+  if (!enabled) {
+    return { css: "", toggleBtn: "", panelHtml: "", moduleScript: "", enabled: false };
   }
 
   const css = `
-#docs-qa-toggle{padding:4px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;background:${escapeHtml(accentColor)};border:none;color:#fff;display:inline-flex;align-items:center;gap:5px;flex-shrink:0}
-#docs-qa-toggle svg{width:13px;height:13px}
-#docs-qa-panel{display:none;position:fixed;top:72px;right:16px;width:380px;max-width:calc(100vw - 32px);height:480px;max-height:calc(100vh - 96px);background:${escapeHtml(hudBgColor)};border:1px solid #333;border-radius:12px;z-index:1500;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.5);overflow:hidden}
-#docs-qa-panel.open{display:flex}
-#docs-qa-header{padding:12px 16px;border-bottom:1px solid #333;display:flex;align-items:center;justify-content:space-between}
-#docs-qa-header h4{font-size:14px;font-weight:600;color:#fff;margin:0}
-#docs-qa-close{background:none;border:none;color:#999;font-size:18px;cursor:pointer;padding:0 4px}
-#docs-qa-messages{flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:10px}
-.dqa-msg{max-width:88%;padding:8px 12px;border-radius:10px;font-size:13px;line-height:1.5;word-wrap:break-word;white-space:pre-wrap}
-.dqa-msg.user{align-self:flex-end;background:${escapeHtml(accentColor)};color:#fff;border-bottom-right-radius:4px}
-.dqa-msg.assistant{align-self:flex-start;background:#2a2a3e;color:#ddd;border-bottom-left-radius:4px}
-.dqa-src{display:inline-block;margin-top:6px;padding:2px 8px;font-size:11px;color:#aaa;font-style:italic}
-#docs-qa-input-row{padding:10px 12px;border-top:1px solid #333;display:flex;gap:8px;align-items:center}
-#docs-qa-input{flex:1;background:#1e1e30;border:1px solid #444;border-radius:8px;padding:8px 12px;color:#fff;font-size:13px;outline:none}
-#docs-qa-input:focus{border-color:${escapeHtml(accentColor)}}
-#docs-qa-input:disabled{opacity:0.5;cursor:not-allowed}
-#docs-qa-send{background:${escapeHtml(accentColor)};border:none;color:#fff;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:13px;font-weight:600}
-#docs-qa-send:disabled{opacity:0.4;cursor:not-allowed}
+#ask-toggle{padding:4px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;background:${escapeHtml(accentColor)};border:none;color:#fff;display:inline-flex;align-items:center;gap:5px;flex-shrink:0}
+#ask-toggle svg{width:14px;height:14px}
+#ask-panel{display:none;position:fixed;top:72px;right:16px;width:380px;max-width:calc(100vw - 32px);height:480px;max-height:calc(100vh - 96px);background:${escapeHtml(hudBgColor)};border:1px solid #333;border-radius:12px;z-index:1500;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.5);overflow:hidden}
+#ask-panel.open{display:flex}
+#ask-header{padding:12px 16px;border-bottom:1px solid #333;display:flex;align-items:center;justify-content:space-between}
+#ask-header h4{font-size:14px;font-weight:600;color:#fff;margin:0}
+#ask-close{background:none;border:none;color:#999;font-size:18px;cursor:pointer;padding:0 4px}
+#ask-messages{flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:10px}
+.ask-msg{max-width:88%;padding:8px 12px;border-radius:10px;font-size:13px;line-height:1.5;word-wrap:break-word;white-space:pre-wrap}
+.ask-msg.user{align-self:flex-end;background:${escapeHtml(accentColor)};color:#fff;border-bottom-right-radius:4px}
+.ask-msg.assistant{align-self:flex-start;background:#2a2a3e;color:#ddd;border-bottom-left-radius:4px}
+.ask-msg.loading{color:#999;font-style:italic}
+.ask-msg .source-link{display:inline-block;margin-top:6px;padding:2px 8px;font-size:11px;background:${escapeHtml(accentColor)}33;color:${escapeHtml(accentColor)};border-radius:4px;cursor:pointer;border:1px solid ${escapeHtml(accentColor)}55;text-decoration:none}
+.ask-msg .source-link:hover{background:${escapeHtml(accentColor)}55}
+.ask-src{display:inline-block;margin-top:6px;padding:2px 8px;font-size:11px;color:#aaa;font-style:italic}
+#ask-input-row{padding:10px 12px;border-top:1px solid #333;display:flex;gap:8px;align-items:center}
+#ask-input{flex:1;background:#1e1e30;border:1px solid #444;border-radius:8px;padding:8px 12px;color:#fff;font-size:13px;outline:none}
+#ask-input:focus{border-color:${escapeHtml(accentColor)}}
+#ask-input:disabled{opacity:0.5;cursor:not-allowed}
+#ask-send{background:${escapeHtml(accentColor)};border:none;color:#fff;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:13px;font-weight:600}
+#ask-send:disabled{opacity:0.4;cursor:not-allowed}
+@keyframes ask-pulse{0%,100%{opacity:0.4}50%{opacity:1}}
+.ask-loading-dots span{animation:ask-pulse 1.4s infinite;animation-delay:calc(var(--i)*0.2s)}
 `;
 
-  const toggleBtn = `<button id="docs-qa-toggle" onclick="window.__openDocsQa&&window.__openDocsQa()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Ask docs</button>`;
+  const toggleBtn = `<button id="ask-toggle" onclick="window.__openAsk&&window.__openAsk()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>Ask</button>`;
 
   const panelHtml = `
-<div id="docs-qa-panel">
-  <div id="docs-qa-header">
-    <h4>Ask the property docs</h4>
-    <button id="docs-qa-close" onclick="document.getElementById('docs-qa-panel').classList.remove('open')">&times;</button>
-  </div>
-  <div id="docs-qa-messages"><div class="dqa-msg assistant">Hi! I can answer questions from the uploaded docs for this property. Try asking about fields, terms, dates, or amounts.</div></div>
-  <div id="docs-qa-input-row">
-    <input id="docs-qa-input" type="text" placeholder="Initializing search…" disabled />
-    <button id="docs-qa-send" disabled>Send</button>
-  </div>
+<div id="ask-panel">
+  <div id="ask-header"><h4>Ask about this property</h4><button id="ask-close" onclick="document.getElementById('ask-panel').classList.remove('open')">&times;</button></div>
+  <div id="ask-messages"><div class="ask-msg assistant" id="ask-welcome">Hi! Ask me anything about this property.</div></div>
+  <div id="ask-input-row"><input id="ask-input" type="text" placeholder="Initializing AI Assistant..." disabled /><button id="ask-send" disabled>Send</button></div>
 </div>`;
 
-  return { css, toggleBtn, panelHtml, enabled: true };
+  // Flags consumed by the unified runtime in the main IIFE. The qaDatabase
+  // payload itself is injected separately by the caller (so we don't have
+  // to thread it through this builder's signature).
+  const moduleScript = `<script>window.__ASK_HAS_QA__=${hasQA ? "true" : "false"};window.__ASK_HAS_DOCS__=${docsEnabled ? "true" : "false"};</script>`;
+
+  return { css, toggleBtn, panelHtml, moduleScript, enabled: true };
 }
 
 /** Renders a per-property-extraction block as trusted HTML. All dynamic
@@ -607,10 +616,11 @@ export const generatePresentation = createServerFn({ method: "POST" })
       ? extractionsByProperty
       : null;
 
-    const docsQaAssets = buildDocsQaAssets(
+    const askAssets = buildAskAssets(
       extractionsByProperty,
       hudBgColor,
       accentColor,
+      hasQA,
     );
 
     const poweredByFooter = isPro
@@ -640,211 +650,6 @@ export const generatePresentation = createServerFn({ method: "POST" })
       ? `<img src="${escapeHtml(String(agent.avatarUrl))}" alt="${escapeHtml(String(agent.name || "Agent"))}" class="agent-avatar-img">`
       : `<div class="agent-avatar-init">${escapeHtml((String(agent.name || "?")).charAt(0).toUpperCase())}</div>`;
 
-    // ── Chat Q&A CSS (only when qaDatabase is present) ────────────────
-    const qaCss = hasQA
-      ? `
-#qa-toggle{padding:4px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;background:${escapeHtml(accentColor)};border:none;color:#fff;display:inline-flex;align-items:center;gap:5px;flex-shrink:0}
-#qa-toggle svg{width:14px;height:14px}
-#qa-panel{display:none;position:fixed;top:72px;right:16px;width:380px;max-width:calc(100vw - 32px);height:480px;max-height:calc(100vh - 96px);background:${escapeHtml(hudBgColor)};border:1px solid #333;border-radius:12px;z-index:1500;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.5);overflow:hidden}
-#qa-panel.open{display:flex}
-#qa-header{padding:12px 16px;border-bottom:1px solid #333;display:flex;align-items:center;justify-content:space-between}
-#qa-header h4{font-size:14px;font-weight:600;color:#fff;margin:0}
-#qa-close{background:none;border:none;color:#999;font-size:18px;cursor:pointer;padding:0 4px}
-#qa-messages{flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:10px}
-.qa-msg{max-width:88%;padding:8px 12px;border-radius:10px;font-size:13px;line-height:1.5;word-wrap:break-word}
-.qa-msg.user{align-self:flex-end;background:${escapeHtml(accentColor)};color:#fff;border-bottom-right-radius:4px}
-.qa-msg.assistant{align-self:flex-start;background:#2a2a3e;color:#ddd;border-bottom-left-radius:4px}
-.qa-msg .source-link{display:inline-block;margin-top:6px;padding:2px 8px;font-size:11px;background:${escapeHtml(accentColor)}33;color:${escapeHtml(accentColor)};border-radius:4px;cursor:pointer;border:1px solid ${escapeHtml(accentColor)}55;text-decoration:none}
-.qa-msg .source-link:hover{background:${escapeHtml(accentColor)}55}
-.qa-msg.loading{color:#999;font-style:italic}
-#qa-input-row{padding:10px 12px;border-top:1px solid #333;display:flex;gap:8px;align-items:center}
-#qa-input{flex:1;background:#1e1e30;border:1px solid #444;border-radius:8px;padding:8px 12px;color:#fff;font-size:13px;outline:none}
-#qa-input:focus{border-color:${escapeHtml(accentColor)}}
-#qa-input:disabled{opacity:0.5;cursor:not-allowed}
-#qa-send{background:${escapeHtml(accentColor)};border:none;color:#fff;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:13px;font-weight:600}
-#qa-send:disabled{opacity:0.4;cursor:not-allowed}
-@keyframes qa-pulse{0%,100%{opacity:0.4}50%{opacity:1}}
-.qa-loading-dots span{animation:qa-pulse 1.4s infinite;animation-delay:calc(var(--i)*0.2s)}
-`
-      : "";
-
-    // ── Chat panel HTML ───────────────────────────────────────────────
-    const qaToggleBtn = hasQA
-      ? `<button id="qa-toggle" onclick="document.getElementById('qa-panel').classList.toggle('open')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>Ask AI</button>`
-      : "";
-
-    const qaPanelHtml = hasQA
-      ? `<div id="qa-panel">
-  <div id="qa-header"><h4>Property Q&amp;A</h4><button id="qa-close" onclick="document.getElementById('qa-panel').classList.remove('open')">&times;</button></div>
-  <div id="qa-messages"><div class="qa-msg assistant" id="qa-welcome">Hi! Ask me anything about this property.</div></div>
-  <div id="qa-input-row"><input id="qa-input" type="text" placeholder="Initializing AI Assistant..." disabled /><button id="qa-send" disabled>Send</button></div>
-</div>`
-      : "";
-
-    // ── Inline module script for the air-gapped chat engine ──────────
-    const qaModuleScript = hasQA
-      ? `<script>window.__QA_DATABASE__=${JSON.stringify(qaDatabase)};</script>
-<script type="module">
-// ── CDN imports ─────────────────────────────────────────────────────
-const ORAMA_CDN = "https://cdn.jsdelivr.net/npm/@orama/orama@3.0.0/+esm";
-const TRANSFORMERS_CDN = "https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.1.0";
-
-const input = document.getElementById("qa-input");
-const sendBtn = document.getElementById("qa-send");
-const messagesEl = document.getElementById("qa-messages");
-
-let oramaDb = null;
-let embedPipeline = null;
-let MODE_HYBRID = null;
-
-function addMsg(text, role, anchorId) {
-  const div = document.createElement("div");
-  div.className = "qa-msg " + role;
-  div.textContent = text;
-  if (role === "assistant" && anchorId) {
-    const link = document.createElement("span");
-    link.className = "source-link";
-    link.textContent = "View source: " + anchorId.replace(/-/g, " ");
-    link.onclick = function() {
-      var el = document.getElementById(anchorId);
-      if (el) { el.scrollIntoView({ behavior: "smooth", block: "center" }); el.style.outline = "2px solid ${accentColor}"; setTimeout(function(){ el.style.outline = "none"; }, 3000); }
-    };
-    div.appendChild(document.createElement("br"));
-    div.appendChild(link);
-  }
-  messagesEl.appendChild(div);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
-  return div;
-}
-
-function showLoading() {
-  const div = document.createElement("div");
-  div.className = "qa-msg assistant loading";
-  div.id = "qa-loading";
-  div.innerHTML = 'Searching<span style="--i:0"> .</span><span style="--i:1"> .</span><span style="--i:2"> .</span>';
-  const spans = div.querySelectorAll("span");
-  spans.forEach(function(s){ s.classList.add("qa-loading-dots"); });
-  messagesEl.appendChild(div);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
-}
-
-function removeLoading() {
-  var el = document.getElementById("qa-loading");
-  if (el) el.remove();
-}
-
-// ── Init pipeline ───────────────────────────────────────────────────
-async function init() {
-  try {
-    input.placeholder = "Downloading AI model…";
-
-    const [{ pipeline, env }, oramaModule] = await Promise.all([
-      import(TRANSFORMERS_CDN),
-      import(ORAMA_CDN),
-    ]);
-
-    env.allowLocalModels = false;
-    input.placeholder = "Loading model into memory…";
-
-    // WebGPU-first with WASM fallback; q8 quantisation in both paths to
-    // keep cold-load bandwidth down relative to v4's fp32 default.
-    try {
-      if (typeof navigator !== "undefined" && navigator.gpu) {
-        embedPipeline = await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2", { device: "webgpu", dtype: "q8" });
-      }
-    } catch (err) {
-      console.warn("[transformers] webgpu init failed, falling back to wasm:", err);
-      embedPipeline = null;
-    }
-    if (!embedPipeline) {
-      embedPipeline = await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2", { dtype: "q8" });
-    }
-    MODE_HYBRID = oramaModule.MODE_HYBRID_SEARCH;
-
-    input.placeholder = "Indexing property data…";
-
-    // Build Orama DB from injected data
-    const qaData = window.__QA_DATABASE__;
-    oramaDb = await oramaModule.create({
-      schema: { id: "string", question: "string", answer: "string", source_anchor_id: "string", embedding: "vector[384]" },
-    });
-
-    for (const entry of qaData) {
-      await oramaModule.insert(oramaDb, {
-        id: entry.id,
-        question: entry.question,
-        answer: entry.answer,
-        source_anchor_id: entry.source_anchor_id,
-        embedding: entry.embedding,
-      });
-    }
-
-    // Ready!
-    input.placeholder = "Ask a question about this property…";
-    input.disabled = false;
-    sendBtn.disabled = false;
-  } catch (err) {
-    console.error("QA init failed:", err);
-    input.placeholder = "AI Assistant unavailable";
-    addMsg("Sorry, I could not load the AI assistant. Please try refreshing the page.", "assistant", null);
-  }
-}
-
-// ── Search handler ──────────────────────────────────────────────────
-async function handleQuestion(question) {
-  addMsg(question, "user", null);
-  input.value = "";
-  input.disabled = true;
-  sendBtn.disabled = true;
-  showLoading();
-
-  try {
-    const output = await embedPipeline(question, { pooling: "mean", normalize: true });
-    const queryVec = Array.from(output.data);
-
-    const { search } = await import(ORAMA_CDN);
-    const results = await search(oramaDb, {
-      mode: MODE_HYBRID,
-      term: question,
-      vector: { value: queryVec, property: "embedding" },
-      limit: 3,
-      similarity: 0.0,
-    });
-
-    removeLoading();
-
-    if (results.hits.length > 0 && results.hits[0].score > 0.3) {
-      const best = results.hits[0].document;
-      addMsg(best.answer, "assistant", best.source_anchor_id);
-    } else {
-      addMsg("I don't have that specific information in the property details. Please reach out to the listing agent!", "assistant", null);
-    }
-  } catch (err) {
-    console.error("QA search error:", err);
-    removeLoading();
-    addMsg("Sorry, something went wrong. Please try again.", "assistant", null);
-  }
-
-  input.disabled = false;
-  sendBtn.disabled = false;
-  input.focus();
-}
-
-// ── Event listeners ─────────────────────────────────────────────────
-sendBtn.addEventListener("click", function() {
-  var q = input.value.trim();
-  if (q) handleQuestion(q);
-});
-input.addEventListener("keydown", function(e) {
-  if (e.key === "Enter") {
-    var q = input.value.trim();
-    if (q) handleQuestion(q);
-  }
-});
-
-init();
-</script>`
-      : "";
 
     const html = `<!DOCTYPE html>
 <html lang="en">
@@ -966,12 +771,11 @@ ${isPro ? "" : `/* Viewer above powered-by footer */
 #viewer{bottom:34px}`}
 
 /* ── Panel z-index overrides ───────────────────────────────────── */
-#docs-qa-panel,#property-docs{z-index:1500}
+#ask-panel,#property-docs{z-index:1500}
 /* Property-docs panel still anchored bottom-left; clear powered-by footer when present */
 #property-docs{bottom:${isPro ? "16" : "50"}px}
 
-${qaCss}
-${docsQaAssets.css}
+${askAssets.css}
 </style>
 </head>
 <body>
@@ -1026,8 +830,7 @@ ${docsQaAssets.css}
       <button id="hud-media-btn" class="hud-icon-btn" style="display:none" aria-label="Media gallery" title="View Media Gallery" onclick="window.__openModal&&window.__openModal('carousel',0)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
       </button>
-      ${docsQaAssets.toggleBtn}
-      ${qaToggleBtn}
+      ${askAssets.toggleBtn}
       <span id="hud-agent-name"></span>
       ${(agent.phone || agent.email || agent.name) ? `<button class="hud-contact-btn" onclick="window.__openContact&&window.__openContact()">Contact</button>` : ""}
     </div>
@@ -1108,8 +911,7 @@ ${(agent.phone || agent.email || agent.name) ? `<div id="agent-drawer">
   </div>
 </div>
 
-${qaPanelHtml}
-${docsQaAssets.panelHtml}
+${askAssets.panelHtml}
 ${propertyDocsPanelHtml}
 ${poweredByFooter}
 ${
@@ -1117,6 +919,8 @@ ${
     ? `<script>window.__PROPERTY_EXTRACTIONS__=${safeJsonScriptLiteral(propertyDocsData)};</script>`
     : ""
 }
+${hasQA ? `<script>window.__QA_DATABASE__=${safeJsonScriptLiteral(qaDatabase)};</script>` : ""}
+${askAssets.moduleScript}
 <script>
 (function(){
 var C=JSON.parse(atob("${configB64}"));
@@ -1394,22 +1198,23 @@ function renderPropertyDocs(i){
   body.innerHTML=parts.join("");
 }
 
-// ── Docs Q&A (Phase 5): three-tier answer pipeline, fully local.
-//    Tier 1 — cosine over pre-embedded canonical Q&As derived from
-//      structured fields. Deterministic, high-precision.
-//    Tier 2 — Orama hybrid (BM25 + vector) search over chunks. Uses
-//      per-chunk embeddings baked into the tour HTML.
-//    Tier 3 — BM25-only fallback for extraction rows that predate
-//      Phase 5 and therefore lack embeddings.
+// ── Unified Ask pipeline: fans out across the host-curated qaDatabase
+//    AND per-property doc extractions. Single panel, single button.
+//    Tier 1 — cosine over pre-embedded canonical Q&As from doc extractions.
+//    Tier 2 — hybrid Orama search over the host-curated qaDatabase
+//             (anchor-link answers).
+//    Tier 3 — hybrid (or BM25 fallback) over per-property doc chunks.
+//    The runtime picks the highest-scoring result across all tiers.
 //    All embedding / search happens client-side; no LLM at view time.
 var __docsQa={
   initPromise:null,
   oramaModule:null,
   embedPipeline:null,
   MODE_HYBRID:null,
-  db:null,
-  mode:null,            // "hybrid" | "bm25"
-  canonicalQAs:[],      // [{id, field, question, answer, source_anchor_id, embedding}]
+  db:null,                // per-property docs DB
+  qaDb:null,              // global host-curated qaDatabase DB
+  mode:null,              // "hybrid" | "bm25" (for docs DB)
+  canonicalQAs:[],        // [{id, field, question, answer, source_anchor_id, embedding}]
   currentIndexKey:null,
   input:null,
   send:null,
@@ -1423,14 +1228,26 @@ var __docsQa={
 // the Phase 3 baseline so we never regress on recall.
 var __DQA_TIER1_THRESHOLD=0.72;
 
-function __dqaAppendMsg(text,role,source){
+function __dqaAppendMsg(text,role,source,anchorId){
   if(!__docsQa.messages) return;
   var div=document.createElement("div");
-  div.className="dqa-msg "+role;
+  div.className="ask-msg "+role;
   div.textContent=text;
-  if(source){
+  if(role==="assistant"&&anchorId){
+    // Curated qaDatabase hits — clickable scroll-to-anchor link.
+    var link=document.createElement("span");
+    link.className="source-link";
+    link.textContent="View source: "+String(anchorId).replace(/-/g," ");
+    link.onclick=function(){
+      var el=document.getElementById(anchorId);
+      if(el){el.scrollIntoView({behavior:"smooth",block:"center"});el.style.outline="2px solid ${accentColor}";setTimeout(function(){el.style.outline="none";},3000);}
+    };
+    div.appendChild(document.createElement("br"));
+    div.appendChild(link);
+  }else if(source){
+    // Docs hits — plain source label.
     var tag=document.createElement("div");
-    tag.className="dqa-src";
+    tag.className="ask-src";
     tag.textContent="from: "+source;
     div.appendChild(tag);
   }
@@ -1546,7 +1363,7 @@ async function __dqaEmbedQuery(q){
     var out=await __docsQa.embedPipeline(q,{pooling:"mean",normalize:true});
     return Array.from(out.data);
   }catch(err){
-    console.warn("docs-qa query embed failed:",err);
+    console.warn("ask: query embed failed:",err);
     return null;
   }
 }
@@ -1563,16 +1380,37 @@ function __dqaTier1(queryVec){
   }
   return null;
 }
+async function __askBuildCuratedDb(){
+  // Build the host-curated qaDatabase Orama DB once. The data is the same
+  // regardless of which property tab is active.
+  if(__docsQa.qaDb||!window.__ASK_HAS_QA__) return;
+  var om=__docsQa.oramaModule;
+  if(!om) return;
+  var data=window.__QA_DATABASE__||[];
+  if(!data.length) return;
+  __docsQa.qaDb=await om.create({
+    schema:{id:"string",question:"string",answer:"string",source_anchor_id:"string",embedding:"vector[384]"}
+  });
+  for(var i=0;i<data.length;i++){
+    var entry=data[i];
+    await om.insert(__docsQa.qaDb,{
+      id:entry.id,
+      question:entry.question,
+      answer:entry.answer,
+      source_anchor_id:entry.source_anchor_id,
+      embedding:entry.embedding
+    });
+  }
+}
 async function __dqaInit(){
   if(__docsQa.initPromise) return __docsQa.initPromise;
-  __docsQa.input=document.getElementById("docs-qa-input");
-  __docsQa.send=document.getElementById("docs-qa-send");
-  __docsQa.messages=document.getElementById("docs-qa-messages");
+  __docsQa.input=document.getElementById("ask-input");
+  __docsQa.send=document.getElementById("ask-send");
+  __docsQa.messages=document.getElementById("ask-messages");
   if(!__docsQa.input||!__docsQa.send) return;
   __docsQa.initPromise=(async function(){
     // Load Orama first (tiny), then transformers.js (heavy, WASM + ONNX
-    // weights). Transformers is cached across the Q&A surface by URL so
-    // a second import() here is instant after the first.
+    // weights). One shared download for both knowledge sources.
     var oramaModule=await import("https://cdn.jsdelivr.net/npm/@orama/orama@3.0.0/+esm");
     __docsQa.oramaModule=oramaModule;
     __docsQa.MODE_HYBRID=oramaModule.MODE_HYBRID_SEARCH;
@@ -1596,32 +1434,56 @@ async function __dqaInit(){
       __docsQa.embedPipeline=pipe;
     }catch(err){
       // Network or WASM failure — graceful degradation to BM25-only.
-      console.warn("docs-qa transformers load failed, falling back to BM25:",err);
+      console.warn("ask: transformers load failed, falling back to BM25:",err);
       __docsQa.embedPipeline=null;
     }
   })();
   await __docsQa.initPromise;
-  await __dqaRebuildIndex(current);
-  __docsQa.input.placeholder="Ask about this property's docs\u2026";
+  // Build both indexes (whichever apply to this presentation).
+  if(window.__ASK_HAS_DOCS__) await __dqaRebuildIndex(current);
+  await __askBuildCuratedDb();
+  __docsQa.input.placeholder="Ask a question about this property\u2026";
   __docsQa.input.disabled=false;
   __docsQa.send.disabled=false;
   async function handleAsk(){
     var q=(__docsQa.input.value||"").trim();
-    if(!q||!__docsQa.db) return;
+    if(!q) return;
     __docsQa.input.value="";
-    __dqaAppendMsg(q,"user",null);
+    __dqaAppendMsg(q,"user",null,null);
     __docsQa.input.disabled=true;
     __docsQa.send.disabled=true;
     try{
-      // Embed the query once; tiers 1 + 2 share the vector.
+      // Embed the query once; all tiers share the vector.
       var queryVec=await __dqaEmbedQuery(q);
 
       // Tier 1 — canonical-QA cosine (deterministic, templated).
       var tier1=__dqaTier1(queryVec);
-      if(tier1){
-        __dqaAppendMsg(tier1.answer,"assistant",tier1.source);
-      }else{
-        // Tier 2 (hybrid) or Tier 3 (BM25) via Orama.
+      var tier1Score=tier1?tier1.score:-1;
+
+      // Tier 2 — hybrid Orama over the host-curated qaDatabase.
+      var tier2=null;
+      if(__docsQa.qaDb&&queryVec){
+        try{
+          var qaRes=await __docsQa.oramaModule.search(__docsQa.qaDb,{
+            mode:__docsQa.MODE_HYBRID,
+            term:q,
+            vector:{value:queryVec,property:"embedding"},
+            limit:1,
+            similarity:0
+          });
+          var qaHits=(qaRes&&qaRes.hits)||[];
+          if(qaHits.length>0&&qaHits[0].score>0.3){
+            var qaDoc=qaHits[0].document;
+            tier2={answer:qaDoc.answer,anchorId:qaDoc.source_anchor_id,score:qaHits[0].score};
+          }
+        }catch(qaErr){
+          console.warn("ask: curated qa search failed:",qaErr);
+        }
+      }
+
+      // Tier 3 — hybrid (or BM25) over per-property doc chunks.
+      var tier3=null;
+      if(__docsQa.db){
         var searchArgs;
         if(__docsQa.mode==="hybrid"&&queryVec){
           searchArgs={
@@ -1635,18 +1497,38 @@ async function __dqaInit(){
         }else{
           searchArgs={term:q,properties:["content"],limit:1};
         }
-        var res=await __docsQa.oramaModule.search(__docsQa.db,searchArgs);
-        var hits=(res&&res.hits)||[];
-        if(hits.length>0){
-          var hit=hits[0].document;
-          __dqaAppendMsg(String(hit.content||""),"assistant",String(hit.source||""));
-        }else{
-          __dqaAppendMsg("I couldn't find that in the docs for this property. Try rephrasing or switch to another property.","assistant",null);
+        try{
+          var res=await __docsQa.oramaModule.search(__docsQa.db,searchArgs);
+          var hits=(res&&res.hits)||[];
+          if(hits.length>0){
+            var hit=hits[0].document;
+            tier3={content:String(hit.content||""),source:String(hit.source||""),score:hits[0].score};
+          }
+        }catch(docsErr){
+          console.warn("ask: docs search failed:",docsErr);
         }
       }
+
+      // Pick the highest-scoring result. Tier 1 wins outright when it
+      // crossed its threshold (deterministic canonical match).
+      if(tier1){
+        __dqaAppendMsg(tier1.answer,"assistant",tier1.source,null);
+      }else{
+        var t2=tier2?tier2.score:-1;
+        var t3=tier3?tier3.score:-1;
+        if(tier2&&t2>=t3){
+          __dqaAppendMsg(tier2.answer,"assistant",null,tier2.anchorId);
+        }else if(tier3){
+          __dqaAppendMsg(tier3.content,"assistant",tier3.source,null);
+        }else{
+          __dqaAppendMsg("I couldn't find that for this property. Try rephrasing, or reach out via Contact.","assistant",null,null);
+        }
+      }
+      // Suppress unused-var lint for tier1Score (kept for future tuning).
+      void tier1Score;
     }catch(err){
-      console.error("docs-qa search failed:",err);
-      __dqaAppendMsg("Search failed. Please try again.","assistant",null);
+      console.error("ask: search failed:",err);
+      __dqaAppendMsg("Search failed. Please try again.","assistant",null,null);
     }
     __docsQa.input.disabled=false;
     __docsQa.send.disabled=false;
@@ -1655,8 +1537,8 @@ async function __dqaInit(){
   __docsQa.send.addEventListener("click",handleAsk);
   __docsQa.input.addEventListener("keydown",function(e){if(e.key==="Enter") handleAsk();});
 }
-window.__openDocsQa=function(){
-  var panel=document.getElementById("docs-qa-panel");
+window.__openAsk=function(){
+  var panel=document.getElementById("ask-panel");
   if(!panel) return;
   panel.classList.add("open");
   __dqaInit();
@@ -1672,12 +1554,12 @@ function load(i){
   // Reset carousel context for new property
   carouselMedia=props[i].multimedia||[];
   carouselIndex=0;
-  // Reset Docs Q&A state so next open re-indexes for this property.
+  // Reset Ask state so next open re-indexes docs for this property.
   __docsQa.currentIndexKey=null;
   if(__docsQa.messages){
-    __docsQa.messages.innerHTML='<div class="dqa-msg assistant">Switched to '+escapeText(props[i].name||"property")+'. Ask me something.</div>';
+    __docsQa.messages.innerHTML='<div class="ask-msg assistant">Switched to '+escapeText(props[i].name||"property")+'. Ask me something.</div>';
   }
-  if(__docsQa.initPromise){ __dqaRebuildIndex(i); }
+  if(__docsQa.initPromise&&window.__ASK_HAS_DOCS__){ __dqaRebuildIndex(i); }
 }
 props.forEach(function(p,i){
   var btn=document.createElement("button");
@@ -1689,14 +1571,14 @@ props.forEach(function(p,i){
 if(props.length>1) tabsEl.classList.add("multi");
 if(props.length>0) load(0);
 
-// Pre-warm the docs-qa pipeline after the Matterport iframe has finished
-// its initial load. Gated on the panel actually existing so tours with
-// no extractions skip the ~23 MB model download. requestIdleCallback
-// keeps the work off the critical path; a short setTimeout covers
-// browsers (Safari) that haven't shipped it yet.
+// Pre-warm the Ask pipeline after the Matterport iframe has finished
+// its initial load. Gated on the panel actually existing so tours
+// without QA or doc extractions skip the ~23 MB model download.
+// requestIdleCallback keeps the work off the critical path; a short
+// setTimeout covers browsers (Safari) that haven't shipped it yet.
 function __dqaPrewarm(){
-  if(!document.getElementById("docs-qa-panel")) return;
-  __dqaInit().catch(function(err){console.warn("docs-qa prewarm failed:",err);});
+  if(!document.getElementById("ask-panel")) return;
+  __dqaInit().catch(function(err){console.warn("ask prewarm failed:",err);});
 }
 if(frame){
   frame.addEventListener("load",function(){
@@ -1709,7 +1591,6 @@ if(frame){
 }
 })();
 </script>
-${qaModuleScript}
 </body>
 </html>`;
 
