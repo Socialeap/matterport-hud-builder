@@ -486,7 +486,11 @@ export const generatePresentation = createServerFn({ method: "POST" })
     const hudBgColor = overrides.hudBgColor || brandingData?.hud_bg_color || "#1a1a2e";
     const gateLabel = overrides.gateLabel || brandingData?.gate_label || "Enter";
     const isPro = brandingData?.tier === "pro";
-    const logoUrl = brandingData?.logo_url || "";
+    // Prefer client-uploaded brand assets (in overrides) over the MSP defaults.
+    // Empty/missing overrides cleanly fall back to no logo/favicon — we do NOT
+    // bake in the MSP's brand assets behind the client's back.
+    const logoUrl = overrides.logoUrl || "";
+    const faviconUrl = overrides.faviconUrl || "";
 
     // Build iframe URLs for each property
     const propertyEntries = properties
