@@ -6,7 +6,7 @@ import { checkDemoPublished } from "@/lib/sandbox-demo.functions";
 import { Check, X, Link2, Palette, Download, Sparkles, Menu } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+
 
 const fetchBrandingBySlug = createServerFn({ method: "GET" })
   .inputValidator((data: { slug: string }) => data)
@@ -612,7 +612,41 @@ function PortalHeader({
               {link.label}
             </a>
           ))}
+          <Link
+            to="/p/$slug/builder"
+            params={{ slug }}
+            className="text-sm font-medium text-white/90 drop-shadow transition-colors hover:text-white"
+            onMouseEnter={(e) => (e.currentTarget.style.color = accent)}
+            onMouseLeave={(e) => (e.currentTarget.style.color = "")}
+          >
+            Builder
+          </Link>
         </nav>
+
+        {/* Far right: signed-in viewer avatar (only shown when authenticated) */}
+        {viewer && (
+          <div
+            className="hidden items-center sm:flex"
+            title={viewerLabel || "Signed in"}
+            aria-label={viewerLabel ? `Signed in as ${viewerLabel}` : "Signed in"}
+          >
+            {viewer.avatarUrl ? (
+              <img
+                src={viewer.avatarUrl}
+                alt={viewerLabel || "Profile"}
+                className="h-9 w-9 rounded-full border-2 border-white/40 object-cover shadow-md"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <div
+                className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-white/40 text-xs font-bold text-white shadow-md"
+                style={{ backgroundColor: accent }}
+              >
+                {viewerInitials || "U"}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Mobile: hamburger menu */}
         <Sheet>
@@ -650,6 +684,13 @@ function PortalHeader({
                   {link.label}
                 </a>
               ))}
+              <Link
+                to="/p/$slug/builder"
+                params={{ slug }}
+                className="rounded-lg px-4 py-3 text-base font-medium text-slate-800 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-slate-800"
+              >
+                Builder
+              </Link>
             </div>
           </SheetContent>
         </Sheet>
