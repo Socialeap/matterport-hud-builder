@@ -521,6 +521,7 @@ function PortalHeader({
   hudBgColor,
   demoPublished,
   onScrollTo,
+  viewer,
 }: {
   branding: { brand_name: string; logo_url: string | null };
   slug: string;
@@ -528,16 +529,31 @@ function PortalHeader({
   hudBgColor: string;
   demoPublished: boolean;
   onScrollTo: (id: string) => (e: React.MouseEvent<HTMLAnchorElement>) => void;
+  viewer: {
+    avatarUrl: string | null;
+    displayName: string | null;
+    email: string | null;
+  } | null;
 }) {
   const navLinks = [
     { id: "steps", label: "Steps" },
     { id: "compare", label: "Compare" },
     { id: "pricing", label: "Pricing" },
-    { id: "builder-start", label: "Builder" },
   ];
 
   // Tint header with MSP Portal background color at ~80% opacity (cc hex alpha)
   const headerBg = `${hudBgColor}cc`;
+
+  // Compute initials for the avatar fallback.
+  const viewerLabel = viewer?.displayName || viewer?.email || "";
+  const viewerInitials = viewerLabel
+    ? viewerLabel
+        .split(/\s+|@/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((s) => s[0]!.toUpperCase())
+        .join("") || "U"
+    : "";
 
   return (
     <header
