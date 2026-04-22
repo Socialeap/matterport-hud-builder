@@ -292,10 +292,54 @@ function stripFences(raw: string): string {
   return raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
 }
 
+/** Pull the first balanced {...} block out of a noisy LLM response. */
+function extractJsonObject(raw: string): Record<string, unknown> | null {
+  if (!raw) return null;
+  const cleaned = stripFences(raw);
+  // Quick path
+  try {
+    const v = JSON.parse(cleaned);
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+      return v as Record<string, unknown>;
+    }
+  } catch { /* fall through to balanced scan */ }
+  // Balanced-brace fallback (handles trailing prose / truncation pre-LAST }).
+  const start = cleaned.indexOf("{");
+  if (start < 0) return null;
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = start; i < cleaned.length; i++) {
+    const ch = cleaned[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === "\\") esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) {
+        try {
+          const v = JSON.parse(cleaned.slice(start, i + 1));
+          if (v && typeof v === "object" && !Array.isArray(v)) {
+            return v as Record<string, unknown>;
+          }
+          return null;
+        } catch { return null; }
+      }
+    }
+  }
+  return null;
+}
+
 async function structureFields(
   text: string,
   apiKey: string,
-): Promise<Record<string, unknown>> {
+  domain: string,
+): Promise<{ fields: Record<string, unknown>; llm_stage: string }> {
   const truncated = text.length > MAX_TEXT_CHARS ? text.slice(0, MAX_TEXT_CHARS) : text;
   try {
     const resp = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -310,28 +354,36 @@ async function structureFields(
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: truncated },
         ],
-        max_tokens: 1500,
+        max_tokens: 4000,
         temperature: 0.1,
         response_format: { type: "json_object" },
       }),
     });
     if (!resp.ok) {
-      console.warn("[extract-url-content] openai non-2xx:", resp.status);
-      return {};
+      const body = await resp.text().catch(() => "");
+      console.warn(`[extract-url-content] ${domain} openai_${resp.status}: ${body.slice(0, 200)}`);
+      return { fields: {}, llm_stage: `openai_${resp.status}` };
     }
     const completion = (await resp.json()) as {
-      choices: Array<{ message: { content: string } }>;
+      choices?: Array<{ message?: { content?: string }; finish_reason?: string }>;
     };
     const raw = completion.choices?.[0]?.message?.content ?? "";
-    if (!raw.trim()) return {};
-    const parsed = JSON.parse(stripFences(raw)) as unknown;
-    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>;
+    const finish = completion.choices?.[0]?.finish_reason ?? "stop";
+    if (!raw.trim()) {
+      return { fields: {}, llm_stage: "empty_response" };
     }
-    return {};
+    const parsed = extractJsonObject(raw);
+    if (!parsed) {
+      console.warn(
+        `[extract-url-content] ${domain} json_parse_failed (finish=${finish}, len=${raw.length})`,
+      );
+      return { fields: {}, llm_stage: `parse_failed_${finish}` };
+    }
+    return { fields: parsed, llm_stage: finish === "length" ? "ok_truncated" : "ok" };
   } catch (err) {
-    console.warn("[extract-url-content] structuring failed:", err);
-    return {};
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[extract-url-content] ${domain} structuring exception: ${msg}`);
+    return { fields: {}, llm_stage: `exception:${msg.slice(0, 80)}` };
   }
 }
 
@@ -352,6 +404,10 @@ async function ensureUrlTemplate(
     .maybeSingle();
   if (existing?.id) return existing.id as string;
 
+  // NOTE: vault_templates.extractor has a CHECK constraint allowing only
+  // 'pdfjs_heuristic' or 'donut'. We use 'pdfjs_heuristic' here as the
+  // template-row metadata; the actual URL extraction logic is selected by
+  // the calling edge function and recorded in property_extractions.extractor.
   const { data: inserted, error } = await serviceClient
     .from("vault_templates")
     .insert({
@@ -359,7 +415,7 @@ async function ensureUrlTemplate(
       label,
       doc_kind: "web_url",
       field_schema: { type: "object", properties: {}, required: [] },
-      extractor: "web_url",
+      extractor: "pdfjs_heuristic",
       is_active: true,
     })
     .select("id")
@@ -371,13 +427,26 @@ async function ensureUrlTemplate(
   return inserted.id as string;
 }
 
+// ── Structured error helper ────────────────────────────────────────────
+type Stage = "auth" | "input" | "freeze" | "asset" | "ssrf" | "fetch"
+  | "parse" | "thin_content" | "template" | "llm" | "persist";
+
+function fail(
+  stage: Stage,
+  detail: string,
+  status: number,
+  diagnostics: Record<string, unknown> = {},
+) {
+  return jsonResponse({ ok: false, stage, detail, diagnostics }, status);
+}
+
 // ── Handler ────────────────────────────────────────────────────────────
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
   if (req.method !== "POST") {
-    return jsonResponse({ error: "method_not_allowed" }, 405);
+    return fail("input", "method_not_allowed", 405);
   }
 
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
@@ -385,19 +454,19 @@ serve(async (req) => {
   const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
   const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY || !ANON_KEY) {
-    return jsonResponse({ error: "supabase_env_missing" }, 500);
+    return fail("auth", "supabase_env_missing", 500);
   }
 
   const authHeader = req.headers.get("Authorization") ?? "";
   const jwt = authHeader.replace(/^Bearer\s+/i, "");
-  if (!jwt) return jsonResponse({ error: "unauthorized" }, 401);
+  if (!jwt) return fail("auth", "unauthorized_no_jwt", 401);
 
   const userClient = createClient(SUPABASE_URL, ANON_KEY, {
     global: { headers: { Authorization: authHeader } },
   });
   const { data: userData, error: userErr } = await userClient.auth.getUser();
   if (userErr || !userData.user) {
-    return jsonResponse({ error: "unauthorized" }, 401);
+    return fail("auth", "unauthorized_invalid_jwt", 401);
   }
   const userId = userData.user.id;
 
@@ -407,10 +476,10 @@ serve(async (req) => {
   try {
     body = (await req.json()) as RequestBody;
   } catch {
-    return jsonResponse({ error: "invalid_json" }, 400);
+    return fail("input", "invalid_json", 400);
   }
   if (!body.vault_asset_id || !body.property_uuid || !body.url) {
-    return jsonResponse({ error: "missing_fields" }, 400);
+    return fail("input", "missing_fields", 400);
   }
 
   // ── 1. Freeze check ──────────────────────────────────────────────────
@@ -420,10 +489,7 @@ serve(async (req) => {
     .eq("property_uuid", body.property_uuid)
     .maybeSingle();
   if (freeze) {
-    return jsonResponse(
-      { error: "lus_frozen", property_uuid: body.property_uuid },
-      423,
-    );
+    return fail("freeze", "lus_frozen", 423, { property_uuid: body.property_uuid });
   }
 
   // ── 2. Asset ownership / authorisation ───────────────────────────────
@@ -433,7 +499,7 @@ serve(async (req) => {
     .eq("id", body.vault_asset_id)
     .single();
   if (assetErr || !asset) {
-    return jsonResponse({ error: "asset_not_found" }, 404);
+    return fail("asset", "asset_not_found", 404);
   }
 
   let authorised = asset.provider_id === userId;
@@ -446,38 +512,45 @@ serve(async (req) => {
       .maybeSingle();
     authorised = !!link;
   }
-  if (!authorised) return jsonResponse({ error: "forbidden" }, 403);
+  if (!authorised) return fail("asset", "forbidden", 403);
 
   if (asset.category_type !== "property_doc") {
-    return jsonResponse({ error: "wrong_category" }, 400);
+    return fail("asset", "wrong_category", 400, { category: asset.category_type });
   }
 
   // ── 3. Validate URL (SSRF guard) ─────────────────────────────────────
   const urlCheck = validateUrl(body.url);
   if (!urlCheck.ok) {
-    return jsonResponse({ error: "invalid_url", reason: urlCheck.reason }, 400);
+    return fail("ssrf", urlCheck.reason, 400);
   }
+  const domain = urlCheck.url.hostname;
 
   // ── 4. Fetch HTML ────────────────────────────────────────────────────
   let html: string;
+  let finalUrl: string;
   try {
     const result = await fetchHtmlSafe(urlCheck.url.toString());
     html = result.html;
+    finalUrl = result.finalUrl;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return jsonResponse({ error: "fetch_failed", detail: msg }, 502);
+    console.warn(`[extract-url-content] ${domain} stage=fetch detail=${msg}`);
+    return fail("fetch", msg, 502, { domain });
   }
 
   // ── 5. HTML → text + chunks ──────────────────────────────────────────
   const { text, sections } = htmlToText(html);
-  console.info(
-    `[extract-url-content] ${urlCheck.url.hostname}: text_len=${text.length}`,
-  );
+  const lowContent = text.length < 200;
   if (!text || text.length < 40) {
-    return jsonResponse(
-      { error: "thin_content", text_length: text.length },
-      422,
+    console.warn(
+      `[extract-url-content] ${domain} stage=thin_content text_len=${text.length}`,
     );
+    return fail("thin_content", "page_text_too_short", 422, {
+      domain,
+      html_length: html.length,
+      text_length: text.length,
+      final_url: finalUrl,
+    });
   }
   const chunks = buildChunks(text, sections);
 
@@ -496,17 +569,19 @@ serve(async (req) => {
     activeTemplateId = await ensureUrlTemplate(
       serviceClient,
       asset.provider_id,
-      urlCheck.url.hostname,
+      domain,
     );
   }
   if (!activeTemplateId) {
-    return jsonResponse({ error: "template_resolve_failed" }, 500);
+    return fail("template", "template_resolve_failed", 500, { domain });
   }
 
   // ── 7. Structure fields with the LLM (best-effort) ───────────────────
-  const fields = OPENAI_API_KEY
-    ? await structureFields(text, OPENAI_API_KEY)
-    : {};
+  const llmResult = OPENAI_API_KEY
+    ? await structureFields(text, OPENAI_API_KEY, domain)
+    : { fields: {} as Record<string, unknown>, llm_stage: "no_api_key" };
+  const fields = llmResult.fields;
+  const fieldKeys = Object.keys(fields);
 
   // ── 8. Persist ───────────────────────────────────────────────────────
   const { data: upserted, error: upErr } = await serviceClient
@@ -527,10 +602,15 @@ serve(async (req) => {
     .select("id")
     .single();
   if (upErr || !upserted) {
-    return jsonResponse(
-      { error: "persist_failed", detail: upErr?.message ?? "unknown" },
-      500,
+    console.error(
+      `[extract-url-content] ${domain} stage=persist detail=${upErr?.message ?? "unknown"}`,
     );
+    return fail("persist", upErr?.message ?? "upsert_returned_no_row", 500, {
+      domain,
+      text_length: text.length,
+      chunks: chunks.length,
+      field_keys: fieldKeys.length,
+    });
   }
 
   await serviceClient
@@ -538,10 +618,22 @@ serve(async (req) => {
     .update({ embedding_status: "pending" })
     .eq("id", body.vault_asset_id);
 
+  console.info(
+    `[extract-url-content] ${domain} text_len=${text.length} fields=${fieldKeys.length} chunks=${chunks.length} llm=${llmResult.llm_stage} ok`,
+  );
+
   return jsonResponse({
+    ok: true,
     extraction_id: upserted.id,
     fields,
     chunks_indexed: chunks.length,
     embedding_status: "pending" as const,
+    diagnostics: {
+      domain,
+      text_length: text.length,
+      field_keys: fieldKeys.length,
+      llm_stage: llmResult.llm_stage,
+      low_content_warning: lowContent,
+    },
   });
 });

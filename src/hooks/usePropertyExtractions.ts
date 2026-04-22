@@ -2,9 +2,20 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
-import { invokeExtraction, invokeUrlExtraction } from "@/lib/extraction/client";
+import {
+  ExtractionError,
+  invokeExtraction,
+  invokeUrlExtraction,
+} from "@/lib/extraction/client";
 import { ensureExtractionEmbeddings } from "@/lib/rag/extraction-hydrator";
 import type { PropertyChunk } from "@/lib/rag/types";
+
+export interface ExtractionFailure {
+  stage: string;
+  detail: string;
+  status: number;
+  at: number;
+}
 
 export interface PropertyExtraction {
   id: string;
@@ -24,12 +35,36 @@ export function usePropertyExtractions(propertyUuid: string | null) {
   const [loading, setLoading] = useState(false);
   const [running, setRunning] = useState(false);
   const [backfilling, setBackfilling] = useState(false);
+  const [failuresByAsset, setFailuresByAsset] = useState<
+    Record<string, ExtractionFailure>
+  >({});
 
-  // Track which propertyUuids have already been backfill-checked this
-  // session so we don't re-spin the embedding worker on every refresh.
-  // Already-enriched rows fast-path in ensureExtractionEmbeddings, but
-  // skipping the extra SELECT + re-fetch keeps tab switches snappy.
   const backfilledRef = useRef<Set<string>>(new Set());
+
+  const recordFailure = useCallback(
+    (vault_asset_id: string, err: unknown) => {
+      const f: ExtractionFailure =
+        err instanceof ExtractionError
+          ? { stage: err.stage, detail: err.detail, status: err.status, at: Date.now() }
+          : {
+              stage: "unknown",
+              detail: err instanceof Error ? err.message : String(err),
+              status: 0,
+              at: Date.now(),
+            };
+      setFailuresByAsset((prev) => ({ ...prev, [vault_asset_id]: f }));
+      return f;
+    },
+    [],
+  );
+
+  const clearFailure = useCallback((vault_asset_id: string) => {
+    setFailuresByAsset((prev) => {
+      if (!(vault_asset_id in prev)) return prev;
+      const { [vault_asset_id]: _drop, ...rest } = prev;
+      return rest;
+    });
+  }, []);
 
   const fetchRows = useCallback(async (uuid: string) => {
     const { data, error } = await supabase
@@ -114,10 +149,8 @@ export function usePropertyExtractions(propertyUuid: string | null) {
           property_uuid: propertyUuid,
           saved_model_id: input.saved_model_id ?? null,
         });
+        clearFailure(input.vault_asset_id);
         toast.success(`Extracted ${res.chunks_indexed} chunks`);
-        // Enrich the new extraction with chunk embeddings + canonical
-        // Q&As so the delivered tour runs a zero-LLM answer pipeline.
-        // Non-fatal on failure — the tour falls back to BM25-only Q&A.
         try {
           await ensureExtractionEmbeddings([propertyUuid]);
         } catch (err) {
@@ -126,14 +159,14 @@ export function usePropertyExtractions(propertyUuid: string | null) {
         await refresh();
         return res;
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        toast.error(`Extraction failed: ${msg}`);
+        const f = recordFailure(input.vault_asset_id, err);
+        toast.error(`Extraction failed (${f.stage}): ${f.detail}`);
         return null;
       } finally {
         setRunning(false);
       }
     },
-    [propertyUuid, refresh],
+    [propertyUuid, refresh, clearFailure, recordFailure],
   );
 
   const extractFromUrl = useCallback(
@@ -156,6 +189,7 @@ export function usePropertyExtractions(propertyUuid: string | null) {
           template_id: input.template_id ?? null,
           saved_model_id: input.saved_model_id ?? null,
         });
+        clearFailure(input.vault_asset_id);
         toast.success(`Extracted ${res.chunks_indexed} chunks from URL`);
         try {
           await ensureExtractionEmbeddings([propertyUuid]);
@@ -165,14 +199,14 @@ export function usePropertyExtractions(propertyUuid: string | null) {
         await refresh();
         return res;
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        toast.error(`URL extraction failed: ${msg}`);
+        const f = recordFailure(input.vault_asset_id, err);
+        toast.error(`URL extraction failed (${f.stage}): ${f.detail}`);
         return null;
       } finally {
         setRunning(false);
       }
     },
-    [propertyUuid, refresh],
+    [propertyUuid, refresh, clearFailure, recordFailure],
   );
 
   const remove = useCallback(

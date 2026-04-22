@@ -34,24 +34,39 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
+type Stage = "auth" | "input" | "freeze" | "asset" | "no_storage_path"
+  | "template" | "download" | "extraction" | "persist";
+
+function fail(
+  stage: Stage,
+  detail: string,
+  status: number,
+  diagnostics: Record<string, unknown> = {},
+) {
+  return jsonResponse(
+    { ok: false, stage, detail, error: detail, diagnostics },
+    status,
+  );
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
   if (req.method !== "POST") {
-    return jsonResponse({ error: "method_not_allowed" }, 405);
+    return fail("input", "method_not_allowed", 405);
   }
 
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
   const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY || !ANON_KEY) {
-    return jsonResponse({ error: "supabase_env_missing" }, 500);
+    return fail("auth", "supabase_env_missing", 500);
   }
 
   const authHeader = req.headers.get("Authorization") ?? "";
   const jwt = authHeader.replace(/^Bearer\s+/i, "");
-  if (!jwt) return jsonResponse({ error: "unauthorized" }, 401);
+  if (!jwt) return fail("auth", "unauthorized_no_jwt", 401);
 
   // Authed client for RLS-aware checks (who is the caller?).
   const userClient = createClient(SUPABASE_URL, ANON_KEY, {
@@ -59,7 +74,7 @@ serve(async (req) => {
   });
   const { data: userData, error: userErr } = await userClient.auth.getUser();
   if (userErr || !userData.user) {
-    return jsonResponse({ error: "unauthorized" }, 401);
+    return fail("auth", "unauthorized_invalid_jwt", 401);
   }
   const userId = userData.user.id;
 
@@ -70,10 +85,10 @@ serve(async (req) => {
   try {
     body = (await req.json()) as RequestBody;
   } catch {
-    return jsonResponse({ error: "invalid_json" }, 400);
+    return fail("input", "invalid_json", 400);
   }
   if (!body.vault_asset_id || !body.template_id || !body.property_uuid) {
-    return jsonResponse({ error: "missing_fields" }, 400);
+    return fail("input", "missing_fields", 400);
   }
 
   // 1 ─ Freeze check
@@ -83,21 +98,16 @@ serve(async (req) => {
     .eq("property_uuid", body.property_uuid)
     .maybeSingle();
   if (freeze) {
-    return jsonResponse(
-      { error: "lus_frozen", property_uuid: body.property_uuid },
-      423,
-    );
+    return fail("freeze" as Stage, "lus_frozen", 423, { property_uuid: body.property_uuid });
   }
 
-  // 2 ─ Load asset. Authorise the caller as either:
-  //     (a) the provider that owns the asset, OR
-  //     (b) a client linked to that provider via client_providers.
+  // 2 ─ Load asset.
   const { data: asset, error: assetErr } = await serviceClient
     .from("vault_assets")
     .select("id, provider_id, storage_path, category_type, mime_type")
     .eq("id", body.vault_asset_id)
     .single();
-  if (assetErr || !asset) return jsonResponse({ error: "asset_not_found" }, 404);
+  if (assetErr || !asset) return fail("asset", "asset_not_found", 404);
 
   let authorised = asset.provider_id === userId;
   if (!authorised) {
@@ -110,25 +120,19 @@ serve(async (req) => {
     authorised = !!link;
   }
   if (!authorised) {
-    return jsonResponse({ error: "forbidden" }, 403);
+    return fail("asset", "forbidden", 403);
   }
 
   if (asset.category_type !== "property_doc") {
-    return jsonResponse({ error: "wrong_category" }, 400);
+    return fail("asset", "wrong_category", 400, { category: asset.category_type });
   }
   if (!asset.storage_path) {
-    return jsonResponse(
-      {
-        error: "no_storage_path",
-        hint: "use extract-url-content for URL-based assets",
-      },
-      400,
-    );
+    return fail("no_storage_path", "no_storage_path", 400, {
+      hint: "use extract-url-content for URL-based assets",
+    });
   }
 
-  // Template must belong to the same provider as the asset — no
-  // cross-tenant extractions even if the caller is a client bound
-  // to multiple providers.
+  // Template must belong to the same provider as the asset.
   const { data: template, error: tplErr } = await serviceClient
     .from("vault_templates")
     .select("*")
@@ -136,23 +140,32 @@ serve(async (req) => {
     .eq("provider_id", asset.provider_id)
     .single();
   if (tplErr || !template) {
-    return jsonResponse({ error: "template_not_found" }, 404);
+    return fail("template", "template_not_found", 404, {
+      template_id: body.template_id,
+    });
   }
 
-  // 3 ─ Download bytes. Storage path was written against the public
-  // `vault-assets` bucket pre-engine; docs uploaded via the new flow
-  // land in the private `property-docs` bucket. Try private first.
+  // 3 ─ Download bytes.
   let bytes: Uint8Array | null = null;
+  let bucketUsed = "";
   for (const bucket of ["property-docs", "vault-assets"]) {
     const { data, error } = await serviceClient.storage
       .from(bucket)
       .download(asset.storage_path);
     if (!error && data) {
       bytes = new Uint8Array(await data.arrayBuffer());
+      bucketUsed = bucket;
       break;
     }
   }
-  if (!bytes) return jsonResponse({ error: "download_failed" }, 502);
+  if (!bytes) {
+    console.error(
+      `[extract-property-doc] stage=download path=${asset.storage_path}`,
+    );
+    return fail("download", "download_failed", 502, {
+      storage_path: asset.storage_path,
+    });
+  }
 
   // 4 ─ Run extractor
   const provider = getProvider(template.extractor);
@@ -168,7 +181,14 @@ serve(async (req) => {
     chunks = result.chunks;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return jsonResponse({ error: "extraction_failed", detail: msg }, 500);
+    console.error(
+      `[extract-property-doc] stage=extraction extractor=${provider.id} detail=${msg}`,
+    );
+    return fail("extraction", msg, 500, {
+      extractor: provider.id,
+      mime_type: asset.mime_type,
+      bytes: bytes.byteLength,
+    });
   }
 
   // 5 ─ Upsert property_extractions
@@ -191,23 +211,36 @@ serve(async (req) => {
     .single();
 
   if (upErr || !upserted) {
-    return jsonResponse(
-      { error: "persist_failed", detail: upErr?.message ?? "unknown" },
-      500,
+    console.error(
+      `[extract-property-doc] stage=persist detail=${upErr?.message ?? "unknown"}`,
     );
+    return fail("persist", upErr?.message ?? "upsert_returned_no_row", 500, {
+      extractor: provider.id,
+      field_keys: Object.keys(fields).length,
+      chunks: chunks.length,
+    });
   }
 
-  // 6 ─ Flip embedding_status to pending so the client-side backfill
-  // picks it up on next mount.
+  // 6 ─ Flip embedding_status to pending.
   await serviceClient
     .from("vault_assets")
     .update({ embedding_status: "pending" })
     .eq("id", body.vault_asset_id);
 
+  console.info(
+    `[extract-property-doc] extractor=${provider.id} bucket=${bucketUsed} fields=${Object.keys(fields).length} chunks=${chunks.length} ok`,
+  );
+
   return jsonResponse({
+    ok: true,
     extraction_id: upserted.id,
     fields,
     chunks_indexed: chunks.length,
     embedding_status: "pending" as const,
+    diagnostics: {
+      extractor: provider.id,
+      field_keys: Object.keys(fields).length,
+      bucket: bucketUsed,
+    },
   });
 });
