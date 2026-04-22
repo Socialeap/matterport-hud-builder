@@ -237,6 +237,7 @@ function PortalPage() {
           hudBgColor={branding.hud_bg_color || "#0f172a"}
           demoPublished={demoPublished}
           onScrollTo={handleScrollTo}
+          viewer={viewer}
         />
 
         {/* HERO STAGE — image-backed cinematic hero */}
@@ -444,23 +445,30 @@ function PortalPage() {
           </div>
         </section>
 
-        {/* BUILDER ANCHOR */}
-        <section id="builder-start" className="scroll-mt-20 px-4 pb-8 pt-12 sm:px-6">
-          <div className="mx-auto max-w-6xl text-center">
+        {/* BUILDER CTA — links to dedicated /p/{slug}/builder route */}
+        <section id="builder-start" className="scroll-mt-20 px-4 pb-16 pt-12 sm:px-6">
+          <div className="mx-auto max-w-3xl text-center">
             <h2 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl dark:text-white">
-              Studio Presentation Builder
+              Ready to build?
             </h2>
             <p className="mt-3 text-slate-600 dark:text-slate-300">
-              Configure your 3D experience below. Your progress is saved as you work.
+              Open the Presentation Builder to configure your 3D experience. Your progress is saved as you work.
             </p>
             <div
               className="mx-auto mt-6 h-1 w-24 rounded-full"
               style={{ backgroundColor: accent }}
             />
+            <Link
+              to="/p/$slug/builder"
+              params={{ slug }}
+              className="mt-8 inline-flex items-center gap-2 rounded-full px-8 py-4 text-base font-semibold text-white shadow-2xl transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl"
+              style={{ backgroundColor: accent }}
+            >
+              <Sparkles className="size-5" />
+              Open the Builder →
+            </Link>
           </div>
         </section>
-
-        <HudBuilderSandbox branding={branding} />
       </div>
     </div>
   );
