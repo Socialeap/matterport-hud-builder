@@ -1228,14 +1228,26 @@ var __docsQa={
 // the Phase 3 baseline so we never regress on recall.
 var __DQA_TIER1_THRESHOLD=0.72;
 
-function __dqaAppendMsg(text,role,source){
+function __dqaAppendMsg(text,role,source,anchorId){
   if(!__docsQa.messages) return;
   var div=document.createElement("div");
-  div.className="dqa-msg "+role;
+  div.className="ask-msg "+role;
   div.textContent=text;
-  if(source){
+  if(role==="assistant"&&anchorId){
+    // Curated qaDatabase hits — clickable scroll-to-anchor link.
+    var link=document.createElement("span");
+    link.className="source-link";
+    link.textContent="View source: "+String(anchorId).replace(/-/g," ");
+    link.onclick=function(){
+      var el=document.getElementById(anchorId);
+      if(el){el.scrollIntoView({behavior:"smooth",block:"center"});el.style.outline="2px solid ${accentColor}";setTimeout(function(){el.style.outline="none";},3000);}
+    };
+    div.appendChild(document.createElement("br"));
+    div.appendChild(link);
+  }else if(source){
+    // Docs hits — plain source label.
     var tag=document.createElement("div");
-    tag.className="dqa-src";
+    tag.className="ask-src";
     tag.textContent="from: "+source;
     div.appendChild(tag);
   }
