@@ -685,24 +685,48 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Sandbox header */}
+      {/* Builder header — back button | MSP pill | Import/Export | client logo + name */}
       <header
-        className="border-b px-6 py-4"
+        className="border-b px-6 py-3"
         style={{ borderColor: `${accentColor}33` }}
       >
-        <div className="mx-auto flex max-w-7xl items-center justify-between">
-          <div className="flex items-center gap-3">
-            {logoPreview && (
-              <img src={logoPreview} alt="Logo" className="h-8 object-contain" />
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
+          {/* Far left: Back button */}
+          <Link
+            to="/p/$slug"
+            params={{ slug: backSlug }}
+            className="inline-flex h-9 items-center gap-1.5 rounded-md border border-input bg-background px-3 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+            aria-label="Back to Studio welcome page"
+          >
+            <ArrowLeft className="size-4" />
+            <span className="hidden sm:inline">Back</span>
+          </Link>
+
+          {/* MSP brand pill — sourced from saved branding (not editable client overrides) */}
+          <div
+            className="flex h-10 items-center gap-2 rounded-full border border-border bg-muted/40 px-2 pr-4 shadow-sm"
+          >
+            {branding.logo_url ? (
+              <img
+                src={branding.logo_url}
+                alt={`${branding.brand_name} logo`}
+                className="h-7 w-7 rounded-full object-cover"
+              />
+            ) : (
+              <div
+                className="flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold text-white"
+                style={{ backgroundColor: branding.accent_color || accentColor }}
+              >
+                {branding.brand_name?.[0]?.toUpperCase() ?? "S"}
+              </div>
             )}
-            <span className="text-lg font-bold text-foreground">
-              {brandName || "Property Tours"}
+            <span className="whitespace-nowrap text-sm font-semibold text-foreground">
+              {branding.brand_name}
             </span>
           </div>
-          <div className="flex items-center gap-3">
-            {userId && (
-              <span className="text-xs text-muted-foreground">Signed in</span>
-            )}
+
+          {/* Import + Export buttons */}
+          <div className="flex items-center gap-2">
             <input
               ref={importInputRef}
               type="file"
@@ -720,7 +744,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
               size="sm"
               onClick={() => importInputRef.current?.click()}
             >
-              Import Draft
+              Import
             </Button>
             <Button
               type="button"
@@ -728,11 +752,29 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
               size="sm"
               onClick={handleExportDraft}
             >
-              Export Draft
+              Export
             </Button>
-            {!isPro && (
-              <span className="text-xs text-muted-foreground">Powered by Transcendence Media</span>
+          </div>
+
+          {/* Far right: Client (Presentation) logo + name */}
+          <div className="ml-auto flex items-center gap-2 min-w-0">
+            {logoPreview ? (
+              <img
+                src={logoPreview}
+                alt="Presentation logo"
+                className="h-8 w-8 rounded-md object-contain"
+              />
+            ) : (
+              <div
+                className="flex h-8 w-8 items-center justify-center rounded-md text-xs font-bold text-white"
+                style={{ backgroundColor: accentColor }}
+              >
+                {(brandName || "P")[0]?.toUpperCase()}
+              </div>
             )}
+            <span className="hidden truncate text-sm font-semibold text-foreground sm:inline">
+              {brandName || "Untitled Presentation"}
+            </span>
           </div>
         </div>
       </header>
