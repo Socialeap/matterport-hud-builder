@@ -771,7 +771,7 @@ ${isPro ? "" : `/* Viewer above powered-by footer */
 #viewer{bottom:34px}`}
 
 /* ── Panel z-index overrides ───────────────────────────────────── */
-#docs-qa-panel,#property-docs{z-index:1500}
+#ask-panel,#property-docs{z-index:1500}
 /* Property-docs panel still anchored bottom-left; clear powered-by footer when present */
 #property-docs{bottom:${isPro ? "16" : "50"}px}
 
