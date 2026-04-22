@@ -56,7 +56,11 @@ interface Props {
  *     synthesise a hidden template, then extracts. Non-PDF formats use a
  *     synthetic empty schema and rely on chunk text for the Ask panel.
  */
-export function PropertyIntelligenceSection({ models, savedModelId }: Props) {
+export function PropertyIntelligenceSection({
+  models,
+  savedModelId,
+  onExtractionSuccess,
+}: Props) {
   const { templates, refresh: refreshTemplates } = useAvailableTemplates();
   const { isActive: lusActive, loading: lusLoading } = useLusLicense();
 
@@ -96,6 +100,7 @@ export function PropertyIntelligenceSection({ models, savedModelId }: Props) {
               templates={templates}
               savedModelId={savedModelId ?? null}
               onTemplatesChanged={refreshTemplates}
+              onExtractionSuccess={onExtractionSuccess}
             />
           ))}
         </ul>
