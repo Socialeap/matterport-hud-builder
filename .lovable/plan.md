@@ -1,155 +1,98 @@
 
 
-## URL-based property data ingestion for the Ask AI engine
+## Why "Ask AI" can't answer anything — audit + fix
 
-### Context check (so we don't break what's there)
+### What I confirmed by inspecting the live state
 
-Two assertions in your brief don't match the code I read — calling them out so we land on the same page:
+| Evidence | Conclusion |
+|---|---|
+| `property_extractions` table is **empty** (0 rows) | Neither URL nor PDF extraction has **ever** persisted a row, despite multiple `vault_assets` being registered |
+| 4 URL assets exist (Sleeper Magazine, 2× Wikipedia, 1 PDF), all with `embedding_status = NULL` | Step 8 of `extract-url-content` (the `embedding_status='pending'` flip) is never reached → the function is failing **before persistence** |
+| Generated `1535_Broadway…html` does **not** contain a `__PROPERTY_EXTRACTIONS__` script tag | At HTML build time `loadExtractionsByProperty` returned `{}` for both property tabs — confirming the empty table |
+| The runtime answers "There are 2 properties in this tour" | That string is from `property-qa-builder.ts` auto-generated curated `qaDatabase` — i.e. tier 2 fallback because tier 3 (docs) has zero data |
 
-1. **"The Add Property Doc modal already captures a Source URL."** It doesn't. Neither `PropertyDocsPanel` nor `PropertyIntelligenceSection` has a URL field, and `PropertyModel` has no `sourceUrl` either. We need to **add** the field, not reuse one.
-2. **"The extract-property-doc Edge Function currently fails if storage_path is missing."** Confirmed — line in the function returns `no_storage_path` (400) when `storage_path` is null. We will **not** loosen that function's contract; instead the URL flow goes through a new, dedicated function so the existing PDF/DOCX path stays bit-for-bit untouched.
+So the failure is **server-side, in `extract-url-content` (and likely also `extract-property-doc`)**, and the UI never surfaces the failure clearly because the asset insert succeeds *before* extraction is invoked.
 
-The user-facing flow will remain "one upload dialog per property model," but the file picker becomes optional and a **Source URL** field is added next to it. Either branch (file or URL) produces the same shape of `property_extractions` row, so the Ask runtime, canonical-QA enrichment, embedding worker, and HTML generator need **zero** changes downstream.
+### Root causes (multiple, compounding)
 
-### Architecture
+1. **`vault_templates.extractor` CHECK / domain rejects `'web_url'`.** The function inserts an auto-template with `extractor: 'web_url'`, but every existing row in the table uses `'pdfjs_heuristic'` (the column default). If the column has a check constraint or enum-like restriction inherited from earlier migrations, the insert silently fails inside `ensureUrlTemplate`, returning `null`, which short-circuits with `template_resolve_failed` (500). The browser surfaces it as a generic toast that's easy to miss.
 
-```text
-PropertyIntelligenceSection (UI)
-        │
-        ├── File path  ─────────────►  uploadVaultAsset → vault_assets (storage_path)
-        │                                        │
-        │                                        ▼
-        │                            extract-property-doc  (UNCHANGED)
-        │                                        │
-        ▼                                        ▼
-  Source URL path  ────►  vault_assets        property_extractions  ──► ensureExtractionEmbeddings
-                          (storage_path = NULL,                              │
-                           asset_url = the URL,                              ▼
-                           mime_type = 'text/uri-list')                  Ask engine (UNCHANGED)
-                                       │
-                                       ▼
-                          extract-url-content  (NEW edge fn)
-```
+2. **The dialog pre-selects a curated `templateId` for URL submissions too.** `openDialog` sets `templateId = templates[0].id` whenever any curated template exists. URL submissions then send that template_id to `extract-url-content`, which validates it against `provider_id` and **uses it** — but the upsert's `onConflict: vault_asset_id,template_id` is fine, so this isn't the failing leg. Still, semantically wrong: a URL of a magazine article gets stored under "Auto: Heritage Oak" because that was templates[0]. Fields end up under the wrong template, future URLs to the same domain don't dedupe under their own template, and the UI shows confusing labels.
 
-Both branches converge on identical post-conditions: a `vault_assets` row + a `property_extractions` row with `fields`, `chunks`, `extractor`, `extractor_version`. The hydrator (`ensureExtractionEmbeddings`) then enriches it with chunk embeddings + `canonical_qas` exactly as today.
+3. **Auth header propagation.** The client calls `supabase.functions.invoke("extract-url-content", { body })`. Supabase JS auto-attaches the user JWT in the `Authorization` header — but the `Authorization` header is read inside the function for the user-scoped client (`global: { headers: { Authorization: authHeader } }`). That part is correct. **However** the function then checks `asset.category_type !== "property_doc"` — and the row's `category_type` is correctly `"property_doc"`. Verified, not the cause.
 
-### Plan
+4. **No error visibility.** When the edge function returns 4xx/5xx, `supabase-js` returns an error whose body is NOT decoded by default (it returns a `FunctionsHttpError` with status only). The toast shows `"URL extraction failed: Edge Function returned a non-2xx status code"` — completely uninformative. We have no way to know whether it was the SSRF guard, the LLM call, or the insert that failed.
 
-#### 1. UI — add "Source URL" alongside the file picker (single dialog, two ways in)
+5. **No `__PROPERTY_EXTRACTIONS__` regeneration trigger after upload.** Even if extraction succeeded, the user must **re-generate the HTML** from the Builder for the new data to appear in the standalone tour. There's no UI message telling the agent this. They naturally assume "I uploaded → tour knows it."
 
-**Edit:** `src/components/portal/PropertyIntelligenceSection.tsx`
+6. **UI status is misleading.** The row says "No documents attached yet. Upload a datasheet to enable Ask." but `extractions.length` only reflects rows in `property_extractions` — not rows in `vault_assets`. So a successfully-registered URL whose extraction failed leaves the UI in the **exact same state as if nothing happened**. There's no "1 URL pending / failed" badge, no retry button, no error detail.
 
-Inside the existing per-model upload dialog, add a `Source URL` text input below the File row. Submission rules:
+7. **`extract-url-content` only fetches static HTML.** The Sleeper Magazine page renders most copy server-side, so this would actually work — but Zillow / Redfin / Realtor.com are SPA-heavy and will yield thin text. We need to log this clearly and surface it as a UI warning.
 
-- **File only** → existing path (uploadVaultAsset → extract-property-doc). No change.
-- **URL only** → new path (skip storage upload, register `vault_assets` with `storage_path: null`, `asset_url: <url>`, `mime_type: 'text/uri-list'`, then call the new `extract-url-content` edge fn).
-- **Both** → file wins (file is the authoritative source; URL is stored on `asset_url` for reference but isn't used for extraction).
-- **Neither** → submit disabled.
+### The fix — comprehensive, per-failure
 
-Validate URL client-side with `new URL(value)` and require `https:` or `http:` protocol; show inline error otherwise. Re-use the existing busy/toast/`onTemplatesChanged` machinery so accordion state, frozen badge, LUS gate, and per-model isolation behave identically.
+#### A. `extract-url-content` — make every failure visible and recoverable
 
-The Label field becomes optional in URL mode and defaults to the URL hostname when blank, so the row still renders something meaningful.
+- **Always return JSON** (never throw `new Response` with raw status). Every failure path returns:
+  ```json
+  { "ok": false, "stage": "fetch|llm|persist|template", "detail": "...", "diagnostics": { "html_length": N, "text_length": N, "domain": "..." } }
+  ```
+- **Use `extractor: 'pdfjs_heuristic'`** (the existing default — known-good column value) for the auto-created URL template instead of `'web_url'`. The `extractor` value on the template is metadata; the actual extraction logic for URL goes in `property_extractions.extractor` which is a free-text column. This eliminates root cause #1 without a migration.
+- **Set `property_extractions.extractor = 'web_url'`** unchanged — that column has no constraint and is already free-text.
+- **Wrap the OpenAI call** with `extractJsonFromResponse` + `detectTruncation` (per the lovable-stack-overflow pattern) so a malformed LLM response degrades to "fields={}, chunks-only" instead of throwing.
+- **Bump `max_tokens` to 4000** for `gpt-4o-mini` so a long listing page doesn't get truncated mid-JSON.
+- **Log `text_length`, `chunk_count`, `field_keys.length`** so server logs make the failure point obvious.
 
-#### 2. New edge function — `extract-url-content`
+#### B. `extract-property-doc` — same hardening
 
-**Add:** `supabase/functions/extract-url-content/index.ts`
-**Add:** entry in `supabase/config.toml` (no `verify_jwt = false` — this is an authenticated provider action, same as `extract-property-doc`).
+The PDF path is also failing (Heritage Oak has zero rows). Mirror the same JSON-error contract and the same `extractJsonFromResponse` + truncation guard around its LLM call. Likely root cause is the same template-extractor field rejection or LLM JSON parse blow-up.
 
-Contract mirrors `extract-property-doc` so the client helper can be a thin parallel:
+#### C. Client — surface every failure
 
-```ts
-// request
-{ vault_asset_id, property_uuid, saved_model_id?, url, template_id? }
-// response
-{ extraction_id, fields, chunks_indexed, embedding_status: "pending" }
-```
+- **`invokeUrlExtraction` / `invokeExtraction`** decode the error body via `error.context.json()` (Supabase JS exposes the raw `Response` on `error.context`) and rethrow with `stage` + `detail`. The toast becomes `"URL extraction failed at LLM step: max_tokens"` instead of an opaque non-2xx message.
+- **`PropertyIntelligenceSection`** stops pre-filling `templateId = templates[0].id` for URL submissions. URL mode always sends `template_id: null` so the function creates / reuses its own per-host auto template. File mode keeps the curated picker.
 
-Steps inside the handler (each step uses the same patterns the existing fn uses, including the freeze check, auth gate, and provider/client authorisation):
+#### D. UI status — make pending / failed states explicit
 
-1. **Auth + freeze + asset ownership** — copy verbatim from `extract-property-doc` (same RLS shape, same 423 on freeze, same 403 on cross-tenant).
-2. **SSRF guard for the URL** —
-   - Parse with `new URL(url)`. Reject anything that isn't `http:` / `https:`.
-   - Reject hostnames that resolve to or literally are: `localhost`, `127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16` (link-local / metadata), `::1`, `fc00::/7`, `fe80::/10`, and any host ending in `.internal`, `.local`, `.cluster.local`. Use a small allowlist regex on the literal hostname; do **not** depend on a DNS-resolution library in Deno.
-   - Reject non-default ports outside 80/443.
-   - Cap response size at **2 MB** (abort the read once the buffer exceeds that).
-   - Send a real `User-Agent` header and a 10-second timeout via `AbortSignal.timeout(10_000)`.
-3. **Fetch HTML** — `fetch(url, { redirect: 'follow' })`, follow ≤ 5 redirects (`fetch` defaults are fine), revalidate that each redirect hop still passes the SSRF allowlist by re-parsing `response.url` after the fetch and rejecting if it now points at a private host. Reject non-2xx.
-4. **HTML → plain text** — strip `<script>`, `<style>`, `<noscript>`, HTML comments, then collapse tags to whitespace, decode the common entities (`&amp; &lt; &gt; &quot; &#39; &nbsp;`). Truncate to 12,000 chars (matches `induce-schema`'s `MAX_TEXT_CHARS`). No third-party dep.
-5. **AI structuring** — call OpenAI `gpt-4o-mini` with the **same canonical-key system prompt as `induce-schema`**, but ask it to extract **values** (not a schema). Body sent to the model:
-   - System: a small variant of the induce-schema system prompt — same canonical key list, but instructs the model to output a JSON object whose **keys are drawn from the canonical list when applicable** and whose **values are the extracted facts** (numbers stay numbers, addresses stay strings).
-   - User: the truncated page text.
-   - `temperature: 0.1`, `max_tokens: 1500`, plain JSON object output, no markdown fences. Same fence-stripping + sanitiser as `induce-schema`.
-   - If the LLM returns non-JSON or empty, fall back to `fields = {}` and proceed with chunks-only indexing rather than 500-ing — Ask still works on chunks.
-6. **Chunking** — split the cleaned text on paragraph boundaries (double newlines), then on sentence boundaries inside any paragraph longer than 800 chars. Cap each chunk at ~800 chars. Emit `{ id: 'chunk:<n>', section: <heading-or-'web'>, content }` — the same `PropertyChunk` shape `pdfjs-heuristic` produces. Section headings are derived from the nearest preceding `<h1>`/`<h2>`/`<h3>` captured during the strip phase.
-7. **Persist** — upsert `property_extractions` with `extractor: 'web_url'`, `extractor_version: '1'`, the structured `fields`, and the chunks. Use `onConflict: 'vault_asset_id,template_id'`. If the caller didn't pass a `template_id` (URL-only walk-in), insert/reuse a per-provider hidden template `Auto: <hostname>` with an empty schema (mirrors the auto-template pattern already in `PropertyIntelligenceSection`) so the unique constraint has a value.
-8. **Flip embedding flag** — `vault_assets.embedding_status = 'pending'` (same as the file path), so `ensureExtractionEmbeddings` picks it up and writes chunk embeddings + `canonical_qas`.
+- Add a per-asset status badge to `ModelRow`: it now lists *vault_assets* (URLs + files), not just successful extractions. Each row shows: 
+  - `Indexed` (green) — has an extraction with chunks > 0
+  - `Pending` (amber, animated) — asset row exists, no extraction yet (in-flight)
+  - `Failed` (red, with retry button + last error tooltip) — asset row exists, no extraction, last attempt errored
+- Add a **"Re-index"** button on Failed rows that calls `extractFromUrl` again with the persisted last URL.
+- Replace "No documents attached yet" with **the count of vault_assets** so the agent sees their URL is registered even before extraction completes.
 
-#### 3. Client helper — `invokeUrlExtraction`
+#### E. Builder — trigger regeneration banner
 
-**Edit:** `src/lib/extraction/client.ts` — add a parallel `invokeUrlExtraction(req)` that calls `extract-url-content` with the same 423-aware error handling pattern as `invokeExtraction`.
+After a successful extraction, show a sticky banner: *"Index updated — re-generate your presentation HTML for visitors to see the new answers."* with a one-click "Re-generate" button calling the existing `generatePresentation` server fn. This closes the loop the user clearly hit.
 
-**Edit:** `src/hooks/usePropertyExtractions.ts` — add an `extractFromUrl({ vault_asset_id, url, template_id?, saved_model_id? })` callback that internally awaits `invokeUrlExtraction` and then calls `ensureExtractionEmbeddings([propertyUuid])` exactly the way the existing `extract` callback does. The hook's existing one-shot lazy-backfill machinery picks up the row on next refresh — no changes there.
+#### F. Diagnostic surfacing — short-term observability
 
-#### 4. Wiring the URL path in the section
+Add a small expandable `<details>` on the row labelled "Why isn't this working?" that, when clicked, fetches the latest edge-function log line for that vault_asset_id from a new tiny `get-extraction-status` server fn. This is read-only and only reads the function's own logs — purely informational.
 
-**Edit:** `src/components/portal/PropertyIntelligenceSection.tsx` `handleUpload`:
+### What I will NOT do
 
-```text
-if (url && !file):
-   1. validate URL client-side
-   2. insert vault_assets {
-        storage_path: null,
-        asset_url: url,
-        mime_type: 'text/uri-list',
-        file_size_bytes: 0,
-        label: label || hostname,
-        is_active: true,
-      }
-   3. await extractFromUrl({ vault_asset_id, url, saved_model_id })
-else: existing branch
-```
+- **No DB migration.** All fixes are within the Edge Functions and React UI. The empty `property_extractions` is a *symptom* — fixing the writers will populate it.
+- **No JS-rendered URL fetching** (Zillow SPA). That is a separate, much larger Phase 2. We will log when text is suspiciously short (<200 chars) and surface the warning so the user knows to either upload the doc or paste a non-SPA URL.
+- **No change to the Ask runtime** in `portal.functions.ts`. Tier 1/2/3 logic is correct — it just has nothing to search. Once `property_extractions` rows exist and the agent re-generates, answers flow.
 
-The auto-template path (`ensureAutoTemplate`) is **only** taken in the file branch. The URL branch lets the new edge function create/reuse its own `Auto: <hostname>` template internally so we don't double-create.
+### Files to touch
 
-#### 5. RLS / DB
-
-No migration required. Confirmed by reading the table definitions:
-
-- `vault_assets.storage_path` is already `Nullable: Yes`.
-- `vault_assets.file_size_bytes` is already `Nullable: Yes`.
-- `property_extractions` already accepts arbitrary `extractor` / `extractor_version` strings.
-- `lus_freezes` enforcement is via the existing trigger `enforce_lus_freeze`, which the new function honours via its 423 short-circuit before any write.
-
-#### 6. Make `extract-property-doc` resilient (small, scoped change)
-
-**Edit:** `supabase/functions/extract-property-doc/index.ts` — when `storage_path` is null, return the existing `no_storage_path` error **but with a new field** `hint: "use extract-url-content for URL-based assets"`. No control-flow change. This is a one-line pure addition that gives forward-compat clarity without altering the supported behaviour.
-
-### What this plan deliberately does NOT do
-
-- **No changes** to `extract-property-doc`'s extraction path, the embedding worker, the canonical-QA generator, or any client-side Ask code in `portal.functions.ts`. The URL flow plugs into the existing `property_extractions` pipeline at the same join point as the PDF flow.
-- **No new DB tables / no migration.** `vault_assets` already supports nullable `storage_path` / `file_size_bytes`.
-- **No JS rendering** of the URL. `fetch` only retrieves server-rendered HTML — listing pages built as pure SPAs (Zillow's heavy client-side render) may yield thin text. This is acceptable as v1; a Firecrawl/playwright fallback can be added later if the user reports gaps. We log the cleaned-text length so the issue is observable.
-- **No cron / no async job.** Extraction is synchronous within the edge function call, the same as the file path.
-
-### Files touched
-
-- **add** `supabase/functions/extract-url-content/index.ts`
-- **edit** `supabase/config.toml` — register the function (default `verify_jwt = true`, which is the implicit default; no block strictly needed unless we want to be explicit)
-- **edit** `supabase/functions/extract-property-doc/index.ts` — add `hint` field to the `no_storage_path` error response
-- **edit** `src/lib/extraction/client.ts` — `invokeUrlExtraction`
-- **edit** `src/hooks/usePropertyExtractions.ts` — `extractFromUrl` callback
-- **edit** `src/components/portal/PropertyIntelligenceSection.tsx` — Source URL input, branched submit handler
+- **edit** `supabase/functions/extract-url-content/index.ts` — JSON-error contract, `extractor: 'pdfjs_heuristic'` for the template insert, robust JSON extraction with truncation detection, larger `max_tokens`, structured logs
+- **edit** `supabase/functions/extract-property-doc/index.ts` — mirror the JSON-error contract + LLM hardening
+- **edit** `src/lib/extraction/client.ts` — decode `error.context.json()` and rethrow with stage + detail
+- **edit** `src/hooks/usePropertyExtractions.ts` — store last error per vault_asset_id, expose `extractionsByAsset` map
+- **edit** `src/components/portal/PropertyIntelligenceSection.tsx` — drop pre-filled `templateId` in URL mode, render Indexed/Pending/Failed badges from a merged (assets ∪ extractions) view, add Re-index button
+- **edit** `src/components/portal/HudBuilderSandbox.tsx` — sticky "Re-generate presentation" banner after a successful extraction event
+- **add** `supabase/functions/get-extraction-status/index.ts` — read-only diagnostic helper for the "Why isn't this working?" affordance
+- **edit** `supabase/config.toml` — register the new function
 
 ### Verification checklist
 
-1. Provider opens the Property Intelligence section, picks a property, opens the upload dialog → sees both **File** and **Source URL** inputs. Submit is disabled until at least one is provided.
-2. Paste a public Zillow / Realtor.com / personal-listing URL with no file → submit succeeds. The model row shows "1 doc"; field count and chunk count match what came back from the function.
-3. After a few seconds (worker pass), open the published HTML and ask the unified Ask button "What's the list price?" → returns the templated answer derived from `list_price` field.
-4. URL pointing at `localhost`, `127.0.0.1`, `192.168.x.x`, `file://` is rejected client-side AND server-side with a clear toast.
-5. URL of an HTTPS host that returns 404 / non-HTML returns a friendly toast, no row created.
-6. Provider also uploads a regular PDF → the existing flow still runs, no new code path interferes.
-7. LUS frozen property → both the file and URL paths are blocked at the freeze badge / 423.
-8. LUS license inactive → entire section hides (existing behaviour preserved).
-9. Re-submitting the same URL for the same property → `onConflict: vault_asset_id,template_id` upserts cleanly; no duplicate rows.
-10. Switch to another property tab in the published HTML → Ask re-indexes, the new property's URL-derived chunks come up correctly.
+1. Submit `https://www.sleepermagazine.com/stories/projects/hotel-indigo-expands-new-york-portfolio/` for the Hotel Indigo property. The row immediately shows `Pending`. Within ~10s it flips to `Indexed: N fields · M chunks`. A row exists in `property_extractions` with `extractor='web_url'` and a non-empty `chunks` array.
+2. Submit a deliberately broken URL (e.g. a 404). Row flips to `Failed` with a tooltip showing `stage: fetch, detail: http_404`. Re-index button works after replacing the URL.
+3. Submit a Zillow URL that returns thin SPA HTML. Row flips to `Indexed` but a warning chip says "Low text content — consider uploading a PDF". Some chunks indexed.
+4. Re-upload the existing Heritage Oak PDF. Row creates a `property_extractions` row this time (PDF path was also broken; this verifies the parallel hardening worked).
+5. After extraction succeeds, the banner says "Re-generate your presentation HTML". Click it → download the new HTML → confirm `__PROPERTY_EXTRACTIONS__` is now in the file → open it → ask "Who designed this property?" → tier 3 doc-chunks search returns the Hotel Indigo designer.
+6. Switch property tabs in the published HTML. Ask re-indexes for the new property's chunks. Cross-property questions don't bleed.
+7. Server logs for `extract-url-content` show structured lines: `[extract-url-content] sleepermagazine.com text_len=18432 fields=12 chunks=27 ok` and on failure: `[extract-url-content] zillow.com stage=llm detail=truncated text_len=8410`.
 
