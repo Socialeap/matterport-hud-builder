@@ -54,20 +54,54 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
   // Auth state
   const [userId, setUserId] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
+  const [viewer, setViewer] = useState<{
+    email: string | null;
+    displayName: string | null;
+    avatarUrl: string | null;
+  } | null>(null);
 
   // License guard state
   const [licenseExpired, setLicenseExpired] = useState(false);
   const [licenseChecked, setLicenseChecked] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUserId(session?.user?.id ?? null);
+    let cancelled = false;
+    const hydrate = async (session: Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"]) => {
+      const u = session?.user ?? null;
+      if (cancelled) return;
+      setUserId(u?.id ?? null);
       setAuthChecked(true);
-    });
+      if (!u) {
+        setViewer(null);
+        return;
+      }
+      // Pull display_name + avatar from profiles when available; fall back to OAuth metadata.
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("display_name, avatar_url")
+        .eq("user_id", u.id)
+        .maybeSingle();
+      if (cancelled) return;
+      setViewer({
+        email: u.email ?? null,
+        displayName:
+          profile?.display_name ??
+          (u.user_metadata?.full_name as string | null) ??
+          null,
+        avatarUrl:
+          profile?.avatar_url ??
+          (u.user_metadata?.avatar_url as string | null) ??
+          null,
+      });
+    };
+    supabase.auth.getSession().then(({ data: { session } }) => hydrate(session));
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUserId(session?.user?.id ?? null);
+      hydrate(session);
     });
-    return () => subscription.unsubscribe();
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
   }, []);
 
   // Check license status — for clients, check the provider's license
