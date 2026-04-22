@@ -156,6 +156,7 @@ serve(async (req) => {
     const result = await provider.extract({
       bytes,
       template: template as unknown as VaultTemplate,
+      mimeType: asset.mime_type ?? undefined,
     });
     fields = result.fields;
     chunks = result.chunks;
