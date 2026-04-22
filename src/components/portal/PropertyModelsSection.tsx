@@ -45,26 +45,22 @@ export function PropertyModelsSection({
   onMediaChange,
   onOpenBehavior,
   savedModelId,
+  headless,
 }: PropertyModelsSectionProps) {
   const { isActive: lusActive, loading: lusLoading } = useLusLicense();
   const showPremium = lusLoading || lusActive;
   const [syncModelId, setSyncModelId] = useState<string | null>(null);
   const syncModel = syncModelId ? models.find((m) => m.id === syncModelId) ?? null : null;
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Home className="size-5 text-primary" />
-            Property Models
-          </CardTitle>
-          <Button size="sm" variant="outline" onClick={onAdd}>
-            <Plus className="mr-1 size-3" />
-            Add Property
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
+
+  const addButton = (
+    <Button size="sm" variant="outline" onClick={onAdd}>
+      <Plus className="mr-1 size-3" />
+      Add Property
+    </Button>
+  );
+
+  const body = (
+    <div className="space-y-4">
         {models.length === 0 && (
           <p className="py-6 text-center text-sm text-muted-foreground">
             No properties added yet. Click "Add Property" to get started.
