@@ -1,11 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { checkDemoPublished } from "@/lib/sandbox-demo.functions";
-import { Check, X, Link2, Palette, Download, Sparkles, Menu } from "lucide-react";
+import { Check, X, Link2, Palette, Download, Sparkles, Menu, LogIn, LogOut } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+
+import { PortalSignupModal } from "@/components/portal/PortalSignupModal";
+import { toast } from "sonner";
 
 
 const fetchBrandingBySlug = createServerFn({ method: "GET" })
@@ -88,6 +91,8 @@ function PortalPage() {
     displayName: string | null;
     email: string | null;
   } | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [signupOpen, setSignupOpen] = useState(false);
 
   // Resolve the signed-in user (if any) and their profile, for the header avatar.
   useEffect(() => {
@@ -97,6 +102,7 @@ function PortalPage() {
       if (cancelled) return;
       if (!session?.user) {
         setViewer(null);
+        setAuthChecked(true);
         return;
       }
       const { data: profile } = await supabase
@@ -113,6 +119,7 @@ function PortalPage() {
           null,
         email: session.user.email ?? null,
       });
+      setAuthChecked(true);
     };
     load();
     const { data: { subscription } } = supabase.auth.onAuthStateChange(() => load());
@@ -120,6 +127,17 @@ function PortalPage() {
       cancelled = true;
       subscription.unsubscribe();
     };
+  }, []);
+
+  const handleSignOut = useCallback(async () => {
+    await supabase.auth.signOut();
+    setViewer(null);
+    toast.success("Signed out");
+  }, []);
+
+  const handleAuthenticated = useCallback(() => {
+    setSignupOpen(false);
+    // onAuthStateChange will refresh viewer.
   }, []);
 
   useEffect(() => {
@@ -238,6 +256,9 @@ function PortalPage() {
           demoPublished={demoPublished}
           onScrollTo={handleScrollTo}
           viewer={viewer}
+          authChecked={authChecked}
+          onSignIn={() => setSignupOpen(true)}
+          onSignOut={handleSignOut}
         />
 
         {/* HERO STAGE — image-backed cinematic hero */}
@@ -470,6 +491,16 @@ function PortalPage() {
           </div>
         </section>
       </div>
+
+      {/* Sign in / sign up modal — shared with the Builder. */}
+      <PortalSignupModal
+        open={signupOpen}
+        onOpenChange={setSignupOpen}
+        onAuthenticated={handleAuthenticated}
+        providerId={branding.provider_id}
+        accentColor={accent}
+        brandName={branding.brand_name}
+      />
     </div>
   );
 }
@@ -522,6 +553,9 @@ function PortalHeader({
   demoPublished,
   onScrollTo,
   viewer,
+  authChecked,
+  onSignIn,
+  onSignOut,
 }: {
   branding: { brand_name: string; logo_url: string | null };
   slug: string;
@@ -534,6 +568,9 @@ function PortalHeader({
     displayName: string | null;
     email: string | null;
   } | null;
+  authChecked: boolean;
+  onSignIn: () => void;
+  onSignOut: () => void;
 }) {
   const navLinks = [
     { id: "steps", label: "Steps" },
@@ -623,30 +660,56 @@ function PortalHeader({
           </Link>
         </nav>
 
-        {/* Far right: signed-in viewer avatar (only shown when authenticated) */}
-        {viewer && (
-          <div
-            className="hidden items-center sm:flex"
-            title={viewerLabel || "Signed in"}
-            aria-label={viewerLabel ? `Signed in as ${viewerLabel}` : "Signed in"}
-          >
-            {viewer.avatarUrl ? (
-              <img
-                src={viewer.avatarUrl}
-                alt={viewerLabel || "Profile"}
-                className="h-9 w-9 rounded-full border-2 border-white/40 object-cover shadow-md"
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <div
-                className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-white/40 text-xs font-bold text-white shadow-md"
-                style={{ backgroundColor: accent }}
+        {/* Far right: identity pill (signed in) or Sign In button. */}
+        <div className="hidden items-center sm:flex">
+          {!authChecked ? (
+            <div className="h-9 w-24 animate-pulse rounded-full bg-white/15" />
+          ) : viewer ? (
+            <div
+              className="flex h-9 items-center gap-2 rounded-full border border-white/25 bg-white/15 pl-1 pr-1 shadow-sm backdrop-blur-md"
+              title={viewerLabel || "Signed in"}
+              aria-label={viewerLabel ? `Signed in as ${viewerLabel}` : "Signed in"}
+            >
+              {viewer.avatarUrl ? (
+                <img
+                  src={viewer.avatarUrl}
+                  alt={viewerLabel || "Profile"}
+                  className="h-7 w-7 rounded-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div
+                  className="flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                  style={{ backgroundColor: accent }}
+                >
+                  {viewerInitials || "U"}
+                </div>
+              )}
+              <span className="hidden max-w-[12rem] truncate text-xs font-medium text-white drop-shadow md:inline">
+                {viewer.email || viewer.displayName || "Signed in"}
+              </span>
+              <button
+                type="button"
+                onClick={onSignOut}
+                className="inline-flex h-7 items-center gap-1 rounded-full px-2 text-xs font-medium text-white/90 hover:bg-white/15"
+                aria-label="Sign out"
               >
-                {viewerInitials || "U"}
-              </div>
-            )}
-          </div>
-        )}
+                <LogOut className="size-3.5" />
+                <span className="hidden md:inline">Sign Out</span>
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={onSignIn}
+              className="inline-flex h-9 items-center gap-1.5 rounded-full px-4 text-sm font-semibold text-white shadow-md transition-transform hover:scale-105"
+              style={{ backgroundColor: accent }}
+            >
+              <LogIn className="size-4" />
+              Sign In
+            </button>
+          )}
+        </div>
 
         {/* Mobile: hamburger menu */}
         <Sheet>
@@ -691,6 +754,32 @@ function PortalHeader({
               >
                 Builder
               </Link>
+
+              {/* Mobile sign-in / sign-out */}
+              <div className="mt-2 border-t pt-2">
+                {!authChecked ? null : viewer ? (
+                  <button
+                    type="button"
+                    onClick={onSignOut}
+                    className="flex w-full items-center gap-2 rounded-lg px-4 py-3 text-left text-base font-medium text-slate-800 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-slate-800"
+                  >
+                    <LogOut className="size-4" />
+                    <span className="truncate">
+                      Sign Out{viewer.email ? ` (${viewer.email})` : ""}
+                    </span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={onSignIn}
+                    className="flex w-full items-center gap-2 rounded-lg px-4 py-3 text-left text-base font-medium text-white"
+                    style={{ backgroundColor: accent }}
+                  >
+                    <LogIn className="size-4" />
+                    Sign In
+                  </button>
+                )}
+              </div>
             </div>
           </SheetContent>
         </Sheet>

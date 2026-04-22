@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { Link } from "@tanstack/react-router";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, LogIn, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BrandingSection } from "./BrandingSection";
 import { PropertyModelsSection } from "./PropertyModelsSection";
@@ -54,20 +54,54 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
   // Auth state
   const [userId, setUserId] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
+  const [viewer, setViewer] = useState<{
+    email: string | null;
+    displayName: string | null;
+    avatarUrl: string | null;
+  } | null>(null);
 
   // License guard state
   const [licenseExpired, setLicenseExpired] = useState(false);
   const [licenseChecked, setLicenseChecked] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUserId(session?.user?.id ?? null);
+    let cancelled = false;
+    const hydrate = async (session: Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"]) => {
+      const u = session?.user ?? null;
+      if (cancelled) return;
+      setUserId(u?.id ?? null);
       setAuthChecked(true);
-    });
+      if (!u) {
+        setViewer(null);
+        return;
+      }
+      // Pull display_name + avatar from profiles when available; fall back to OAuth metadata.
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("display_name, avatar_url")
+        .eq("user_id", u.id)
+        .maybeSingle();
+      if (cancelled) return;
+      setViewer({
+        email: u.email ?? null,
+        displayName:
+          profile?.display_name ??
+          (u.user_metadata?.full_name as string | null) ??
+          null,
+        avatarUrl:
+          profile?.avatar_url ??
+          (u.user_metadata?.avatar_url as string | null) ??
+          null,
+      });
+    };
+    supabase.auth.getSession().then(({ data: { session } }) => hydrate(session));
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUserId(session?.user?.id ?? null);
+      hydrate(session);
     });
-    return () => subscription.unsubscribe();
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
   }, []);
 
   // Check license status — for clients, check the provider's license
@@ -797,8 +831,8 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
             </Button>
           </div>
 
-          {/* Far right: Client (Presentation) logo + name */}
-          <div className="ml-auto flex items-center gap-2 min-w-0">
+          {/* Far right: Client (Presentation) logo + name + signed-in identity */}
+          <div className="ml-auto flex items-center gap-3 min-w-0">
             {logoPreview ? (
               <img
                 src={logoPreview}
@@ -813,9 +847,68 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
                 {(brandName || "P")[0]?.toUpperCase()}
               </div>
             )}
-            <span className="hidden truncate text-sm font-semibold text-foreground sm:inline">
+            <span className="hidden truncate text-sm font-semibold text-foreground sm:inline max-w-[10rem]">
               {brandName || "Untitled Presentation"}
             </span>
+
+            {/* Identity pill: shows email + Sign Out when signed in, or "Sign In" when not. */}
+            {!authChecked ? (
+              <div className="hidden h-8 w-24 animate-pulse rounded-full bg-muted sm:block" />
+            ) : viewer ? (
+              <div
+                className="flex h-9 items-center gap-2 rounded-full border border-border bg-muted/40 pl-1 pr-1 shadow-sm"
+                title={viewer.email || viewer.displayName || "Signed in"}
+              >
+                {viewer.avatarUrl ? (
+                  <img
+                    src={viewer.avatarUrl}
+                    alt=""
+                    className="h-7 w-7 rounded-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div
+                    className="flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                    style={{ backgroundColor: accentColor }}
+                  >
+                    {(viewer.displayName || viewer.email || "U")
+                      .trim()[0]
+                      ?.toUpperCase() || "U"}
+                  </div>
+                )}
+                <span className="hidden max-w-[12rem] truncate text-xs font-medium text-foreground sm:inline">
+                  {viewer.email || viewer.displayName || "Signed in"}
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 px-2 text-xs"
+                  onClick={async () => {
+                    await supabase.auth.signOut();
+                    setUserId(null);
+                    setViewer(null);
+                    setAccessRetryNonce((n) => n + 1);
+                    toast.success("Signed out");
+                  }}
+                  aria-label="Sign out"
+                >
+                  <LogOut className="size-3.5" />
+                  <span className="ml-1 hidden md:inline">Sign Out</span>
+                </Button>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                size="sm"
+                className="h-9 gap-1.5 rounded-full text-white"
+                style={{ backgroundColor: accentColor }}
+                onClick={() => setSignupOpen(true)}
+              >
+                <LogIn className="size-4" />
+                Sign In
+              </Button>
+            )}
           </div>
         </div>
       </header>
