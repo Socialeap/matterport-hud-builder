@@ -1554,12 +1554,12 @@ function load(i){
   // Reset carousel context for new property
   carouselMedia=props[i].multimedia||[];
   carouselIndex=0;
-  // Reset Docs Q&A state so next open re-indexes for this property.
+  // Reset Ask state so next open re-indexes docs for this property.
   __docsQa.currentIndexKey=null;
   if(__docsQa.messages){
-    __docsQa.messages.innerHTML='<div class="dqa-msg assistant">Switched to '+escapeText(props[i].name||"property")+'. Ask me something.</div>';
+    __docsQa.messages.innerHTML='<div class="ask-msg assistant">Switched to '+escapeText(props[i].name||"property")+'. Ask me something.</div>';
   }
-  if(__docsQa.initPromise){ __dqaRebuildIndex(i); }
+  if(__docsQa.initPromise&&window.__ASK_HAS_DOCS__){ __dqaRebuildIndex(i); }
 }
 props.forEach(function(p,i){
   var btn=document.createElement("button");
