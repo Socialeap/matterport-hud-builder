@@ -370,17 +370,20 @@ function safeJsonScriptLiteral(value: unknown): string {
 }
 
 /**
- * Docs Q&A panel (Phase 3). A lazily-initialised chat surface that
- * BM25-searches the active property's chunks + fields-as-text via Orama.
- * Emits CSS, the DOM shell, and the toggle button. The runtime
- * initialisation lives in the main IIFE below so it shares the
- * `load(i)` tab-change hook. Empty string when no property has docs.
+ * Unified "Ask" panel — single chat surface that fans out across both
+ * the host-curated qaDatabase (anchor-link answers) and per-property doc
+ * extractions (canonical QAs + chunks). Emits CSS, the DOM shell, the
+ * toggle button, and the runtime module script. The runtime initialises
+ * lazily on first open and re-indexes per-property docs on tab change
+ * via the `load(i)` hook in the main IIFE. Empty when neither knowledge
+ * source is available.
  */
-function buildDocsQaAssets(
+function buildAskAssets(
   extractionsByProperty: ExtractionsByProperty,
   hudBgColor: string,
   accentColor: string,
-): { css: string; toggleBtn: string; panelHtml: string; enabled: boolean } {
+  hasQA: boolean,
+): { css: string; toggleBtn: string; panelHtml: string; moduleScript: string; enabled: boolean } {
   const anyDocs = Object.values(extractionsByProperty).some((arr) =>
     arr.some(
       (e) =>
@@ -388,47 +391,52 @@ function buildDocsQaAssets(
         Object.keys(e.fields ?? {}).length > 0,
     ),
   );
-  if (!anyDocs) {
-    return { css: "", toggleBtn: "", panelHtml: "", enabled: false };
+  const docsEnabled = anyDocs;
+  const enabled = hasQA || docsEnabled;
+  if (!enabled) {
+    return { css: "", toggleBtn: "", panelHtml: "", moduleScript: "", enabled: false };
   }
 
   const css = `
-#docs-qa-toggle{padding:4px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;background:${escapeHtml(accentColor)};border:none;color:#fff;display:inline-flex;align-items:center;gap:5px;flex-shrink:0}
-#docs-qa-toggle svg{width:13px;height:13px}
-#docs-qa-panel{display:none;position:fixed;top:72px;right:16px;width:380px;max-width:calc(100vw - 32px);height:480px;max-height:calc(100vh - 96px);background:${escapeHtml(hudBgColor)};border:1px solid #333;border-radius:12px;z-index:1500;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.5);overflow:hidden}
-#docs-qa-panel.open{display:flex}
-#docs-qa-header{padding:12px 16px;border-bottom:1px solid #333;display:flex;align-items:center;justify-content:space-between}
-#docs-qa-header h4{font-size:14px;font-weight:600;color:#fff;margin:0}
-#docs-qa-close{background:none;border:none;color:#999;font-size:18px;cursor:pointer;padding:0 4px}
-#docs-qa-messages{flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:10px}
-.dqa-msg{max-width:88%;padding:8px 12px;border-radius:10px;font-size:13px;line-height:1.5;word-wrap:break-word;white-space:pre-wrap}
-.dqa-msg.user{align-self:flex-end;background:${escapeHtml(accentColor)};color:#fff;border-bottom-right-radius:4px}
-.dqa-msg.assistant{align-self:flex-start;background:#2a2a3e;color:#ddd;border-bottom-left-radius:4px}
-.dqa-src{display:inline-block;margin-top:6px;padding:2px 8px;font-size:11px;color:#aaa;font-style:italic}
-#docs-qa-input-row{padding:10px 12px;border-top:1px solid #333;display:flex;gap:8px;align-items:center}
-#docs-qa-input{flex:1;background:#1e1e30;border:1px solid #444;border-radius:8px;padding:8px 12px;color:#fff;font-size:13px;outline:none}
-#docs-qa-input:focus{border-color:${escapeHtml(accentColor)}}
-#docs-qa-input:disabled{opacity:0.5;cursor:not-allowed}
-#docs-qa-send{background:${escapeHtml(accentColor)};border:none;color:#fff;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:13px;font-weight:600}
-#docs-qa-send:disabled{opacity:0.4;cursor:not-allowed}
+#ask-toggle{padding:4px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;background:${escapeHtml(accentColor)};border:none;color:#fff;display:inline-flex;align-items:center;gap:5px;flex-shrink:0}
+#ask-toggle svg{width:14px;height:14px}
+#ask-panel{display:none;position:fixed;top:72px;right:16px;width:380px;max-width:calc(100vw - 32px);height:480px;max-height:calc(100vh - 96px);background:${escapeHtml(hudBgColor)};border:1px solid #333;border-radius:12px;z-index:1500;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.5);overflow:hidden}
+#ask-panel.open{display:flex}
+#ask-header{padding:12px 16px;border-bottom:1px solid #333;display:flex;align-items:center;justify-content:space-between}
+#ask-header h4{font-size:14px;font-weight:600;color:#fff;margin:0}
+#ask-close{background:none;border:none;color:#999;font-size:18px;cursor:pointer;padding:0 4px}
+#ask-messages{flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:10px}
+.ask-msg{max-width:88%;padding:8px 12px;border-radius:10px;font-size:13px;line-height:1.5;word-wrap:break-word;white-space:pre-wrap}
+.ask-msg.user{align-self:flex-end;background:${escapeHtml(accentColor)};color:#fff;border-bottom-right-radius:4px}
+.ask-msg.assistant{align-self:flex-start;background:#2a2a3e;color:#ddd;border-bottom-left-radius:4px}
+.ask-msg.loading{color:#999;font-style:italic}
+.ask-msg .source-link{display:inline-block;margin-top:6px;padding:2px 8px;font-size:11px;background:${escapeHtml(accentColor)}33;color:${escapeHtml(accentColor)};border-radius:4px;cursor:pointer;border:1px solid ${escapeHtml(accentColor)}55;text-decoration:none}
+.ask-msg .source-link:hover{background:${escapeHtml(accentColor)}55}
+.ask-src{display:inline-block;margin-top:6px;padding:2px 8px;font-size:11px;color:#aaa;font-style:italic}
+#ask-input-row{padding:10px 12px;border-top:1px solid #333;display:flex;gap:8px;align-items:center}
+#ask-input{flex:1;background:#1e1e30;border:1px solid #444;border-radius:8px;padding:8px 12px;color:#fff;font-size:13px;outline:none}
+#ask-input:focus{border-color:${escapeHtml(accentColor)}}
+#ask-input:disabled{opacity:0.5;cursor:not-allowed}
+#ask-send{background:${escapeHtml(accentColor)};border:none;color:#fff;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:13px;font-weight:600}
+#ask-send:disabled{opacity:0.4;cursor:not-allowed}
+@keyframes ask-pulse{0%,100%{opacity:0.4}50%{opacity:1}}
+.ask-loading-dots span{animation:ask-pulse 1.4s infinite;animation-delay:calc(var(--i)*0.2s)}
 `;
 
-  const toggleBtn = `<button id="docs-qa-toggle" onclick="window.__openDocsQa&&window.__openDocsQa()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Ask docs</button>`;
+  const toggleBtn = `<button id="ask-toggle" onclick="window.__openAsk&&window.__openAsk()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>Ask</button>`;
 
   const panelHtml = `
-<div id="docs-qa-panel">
-  <div id="docs-qa-header">
-    <h4>Ask the property docs</h4>
-    <button id="docs-qa-close" onclick="document.getElementById('docs-qa-panel').classList.remove('open')">&times;</button>
-  </div>
-  <div id="docs-qa-messages"><div class="dqa-msg assistant">Hi! I can answer questions from the uploaded docs for this property. Try asking about fields, terms, dates, or amounts.</div></div>
-  <div id="docs-qa-input-row">
-    <input id="docs-qa-input" type="text" placeholder="Initializing search…" disabled />
-    <button id="docs-qa-send" disabled>Send</button>
-  </div>
+<div id="ask-panel">
+  <div id="ask-header"><h4>Ask about this property</h4><button id="ask-close" onclick="document.getElementById('ask-panel').classList.remove('open')">&times;</button></div>
+  <div id="ask-messages"><div class="ask-msg assistant" id="ask-welcome">Hi! Ask me anything about this property.</div></div>
+  <div id="ask-input-row"><input id="ask-input" type="text" placeholder="Initializing AI Assistant..." disabled /><button id="ask-send" disabled>Send</button></div>
 </div>`;
 
-  return { css, toggleBtn, panelHtml, enabled: true };
+  // The unified runtime is emitted by the caller alongside qaDatabase data.
+  // We only declare flags here so the main IIFE knows which sources to wire.
+  const moduleScript = `<script>window.__ASK_HAS_QA__=${hasQA ? "true" : "false"};window.__ASK_HAS_DOCS__=${docsEnabled ? "true" : "false"};</script>`;
+
+  return { css, toggleBtn, panelHtml, moduleScript, enabled: true };
 }
 
 /** Renders a per-property-extraction block as trusted HTML. All dynamic
