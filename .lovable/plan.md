@@ -1,93 +1,111 @@
+## Scope
 
+Two things in this plan:
+1. **The audit you asked for** — language realignment in the dashboard onboarding modal *and* a check that the codebase's mental model is internally consistent with how the Ask AI pipeline actually flows.
+2. **A blocking build-error fix** — the build is currently failing on `extract-url-content` due to a TypeScript generics regression. Unrelated to your request, but it must be fixed in the same pass or nothing else ships.
 
-## Why Ask AI is still weak — and 6 ingenious ways to fix it
+---
 
-### Diagnosis (verified against your live data)
+## Audit findings
 
-I queried `property_extractions` directly. The Marriott Marquis property has **169 chunks, 23 canonical QAs, and rich fields** including `number_of_rooms`, `number_of_suites`, `number_of_restaurants`, `stories`, `year_built`, `square_feet`. The data is there. The runtime is failing to use it.
+### Your premise vs the code — the nuance that matters
 
-Tracing the Ask pipeline in `src/lib/portal.functions.ts` (lines 1201–1539), three structural ceilings explain the bad answers:
+You said: *"Property Docs in the Production Vault are only used as TEMPLATES — the LLM identifies important property data types to create a JSON schema for indexing what the Client uploads."*
 
-1. **Tier 1 (canonical QA cosine) needs 0.72 similarity.** That's a high bar for MiniLM. A visitor typing "how many rooms" must phrase the question almost identically to a canonical phrasing or it falls through. Any field the MSP added that isn't in the curated list of 24 templates (`purchase_price`, `bedrooms`, etc.) only gets the generic "What is the X?" phrasings — so Marriott's `number_of_rooms`, `number_of_suites`, `number_of_restaurants` will rarely cross 0.72 even though the answer is sitting right there.
+That's **exactly true for one path**, but the codebase has **two distinct concepts** that both currently get called "property docs," and that's the root of the confusion:
 
-2. **Tier 3 returns one raw chunk, verbatim.** `limit: 1`, no re-ranking, no synthesis, no answer extraction. The visitor sees a Wikipedia paragraph dumped into the chat. If the top-scoring chunk happens to be about an unrelated topic that shares keywords, that's what gets shown.
+| Concept | DB location | Role in the Ask AI pipeline |
+|---|---|---|
+| **Vault Templates** (`vault_templates` table, edited at `/dashboard/vault/templates`) | One row per JSON Schema | Pure schema. Optionally seeded by uploading a sample PDF that runs through `induce-schema` (GPT-4o-mini) to *infer* a JSON Schema. The PDF itself is **discarded** — only the resulting schema is saved. **Never read by Ask AI.** ← This is what you're describing. |
+| **Vault Property Docs** (`vault_assets` rows where `category_type='property_doc'`) | One row per uploaded PDF, per provider | Real per-property documents. Extracted by `extract-property-doc` against a chosen template, which produces `fields` + `chunks` in `property_extractions`. The **chunks ARE embedded and DO feed Ask AI** for that specific property. |
 
-3. **The runtime is by design "zero ML at view time".** No LLM call from the rendered HUD. That's the hard architectural ceiling — the Q&A quality cannot exceed what nearest-neighbor over 384-dim MiniLM vectors can do over 169 chunks of unprocessed text.
+So the modal step #4 — *"For property docs, the AI assistant reads them to answer buyer questions"* — isn't entirely wrong; it's just dangerously ambiguous. It refers to category #2 (per-property doc uploads), but a reader who's just been told to "stock the vault" naturally interprets it as the global vault uploads (which is mostly category #1 in the Templates page). The two surfaces are bleeding into each other in the user's head, exactly as you suspected.
 
-### Six optimizations, in priority order
+### Pipeline congruence — verdict: mostly congruent, one true ambiguity
 
-#### Optimization 1 — Schema-aware question expansion (build-time, biggest win)
+Going layer by layer:
 
-`buildCanonicalQAs` knows the field name AND the value. Today it generates 3 generic phrasings for unknown fields. Instead, generate 8–12 phrasings derived from the field name's tokens:
+- **`vault_templates` table** → schema only. ✅ Matches your model.
+- **`induce-schema` edge function** → reads sample PDF text, returns a JSON Schema, **does not** persist or index the sample PDF. ✅ Matches your model.
+- **`vault_assets` (`property_doc` category)** → real per-property docs that ARE indexed. This contradicts the pure "template-only" framing — these uploads **are** read by the AI. **This is the real source of confusion.**
+- **`extract-property-doc`** → applies the chosen template's schema to the uploaded property doc, persists `fields` + `chunks` to `property_extractions`. Chunks then get embedded by the worker and used by Ask AI. ✅ Internally consistent.
+- **`extract-url-content`** → same pattern but for URLs; auto-generates a per-host template if none chosen.
+- **Ask AI runtime (`portal.functions.ts`)** → reads `property_extractions.chunks` + `canonical_qas` + `fields`. Never touches `vault_templates` directly at runtime.
 
-- `number_of_rooms` → "how many rooms", "room count", "number of rooms", "how many guest rooms", "room total", "what's the room count"
-- `number_of_restaurants` → "how many restaurants", "are there restaurants", "what restaurants are on site", "dining options"
+So the data flow is correct and self-consistent. **The bug is purely a labeling/wording bug** that has propagated across three surfaces and one bullet list. No code refactor is needed; we need to clarify the language so what the UI says matches what the pipeline does.
 
-This is pure templating, no LLM, no schema changes. Tier 1 hit rate jumps because the threshold gets crossed by natural phrasings.
+---
 
-#### Optimization 2 — Top-K + LLM answer synthesis at view time (biggest quality lift)
+## What needs to change
 
-Replace `limit: 1, return raw chunk` in Tier 3 with **top-5 chunks → tiny LLM call → grounded answer**.
+### 1. Fix the inaccurate / ambiguous wording (the actual ask)
 
-- Add a `synthesize-answer` server function (Lovable AI Gateway, `google/gemini-3-flash-preview`, ~$0.0001/call).
-- Send: question + 5 top chunks + 5 top canonical QAs + structured `fields` blob.
-- Prompt: "Answer ONLY from the provided context. If not present, say 'I don't have that.' Cite the source label."
-- Cache by `(property_uuid, normalized_question)` in `localStorage` so repeat visitors don't re-pay.
+**`src/routes/_authenticated.dashboard.index.tsx`** (the "Stock Your Vault" card and its modal — lines 178–198):
 
-This violates the "zero ML at view time" principle — but the user is already paying that cost (the model download). A 200ms gateway call is dramatically cheaper than the perceived quality gap. We can keep Tier 1 deterministic for known fields and use the LLM only as Tier 3 fallback.
+- Bullet (line 183): *"Add property docs for AI to read"* → *"Add property doc samples to teach the AI what fields to extract"*
+- Modal step #4 (line 196): *"For property docs, the AI assistant reads them to answer buyer questions."* → *"For property doc samples, the AI learns the field structure (e.g. price, beds, year built) so it knows what to extract from your clients' future uploads."*
+- Modal step #3 (line 195): *"Your clients can now drop it into any tour they build."* — keep, but for the property-docs case it doesn't apply (clients don't drop *templates* into tours). Add a brief clarifier: *"(non-template assets only — templates work behind the scenes)"*.
 
-#### Optimization 3 — Inject the structured `fields` blob as a "facts table" the LLM can quote
+### 2. Tighten the Templates page copy so it says what it actually does
 
-Today the rendered HUD has the `fields` object in `window.__PROPERTY_EXTRACTIONS__` but it's only used for BM25 string matching (line 1308). Instead, format it as a markdown facts table and **always** include it in the LLM context window. For Marriott, that means the answer to "how many rooms" comes from the structured field (`1957`), not a fuzzy chunk match — even when phrased weirdly.
+**`src/routes/_authenticated.dashboard.vault.templates.tsx`**:
 
-#### Optimization 4 — Hybrid re-ranking with field-name boosting
+- Line 165–168 subtitle: rephrase from *"Define what gets extracted from each property doc kind"* → *"Define the field schema (price, address, beds, etc.) the AI uses when extracting data from your clients' property doc uploads. Templates are schema-only — they aren't read at runtime."*
+- Line 416–419 dialog description: add a one-liner that distinguishes "the sample PDF you upload here is used only to **induce** the schema; it's not stored or read by Ask AI."
 
-When a query contains tokens that match a `fields` key (e.g., "rooms" → `number_of_rooms`), boost any chunk or QA tagged with that field. Cheap to implement client-side, dramatically improves recall on schema-aligned queries.
+### 3. Tighten the Vault index page copy
 
-#### Optimization 5 — Drop Tier 1 threshold to 0.55 + add multi-hit fusion
+**`src/routes/_authenticated.dashboard.vault.tsx`** line 463: *"Define what gets extracted from each uploaded doc"* → *"Define the schema your clients' property docs are extracted against."*
 
-0.72 is too strict for MiniLM-q8. At 0.55 we get more hits; combine tier-1 top-3 with tier-3 top-3 in a Reciprocal Rank Fusion step (10 lines of code). The synthesizer in #2 then sees both lanes' best results.
+### 4. (Optional but recommended) Add a small inline disambiguation badge
 
-#### Optimization 6 — Optional MSP-curated overrides
+In the dashboard "Stock Your Vault" card, the bullets currently mix Pro features (audio, widgets, icons) with property docs/templates. The latter two go to **different pages** with **different roles**. Adding an explicit two-row mini-CTA inside the modal — *"Want reusable assets? Open Vault. Want to teach the AI a new doc type? Open Templates."* — costs nothing and removes the ambiguity at its source.
 
-In the MSP vault, let the provider attach a `q_a_pairs` JSON to a template ("If asked about X, say Y"). These get embedded with the strongest weight and always surface first. A safety valve for known weak spots — no engineering needed per property.
+### 5. Fix the blocking build errors in `extract-url-content`
 
-### Recommended sequencing
+The current build fails with 5 TS errors all in `supabase/functions/extract-url-content/index.ts`:
 
-| # | Effort | Impact | Risk |
-|---|---|---|---|
-| 1 | Small (1 file, ~80 lines) | High | None — additive |
-| 2 | Medium (new server fn + client integration) | Highest | Cost + latency tradeoff |
-| 3 | Small (prompt change in #2) | High | None |
-| 4 | Small | Medium | None |
-| 5 | Small | Medium | Could surface weaker hits — gate on threshold |
-| 6 | Medium (UI + schema column) | Medium | Adds MSP workflow surface |
+```
+TS2339: Property 'id' does not exist on type 'never'  (line 405, 427)
+TS2769: No overload matches this call  (line 413)
+TS2345: SupabaseClient ... not assignable to ...  (line 570)
+```
 
-**My recommendation: ship #1 + #3 + #4 + #5 first as a no-cost, no-LLM baseline upgrade.** Ship #2 second, behind a per-provider toggle so cost-sensitive MSPs can opt out. Defer #6 until #1–#5 are validated in the wild.
+Root cause: `ensureUrlTemplate(serviceClient: ReturnType<typeof createClient>, ...)` — the bare `ReturnType<typeof createClient>` collapses Supabase's generated row types to `never`, so `.from("vault_templates").insert({...})` and `.select("id")` are typed as `never` and refuse the call.
 
-### What this plan does NOT do
+Fix: type the parameter as `SupabaseClient` from `@supabase/supabase-js@2.103.0` instead of relying on `ReturnType`, or change the function to use the local closure (which already has the correctly-typed `serviceClient`) by inlining the helper or accepting `serviceClient: any` in this single helper. Cleanest is the explicit `SupabaseClient` import:
 
-- **No re-extraction.** The data already in `property_extractions` is sufficient — we're improving how it's consumed, not how it's gathered.
-- **No model swap.** MiniLM stays. The download UX is unchanged.
-- **No schema changes for #1, #3, #4, #5.** Pure code.
-- **No change to the existing `extract-url-content` or `extract-property-doc` paths.**
+```typescript
+import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.103.0";
+async function ensureUrlTemplate(
+  serviceClient: SupabaseClient,
+  providerId: string,
+  hostname: string,
+): Promise<string | null> { ... }
+```
 
-### Files touched (per phase)
+This also resolves the line-570 mismatch where the typed-`never` client was being passed back in.
 
-**Phase A (no LLM, ship together):**
-- `src/lib/rag/canonical-questions.ts` — expand phrasing generator (#1)
-- `src/lib/portal.functions.ts` — lines 1370–1540: lower threshold, fuse tier-1 + tier-3 top-K, add field-boost re-ranker (#4, #5)
+---
 
-**Phase B (LLM synthesizer, behind toggle):**
-- `supabase/functions/synthesize-answer/index.ts` — new edge function, Lovable AI Gateway, grounded prompt
-- `src/lib/portal.functions.ts` — Tier 3 calls synthesizer with top-K + fields table; localStorage cache (#2, #3)
-- `branding_settings` migration — add `enable_llm_ask` boolean (default false initially, flip to true after validation)
+## Files touched
 
-### Verification checklist
+- **edit** `src/routes/_authenticated.dashboard.index.tsx` — copy changes in "Stock Your Vault" card bullets + modal steps.
+- **edit** `src/routes/_authenticated.dashboard.vault.templates.tsx` — page subtitle + dialog description copy.
+- **edit** `src/routes/_authenticated.dashboard.vault.tsx` — line-463 micro-copy.
+- **edit** `supabase/functions/extract-url-content/index.ts` — type the `ensureUrlTemplate` parameter as `SupabaseClient` to clear all 5 TS errors.
 
-1. Marriott Marquis: "How many rooms?" → returns 1957 (the `number_of_rooms` field), not a Wikipedia paragraph. (#1 alone should fix this.)
-2. Marriott Marquis: "Tell me about the restaurants" → after Phase B, returns synthesized answer citing the relevant chunks.
-3. Heritage Oak (PDF): standard residential questions still work via existing canonical templates — no regression.
-4. Network panel: Phase A introduces zero new requests. Phase B adds one ~300ms gateway call per uncached question.
-5. Cost check: with Phase B enabled, a property with 1000 visitor questions/month costs ~$0.10 in gateway fees.
+## What this plan does NOT do
 
+- **No data model changes.** `vault_templates` and `vault_assets` stay as-is.
+- **No pipeline changes.** Extraction, embedding, Ask AI all unchanged.
+- **No new features.** Pure clarification + a build-fix.
+- **No removal of the per-property doc upload path.** It's legitimate and correctly indexed — only the words around it change.
+
+## Verification checklist
+
+1. Open `/dashboard` → "Stock Your Vault" → "How does this work?" modal: step 4 now correctly explains the schema-induction role, with no implication that the AI reads the sample PDF at runtime.
+2. Open `/dashboard/vault/templates`: the subtitle and "New Template" dialog clearly say templates are schema-only and the sample PDF is used only to induce the schema.
+3. Open `/dashboard/vault`: the small Templates teaser card uses the new wording.
+4. `bun run build` (or the platform's typecheck) succeeds — the 5 TS errors in `extract-url-content` are gone.
+5. Existing extraction flows (PDF and URL) still produce `property_extractions` rows correctly — this is a pure type fix, no runtime behavior changes.
