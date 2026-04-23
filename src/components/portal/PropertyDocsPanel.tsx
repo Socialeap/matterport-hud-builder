@@ -82,6 +82,12 @@ export function PropertyDocsPanel({
   const [uploadBusy, setUploadBusy] = useState(false);
   const uploadInputRef = useRef<HTMLInputElement>(null);
 
+  const openPickerDialog = () => {
+    setVaultAssetId("");
+    setTemplateId(templates[0]?.id ?? "");
+    setPickerOpen(true);
+  };
+
   const openUploadDialog = () => {
     setUploadFile(null);
     setUploadLabel("");
@@ -287,7 +293,7 @@ export function PropertyDocsPanel({
                     size="sm"
                     variant="outline"
                     className="h-7 text-xs"
-                    onClick={() => setPickerOpen(true)}
+                    onClick={openPickerDialog}
                     disabled={noTemplates || noDocs || isFrozen}
                   >
                     {isFrozen ? (

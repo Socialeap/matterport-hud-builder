@@ -2,16 +2,18 @@
 //
 // Called by extract-property-doc immediately after the heuristic extractor
 // runs. Sends the raw document text to Groq (Llama 3.1 70B) and asks it to:
-//   1. Produce a structured fields JSON aligned to the canonical key set
-//      recognised by canonical-questions.ts (list_price, bedrooms, …).
-//   2. Divide the document into coherent thematic chunks (not sliding-window).
+//   1. Produce a structured fields JSON aligned to the template's field_schema
+//      (MSP-defined canonical + custom fields). Falls back to the built-in
+//      canonical key set when no schema is provided.
+//   2. Divide the document into coherent thematic sections using doc_kind-aware
+//      section names (not the generic sliding-window chunks from pdfjs).
 //
 // On success the caller merges the cleaner's fields over the heuristic fields
 // and replaces the heuristic chunks with thematic chunks. On any failure
 // (network, rate-limit, malformed JSON) the function returns null and the
 // caller transparently falls back to the heuristic result — no data loss.
 
-import type { PropertyChunk } from "./extractors/types.ts";
+import type { JsonSchema, PropertyChunk } from "./extractors/types.ts";
 
 export interface GroqCleanResult {
   fields: Record<string, unknown>;
@@ -24,26 +26,119 @@ const GROQ_MODEL = "llama-3.1-70b-versatile";
 const MAX_TEXT_CHARS = 12_000;
 const CALL_TIMEOUT_MS = 30_000;
 
-const SYSTEM_PROMPT = `You are a real estate data extraction specialist. Given raw text from a property document, extract structured data and organise the content into coherent thematic sections.
+// ── Section hints keyed by doc_kind ──────────────────────────────────────────
 
-Return a JSON object with exactly two top-level keys:
+const SECTION_HINTS: Record<string, string[]> = {
+  residential_mls: [
+    "Property Overview",
+    "Room Details",
+    "Financial & HOA",
+    "Location & Schools",
+    "Features & Amenities",
+    "Agent Notes",
+  ],
+  commercial_lease: [
+    "Lease Terms",
+    "Tenant Rights",
+    "Financials",
+    "Property Specs",
+    "Special Clauses",
+    "Parties & Contacts",
+  ],
+  luxury_property: [
+    "Estate Overview",
+    "Architectural Features",
+    "Interior Details",
+    "Grounds & Amenities",
+    "Market Positioning",
+    "Location & Privacy",
+  ],
+  land: [
+    "Parcel Overview",
+    "Zoning & Use",
+    "Utilities & Access",
+    "Survey & Boundaries",
+    "Financials",
+    "Environmental",
+  ],
+  condo: [
+    "Unit Overview",
+    "Building & Common Areas",
+    "HOA Details",
+    "Financials",
+    "Location",
+    "Rules & Restrictions",
+  ],
+};
 
-"fields": an object mapping field names to scalar values. Use these standard keys whenever the concept is present in the document:
-  property_address, list_price, sale_price, purchase_price, square_feet,
-  living_area, bedrooms, bathrooms, half_baths, year_built, lot_size,
-  hoa_fee, property_taxes, garage, parking_spaces, stories, property_type,
-  listing_date, closing_date
-Use lowercase snake_case for any additional custom fields. Omit fields that are not mentioned in the document. Financial values must be numbers (no currency symbols or commas).
+const FALLBACK_SECTIONS = [
+  "Property Overview",
+  "Features & Amenities",
+  "Financial Details",
+  "Location",
+  "Additional Information",
+];
 
-"chunks": an array of objects each with the shape:
-  { "id": string, "section": string, "content": string }
-Each chunk represents one coherent thematic section (e.g. "Property Overview",
-"Bedrooms & Bathrooms", "Financial Details", "Location & Schools", "Features &
-Amenities"). Keep each chunk to 300–700 words. Produce 3–8 chunks total. Do
-not duplicate content across chunks. Content must be verbatim or lightly
-paraphrased from the source document — never invent facts.
+const FALLBACK_FIELDS = [
+  "property_address", "list_price", "sale_price", "square_feet",
+  "bedrooms", "bathrooms", "year_built", "hoa_fee", "property_taxes",
+  "garage", "parking_spaces", "stories", "property_type",
+  "listing_date", "closing_date",
+];
 
-Output ONLY valid JSON. No markdown fences, no extra text.`;
+// ── Dynamic prompt builder ────────────────────────────────────────────────────
+
+function buildSystemPrompt(docKind: string, fieldSchema?: JsonSchema): string {
+  // Fields extraction guidance — template-aware when schema is present.
+  let fieldsSection: string;
+
+  if (fieldSchema && Object.keys(fieldSchema.properties ?? {}).length > 0) {
+    const required = new Set(fieldSchema.required ?? []);
+    const lines = Object.entries(fieldSchema.properties).map(([name, f]) => {
+      const req = required.has(name) ? " [REQUIRED]" : "";
+      const desc = f.description ? `: ${f.description}` : "";
+      return `  ${name} (${f.type})${desc}${req}`;
+    });
+    fieldsSection =
+      `The provider has defined the following extraction targets for this ${docKind} document.\n` +
+      `Extract ALL fields listed below when present. Use exactly these key names.\n` +
+      lines.join("\n") + "\n\n" +
+      `Financial values must be numbers (no currency symbols or commas). ` +
+      `Omit absent fields. For data in the document not covered above, ` +
+      `use lowercase_snake_case additional keys.`;
+  } else {
+    fieldsSection =
+      `Use these standard keys whenever the concept is present:\n  ` +
+      FALLBACK_FIELDS.join(", ") + "\n" +
+      `Financial values must be numbers. Omit absent fields. ` +
+      `Use lowercase_snake_case for any additional custom fields.`;
+  }
+
+  // Chunk section names — doc_kind-aware with generic fallback.
+  const hints = SECTION_HINTS[docKind] ?? FALLBACK_SECTIONS;
+  const sectionsSection =
+    `Divide the document into coherent thematic sections. ` +
+    `Preferred section names for a ${docKind} document: ` +
+    hints.map((s) => `"${s}"`).join(", ") + ". " +
+    `Adapt section names when the document's content suggests a better fit. ` +
+    `Keep each chunk 300–700 words. Produce 3–8 chunks total. ` +
+    `Do not duplicate content across chunks. ` +
+    `Content must be verbatim or lightly paraphrased — never invent facts.`;
+
+  return (
+    `You are a real estate data extraction specialist. Given raw text from a ` +
+    `property document, extract structured data and organise the content ` +
+    `into coherent thematic sections.\n\n` +
+    fieldsSection + "\n\n" +
+    sectionsSection + "\n\n" +
+    `Return a JSON object with exactly two top-level keys:\n` +
+    `  "fields": object mapping field names to scalar values\n` +
+    `  "chunks": array of { "id": string, "section": string, "content": string }\n\n` +
+    `Output ONLY valid JSON. No markdown fences, no extra text.`
+  );
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
 
 async function sleep(ms: number): Promise<void> {
   await new Promise((r) => setTimeout(r, ms));
@@ -58,17 +153,26 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   ]);
 }
 
+// ── Public API ────────────────────────────────────────────────────────────────
+
 /**
- * Run the Groq Cleaning Pass on `rawText`.
+ * Run the Groq Cleaning Pass on `rawText`, guided by the MSP's template.
+ *
+ * `template.field_schema` is injected into the system prompt so that
+ * provider-defined custom fields (e.g. school_district, flood_zone) are
+ * explicitly targeted by the LLM, not just the generic canonical key set.
+ *
  * Returns null on any failure so callers can fall back gracefully.
  */
 export async function groqClean(
   rawText: string,
-  docKind: string,
+  template: { doc_kind: string; field_schema?: JsonSchema },
   apiKey: string,
 ): Promise<GroqCleanResult | null> {
   const truncated =
     rawText.length > MAX_TEXT_CHARS ? rawText.slice(0, MAX_TEXT_CHARS) : rawText;
+
+  const systemPrompt = buildSystemPrompt(template.doc_kind, template.field_schema);
 
   let lastErr = "";
 
@@ -86,11 +190,8 @@ export async function groqClean(
           body: JSON.stringify({
             model: GROQ_MODEL,
             messages: [
-              { role: "system", content: SYSTEM_PROMPT },
-              {
-                role: "user",
-                content: `Document type: ${docKind}\n\n---\n${truncated}`,
-              },
+              { role: "system", content: systemPrompt },
+              { role: "user", content: truncated },
             ],
             temperature: 0.1,
             max_tokens: 4_000,
@@ -102,11 +203,11 @@ export async function groqClean(
 
       if (resp.status === 429) {
         lastErr = "rate_limited";
-        continue; // retry after backoff
+        continue;
       }
       if (!resp.ok) {
         lastErr = `http_${resp.status}`;
-        break; // non-retryable error
+        break;
       }
 
       const completion = (await resp.json()) as {
@@ -134,7 +235,7 @@ export async function groqClean(
         ? parsed.chunks
             .filter((c) => typeof c.content === "string" && c.content.trim())
             .map((c, i) => ({
-              id: String(c.id ?? `${docKind}-groq-${i}`),
+              id: String(c.id ?? `${template.doc_kind}-groq-${i}`),
               section: String(c.section ?? "Section"),
               content: String(c.content).slice(0, 2_000).trim(),
             }))
