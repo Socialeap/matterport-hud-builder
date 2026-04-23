@@ -207,7 +207,7 @@ serve(async (req) => {
   if (groqKey && rawText) {
     try {
       const { groqClean } = await import("../_shared/groq-cleaner.ts");
-      const cleaned = await groqClean(rawText, template.doc_kind, groqKey);
+      const cleaned = await groqClean(rawText, template, groqKey);
       if (cleaned) {
         // Merge: Groq fields override heuristic fields when the value is
         // present; gaps are filled by the heuristic result.

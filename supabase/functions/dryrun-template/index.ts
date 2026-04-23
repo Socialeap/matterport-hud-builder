@@ -128,17 +128,46 @@ serve(async (req) => {
   };
 
   const provider = getProvider(template.extractor);
+
+  let fields: Record<string, unknown>;
+  let chunks: { id: string; section: string; content: string }[];
+  let rawText: string | undefined;
   try {
     const result = await provider.extract({ bytes, template });
-    return jsonResponse({
-      fields: result.fields,
-      chunks: result.chunks,
-      extractor: provider.id,
-      extractor_version: provider.version,
-      pdf_bytes: bytes.byteLength,
-    });
+    fields = result.fields;
+    chunks = result.chunks;
+    rawText = result.rawText;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return jsonResponse({ error: "extraction_failed", detail: msg }, 500);
   }
+
+  // Optional Groq pass — gives MSPs a full-pipeline preview during template
+  // authoring so they see thematic chunks + template-aware field extraction
+  // before publishing the template.
+  const groqKey = Deno.env.get("GROQ_API_KEY");
+  let groqEnhanced = false;
+
+  if (groqKey && rawText) {
+    try {
+      const { groqClean } = await import("../_shared/groq-cleaner.ts");
+      const cleaned = await groqClean(rawText, template, groqKey);
+      if (cleaned) {
+        for (const [k, v] of Object.entries(cleaned.fields)) {
+          if (v != null && v !== "") fields[k] = v;
+        }
+        if (cleaned.chunks.length > 0) chunks = cleaned.chunks;
+        groqEnhanced = true;
+      }
+    } catch { /* non-fatal: MSP still sees the heuristic preview */ }
+  }
+
+  return jsonResponse({
+    fields,
+    chunks,
+    extractor: provider.id,
+    extractor_version: provider.version,
+    pdf_bytes: bytes.byteLength,
+    groq_enhanced: groqEnhanced,
+  });
 });
