@@ -1515,7 +1515,11 @@ async function __dqaInit(){
       var queryVec=await __dqaEmbedQuery(q);
 
       // Tier 1 — canonical-QA cosine (deterministic, templated).
-      var tier1=__dqaTier1(queryVec);
+      // Compute top-3 with field-name boosting; the single-best wrapper
+      // is what we use for the "outright win" path below, but we keep
+      // the full list for RRF fusion when no tier crosses cleanly.
+      var tier1Top=__dqaTier1TopK(queryVec,q,3);
+      var tier1=__dqaTier1(queryVec,q);
       var tier1Score=tier1?tier1.score:-1;
 
       // Tier 2 — hybrid Orama over the host-curated qaDatabase.
@@ -1540,6 +1544,8 @@ async function __dqaInit(){
       }
 
       // Tier 3 — hybrid (or BM25) over per-property doc chunks.
+      // Pull top-5 (was 1) so the fusion step can re-rank.
+      var tier3Top=[];
       var tier3=null;
       if(__docsQa.db){
         var searchArgs;
@@ -1549,32 +1555,55 @@ async function __dqaInit(){
             term:q,
             vector:{value:queryVec,property:"embedding"},
             properties:["content"],
-            limit:1,
+            limit:5,
             similarity:0
           };
         }else{
-          searchArgs={term:q,properties:["content"],limit:1};
+          searchArgs={term:q,properties:["content"],limit:5};
         }
         try{
           var res=await __docsQa.oramaModule.search(__docsQa.db,searchArgs);
           var hits=(res&&res.hits)||[];
-          if(hits.length>0){
-            var hit=hits[0].document;
-            tier3={content:String(hit.content||""),source:String(hit.source||""),score:hits[0].score};
+          // Field-name boost: any chunk whose source label shares a token
+          // with the query gets a small bonus, then we re-sort.
+          var qTokens=__dqaQueryTokens(q);
+          var rescored=hits.map(function(h){
+            var doc=h.document||{};
+            var bonus=__dqaFieldMatchesTokens(doc.source||"",qTokens)?0.05:0;
+            return {id:doc.id,content:String(doc.content||""),source:String(doc.source||""),score:(h.score||0)+bonus};
+          });
+          rescored.sort(function(a,b){return b.score-a.score;});
+          tier3Top=rescored;
+          if(rescored.length>0){
+            tier3={content:rescored[0].content,source:rescored[0].source,score:rescored[0].score};
           }
         }catch(docsErr){
           console.warn("ask: docs search failed:",docsErr);
         }
       }
 
-      // Pick the highest-scoring result. Tier 1 wins outright when it
-      // crossed its threshold (deterministic canonical match).
+      // Decision tree:
+      // 1. Clean Tier-1 hit (>=0.55 + boost) wins outright — deterministic.
+      // 2. Otherwise, if Tier 2 (curated host QA) has a strong hit, prefer it.
+      // 3. Otherwise, run RRF over Tier-1-top-K + Tier-3-top-K. The fused
+      //    winner is whichever rank-1 across both lists agrees most. This
+      //    fixes the "single weak chunk dumped verbatim" failure mode.
       if(tier1){
         __dqaAppendMsg(tier1.answer,"assistant",tier1.source,null);
+      }else if(tier2&&tier2.score>=0.5){
+        __dqaAppendMsg(tier2.answer,"assistant",null,tier2.anchorId);
       }else{
-        var t2=tier2?tier2.score:-1;
-        var t3=tier3?tier3.score:-1;
-        if(tier2&&t2>=t3){
+        var fused=__dqaRRF(tier1Top,tier3Top);
+        if(fused.length>0){
+          var top=fused[0];
+          if(top.kind==="tier1"){
+            var qa=top.item.qa;
+            __dqaAppendMsg(qa.answer,"assistant",qa.source_anchor_id||qa.field,null);
+          }else{
+            var c=top.item;
+            __dqaAppendMsg(c.content,"assistant",c.source,null);
+          }
+        }else if(tier2){
           __dqaAppendMsg(tier2.answer,"assistant",null,tier2.anchorId);
         }else if(tier3){
           __dqaAppendMsg(tier3.content,"assistant",tier3.source,null);
