@@ -1222,11 +1222,15 @@ var __docsQa={
 };
 
 // Tier 1 confidence threshold. Calibrated for MiniLM L2-normalized
-// cosine: 0.72 catches phrasings close to the canonical forms without
-// bleeding into unrelated questions. Tier 2 uses Orama's native scoring
-// with no extra gate — the existence of any hit is enough, mirroring
-// the Phase 3 baseline so we never regress on recall.
-var __DQA_TIER1_THRESHOLD=0.72;
+// cosine. Lowered from 0.72 -> 0.55 (Phase A optimization #5): with
+// schema-aware phrasing expansion (see canonical-questions.ts), the
+// canonical-QA bank is now dense enough that 0.55 catches paraphrases
+// without bleeding into unrelated questions. The hard floor below
+// (__DQA_TIER1_HARD_FLOOR) blocks pure noise from ever winning Tier 1.
+var __DQA_TIER1_THRESHOLD=0.55;
+// Below this, we never let Tier 1 win even if it's the best score —
+// the answer would almost certainly be irrelevant.
+var __DQA_TIER1_HARD_FLOOR=0.45;
 
 function __dqaAppendMsg(text,role,source,anchorId){
   if(!__docsQa.messages) return;
@@ -1367,18 +1371,72 @@ async function __dqaEmbedQuery(q){
     return null;
   }
 }
-function __dqaTier1(queryVec){
-  if(!queryVec||!__docsQa.canonicalQAs.length) return null;
-  var best=null,bestScore=-1;
+// Lowercase token set for the query, used for field-name boosting (#4).
+function __dqaQueryTokens(q){
+  var t=String(q||"").toLowerCase().replace(/[^a-z0-9_\s]/g," ").split(/\s+/);
+  var out={};
+  for(var i=0;i<t.length;i++){if(t[i]&&t[i].length>=3) out[t[i]]=true;}
+  return out;
+}
+// True when a field name shares any meaningful token with the query.
+// e.g. query "how many rooms" + field "number_of_rooms" → true.
+function __dqaFieldMatchesTokens(field,tokens){
+  if(!field) return false;
+  var parts=String(field).toLowerCase().split(/[_\s-]+/);
+  for(var i=0;i<parts.length;i++){
+    if(parts[i].length>=3&&tokens[parts[i]]) return true;
+    // also try singular form (rooms→room) cheaply
+    if(parts[i].length>=4&&parts[i].slice(-1)==="s"&&tokens[parts[i].slice(0,-1)]) return true;
+  }
+  return false;
+}
+// Returns the top-K canonical-QA matches above the hard floor, with
+// field-name boosting applied. The boost adds 0.10 to the cosine score
+// for QAs whose field name shares a token with the query — enough to
+// pull a near-miss across the threshold without overruling a clean hit.
+function __dqaTier1TopK(queryVec,query,k){
+  if(!queryVec||!__docsQa.canonicalQAs.length) return [];
+  var tokens=__dqaQueryTokens(query);
+  var scored=[];
   for(var i=0;i<__docsQa.canonicalQAs.length;i++){
     var qa=__docsQa.canonicalQAs[i];
     var s=__dqaDot(queryVec,qa.embedding);
-    if(s>bestScore){bestScore=s;best=qa;}
+    if(__dqaFieldMatchesTokens(qa.field,tokens)) s+=0.10;
+    if(s>=__DQA_TIER1_HARD_FLOOR){
+      scored.push({qa:qa,score:s});
+    }
   }
-  if(best&&bestScore>=__DQA_TIER1_THRESHOLD){
-    return {answer:best.answer,source:best.source_anchor_id||best.field,score:bestScore};
+  scored.sort(function(a,b){return b.score-a.score;});
+  return scored.slice(0,k||3);
+}
+// Back-compat single-best wrapper. Returns null if best is below the
+// soft threshold (0.55) — used by callers that only need a deterministic
+// hit, not the fusion list.
+function __dqaTier1(queryVec,query){
+  var top=__dqaTier1TopK(queryVec,query,1);
+  if(top.length===0) return null;
+  var best=top[0];
+  if(best.score<__DQA_TIER1_THRESHOLD) return null;
+  return {answer:best.qa.answer,source:best.qa.source_anchor_id||best.qa.field,score:best.score};
+}
+// Reciprocal Rank Fusion (#5). Combines tier-1 (canonical) + tier-3
+// (chunks) result lists into a single ranking. The constant 60 is the
+// standard RRF "k" — small enough that rank-1 dominates rank-3, large
+// enough that we don't miss strong rank-2 hits when both tiers agree.
+function __dqaRRF(tier1List,tier3List){
+  var bag={};
+  for(var i=0;i<tier1List.length;i++){
+    var key="t1:"+(tier1List[i].qa.id||tier1List[i].qa.field||i);
+    bag[key]={kind:"tier1",rank:i,score:1/(60+i),item:tier1List[i]};
   }
-  return null;
+  for(var j=0;j<tier3List.length;j++){
+    var k2="t3:"+(tier3List[j].id||j);
+    bag[k2]={kind:"tier3",rank:j,score:1/(60+j),item:tier3List[j]};
+  }
+  var arr=[];
+  for(var key2 in bag){if(Object.prototype.hasOwnProperty.call(bag,key2)) arr.push(bag[key2]);}
+  arr.sort(function(a,b){return b.score-a.score;});
+  return arr;
 }
 async function __askBuildCuratedDb(){
   // Build the host-curated qaDatabase Orama DB once. The data is the same
@@ -1457,7 +1515,11 @@ async function __dqaInit(){
       var queryVec=await __dqaEmbedQuery(q);
 
       // Tier 1 — canonical-QA cosine (deterministic, templated).
-      var tier1=__dqaTier1(queryVec);
+      // Compute top-3 with field-name boosting; the single-best wrapper
+      // is what we use for the "outright win" path below, but we keep
+      // the full list for RRF fusion when no tier crosses cleanly.
+      var tier1Top=__dqaTier1TopK(queryVec,q,3);
+      var tier1=__dqaTier1(queryVec,q);
       var tier1Score=tier1?tier1.score:-1;
 
       // Tier 2 — hybrid Orama over the host-curated qaDatabase.
@@ -1482,6 +1544,8 @@ async function __dqaInit(){
       }
 
       // Tier 3 — hybrid (or BM25) over per-property doc chunks.
+      // Pull top-5 (was 1) so the fusion step can re-rank.
+      var tier3Top=[];
       var tier3=null;
       if(__docsQa.db){
         var searchArgs;
@@ -1491,32 +1555,55 @@ async function __dqaInit(){
             term:q,
             vector:{value:queryVec,property:"embedding"},
             properties:["content"],
-            limit:1,
+            limit:5,
             similarity:0
           };
         }else{
-          searchArgs={term:q,properties:["content"],limit:1};
+          searchArgs={term:q,properties:["content"],limit:5};
         }
         try{
           var res=await __docsQa.oramaModule.search(__docsQa.db,searchArgs);
           var hits=(res&&res.hits)||[];
-          if(hits.length>0){
-            var hit=hits[0].document;
-            tier3={content:String(hit.content||""),source:String(hit.source||""),score:hits[0].score};
+          // Field-name boost: any chunk whose source label shares a token
+          // with the query gets a small bonus, then we re-sort.
+          var qTokens=__dqaQueryTokens(q);
+          var rescored=hits.map(function(h){
+            var doc=h.document||{};
+            var bonus=__dqaFieldMatchesTokens(doc.source||"",qTokens)?0.05:0;
+            return {id:doc.id,content:String(doc.content||""),source:String(doc.source||""),score:(h.score||0)+bonus};
+          });
+          rescored.sort(function(a,b){return b.score-a.score;});
+          tier3Top=rescored;
+          if(rescored.length>0){
+            tier3={content:rescored[0].content,source:rescored[0].source,score:rescored[0].score};
           }
         }catch(docsErr){
           console.warn("ask: docs search failed:",docsErr);
         }
       }
 
-      // Pick the highest-scoring result. Tier 1 wins outright when it
-      // crossed its threshold (deterministic canonical match).
+      // Decision tree:
+      // 1. Clean Tier-1 hit (>=0.55 + boost) wins outright — deterministic.
+      // 2. Otherwise, if Tier 2 (curated host QA) has a strong hit, prefer it.
+      // 3. Otherwise, run RRF over Tier-1-top-K + Tier-3-top-K. The fused
+      //    winner is whichever rank-1 across both lists agrees most. This
+      //    fixes the "single weak chunk dumped verbatim" failure mode.
       if(tier1){
         __dqaAppendMsg(tier1.answer,"assistant",tier1.source,null);
+      }else if(tier2&&tier2.score>=0.5){
+        __dqaAppendMsg(tier2.answer,"assistant",null,tier2.anchorId);
       }else{
-        var t2=tier2?tier2.score:-1;
-        var t3=tier3?tier3.score:-1;
-        if(tier2&&t2>=t3){
+        var fused=__dqaRRF(tier1Top,tier3Top);
+        if(fused.length>0){
+          var top=fused[0];
+          if(top.kind==="tier1"){
+            var qa=top.item.qa;
+            __dqaAppendMsg(qa.answer,"assistant",qa.source_anchor_id||qa.field,null);
+          }else{
+            var c=top.item;
+            __dqaAppendMsg(c.content,"assistant",c.source,null);
+          }
+        }else if(tier2){
           __dqaAppendMsg(tier2.answer,"assistant",null,tier2.anchorId);
         }else if(tier3){
           __dqaAppendMsg(tier3.content,"assistant",tier3.source,null);
