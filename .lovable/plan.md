@@ -1,89 +1,100 @@
 
 
-## Resume URL-extraction rollout — deploy + UI status surface + regen banner
+## Fix the 401: stop relying on the platform JWT verifier
 
-### Why this is still failing in production
+### Root cause (confirmed in logs + code)
 
-Server-side hardening (JSON error envelope, balanced-brace JSON parser, `pdfjs_heuristic` template extractor, structured logs) is **already in code** but `extract-url-content` has **never been deployed** — the edge-function logs query returns "No logs found", and `property_extractions` is still empty for all 4 registered URL/PDF assets. The vault_templates CHECK constraint (`pdfjs_heuristic` | `donut` only) is what was silently killing every prior URL attempt; the current code already accommodates that constraint correctly.
+Edge log: `POST | 401 | extract-url-content | execution_time_ms: 64` — three rapid 401s, all rejected at the **Supabase gateway** before our handler boots. The function's own startup line (`Listening on http://localhost:9999/`) appears, but no `[extract-url-content]` lines from the request handler ever fire. That's the signature of `verify_jwt = true` rejecting the request at the platform layer.
 
-So the remaining work is: **deploy → make the UI honestly show pending/failed/indexed → tell the agent to re-generate → verify end-to-end**.
+```text
+Browser fetch (with valid user JWT)
+        │
+        ▼
+Supabase gateway  ──[verify_jwt=true]──►  401  ❌ (ours never runs)
+        │
+        ▼  (only on success)
+extract-url-content handler  ──[its own auth.getUser check]──►  …
+```
 
-### The remaining fix — three small, additive pieces
+Two compounding problems make this dead code:
 
-#### 1. Deploy the hardened edge functions (no code change)
+1. **`extract-url-content`** has `verify_jwt = true` in `supabase/config.toml` (line 28).
+2. **`extract-property-doc`** has **no config block at all** — so it inherits the platform default, which is also `verify_jwt = true`. That's why the PDF path has been silently failing all along, exactly matching the empty `property_extractions` table.
 
-Call `supabase--deploy_edge_functions` for both `extract-url-content` and `extract-property-doc`. This is the trigger that finally lets the URL flow run. After deploy, immediately re-trigger the existing failed Sleeper Magazine asset by calling the function with that `vault_asset_id` to confirm a real extraction row lands in the DB.
+The function code already does its own auth check (`extract-url-content` lines 460–470 verify the JWT via `userClient.auth.getUser()` and return a proper structured `{ ok: false, stage: 'auth', detail: 'unauthorized_…' }` JSON envelope on failure). The gateway check is redundant *and* it strips our diagnostic envelope, leaving the client with an opaque `non-2xx status` from `supabase.functions.invoke`.
 
-#### 2. UI status badges in `PropertyIntelligenceSection.tsx` — surface the truth
+Why this only manifested now: every other internal function in the project (`create-checkout`, `payments-webhook`, `stripe-connect-*`, `handle-lead-capture`) has `verify_jwt = false` and authenticates internally. We followed a different pattern for the two extraction functions, and that pattern is what is failing.
 
-Right now the row only counts successful `property_extractions`, so a registered-but-not-yet-extracted URL shows "No documents attached yet" — identical to the empty state. Fix by merging the per-property `vault_assets` view with the `extractions` array.
+### The fix
 
-**Edit:** `src/components/portal/PropertyIntelligenceSection.tsx`
+#### 1. `supabase/config.toml` — disable platform verify_jwt for both extraction functions
 
-- Add a new hook usage: query `vault_assets` filtered by `category_type='property_doc'` joined logically against this property's saved_model. Since vault_assets aren't natively tied to a property_uuid, we use a deterministic per-row guard: track the `vault_asset_id` returned by `handleUpload` in component-local state (`recentAssets: Record<modelId, AssetMeta[]>`) and union with `extractions[].vault_asset_id`. This is an additive, in-memory union — **no DB schema change, no new query layer**.
-- Per-asset status logic:
-  - `Indexed` (green badge) — has an `extraction` row with `chunks.length > 0`
-  - `Pending` (amber, animated `Loader2`) — asset registered, `running` from the hook is true OR no extraction row yet within the last 30s
-  - `Failed` (red, with **Re-index** icon button + tooltip showing `failure.stage: failure.detail`) — `failuresByAsset[asset_id]` exists in the hook (already populated)
-  - **Low content warning chip** (amber outline) when the function's response `diagnostics.low_content_warning === true` — surface "Thin page text — consider uploading a PDF instead" via a tiny `<span title>`
-- Replace the "No documents attached yet" copy with `"{N} document{s} attached • {indexed} indexed"` once any asset exists.
-- Add a **Re-index** button on Failed rows that calls `extractFromUrl({ vault_asset_id, url })` again with the persisted URL (we already have it from `recentAssets`). For pre-existing rows loaded from DB on mount we also fetch `asset_url` so the retry has the URL.
+```toml
+[functions.extract-property-doc]
+verify_jwt = false
 
-To avoid over-engineering: in this same edit pass, add a small `useEffect` that fetches the per-property `vault_assets` once on mount (filtered by `provider_id = user.id` and matching the `recentAssets` heuristic — actually simpler: filter only by `is_active && category_type='property_doc'` for this provider, then join client-side against `extractions.vault_asset_id` to identify orphans). This way a page reload still shows "Failed" rows that pre-existed before the deploy.
+[functions.extract-url-content]
+verify_jwt = false
+```
 
-#### 3. Regeneration banner in `HudBuilderSandbox.tsx`
+This routes the request to our handler, which already enforces auth itself with the same JWT and returns the structured error envelope the client knows how to decode. Net security posture is unchanged: **the function still rejects unauthenticated callers** at lines 460–470 with a 401 JSON response. We only stop the gateway from short-circuiting before our diagnostics can run.
 
-After any successful extraction, `usePropertyExtractions.extract*` already fires a success toast. Lift that success signal to the parent so we can show a one-time sticky banner.
+#### 2. Re-deploy both functions
 
-**Edit:** `src/components/portal/HudBuilderSandbox.tsx`
+After the config change, deploy `extract-property-doc` and `extract-url-content` so the new gateway setting takes effect. Without redeploy the platform-level `verify_jwt` does not flip.
 
-- Add local state `const [extractionDirty, setExtractionDirty] = useState(false)`.
-- Pass `onExtractionSuccess={() => setExtractionDirty(true)}` down through `<PropertyIntelligenceSection />`.
-- Add an `onSuccess` optional callback to `PropertyIntelligenceSection` props and wire it inside `ModelRow.handleUpload` to fire **only** when `res` is non-null (i.e., extraction actually completed).
-- Render a sticky banner above the accordion when `extractionDirty && downloading === false`:
+#### 3. Belt-and-suspenders on the client (no behavioural change when things work)
 
-  > "Index updated — re-generate your presentation HTML for visitors to ask the new questions." [Re-generate now] [Dismiss]
+`src/lib/extraction/client.ts` — keep using `supabase.functions.invoke` (which auto-attaches the user's JWT) but, if and only if the SDK happens to return a 401 (rare future regression), explicitly retry **once** with `fetch` + headers `Authorization: Bearer <session.access_token>` + `apikey: <publishable key>`. This matches the lovable-stack-overflow pattern and gives us a safety net if the SDK ever drops the header (e.g. during an in-flight token refresh):
 
-  The Re-generate button calls the existing `runDownload(savedModelId)` flow if `savedModelId` is set; otherwise it nudges the user to save a model first. Dismissing only hides the banner for this session.
+- Wrap both `invokeExtraction` and `invokeUrlExtraction`.
+- On `error.context?.status === 401`, fetch `supabase.auth.getSession()`, and POST manually to `${VITE_SUPABASE_URL}/functions/v1/<name>` with `Authorization` and `apikey` headers.
+- If still 401, throw the existing `ExtractionError` with `stage: 'auth'`, `detail: 'no_session'`. The Re-index button in `PropertyIntelligenceSection` already surfaces that detail in its tooltip, so the agent will see "auth: no_session — please sign in again" instead of the current opaque error.
 
-This is the smallest possible nudge that closes the loop the user explicitly hit ("I uploaded but the tour doesn't know it").
+This single retry costs nothing on success and rescues the user from one specific edge case (mid-refresh token swap) without changing the happy path.
 
-### Mental trace of trigger ripple — what could go wrong
+#### 4. No other code changes
 
-| Trigger | Old downstream | New downstream | Risk |
+- The handler-level auth check, SSRF guard, freeze enforcement, LLM step, chunking, persistence, and `embedding_status='pending'` flip are all already correct and untouched.
+- The UI status badges, Re-index button, regen banner, and `failuresByAsset` plumbing already added in the prior pass remain as-is — they just start showing **green Indexed** badges instead of red Failed once the gateway stops blocking the request.
+- Browser client (`src/integrations/supabase/client.ts`) is **not** edited (preconfigured file).
+
+### Trigger trace — what changes downstream
+
+| Trigger | Old path | New path | Risk |
 |---|---|---|---|
-| File-only upload (existing path) | `extract` → toast → `refresh` | Adds: `setExtractionDirty(true)` only on success | Zero — purely additive parent state |
-| URL-only upload | `extractFromUrl` → toast → `refresh` | Adds: failure chip via existing `failuresByAsset` map; success: setExtractionDirty | Zero — `failuresByAsset` already populated by the hook |
-| Re-index button on a failed row | n/a (button is new) | `extractFromUrl` with stored URL → identical contract | Zero — same code path as initial submit |
-| HTML re-generation | `runDownload(modelId)` | Same call, just with banner CTA | Zero — no change to the function |
-| Pre-existing `vault_assets` with no extraction | hidden by UI | Show as "Failed (never indexed)" with retry | Zero — read-only join, no writes |
-| `usePropertyExtractions` consumed elsewhere (`PropertyDocsPanel`) | uses same hook | We're not changing the hook's public API; we already added `failuresByAsset` last turn but it's optional and unused there | Zero — additive shape |
+| Builder Re-index click | invoke → gateway → 401 | invoke → gateway pass → handler auth check → handler runs | Zero — handler already has auth gate |
+| New URL submission | invoke → gateway → 401 | same as above, runs to completion | Zero |
+| New PDF upload | invoke → gateway → 401 (silently) | runs to completion for the first time | Positive — unblocks PDF flow that was also broken |
+| Anonymous caller (e.g. spoofed request) | gateway 401 | handler 401 with structured JSON | Equivalent — still 401, just from our code |
+| Frozen property | gateway 401 (never reaches freeze check!) | handler 423 with `freeze: lus_frozen` | Positive — the freeze check finally runs |
+| LUS license invalid | gateway 401 | handler 403 | Positive — proper error visibility |
+| Tour visitor (no session) calling these fns | gateway 401 | handler 401 | Equivalent |
 
-The hook's existing return signature (`extractions, loading, running, backfilling, refresh, extract, extractFromUrl, remove, reindex`) **already includes everything UI needs** except `failuresByAsset`. We need to expose it from the hook — that's a one-line addition to the `return {}` block.
+Note the freeze-check row: with `verify_jwt = true`, **even frozen properties were returning a generic 401 instead of the proper 423 freeze error** — meaning the entire LUS gate was unreachable from the URL/PDF path. Disabling gateway JWT also restores that intended behavior.
 
 ### Files touched
 
-- **deploy** `supabase/functions/extract-url-content` and `supabase/functions/extract-property-doc` (no code change — just push)
-- **edit** `src/hooks/usePropertyExtractions.ts` — expose `failuresByAsset` in the return object (single line)
-- **edit** `src/components/portal/PropertyIntelligenceSection.tsx` — fetch per-provider property_doc assets on mount, render Indexed/Pending/Failed badges, add Re-index button, pipe `onSuccess` callback up
-- **edit** `src/components/portal/HudBuilderSandbox.tsx` — sticky regen banner driven by `extractionDirty` state, wire `onExtractionSuccess` prop to the section
-- **verify** post-deploy by re-invoking the function once for the existing Sleeper Magazine asset, then querying `property_extractions` to confirm a row lands
+- **edit** `supabase/config.toml` — add `[functions.extract-property-doc] verify_jwt = false`, change `extract-url-content` from `true` to `false`
+- **edit** `src/lib/extraction/client.ts` — add a single 401-retry-with-explicit-headers fallback inside both `invokeExtraction` and `invokeUrlExtraction`
+- **deploy** `extract-property-doc` and `extract-url-content` so the gateway picks up the new setting
 
 ### What this plan deliberately does NOT do
 
-- **No DB migration.** The CHECK constraint is fine; the function already targets it correctly.
-- **No new edge function** for diagnostics. The existing `diagnostics` payload returned in the success/failure JSON is enough — we surface it via the toast detail and the badge tooltip. Skipping the originally proposed `get-extraction-status` keeps the change surface minimal.
-- **No change to the Ask runtime, embedding worker, or `portal.functions.ts`.** Those layers are correct; they were just being fed by an empty table.
-- **No retroactive auto-extraction** of every orphan vault_asset. We surface the orphans in the UI with a Re-index button so the user opts in, avoiding surprise OpenAI spend on assets they no longer care about.
+- **No DB migration**, no RLS change, no schema change.
+- **No new edge function.** Both existing functions already do their own auth.
+- **No change to `extract-property-doc`'s extraction code** beyond redeploy. Its handler already has the same auth-check pattern as `extract-url-content`.
+- **No change to the UI badges, regen banner, or hook.** Those are already wired and start working the moment the gateway stops blocking.
+- **No change to the client Supabase setup** (`client.ts` is preconfigured).
 
-### Verification checklist (post-deploy)
+### Verification checklist
 
-1. Deploy returns ok for both functions → call `supabase--curl_edge_functions` against `/extract-url-content` with the existing Sleeper Magazine `vault_asset_id` and the user's JWT → response is `{ ok: true, chunks_indexed: N, fields: {...}, diagnostics: { llm_stage: "ok", text_length: > 1000 } }`.
-2. `SELECT * FROM property_extractions` now returns at least one row with `extractor='web_url'` and a non-empty `chunks` array.
-3. Reload the Builder → the Hotel Indigo property row shows the green **Indexed** badge with `N fields · M chunks` instead of "No documents attached yet".
-4. The 3 other orphan vault_assets show as **Failed (never indexed)** with a **Re-index** button. Clicking it for the Wikipedia Marriott Marquis asset succeeds within ~10s.
-5. Banner appears: "Index updated — re-generate your presentation HTML…". Click **Re-generate now** → new HTML downloads → opening it confirms a `__PROPERTY_EXTRACTIONS__` script tag is present.
-6. In the new HTML, switch to the Hotel Indigo tab and ask "Who designed this property?" → tier-3 chunk search returns the answer from the Sleeper article.
-7. Submit a deliberately broken URL (404) → row shows **Failed** with tooltip `fetch: http_404`. Re-index after fixing the URL succeeds.
-8. LUS-frozen property still blocks both file and URL paths with a clear `freeze: lus_frozen` toast.
+1. After deploy, in the Builder click **Re-index** on the Wikipedia Marriott Marquis URL → request returns 200 with `{ ok: true, chunks_indexed: N, fields: {...}, diagnostics: { llm_stage: "ok", text_length: > 5000 } }`. Edge logs show `[extract-url-content] en.wikipedia.org text_len=… fields=… chunks=… ok` and the gateway log shows `200`, not `401`.
+2. `SELECT count(*) FROM property_extractions` returns ≥ 1.
+3. The asset row in `PropertyIntelligenceSection` flips from **Failed** (red) to **Indexed** (green) with `N fields · M chunks`.
+4. The blue regen banner appears in the Builder: *"Index updated — re-generate your presentation HTML…"*. Clicking **Re-generate now** downloads a new HTML containing a `__PROPERTY_EXTRACTIONS__` script tag.
+5. Open the regenerated HTML, switch to the Marriott Marquis property tab, ask "How many guest rooms are in this hotel?" → the AI answers with the figure from the Wikipedia article (≈ 1,966 rooms) instead of "There are 2 properties in this tour".
+6. Re-upload an existing PDF (e.g. Heritage Oak datasheet) → also creates a `property_extractions` row for the first time, confirming the parallel fix.
+7. A frozen property's URL submission now returns a 423 with `freeze: lus_frozen` instead of a 401, and the toast reads "LUS freeze active for this property — unfreeze to continue".
+8. Sign out, then attempt to call `extract-url-content` directly via curl with no `Authorization` → returns 401 with `{ ok: false, stage: 'auth', detail: 'unauthorized_no_jwt' }` — handler-level rejection is intact.
 
