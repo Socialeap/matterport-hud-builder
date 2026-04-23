@@ -171,6 +171,7 @@ serve(async (req) => {
   const provider = getProvider(template.extractor);
   let fields: Record<string, unknown>;
   let chunks: { id: string; section: string; content: string }[];
+  let rawText: string | undefined;
   try {
     const result = await provider.extract({
       bytes,
@@ -179,6 +180,7 @@ serve(async (req) => {
     });
     fields = result.fields;
     chunks = result.chunks;
+    rawText = result.rawText;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(
@@ -189,6 +191,44 @@ serve(async (req) => {
       mime_type: asset.mime_type,
       bytes: bytes.byteLength,
     });
+  }
+
+  // 4b ─ Groq Cleaning Pass (one-time LLM post-processing).
+  //
+  //  If GROQ_API_KEY is present and the extractor exposed rawText, we send
+  //  the document text to Llama 3.1 70B to:
+  //    • Re-extract fields into a canonical schema (more accurate than regex).
+  //    • Replace the naive sliding-window chunks with thematic paragraphs.
+  //
+  //  The call is fire-and-forget with respect to failures: any error (network,
+  //  rate-limit, parse failure) is logged and the heuristic result is kept,
+  //  so this pass can never break an upload.
+  const groqKey = Deno.env.get("GROQ_API_KEY");
+  if (groqKey && rawText) {
+    try {
+      const { groqClean } = await import("../_shared/groq-cleaner.ts");
+      const cleaned = await groqClean(rawText, template.doc_kind, groqKey);
+      if (cleaned) {
+        // Merge: Groq fields override heuristic fields when the value is
+        // present; gaps are filled by the heuristic result.
+        for (const [k, v] of Object.entries(cleaned.fields)) {
+          if (v != null && v !== "") fields[k] = v;
+        }
+        // Replace sliding-window chunks with coherent thematic chunks.
+        if (cleaned.chunks.length > 0) {
+          chunks = cleaned.chunks;
+          console.info(
+            `[extract-property-doc] groq-clean ok model=${cleaned.model} chunks=${chunks.length}`,
+          );
+        }
+      }
+    } catch (err) {
+      console.warn(
+        `[extract-property-doc] groq-cleaner failed, keeping heuristic result: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 
   // 5 ─ Upsert property_extractions

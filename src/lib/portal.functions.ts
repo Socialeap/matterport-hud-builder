@@ -627,6 +627,18 @@ export const generatePresentation = createServerFn({ method: "POST" })
       ? ""
       : `<footer id="powered-by">Powered by Transcendence Media</footer>`;
 
+    // Derive the Synthesis Bridge URL from the Supabase project URL.
+    // VITE_SUPABASE_URL is inlined by Vite at build time for both client and
+    // SSR bundles; SUPABASE_URL is the plain process.env fallback for local dev.
+    const _supabaseOrigin = (
+      process.env.VITE_SUPABASE_URL ??
+      process.env.SUPABASE_URL ??
+      ""
+    ).replace(/\/$/, "");
+    const synthesisUrl = _supabaseOrigin
+      ? `${_supabaseOrigin}/functions/v1/synthesize-answer`
+      : "";
+
     // Build social links HTML for the contact panel
     const socialDefs: Array<{ key: string; label: string }> = [
       { key: "linkedin", label: "LinkedIn" },
@@ -920,6 +932,7 @@ ${
     : ""
 }
 ${hasQA ? `<script>window.__QA_DATABASE__=${safeJsonScriptLiteral(qaDatabase)};</script>` : ""}
+${synthesisUrl ? `<script>window.__SYNTHESIS_URL__=${JSON.stringify(synthesisUrl)};</script>` : ""}
 ${askAssets.moduleScript}
 <script>
 (function(){
@@ -1216,6 +1229,7 @@ var __docsQa={
   mode:null,              // "hybrid" | "bm25" (for docs DB)
   canonicalQAs:[],        // [{id, field, question, answer, source_anchor_id, embedding}]
   currentIndexKey:null,
+  abortCtrl:null,         // AbortController for in-flight synthesis requests
   input:null,
   send:null,
   messages:null
@@ -1583,32 +1597,113 @@ async function __dqaInit(){
       }
 
       // Decision tree:
-      // 1. Clean Tier-1 hit (>=0.55 + boost) wins outright — deterministic.
-      // 2. Otherwise, if Tier 2 (curated host QA) has a strong hit, prefer it.
-      // 3. Otherwise, run RRF over Tier-1-top-K + Tier-3-top-K. The fused
-      //    winner is whichever rank-1 across both lists agrees most. This
-      //    fixes the "single weak chunk dumped verbatim" failure mode.
+      // 1. Clean Tier-1 hit (>=0.55 + boost) wins outright — deterministic
+      //    template answer; no synthesis needed.
+      // 2. Tier 2 curated QA with strong score — also deterministic.
+      // 3. Otherwise: gather best chunks from Tier 3 (+ Tier-1 QA hints),
+      //    send to the Synthesis Bridge for a conversational LLM answer.
+      //    Falls back to local RRF display when the bridge is unavailable.
       if(tier1){
         __dqaAppendMsg(tier1.answer,"assistant",tier1.source,null);
       }else if(tier2&&tier2.score>=0.5){
         __dqaAppendMsg(tier2.answer,"assistant",null,tier2.anchorId);
       }else{
-        var fused=__dqaRRF(tier1Top,tier3Top);
-        if(fused.length>0){
-          var top=fused[0];
-          if(top.kind==="tier1"){
-            var qa=top.item.qa;
-            __dqaAppendMsg(qa.answer,"assistant",qa.source_anchor_id||qa.field,null);
-          }else{
-            var c=top.item;
-            __dqaAppendMsg(c.content,"assistant",c.source,null);
+        // ── Synthesis Bridge ──────────────────────────────────────────────
+        // Assemble up to 5 chunks: Tier-3 doc chunks first (primary grounding),
+        // then Tier-1 canonical-QA pairs as supplementary context.
+        var synthChunks=[];
+        for(var si=0;si<tier3Top.length&&synthChunks.length<5;si++){
+          var t3=tier3Top[si];
+          synthChunks.push({id:t3.id,section:t3.source,content:t3.content,score:t3.score});
+        }
+        for(var si2=0;si2<tier1Top.length&&synthChunks.length<5;si2++){
+          var tqa=tier1Top[si2].qa;
+          synthChunks.push({
+            id:tqa.id||tqa.field||("t1-"+si2),
+            section:tqa.source_anchor_id||tqa.field||"canonical",
+            content:tqa.question+" "+tqa.answer,
+            score:tier1Top[si2].score
+          });
+        }
+        var synthesized=false;
+        if(window.__SYNTHESIS_URL__&&synthChunks.length>0){
+          // Show animated loading dots while the LLM generates.
+          var loadDiv=document.createElement("div");
+          loadDiv.className="ask-msg assistant loading";
+          loadDiv.innerHTML='<span class="ask-loading-dots"><span style="--i:0">•</span><span style="--i:1">•</span><span style="--i:2">•</span></span>';
+          __docsQa.messages.appendChild(loadDiv);
+          __docsQa.messages.scrollTop=__docsQa.messages.scrollHeight;
+          try{
+            var sCtrl=new AbortController();
+            if(__docsQa.abortCtrl) __docsQa.abortCtrl.abort();
+            __docsQa.abortCtrl=sCtrl;
+            var sResp=await fetch(window.__SYNTHESIS_URL__,{
+              method:"POST",
+              headers:{"Content-Type":"application/json"},
+              body:JSON.stringify({query:q,chunks:synthChunks}),
+              signal:sCtrl.signal
+            });
+            if(sResp.ok&&sResp.body){
+              var sReader=sResp.body.getReader();
+              var sDecoder=new TextDecoder();
+              var sBuf="";
+              var ansDiv=document.createElement("div");
+              ansDiv.className="ask-msg assistant";
+              loadDiv.replaceWith(ansDiv);
+              var accText="";
+              var streamDone=false;
+              while(!streamDone){
+                var rr=await sReader.read();
+                if(rr.done) break;
+                sBuf+=sDecoder.decode(rr.value,{stream:true});
+                var sLines=sBuf.split("\n");
+                sBuf=sLines.pop()||"";
+                for(var sl=0;sl<sLines.length;sl++){
+                  var sLine=sLines[sl];
+                  if(!sLine.startsWith("data: ")) continue;
+                  var sPay=sLine.slice(6).trim();
+                  try{
+                    var sEvt=JSON.parse(sPay);
+                    if(sEvt.token){
+                      accText+=sEvt.token;
+                      ansDiv.textContent=accText;
+                      __docsQa.messages.scrollTop=__docsQa.messages.scrollHeight;
+                      synthesized=true;
+                    }else if(sEvt.done){
+                      streamDone=true;
+                    }else if(sEvt.error){
+                      throw new Error(sEvt.error);
+                    }
+                  }catch(pe){if(!(pe instanceof SyntaxError)) throw pe;}
+                }
+              }
+            }
+            if(loadDiv.parentNode) loadDiv.remove();
+          }catch(sErr){
+            if(sErr.name!=="AbortError") console.warn("ask: synthesis failed:",sErr);
+            if(loadDiv.parentNode) loadDiv.remove();
           }
-        }else if(tier2){
-          __dqaAppendMsg(tier2.answer,"assistant",null,tier2.anchorId);
-        }else if(tier3){
-          __dqaAppendMsg(tier3.content,"assistant",tier3.source,null);
-        }else{
-          __dqaAppendMsg("I couldn't find that for this property. Try rephrasing, or reach out via Contact.","assistant",null,null);
+          __docsQa.abortCtrl=null;
+        }
+        // ── Local RRF fallback (synthesis unavailable or failed) ──────────
+        if(!synthesized){
+          var fused=__dqaRRF(tier1Top,tier3Top);
+          if(fused.length>0){
+            var top=fused[0];
+            if(top.kind==="tier1"){
+              var qa=top.item.qa;
+              __dqaAppendMsg(qa.answer,"assistant",qa.source_anchor_id||qa.field,null);
+            }else{
+              var c=top.item;
+              __dqaAppendMsg(c.content,"assistant",c.source,null);
+            }
+          }else if(tier2){
+            __dqaAppendMsg(tier2.answer,"assistant",null,tier2.anchorId);
+          }else if(tier3){
+            __dqaAppendMsg(tier3.content,"assistant",tier3.source,null);
+          }else{
+            __dqaAppendMsg("I couldn't find that for this property. Try rephrasing, or reach out via Contact.","assistant",null,null);
+          }
         }
       }
       // Suppress unused-var lint for tier1Score (kept for future tuning).
@@ -1642,6 +1737,8 @@ function load(i){
   carouselMedia=props[i].multimedia||[];
   carouselIndex=0;
   // Reset Ask state so next open re-indexes docs for this property.
+  // Abort any in-progress synthesis stream for the previous property.
+  if(__docsQa.abortCtrl){__docsQa.abortCtrl.abort();__docsQa.abortCtrl=null;}
   __docsQa.currentIndexKey=null;
   if(__docsQa.messages){
     __docsQa.messages.innerHTML='<div class="ask-msg assistant">Switched to '+escapeText(props[i].name||"property")+'. Ask me something.</div>';
