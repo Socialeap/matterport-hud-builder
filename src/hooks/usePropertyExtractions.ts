@@ -30,16 +30,45 @@ export interface PropertyExtraction {
   extracted_at: string;
 }
 
+export type BackfillStatus = "idle" | "running" | "ok" | "failed";
+
+/** Belt-and-suspenders ceiling for the entire backfill pipeline. With
+ *  Layer-1 + Layer-2 timeouts in place this should never fire, but if
+ *  it does the spinner is guaranteed to clear. */
+const BACKFILL_WALL_CLOCK_MS = 180_000;
+
 export function usePropertyExtractions(propertyUuid: string | null) {
   const [extractions, setExtractions] = useState<PropertyExtraction[]>([]);
   const [loading, setLoading] = useState(false);
   const [running, setRunning] = useState(false);
-  const [backfilling, setBackfilling] = useState(false);
+  const [backfillStatus, setBackfillStatus] = useState<BackfillStatus>("idle");
+  const [backfillMessage, setBackfillMessage] = useState<string | null>(null);
   const [failuresByAsset, setFailuresByAsset] = useState<
     Record<string, ExtractionFailure>
   >({});
 
+  // Backwards-compatible boolean for callers that only care about the
+  // run-vs-not-run dichotomy. Derived from status.
+  const backfilling = backfillStatus === "running";
+
   const backfilledRef = useRef<Set<string>>(new Set());
+  const okClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearOkTimer = useCallback(() => {
+    if (okClearTimerRef.current) {
+      clearTimeout(okClearTimerRef.current);
+      okClearTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleOkClear = useCallback(() => {
+    clearOkTimer();
+    okClearTimerRef.current = setTimeout(() => {
+      setBackfillStatus("idle");
+      setBackfillMessage(null);
+      okClearTimerRef.current = null;
+    }, 3000);
+  }, [clearOkTimer]);
 
   const recordFailure = useCallback(
     (vault_asset_id: string, err: unknown) => {
