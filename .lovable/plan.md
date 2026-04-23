@@ -1,111 +1,67 @@
-## Scope
 
-Two things in this plan:
-1. **The audit you asked for** — language realignment in the dashboard onboarding modal *and* a check that the codebase's mental model is internally consistent with how the Ask AI pipeline actually flows.
-2. **A blocking build-error fix** — the build is currently failing on `extract-url-content` due to a TypeScript generics regression. Unrelated to your request, but it must be fixed in the same pass or nothing else ships.
 
----
+## Remove the on-screen "Property Docs" overlay + clarify the data sparsity
 
-## Audit findings
+### What's actually happening — two separate things
 
-### Your premise vs the code — the nuance that matters
+**1. The overlay you want gone is a debug/preview surface.** It lives entirely in the generated HTML, emitted by `buildPropertyDocsPanel()` in `src/lib/portal.functions.ts` (lines 446-481) and re-rendered on every tab change by `renderPropertyDocs(i)` (lines 1181-1212). It dumps the raw `fields` JSONB blob as `<dt>/<dd>` rows. It is **not** what powers the Ask AI chat — Ask AI reads the same `fields` (plus `chunks` and `canonical_qas`) directly from `window.__PROPERTY_EXTRACTIONS__`. Removing the overlay does not affect chat answers in any way.
 
-You said: *"Property Docs in the Production Vault are only used as TEMPLATES — the LLM identifies important property data types to create a JSON schema for indexing what the Client uploads."*
+**2. Why the overlay shows only 3 fields for the sleeper magazine page.** I queried the row directly:
 
-That's **exactly true for one path**, but the codebase has **two distinct concepts** that both currently get called "property docs," and that's the root of the confusion:
+| Source | Domain | Text → Fields | Chunks | Canonical QAs |
+|---|---|---|---|---|
+| Hotel Indigo (sleepermagazine.com) | magazine article | **3 fields** (`listing_date`, `property_type`, `property_address`) | 9 | 12 |
+| Marriott Marquis (en.wikipedia.org) | structured wiki | 9 fields (`number_of_rooms`, `stories`, `year_built`, etc.) | 169 | 61 |
 
-| Concept | DB location | Role in the Ask AI pipeline |
-|---|---|---|
-| **Vault Templates** (`vault_templates` table, edited at `/dashboard/vault/templates`) | One row per JSON Schema | Pure schema. Optionally seeded by uploading a sample PDF that runs through `induce-schema` (GPT-4o-mini) to *infer* a JSON Schema. The PDF itself is **discarded** — only the resulting schema is saved. **Never read by Ask AI.** ← This is what you're describing. |
-| **Vault Property Docs** (`vault_assets` rows where `category_type='property_doc'`) | One row per uploaded PDF, per provider | Real per-property documents. Extracted by `extract-property-doc` against a chosen template, which produces `fields` + `chunks` in `property_extractions`. The **chunks ARE embedded and DO feed Ask AI** for that specific property. |
+The `fields` blob is produced by the **`extract-url-content` edge function**, which sends the cleaned page text to GPT-4o-mini with the `SYSTEM_PROMPT` listing 18 canonical real-estate keys (lines 40-63). The LLM is instructed: *"Omit any field you cannot confidently extract."* The sleeper magazine article is editorial copy about Hotel Indigo's brand expansion — it mentions the address and that the property is a hotel, but it does **not** contain `square_feet`, `year_built`, `bedrooms`, `purchase_price`, `stories`, etc. That's why GPT only returned 3 keys. The chunks (9) and canonical QAs (12) were still produced — they're just not surfaced in the overlay.
 
-So the modal step #4 — *"For property docs, the AI assistant reads them to answer buyer questions"* — isn't entirely wrong; it's just dangerously ambiguous. It refers to category #2 (per-property doc uploads), but a reader who's just been told to "stock the vault" naturally interprets it as the global vault uploads (which is mostly category #1 in the Templates page). The two surfaces are bleeding into each other in the user's head, exactly as you suspected.
+This is a **data-source quality issue**, not a code defect. The same pipeline pulled 9 fields from Wikipedia because Wikipedia's NYC Marriott article contains structured infobox data. A magazine article will never yield a rich field table no matter what we do at the extractor — the facts simply aren't in the source text.
 
-### Pipeline congruence — verdict: mostly congruent, one true ambiguity
+### Plan — surgical removal + a note for future MSP guidance
 
-Going layer by layer:
+#### Single code change
 
-- **`vault_templates` table** → schema only. ✅ Matches your model.
-- **`induce-schema` edge function** → reads sample PDF text, returns a JSON Schema, **does not** persist or index the sample PDF. ✅ Matches your model.
-- **`vault_assets` (`property_doc` category)** → real per-property docs that ARE indexed. This contradicts the pure "template-only" framing — these uploads **are** read by the AI. **This is the real source of confusion.**
-- **`extract-property-doc`** → applies the chosen template's schema to the uploaded property doc, persists `fields` + `chunks` to `property_extractions`. Chunks then get embedded by the worker and used by Ask AI. ✅ Internally consistent.
-- **`extract-url-content`** → same pattern but for URLs; auto-generates a per-host template if none chosen.
-- **Ask AI runtime (`portal.functions.ts`)** → reads `property_extractions.chunks` + `canonical_qas` + `fields`. Never touches `vault_templates` directly at runtime.
+**`src/lib/portal.functions.ts`**
 
-So the data flow is correct and self-consistent. **The bug is purely a labeling/wording bug** that has propagated across three surfaces and one bullet list. No code refactor is needed; we need to clarify the language so what the UI says matches what the pipeline does.
+1. **Replace `buildPropertyDocsPanel()` (lines 446-481) with a stub** that returns `""`. Keeps the function signature so nothing else breaks at type-check time, but emits no CSS, no DOM shell.
+2. **Replace the runtime `renderPropertyDocs(i)` function body (lines 1181-1212) with an early-return no-op.** The single caller at line 1734 (`renderPropertyDocs(i);` inside the tab-switcher) keeps working — it just does nothing now. Leaving the call site untouched avoids any risk of breaking the surrounding tab-switch flow.
+3. **Leave `loadExtractionsByProperty()`, `propertyDocsData`, and the `window.__PROPERTY_EXTRACTIONS__` injection unchanged.** Those feed the Ask AI chat (Tier 1 canonical-QA cosine, Tier 3 chunk hybrid search, and the synthesis bridge). They must stay.
 
----
+That's it. One file, ~50 lines deleted/stubbed. No DB migration, no schema change, no edge-function change, no Ask AI behavioral change.
 
-## What needs to change
+#### Ripple analysis
 
-### 1. Fix the inaccurate / ambiguous wording (the actual ask)
+| Surface | Before | After | Risk |
+|---|---|---|---|
+| Bottom-left overlay on generated HTML | Shows 3 sparse fields | Gone entirely | Intended |
+| Ask AI chat — Tier 1 canonical QAs | Reads from `__PROPERTY_EXTRACTIONS__[uuid][n].canonical_qas` | Unchanged | None |
+| Ask AI chat — Tier 3 doc chunks | Reads from `__PROPERTY_EXTRACTIONS__[uuid][n].chunks` | Unchanged | None |
+| Ask AI synthesis bridge | Reads chunks + fields, posts to `synthesize-answer` | Unchanged | None |
+| Tab switcher (`switchProperty(i)`) | Calls `renderPropertyDocs(i)` then `updateHud(i)` | Calls a no-op then `updateHud(i)` | None |
+| Property Docs panel inside the **builder** (`PropertyDocsPanel.tsx`) | MSP-facing extraction control surface | Unchanged — different file | None |
+| Vault property doc list, templates, etc. | Unchanged | Unchanged | None |
 
-**`src/routes/_authenticated.dashboard.index.tsx`** (the "Stock Your Vault" card and its modal — lines 178–198):
+#### What this plan deliberately does NOT do
 
-- Bullet (line 183): *"Add property docs for AI to read"* → *"Add property doc samples to teach the AI what fields to extract"*
-- Modal step #4 (line 196): *"For property docs, the AI assistant reads them to answer buyer questions."* → *"For property doc samples, the AI learns the field structure (e.g. price, beds, year built) so it knows what to extract from your clients' future uploads."*
-- Modal step #3 (line 195): *"Your clients can now drop it into any tour they build."* — keep, but for the property-docs case it doesn't apply (clients don't drop *templates* into tours). Add a brief clarifier: *"(non-template assets only — templates work behind the scenes)"*.
+- **Does not change extraction quality.** The 3-field result for the sleeper magazine page is a faithful reflection of what GPT-4o-mini could responsibly extract from that source — adding more keys would be hallucination. If you want richer field tables for editorial-style sources, that's a separate "improve URL extraction prompt + fall back to chunk-mining for canonical fields" workstream we can plan after this.
+- **Does not delete the field/chunk/QA data.** All extractions stay in the database and continue to power Ask AI.
+- **Does not touch the in-builder MSP-facing `PropertyDocsPanel.tsx`** — the provider still needs that to manage extractions.
+- **Does not remove the `loadExtractionsByProperty` server-side fetch** — Ask AI depends on it.
 
-### 2. Tighten the Templates page copy so it says what it actually does
+### Verification checklist
 
-**`src/routes/_authenticated.dashboard.vault.templates.tsx`**:
+1. Open the published HTML for the Hotel Indigo property — the bottom-left "Property Docs" overlay is gone. No flash on load, no leftover toggle button.
+2. Switch between properties in a multi-property presentation — tab switcher still works (active tab updates, HUD updates).
+3. Open Ask AI chat on the same property — "What is the property type?" still answers "Hotel"; "What's the address?" still returns the Wall Street address. (Both come from `fields`/`canonical_qas`, not the overlay.)
+4. Open Ask AI chat on the Marriott Marquis property — "How many rooms?" still answers from the indexed field. No regression.
+5. View page source — no `#property-docs` div, no `#pd-header`/`#pd-body`, no `.pd-extraction` CSS.
+6. Builder side: open the MSP dashboard → property → the existing in-builder Property Docs control panel still renders, still allows upload/extract/reindex.
 
-- Line 165–168 subtitle: rephrase from *"Define what gets extracted from each property doc kind"* → *"Define the field schema (price, address, beds, etc.) the AI uses when extracting data from your clients' property doc uploads. Templates are schema-only — they aren't read at runtime."*
-- Line 416–419 dialog description: add a one-liner that distinguishes "the sample PDF you upload here is used only to **induce** the schema; it's not stored or read by Ask AI."
+### Optional follow-up (not in this change)
 
-### 3. Tighten the Vault index page copy
+If you want the URL extractor to surface more fields for editorial-style pages, the leverage point is in `supabase/functions/extract-url-content/index.ts` (`SYSTEM_PROMPT`, line 40). Two ideas worth a separate plan:
+- Add a "permissive mode" that lets the LLM emit any fact it finds (with a `confidence` annotation), then filter on the client side.
+- Run a second pass over the chunks to mine canonical fields the page mentions in prose (e.g., "1957 rooms", "$15 million renovation") even when no structured listing exists.
 
-**`src/routes/_authenticated.dashboard.vault.tsx`** line 463: *"Define what gets extracted from each uploaded doc"* → *"Define the schema your clients' property docs are extracted against."*
+Both would benefit Ask AI and any future structured display, independent of whether we keep an overlay.
 
-### 4. (Optional but recommended) Add a small inline disambiguation badge
-
-In the dashboard "Stock Your Vault" card, the bullets currently mix Pro features (audio, widgets, icons) with property docs/templates. The latter two go to **different pages** with **different roles**. Adding an explicit two-row mini-CTA inside the modal — *"Want reusable assets? Open Vault. Want to teach the AI a new doc type? Open Templates."* — costs nothing and removes the ambiguity at its source.
-
-### 5. Fix the blocking build errors in `extract-url-content`
-
-The current build fails with 5 TS errors all in `supabase/functions/extract-url-content/index.ts`:
-
-```
-TS2339: Property 'id' does not exist on type 'never'  (line 405, 427)
-TS2769: No overload matches this call  (line 413)
-TS2345: SupabaseClient ... not assignable to ...  (line 570)
-```
-
-Root cause: `ensureUrlTemplate(serviceClient: ReturnType<typeof createClient>, ...)` — the bare `ReturnType<typeof createClient>` collapses Supabase's generated row types to `never`, so `.from("vault_templates").insert({...})` and `.select("id")` are typed as `never` and refuse the call.
-
-Fix: type the parameter as `SupabaseClient` from `@supabase/supabase-js@2.103.0` instead of relying on `ReturnType`, or change the function to use the local closure (which already has the correctly-typed `serviceClient`) by inlining the helper or accepting `serviceClient: any` in this single helper. Cleanest is the explicit `SupabaseClient` import:
-
-```typescript
-import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.103.0";
-async function ensureUrlTemplate(
-  serviceClient: SupabaseClient,
-  providerId: string,
-  hostname: string,
-): Promise<string | null> { ... }
-```
-
-This also resolves the line-570 mismatch where the typed-`never` client was being passed back in.
-
----
-
-## Files touched
-
-- **edit** `src/routes/_authenticated.dashboard.index.tsx` — copy changes in "Stock Your Vault" card bullets + modal steps.
-- **edit** `src/routes/_authenticated.dashboard.vault.templates.tsx` — page subtitle + dialog description copy.
-- **edit** `src/routes/_authenticated.dashboard.vault.tsx` — line-463 micro-copy.
-- **edit** `supabase/functions/extract-url-content/index.ts` — type the `ensureUrlTemplate` parameter as `SupabaseClient` to clear all 5 TS errors.
-
-## What this plan does NOT do
-
-- **No data model changes.** `vault_templates` and `vault_assets` stay as-is.
-- **No pipeline changes.** Extraction, embedding, Ask AI all unchanged.
-- **No new features.** Pure clarification + a build-fix.
-- **No removal of the per-property doc upload path.** It's legitimate and correctly indexed — only the words around it change.
-
-## Verification checklist
-
-1. Open `/dashboard` → "Stock Your Vault" → "How does this work?" modal: step 4 now correctly explains the schema-induction role, with no implication that the AI reads the sample PDF at runtime.
-2. Open `/dashboard/vault/templates`: the subtitle and "New Template" dialog clearly say templates are schema-only and the sample PDF is used only to induce the schema.
-3. Open `/dashboard/vault`: the small Templates teaser card uses the new wording.
-4. `bun run build` (or the platform's typecheck) succeeds — the 5 TS errors in `extract-url-content` are gone.
-5. Existing extraction flows (PDF and URL) still produce `property_extractions` rows correctly — this is a pure type fix, no runtime behavior changes.
