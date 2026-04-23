@@ -96,6 +96,56 @@ async function decodeFunctionError(
   });
 }
 
+/**
+ * If the SDK returns a 401, retry once with explicit headers in case the
+ * SDK dropped the Authorization header mid-token-refresh.
+ */
+async function fallback401<T>(
+  fnName: string,
+  body: unknown,
+): Promise<T | null> {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const accessToken = sessionData?.session?.access_token;
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+  const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as
+    | string
+    | undefined;
+  if (!accessToken || !supabaseUrl || !publishableKey) return null;
+
+  const res = await fetch(`${supabaseUrl}/functions/v1/${fnName}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+      apikey: publishableKey,
+    },
+    body: JSON.stringify(body),
+  });
+  if (res.status === 401) return null;
+  const text = await res.text();
+  let parsed: unknown = null;
+  try {
+    parsed = text ? JSON.parse(text) : null;
+  } catch {
+    /* ignore */
+  }
+  if (!res.ok) {
+    const errBody = (parsed ?? {}) as {
+      stage?: string;
+      detail?: string;
+      error?: string;
+      diagnostics?: Record<string, unknown>;
+    };
+    throw new ExtractionError({
+      status: res.status,
+      stage: errBody.stage ?? "unknown",
+      detail: errBody.detail ?? errBody.error ?? `HTTP ${res.status}`,
+      diagnostics: errBody.diagnostics ?? {},
+    });
+  }
+  return (parsed as T) ?? null;
+}
+
 export async function invokeExtraction(
   req: ExtractionRequest,
 ): Promise<ExtractionResponse> {
@@ -105,6 +155,20 @@ export async function invokeExtraction(
   );
 
   if (error) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const status = (error as any)?.context?.status;
+    if (status === 401) {
+      const fallback = await fallback401<ExtractionResponse>(
+        "extract-property-doc",
+        req,
+      );
+      if (fallback) return fallback;
+      throw new ExtractionError({
+        status: 401,
+        stage: "auth",
+        detail: "no_session",
+      });
+    }
     throw await decodeFunctionError(error, "extract-property-doc");
   }
   if (!data) throw new ExtractionError({
@@ -138,6 +202,20 @@ export async function invokeUrlExtraction(
   );
 
   if (error) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const status = (error as any)?.context?.status;
+    if (status === 401) {
+      const fallback = await fallback401<ExtractionResponse>(
+        "extract-url-content",
+        req,
+      );
+      if (fallback) return fallback;
+      throw new ExtractionError({
+        status: 401,
+        stage: "auth",
+        detail: "no_session",
+      });
+    }
     throw await decodeFunctionError(error, "extract-url-content");
   }
   if (!data) throw new ExtractionError({

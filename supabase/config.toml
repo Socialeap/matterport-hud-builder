@@ -25,4 +25,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.extract-url-content]
-verify_jwt = true
+verify_jwt = false
+
+[functions.extract-property-doc]
+verify_jwt = false
