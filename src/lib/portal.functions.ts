@@ -444,40 +444,13 @@ function buildAskAssets(
  *  values are escaped. Returned string is safe to interpolate into the
  *  <body>. Empty string when there are no extractions for any property. */
 function buildPropertyDocsPanel(
-  extractionsByProperty: ExtractionsByProperty,
-  hudBgColor: string,
-  accentColor: string,
+  _extractionsByProperty: ExtractionsByProperty,
+  _hudBgColor: string,
+  _accentColor: string,
 ): string {
-  const anyExtractions = Object.values(extractionsByProperty).some(
-    (arr) => arr.length > 0,
-  );
-  if (!anyExtractions) return "";
-
-  const css = `
-#property-docs{position:fixed;bottom:56px;left:16px;width:320px;max-width:calc(100vw - 32px);max-height:calc(100vh - 96px);background:${escapeHtml(hudBgColor)};border:1px solid #333;border-radius:12px;z-index:99;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.5);overflow:hidden;transition:transform 0.2s}
-#property-docs.collapsed{transform:translateY(calc(100% - 40px))}
-#pd-header{padding:10px 14px;border-bottom:1px solid #333;display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none}
-#pd-header h4{font-size:13px;font-weight:600;color:#fff;margin:0}
-#pd-toggle{background:none;border:none;color:#999;font-size:14px;cursor:pointer;padding:0 4px;pointer-events:none}
-#pd-body{flex:1;overflow-y:auto;padding:10px 14px;display:flex;flex-direction:column;gap:12px}
-.pd-extraction .pd-tpl{font-size:11px;font-weight:600;color:${escapeHtml(accentColor)};text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px}
-.pd-extraction dl{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:12px}
-.pd-extraction dt{color:#999;font-family:ui-monospace,Menlo,monospace;font-size:11px;white-space:nowrap}
-.pd-extraction dd{color:#ddd;word-break:break-word}
-.pd-empty{font-size:12px;color:#888;padding:8px 0;text-align:center}
-`;
-
-  // The DOM shell is emitted once; the body is re-rendered on tab change
-  // via renderPropertyDocs(i) below.
-  return `
-<style>${css}</style>
-<div id="property-docs">
-  <div id="pd-header" onclick="document.getElementById('property-docs').classList.toggle('collapsed')">
-    <h4>Property Docs</h4>
-    <button id="pd-toggle" aria-hidden="true">&#x25BC;</button>
-  </div>
-  <div id="pd-body"></div>
-</div>`;
+  // Overlay removed by design. Extraction data still flows to Ask AI via
+  // window.__PROPERTY_EXTRACTIONS__; this surface is no longer rendered.
+  return "";
 }
 
 export const generatePresentation = createServerFn({ method: "POST" })
@@ -1178,37 +1151,10 @@ document.addEventListener("keydown",function(e){
   if(dr&&dr.classList.contains("open")) window.__closeContact();
 });
 
-function renderPropertyDocs(i){
-  var container=document.getElementById("property-docs");
-  if(!container) return;
-  var body=document.getElementById("pd-body");
-  var data=window.__PROPERTY_EXTRACTIONS__||{};
-  var uuid=uuidByIndex[i];
-  var entries=uuid?(data[uuid]||[]):[];
-  if(!entries.length){
-    container.style.display="none";
-    body.innerHTML="";
-    return;
-  }
-  container.style.display="flex";
-  var parts=[];
-  for(var e=0;e<entries.length;e++){
-    var entry=entries[e];
-    var fields=entry.fields||{};
-    var keys=Object.keys(fields);
-    var rows=keys.length
-      ? keys.map(function(k){
-          return "<dt>"+escapeText(k)+"</dt><dd>"+escapeText(formatFieldValue(fields[k]))+"</dd>";
-        }).join("")
-      : "";
-    parts.push(
-      '<div class="pd-extraction">'+
-        '<div class="pd-tpl">'+escapeText(entry.template_label)+'</div>'+
-        (rows?'<dl>'+rows+'</dl>':'<div class="pd-empty">No fields extracted.</div>')+
-      '</div>'
-    );
-  }
-  body.innerHTML=parts.join("");
+function renderPropertyDocs(_i){
+  // No-op. The on-screen Property Docs overlay was removed; extraction data
+  // is still injected via window.__PROPERTY_EXTRACTIONS__ for the Ask AI chat.
+  return;
 }
 
 // ── Unified Ask pipeline: fans out across the host-curated qaDatabase
