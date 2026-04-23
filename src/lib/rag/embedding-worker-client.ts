@@ -13,6 +13,19 @@ import type { WorkerRequest, WorkerResponse } from "./types";
 
 type InitListener = (msg: Extract<WorkerResponse, { type: `init:${string}` }>) => void;
 
+/** Hard ceiling for model download + pipeline construction. The Xenova
+ *  ~23 MB bundle should comfortably arrive inside this window even on
+ *  3G; anything longer is almost certainly a wedged CDN fetch or a
+ *  silently-broken WebGPU init we want to surface. */
+const INIT_TIMEOUT_MS = 60_000;
+
+/** Per-batch embed timeout. Scales with batch size so legitimately long
+ *  jobs (e.g. a 169-chunk Wikipedia article on cold WASM) still finish,
+ *  while a stuck worker is detected within a reasonable bound. */
+function embedTimeoutMs(batchSize: number) {
+  return Math.max(45_000, batchSize * 1500);
+}
+
 export class EmbeddingWorkerClient {
   private worker: Worker | null = null;
   private pendingEmbeds = new Map<
@@ -23,6 +36,8 @@ export class EmbeddingWorkerClient {
   private ready = false;
   private initError: string | null = null;
   private seqId = 0;
+  /** Tracks the in-flight init() promise so handleError can reject it. */
+  private pendingInit: { reject: (e: Error) => void } | null = null;
 
   /** Spawn the worker thread. */
   constructor() {
@@ -44,20 +59,41 @@ export class EmbeddingWorkerClient {
     };
   }
 
-  /** Trigger model download + init. Resolves once ready, rejects on failure. */
+  /** Trigger model download + init. Resolves once ready, rejects on failure
+   *  or after INIT_TIMEOUT_MS, whichever comes first. */
   init(): Promise<void> {
     if (this.ready) return Promise.resolve();
 
     return new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const settle = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        unsub();
+        this.pendingInit = null;
+        fn();
+      };
+
       const unsub = this.onInit((msg) => {
         if (msg.type === "init:ready") {
-          unsub();
-          resolve();
+          settle(() => resolve());
         } else if (msg.type === "init:error") {
-          unsub();
-          reject(new Error(msg.error));
+          settle(() => reject(new Error(msg.error)));
         }
       });
+
+      const timer = setTimeout(() => {
+        const errMsg = "embedding model init timed out";
+        this.initError = errMsg;
+        // Notify any other init listeners so UIs can react too.
+        this.initListeners.forEach((l) => l({ type: "init:error", error: errMsg }));
+        settle(() => reject(new Error(errMsg)));
+      }, INIT_TIMEOUT_MS);
+
+      this.pendingInit = {
+        reject: (e) => settle(() => reject(e)),
+      };
       this.post({ type: "init" });
     });
   }
@@ -81,7 +117,29 @@ export class EmbeddingWorkerClient {
 
     const id = String(++this.seqId);
     return new Promise((resolve, reject) => {
-      this.pendingEmbeds.set(id, { resolve, reject });
+      const timeout = embedTimeoutMs(texts.length);
+      const timer = setTimeout(() => {
+        // Drop the pending entry so a late embed:result is silently ignored.
+        if (this.pendingEmbeds.has(id)) {
+          this.pendingEmbeds.delete(id);
+          reject(
+            new Error(
+              `embedding batch timed out after ${Math.round(timeout / 1000)}s (${texts.length} texts)`,
+            ),
+          );
+        }
+      }, timeout);
+
+      this.pendingEmbeds.set(id, {
+        resolve: (v) => {
+          clearTimeout(timer);
+          resolve(v);
+        },
+        reject: (e) => {
+          clearTimeout(timer);
+          reject(e);
+        },
+      });
       this.post({ type: "embed", id, texts });
     });
   }
@@ -99,6 +157,10 @@ export class EmbeddingWorkerClient {
       reject(new Error("Worker terminated"));
     }
     this.pendingEmbeds.clear();
+    if (this.pendingInit) {
+      this.pendingInit.reject(new Error("Worker terminated"));
+      this.pendingInit = null;
+    }
   }
 
   // ── Internals ───────────────────────────────────────────────────────
@@ -153,6 +215,15 @@ export class EmbeddingWorkerClient {
       reject(new Error(message));
     }
     this.pendingEmbeds.clear();
+    // Reject in-flight init promise too — previously these were silently
+    // swallowed if no init listener was attached at the moment of error.
+    if (this.pendingInit) {
+      this.pendingInit.reject(new Error(message));
+      this.pendingInit = null;
+    }
+    // Reset readiness so subsequent callers can retry from scratch.
+    this.ready = false;
+    this.initError = message;
     // Notify init listeners.
     this.initListeners.forEach((l) =>
       l({ type: "init:error", error: message })
