@@ -1222,11 +1222,15 @@ var __docsQa={
 };
 
 // Tier 1 confidence threshold. Calibrated for MiniLM L2-normalized
-// cosine: 0.72 catches phrasings close to the canonical forms without
-// bleeding into unrelated questions. Tier 2 uses Orama's native scoring
-// with no extra gate — the existence of any hit is enough, mirroring
-// the Phase 3 baseline so we never regress on recall.
-var __DQA_TIER1_THRESHOLD=0.72;
+// cosine. Lowered from 0.72 -> 0.55 (Phase A optimization #5): with
+// schema-aware phrasing expansion (see canonical-questions.ts), the
+// canonical-QA bank is now dense enough that 0.55 catches paraphrases
+// without bleeding into unrelated questions. The hard floor below
+// (__DQA_TIER1_HARD_FLOOR) blocks pure noise from ever winning Tier 1.
+var __DQA_TIER1_THRESHOLD=0.55;
+// Below this, we never let Tier 1 win even if it's the best score —
+// the answer would almost certainly be irrelevant.
+var __DQA_TIER1_HARD_FLOOR=0.45;
 
 function __dqaAppendMsg(text,role,source,anchorId){
   if(!__docsQa.messages) return;
