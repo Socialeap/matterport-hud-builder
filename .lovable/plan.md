@@ -1,112 +1,93 @@
 
 
-## Stop the perpetual "Indexing…" spinner — comprehensive fix
+## Why Ask AI is still weak — and 6 ingenious ways to fix it
 
-### What's actually happening
+### Diagnosis (verified against your live data)
 
-The "Indexing…" pill in `PropertyDocsPanel` (line 216-220) is bound to the `backfilling` flag in `usePropertyExtractions` (line 37). That flag is set `true` inside the `useEffect` at line 104, and only flipped back `false` in the `finally` block at line 125 — which means it is gated on a single promise: `ensureExtractionEmbeddings([propertyUuid])`.
+I queried `property_extractions` directly. The Marriott Marquis property has **169 chunks, 23 canonical QAs, and rich fields** including `number_of_rooms`, `number_of_suites`, `number_of_restaurants`, `stories`, `year_built`, `square_feet`. The data is there. The runtime is failing to use it.
 
-That promise chains through three layers, **none of which has a timeout**:
+Tracing the Ask pipeline in `src/lib/portal.functions.ts` (lines 1201–1539), three structural ceilings explain the bad answers:
 
-```text
-useEffect (hook)
-   └─► ensureExtractionEmbeddings()           ← extraction-hydrator.ts
-          ├─► worker.init()                    ← downloads ~23MB model, no timeout
-          ├─► worker.embedBatch(N texts)       ← N sequential embeds, no timeout
-          └─► supabase.update(row)             ← per-row, no timeout
-```
+1. **Tier 1 (canonical QA cosine) needs 0.72 similarity.** That's a high bar for MiniLM. A visitor typing "how many rooms" must phrase the question almost identically to a canonical phrasing or it falls through. Any field the MSP added that isn't in the curated list of 24 templates (`purchase_price`, `bedrooms`, etc.) only gets the generic "What is the X?" phrasings — so Marriott's `number_of_rooms`, `number_of_suites`, `number_of_restaurants` will rarely cross 0.72 even though the answer is sitting right there.
 
-Failure modes that produce "spins forever":
+2. **Tier 3 returns one raw chunk, verbatim.** `limit: 1`, no re-ranking, no synthesis, no answer extraction. The visitor sees a Wikipedia paragraph dumped into the chat. If the top-scoring chunk happens to be about an unrelated topic that shares keywords, that's what gets shown.
 
-1. **Model download stalls.** The HuggingFace CDN fetch inside the worker has no abort — if the connection hangs mid-stream, `init()` never resolves or rejects.
-2. **WebGPU init hangs on certain GPUs/drivers** before the WASM fallback is reached. The worker code already has a try/catch around the `webgpu` path, but the underlying `pipeline()` call itself is what occasionally never returns.
-3. **Sequential embed loop.** A 169-chunk Wikipedia article is embedded one chunk at a time; on a cold WASM backend that's ~30–60s of legit work, indistinguishable from a hang.
-4. **Worker error event fires** — the client handler rejects pending *embed* promises (line 165 of `embedding-worker-client.ts`), but a worker error during `init` only notifies init listeners; if no init was in-flight, the error is swallowed and the next caller awaits a promise that will never resolve because `extractor` is `null` and `initPromise` is also `null` (only set inside `ensureInitialized`).
-5. **No row-level progress signal.** Even when things are working, the user sees no advancement, so a 90s legitimate run looks identical to a wedge.
+3. **The runtime is by design "zero ML at view time".** No LLM call from the rendered HUD. That's the hard architectural ceiling — the Q&A quality cannot exceed what nearest-neighbor over 384-dim MiniLM vectors can do over 169 chunks of unprocessed text.
 
-### Fix — surgical, layered, no behavioral regressions
+### Six optimizations, in priority order
 
-Three layers of defense, each independently safe:
+#### Optimization 1 — Schema-aware question expansion (build-time, biggest win)
 
-#### Layer 1 — Hard timeouts in `EmbeddingWorkerClient`
+`buildCanonicalQAs` knows the field name AND the value. Today it generates 3 generic phrasings for unknown fields. Instead, generate 8–12 phrasings derived from the field name's tokens:
 
-`src/lib/rag/embedding-worker-client.ts`:
+- `number_of_rooms` → "how many rooms", "room count", "number of rooms", "how many guest rooms", "room total", "what's the room count"
+- `number_of_restaurants` → "how many restaurants", "are there restaurants", "what restaurants are on site", "dining options"
 
-- **`init()`**: race the existing init promise against a 60s timeout. On timeout, reject with `"embedding model init timed out"` and notify init listeners with an `init:error`. Do **not** terminate the worker — a slow CDN may still complete on a later attempt; just let the caller decide.
-- **`embedBatch()`**: race against a per-batch timeout of `Math.max(45_000, texts.length * 1500)` ms (≥45s, scaling 1.5s per chunk). On timeout, reject the pending promise with a structured error and **delete it from `pendingEmbeds`** so a late `embed:result` is silently dropped.
-- **Worker `error` handler upgrade**: when `handleError` fires, also reject any in-flight init promise (currently only embed promises are rejected). Reset `ready=false` and clear `initPromise` reference so subsequent callers can retry cleanly.
+This is pure templating, no LLM, no schema changes. Tier 1 hit rate jumps because the threshold gets crossed by natural phrasings.
 
-These are pure additions — happy-path callers see identical behavior.
+#### Optimization 2 — Top-K + LLM answer synthesis at view time (biggest quality lift)
 
-#### Layer 2 — Make `ensureExtractionEmbeddings` resilient + observable
+Replace `limit: 1, return raw chunk` in Tier 3 with **top-5 chunks → tiny LLM call → grounded answer**.
 
-`src/lib/rag/extraction-hydrator.ts`:
+- Add a `synthesize-answer` server function (Lovable AI Gateway, `google/gemini-3-flash-preview`, ~$0.0001/call).
+- Send: question + 5 top chunks + 5 top canonical QAs + structured `fields` blob.
+- Prompt: "Answer ONLY from the provided context. If not present, say 'I don't have that.' Cite the source label."
+- Cache by `(property_uuid, normalized_question)` in `localStorage` so repeat visitors don't re-pay.
 
-- Add an optional `onProgress?: (msg: string) => void` to the `opts` arg.
-- Emit progress at four points: `"Loading embedding model…"` (before `worker.init()`), `"Indexing row X of Y…"` (per row), `"Persisting…"` (before the update), `"Done"` (final).
-- Wrap each per-row block (embed + update) in its own try/catch (already half-present); on a row-level failure, **continue to the next row** and accumulate the error in a new `stats.errors: string[]` field.
-- If `worker.init()` throws (timeout or otherwise), short-circuit the loop and return stats with `stats.errors` populated. Do not retry inside the helper — the caller decides.
+This violates the "zero ML at view time" principle — but the user is already paying that cost (the model download). A 200ms gateway call is dramatically cheaper than the perceived quality gap. We can keep Tier 1 deterministic for known fields and use the LLM only as Tier 3 fallback.
 
-#### Layer 3 — Hook + UI: bounded state, retry affordance
+#### Optimization 3 — Inject the structured `fields` blob as a "facts table" the LLM can quote
 
-`src/hooks/usePropertyExtractions.ts`:
+Today the rendered HUD has the `fields` object in `window.__PROPERTY_EXTRACTIONS__` but it's only used for BM25 string matching (line 1308). Instead, format it as a markdown facts table and **always** include it in the LLM context window. For Marriott, that means the answer to "how many rooms" comes from the structured field (`1957`), not a fuzzy chunk match — even when phrased weirdly.
 
-- Add `backfillStatus: "idle" | "running" | "ok" | "failed"` and `backfillMessage: string | null` alongside the existing `backfilling` boolean. Keep `backfilling` for backward compatibility (computed as `status === "running"`).
-- In the `useEffect` at line 104:
-  - Pass `onProgress` to `ensureExtractionEmbeddings` and write the latest message into `backfillMessage`.
-  - On success with no errors, set status to `"ok"` and clear after 3s.
-  - On any thrown error or non-empty `stats.errors`, set status to `"failed"` and store the first error in `backfillMessage`. **The `finally` block always sets `backfilling`/status appropriately — the spinner is guaranteed to clear.**
-- Add a hard wall-clock guard: a `setTimeout(_, 180_000)` started when backfill begins; if it fires before the promise settles (shouldn't happen now that Layers 1–2 exist, but belt-and-suspenders), force `status="failed"`, `backfillMessage="Indexing timed out"`. Clear the timeout in the same `finally`.
-- The `reindex()` callback already exists — expose it unchanged.
+#### Optimization 4 — Hybrid re-ranking with field-name boosting
 
-`src/components/portal/PropertyDocsPanel.tsx` (lines 216-220 + 222-240):
+When a query contains tokens that match a `fields` key (e.g., "rooms" → `number_of_rooms`), boost any chunk or QA tagged with that field. Cheap to implement client-side, dramatically improves recall on schema-aligned queries.
 
-- Replace the bare `Indexing…` pill with a stateful pill driven by `backfillStatus`:
-  - `running` → spinner + `backfillMessage` (e.g. "Indexing row 2 of 5…"), with a small **Cancel** affordance that simply hides the pill (does not abort the worker — see Note below).
-  - `failed` → red dot + "Indexing failed" + tooltip with `backfillMessage` + a **Retry** button that calls the existing `reindex()`.
-  - `ok` → green check + "Indexed" (auto-clears after 3s).
-  - `idle` → render nothing.
-- The existing standalone `RefreshCw` button (line 224-240) keeps working unchanged. It now has a sibling Retry path inside the pill for the failure case.
+#### Optimization 5 — Drop Tier 1 threshold to 0.55 + add multi-hit fusion
 
-### Trigger trace — ripple analysis
+0.72 is too strict for MiniLM-q8. At 0.55 we get more hits; combine tier-1 top-3 with tier-3 top-3 in a Reciprocal Rank Fusion step (10 lines of code). The synthesizer in #2 then sees both lanes' best results.
 
-| Trigger | Today | After fix | Risk |
+#### Optimization 6 — Optional MSP-curated overrides
+
+In the MSP vault, let the provider attach a `q_a_pairs` JSON to a template ("If asked about X, say Y"). These get embedded with the strongest weight and always surface first. A safety valve for known weak spots — no engineering needed per property.
+
+### Recommended sequencing
+
+| # | Effort | Impact | Risk |
 |---|---|---|---|
-| Open property in builder, fast network | `backfilling=true` → flips false in <5s | Same, plus brief "Indexed ✓" toast for 3s | None — additive UI |
-| Open property, model download stalls | Spinner forever | After 60s: status="failed", Retry button shown | None — failure now visible |
-| Open property, large doc (169 chunks) | Looks hung for ~60s | "Indexing row 50 of 169…" progress text | None — same work, just observable |
-| Click existing Refresh button | Calls `reindex()`, sets `backfilling=true` | Identical (reindex() unchanged) | None |
-| Click new Retry inside pill | n/a | Calls same `reindex()` | None — same code path |
-| Worker crashes silently | Promise hangs forever | Worker `error` handler now rejects init promise too → status="failed" | None — strict improvement |
-| LUS-frozen property | Backfill effect still runs (no gate today) | Same — backfill is a read-mostly op, RLS rejects writes for non-owners gracefully | None — already handled by hydrator's try/catch |
-| Provider deletes extraction mid-backfill | Update may target a deleted row | Per-row try/catch swallows it, continues | None — already handled |
-| Multiple properties opened quickly | `backfilledRef.current.has()` guard prevents re-run per uuid | Unchanged | None |
-| Component unmounts mid-backfill | `cancelled=true` flag prevents state writes | Unchanged | None |
+| 1 | Small (1 file, ~80 lines) | High | None — additive |
+| 2 | Medium (new server fn + client integration) | Highest | Cost + latency tradeoff |
+| 3 | Small (prompt change in #2) | High | None |
+| 4 | Small | Medium | None |
+| 5 | Small | Medium | Could surface weaker hits — gate on threshold |
+| 6 | Medium (UI + schema column) | Medium | Adds MSP workflow surface |
 
-**Note on Cancel:** the current `EmbeddingWorkerClient` has no per-call abort signal, and adding one would require restructuring the worker message protocol. The pill's "dismiss" affordance therefore only hides the visual indicator (sets a local `dismissed` state); the underlying worker continues. This is acceptable — it never blocks the user and the work completes in the background, updating the row when done. If a future iteration wants true cancellation we can add `cancel` messages to the worker protocol.
+**My recommendation: ship #1 + #3 + #4 + #5 first as a no-cost, no-LLM baseline upgrade.** Ship #2 second, behind a per-provider toggle so cost-sensitive MSPs can opt out. Defer #6 until #1–#5 are validated in the wild.
 
-### Files touched
+### What this plan does NOT do
 
-- **edit** `src/lib/rag/embedding-worker-client.ts` — add timeouts to `init()` and `embedBatch()`; upgrade `handleError` to reject in-flight init.
-- **edit** `src/lib/rag/extraction-hydrator.ts` — add `onProgress` callback, per-row try/catch with accumulation, return `stats.errors`.
-- **edit** `src/hooks/usePropertyExtractions.ts` — add `backfillStatus` + `backfillMessage`; wire `onProgress`; add 180s wall-clock guard. Keep `backfilling` boolean for compat.
-- **edit** `src/components/portal/PropertyDocsPanel.tsx` — replace pill with stateful `running | failed | ok | idle` pill; add Retry button on failure.
+- **No re-extraction.** The data already in `property_extractions` is sufficient — we're improving how it's consumed, not how it's gathered.
+- **No model swap.** MiniLM stays. The download UX is unchanged.
+- **No schema changes for #1, #3, #4, #5.** Pure code.
+- **No change to the existing `extract-url-content` or `extract-property-doc` paths.**
 
-### What this plan deliberately does NOT do
+### Files touched (per phase)
 
-- **No worker protocol changes** — no new message types, no abort/cancel wiring. Strictly client-side timeout races.
-- **No model swap, no quantization change, no parallel embed** — those are quality/perf work, separate from this UX bug.
-- **No DB / RLS / edge-function changes.** The hydrator's read+update are unchanged.
-- **No removal of the existing standalone Refresh button** — that's the explicit MSP escape hatch and remains functional.
-- **No change to `extract()` / `extractFromUrl()`** — they have their own `running` flag, not `backfilling`. They were never the source of perpetual spin.
+**Phase A (no LLM, ship together):**
+- `src/lib/rag/canonical-questions.ts` — expand phrasing generator (#1)
+- `src/lib/portal.functions.ts` — lines 1370–1540: lower threshold, fuse tier-1 + tier-3 top-K, add field-boost re-ranker (#4, #5)
+
+**Phase B (LLM synthesizer, behind toggle):**
+- `supabase/functions/synthesize-answer/index.ts` — new edge function, Lovable AI Gateway, grounded prompt
+- `src/lib/portal.functions.ts` — Tier 3 calls synthesizer with top-K + fields table; localStorage cache (#2, #3)
+- `branding_settings` migration — add `enable_llm_ask` boolean (default false initially, flip to true after validation)
 
 ### Verification checklist
 
-1. Open a property with one small extraction (≤10 chunks). Pill shows "Indexing row 1 of 1…" then "Indexed ✓" and disappears within 5s.
-2. Throttle network to "Slow 3G" in DevTools, hard-refresh the builder. After 60s, pill turns red with "Indexing failed — embedding model init timed out". Retry button is clickable; clicking it re-runs.
-3. Open the Marriott Marquis property (169 chunks). Pill cycles through "Indexing row N of 169…" — no false "hang" appearance. Completes in <2 min on a normal connection.
-4. Kill the embedding worker via DevTools (Application → Workers → terminate). The next backfill attempt fails fast with "Indexing failed", not a perpetual spinner.
-5. Existing standalone Refresh button still works and shows the spinner state synchronously.
-6. Backfill running, then user navigates away and back: `backfilledRef` skips the second run, pill stays idle.
-7. Frozen property: backfill runs read-only, hydrator's RLS-rejected updates are caught per-row, pill ends in "ok" with `rows_enriched=0`.
+1. Marriott Marquis: "How many rooms?" → returns 1957 (the `number_of_rooms` field), not a Wikipedia paragraph. (#1 alone should fix this.)
+2. Marriott Marquis: "Tell me about the restaurants" → after Phase B, returns synthesized answer citing the relevant chunks.
+3. Heritage Oak (PDF): standard residential questions still work via existing canonical templates — no regression.
+4. Network panel: Phase A introduces zero new requests. Phase B adds one ~300ms gateway call per uncached question.
+5. Cost check: with Phase B enabled, a property with 1000 visitor questions/month costs ~$0.10 in gateway fees.
 
