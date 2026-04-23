@@ -1151,37 +1151,10 @@ document.addEventListener("keydown",function(e){
   if(dr&&dr.classList.contains("open")) window.__closeContact();
 });
 
-function renderPropertyDocs(i){
-  var container=document.getElementById("property-docs");
-  if(!container) return;
-  var body=document.getElementById("pd-body");
-  var data=window.__PROPERTY_EXTRACTIONS__||{};
-  var uuid=uuidByIndex[i];
-  var entries=uuid?(data[uuid]||[]):[];
-  if(!entries.length){
-    container.style.display="none";
-    body.innerHTML="";
-    return;
-  }
-  container.style.display="flex";
-  var parts=[];
-  for(var e=0;e<entries.length;e++){
-    var entry=entries[e];
-    var fields=entry.fields||{};
-    var keys=Object.keys(fields);
-    var rows=keys.length
-      ? keys.map(function(k){
-          return "<dt>"+escapeText(k)+"</dt><dd>"+escapeText(formatFieldValue(fields[k]))+"</dd>";
-        }).join("")
-      : "";
-    parts.push(
-      '<div class="pd-extraction">'+
-        '<div class="pd-tpl">'+escapeText(entry.template_label)+'</div>'+
-        (rows?'<dl>'+rows+'</dl>':'<div class="pd-empty">No fields extracted.</div>')+
-      '</div>'
-    );
-  }
-  body.innerHTML=parts.join("");
+function renderPropertyDocs(_i){
+  // No-op. The on-screen Property Docs overlay was removed; extraction data
+  // is still injected via window.__PROPERTY_EXTRACTIONS__ for the Ask AI chat.
+  return;
 }
 
 // ── Unified Ask pipeline: fans out across the host-curated qaDatabase
