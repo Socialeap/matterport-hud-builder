@@ -29,3 +29,6 @@ verify_jwt = false
 
 [functions.extract-property-doc]
 verify_jwt = false
+
+[functions.synthesize-answer]
+verify_jwt = false

@@ -38,7 +38,7 @@ export const pdfjsHeuristic: ExtractionProvider = {
     const text = await extractTextByMime(bytes, mimeType);
     const fields = coerceFields(text, template);
     const chunks = chunkText(text, template.doc_kind);
-    return { fields, chunks };
+    return { fields, chunks, rawText: text };
   },
 };
 

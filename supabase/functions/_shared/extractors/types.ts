@@ -35,6 +35,10 @@ export interface VaultTemplate {
 export interface ExtractionResult {
   fields: Record<string, unknown>;
   chunks: PropertyChunk[];
+  /** Raw document text returned by text-based extractors (pdfjs_heuristic).
+   *  Available for the optional Groq Cleaning Pass in extract-property-doc.
+   *  Vision-based extractors (donut) do not populate this field. */
+  rawText?: string;
 }
 
 export interface ExtractionProvider {
