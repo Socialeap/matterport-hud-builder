@@ -136,11 +136,27 @@ export function usePropertyExtractions(propertyUuid: string | null) {
     backfilledRef.current.add(propertyUuid);
 
     let cancelled = false;
+    let wallClock: ReturnType<typeof setTimeout> | null = null;
+
     (async () => {
-      setBackfilling(true);
+      clearOkTimer();
+      setBackfillStatus("running");
+      setBackfillMessage("Preparing…");
+
+      wallClock = setTimeout(() => {
+        if (cancelled) return;
+        setBackfillStatus("failed");
+        setBackfillMessage("Indexing timed out");
+      }, BACKFILL_WALL_CLOCK_MS);
+
       try {
-        const stats = await ensureExtractionEmbeddings([propertyUuid]);
-        if (!cancelled && stats.rows_enriched > 0) {
+        const stats = await ensureExtractionEmbeddings([propertyUuid], {
+          onProgress: (m) => {
+            if (!cancelled) setBackfillMessage(m);
+          },
+        });
+        if (cancelled) return;
+        if (stats.rows_enriched > 0) {
           const fresh = await fetchRows(propertyUuid);
           if (fresh && !cancelled) setExtractions(fresh);
           console.info(
@@ -148,17 +164,32 @@ export function usePropertyExtractions(propertyUuid: string | null) {
             stats,
           );
         }
+        if (stats.errors.length > 0) {
+          setBackfillStatus("failed");
+          setBackfillMessage(stats.errors[0]);
+        } else {
+          setBackfillStatus("ok");
+          setBackfillMessage(
+            stats.rows_enriched > 0 ? "Indexed" : "Already indexed",
+          );
+          scheduleOkClear();
+        }
       } catch (err) {
         console.warn("[doc-qa] backfill failed:", err);
+        if (!cancelled) {
+          setBackfillStatus("failed");
+          setBackfillMessage(err instanceof Error ? err.message : String(err));
+        }
       } finally {
-        if (!cancelled) setBackfilling(false);
+        if (wallClock) clearTimeout(wallClock);
       }
     })();
 
     return () => {
       cancelled = true;
+      if (wallClock) clearTimeout(wallClock);
     };
-  }, [propertyUuid, loading, fetchRows]);
+  }, [propertyUuid, loading, fetchRows, clearOkTimer, scheduleOkClear]);
 
   const extract = useCallback(
     async (input: {
@@ -260,30 +291,58 @@ export function usePropertyExtractions(propertyUuid: string | null) {
   const reindex = useCallback(async () => {
     if (!propertyUuid) return;
     backfilledRef.current.delete(propertyUuid);
-    setBackfilling(true);
+    clearOkTimer();
+    setBackfillStatus("running");
+    setBackfillMessage("Preparing…");
+
+    let wallClock: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+      setBackfillStatus("failed");
+      setBackfillMessage("Indexing timed out");
+    }, BACKFILL_WALL_CLOCK_MS);
+
     try {
-      const stats = await ensureExtractionEmbeddings([propertyUuid]);
+      const stats = await ensureExtractionEmbeddings([propertyUuid], {
+        onProgress: (m) => setBackfillMessage(m),
+      });
       if (stats.rows_enriched > 0) {
         toast.success(`Re-indexed ${stats.rows_enriched} extraction(s)`);
         const fresh = await fetchRows(propertyUuid);
         if (fresh) setExtractions(fresh);
-      } else {
+      } else if (stats.errors.length === 0) {
         toast.message("Extractions are already indexed.");
+      }
+      if (stats.errors.length > 0) {
+        setBackfillStatus("failed");
+        setBackfillMessage(stats.errors[0]);
+        toast.error(`Re-index issues: ${stats.errors[0]}`);
+      } else {
+        setBackfillStatus("ok");
+        setBackfillMessage(
+          stats.rows_enriched > 0 ? "Indexed" : "Already indexed",
+        );
+        scheduleOkClear();
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      setBackfillStatus("failed");
+      setBackfillMessage(msg);
       toast.error(`Re-index failed: ${msg}`);
     } finally {
-      setBackfilling(false);
+      if (wallClock) {
+        clearTimeout(wallClock);
+        wallClock = null;
+      }
       backfilledRef.current.add(propertyUuid);
     }
-  }, [propertyUuid, fetchRows]);
+  }, [propertyUuid, fetchRows, clearOkTimer, scheduleOkClear]);
 
   return {
     extractions,
     loading,
     running,
     backfilling,
+    backfillStatus,
+    backfillMessage,
     failuresByAsset,
     refresh,
     extract,
