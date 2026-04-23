@@ -460,7 +460,7 @@ function VaultPage() {
             {c.value === "property_doc" && (
               <div className="flex items-center justify-between rounded-md border border-dashed border-border bg-muted/20 px-3 py-2 text-xs">
                 <span className="text-muted-foreground">
-                  Define what gets extracted from each uploaded doc.
+                  Define the schema your clients' property docs are extracted against.
                 </span>
                 {isStarter ? (
                   <span className="inline-flex items-center gap-1 font-medium text-muted-foreground">
