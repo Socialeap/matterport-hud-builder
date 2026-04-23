@@ -163,8 +163,10 @@ function VaultTemplatesPage() {
             Property Doc Templates
           </h1>
           <p className="text-sm text-muted-foreground">
-            Define what gets extracted from each property doc kind. Clients'
-            Presentation Portals consume these fields automatically.
+            Define the field schema (price, address, beds, year built, etc.)
+            the AI uses when extracting data from your clients' property doc
+            uploads. Templates are schema-only — they aren't read at runtime
+            by the Ask AI chat.
           </p>
         </div>
         <Button
@@ -414,8 +416,10 @@ function EditorDialog({
             {state.id ? "Edit Template" : "New Template"}
           </DialogTitle>
           <DialogDescription>
-            Fields declared here are extracted from every matching upload and
-            surfaced to the client Portal.
+            Fields declared here are extracted from every matching client
+            upload and surfaced to the Presentation Portal. If you upload a
+            sample PDF below to auto-induce the schema, the sample is used
+            only to infer fields — it isn't stored or read by Ask AI.
           </DialogDescription>
         </DialogHeader>
 

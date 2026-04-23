@@ -180,7 +180,7 @@ function DashboardOverview() {
         "Add reusable assets — audio, widgets, icons, docs — that your clients can drop into tours.",
       bullets: [
         "Upload spatial audio, icons, widgets",
-        "Add property docs for AI to read",
+        "Add property doc samples to teach the AI what fields to extract",
         "Reuse across every client tour",
       ],
       cta: { label: "Open Vault", to: "/dashboard/vault" },
@@ -192,8 +192,8 @@ function DashboardOverview() {
         steps: [
           "Pick a category (audio, widget, icon, document, link).",
           "Upload the file or paste a link, give it a label.",
-          "Your clients can now drop it into any tour they build.",
-          "For property docs, the AI assistant reads them to answer buyer questions.",
+          "Reusable assets (audio, widgets, icons) — your clients drop them into any tour they build.",
+          "Property doc samples — the AI studies the sample to learn the field structure (price, beds, year built, etc.) so it knows what to extract from your clients' future property uploads. The sample itself isn't shown to buyers.",
         ],
       },
     },

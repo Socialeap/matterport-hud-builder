@@ -10,7 +10,7 @@
 //  6. Upsert into property_extractions and flip vault_assets.embedding_status.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.103.0";
+import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.103.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -389,7 +389,7 @@ async function structureFields(
 
 // ── Auto-template helper ───────────────────────────────────────────────
 async function ensureUrlTemplate(
-  serviceClient: ReturnType<typeof createClient>,
+  serviceClient: SupabaseClient,
   providerId: string,
   hostname: string,
 ): Promise<string | null> {
