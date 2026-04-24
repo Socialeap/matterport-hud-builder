@@ -210,7 +210,12 @@ export function PropertyDocsPanel({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <FileText className="size-4 text-primary" />
-            <Label className="text-xs font-medium">Property Docs</Label>
+            <Label className="text-xs font-medium">
+              Property Docs{" "}
+              <span className="text-muted-foreground font-normal">
+                (template-driven extraction)
+              </span>
+            </Label>
             {extractions.length > 0 && (
               <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
                 {extractions.length}
@@ -229,51 +234,42 @@ export function PropertyDocsPanel({
                 Frozen
               </Badge>
             )}
-            <BackfillPill
-              status={backfillStatus}
-              message={backfillMessage}
-              onRetry={reindex}
-              disabled={running || isFrozen}
+            <IndexingStatusBadge
+              propertyUuid={propertyUuid}
+              disableRetry={running || isFrozen}
             />
           </div>
           <div className="flex items-center gap-1">
             {extractions.length > 0 && (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 w-7 p-0"
-                onClick={reindex}
-                disabled={backfilling || running || isFrozen}
-                title={
-                  isFrozen
-                    ? "Re-index disabled while frozen"
-                    : "Re-index doc embeddings"
-                }
-              >
-                <RefreshCw
-                  className={`size-3 ${backfilling ? "animate-spin" : ""}`}
-                />
-              </Button>
-            )}
-          </div>
-          <div className="flex items-center gap-1">
-            {extractions.length > 0 && (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 w-7 p-0"
-                onClick={reindex}
-                disabled={backfilling || running || isFrozen}
-                title={
-                  isFrozen
-                    ? "Re-index disabled while frozen"
-                    : "Re-index doc embeddings"
-                }
-              >
-                <RefreshCw
-                  className={`size-3 ${backfilling ? "animate-spin" : ""}`}
-                />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0"
+                      onClick={reindex}
+                      disabled={backfilling || running || isFrozen}
+                      title={
+                        backfilling
+                          ? "Indexing in progress…"
+                          : isFrozen
+                            ? "Re-index disabled while frozen"
+                            : "Re-index doc embeddings"
+                      }
+                    >
+                      <RefreshCw
+                        className={`size-3 ${backfilling ? "animate-spin" : ""}`}
+                      />
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                {backfilling && (
+                  <TooltipContent>
+                    Indexing already running — wait for it to finish.
+                  </TooltipContent>
+                )}
+              </Tooltip>
             )}
             {lusActive && !isFrozen && user && templates.length > 0 && (
               <Button
