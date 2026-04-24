@@ -237,6 +237,7 @@ export async function groqClean(
 
       const parsed = JSON.parse(jsonText) as {
         fields?: Record<string, unknown>;
+        candidates?: Array<{ key?: string; value?: unknown; confidence?: number; evidence?: string }>;
         chunks?: Array<{ id?: string; section?: string; content?: string }>;
       };
 
@@ -244,6 +245,18 @@ export async function groqClean(
         typeof parsed.fields === "object" && parsed.fields !== null
           ? parsed.fields
           : {};
+
+      const candidates: GroqCandidate[] = Array.isArray(parsed.candidates)
+        ? parsed.candidates
+            .filter((c) => c && typeof c.key === "string" && c.value != null && c.value !== "")
+            .map((c) => ({
+              key: String(c.key).trim(),
+              value: c.value,
+              confidence: typeof c.confidence === "number" ? c.confidence : 0,
+              evidence: typeof c.evidence === "string" ? c.evidence.slice(0, 240) : undefined,
+            }))
+            .filter((c) => /^[a-z][a-z0-9_]*$/.test(c.key) && c.confidence >= 0.55)
+        : [];
 
       const chunks: PropertyChunk[] = Array.isArray(parsed.chunks)
         ? parsed.chunks
@@ -260,7 +273,7 @@ export async function groqClean(
         break;
       }
 
-      return { fields, chunks, model: GROQ_MODEL };
+      return { fields, candidates, chunks, model: GROQ_MODEL };
     } catch (err) {
       lastErr = err instanceof Error ? err.message : String(err);
     }

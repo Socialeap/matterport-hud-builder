@@ -13,6 +13,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.103.0";
 
 import { getProvider } from "../_shared/extractors/index.ts";
 import type { VaultTemplate } from "../_shared/extractors/types.ts";
+import { mineFromChunks, type ProvenanceEntry } from "../_shared/prose-miner.ts";
+import type { GroqCandidate } from "../_shared/groq-cleaner.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -194,31 +196,30 @@ serve(async (req) => {
   }
 
   // 4b ─ Groq Cleaning Pass (one-time LLM post-processing).
-  //
-  //  If GROQ_API_KEY is present and the extractor exposed rawText, we send
-  //  the document text to Llama 3.1 70B to:
-  //    • Re-extract fields into a canonical schema (more accurate than regex).
-  //    • Replace the naive sliding-window chunks with thematic paragraphs.
-  //
-  //  The call is fire-and-forget with respect to failures: any error (network,
-  //  rate-limit, parse failure) is logged and the heuristic result is kept,
-  //  so this pass can never break an upload.
+  let candidateFields: GroqCandidate[] = [];
   const groqKey = Deno.env.get("GROQ_API_KEY");
   if (groqKey && rawText) {
     try {
       const { groqClean } = await import("../_shared/groq-cleaner.ts");
       const cleaned = await groqClean(rawText, template, groqKey);
       if (cleaned) {
-        // Merge: Groq fields override heuristic fields when the value is
-        // present; gaps are filled by the heuristic result.
         for (const [k, v] of Object.entries(cleaned.fields)) {
           if (v != null && v !== "") fields[k] = v;
         }
-        // Replace sliding-window chunks with coherent thematic chunks.
+        // Promote ≥0.85 candidates not already in fields; keep 0.55–0.85 as candidates.
+        const promoted: Record<string, unknown> = {};
+        for (const c of cleaned.candidates) {
+          if (c.confidence >= 0.85 && !(c.key in fields) && !(c.key in promoted)) {
+            promoted[c.key] = c.value;
+          } else if (c.confidence >= 0.55) {
+            candidateFields.push(c);
+          }
+        }
+        Object.assign(fields, promoted);
         if (cleaned.chunks.length > 0) {
           chunks = cleaned.chunks;
           console.info(
-            `[extract-property-doc] groq-clean ok model=${cleaned.model} chunks=${chunks.length}`,
+            `[extract-property-doc] groq-clean ok model=${cleaned.model} chunks=${chunks.length} candidates=${candidateFields.length}`,
           );
         }
       }
@@ -229,6 +230,20 @@ serve(async (req) => {
         }`,
       );
     }
+  }
+
+  // 4c ─ Prose-Miner pass (deterministic gap-fill from chunks).
+  let mined: Record<string, unknown> = {};
+  let provenance: ProvenanceEntry[] = [];
+  try {
+    const result = mineFromChunks(chunks, fields);
+    mined = result.fields;
+    provenance = result.provenance;
+    Object.assign(fields, mined);
+  } catch (err) {
+    console.warn(
+      `[extract-property-doc] prose-miner failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   // 5 ─ Upsert property_extractions
@@ -244,6 +259,8 @@ serve(async (req) => {
         chunks,
         extractor: provider.id,
         extractor_version: provider.version,
+        candidate_fields: candidateFields.length > 0 ? candidateFields : null,
+        field_provenance: provenance.length > 0 ? provenance : null,
       },
       { onConflict: "vault_asset_id,template_id" },
     )
@@ -268,7 +285,7 @@ serve(async (req) => {
     .eq("id", body.vault_asset_id);
 
   console.info(
-    `[extract-property-doc] extractor=${provider.id} bucket=${bucketUsed} fields=${Object.keys(fields).length} chunks=${chunks.length} ok`,
+    `[extract-property-doc] extractor=${provider.id} bucket=${bucketUsed} fields=${Object.keys(fields).length} mined=${Object.keys(mined).length} candidates=${candidateFields.length} chunks=${chunks.length} ok`,
   );
 
   return jsonResponse({
