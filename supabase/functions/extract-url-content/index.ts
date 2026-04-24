@@ -11,6 +11,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.103.0";
+import { mineFromChunks, type ProvenanceEntry } from "../_shared/prose-miner.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -349,11 +350,22 @@ function extractJsonObject(raw: string): Record<string, unknown> | null {
   return null;
 }
 
+interface CandidateField {
+  key: string;
+  value: unknown;
+  confidence: number;
+  evidence?: string;
+}
+
 async function structureFields(
   text: string,
   apiKey: string,
   domain: string,
-): Promise<{ fields: Record<string, unknown>; llm_stage: string }> {
+): Promise<{
+  fields: Record<string, unknown>;
+  candidates: CandidateField[];
+  llm_stage: string;
+}> {
   const truncated = text.length > MAX_TEXT_CHARS ? text.slice(0, MAX_TEXT_CHARS) : text;
   try {
     const resp = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -376,7 +388,7 @@ async function structureFields(
     if (!resp.ok) {
       const body = await resp.text().catch(() => "");
       console.warn(`[extract-url-content] ${domain} openai_${resp.status}: ${body.slice(0, 200)}`);
-      return { fields: {}, llm_stage: `openai_${resp.status}` };
+      return { fields: {}, candidates: [], llm_stage: `openai_${resp.status}` };
     }
     const completion = (await resp.json()) as {
       choices?: Array<{ message?: { content?: string }; finish_reason?: string }>;
@@ -384,21 +396,72 @@ async function structureFields(
     const raw = completion.choices?.[0]?.message?.content ?? "";
     const finish = completion.choices?.[0]?.finish_reason ?? "stop";
     if (!raw.trim()) {
-      return { fields: {}, llm_stage: "empty_response" };
+      return { fields: {}, candidates: [], llm_stage: "empty_response" };
     }
     const parsed = extractJsonObject(raw);
     if (!parsed) {
       console.warn(
         `[extract-url-content] ${domain} json_parse_failed (finish=${finish}, len=${raw.length})`,
       );
-      return { fields: {}, llm_stage: `parse_failed_${finish}` };
+      return { fields: {}, candidates: [], llm_stage: `parse_failed_${finish}` };
     }
-    return { fields: parsed, llm_stage: finish === "length" ? "ok_truncated" : "ok" };
+
+    // Two-bucket parser with back-compat: if "fields"/"candidates" missing,
+    // treat the whole object as the legacy fields blob.
+    const hasNewShape =
+      ("fields" in parsed && typeof parsed.fields === "object") ||
+      ("candidates" in parsed && Array.isArray(parsed.candidates));
+
+    let fields: Record<string, unknown>;
+    let rawCandidates: unknown[];
+    if (hasNewShape) {
+      fields = (parsed.fields && typeof parsed.fields === "object" && !Array.isArray(parsed.fields))
+        ? parsed.fields as Record<string, unknown>
+        : {};
+      rawCandidates = Array.isArray(parsed.candidates) ? parsed.candidates : [];
+    } else {
+      fields = parsed;
+      rawCandidates = [];
+    }
+
+    const candidates: CandidateField[] = rawCandidates
+      .filter((c): c is Record<string, unknown> => !!c && typeof c === "object")
+      .map((c) => ({
+        key: String(c.key ?? "").trim(),
+        value: c.value,
+        confidence: typeof c.confidence === "number" ? c.confidence : 0,
+        evidence: typeof c.evidence === "string" ? c.evidence.slice(0, 240) : undefined,
+      }))
+      .filter((c) => c.key && /^[a-z][a-z0-9_]*$/.test(c.key) && c.value != null && c.value !== "");
+
+    return { fields, candidates, llm_stage: finish === "length" ? "ok_truncated" : "ok" };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn(`[extract-url-content] ${domain} structuring exception: ${msg}`);
-    return { fields: {}, llm_stage: `exception:${msg.slice(0, 80)}` };
+    return { fields: {}, candidates: [], llm_stage: `exception:${msg.slice(0, 80)}` };
   }
+}
+
+/**
+ * Apply server-side confidence filter:
+ *  ≥ 0.85 AND key not yet in fields → promote to fields.
+ *  0.55 ≤ c < 0.85 → keep as candidate.
+ *  < 0.55 → drop.
+ */
+function partitionCandidates(
+  fields: Record<string, unknown>,
+  candidates: CandidateField[],
+): { promoted: Record<string, unknown>; kept: CandidateField[] } {
+  const promoted: Record<string, unknown> = {};
+  const kept: CandidateField[] = [];
+  for (const c of candidates) {
+    if (c.confidence >= 0.85 && !(c.key in fields) && !(c.key in promoted)) {
+      promoted[c.key] = c.value;
+    } else if (c.confidence >= 0.55) {
+      kept.push(c);
+    }
+  }
+  return { promoted, kept };
 }
 
 // ── Auto-template helper ───────────────────────────────────────────────
