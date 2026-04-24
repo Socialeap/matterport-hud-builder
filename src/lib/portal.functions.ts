@@ -1037,14 +1037,16 @@ function dismissGate(){
 var soundBtn=document.getElementById("gate-sound-btn");
 var silentBtn=document.getElementById("gate-silent-btn");
 if(soundBtn) soundBtn.addEventListener("click",function(){
-  soundEnabled=true;
-  var p=props[current];
-  if(p&&p.musicUrl) initAudio(p.musicUrl,true);
-  dismissGate();
+  try {
+    soundEnabled=true;
+    var p=props[current];
+    if(p&&p.musicUrl) initAudio(p.musicUrl,true);
+  } catch(err){ console.warn("[presentation] sound init failed",err); }
+  try { dismissGate(); } catch(_e){}
 });
 if(silentBtn) silentBtn.addEventListener("click",function(){
-  soundEnabled=false;
-  dismissGate();
+  try { soundEnabled=false; } catch(_e){}
+  try { dismissGate(); } catch(_e){}
 });
 
 // \u2500\u2500 Contact panel
