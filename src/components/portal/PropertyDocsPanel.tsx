@@ -60,8 +60,6 @@ export function PropertyDocsPanel({
     loading,
     running,
     backfilling,
-    backfillStatus,
-    backfillMessage,
     extract,
     remove,
     reindex,
@@ -509,83 +507,10 @@ export function PropertyDocsPanel({
   );
 }
 
-function BackfillPill({
-  status,
-  message,
-  onRetry,
-  disabled,
-}: {
-  status: "idle" | "running" | "ok" | "failed";
-  message: string | null;
-  onRetry: () => void;
-  disabled: boolean;
-}) {
-  const [dismissed, setDismissed] = useState(false);
-
-  // Reset dismissal whenever the status transitions away from running.
-  // (A new run can be re-dismissed afresh.)
-  if (status === "idle" && dismissed) {
-    // Defer state update to avoid setState during render warnings.
-    queueMicrotask(() => setDismissed(false));
-  }
-
-  if (status === "idle") return null;
-  if (status === "running" && dismissed) return null;
-
-  if (status === "running") {
-    return (
-      <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-        <Loader2 className="size-3 animate-spin" />
-        <span className="max-w-[180px] truncate">{message ?? "Indexing…"}</span>
-        <button
-          type="button"
-          onClick={() => setDismissed(true)}
-          className="ml-0.5 rounded p-0.5 hover:bg-muted"
-          title="Hide indicator (indexing continues in background)"
-        >
-          <X className="size-2.5" />
-        </button>
-      </span>
-    );
-  }
-
-  if (status === "ok") {
-    return (
-      <span className="flex items-center gap-1 text-[10px] text-emerald-600">
-        <Check className="size-3" />
-        <span>{message ?? "Indexed"}</span>
-      </span>
-    );
-  }
-
-  // failed
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="flex items-center gap-1 text-[10px] text-destructive">
-          <AlertCircle className="size-3" />
-          <span>Indexing failed</span>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-5 px-1.5 text-[10px] text-destructive hover:text-destructive"
-            onClick={() => {
-              setDismissed(false);
-              onRetry();
-            }}
-            disabled={disabled}
-          >
-            <RefreshCw className="mr-0.5 size-2.5" />
-            Retry
-          </Button>
-        </span>
-      </TooltipTrigger>
-      {message && (
-        <TooltipContent className="max-w-xs text-xs">{message}</TooltipContent>
-      )}
-    </Tooltip>
-  );
-}
+// Legacy `BackfillPill` removed — replaced by the shared
+// <IndexingStatusBadge /> reading from the IndexingProvider context so
+// PropertyDocsPanel and PropertyIntelligenceSection always show identical
+// status for the same property.
 
 function EmptyHint({
   noTemplates,
