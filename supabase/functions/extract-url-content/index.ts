@@ -653,29 +653,51 @@ serve(async (req) => {
     return fail("template", "template_resolve_failed", 500, { domain });
   }
 
-  // ── 7. Structure fields with the LLM (best-effort) ───────────────────
+  // ── 7. Structure fields with the LLM (best-effort, two-bucket schema) ─
   const llmResult = OPENAI_API_KEY
     ? await structureFields(text, OPENAI_API_KEY, domain)
-    : { fields: {} as Record<string, unknown>, llm_stage: "no_api_key" };
-  const fields = llmResult.fields;
+    : {
+        fields: {} as Record<string, unknown>,
+        candidates: [] as CandidateField[],
+        llm_stage: "no_api_key",
+      };
+  const fields = { ...llmResult.fields };
+  const { promoted, kept: candidateFields } = partitionCandidates(fields, llmResult.candidates);
+  Object.assign(fields, promoted);
+
+  // ── 7b. Prose-Miner pass (deterministic gap-fill from chunks) ────────
+  let mined: Record<string, unknown> = {};
+  let provenance: ProvenanceEntry[] = [];
+  try {
+    const result = mineFromChunks(chunks, fields);
+    mined = result.fields;
+    provenance = result.provenance;
+    Object.assign(fields, mined);
+  } catch (err) {
+    console.warn(
+      `[extract-url-content] ${domain} prose-miner failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
   const fieldKeys = Object.keys(fields);
 
-  // ── 8. Persist ───────────────────────────────────────────────────────
+  // ── 8. Persist (candidate_fields/field_provenance written best-effort) ─
+  const persistRow: Record<string, unknown> = {
+    vault_asset_id: body.vault_asset_id,
+    template_id: activeTemplateId,
+    saved_model_id: body.saved_model_id ?? null,
+    property_uuid: body.property_uuid,
+    fields,
+    chunks,
+    extractor: "web_url",
+    extractor_version: "2",
+    candidate_fields: candidateFields.length > 0 ? candidateFields : null,
+    field_provenance: provenance.length > 0 ? provenance : null,
+  };
+
   const { data: upserted, error: upErr } = await serviceClient
     .from("property_extractions")
-    .upsert(
-      {
-        vault_asset_id: body.vault_asset_id,
-        template_id: activeTemplateId,
-        saved_model_id: body.saved_model_id ?? null,
-        property_uuid: body.property_uuid,
-        fields,
-        chunks,
-        extractor: "web_url",
-        extractor_version: "1",
-      },
-      { onConflict: "vault_asset_id,template_id" },
-    )
+    .upsert(persistRow, { onConflict: "vault_asset_id,template_id" })
     .select("id")
     .single();
   if (upErr || !upserted) {
@@ -696,7 +718,7 @@ serve(async (req) => {
     .eq("id", body.vault_asset_id);
 
   console.info(
-    `[extract-url-content] ${domain} text_len=${text.length} fields=${fieldKeys.length} chunks=${chunks.length} llm=${llmResult.llm_stage} ok`,
+    `[extract-url-content] ${domain} text_len=${text.length} fields=${fieldKeys.length} mined=${Object.keys(mined).length} candidates=${candidateFields.length} chunks=${chunks.length} llm=${llmResult.llm_stage} ok`,
   );
 
   return jsonResponse({
@@ -709,6 +731,8 @@ serve(async (req) => {
       domain,
       text_length: text.length,
       field_keys: fieldKeys.length,
+      mined_keys: Object.keys(mined).length,
+      candidate_count: candidateFields.length,
       llm_stage: llmResult.llm_stage,
       low_content_warning: lowContent,
     },
