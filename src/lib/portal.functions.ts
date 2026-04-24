@@ -922,6 +922,32 @@ ${
 ${hasQA ? `<script>window.__QA_DATABASE__=${safeJsonScriptLiteral(qaDatabase)};</script>` : ""}
 ${synthesisUrl ? `<script>window.__SYNTHESIS_URL__=${JSON.stringify(synthesisUrl)};</script>` : ""}
 ${askAssets.moduleScript}
+<!-- ── Pre-bootstrap safety net ────────────────────────────────────────
+     This tiny script runs BEFORE the main IIFE. If the main IIFE later
+     fails to parse (e.g. a future template-literal bug), the gate
+     buttons still dismiss the overlay and the Matterport iframe still
+     loads its first property, so the 3D tour is never dead-on-arrival.
+     The main IIFE re-binds the same handlers; addEventListener stacks
+     them harmlessly. -->
+<script>
+(function(){
+  try {
+    var raw=${JSON.stringify(configB64)};
+    var cfg=JSON.parse(atob(raw));
+    var first=(cfg.properties&&cfg.properties[0])||null;
+    var frame=document.getElementById("matterport-frame");
+    if(frame&&first&&first.iframeUrl){ frame.src=first.iframeUrl; }
+    function hideGate(){
+      var g=document.getElementById("gate");
+      if(g){ g.classList.add("hidden"); setTimeout(function(){g.style.display="none";},500); }
+    }
+    var s=document.getElementById("gate-sound-btn");
+    var q=document.getElementById("gate-silent-btn");
+    if(s) s.addEventListener("click",hideGate);
+    if(q) q.addEventListener("click",hideGate);
+  } catch(err){ console.error("[presentation] safety bootstrap failed",err); }
+})();
+</script>
 <script>
 (function(){
 var C=JSON.parse(atob("${configB64}"));
