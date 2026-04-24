@@ -30,10 +30,19 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  assembleFromSources,
+  findForbiddenTokens,
+} from "../src/lib/portal/ask-runtime-transformer.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const ROOT = path.resolve(path.dirname(__filename), "..");
 const TARGET = path.join(ROOT, "src/lib/portal.functions.ts");
+const ASK_SOURCES = [
+  path.join(ROOT, "src/lib/portal/ask-intents.mjs"),
+  path.join(ROOT, "src/lib/portal/property-brain.mjs"),
+  path.join(ROOT, "src/lib/portal/ask-runtime-logic.mjs"),
+];
 
 // Escapes that are legal/intentional in a TS template literal and that we
 // do NOT want to flag:
@@ -164,7 +173,48 @@ function previewLine(src, offset) {
   return src.slice(lineStart, lineEnd === -1 ? undefined : lineEnd);
 }
 
+function verifyAskRuntimeModules() {
+  // Anti-drift gate: the three .mjs modules are read verbatim at build
+  // time and concatenated into the browser IIFE. If any `import`,
+  // `require`, `export`, or TS-specific syntax sneaks in, the generated
+  // HTML will throw at runtime. Scan the assembled output and fail the
+  // build before shipping.
+  const sources = ASK_SOURCES.map((p) => {
+    if (!fs.existsSync(p)) {
+      console.error(`[verify-html] Ask runtime source not found: ${p}`);
+      process.exit(2);
+    }
+    return fs.readFileSync(p, "utf8");
+  });
+  const assembled = assembleFromSources(sources[0], sources[1], sources[2]);
+  const offenders = findForbiddenTokens(assembled);
+  if (offenders.length > 0) {
+    console.error(
+      `[verify-html] ❌ Ask runtime .mjs modules contain browser-incompatible syntax.`,
+    );
+    console.error(
+      `[verify-html] The .mjs files in src/lib/portal/ must use ONLY plain JS:`,
+    );
+    console.error(
+      `[verify-html]   - no import / require statements`,
+    );
+    console.error(
+      `[verify-html]   - no export statements other than a single final \`export { ... };\``,
+    );
+    console.error(
+      `[verify-html]   - no TypeScript syntax (annotations, interfaces, \`as\` casts)`,
+    );
+    for (const o of offenders) console.error(`    ${o}`);
+    process.exit(1);
+  }
+  console.log(
+    `[verify-html] ✅ Ask runtime modules are browser-safe (${assembled.length} chars assembled).`,
+  );
+}
+
 function main() {
+  verifyAskRuntimeModules();
+
   const src = readSource();
   const { start, end } = findTemplateLiteral(src);
   const offenders = scanLiteral(src, start, end);

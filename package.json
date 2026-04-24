@@ -9,7 +9,8 @@
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "lint": "eslint .",
-    "verify:html": "node scripts/verify-portal-html.mjs"
+    "verify:html": "node scripts/verify-portal-html.mjs",
+    "test:ask": "node --test scripts/test-ask-runtime.mjs"
   },
   "dependencies": {
     "@cloudflare/vite-plugin": "^1.25.5",

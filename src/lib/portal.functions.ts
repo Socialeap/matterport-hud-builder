@@ -1,5 +1,12 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { assembleAskRuntimeJS } from "./portal/ask-runtime-assembler";
+
+// Assembled Ask AI runtime JS — built once per process from the three
+// .mjs modules (intents, property-brain, logic). Injected verbatim into
+// the outer IIFE of the generated presentation, where all symbols
+// become locals. See src/lib/portal/ask-runtime-assembler.ts.
+const ASK_RUNTIME_JS = assembleAskRuntimeJS();
 
 interface SavePresentationMediaAsset {
   id: string;
@@ -1165,14 +1172,19 @@ function renderPropertyDocs(_i){
   return;
 }
 
+// ── Ask AI runtime modules (intent router, property brain, decision
+//    ladder). Inlined verbatim from src/lib/portal/*.mjs via the
+//    assembler. All exports become locals in this IIFE scope.
+${ASK_RUNTIME_JS}
+
 // ── Unified Ask pipeline: fans out across the host-curated qaDatabase
 //    AND per-property doc extractions. Single panel, single button.
-//    Tier 1 — cosine over pre-embedded canonical Q&As from doc extractions.
+//    Tier 1 — canonical Q&As from doc extractions, with intent guard.
 //    Tier 2 — hybrid Orama search over the host-curated qaDatabase
-//             (anchor-link answers).
-//    Tier 3 — hybrid (or BM25 fallback) over per-property doc chunks.
-//    The runtime picks the highest-scoring result across all tiers.
-//    All embedding / search happens client-side; no LLM at view time.
+//             (anchor-link answers), with intent guard.
+//    Tier 3 — hybrid (or BM25 fallback) over per-property doc chunks,
+//             used as grounding for the synthesis bridge.
+//    Strict unknown is preferred over wrong-category adjacency.
 var __docsQa={
   initPromise:null,
   oramaModule:null,
@@ -1181,7 +1193,6 @@ var __docsQa={
   db:null,                // per-property docs DB
   qaDb:null,              // global host-curated qaDatabase DB
   mode:null,              // "hybrid" | "bm25" (for docs DB)
-  canonicalQAs:[],        // [{id, field, question, answer, source_anchor_id, embedding}]
   currentIndexKey:null,
   abortCtrl:null,         // AbortController for in-flight synthesis requests
   input:null,
@@ -1189,16 +1200,9 @@ var __docsQa={
   messages:null
 };
 
-// Tier 1 confidence threshold. Calibrated for MiniLM L2-normalized
-// cosine. Lowered from 0.72 -> 0.55 (Phase A optimization #5): with
-// schema-aware phrasing expansion (see canonical-questions.ts), the
-// canonical-QA bank is now dense enough that 0.55 catches paraphrases
-// without bleeding into unrelated questions. The hard floor below
-// (__DQA_TIER1_HARD_FLOOR) blocks pure noise from ever winning Tier 1.
-var __DQA_TIER1_THRESHOLD=0.55;
-// Below this, we never let Tier 1 win even if it's the best score —
-// the answer would almost certainly be irrelevant.
-var __DQA_TIER1_HARD_FLOOR=0.45;
+// Tier-1 thresholds (0.55 soft / 0.45 floor) and the pure scoring/RRF
+// helpers now live in src/lib/portal/ask-runtime-logic.mjs. They are
+// injected at the top of this IIFE via ${ASK_RUNTIME_JS}.
 
 function __dqaAppendMsg(text,role,source,anchorId){
   if(!__docsQa.messages) return;
@@ -1226,33 +1230,10 @@ function __dqaAppendMsg(text,role,source,anchorId){
   __docsQa.messages.appendChild(div);
   __docsQa.messages.scrollTop=__docsQa.messages.scrollHeight;
 }
-// Dot product on L2-normalized vectors is identical to cosine similarity
-// but skips the square-root + two accumulator passes. Both query and
-// canonical_qa embeddings are produced with normalize:true, so this is
-// a straight simplification — the 0.72 tier-1 threshold keeps the same
-// semantic meaning.
-function __dqaDot(a,b){
-  if(!a||!b||a.length!==b.length) return -1;
-  var dot=0;
-  for(var i=0;i<a.length;i++){dot+=a[i]*b[i];}
-  return dot;
-}
 function __dqaActiveEntries(i){
   var data=window.__PROPERTY_EXTRACTIONS__||{};
   var uuid=uuidByIndex[i];
   return uuid?(data[uuid]||[]):[];
-}
-function __dqaCollectCanonicalQAs(entries){
-  var out=[];
-  for(var e=0;e<entries.length;e++){
-    var qas=entries[e].canonical_qas||[];
-    for(var q=0;q<qas.length;q++){
-      var it=qas[q];
-      if(!it||!Array.isArray(it.embedding)||it.embedding.length===0) continue;
-      out.push(it);
-    }
-  }
-  return out;
 }
 function __dqaCollectChunkDocs(entries){
   // Returns {docs, hasEmbeddings}. docs are Orama-ready objects; the
@@ -1301,7 +1282,6 @@ async function __dqaRebuildIndex(i){
   var om=__docsQa.oramaModule;
   if(!om) return;
   var entries=__dqaActiveEntries(i);
-  __docsQa.canonicalQAs=__dqaCollectCanonicalQAs(entries);
   var collected=__dqaCollectChunkDocs(entries);
   var useHybrid=collected.hasEmbeddings&&!!__docsQa.embedPipeline;
   __docsQa.mode=useHybrid?"hybrid":"bm25";
@@ -1338,73 +1318,6 @@ async function __dqaEmbedQuery(q){
     console.warn("ask: query embed failed:",err);
     return null;
   }
-}
-// Lowercase token set for the query, used for field-name boosting (#4).
-function __dqaQueryTokens(q){
-  var t=String(q||"").toLowerCase().replace(/[^a-z0-9_\\s]/g," ").split(/\\s+/);
-  var out={};
-  for(var i=0;i<t.length;i++){if(t[i]&&t[i].length>=3) out[t[i]]=true;}
-  return out;
-}
-// True when a field name shares any meaningful token with the query.
-// e.g. query "how many rooms" + field "number_of_rooms" → true.
-function __dqaFieldMatchesTokens(field,tokens){
-  if(!field) return false;
-  var parts=String(field).toLowerCase().split(/[_\\s-]+/);
-  for(var i=0;i<parts.length;i++){
-    if(parts[i].length>=3&&tokens[parts[i]]) return true;
-    // also try singular form (rooms→room) cheaply
-    if(parts[i].length>=4&&parts[i].slice(-1)==="s"&&tokens[parts[i].slice(0,-1)]) return true;
-  }
-  return false;
-}
-// Returns the top-K canonical-QA matches above the hard floor, with
-// field-name boosting applied. The boost adds 0.10 to the cosine score
-// for QAs whose field name shares a token with the query — enough to
-// pull a near-miss across the threshold without overruling a clean hit.
-function __dqaTier1TopK(queryVec,query,k){
-  if(!queryVec||!__docsQa.canonicalQAs.length) return [];
-  var tokens=__dqaQueryTokens(query);
-  var scored=[];
-  for(var i=0;i<__docsQa.canonicalQAs.length;i++){
-    var qa=__docsQa.canonicalQAs[i];
-    var s=__dqaDot(queryVec,qa.embedding);
-    if(__dqaFieldMatchesTokens(qa.field,tokens)) s+=0.10;
-    if(s>=__DQA_TIER1_HARD_FLOOR){
-      scored.push({qa:qa,score:s});
-    }
-  }
-  scored.sort(function(a,b){return b.score-a.score;});
-  return scored.slice(0,k||3);
-}
-// Back-compat single-best wrapper. Returns null if best is below the
-// soft threshold (0.55) — used by callers that only need a deterministic
-// hit, not the fusion list.
-function __dqaTier1(queryVec,query){
-  var top=__dqaTier1TopK(queryVec,query,1);
-  if(top.length===0) return null;
-  var best=top[0];
-  if(best.score<__DQA_TIER1_THRESHOLD) return null;
-  return {answer:best.qa.answer,source:best.qa.source_anchor_id||best.qa.field,score:best.score};
-}
-// Reciprocal Rank Fusion (#5). Combines tier-1 (canonical) + tier-3
-// (chunks) result lists into a single ranking. The constant 60 is the
-// standard RRF "k" — small enough that rank-1 dominates rank-3, large
-// enough that we don't miss strong rank-2 hits when both tiers agree.
-function __dqaRRF(tier1List,tier3List){
-  var bag={};
-  for(var i=0;i<tier1List.length;i++){
-    var key="t1:"+(tier1List[i].qa.id||tier1List[i].qa.field||i);
-    bag[key]={kind:"tier1",rank:i,score:1/(60+i),item:tier1List[i]};
-  }
-  for(var j=0;j<tier3List.length;j++){
-    var k2="t3:"+(tier3List[j].id||j);
-    bag[k2]={kind:"tier3",rank:j,score:1/(60+j),item:tier3List[j]};
-  }
-  var arr=[];
-  for(var key2 in bag){if(Object.prototype.hasOwnProperty.call(bag,key2)) arr.push(bag[key2]);}
-  arr.sort(function(a,b){return b.score-a.score;});
-  return arr;
 }
 async function __askBuildCuratedDb(){
   // Build the host-curated qaDatabase Orama DB once. The data is the same
@@ -1479,42 +1392,62 @@ async function __dqaInit(){
     __docsQa.input.disabled=true;
     __docsQa.send.disabled=true;
     try{
-      // Embed the query once; all tiers share the vector.
+      // Step 0 — classify intent (rule-based, deterministic).
+      var classification=classifyIntent(q);
+      var intent=classification.intent;
+      try{console.log("[ask] intent="+intent+" q="+q);}catch(_){}
+
+      // Step 1 — compose Property Brain for the current property tab.
+      //          Read-only projection over injected globals; rebuilt per
+      //          call (cheap for typical presentation data).
+      var entries=__dqaActiveEntries(current);
+      var configProperty=(props&&props[current])||null;
+      var brain=buildPropertyBrain({
+        propertyIndex:current,
+        propertyUuid:uuidByIndex[current]||null,
+        configProperty:configProperty,
+        agent:C.agent||{},
+        brandName:C.brandName||"",
+        extractionEntries:entries,
+        curatedQAs:window.__QA_DATABASE__||[],
+        hasDocs:!!window.__ASK_HAS_DOCS__,
+        hasQA:!!window.__ASK_HAS_QA__,
+        tagIntents:tagQAIntents
+      });
+
+      // Step 2 — embed query (may be null if transformers failed to load).
       var queryVec=await __dqaEmbedQuery(q);
 
-      // Tier 1 — canonical-QA cosine (deterministic, templated).
-      // Compute top-3 with field-name boosting; the single-best wrapper
-      // is what we use for the "outright win" path below, but we keep
-      // the full list for RRF fusion when no tier crosses cleanly.
-      var tier1Top=__dqaTier1TopK(queryVec,q,3);
-      var tier1=__dqaTier1(queryVec,q);
-      var tier1Score=tier1?tier1.score:-1;
-
-      // Tier 2 — hybrid Orama over the host-curated qaDatabase.
-      var tier2=null;
+      // Step 3 — run Orama searches (DOM-bound; live in the IIFE).
+      //          These feed decideAnswer as pre-ranked hit lists.
+      var curatedHits=[];
       if(__docsQa.qaDb&&queryVec){
         try{
           var qaRes=await __docsQa.oramaModule.search(__docsQa.qaDb,{
             mode:__docsQa.MODE_HYBRID,
             term:q,
             vector:{value:queryVec,property:"embedding"},
-            limit:1,
+            limit:3,
             similarity:0
           });
           var qaHits=(qaRes&&qaRes.hits)||[];
-          if(qaHits.length>0&&qaHits[0].score>0.3){
-            var qaDoc=qaHits[0].document;
-            tier2={answer:qaDoc.answer,anchorId:qaDoc.source_anchor_id,score:qaHits[0].score};
+          for(var qh=0;qh<qaHits.length;qh++){
+            var d=qaHits[qh].document||{};
+            curatedHits.push({
+              id:d.id,
+              question:d.question||"",
+              answer:d.answer||"",
+              source_anchor_id:d.source_anchor_id||"",
+              field:"",
+              score:qaHits[qh].score||0
+            });
           }
         }catch(qaErr){
           console.warn("ask: curated qa search failed:",qaErr);
         }
       }
 
-      // Tier 3 — hybrid (or BM25) over per-property doc chunks.
-      // Pull top-5 (was 1) so the fusion step can re-rank.
-      var tier3Top=[];
-      var tier3=null;
+      var chunkHits=[];
       if(__docsQa.db){
         var searchArgs;
         if(__docsQa.mode==="hybrid"&&queryVec){
@@ -1532,138 +1465,121 @@ async function __dqaInit(){
         try{
           var res=await __docsQa.oramaModule.search(__docsQa.db,searchArgs);
           var hits=(res&&res.hits)||[];
-          // Field-name boost: any chunk whose source label shares a token
-          // with the query gets a small bonus, then we re-sort.
-          var qTokens=__dqaQueryTokens(q);
-          var rescored=hits.map(function(h){
-            var doc=h.document||{};
-            var bonus=__dqaFieldMatchesTokens(doc.source||"",qTokens)?0.05:0;
-            return {id:doc.id,content:String(doc.content||""),source:String(doc.source||""),score:(h.score||0)+bonus};
-          });
-          rescored.sort(function(a,b){return b.score-a.score;});
-          tier3Top=rescored;
-          if(rescored.length>0){
-            tier3={content:rescored[0].content,source:rescored[0].source,score:rescored[0].score};
+          for(var ch=0;ch<hits.length;ch++){
+            var doc=hits[ch].document||{};
+            chunkHits.push({
+              id:doc.id,
+              source:doc.source||"",
+              section:doc.source||"",
+              content:String(doc.content||""),
+              templateLabel:"",
+              score:hits[ch].score||0
+            });
           }
         }catch(docsErr){
           console.warn("ask: docs search failed:",docsErr);
         }
       }
 
-      // Decision tree:
-      // 1. Clean Tier-1 hit (>=0.55 + boost) wins outright — deterministic
-      //    template answer; no synthesis needed.
-      // 2. Tier 2 curated QA with strong score — also deterministic.
-      // 3. Otherwise: gather best chunks from Tier 3 (+ Tier-1 QA hints),
-      //    send to the Synthesis Bridge for a conversational LLM answer.
-      //    Falls back to local RRF display when the bridge is unavailable.
-      if(tier1){
-        __dqaAppendMsg(tier1.answer,"assistant",tier1.source,null);
-      }else if(tier2&&tier2.score>=0.5){
-        __dqaAppendMsg(tier2.answer,"assistant",null,tier2.anchorId);
-      }else{
-        // ── Synthesis Bridge ──────────────────────────────────────────────
-        // Assemble up to 5 chunks: Tier-3 doc chunks first (primary grounding),
-        // then Tier-1 canonical-QA pairs as supplementary context.
-        var synthChunks=[];
-        for(var si=0;si<tier3Top.length&&synthChunks.length<5;si++){
-          var t3=tier3Top[si];
-          synthChunks.push({id:t3.id,section:t3.source,content:t3.content,score:t3.score});
-        }
-        for(var si2=0;si2<tier1Top.length&&synthChunks.length<5;si2++){
-          var tqa=tier1Top[si2].qa;
-          synthChunks.push({
-            id:tqa.id||tqa.field||("t1-"+si2),
-            section:tqa.source_anchor_id||tqa.field||"canonical",
-            content:tqa.question+" "+tqa.answer,
-            score:tier1Top[si2].score
-          });
-        }
+      // Step 4 — pure decision ladder.
+      var decision=decideAnswer({
+        brain:brain,
+        query:q,
+        queryVec:queryVec,
+        intent:intent,
+        intentAllows:intentAllows,
+        curatedHits:curatedHits,
+        chunkHits:chunkHits,
+        canSynthesize:!!window.__SYNTHESIS_URL__
+      });
+      try{console.log("[ask] path="+decision.path+" intent="+decision.intent);}catch(_){}
+
+      // Step 5 — render.
+      if(decision.path==="synthesis"&&decision.needsSynthesis){
+        // ── Synthesis Bridge ───────────────────────────────────────────
+        // PR-2 will augment this body with {presentation_token,
+        // source_context_hash, normalized_question_hash, property_uuid}.
+        // In PR-1 the shape remains {query, chunks} for back-compat.
+        var loadDiv=document.createElement("div");
+        loadDiv.className="ask-msg assistant loading";
+        loadDiv.innerHTML='<span class="ask-loading-dots"><span style="--i:0">•</span><span style="--i:1">•</span><span style="--i:2">•</span></span>';
+        __docsQa.messages.appendChild(loadDiv);
+        __docsQa.messages.scrollTop=__docsQa.messages.scrollHeight;
         var synthesized=false;
-        if(window.__SYNTHESIS_URL__&&synthChunks.length>0){
-          // Show animated loading dots while the LLM generates.
-          var loadDiv=document.createElement("div");
-          loadDiv.className="ask-msg assistant loading";
-          loadDiv.innerHTML='<span class="ask-loading-dots"><span style="--i:0">•</span><span style="--i:1">•</span><span style="--i:2">•</span></span>';
-          __docsQa.messages.appendChild(loadDiv);
-          __docsQa.messages.scrollTop=__docsQa.messages.scrollHeight;
-          try{
-            var sCtrl=new AbortController();
-            if(__docsQa.abortCtrl) __docsQa.abortCtrl.abort();
-            __docsQa.abortCtrl=sCtrl;
-            var sResp=await fetch(window.__SYNTHESIS_URL__,{
-              method:"POST",
-              headers:{"Content-Type":"application/json"},
-              body:JSON.stringify({query:q,chunks:synthChunks}),
-              signal:sCtrl.signal
-            });
-            if(sResp.ok&&sResp.body){
-              var sReader=sResp.body.getReader();
-              var sDecoder=new TextDecoder();
-              var sBuf="";
-              var ansDiv=document.createElement("div");
-              ansDiv.className="ask-msg assistant";
-              loadDiv.replaceWith(ansDiv);
-              var accText="";
-              var streamDone=false;
-              while(!streamDone){
-                var rr=await sReader.read();
-                if(rr.done) break;
-                sBuf+=sDecoder.decode(rr.value,{stream:true});
-                var sLines=sBuf.split("\\n");
-                sBuf=sLines.pop()||"";
-                for(var sl=0;sl<sLines.length;sl++){
-                  var sLine=sLines[sl];
-                  if(!sLine.startsWith("data: ")) continue;
-                  var sPay=sLine.slice(6).trim();
-                  try{
-                    var sEvt=JSON.parse(sPay);
-                    if(sEvt.token){
-                      accText+=sEvt.token;
-                      ansDiv.textContent=accText;
-                      __docsQa.messages.scrollTop=__docsQa.messages.scrollHeight;
-                      synthesized=true;
-                    }else if(sEvt.done){
-                      streamDone=true;
-                    }else if(sEvt.error){
-                      throw new Error(sEvt.error);
-                    }
-                  }catch(pe){if(!(pe instanceof SyntaxError)) throw pe;}
-                }
+        try{
+          var sCtrl=new AbortController();
+          if(__docsQa.abortCtrl) __docsQa.abortCtrl.abort();
+          __docsQa.abortCtrl=sCtrl;
+          var sResp=await fetch(window.__SYNTHESIS_URL__,{
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({query:q,chunks:decision.synthChunks}),
+            signal:sCtrl.signal
+          });
+          if(sResp.ok&&sResp.body){
+            var sReader=sResp.body.getReader();
+            var sDecoder=new TextDecoder();
+            var sBuf="";
+            var ansDiv=document.createElement("div");
+            ansDiv.className="ask-msg assistant";
+            loadDiv.replaceWith(ansDiv);
+            var accText="";
+            var streamDone=false;
+            while(!streamDone){
+              var rr=await sReader.read();
+              if(rr.done) break;
+              sBuf+=sDecoder.decode(rr.value,{stream:true});
+              var sLines=sBuf.split("\\n");
+              sBuf=sLines.pop()||"";
+              for(var sl=0;sl<sLines.length;sl++){
+                var sLine=sLines[sl];
+                if(!sLine.startsWith("data: ")) continue;
+                var sPay=sLine.slice(6).trim();
+                try{
+                  var sEvt=JSON.parse(sPay);
+                  if(sEvt.token){
+                    accText+=sEvt.token;
+                    ansDiv.textContent=accText;
+                    __docsQa.messages.scrollTop=__docsQa.messages.scrollHeight;
+                    synthesized=true;
+                  }else if(sEvt.done){
+                    streamDone=true;
+                  }else if(sEvt.error){
+                    throw new Error(sEvt.error);
+                  }
+                }catch(pe){if(!(pe instanceof SyntaxError)) throw pe;}
               }
             }
-            if(loadDiv.parentNode) loadDiv.remove();
-          }catch(sErr){
-            if(sErr.name!=="AbortError") console.warn("ask: synthesis failed:",sErr);
-            if(loadDiv.parentNode) loadDiv.remove();
           }
-          __docsQa.abortCtrl=null;
+          if(loadDiv.parentNode) loadDiv.remove();
+        }catch(sErr){
+          if(sErr.name!=="AbortError") console.warn("ask: synthesis failed:",sErr);
+          if(loadDiv.parentNode) loadDiv.remove();
         }
-        // ── Local RRF fallback (synthesis unavailable or failed) ──────────
+        __docsQa.abortCtrl=null;
         if(!synthesized){
-          var fused=__dqaRRF(tier1Top,tier3Top);
-          if(fused.length>0){
-            var top=fused[0];
-            if(top.kind==="tier1"){
-              var qa=top.item.qa;
-              __dqaAppendMsg(qa.answer,"assistant",qa.source_anchor_id||qa.field,null);
-            }else{
-              var c=top.item;
-              __dqaAppendMsg(c.content,"assistant",c.source,null);
-            }
-          }else if(tier2){
-            __dqaAppendMsg(tier2.answer,"assistant",null,tier2.anchorId);
-          }else if(tier3){
-            __dqaAppendMsg(tier3.content,"assistant",tier3.source,null);
-          }else{
-            __dqaAppendMsg("I couldn't find that for this property. Try rephrasing, or reach out via Contact.","assistant",null,null);
-          }
+          // Synthesis endpoint unreachable / errored — emit strict
+          // unknown rather than bleeding a wrong-category local answer.
+          __dqaAppendMsg("I don't have that detail for this property yet. Try rephrasing, or contact us for more info.","assistant",null,null);
+        }
+      }else{
+        // Deterministic path — render directly.
+        var anchorId=decision.anchorId||null;
+        var sourceLabel=(!anchorId&&decision.sourceLabel)?decision.sourceLabel:null;
+        __dqaAppendMsg(decision.text||"","assistant",sourceLabel,anchorId);
+        if(decision.href&&__docsQa.messages.lastChild){
+          var chip=document.createElement("a");
+          chip.className="source-link";
+          chip.href=decision.href;
+          chip.target="_blank";
+          chip.rel="noopener noreferrer";
+          chip.textContent=decision.sourceLabel||"Open link";
+          __docsQa.messages.lastChild.appendChild(document.createElement("br"));
+          __docsQa.messages.lastChild.appendChild(chip);
         }
       }
-      // Suppress unused-var lint for tier1Score (kept for future tuning).
-      void tier1Score;
     }catch(err){
-      console.error("ask: search failed:",err);
+      console.error("ask: decision failed:",err);
       __dqaAppendMsg("Search failed. Please try again.","assistant",null,null);
     }
     __docsQa.input.disabled=false;
