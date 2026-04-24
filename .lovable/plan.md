@@ -1,67 +1,191 @@
 
 
-## Remove the on-screen "Property Docs" overlay + clarify the data sparsity
+## Expand the property-intelligence schema: permissive extraction + prose mining
 
-### What's actually happening — two separate things
+### Goal
 
-**1. The overlay you want gone is a debug/preview surface.** It lives entirely in the generated HTML, emitted by `buildPropertyDocsPanel()` in `src/lib/portal.functions.ts` (lines 446-481) and re-rendered on every tab change by `renderPropertyDocs(i)` (lines 1181-1212). It dumps the raw `fields` JSONB blob as `<dt>/<dd>` rows. It is **not** what powers the Ask AI chat — Ask AI reads the same `fields` (plus `chunks` and `canonical_qas`) directly from `window.__PROPERTY_EXTRACTIONS__`. Removing the overlay does not affect chat answers in any way.
+Lift the URL/PDF extraction ceiling so the Ask AI engine has a bigger, richer set of structured facts to draw from — without inventing data. Two complementary changes:
 
-**2. Why the overlay shows only 3 fields for the sleeper magazine page.** I queried the row directly:
+1. **Permissive Mode (LLM, first pass)**: tell the structuring LLM to emit *any* extractable fact it finds, attaching a confidence score. The server filters on confidence; high-confidence facts merge into `fields`, lower-confidence facts go into a new `candidate_fields` bucket the client can show or ignore.
+2. **Prose-Miner (regex/heuristic, second pass)**: after the LLM, run a deterministic pass over the chunks to rescue canonical facts the LLM missed (e.g., "1957 rooms", "$15M renovation", "built in 1985", "47 stories"). Pure pattern matching, no extra cost.
 
-| Source | Domain | Text → Fields | Chunks | Canonical QAs |
-|---|---|---|---|---|
-| Hotel Indigo (sleepermagazine.com) | magazine article | **3 fields** (`listing_date`, `property_type`, `property_address`) | 9 | 12 |
-| Marriott Marquis (en.wikipedia.org) | structured wiki | 9 fields (`number_of_rooms`, `stories`, `year_built`, etc.) | 169 | 61 |
+Both passes feed into the existing `fields` blob, so the existing `buildCanonicalQAs` schema-aware generator (already shipped in Phase A) automatically produces phrasings for every new field.
 
-The `fields` blob is produced by the **`extract-url-content` edge function**, which sends the cleaned page text to GPT-4o-mini with the `SYSTEM_PROMPT` listing 18 canonical real-estate keys (lines 40-63). The LLM is instructed: *"Omit any field you cannot confidently extract."* The sleeper magazine article is editorial copy about Hotel Indigo's brand expansion — it mentions the address and that the property is a hotel, but it does **not** contain `square_feet`, `year_built`, `bedrooms`, `purchase_price`, `stories`, etc. That's why GPT only returned 3 keys. The chunks (9) and canonical QAs (12) were still produced — they're just not surfaced in the overlay.
+---
 
-This is a **data-source quality issue**, not a code defect. The same pipeline pulled 9 fields from Wikipedia because Wikipedia's NYC Marriott article contains structured infobox data. A magazine article will never yield a rich field table no matter what we do at the extractor — the facts simply aren't in the source text.
+### Architecture — where each change lives
 
-### Plan — surgical removal + a note for future MSP guidance
+```text
+Upload (URL or PDF)
+        │
+        ▼
+  htmlToText / pdfjs-heuristic
+        │
+        ▼
+  ┌──────────────────────────┐
+  │ Pass 1: LLM (permissive) │  ← extract-url-content + induce-schema (MSP)
+  │   gpt-4o-mini            │     and groq-cleaner (PDF runtime)
+  │   returns { fields:{},   │
+  │     candidates:[{key,    │
+  │       value,confidence}] │
+  └─────────┬────────────────┘
+            │
+            ▼
+  ┌──────────────────────────┐
+  │ Pass 2: Prose-Miner      │  ← NEW shared module
+  │   regex over chunks      │     supabase/functions/_shared/prose-miner.ts
+  │   fills gaps in `fields` │
+  └─────────┬────────────────┘
+            │
+            ▼
+   merged `fields` + `candidate_fields`
+            │
+            ▼
+   property_extractions row
+            │
+            ▼
+   buildCanonicalQAs (already covers any new field name)
+            │
+            ▼
+   Ask AI runtime (Tier 1 cosine + Tier 3 chunks)
+```
 
-#### Single code change
+---
 
-**`src/lib/portal.functions.ts`**
+### Change set
 
-1. **Replace `buildPropertyDocsPanel()` (lines 446-481) with a stub** that returns `""`. Keeps the function signature so nothing else breaks at type-check time, but emits no CSS, no DOM shell.
-2. **Replace the runtime `renderPropertyDocs(i)` function body (lines 1181-1212) with an early-return no-op.** The single caller at line 1734 (`renderPropertyDocs(i);` inside the tab-switcher) keeps working — it just does nothing now. Leaving the call site untouched avoids any risk of breaking the surrounding tab-switch flow.
-3. **Leave `loadExtractionsByProperty()`, `propertyDocsData`, and the `window.__PROPERTY_EXTRACTIONS__` injection unchanged.** Those feed the Ask AI chat (Tier 1 canonical-QA cosine, Tier 3 chunk hybrid search, and the synthesis bridge). They must stay.
+#### 1. New shared module: `supabase/functions/_shared/prose-miner.ts`
 
-That's it. One file, ~50 lines deleted/stubbed. No DB migration, no schema change, no edge-function change, no Ask AI behavioral change.
+Pure deterministic pass-2 enricher. Exports `mineFromChunks(chunks, existingFields)` and returns a `Record<string,unknown>` of newly discovered facts (never overwrites a field already present in `existingFields`). Patterns:
 
-#### Ripple analysis
+| Field | Pattern (simplified) |
+|---|---|
+| `number_of_rooms` | `(\d{1,5})\s+(guest\s+)?rooms\b` |
+| `number_of_suites` | `(\d{1,4})\s+suites\b` |
+| `number_of_restaurants` | `(\d{1,3})\s+(on-?site\s+)?restaurants\b` |
+| `stories` | `(\d{1,3})[-\s]?(story|stories|floors?|levels?)\b` |
+| `year_built` | `built\s+in\s+(19|20)\d{2}` / `constructed\s+in\s+(19|20)\d{2}` |
+| `year_renovated` | `renovated\s+(in\s+)?(19|20)\d{2}` |
+| `renovation_cost` | `\$\s*[\d.]+\s*(million|m|billion|b)?\s+renovation` |
+| `square_feet` | `([\d,]{3,9})\s*(sq\.?\s*ft|square\s+feet)\b` |
+| `meeting_space_sqft` | `([\d,]{3,9})\s*(sq\.?\s*ft).{0,40}meeting` |
+| `ballroom_capacity` | `ballroom.{0,40}(\d{2,5})\s*(people|guests)` |
+| `floors` | `(\d{1,3})\s+floors?\b` |
+| `bedrooms` / `bathrooms` | existing residential patterns |
+| `parking_spaces` | `(\d{1,5})\s+parking\s+spaces` |
+| `architect` | `designed\s+by\s+([A-Z][\w\s&.]{2,40})` (capture-stop on punctuation) |
+| `developer` | `developed\s+by\s+([A-Z][\w\s&.]{2,40})` |
+
+Each match also records a `_provenance: { field: chunkId, snippet: "...50 chars..." }` entry written into a new `field_provenance` JSONB column (see DB change below) so the Ask AI synthesizer can cite the source. Provenance writing is best-effort — if the column write fails (older row, RLS), the field still lands in `fields`.
+
+Idempotency: never overwrite a value already in `existingFields`. First pattern wins per field across chunks (chunks are walked in index order). Number cleanup strips commas, normalizes "M"/"million" → 1_000_000.
+
+#### 2. Permissive-mode prompts
+
+**`supabase/functions/extract-url-content/index.ts` (SYSTEM_PROMPT, lines 40–63)** — replace with a two-bucket schema:
+
+```text
+Return a JSON object with TWO top-level keys:
+  "fields": <high-confidence facts, exactly as today — only emit if you are
+            ≥ 90% certain the text states this fact verbatim>
+  "candidates": [
+    { "key": "<lowercase_snake_case>", "value": <scalar>, "confidence": 0.0-1.0,
+      "evidence": "<≤120 char quote from source>" },
+    ...
+  ]
+
+Use `candidates` for any extractable fact that does not warrant the high-
+confidence `fields` bucket: amenities, awards, design notes, neighborhood
+descriptors, brand affiliations, accessibility features, sustainability
+ratings, occupancy stats, etc. Aim for 5–25 candidates per page when content
+permits. Do not invent — every entry must be supported by the `evidence` quote.
+```
+
+Server-side filter:
+- `confidence ≥ 0.85` AND key not in existing `fields` → promote to `fields`.
+- `0.55 ≤ confidence < 0.85` → keep in `candidate_fields` (new column, see DB change).
+- `< 0.55` → drop.
+
+**`supabase/functions/_shared/groq-cleaner.ts` (`buildSystemPrompt`)** — same two-bucket structure for the PDF runtime cleaner. Already has schema-aware logic; we just add the candidates bucket and parse it.
+
+**`supabase/functions/induce-schema/index.ts` (SYSTEM_PROMPT, lines 40–69)** — append: *"Beyond the standard keys above, you SHOULD include any other extractable concepts the document covers — add custom snake_case keys for them in `properties` so the runtime extractor knows to look for them too."* Keeps current behavior, but invites broader schemas.
+
+#### 3. Edge-function wiring
+
+**`extract-url-content/index.ts`**:
+- Update `structureFields` to parse the new `{ fields, candidates }` shape (back-compat: if `candidates` is missing, treat the whole object as `fields`).
+- After `structureFields` returns, run `mineFromChunks(chunks, fields)` and merge results into `fields` (gap-fill only).
+- Persist `candidate_fields` and `field_provenance` to the new columns.
+
+**`extract-property-doc/index.ts`** (line 232 area):
+- After Groq cleaner merges, run `mineFromChunks(chunks, fields)` against the post-clean chunks.
+- Persist `candidate_fields` (from groq-cleaner) and `field_provenance`.
+
+#### 4. DB migration
+
+Add two nullable JSONB columns to `property_extractions`:
+
+```sql
+ALTER TABLE public.property_extractions
+  ADD COLUMN candidate_fields jsonb,
+  ADD COLUMN field_provenance jsonb;
+```
+
+No backfill needed — both are nullable and only consumed when present. RLS policies already cover all columns (table-level). No type regeneration required for server code; client TS regenerates on next sync.
+
+#### 5. Client surface
+
+**`src/lib/portal.functions.ts`** — when injecting `__PROPERTY_EXTRACTIONS__`, include the new columns so:
+- The Ask AI synthesizer (Phase B `synthesize-answer`, when enabled) can cite `field_provenance` snippets in answers.
+- Future MSP-facing UI can review `candidate_fields` and promote/reject them. (No UI in this change — data only.)
+
+**`src/lib/rag/canonical-questions.ts`** — no changes needed. The existing schema-aware fallback already turns any new field name (e.g. `meeting_space_sqft`, `ballroom_capacity`) into 8–12 phrasings.
+
+#### 6. Tests
+
+New Deno test file `supabase/functions/_shared/prose-miner_test.ts` with golden cases:
+- Marriott Wikipedia text → confirms `number_of_rooms=1957`, `stories=49`.
+- Hotel Indigo magazine → confirms `number_of_rooms`, `architect` mined.
+- Residential MLS sample → no false positives (commercial-style patterns must not fire).
+
+---
+
+### Ripple analysis
 
 | Surface | Before | After | Risk |
 |---|---|---|---|
-| Bottom-left overlay on generated HTML | Shows 3 sparse fields | Gone entirely | Intended |
-| Ask AI chat — Tier 1 canonical QAs | Reads from `__PROPERTY_EXTRACTIONS__[uuid][n].canonical_qas` | Unchanged | None |
-| Ask AI chat — Tier 3 doc chunks | Reads from `__PROPERTY_EXTRACTIONS__[uuid][n].chunks` | Unchanged | None |
-| Ask AI synthesis bridge | Reads chunks + fields, posts to `synthesize-answer` | Unchanged | None |
-| Tab switcher (`switchProperty(i)`) | Calls `renderPropertyDocs(i)` then `updateHud(i)` | Calls a no-op then `updateHud(i)` | None |
-| Property Docs panel inside the **builder** (`PropertyDocsPanel.tsx`) | MSP-facing extraction control surface | Unchanged — different file | None |
-| Vault property doc list, templates, etc. | Unchanged | Unchanged | None |
+| `extract-url-content` LLM call | One JSON blob = `fields` | `{ fields, candidates }`; back-compat parser | None (graceful fallback) |
+| `extract-property-doc` Groq cleaner | One JSON blob = `fields` + `chunks` | Adds `candidates` to its parser | None (graceful fallback) |
+| `induce-schema` (MSP template authoring) | Bias toward 18 canonical keys | Same + invitation for broader keys | Larger schemas → more `properties` entries → larger Ask-AI canonical QA set. Linear cost increase, no failure mode. |
+| `property_extractions` row size | ~10–200 KB | +5–20 KB for candidates + provenance | Within JSONB norms; far under the 1 MB row soft limit |
+| Ask AI runtime (Tier 1 cosine) | Embeds canonical QAs from `fields` only | Same — only promoted high-conf facts feed `fields` → QAs | None |
+| Ask AI runtime (Tier 3 chunks) | Reads `chunks` | Unchanged | None |
+| Phase B synthesizer (when enabled) | Sees `fields` + chunks | Optionally cites `field_provenance` snippets | Additive |
+| MSP vault UI | Today: shows `fields` table | Unchanged in this PR; `candidate_fields` is server-side only | None |
+| Embedding worker / hydrator | Re-embeds when chunks change | Unchanged — chunk text isn't modified by mining; only `fields`/`candidate_fields` grow | Existing "skip already-enriched" guard still holds |
+| Existing Hotel Indigo / Marriott rows | Have only `fields` | A reindex picks up mined fields and candidates | Old rows keep working until reindexed |
+| Costs | Same OpenAI/Groq call counts | One LLM call per document (unchanged); prose-miner is free | Net zero |
 
-#### What this plan deliberately does NOT do
-
-- **Does not change extraction quality.** The 3-field result for the sleeper magazine page is a faithful reflection of what GPT-4o-mini could responsibly extract from that source — adding more keys would be hallucination. If you want richer field tables for editorial-style sources, that's a separate "improve URL extraction prompt + fall back to chunk-mining for canonical fields" workstream we can plan after this.
-- **Does not delete the field/chunk/QA data.** All extractions stay in the database and continue to power Ask AI.
-- **Does not touch the in-builder MSP-facing `PropertyDocsPanel.tsx`** — the provider still needs that to manage extractions.
-- **Does not remove the `loadExtractionsByProperty` server-side fetch** — Ask AI depends on it.
+---
 
 ### Verification checklist
 
-1. Open the published HTML for the Hotel Indigo property — the bottom-left "Property Docs" overlay is gone. No flash on load, no leftover toggle button.
-2. Switch between properties in a multi-property presentation — tab switcher still works (active tab updates, HUD updates).
-3. Open Ask AI chat on the same property — "What is the property type?" still answers "Hotel"; "What's the address?" still returns the Wall Street address. (Both come from `fields`/`canonical_qas`, not the overlay.)
-4. Open Ask AI chat on the Marriott Marquis property — "How many rooms?" still answers from the indexed field. No regression.
-5. View page source — no `#property-docs` div, no `#pd-header`/`#pd-body`, no `.pd-extraction` CSS.
-6. Builder side: open the MSP dashboard → property → the existing in-builder Property Docs control panel still renders, still allows upload/extract/reindex.
+1. **Marriott Marquis Wikipedia** (already in DB): trigger reindex → `fields.number_of_rooms` = 1957 (already present), `fields.stories` = 49, `field_provenance.stories` exists, `candidate_fields` ≥ 5 entries (e.g. `architect`, `architectural_style`, `opened_year`).
+2. **Hotel Indigo (sleeper magazine)**: trigger reindex → `fields` grows from 3 keys to 6–10 (mined: `number_of_rooms`, `architect`, `developer`, `year_built`); `candidate_fields` populated with brand/design references.
+3. **Residential PDF (Heritage Oak)**: reindex → no false positives (no `number_of_suites`, no `meeting_space_sqft`); existing `bedrooms`, `bathrooms`, `square_feet` unchanged.
+4. **Ask AI** on Marriott: "How many stories?" → returns "49" deterministically via Tier 1 (was previously a Tier 3 chunk dump).
+5. **Ask AI** on Hotel Indigo: "Who designed it?" → returns mined `architect` value via Tier 1.
+6. **Backwards compat**: a row that predates the migration (no `candidate_fields`/`field_provenance`) still loads and serves Ask AI without errors.
+7. **Frozen property**: extraction still 423s — mining never runs.
+8. **Edge function logs** show `[extract-*] mined=N candidates=M` so we can monitor lift per-property.
 
-### Optional follow-up (not in this change)
+---
 
-If you want the URL extractor to surface more fields for editorial-style pages, the leverage point is in `supabase/functions/extract-url-content/index.ts` (`SYSTEM_PROMPT`, line 40). Two ideas worth a separate plan:
-- Add a "permissive mode" that lets the LLM emit any fact it finds (with a `confidence` annotation), then filter on the client side.
-- Run a second pass over the chunks to mine canonical fields the page mentions in prose (e.g., "1957 rooms", "$15 million renovation") even when no structured listing exists.
+### What this plan deliberately does NOT do
 
-Both would benefit Ask AI and any future structured display, independent of whether we keep an overlay.
+- **No new LLM calls.** Permissive mode is one extra section in the existing prompt — same call, larger response.
+- **No schema migration to `vault_templates`.** MSP-authored field schemas remain the source of truth; mining is *additive* gap-fill at extraction time.
+- **No UI yet for reviewing/promoting candidates.** Server-side only in this change. A separate plan can add an MSP review surface once we see the volume of candidates real properties produce.
+- **No change to chunking.** The same chunks feed Ask AI Tier 3.
+- **No rollback risk.** Two new nullable columns; old rows continue to work; new code paths are wrapped in try/catch and degrade to today's behavior on any failure.
 
