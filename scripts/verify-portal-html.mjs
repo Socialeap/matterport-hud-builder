@@ -212,39 +212,136 @@ function verifyAskRuntimeModules() {
   );
 }
 
+/**
+ * Catch the bug class where ${...} appears inside a // line comment
+ * within the html template literal. Template literals always evaluate
+ * ${...}, even inside // comments, which silently double-injects code
+ * (we hit this with ${ASK_RUNTIME_JS} inlining the entire 40 KB Ask
+ * runtime a second time, which left a stray `.` and broke the IIFE).
+ *
+ * Allowed escape: `\${...}` — author opted out by escaping the dollar.
+ */
+function scanCommentInterpolations(src, start, end) {
+  const offenders = [];
+  let i = start;
+  let depth = 0;
+  while (i < end) {
+    const ch = src[i];
+    if (ch === "\\") { i += 2; continue; }
+    if (ch === "$" && src[i + 1] === "{") { depth += 1; i += 2; continue; }
+    if (depth > 0 && ch === "}") { depth -= 1; i += 1; continue; }
+    if (depth > 0 && ch === "{") { depth += 1; i += 1; continue; }
+    if (depth > 0) { i += 1; continue; }
+    // Detect "//" line comment start at column 0 of a logical line.
+    if (ch === "/" && src[i + 1] === "/") {
+      const lineEnd = src.indexOf("\n", i);
+      const stop = lineEnd === -1 ? end : lineEnd;
+      // Scan the comment text for an unescaped ${.
+      for (let j = i; j < stop - 1; j++) {
+        if (src[j] === "\\" && src[j + 1] === "$") { j += 1; continue; }
+        if (src[j] === "$" && src[j + 1] === "{") {
+          offenders.push({ offset: j });
+          break;
+        }
+      }
+      i = stop;
+      continue;
+    }
+    i += 1;
+  }
+  return offenders;
+}
+
+/**
+ * Parse-test the assembled Ask runtime as a standalone script. Catches
+ * any JS syntax issue introduced by the .mjs modules before it reaches
+ * the generated HTML.
+ */
+function parseAskRuntime() {
+  const sources = ASK_SOURCES.map((p) => fs.readFileSync(p, "utf8"));
+  const assembled = assembleFromSources(sources[0], sources[1], sources[2]);
+  try {
+    // eslint-disable-next-line no-new-func
+    new Function(assembled);
+    console.log(`[verify-html] ✅ Assembled Ask runtime parses cleanly.`);
+  } catch (err) {
+    console.error(`[verify-html] ❌ Assembled Ask runtime failed to parse: ${err.message}`);
+    process.exit(1);
+  }
+}
+
+function assertRequiredStartupTokens(src) {
+  const required = [
+    'id="gate-sound-btn"',
+    'id="gate-silent-btn"',
+    'id="matterport-frame"',
+    "frame.src=props[0].iframeUrl",
+    "[presentation] safety bootstrap failed",
+  ];
+  const missing = required.filter((t) => !src.includes(t));
+  if (missing.length) {
+    console.error("[verify-html] ❌ Generated HTML template is missing critical startup tokens:");
+    for (const m of missing) console.error("    " + m);
+    process.exit(1);
+  }
+  console.log(`[verify-html] ✅ All critical startup tokens present in template.`);
+}
+
 function main() {
   verifyAskRuntimeModules();
+  parseAskRuntime();
 
   const src = readSource();
   const { start, end } = findTemplateLiteral(src);
   const offenders = scanLiteral(src, start, end);
+  const commentOffenders = scanCommentInterpolations(src, start, end);
 
-  if (offenders.length === 0) {
+  assertRequiredStartupTokens(src);
+
+  if (offenders.length === 0 && commentOffenders.length === 0) {
     console.log(
-      `[verify-html] ✅ No risky single-backslash escapes found in the portal HTML template ` +
+      `[verify-html] ✅ No risky single-backslash escapes or comment-embedded interpolations ` +
         `(${end - start} chars scanned).`,
     );
     return;
   }
 
-  console.error(
-    `[verify-html] ❌ Found ${offenders.length} single-backslash escape(s) in the portal HTML template.`,
-  );
-  console.error(
-    "[verify-html] Inside this template literal, every \\X meant to reach the runtime JS must be written as \\\\X.",
-  );
-  console.error(
-    "[verify-html] e.g. \\n → \\\\n,  /\\s+/ → /\\\\s+/,  \\d → \\\\d.",
-  );
-  for (const off of offenders) {
-    const { line, col } = lineColOf(src, off.offset);
-    const preview = previewLine(src, off.offset);
-    console.error(`\n  src/lib/portal.functions.ts:${line}:${col}  (\\${off.next})`);
-    console.error(`    ${preview}`);
-    console.error(`    ${" ".repeat(Math.max(0, col - 1))}^`);
+  if (commentOffenders.length > 0) {
+    console.error(
+      `[verify-html] ❌ Found ${commentOffenders.length} \${...} interpolation(s) inside // comments in the portal HTML template.`,
+    );
+    console.error(
+      `[verify-html] Template literals evaluate \${...} even inside // comments. This can silently re-inject large blocks (e.g. ASK_RUNTIME_JS) and corrupt the script.`,
+    );
+    console.error(
+      `[verify-html] Fix by escaping as \\\${...} or rewording the comment so it doesn't reference an interpolation.`,
+    );
+    for (const off of commentOffenders) {
+      const { line, col } = lineColOf(src, off.offset);
+      const preview = previewLine(src, off.offset);
+      console.error(`\n  src/lib/portal.functions.ts:${line}:${col}`);
+      console.error(`    ${preview}`);
+    }
   }
+
+  if (offenders.length > 0) {
+    console.error(
+      `[verify-html] ❌ Found ${offenders.length} single-backslash escape(s) in the portal HTML template.`,
+    );
+    console.error(
+      "[verify-html] Inside this template literal, every \\X meant to reach the runtime JS must be written as \\\\X.",
+    );
+    for (const off of offenders) {
+      const { line, col } = lineColOf(src, off.offset);
+      const preview = previewLine(src, off.offset);
+      console.error(`\n  src/lib/portal.functions.ts:${line}:${col}  (\\${off.next})`);
+      console.error(`    ${preview}`);
+      console.error(`    ${" ".repeat(Math.max(0, col - 1))}^`);
+    }
+  }
+
   console.error(
-    `\n[verify-html] FAILED — fix the escapes above. This is the same bug class as the previous "iframe never loads / Start button dead" regression.`,
+    `\n[verify-html] FAILED — fix the issues above. These are the same bug classes as the previous "iframe never loads / Start button dead" regressions.`,
   );
   process.exit(1);
 }

@@ -922,6 +922,32 @@ ${
 ${hasQA ? `<script>window.__QA_DATABASE__=${safeJsonScriptLiteral(qaDatabase)};</script>` : ""}
 ${synthesisUrl ? `<script>window.__SYNTHESIS_URL__=${JSON.stringify(synthesisUrl)};</script>` : ""}
 ${askAssets.moduleScript}
+<!-- ── Pre-bootstrap safety net ────────────────────────────────────────
+     This tiny script runs BEFORE the main IIFE. If the main IIFE later
+     fails to parse (e.g. a future template-literal bug), the gate
+     buttons still dismiss the overlay and the Matterport iframe still
+     loads its first property, so the 3D tour is never dead-on-arrival.
+     The main IIFE re-binds the same handlers; addEventListener stacks
+     them harmlessly. -->
+<script>
+(function(){
+  try {
+    var raw=${JSON.stringify(configB64)};
+    var cfg=JSON.parse(atob(raw));
+    var first=(cfg.properties&&cfg.properties[0])||null;
+    var frame=document.getElementById("matterport-frame");
+    if(frame&&first&&first.iframeUrl){ frame.src=first.iframeUrl; }
+    function hideGate(){
+      var g=document.getElementById("gate");
+      if(g){ g.classList.add("hidden"); setTimeout(function(){g.style.display="none";},500); }
+    }
+    var s=document.getElementById("gate-sound-btn");
+    var q=document.getElementById("gate-silent-btn");
+    if(s) s.addEventListener("click",hideGate);
+    if(q) q.addEventListener("click",hideGate);
+  } catch(err){ console.error("[presentation] safety bootstrap failed",err); }
+})();
+</script>
 <script>
 (function(){
 var C=JSON.parse(atob("${configB64}"));
@@ -1037,14 +1063,16 @@ function dismissGate(){
 var soundBtn=document.getElementById("gate-sound-btn");
 var silentBtn=document.getElementById("gate-silent-btn");
 if(soundBtn) soundBtn.addEventListener("click",function(){
-  soundEnabled=true;
-  var p=props[current];
-  if(p&&p.musicUrl) initAudio(p.musicUrl,true);
-  dismissGate();
+  try {
+    soundEnabled=true;
+    var p=props[current];
+    if(p&&p.musicUrl) initAudio(p.musicUrl,true);
+  } catch(err){ console.warn("[presentation] sound init failed",err); }
+  try { dismissGate(); } catch(_e){}
 });
 if(silentBtn) silentBtn.addEventListener("click",function(){
-  soundEnabled=false;
-  dismissGate();
+  try { soundEnabled=false; } catch(_e){}
+  try { dismissGate(); } catch(_e){}
 });
 
 // \u2500\u2500 Contact panel
@@ -1202,7 +1230,10 @@ var __docsQa={
 
 // Tier-1 thresholds (0.55 soft / 0.45 floor) and the pure scoring/RRF
 // helpers now live in src/lib/portal/ask-runtime-logic.mjs. They are
-// injected at the top of this IIFE via ${ASK_RUNTIME_JS}.
+// injected at the top of this IIFE via the ASK_RUNTIME_JS interpolation
+// above. (Do NOT write \${ASK_RUNTIME_JS} in a comment here — template
+// literals always evaluate \${...}, even inside // comments, which would
+// inline the entire 40 KB runtime a second time and corrupt the script.)
 
 function __dqaAppendMsg(text,role,source,anchorId){
   if(!__docsQa.messages) return;
@@ -1598,32 +1629,42 @@ window.__openAsk=function(){
 
 function load(i){
   current=i;
-  frame.src=props[i].iframeUrl;
-  var tabs=tabsEl.querySelectorAll(".tab");
-  tabs.forEach(function(t,j){t.classList.toggle("active",j===i)});
-  renderPropertyDocs(i);
-  updateHud(i);
+  try { if(frame && props[i]) frame.src=props[i].iframeUrl; } catch(_e){}
+  try {
+    var tabs=tabsEl?tabsEl.querySelectorAll(".tab"):[];
+    tabs.forEach(function(t,j){t.classList.toggle("active",j===i)});
+  } catch(_e){}
+  try { renderPropertyDocs(i); } catch(_e){}
+  try { updateHud(i); } catch(_e){}
   // Reset carousel context for new property
-  carouselMedia=props[i].multimedia||[];
+  carouselMedia=(props[i]&&props[i].multimedia)||[];
   carouselIndex=0;
   // Reset Ask state so next open re-indexes docs for this property.
   // Abort any in-progress synthesis stream for the previous property.
-  if(__docsQa.abortCtrl){__docsQa.abortCtrl.abort();__docsQa.abortCtrl=null;}
-  __docsQa.currentIndexKey=null;
-  if(__docsQa.messages){
-    __docsQa.messages.innerHTML='<div class="ask-msg assistant">Switched to '+escapeText(props[i].name||"property")+'. Ask me something.</div>';
-  }
-  if(__docsQa.initPromise&&window.__ASK_HAS_DOCS__){ __dqaRebuildIndex(i); }
+  try {
+    if(__docsQa.abortCtrl){__docsQa.abortCtrl.abort();__docsQa.abortCtrl=null;}
+    __docsQa.currentIndexKey=null;
+    if(__docsQa.messages){
+      __docsQa.messages.innerHTML='<div class="ask-msg assistant">Switched to '+escapeText((props[i]&&props[i].name)||"property")+'. Ask me something.</div>';
+    }
+    if(__docsQa.initPromise&&window.__ASK_HAS_DOCS__){ __dqaRebuildIndex(i); }
+  } catch(_e){}
 }
-props.forEach(function(p,i){
-  var btn=document.createElement("button");
-  btn.className="tab"+(i===0?" active":"");
-  btn.textContent=p.name;
-  btn.onclick=function(){load(i)};
-  tabsEl.appendChild(btn);
-});
-if(props.length>1) tabsEl.classList.add("multi");
-if(props.length>0) load(0);
+try {
+  props.forEach(function(p,i){
+    var btn=document.createElement("button");
+    btn.className="tab"+(i===0?" active":"");
+    btn.textContent=p.name;
+    btn.onclick=function(){load(i)};
+    if(tabsEl) tabsEl.appendChild(btn);
+  });
+  if(props.length>1&&tabsEl) tabsEl.classList.add("multi");
+} catch(_e){}
+// Critical bootstrap: ensure the Matterport iframe gets its src even if
+// later HUD/Ask wiring throws. Run this BEFORE the full load(0) so the
+// 3D tour is visible the moment the user dismisses the gate.
+try { if(props.length>0&&frame&&props[0]) frame.src=props[0].iframeUrl; } catch(_e){}
+try { if(props.length>0) load(0); } catch(_e){ console.error("[presentation] load(0) failed",_e); }
 
 // Pre-warm the Ask pipeline after the Matterport iframe has finished
 // its initial load. Gated on the panel actually existing so tours
