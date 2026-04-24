@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { AlertCircle, Check, FileText, Loader2, Lock, Play, RefreshCw, Snowflake, Trash2, Upload, X } from "lucide-react";
+import { FileText, Loader2, Lock, Play, RefreshCw, Snowflake, Trash2, Upload } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 
@@ -30,6 +30,7 @@ import { useLusLicense } from "@/hooks/useLusLicense";
 import type { PropertyExtraction } from "@/hooks/usePropertyExtractions";
 import { supabase } from "@/integrations/supabase/client";
 import { uploadVaultAsset } from "@/lib/storage";
+import { IndexingStatusBadge } from "@/components/portal/IndexingStatusBadge";
 
 interface PropertyDocsPanelProps {
   propertyUuid: string;
