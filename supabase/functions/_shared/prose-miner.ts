@@ -61,20 +61,31 @@ function snippetAround(text: string, idx: number, len: number, pad = 25): string
 
 const PATTERNS: PatternSpec[] = [
   // Hospitality / commercial
+  // Allow commas inside digits ("1,957 rooms"); require ≥3 digits to avoid
+  // catching "5 rooms" in residential prose. Min 100 rooms = hotel-scale.
   {
     field: "number_of_rooms",
-    pattern: /(\d{2,5})[\s,-]+(?:guest[\s-]+)?rooms?\b/i,
+    pattern: /(\d{1,3}(?:,\d{3})+|\d{3,5})[-\s]+(?:guest[-\s]+)?rooms?\b/i,
     transform: (m) => toNumber(m[1]),
   },
   {
     field: "number_of_suites",
-    pattern: /(\d{1,4})[\s,-]+suites?\b/i,
+    pattern: /(\d{1,3}(?:,\d{3})*|\d{1,4})[-\s]+suites?\b/i,
     transform: (m) => toNumber(m[1]),
   },
+  // Accept either digits or the small word numbers commonly found in prose.
   {
     field: "number_of_restaurants",
-    pattern: /(\d{1,3})\s+(?:on[-\s]?site\s+)?restaurants?\b/i,
-    transform: (m) => toNumber(m[1]),
+    pattern:
+      /\b(\d{1,3}|two|three|four|five|six|seven|eight|nine|ten)\s+(?:on[-\s]?site\s+)?restaurants?\b/i,
+    transform: (m) => {
+      const word = m[1].toLowerCase();
+      const words: Record<string, number> = {
+        two: 2, three: 3, four: 4, five: 5, six: 6,
+        seven: 7, eight: 8, nine: 9, ten: 10,
+      };
+      return words[word] ?? toNumber(m[1]);
+    },
   },
   {
     field: "meeting_space_sqft",
@@ -107,7 +118,7 @@ const PATTERNS: PatternSpec[] = [
   {
     field: "year_renovated",
     pattern:
-      /\b(?:renovated|refurbished|restored)\s+(?:in\s+)?((?:19|20)\d{2})\b/i,
+      /\b(?:renovated|refurbished|restored|renovation|refurbishment|restoration)[^.]{0,40}?\b((?:19|20)\d{2})\b/i,
     transform: (m) => toNumber(m[1]),
   },
   {
