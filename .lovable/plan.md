@@ -1,191 +1,130 @@
 
 
-## Expand the property-intelligence schema: permissive extraction + prose mining
+## Fix the never-ending "Preparing..." spinner + redesign the indexing status UX
 
-### Goal
+### Diagnosis — what's actually happening
 
-Lift the URL/PDF extraction ceiling so the Ask AI engine has a bigger, richer set of structured facts to draw from — without inventing data. Two complementary changes:
+Both the **Property Docs** spinner (in `PropertyModelsSection > PropertyDocsPanel`) and **Property Intelligence (Ask AI)** (in `PropertyIntelligenceSection`) call the **same hook** — `usePropertyExtractions(propertyUuid)`. But each instance has **its own state**: separate `backfillStatus`, separate "already-backfilled" guard ref, separate worker.
 
-1. **Permissive Mode (LLM, first pass)**: tell the structuring LLM to emit *any* extractable fact it finds, attaching a confidence score. The server filters on confidence; high-confidence facts merge into `fields`, lower-confidence facts go into a new `candidate_fields` bucket the client can show or ignore.
-2. **Prose-Miner (regex/heuristic, second pass)**: after the LLM, run a deterministic pass over the chunks to rescue canonical facts the LLM missed (e.g., "1957 rooms", "$15M renovation", "built in 1985", "47 stories"). Pure pattern matching, no extra cost.
+When you import/resume a presentation, here's the actual bug chain:
 
-Both passes feed into the existing `fields` blob, so the existing `buildCanonicalQAs` schema-aware generator (already shipped in Phase A) automatically produces phrasings for every new field.
+1. Both panels mount for the same property at once.
+2. Both call `ensureExtractionEmbeddings([propertyUuid])` simultaneously.
+3. Both spawn a separate `EmbeddingWorkerClient` → 2 worker threads downloading the 23 MB Xenova model in parallel, fighting for cache slots.
+4. One worker often wins, the other times out at the 60-second `INIT_TIMEOUT_MS` ceiling — but in some race conditions the `init:ready` message arrives at a worker whose listener has been GC'd, so the promise neither resolves nor rejects until the **3-minute wall-clock** fires.
+5. Meanwhile, when extractions are **already enriched**, `ensureExtractionEmbeddings` short-circuits *before spawning the worker* — that's the panel that flips to "Indexed" instantly. That's why the "Property Intelligence" section shows complete while "Property Docs" is still spinning: the two hook instances are racing on different workers and getting different outcomes.
+6. The duplicate refresh button (lines 238–276 of `PropertyDocsPanel.tsx` are literally pasted twice) is unrelated cosmetic bloat but signals the file needs cleanup.
+
+Secondary UX issues:
+- "Preparing…" stays visible even after the row is clearly indexed (the message lags the actual state).
+- No clear single source-of-truth for "is this property's Ask AI ready?"
+- The user has no idea what "indexing" even means, why it's running, or whether it's safe to proceed.
+- Two parallel UIs render the same underlying status differently → guaranteed confusion.
 
 ---
 
-### Architecture — where each change lives
+### Three approaches considered
+
+| # | Approach | UX win | Complexity | Risk |
+|---|---|---|---|---|
+| **A** | **Singleton worker + shared status** — one `EmbeddingWorkerClient` per page, one indexing context shared between both panels via React context. Status is computed from extraction row state, not local hook state. | Highest — eliminates the race entirely, single visual source of truth | Medium — new context provider, refactor hook into a coordinator | Low — pure consolidation of existing logic |
+| **B** | Quick fix only — dedupe duplicate refresh button, add a cross-instance `Map<propertyUuid, Promise>` guard inside `ensureExtractionEmbeddings` so concurrent callers share the same in-flight job. Leave separate hook state. | Medium — fixes the spinner-hang, but the two panels still show divergent status text | Low | Low |
+| **C** | Server-side indexing flag — add `indexed_at` column to `property_extractions`, drop client-side worker entirely, do embeddings in the edge function. | Highest long-term — no model downloads, no worker management, instant status check | High — major architectural shift, edge function cost increase, potential cold-start latency | High — touches the entire RAG pipeline |
+
+**Recommendation: Approach A.** Highest UX leverage with contained scope. Approach C is the right end-state but should be its own separate plan after we validate the current pipeline's reliability. Approach B leaves the dual-status confusion, which is the core complaint.
+
+---
+
+### Plan — Approach A
+
+#### 1. New `IndexingProvider` context (`src/lib/rag/indexing-context.tsx` — NEW)
+
+A page-scoped React provider that owns:
+- A single shared `EmbeddingWorkerClient` (lazy-spawned on first request, terminated on unmount).
+- A `Map<propertyUuid, IndexingStatus>` where status = `"idle" | "indexing" | "ready" | "failed"` plus a human message.
+- A `Map<propertyUuid, Promise<void>>` of in-flight jobs so concurrent `request(uuid)` calls dedupe to the same promise.
+- A `request(uuid)` method that any component can call; returns the existing promise if one is in flight.
+- A `subscribe(uuid, listener)` method for components to react to status transitions.
+
+Wraps the builder route once (`/p/$slug/builder`). Replaces the per-hook worker plumbing.
+
+#### 2. Refactor `usePropertyExtractions` (`src/hooks/usePropertyExtractions.ts`)
+
+- Remove the local `backfilledRef`, `okClearTimerRef`, internal `EmbeddingWorkerClient` invocations from `ensureExtractionEmbeddings`.
+- Replace the auto-backfill `useEffect` with: `const indexing = useIndexing(); useEffect(() => indexing.request(propertyUuid), [propertyUuid])`.
+- Re-derive `backfillStatus`/`backfillMessage` from `indexing.statusFor(propertyUuid)` so both panel instances see identical state.
+- Keep `extract()` / `extractFromUrl()` / `remove()` unchanged — they already drive the right side-effects.
+- `reindex()` becomes `indexing.requestForce(propertyUuid)`.
+
+#### 3. Single status component (`src/components/portal/IndexingStatusBadge.tsx` — NEW)
+
+One component, three rendered states, used in both `PropertyDocsPanel` and `PropertyIntelligenceSection`:
 
 ```text
-Upload (URL or PDF)
-        │
-        ▼
-  htmlToText / pdfjs-heuristic
-        │
-        ▼
-  ┌──────────────────────────┐
-  │ Pass 1: LLM (permissive) │  ← extract-url-content + induce-schema (MSP)
-  │   gpt-4o-mini            │     and groq-cleaner (PDF runtime)
-  │   returns { fields:{},   │
-  │     candidates:[{key,    │
-  │       value,confidence}] │
-  └─────────┬────────────────┘
-            │
-            ▼
-  ┌──────────────────────────┐
-  │ Pass 2: Prose-Miner      │  ← NEW shared module
-  │   regex over chunks      │     supabase/functions/_shared/prose-miner.ts
-  │   fills gaps in `fields` │
-  └─────────┬────────────────┘
-            │
-            ▼
-   merged `fields` + `candidate_fields`
-            │
-            ▼
-   property_extractions row
-            │
-            ▼
-   buildCanonicalQAs (already covers any new field name)
-            │
-            ▼
-   Ask AI runtime (Tier 1 cosine + Tier 3 chunks)
+ ┌─ Indexing… (pulsing dot)        ← while running, with cancellable hint
+ ├─ ✓ Ready for Ask AI             ← steady success badge
+ └─ ⚠ Indexing failed [Retry]      ← with retry button + error tooltip
 ```
+
+Reads `indexing.statusFor(uuid)` directly. Identical visual on both surfaces eliminates the "two different statuses" confusion immediately.
+
+#### 4. Cleanup `PropertyDocsPanel.tsx`
+
+- Delete the duplicated refresh button block (lines 258–276).
+- Replace the inline `BackfillPill` with `<IndexingStatusBadge propertyUuid={...} />`.
+- Section header copy: rename "Property Docs" → **"Property Docs (template-driven extraction)"** to clarify it's the schema-extracted view, not the Ask AI source.
+- Keep upload/extraction controls intact.
+
+#### 5. Cleanup `PropertyIntelligenceSection.tsx`
+
+- Replace the per-asset "indexed/pending/failed" pills with the same `IndexingStatusBadge` plus a per-doc badge that ONLY reflects the row's own `chunks.length > 0`.
+- Section info banner gets a one-line status header at the top: *"Ask AI is **ready** for 2 of 3 properties."* — derived from the shared context.
+
+#### 6. Hard guarantee against stuck spinner
+
+In the new `IndexingProvider`:
+- Wrap every worker `init()`/`embedBatch()` call in `Promise.race([job, timeout(N)])`.
+- On timeout: set status to `failed`, terminate and respawn the worker, log to console with a recognizable tag for the next debugging session.
+- Add an explicit "force-resolve" hook that runs a final DB read of the affected row — if `chunks` are populated and `canonical_qas` is non-null, mark `ready` regardless of worker state (the work is actually done; the UI was just out of sync).
+
+#### 7. Defensive UX touches
+
+- Spinner text rotates: "Preparing model…" → "Embedding chunks…" → "Saving…" so a stuck phase is diagnosable from a screenshot.
+- After 30s of "indexing", a tiny "Taking longer than usual?" link appears that opens a small panel: shows row state (chunks count, has embeddings, has canonical_qas) and a Retry button.
+- The Re-index button is disabled (not just hidden) while another job is in flight, with a tooltip explaining why.
 
 ---
 
-### Change set
+### Files touched
 
-#### 1. New shared module: `supabase/functions/_shared/prose-miner.ts`
-
-Pure deterministic pass-2 enricher. Exports `mineFromChunks(chunks, existingFields)` and returns a `Record<string,unknown>` of newly discovered facts (never overwrites a field already present in `existingFields`). Patterns:
-
-| Field | Pattern (simplified) |
+| File | Change |
 |---|---|
-| `number_of_rooms` | `(\d{1,5})\s+(guest\s+)?rooms\b` |
-| `number_of_suites` | `(\d{1,4})\s+suites\b` |
-| `number_of_restaurants` | `(\d{1,3})\s+(on-?site\s+)?restaurants\b` |
-| `stories` | `(\d{1,3})[-\s]?(story|stories|floors?|levels?)\b` |
-| `year_built` | `built\s+in\s+(19|20)\d{2}` / `constructed\s+in\s+(19|20)\d{2}` |
-| `year_renovated` | `renovated\s+(in\s+)?(19|20)\d{2}` |
-| `renovation_cost` | `\$\s*[\d.]+\s*(million|m|billion|b)?\s+renovation` |
-| `square_feet` | `([\d,]{3,9})\s*(sq\.?\s*ft|square\s+feet)\b` |
-| `meeting_space_sqft` | `([\d,]{3,9})\s*(sq\.?\s*ft).{0,40}meeting` |
-| `ballroom_capacity` | `ballroom.{0,40}(\d{2,5})\s*(people|guests)` |
-| `floors` | `(\d{1,3})\s+floors?\b` |
-| `bedrooms` / `bathrooms` | existing residential patterns |
-| `parking_spaces` | `(\d{1,5})\s+parking\s+spaces` |
-| `architect` | `designed\s+by\s+([A-Z][\w\s&.]{2,40})` (capture-stop on punctuation) |
-| `developer` | `developed\s+by\s+([A-Z][\w\s&.]{2,40})` |
+| `src/lib/rag/indexing-context.tsx` | NEW — provider, shared worker, status map |
+| `src/components/portal/IndexingStatusBadge.tsx` | NEW — unified badge component |
+| `src/hooks/usePropertyExtractions.ts` | Strip worker management, consume context |
+| `src/components/portal/PropertyDocsPanel.tsx` | Remove dup refresh button, swap pill for badge, rename label |
+| `src/components/portal/PropertyIntelligenceSection.tsx` | Swap inline status for badge, add section-level summary |
+| `src/routes/p.$slug.builder.tsx` | Wrap builder content in `<IndexingProvider>` |
 
-Each match also records a `_provenance: { field: chunkId, snippet: "...50 chars..." }` entry written into a new `field_provenance` JSONB column (see DB change below) so the Ask AI synthesizer can cite the source. Provenance writing is best-effort — if the column write fails (older row, RLS), the field still lands in `fields`.
-
-Idempotency: never overwrite a value already in `existingFields`. First pattern wins per field across chunks (chunks are walked in index order). Number cleanup strips commas, normalizes "M"/"million" → 1_000_000.
-
-#### 2. Permissive-mode prompts
-
-**`supabase/functions/extract-url-content/index.ts` (SYSTEM_PROMPT, lines 40–63)** — replace with a two-bucket schema:
-
-```text
-Return a JSON object with TWO top-level keys:
-  "fields": <high-confidence facts, exactly as today — only emit if you are
-            ≥ 90% certain the text states this fact verbatim>
-  "candidates": [
-    { "key": "<lowercase_snake_case>", "value": <scalar>, "confidence": 0.0-1.0,
-      "evidence": "<≤120 char quote from source>" },
-    ...
-  ]
-
-Use `candidates` for any extractable fact that does not warrant the high-
-confidence `fields` bucket: amenities, awards, design notes, neighborhood
-descriptors, brand affiliations, accessibility features, sustainability
-ratings, occupancy stats, etc. Aim for 5–25 candidates per page when content
-permits. Do not invent — every entry must be supported by the `evidence` quote.
-```
-
-Server-side filter:
-- `confidence ≥ 0.85` AND key not in existing `fields` → promote to `fields`.
-- `0.55 ≤ confidence < 0.85` → keep in `candidate_fields` (new column, see DB change).
-- `< 0.55` → drop.
-
-**`supabase/functions/_shared/groq-cleaner.ts` (`buildSystemPrompt`)** — same two-bucket structure for the PDF runtime cleaner. Already has schema-aware logic; we just add the candidates bucket and parse it.
-
-**`supabase/functions/induce-schema/index.ts` (SYSTEM_PROMPT, lines 40–69)** — append: *"Beyond the standard keys above, you SHOULD include any other extractable concepts the document covers — add custom snake_case keys for them in `properties` so the runtime extractor knows to look for them too."* Keeps current behavior, but invites broader schemas.
-
-#### 3. Edge-function wiring
-
-**`extract-url-content/index.ts`**:
-- Update `structureFields` to parse the new `{ fields, candidates }` shape (back-compat: if `candidates` is missing, treat the whole object as `fields`).
-- After `structureFields` returns, run `mineFromChunks(chunks, fields)` and merge results into `fields` (gap-fill only).
-- Persist `candidate_fields` and `field_provenance` to the new columns.
-
-**`extract-property-doc/index.ts`** (line 232 area):
-- After Groq cleaner merges, run `mineFromChunks(chunks, fields)` against the post-clean chunks.
-- Persist `candidate_fields` (from groq-cleaner) and `field_provenance`.
-
-#### 4. DB migration
-
-Add two nullable JSONB columns to `property_extractions`:
-
-```sql
-ALTER TABLE public.property_extractions
-  ADD COLUMN candidate_fields jsonb,
-  ADD COLUMN field_provenance jsonb;
-```
-
-No backfill needed — both are nullable and only consumed when present. RLS policies already cover all columns (table-level). No type regeneration required for server code; client TS regenerates on next sync.
-
-#### 5. Client surface
-
-**`src/lib/portal.functions.ts`** — when injecting `__PROPERTY_EXTRACTIONS__`, include the new columns so:
-- The Ask AI synthesizer (Phase B `synthesize-answer`, when enabled) can cite `field_provenance` snippets in answers.
-- Future MSP-facing UI can review `candidate_fields` and promote/reject them. (No UI in this change — data only.)
-
-**`src/lib/rag/canonical-questions.ts`** — no changes needed. The existing schema-aware fallback already turns any new field name (e.g. `meeting_space_sqft`, `ballroom_capacity`) into 8–12 phrasings.
-
-#### 6. Tests
-
-New Deno test file `supabase/functions/_shared/prose-miner_test.ts` with golden cases:
-- Marriott Wikipedia text → confirms `number_of_rooms=1957`, `stories=49`.
-- Hotel Indigo magazine → confirms `number_of_rooms`, `architect` mined.
-- Residential MLS sample → no false positives (commercial-style patterns must not fire).
-
----
-
-### Ripple analysis
-
-| Surface | Before | After | Risk |
-|---|---|---|---|
-| `extract-url-content` LLM call | One JSON blob = `fields` | `{ fields, candidates }`; back-compat parser | None (graceful fallback) |
-| `extract-property-doc` Groq cleaner | One JSON blob = `fields` + `chunks` | Adds `candidates` to its parser | None (graceful fallback) |
-| `induce-schema` (MSP template authoring) | Bias toward 18 canonical keys | Same + invitation for broader keys | Larger schemas → more `properties` entries → larger Ask-AI canonical QA set. Linear cost increase, no failure mode. |
-| `property_extractions` row size | ~10–200 KB | +5–20 KB for candidates + provenance | Within JSONB norms; far under the 1 MB row soft limit |
-| Ask AI runtime (Tier 1 cosine) | Embeds canonical QAs from `fields` only | Same — only promoted high-conf facts feed `fields` → QAs | None |
-| Ask AI runtime (Tier 3 chunks) | Reads `chunks` | Unchanged | None |
-| Phase B synthesizer (when enabled) | Sees `fields` + chunks | Optionally cites `field_provenance` snippets | Additive |
-| MSP vault UI | Today: shows `fields` table | Unchanged in this PR; `candidate_fields` is server-side only | None |
-| Embedding worker / hydrator | Re-embeds when chunks change | Unchanged — chunk text isn't modified by mining; only `fields`/`candidate_fields` grow | Existing "skip already-enriched" guard still holds |
-| Existing Hotel Indigo / Marriott rows | Have only `fields` | A reindex picks up mined fields and candidates | Old rows keep working until reindexed |
-| Costs | Same OpenAI/Groq call counts | One LLM call per document (unchanged); prose-miner is free | Net zero |
+No DB migration. No edge-function changes. No new dependencies.
 
 ---
 
 ### Verification checklist
 
-1. **Marriott Marquis Wikipedia** (already in DB): trigger reindex → `fields.number_of_rooms` = 1957 (already present), `fields.stories` = 49, `field_provenance.stories` exists, `candidate_fields` ≥ 5 entries (e.g. `architect`, `architectural_style`, `opened_year`).
-2. **Hotel Indigo (sleeper magazine)**: trigger reindex → `fields` grows from 3 keys to 6–10 (mined: `number_of_rooms`, `architect`, `developer`, `year_built`); `candidate_fields` populated with brand/design references.
-3. **Residential PDF (Heritage Oak)**: reindex → no false positives (no `number_of_suites`, no `meeting_space_sqft`); existing `bedrooms`, `bathrooms`, `square_feet` unchanged.
-4. **Ask AI** on Marriott: "How many stories?" → returns "49" deterministically via Tier 1 (was previously a Tier 3 chunk dump).
-5. **Ask AI** on Hotel Indigo: "Who designed it?" → returns mined `architect` value via Tier 1.
-6. **Backwards compat**: a row that predates the migration (no `candidate_fields`/`field_provenance`) still loads and serves Ask AI without errors.
-7. **Frozen property**: extraction still 423s — mining never runs.
-8. **Edge function logs** show `[extract-*] mined=N candidates=M` so we can monitor lift per-property.
-
----
+1. Resume a presentation with both panels visible — single spinner appears in both surfaces, identical text, identical timing.
+2. After enrichment completes — both surfaces flip to "Ready for Ask AI" within the same render cycle.
+3. Resume a presentation whose extractions are already enriched — both surfaces show "Ready for Ask AI" within ~200ms, no model download, no spinner flash.
+4. Force a worker timeout (devtools throttle to "Offline" mid-init) — status flips to "Indexing failed" within 60s with a Retry button; Retry succeeds when network is restored.
+5. Click Re-index on Property Docs panel — Property Intelligence panel reflects the same "indexing" state simultaneously.
+6. No duplicate buttons in `PropertyDocsPanel` header.
+7. Network panel shows the Xenova model bundle downloaded **once** per session, not twice.
+8. Console logs contain a `[indexing]` tag on every state transition for future debugging.
 
 ### What this plan deliberately does NOT do
 
-- **No new LLM calls.** Permissive mode is one extra section in the existing prompt — same call, larger response.
-- **No schema migration to `vault_templates`.** MSP-authored field schemas remain the source of truth; mining is *additive* gap-fill at extraction time.
-- **No UI yet for reviewing/promoting candidates.** Server-side only in this change. A separate plan can add an MSP review surface once we see the volume of candidates real properties produce.
-- **No change to chunking.** The same chunks feed Ask AI Tier 3.
-- **No rollback risk.** Two new nullable columns; old rows continue to work; new code paths are wrapped in try/catch and degrade to today's behavior on any failure.
+- Does not move embedding to the server — that's the right call for later, separate plan.
+- Does not change the Ask AI runtime behavior — chunks/canonical_qas/fields all stay where they are.
+- Does not change extraction output, prose-mining, or LLM prompts (recently shipped, working as intended).
+- Does not add any new database columns or migrations.
 
