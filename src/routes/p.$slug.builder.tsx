@@ -3,6 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { HudBuilderSandbox } from "@/components/portal/HudBuilderSandbox";
 import { Button } from "@/components/ui/button";
+import { IndexingProvider } from "@/lib/rag/indexing-context";
 
 const fetchBrandingForBuilder = createServerFn({ method: "GET" })
   .inputValidator((data: { slug: string }) => data)
@@ -70,5 +71,9 @@ function BuilderPage() {
     );
   }
 
-  return <HudBuilderSandbox branding={branding} slug={slug} />;
+  return (
+    <IndexingProvider>
+      <HudBuilderSandbox branding={branding} slug={slug} />
+    </IndexingProvider>
+  );
 }

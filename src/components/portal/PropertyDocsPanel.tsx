@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { AlertCircle, Check, FileText, Loader2, Lock, Play, RefreshCw, Snowflake, Trash2, Upload, X } from "lucide-react";
+import { FileText, Loader2, Lock, Play, RefreshCw, Snowflake, Trash2, Upload } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 
@@ -30,6 +30,7 @@ import { useLusLicense } from "@/hooks/useLusLicense";
 import type { PropertyExtraction } from "@/hooks/usePropertyExtractions";
 import { supabase } from "@/integrations/supabase/client";
 import { uploadVaultAsset } from "@/lib/storage";
+import { IndexingStatusBadge } from "@/components/portal/IndexingStatusBadge";
 
 interface PropertyDocsPanelProps {
   propertyUuid: string;
@@ -59,8 +60,6 @@ export function PropertyDocsPanel({
     loading,
     running,
     backfilling,
-    backfillStatus,
-    backfillMessage,
     extract,
     remove,
     reindex,
@@ -209,7 +208,12 @@ export function PropertyDocsPanel({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <FileText className="size-4 text-primary" />
-            <Label className="text-xs font-medium">Property Docs</Label>
+            <Label className="text-xs font-medium">
+              Property Docs{" "}
+              <span className="text-muted-foreground font-normal">
+                (template-driven extraction)
+              </span>
+            </Label>
             {extractions.length > 0 && (
               <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
                 {extractions.length}
@@ -228,51 +232,42 @@ export function PropertyDocsPanel({
                 Frozen
               </Badge>
             )}
-            <BackfillPill
-              status={backfillStatus}
-              message={backfillMessage}
-              onRetry={reindex}
-              disabled={running || isFrozen}
+            <IndexingStatusBadge
+              propertyUuid={propertyUuid}
+              disableRetry={running || isFrozen}
             />
           </div>
           <div className="flex items-center gap-1">
             {extractions.length > 0 && (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 w-7 p-0"
-                onClick={reindex}
-                disabled={backfilling || running || isFrozen}
-                title={
-                  isFrozen
-                    ? "Re-index disabled while frozen"
-                    : "Re-index doc embeddings"
-                }
-              >
-                <RefreshCw
-                  className={`size-3 ${backfilling ? "animate-spin" : ""}`}
-                />
-              </Button>
-            )}
-          </div>
-          <div className="flex items-center gap-1">
-            {extractions.length > 0 && (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 w-7 p-0"
-                onClick={reindex}
-                disabled={backfilling || running || isFrozen}
-                title={
-                  isFrozen
-                    ? "Re-index disabled while frozen"
-                    : "Re-index doc embeddings"
-                }
-              >
-                <RefreshCw
-                  className={`size-3 ${backfilling ? "animate-spin" : ""}`}
-                />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0"
+                      onClick={reindex}
+                      disabled={backfilling || running || isFrozen}
+                      title={
+                        backfilling
+                          ? "Indexing in progress…"
+                          : isFrozen
+                            ? "Re-index disabled while frozen"
+                            : "Re-index doc embeddings"
+                      }
+                    >
+                      <RefreshCw
+                        className={`size-3 ${backfilling ? "animate-spin" : ""}`}
+                      />
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                {backfilling && (
+                  <TooltipContent>
+                    Indexing already running — wait for it to finish.
+                  </TooltipContent>
+                )}
+              </Tooltip>
             )}
             {lusActive && !isFrozen && user && templates.length > 0 && (
               <Button
@@ -512,83 +507,10 @@ export function PropertyDocsPanel({
   );
 }
 
-function BackfillPill({
-  status,
-  message,
-  onRetry,
-  disabled,
-}: {
-  status: "idle" | "running" | "ok" | "failed";
-  message: string | null;
-  onRetry: () => void;
-  disabled: boolean;
-}) {
-  const [dismissed, setDismissed] = useState(false);
-
-  // Reset dismissal whenever the status transitions away from running.
-  // (A new run can be re-dismissed afresh.)
-  if (status === "idle" && dismissed) {
-    // Defer state update to avoid setState during render warnings.
-    queueMicrotask(() => setDismissed(false));
-  }
-
-  if (status === "idle") return null;
-  if (status === "running" && dismissed) return null;
-
-  if (status === "running") {
-    return (
-      <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-        <Loader2 className="size-3 animate-spin" />
-        <span className="max-w-[180px] truncate">{message ?? "Indexing…"}</span>
-        <button
-          type="button"
-          onClick={() => setDismissed(true)}
-          className="ml-0.5 rounded p-0.5 hover:bg-muted"
-          title="Hide indicator (indexing continues in background)"
-        >
-          <X className="size-2.5" />
-        </button>
-      </span>
-    );
-  }
-
-  if (status === "ok") {
-    return (
-      <span className="flex items-center gap-1 text-[10px] text-emerald-600">
-        <Check className="size-3" />
-        <span>{message ?? "Indexed"}</span>
-      </span>
-    );
-  }
-
-  // failed
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="flex items-center gap-1 text-[10px] text-destructive">
-          <AlertCircle className="size-3" />
-          <span>Indexing failed</span>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-5 px-1.5 text-[10px] text-destructive hover:text-destructive"
-            onClick={() => {
-              setDismissed(false);
-              onRetry();
-            }}
-            disabled={disabled}
-          >
-            <RefreshCw className="mr-0.5 size-2.5" />
-            Retry
-          </Button>
-        </span>
-      </TooltipTrigger>
-      {message && (
-        <TooltipContent className="max-w-xs text-xs">{message}</TooltipContent>
-      )}
-    </Tooltip>
-  );
-}
+// Legacy `BackfillPill` removed — replaced by the shared
+// <IndexingStatusBadge /> reading from the IndexingProvider context so
+// PropertyDocsPanel and PropertyIntelligenceSection always show identical
+// status for the same property.
 
 function EmptyHint({
   noTemplates,

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
@@ -7,7 +7,7 @@ import {
   invokeExtraction,
   invokeUrlExtraction,
 } from "@/lib/extraction/client";
-import { ensureExtractionEmbeddings } from "@/lib/rag/extraction-hydrator";
+import { useIndexing } from "@/lib/rag/indexing-context";
 import type { PropertyChunk } from "@/lib/rag/types";
 
 export interface ExtractionFailure {
@@ -30,45 +30,33 @@ export interface PropertyExtraction {
   extracted_at: string;
 }
 
+/** Legacy status enum kept for backwards-compatible callers. Mirrors the
+ *  shared `IndexingPhase` from `IndexingProvider`. */
 export type BackfillStatus = "idle" | "running" | "ok" | "failed";
-
-/** Belt-and-suspenders ceiling for the entire backfill pipeline. With
- *  Layer-1 + Layer-2 timeouts in place this should never fire, but if
- *  it does the spinner is guaranteed to clear. */
-const BACKFILL_WALL_CLOCK_MS = 180_000;
 
 export function usePropertyExtractions(propertyUuid: string | null) {
   const [extractions, setExtractions] = useState<PropertyExtraction[]>([]);
   const [loading, setLoading] = useState(false);
   const [running, setRunning] = useState(false);
-  const [backfillStatus, setBackfillStatus] = useState<BackfillStatus>("idle");
-  const [backfillMessage, setBackfillMessage] = useState<string | null>(null);
   const [failuresByAsset, setFailuresByAsset] = useState<
     Record<string, ExtractionFailure>
   >({});
 
-  // Backwards-compatible boolean for callers that only care about the
-  // run-vs-not-run dichotomy. Derived from status.
+  const indexing = useIndexing();
+  const status = indexing.statusFor(propertyUuid);
+
+  // Map shared indexing phase → legacy backfill status so existing
+  // panels keep rendering without churn.
+  const backfillStatus: BackfillStatus =
+    status.phase === "indexing"
+      ? "running"
+      : status.phase === "ready"
+        ? "ok"
+        : status.phase === "failed"
+          ? "failed"
+          : "idle";
+  const backfillMessage = status.message;
   const backfilling = backfillStatus === "running";
-
-  const backfilledRef = useRef<Set<string>>(new Set());
-  const okClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const clearOkTimer = useCallback(() => {
-    if (okClearTimerRef.current) {
-      clearTimeout(okClearTimerRef.current);
-      okClearTimerRef.current = null;
-    }
-  }, []);
-
-  const scheduleOkClear = useCallback(() => {
-    clearOkTimer();
-    okClearTimerRef.current = setTimeout(() => {
-      setBackfillStatus("idle");
-      setBackfillMessage(null);
-      okClearTimerRef.current = null;
-    }, 3000);
-  }, [clearOkTimer]);
 
   const recordFailure = useCallback(
     (vault_asset_id: string, err: unknown) => {
@@ -123,73 +111,30 @@ export function usePropertyExtractions(propertyUuid: string | null) {
     refresh();
   }, [refresh]);
 
-  // ── Phase 5d: one-shot lazy backfill of pre-Phase-5 rows. ──────────
-  // The first refresh for each property kicks off ensureExtractionEmbeddings
-  // in the background. Already-enriched rows fast-path via the helper's
-  // own idempotency guard; only rows missing chunk embeddings or
-  // canonical_qas actually spin up the worker. Result: MSPs who created
-  // extractions before Phase 5 shipped get their tours upgraded the next
-  // time they open the property in the builder — no manual action needed.
+  // Subscribe to shared indexing state — when the provider flips a
+  // property to "ready" we re-pull rows so newly-embedded chunks are
+  // visible to the UI immediately.
+  useEffect(() => {
+    if (!propertyUuid) return;
+    let lastPhase = indexing.statusFor(propertyUuid).phase;
+    const unsub = indexing.subscribe(propertyUuid, (s) => {
+      if (s.phase === "ready" && lastPhase === "indexing") {
+        refresh();
+      }
+      lastPhase = s.phase;
+    });
+    return unsub;
+  }, [propertyUuid, indexing, refresh]);
+
+  // Kick off (or join) the shared indexing job for this property.
+  // Page-scoped dedupe lives inside the provider so two panels sharing
+  // a property only pay for one job.
   useEffect(() => {
     if (!propertyUuid || loading) return;
-    if (backfilledRef.current.has(propertyUuid)) return;
-    backfilledRef.current.add(propertyUuid);
-
-    let cancelled = false;
-    let wallClock: ReturnType<typeof setTimeout> | null = null;
-
-    (async () => {
-      clearOkTimer();
-      setBackfillStatus("running");
-      setBackfillMessage("Preparing…");
-
-      wallClock = setTimeout(() => {
-        if (cancelled) return;
-        setBackfillStatus("failed");
-        setBackfillMessage("Indexing timed out");
-      }, BACKFILL_WALL_CLOCK_MS);
-
-      try {
-        const stats = await ensureExtractionEmbeddings([propertyUuid], {
-          onProgress: (m) => {
-            if (!cancelled) setBackfillMessage(m);
-          },
-        });
-        if (cancelled) return;
-        if (stats.rows_enriched > 0) {
-          const fresh = await fetchRows(propertyUuid);
-          if (fresh && !cancelled) setExtractions(fresh);
-          console.info(
-            `[doc-qa] backfilled ${stats.rows_enriched} extraction row(s)`,
-            stats,
-          );
-        }
-        if (stats.errors.length > 0) {
-          setBackfillStatus("failed");
-          setBackfillMessage(stats.errors[0]);
-        } else {
-          setBackfillStatus("ok");
-          setBackfillMessage(
-            stats.rows_enriched > 0 ? "Indexed" : "Already indexed",
-          );
-          scheduleOkClear();
-        }
-      } catch (err) {
-        console.warn("[doc-qa] backfill failed:", err);
-        if (!cancelled) {
-          setBackfillStatus("failed");
-          setBackfillMessage(err instanceof Error ? err.message : String(err));
-        }
-      } finally {
-        if (wallClock) clearTimeout(wallClock);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      if (wallClock) clearTimeout(wallClock);
-    };
-  }, [propertyUuid, loading, fetchRows, clearOkTimer, scheduleOkClear]);
+    indexing.request(propertyUuid).catch((err) => {
+      console.warn("[doc-qa] indexing request failed:", err);
+    });
+  }, [propertyUuid, loading, indexing]);
 
   const extract = useCallback(
     async (input: {
@@ -211,12 +156,11 @@ export function usePropertyExtractions(propertyUuid: string | null) {
         });
         clearFailure(input.vault_asset_id);
         toast.success(`Extracted ${res.chunks_indexed} chunks`);
-        try {
-          await ensureExtractionEmbeddings([propertyUuid]);
-        } catch (err) {
-          console.warn("Post-extraction embedding enrichment failed:", err);
-        }
         await refresh();
+        // Force a re-index so the new row gets embeddings + canonical QAs.
+        indexing.requestForce(propertyUuid).catch((err) => {
+          console.warn("Post-extraction embedding enrichment failed:", err);
+        });
         return res;
       } catch (err) {
         const f = recordFailure(input.vault_asset_id, err);
@@ -226,7 +170,7 @@ export function usePropertyExtractions(propertyUuid: string | null) {
         setRunning(false);
       }
     },
-    [propertyUuid, refresh, clearFailure, recordFailure],
+    [propertyUuid, refresh, clearFailure, recordFailure, indexing],
   );
 
   const extractFromUrl = useCallback(
@@ -251,12 +195,10 @@ export function usePropertyExtractions(propertyUuid: string | null) {
         });
         clearFailure(input.vault_asset_id);
         toast.success(`Extracted ${res.chunks_indexed} chunks from URL`);
-        try {
-          await ensureExtractionEmbeddings([propertyUuid]);
-        } catch (err) {
-          console.warn("Post-extraction embedding enrichment failed:", err);
-        }
         await refresh();
+        indexing.requestForce(propertyUuid).catch((err) => {
+          console.warn("Post-extraction embedding enrichment failed:", err);
+        });
         return res;
       } catch (err) {
         const f = recordFailure(input.vault_asset_id, err);
@@ -266,7 +208,7 @@ export function usePropertyExtractions(propertyUuid: string | null) {
         setRunning(false);
       }
     },
-    [propertyUuid, refresh, clearFailure, recordFailure],
+    [propertyUuid, refresh, clearFailure, recordFailure, indexing],
   );
 
   const remove = useCallback(
@@ -286,55 +228,18 @@ export function usePropertyExtractions(propertyUuid: string | null) {
     [refresh],
   );
 
-  // Explicit re-index escape hatch. Clears the per-session guard so the
-  // backfill runs even if this property was already checked.
+  // Explicit re-index escape hatch.
   const reindex = useCallback(async () => {
     if (!propertyUuid) return;
-    backfilledRef.current.delete(propertyUuid);
-    clearOkTimer();
-    setBackfillStatus("running");
-    setBackfillMessage("Preparing…");
-
-    let wallClock: ReturnType<typeof setTimeout> | null = setTimeout(() => {
-      setBackfillStatus("failed");
-      setBackfillMessage("Indexing timed out");
-    }, BACKFILL_WALL_CLOCK_MS);
-
     try {
-      const stats = await ensureExtractionEmbeddings([propertyUuid], {
-        onProgress: (m) => setBackfillMessage(m),
-      });
-      if (stats.rows_enriched > 0) {
-        toast.success(`Re-indexed ${stats.rows_enriched} extraction(s)`);
-        const fresh = await fetchRows(propertyUuid);
-        if (fresh) setExtractions(fresh);
-      } else if (stats.errors.length === 0) {
-        toast.message("Extractions are already indexed.");
-      }
-      if (stats.errors.length > 0) {
-        setBackfillStatus("failed");
-        setBackfillMessage(stats.errors[0]);
-        toast.error(`Re-index issues: ${stats.errors[0]}`);
-      } else {
-        setBackfillStatus("ok");
-        setBackfillMessage(
-          stats.rows_enriched > 0 ? "Indexed" : "Already indexed",
-        );
-        scheduleOkClear();
-      }
+      await indexing.requestForce(propertyUuid);
+      const fresh = await fetchRows(propertyUuid);
+      if (fresh) setExtractions(fresh);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      setBackfillStatus("failed");
-      setBackfillMessage(msg);
       toast.error(`Re-index failed: ${msg}`);
-    } finally {
-      if (wallClock) {
-        clearTimeout(wallClock);
-        wallClock = null;
-      }
-      backfilledRef.current.add(propertyUuid);
     }
-  }, [propertyUuid, fetchRows, clearOkTimer, scheduleOkClear]);
+  }, [propertyUuid, fetchRows, indexing]);
 
   return {
     extractions,
