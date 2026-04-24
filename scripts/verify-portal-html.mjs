@@ -4,179 +4,199 @@
  *
  * Why this exists:
  *   src/lib/portal.functions.ts builds the entire end-product HTML inside one
- *   giant TS template literal. Any single backslash inside that literal that
- *   should have been doubled silently corrupts the emitted runtime JavaScript.
- *   The generated file looks fine to eyeball but the embedded <script> blocks
- *   throw `SyntaxError` on load, which kills the gate buttons and the iframe.
+ *   giant TS template literal that begins around `const html = \`<!DOCTYPE html>.
+ *   Any single backslash inside that literal that should have been doubled
+ *   silently corrupts the emitted runtime JavaScript. The generated file looks
+ *   fine to eyeball, but the embedded <script> blocks throw `SyntaxError` on
+ *   load, which kills the gate buttons and the iframe in the downloaded .html.
  *
- *   This script catches the whole bug class by:
- *     1. Importing buildPortalHtmlForModel with a minimal fixture model.
- *     2. Extracting every <script>...</script> block from the output.
- *     3. Parsing each block with `new Function(...)` to surface SyntaxError.
- *     4. Failing the process with a non-zero exit code if anything throws.
+ *   We have hit this bug class twice. This script is the durable guard.
+ *
+ * What it does:
+ *   1. Reads src/lib/portal.functions.ts as text (no execution, no bundling).
+ *   2. Locates the `const html = \`<!DOCTYPE html>` template literal.
+ *   3. Walks the literal body and flags any backslash escape that is not
+ *      itself escaped. Inside this template literal, every backslash that
+ *      should appear in the emitted JS must be written as `\\` in source.
+ *   4. Allows a small set of intentional escapes (e.g. `\${` for literal
+ *      dollar braces, `\`` for literal backticks, and `\\` itself).
+ *   5. Exits with a non-zero code and a precise line:col + line preview
+ *      when a single-backslash escape is found.
  *
  * Run via:   node scripts/verify-portal-html.mjs
  * Or via:    npm run verify:html
  */
 
-import { pathToFileURL } from "node:url";
+import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+const __filename = fileURLToPath(import.meta.url);
+const ROOT = path.resolve(path.dirname(__filename), "..");
+const TARGET = path.join(ROOT, "src/lib/portal.functions.ts");
 
-// Minimal fixture — only the fields buildPortalHtmlForModel actually reads.
-const fixtureModel = {
-  id: "verify-fixture",
-  name: "Verify Fixture",
-  client_id: "00000000-0000-0000-0000-000000000000",
-  provider_id: "00000000-0000-0000-0000-000000000000",
-  properties: [
-    {
-      uuid: "verify-prop-1",
-      title: "1 Verify Street",
-      iframeUrl: "https://my.matterport.com/show/?m=ABCDEFGHIJK",
-      ambientAudioUrl: "",
-      addressLines: ["1 Verify Street", "New York, NY"],
-      docs: [],
-      models: [],
-      neighborhoodMap: null,
-      tourBehavior: null,
-      cinemaConfig: null,
-      mediaCarousel: null,
-      mediaSync: null,
-    },
-  ],
-  tour_config: { agent: { name: "Test Agent" }, behaviors: {}, branding: {} },
-};
+// Escapes that are legal/intentional in a TS template literal and that we
+// do NOT want to flag:
+//   \\   — already a doubled backslash (the correct form)
+//   \`   — literal backtick inside the template
+//   \${  — literal dollar-brace inside the template
+//   \xNN, \uNNNN, \u{NNNN} — Unicode/byte escapes we want to keep as-is
+const ALLOWED_NEXT = new Set([
+  "\\", // \\
+  "`",  // \`
+  "$",  // \${ or \$ (we'll let the next char decide; \$ alone is fine)
+  "x",  // \xNN
+  "u",  // \uNNNN or \u{...}
+  "0",  // \0 (NUL) — allowed; rare in our template
+]);
 
-async function loadBuilder() {
-  // We import the source module directly — no bundling — and rely on the
-  // exported pure function. If that function isn't exported, we surface a
-  // clear error instead of silently passing.
-  const modulePath = path.join(ROOT, "src/lib/portal.functions.ts");
-  const moduleUrl = pathToFileURL(modulePath).href;
-
-  // Use tsx-style loader through node --import if available; fall back to
-  // a clear instruction message otherwise.
-  try {
-    const mod = await import(moduleUrl);
-    return mod;
-  } catch (err) {
-    console.error("[verify-html] Could not import portal.functions.ts directly.");
-    console.error("[verify-html] Run with: node --import tsx scripts/verify-portal-html.mjs");
-    console.error("[verify-html] Underlying error:", err?.message || err);
+function readSource() {
+  if (!fs.existsSync(TARGET)) {
+    console.error(`[verify-html] Source not found: ${TARGET}`);
     process.exit(2);
   }
+  return fs.readFileSync(TARGET, "utf8");
 }
 
-function extractScripts(html) {
-  const blocks = [];
-  const re = /<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi;
-  let m;
-  while ((m = re.exec(html)) !== null) {
-    // Skip <script src="..."> with empty body and skip JSON-LD blocks.
-    const body = m[1];
-    if (!body || !body.trim()) continue;
-    // Skip non-JS scripts (type="application/ld+json", etc.)
-    const tag = m[0].slice(0, m[0].indexOf(">") + 1);
-    if (/type\s*=\s*["'](?!text\/javascript|module|application\/javascript)/i.test(tag)) continue;
-    blocks.push({ index: blocks.length, body });
-  }
-  return blocks;
-}
-
-function parseBlock(body) {
-  // `new Function` parses but does not execute — perfect for SyntaxError detection.
-  try {
-    // eslint-disable-next-line no-new-func
-    new Function(body);
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, error: err };
-  }
-}
-
-async function main() {
-  const mod = await loadBuilder();
-
-  // Look for a usable builder. The actual exported name lives in portal.functions.ts.
-  const candidates = [
-    "buildPortalHtmlForModel",
-    "buildPortalHtml",
-    "renderPortalHtml",
-    "buildHtmlForModel",
-  ];
-  const builderName = candidates.find((n) => typeof mod[n] === "function");
-  if (!builderName) {
+function findTemplateLiteral(src) {
+  // Anchor on the literal start that introduces the HTML body.
+  const marker = "const html = `<!DOCTYPE html";
+  const start = src.indexOf(marker);
+  if (start === -1) {
     console.error(
-      `[verify-html] Could not find an exported builder function. Tried: ${candidates.join(", ")}`,
+      "[verify-html] Could not locate the `const html = \\`<!DOCTYPE html>` template literal.",
     );
-    console.error("[verify-html] Available exports:", Object.keys(mod).join(", "));
+    console.error(
+      "[verify-html] If portal.functions.ts was restructured, update this script's marker.",
+    );
     process.exit(2);
   }
+  const bodyStart = src.indexOf("`", start) + 1;
 
-  let html;
-  try {
-    html = await mod[builderName](fixtureModel);
-  } catch (err) {
-    console.error(`[verify-html] Builder ${builderName} threw:`, err?.message || err);
-    process.exit(2);
+  // Walk forward, skipping `${...}` interpolations and escaped chars, until
+  // we hit the closing unescaped backtick.
+  let i = bodyStart;
+  let depth = 0; // ${ depth — we don't scan inside interpolations
+  while (i < src.length) {
+    const ch = src[i];
+    if (ch === "\\") {
+      i += 2;
+      continue;
+    }
+    if (depth === 0 && ch === "`") {
+      return { start: bodyStart, end: i };
+    }
+    if (ch === "$" && src[i + 1] === "{") {
+      depth += 1;
+      i += 2;
+      continue;
+    }
+    if (depth > 0 && ch === "}") {
+      depth -= 1;
+      i += 1;
+      continue;
+    }
+    if (depth > 0 && ch === "{") {
+      depth += 1;
+    }
+    i += 1;
   }
+  console.error("[verify-html] Reached end of file without finding template close.");
+  process.exit(2);
+}
 
-  if (typeof html !== "string" || !html.includes("<script")) {
-    console.error("[verify-html] Builder output did not look like HTML with <script> blocks.");
-    process.exit(2);
-  }
-
-  const blocks = extractScripts(html);
-  if (blocks.length === 0) {
-    console.error("[verify-html] No <script> blocks found in generated HTML.");
-    process.exit(2);
-  }
-
-  let failures = 0;
-  for (const { index, body } of blocks) {
-    const result = parseBlock(body);
-    if (!result.ok) {
-      failures += 1;
-      console.error(
-        `\n[verify-html] ❌ <script> block #${index + 1} failed to parse:\n  ${result.error?.message || result.error}`,
-      );
-      // Print a small window around the suspected location if possible.
-      const msg = String(result.error?.message || "");
-      const lineMatch = msg.match(/line (\d+)/i);
-      if (lineMatch) {
-        const lineNo = Number(lineMatch[1]);
-        const lines = body.split("\n");
-        const start = Math.max(0, lineNo - 3);
-        const end = Math.min(lines.length, lineNo + 2);
-        for (let i = start; i < end; i++) {
-          const marker = i + 1 === lineNo ? ">>" : "  ";
-          console.error(`  ${marker} ${i + 1}: ${lines[i]}`);
-        }
-      }
+function lineColOf(src, offset) {
+  let line = 1;
+  let col = 1;
+  for (let i = 0; i < offset; i++) {
+    if (src[i] === "\n") {
+      line += 1;
+      col = 1;
+    } else {
+      col += 1;
     }
   }
-
-  if (failures > 0) {
-    console.error(
-      `\n[verify-html] FAILED — ${failures} of ${blocks.length} <script> block(s) had syntax errors.`,
-    );
-    console.error(
-      "[verify-html] Likely cause: a single backslash inside the TS template literal in",
-    );
-    console.error(
-      "[verify-html] src/lib/portal.functions.ts. Double the backslash (e.g. \\n → \\\\n).",
-    );
-    process.exit(1);
-  }
-
-  console.log(
-    `[verify-html] ✅ All ${blocks.length} <script> block(s) parsed cleanly (builder: ${builderName}).`,
-  );
+  return { line, col };
 }
 
-main().catch((err) => {
-  console.error("[verify-html] Unexpected failure:", err);
-  process.exit(2);
-});
+function scanLiteral(src, start, end) {
+  const offenders = [];
+  let i = start;
+  let depth = 0;
+  while (i < end) {
+    const ch = src[i];
+    if (ch === "$" && src[i + 1] === "{") {
+      depth += 1;
+      i += 2;
+      continue;
+    }
+    if (depth > 0 && ch === "}") {
+      depth -= 1;
+      i += 1;
+      continue;
+    }
+    if (depth > 0 && ch === "{") {
+      depth += 1;
+      i += 1;
+      continue;
+    }
+    if (depth > 0) {
+      i += 1;
+      continue;
+    }
+    if (ch === "\\") {
+      const next = src[i + 1];
+      if (!ALLOWED_NEXT.has(next)) {
+        offenders.push({ offset: i, next });
+      }
+      // Skip the escape pair regardless — we don't want to double-count.
+      i += 2;
+      continue;
+    }
+    i += 1;
+  }
+  return offenders;
+}
+
+function previewLine(src, offset) {
+  const lineStart = src.lastIndexOf("\n", offset - 1) + 1;
+  const lineEnd = src.indexOf("\n", offset);
+  return src.slice(lineStart, lineEnd === -1 ? undefined : lineEnd);
+}
+
+function main() {
+  const src = readSource();
+  const { start, end } = findTemplateLiteral(src);
+  const offenders = scanLiteral(src, start, end);
+
+  if (offenders.length === 0) {
+    console.log(
+      `[verify-html] ✅ No risky single-backslash escapes found in the portal HTML template ` +
+        `(${end - start} chars scanned).`,
+    );
+    return;
+  }
+
+  console.error(
+    `[verify-html] ❌ Found ${offenders.length} single-backslash escape(s) in the portal HTML template.`,
+  );
+  console.error(
+    "[verify-html] Inside this template literal, every \\X meant to reach the runtime JS must be written as \\\\X.",
+  );
+  console.error(
+    "[verify-html] e.g. \\n → \\\\n,  /\\s+/ → /\\\\s+/,  \\d → \\\\d.",
+  );
+  for (const off of offenders) {
+    const { line, col } = lineColOf(src, off.offset);
+    const preview = previewLine(src, off.offset);
+    console.error(`\n  src/lib/portal.functions.ts:${line}:${col}  (\\${off.next})`);
+    console.error(`    ${preview}`);
+    console.error(`    ${" ".repeat(Math.max(0, col - 1))}^`);
+  }
+  console.error(
+    `\n[verify-html] FAILED — fix the escapes above. This is the same bug class as the previous "iframe never loads / Start button dead" regression.`,
+  );
+  process.exit(1);
+}
+
+main();
