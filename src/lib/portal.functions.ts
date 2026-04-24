@@ -226,7 +226,7 @@ async function loadExtractionsByProperty(
     const { data: rows, error } = await supabase
       .from("property_extractions")
       .select(
-        "template_id, property_uuid, fields, chunks, canonical_qas, extracted_at",
+        "template_id, property_uuid, fields, chunks, canonical_qas, candidate_fields, field_provenance, extracted_at",
       )
       .in("property_uuid", propertyUuids);
     if (error || !rows) {
@@ -303,6 +303,12 @@ async function loadExtractionsByProperty(
             source_anchor_id: String(q.source_anchor_id ?? ""),
             embedding: normalizeEmbedding(q.embedding),
           })),
+        candidate_fields: Array.isArray((row as { candidate_fields?: unknown }).candidate_fields)
+          ? ((row as { candidate_fields: unknown[] }).candidate_fields as Array<Record<string, unknown>>)
+          : [],
+        field_provenance: Array.isArray((row as { field_provenance?: unknown }).field_provenance)
+          ? ((row as { field_provenance: unknown[] }).field_provenance as Array<Record<string, unknown>>)
+          : [],
         extracted_at: String(row.extracted_at ?? ""),
       });
     }
@@ -353,6 +359,8 @@ interface PropertyExtractionForHud {
     source_anchor_id: string;
     embedding: number[] | null;
   }>;
+  candidate_fields: Array<Record<string, unknown>>;
+  field_provenance: Array<Record<string, unknown>>;
   extracted_at: string;
 }
 
