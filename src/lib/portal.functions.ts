@@ -1202,7 +1202,10 @@ var __docsQa={
 
 // Tier-1 thresholds (0.55 soft / 0.45 floor) and the pure scoring/RRF
 // helpers now live in src/lib/portal/ask-runtime-logic.mjs. They are
-// injected at the top of this IIFE via ${ASK_RUNTIME_JS}.
+// injected at the top of this IIFE via the ASK_RUNTIME_JS interpolation
+// above. (Do NOT write \${ASK_RUNTIME_JS} in a comment here — template
+// literals always evaluate \${...}, even inside // comments, which would
+// inline the entire 40 KB runtime a second time and corrupt the script.)
 
 function __dqaAppendMsg(text,role,source,anchorId){
   if(!__docsQa.messages) return;
