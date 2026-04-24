@@ -1,0 +1,186 @@
+{
+  "_notes": "Hotel/venue fixture for Ask AI intent-routing regression tests. Embeddings are omitted (null) so decideAnswer runs in lexical-only mode — PR-1 validates the intent/field-compat guard, not cosine math.",
+  "config": {
+    "brandName": "Transcendence Media",
+    "accentColor": "#00AAFF",
+    "hudBgColor": "#121226",
+    "propertyUuidByIndex": ["11111111-1111-1111-1111-111111111111"],
+    "properties": [
+      {
+        "id": "11111111-1111-1111-1111-111111111111",
+        "name": "Marriott Marquis Times Square",
+        "propertyName": "Marriott Marquis Times Square",
+        "location": "1535 Broadway, New York, NY 10036",
+        "enableNeighborhoodMap": true
+      }
+    ],
+    "agent": {
+      "name": "Jane Doe",
+      "titleRole": "Listing Agent",
+      "email": "jane@example.com",
+      "phone": "+1-212-555-0100",
+      "welcomeNote": "Welcome!",
+      "linkedin": "https://linkedin.com/in/janedoe"
+    }
+  },
+  "propertyExtractions": {
+    "11111111-1111-1111-1111-111111111111": [
+      {
+        "template_id": "hotel_v1",
+        "template_label": "Hotel Overview",
+        "property_uuid": "11111111-1111-1111-1111-111111111111",
+        "fields": {
+          "property_name": "Marriott Marquis Times Square",
+          "address": "1535 Broadway, New York, NY 10036",
+          "neighborhood": "Times Square, Midtown Manhattan",
+          "number_of_rooms": 1966,
+          "number_of_ballrooms": 5,
+          "ballrooms": ["Westside Ballroom", "Broadway Ballroom", "Astor Ballroom"],
+          "number_of_restaurants": 3,
+          "restaurants": ["The View Restaurant", "Crossroads", "Broadway Lounge"],
+          "restaurant_floor": "8th floor and 48th floor",
+          "number_of_floors": 49,
+          "year_built": 1985,
+          "opening_year": 1985,
+          "architect": "John C. Portman Jr.",
+          "developer": "Portman Holdings",
+          "amenities": ["fitness center", "business center", "concierge", "revolving rooftop restaurant"],
+          "parking": "Valet parking available",
+          "accessibility_features": "Fully ADA accessible; wheelchair-accessible rooms and common areas",
+          "booking_url": "https://www.marriott.com/marquis-book",
+          "official_website": "https://www.marriott.com/hotels/nycmq",
+          "phone_number": "+1-212-398-1900",
+          "nightly_rate": "From $399/night"
+        },
+        "field_provenance": {
+          "number_of_rooms": { "source": "brochure", "confidence": 0.95 },
+          "number_of_ballrooms": { "source": "brochure", "confidence": 0.90 },
+          "architect": { "source": "wikipedia", "confidence": 0.85 }
+        },
+        "candidate_fields": {},
+        "chunks": [
+          { "id": "overview-1", "section": "Overview", "content": "The Marriott Marquis Times Square is a 49-story, 1,966-room hotel in the heart of Times Square.", "embedding": null },
+          { "id": "dining-1", "section": "restaurants", "content": "Dining at the Marquis includes The View Restaurant on the 48th floor (revolving), Crossroads on the 8th floor, and Broadway Lounge.", "embedding": null },
+          { "id": "events-1", "section": "ballrooms", "content": "The hotel features 5 ballrooms including the 18,400 sq ft Westside Ballroom and the Broadway Ballroom.", "embedding": null },
+          { "id": "history-1", "section": "history", "content": "Designed by John C. Portman Jr. and developed by Portman Holdings. The hotel opened in 1985.", "embedding": null },
+          { "id": "amenities-1", "section": "amenities", "content": "Amenities include a fitness center, business center, concierge service, and the iconic revolving rooftop restaurant.", "embedding": null },
+          { "id": "parking-1", "section": "parking", "content": "Valet parking is available on-site.", "embedding": null },
+          { "id": "access-1", "section": "accessibility_features", "content": "The hotel is fully ADA accessible with wheelchair-accessible rooms and common areas.", "embedding": null }
+        ],
+        "canonical_qas": [
+          { "id": "field:number_of_rooms:0", "field": "number_of_rooms", "question": "How many rooms are there?", "answer": "There are 1,966 rooms.", "source_anchor_id": "field:number_of_rooms", "embedding": null },
+          { "id": "field:number_of_rooms:1", "field": "number_of_rooms", "question": "What is the room count?", "answer": "There are 1,966 rooms.", "source_anchor_id": "field:number_of_rooms", "embedding": null },
+          { "id": "field:number_of_ballrooms:0", "field": "number_of_ballrooms", "question": "How many ballrooms are there?", "answer": "There are 5 ballrooms.", "source_anchor_id": "field:number_of_ballrooms", "embedding": null },
+          { "id": "field:number_of_ballrooms:1", "field": "number_of_ballrooms", "question": "What is the ballroom count?", "answer": "There are 5 ballrooms.", "source_anchor_id": "field:number_of_ballrooms", "embedding": null },
+          { "id": "field:number_of_restaurants:0", "field": "number_of_restaurants", "question": "How many restaurants are there?", "answer": "There are 3 restaurants.", "source_anchor_id": "field:number_of_restaurants", "embedding": null },
+          { "id": "field:restaurant_floor:0", "field": "restaurant_floor", "question": "What floor is the restaurant on?", "answer": "The restaurants are on the 8th floor and 48th floor.", "source_anchor_id": "field:restaurant_floor", "embedding": null },
+          { "id": "field:year_built:0", "field": "year_built", "question": "What year was it built?", "answer": "The hotel was built in 1985.", "source_anchor_id": "field:year_built", "embedding": null },
+          { "id": "field:opening_year:0", "field": "opening_year", "question": "When did the hotel open?", "answer": "The hotel opened in 1985.", "source_anchor_id": "field:opening_year", "embedding": null },
+          { "id": "field:architect:0", "field": "architect", "question": "Who was the architect?", "answer": "The hotel was designed by John C. Portman Jr.", "source_anchor_id": "field:architect", "embedding": null },
+          { "id": "field:developer:0", "field": "developer", "question": "Who developed the hotel?", "answer": "The hotel was developed by Portman Holdings.", "source_anchor_id": "field:developer", "embedding": null },
+          { "id": "field:nightly_rate:0", "field": "nightly_rate", "question": "What is the nightly rate?", "answer": "The nightly rate starts from $399/night.", "source_anchor_id": "field:nightly_rate", "embedding": null },
+          { "id": "field:amenities:0", "field": "amenities", "question": "What amenities are available?", "answer": "Amenities include a fitness center, business center, concierge, and revolving rooftop restaurant.", "source_anchor_id": "field:amenities", "embedding": null },
+          { "id": "field:amenities:1", "field": "amenities", "question": "Is there a theatre at the property?", "answer": "No — the amenities listed do not include a theatre.", "source_anchor_id": "field:amenities", "embedding": null },
+          { "id": "field:parking:0", "field": "parking", "question": "Is there parking?", "answer": "Yes — valet parking is available on-site.", "source_anchor_id": "field:parking", "embedding": null },
+          { "id": "field:accessibility_features:0", "field": "accessibility_features", "question": "Is the property accessible?", "answer": "Yes — the hotel is fully ADA accessible.", "source_anchor_id": "field:accessibility_features", "embedding": null }
+        ]
+      }
+    ]
+  },
+  "qaDatabase": [
+    { "id": "curated-1", "question": "What is this property?", "answer": "This is the Marriott Marquis Times Square, a 49-story hotel.", "source_anchor_id": "property-overview", "embedding": [] }
+  ],
+  "questions": [
+    {
+      "q": "How many ballrooms are there?",
+      "expectedIntent": "ballrooms_count",
+      "expectedPaths": ["canonical"],
+      "mustNotContain": ["1,966", "number_of_rooms", "guest rooms"],
+      "mayContain": ["5", "ballroom"]
+    },
+    {
+      "q": "How many rooms are there?",
+      "expectedIntent": "rooms_count",
+      "expectedPaths": ["canonical"],
+      "mustNotContain": ["ballroom"],
+      "mayContain": ["1,966", "room"]
+    },
+    {
+      "q": "Who was the designer?",
+      "expectedIntent": "designer_architect",
+      "expectedPaths": ["canonical", "strict_unknown", "chunk"],
+      "mustNotContain": ["Jane Doe", "jane@example.com", "+1-212-555-0100", "agent", "listing"],
+      "mayContain": ["Portman", "architect", "design"]
+    },
+    {
+      "q": "Who is the architect?",
+      "expectedIntent": "designer_architect",
+      "expectedPaths": ["canonical", "chunk"],
+      "mustNotContain": ["Jane Doe", "jane@example.com"],
+      "mayContain": ["Portman"]
+    },
+    {
+      "q": "How do I book a room?",
+      "expectedIntent": "booking",
+      "expectedPaths": ["action"],
+      "mustNotContain": ["1,966", "number_of_rooms"],
+      "mayContain": ["book", "marriott.com"]
+    },
+    {
+      "q": "What floor is the restaurant on?",
+      "expectedIntent": "restaurant_location",
+      "expectedPaths": ["canonical", "chunk", "strict_unknown"],
+      "mustNotContain": ["3 restaurants", "number_of_restaurants"],
+      "mayContain": ["floor", "8th", "48th"]
+    },
+    {
+      "q": "Is there a theatre?",
+      "expectedIntent": "amenity_presence",
+      "expectedPaths": ["canonical", "chunk", "strict_unknown"],
+      "mustNotContain": ["1535 Broadway", "New York, NY", "address"],
+      "mayContain": ["theatre", "theater", "amenit", "no"]
+    },
+    {
+      "q": "Where is it?",
+      "expectedIntent": "location",
+      "expectedPaths": ["action"],
+      "mustNotContain": ["1,966", "ballroom"],
+      "mayContain": ["1535 Broadway", "New York"]
+    },
+    {
+      "q": "How do I contact the agent?",
+      "expectedIntent": "contact_agent",
+      "expectedPaths": ["action"],
+      "mustNotContain": ["1,966", "ballroom"],
+      "mayContain": ["jane@example.com", "+1-212-555-0100", "Jane Doe"]
+    },
+    {
+      "q": "When did the hotel first open?",
+      "expectedIntent": "history_opening",
+      "expectedPaths": ["canonical", "chunk"],
+      "mustNotContain": [],
+      "mayContain": ["1985", "open"]
+    },
+    {
+      "q": "Who developed the property?",
+      "expectedIntent": "developer",
+      "expectedPaths": ["canonical", "chunk"],
+      "mustNotContain": ["Jane Doe", "jane@example.com", "agent", "Portman Jr."],
+      "mayContain": ["Portman Holdings", "develop"]
+    },
+    {
+      "q": "What is the nightly rate?",
+      "expectedIntent": "pricing",
+      "expectedPaths": ["canonical", "chunk"],
+      "mustNotContain": ["1535 Broadway", "1,966"],
+      "mayContain": ["$399", "night", "rate"]
+    },
+    {
+      "q": "How many amenities do you have?",
+      "expectedIntent": "amenity_count",
+      "expectedPaths": ["strict_unknown", "canonical", "chunk"],
+      "mustNotContain": ["1535 Broadway", "1,966"],
+      "mayContain": []
+    }
+  ]
+}
