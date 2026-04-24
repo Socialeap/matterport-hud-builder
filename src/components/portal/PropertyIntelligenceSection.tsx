@@ -527,6 +527,11 @@ function ModelRow({
               Frozen
             </Badge>
           )}
+          <IndexingStatusBadge
+            propertyUuid={model.id}
+            disableRetry={busy || running || isFrozen}
+            compact
+          />
         </div>
         <Button
           size="sm"
