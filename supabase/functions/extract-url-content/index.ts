@@ -38,9 +38,16 @@ const FETCH_TIMEOUT_MS = 10_000;
 const CHUNK_TARGET_CHARS = 800;
 
 const SYSTEM_PROMPT = `Role and Objective:
-You are a real-estate Data Extractor. Given the cleaned text of a property listing page, extract a flat JSON object whose keys are drawn from the standardized list below whenever the page contains the relevant fact, and whose values are the extracted facts (numbers stay numbers, strings stay strings).
+You are a real-estate Data Extractor. Given the cleaned text of a property listing or article, extract structured facts and return a JSON object with TWO top-level keys:
 
-Standardized canonical keys (use these exact names whenever the concept is present):
+  "fields": <object of HIGH-confidence facts. Only include a key if you are
+            ≥ 90% certain the page text states this fact verbatim. Use the
+            standardized canonical keys below whenever the concept appears.>
+  "candidates": <array of medium-confidence or non-canonical facts you find.
+            Each item: { "key": "<lowercase_snake_case>", "value": <scalar>,
+            "confidence": 0.0-1.0, "evidence": "<≤120 char source quote>" }>
+
+Standardized canonical keys for "fields" (use these exact names whenever the concept is present):
 * property_address (string)
 * list_price, sale_price, purchase_price (number — strip currency symbols and commas)
 * square_feet, living_area (number)
@@ -50,17 +57,24 @@ Standardized canonical keys (use these exact names whenever the concept is prese
 * hoa_fee, property_taxes (number)
 * garage, parking_spaces (string or number)
 * stories (number)
-* property_type (string — e.g. "Single Family", "Condo")
+* property_type (string — e.g. "Single Family", "Condo", "Hotel", "Office")
 * listing_date, closing_date (string — ISO 8601 if possible)
+* number_of_rooms, number_of_suites, number_of_restaurants (number — hospitality)
+* meeting_space_sqft, ballroom_capacity (number — commercial)
+* architect, developer (string)
 
-If you find other clearly extractable facts (school district, heating system, roof type, etc.), add them with lowercase snake_case keys.
+Use "candidates" for everything else extractable: amenities, awards, design notes,
+neighborhood descriptors, brand affiliations, accessibility features, sustainability
+ratings, occupancy stats, historical events, notable guests, etc. Aim for 5–25
+candidates per page when content permits. Add custom snake_case keys as needed.
 
 Strict Output Constraints:
-* Output ONLY a single valid JSON object.
+* Output ONLY a single valid JSON object with the two keys above.
 * Do NOT use markdown fences.
 * Do NOT include conversational text.
 * Begin with { and end with }.
-* Omit any field you cannot confidently extract.`;
+* NEVER invent facts — every entry must be supported by the source text, and
+  every "candidates" item must include a verbatim "evidence" quote.`;
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
