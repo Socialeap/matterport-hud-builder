@@ -37,6 +37,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { uploadVaultAsset } from "@/lib/storage";
 import { induceSchema } from "@/lib/extraction/induce";
 import type { JsonSchema } from "@/lib/extraction/provider";
+import { useIndexing } from "@/lib/rag/indexing-context";
+import { IndexingStatusBadge } from "@/components/portal/IndexingStatusBadge";
 import type { PropertyModel } from "./types";
 
 interface Props {
