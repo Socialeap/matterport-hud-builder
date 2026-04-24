@@ -1341,7 +1341,7 @@ async function __dqaEmbedQuery(q){
 }
 // Lowercase token set for the query, used for field-name boosting (#4).
 function __dqaQueryTokens(q){
-  var t=String(q||"").toLowerCase().replace(/[^a-z0-9_\s]/g," ").split(/\s+/);
+  var t=String(q||"").toLowerCase().replace(/[^a-z0-9_\\s]/g," ").split(/\\s+/);
   var out={};
   for(var i=0;i<t.length;i++){if(t[i]&&t[i].length>=3) out[t[i]]=true;}
   return out;
@@ -1350,7 +1350,7 @@ function __dqaQueryTokens(q){
 // e.g. query "how many rooms" + field "number_of_rooms" → true.
 function __dqaFieldMatchesTokens(field,tokens){
   if(!field) return false;
-  var parts=String(field).toLowerCase().split(/[_\s-]+/);
+  var parts=String(field).toLowerCase().split(/[_\\s-]+/);
   for(var i=0;i<parts.length;i++){
     if(parts[i].length>=3&&tokens[parts[i]]) return true;
     // also try singular form (rooms→room) cheaply
@@ -1610,7 +1610,7 @@ async function __dqaInit(){
                 var rr=await sReader.read();
                 if(rr.done) break;
                 sBuf+=sDecoder.decode(rr.value,{stream:true});
-                var sLines=sBuf.split("\n");
+                var sLines=sBuf.split("\\n");
                 sBuf=sLines.pop()||"";
                 for(var sl=0;sl<sLines.length;sl++){
                   var sLine=sLines[sl];
