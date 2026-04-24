@@ -1601,32 +1601,42 @@ window.__openAsk=function(){
 
 function load(i){
   current=i;
-  frame.src=props[i].iframeUrl;
-  var tabs=tabsEl.querySelectorAll(".tab");
-  tabs.forEach(function(t,j){t.classList.toggle("active",j===i)});
-  renderPropertyDocs(i);
-  updateHud(i);
+  try { if(frame && props[i]) frame.src=props[i].iframeUrl; } catch(_e){}
+  try {
+    var tabs=tabsEl?tabsEl.querySelectorAll(".tab"):[];
+    tabs.forEach(function(t,j){t.classList.toggle("active",j===i)});
+  } catch(_e){}
+  try { renderPropertyDocs(i); } catch(_e){}
+  try { updateHud(i); } catch(_e){}
   // Reset carousel context for new property
-  carouselMedia=props[i].multimedia||[];
+  carouselMedia=(props[i]&&props[i].multimedia)||[];
   carouselIndex=0;
   // Reset Ask state so next open re-indexes docs for this property.
   // Abort any in-progress synthesis stream for the previous property.
-  if(__docsQa.abortCtrl){__docsQa.abortCtrl.abort();__docsQa.abortCtrl=null;}
-  __docsQa.currentIndexKey=null;
-  if(__docsQa.messages){
-    __docsQa.messages.innerHTML='<div class="ask-msg assistant">Switched to '+escapeText(props[i].name||"property")+'. Ask me something.</div>';
-  }
-  if(__docsQa.initPromise&&window.__ASK_HAS_DOCS__){ __dqaRebuildIndex(i); }
+  try {
+    if(__docsQa.abortCtrl){__docsQa.abortCtrl.abort();__docsQa.abortCtrl=null;}
+    __docsQa.currentIndexKey=null;
+    if(__docsQa.messages){
+      __docsQa.messages.innerHTML='<div class="ask-msg assistant">Switched to '+escapeText((props[i]&&props[i].name)||"property")+'. Ask me something.</div>';
+    }
+    if(__docsQa.initPromise&&window.__ASK_HAS_DOCS__){ __dqaRebuildIndex(i); }
+  } catch(_e){}
 }
-props.forEach(function(p,i){
-  var btn=document.createElement("button");
-  btn.className="tab"+(i===0?" active":"");
-  btn.textContent=p.name;
-  btn.onclick=function(){load(i)};
-  tabsEl.appendChild(btn);
-});
-if(props.length>1) tabsEl.classList.add("multi");
-if(props.length>0) load(0);
+try {
+  props.forEach(function(p,i){
+    var btn=document.createElement("button");
+    btn.className="tab"+(i===0?" active":"");
+    btn.textContent=p.name;
+    btn.onclick=function(){load(i)};
+    if(tabsEl) tabsEl.appendChild(btn);
+  });
+  if(props.length>1&&tabsEl) tabsEl.classList.add("multi");
+} catch(_e){}
+// Critical bootstrap: ensure the Matterport iframe gets its src even if
+// later HUD/Ask wiring throws. Run this BEFORE the full load(0) so the
+// 3D tour is visible the moment the user dismisses the gate.
+try { if(props.length>0&&frame&&props[0]) frame.src=props[0].iframeUrl; } catch(_e){}
+try { if(props.length>0) load(0); } catch(_e){ console.error("[presentation] load(0) failed",_e); }
 
 // Pre-warm the Ask pipeline after the Matterport iframe has finished
 // its initial load. Gated on the panel actually existing so tours
