@@ -15,8 +15,16 @@
 
 import type { JsonSchema, PropertyChunk } from "./extractors/types.ts";
 
+export interface GroqCandidate {
+  key: string;
+  value: unknown;
+  confidence: number;
+  evidence?: string;
+}
+
 export interface GroqCleanResult {
   fields: Record<string, unknown>;
+  candidates: GroqCandidate[];
   chunks: PropertyChunk[];
   model: string;
 }
@@ -131,10 +139,16 @@ function buildSystemPrompt(docKind: string, fieldSchema?: JsonSchema): string {
     `into coherent thematic sections.\n\n` +
     fieldsSection + "\n\n" +
     sectionsSection + "\n\n" +
-    `Return a JSON object with exactly two top-level keys:\n` +
-    `  "fields": object mapping field names to scalar values\n` +
+    `Return a JSON object with exactly THREE top-level keys:\n` +
+    `  "fields": object of HIGH-confidence facts (canonical or schema-defined keys above)\n` +
+    `  "candidates": array of medium-confidence or non-canonical facts you find. Each item:\n` +
+    `      { "key": "<lowercase_snake_case>", "value": <scalar>, "confidence": 0.0-1.0,\n` +
+    `        "evidence": "<≤120 char source quote>" }\n` +
+    `      Aim for 5–25 candidates when content permits (amenities, design notes,\n` +
+    `      neighborhood descriptors, brand affiliations, sustainability, etc.)\n` +
     `  "chunks": array of { "id": string, "section": string, "content": string }\n\n` +
-    `Output ONLY valid JSON. No markdown fences, no extra text.`
+    `Output ONLY valid JSON. No markdown fences, no extra text. ` +
+    `NEVER invent facts — every entry must be supported by the source text.`
   );
 }
 
@@ -223,6 +237,7 @@ export async function groqClean(
 
       const parsed = JSON.parse(jsonText) as {
         fields?: Record<string, unknown>;
+        candidates?: Array<{ key?: string; value?: unknown; confidence?: number; evidence?: string }>;
         chunks?: Array<{ id?: string; section?: string; content?: string }>;
       };
 
@@ -230,6 +245,18 @@ export async function groqClean(
         typeof parsed.fields === "object" && parsed.fields !== null
           ? parsed.fields
           : {};
+
+      const candidates: GroqCandidate[] = Array.isArray(parsed.candidates)
+        ? parsed.candidates
+            .filter((c) => c && typeof c.key === "string" && c.value != null && c.value !== "")
+            .map((c) => ({
+              key: String(c.key).trim(),
+              value: c.value,
+              confidence: typeof c.confidence === "number" ? c.confidence : 0,
+              evidence: typeof c.evidence === "string" ? c.evidence.slice(0, 240) : undefined,
+            }))
+            .filter((c) => /^[a-z][a-z0-9_]*$/.test(c.key) && c.confidence >= 0.55)
+        : [];
 
       const chunks: PropertyChunk[] = Array.isArray(parsed.chunks)
         ? parsed.chunks
@@ -246,7 +273,7 @@ export async function groqClean(
         break;
       }
 
-      return { fields, chunks, model: GROQ_MODEL };
+      return { fields, candidates, chunks, model: GROQ_MODEL };
     } catch (err) {
       lastErr = err instanceof Error ? err.message : String(err);
     }

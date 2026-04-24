@@ -429,12 +429,14 @@ export type Database = {
       }
       property_extractions: {
         Row: {
+          candidate_fields: Json | null
           canonical_qas: Json | null
           chunks: Json
           embedding: string | null
           extracted_at: string
           extractor: string
           extractor_version: string
+          field_provenance: Json | null
           fields: Json
           id: string
           property_uuid: string
@@ -443,12 +445,14 @@ export type Database = {
           vault_asset_id: string
         }
         Insert: {
+          candidate_fields?: Json | null
           canonical_qas?: Json | null
           chunks: Json
           embedding?: string | null
           extracted_at?: string
           extractor: string
           extractor_version: string
+          field_provenance?: Json | null
           fields: Json
           id?: string
           property_uuid: string
@@ -457,12 +461,14 @@ export type Database = {
           vault_asset_id: string
         }
         Update: {
+          candidate_fields?: Json | null
           canonical_qas?: Json | null
           chunks?: Json
           embedding?: string | null
           extracted_at?: string
           extractor?: string
           extractor_version?: string
+          field_provenance?: Json | null
           fields?: Json
           id?: string
           property_uuid?: string

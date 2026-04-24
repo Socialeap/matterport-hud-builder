@@ -11,6 +11,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.103.0";
+import { mineFromChunks, type ProvenanceEntry } from "../_shared/prose-miner.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -38,9 +39,16 @@ const FETCH_TIMEOUT_MS = 10_000;
 const CHUNK_TARGET_CHARS = 800;
 
 const SYSTEM_PROMPT = `Role and Objective:
-You are a real-estate Data Extractor. Given the cleaned text of a property listing page, extract a flat JSON object whose keys are drawn from the standardized list below whenever the page contains the relevant fact, and whose values are the extracted facts (numbers stay numbers, strings stay strings).
+You are a real-estate Data Extractor. Given the cleaned text of a property listing or article, extract structured facts and return a JSON object with TWO top-level keys:
 
-Standardized canonical keys (use these exact names whenever the concept is present):
+  "fields": <object of HIGH-confidence facts. Only include a key if you are
+            ≥ 90% certain the page text states this fact verbatim. Use the
+            standardized canonical keys below whenever the concept appears.>
+  "candidates": <array of medium-confidence or non-canonical facts you find.
+            Each item: { "key": "<lowercase_snake_case>", "value": <scalar>,
+            "confidence": 0.0-1.0, "evidence": "<≤120 char source quote>" }>
+
+Standardized canonical keys for "fields" (use these exact names whenever the concept is present):
 * property_address (string)
 * list_price, sale_price, purchase_price (number — strip currency symbols and commas)
 * square_feet, living_area (number)
@@ -50,17 +58,24 @@ Standardized canonical keys (use these exact names whenever the concept is prese
 * hoa_fee, property_taxes (number)
 * garage, parking_spaces (string or number)
 * stories (number)
-* property_type (string — e.g. "Single Family", "Condo")
+* property_type (string — e.g. "Single Family", "Condo", "Hotel", "Office")
 * listing_date, closing_date (string — ISO 8601 if possible)
+* number_of_rooms, number_of_suites, number_of_restaurants (number — hospitality)
+* meeting_space_sqft, ballroom_capacity (number — commercial)
+* architect, developer (string)
 
-If you find other clearly extractable facts (school district, heating system, roof type, etc.), add them with lowercase snake_case keys.
+Use "candidates" for everything else extractable: amenities, awards, design notes,
+neighborhood descriptors, brand affiliations, accessibility features, sustainability
+ratings, occupancy stats, historical events, notable guests, etc. Aim for 5–25
+candidates per page when content permits. Add custom snake_case keys as needed.
 
 Strict Output Constraints:
-* Output ONLY a single valid JSON object.
+* Output ONLY a single valid JSON object with the two keys above.
 * Do NOT use markdown fences.
 * Do NOT include conversational text.
 * Begin with { and end with }.
-* Omit any field you cannot confidently extract.`;
+* NEVER invent facts — every entry must be supported by the source text, and
+  every "candidates" item must include a verbatim "evidence" quote.`;
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -335,11 +350,22 @@ function extractJsonObject(raw: string): Record<string, unknown> | null {
   return null;
 }
 
+interface CandidateField {
+  key: string;
+  value: unknown;
+  confidence: number;
+  evidence?: string;
+}
+
 async function structureFields(
   text: string,
   apiKey: string,
   domain: string,
-): Promise<{ fields: Record<string, unknown>; llm_stage: string }> {
+): Promise<{
+  fields: Record<string, unknown>;
+  candidates: CandidateField[];
+  llm_stage: string;
+}> {
   const truncated = text.length > MAX_TEXT_CHARS ? text.slice(0, MAX_TEXT_CHARS) : text;
   try {
     const resp = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -362,7 +388,7 @@ async function structureFields(
     if (!resp.ok) {
       const body = await resp.text().catch(() => "");
       console.warn(`[extract-url-content] ${domain} openai_${resp.status}: ${body.slice(0, 200)}`);
-      return { fields: {}, llm_stage: `openai_${resp.status}` };
+      return { fields: {}, candidates: [], llm_stage: `openai_${resp.status}` };
     }
     const completion = (await resp.json()) as {
       choices?: Array<{ message?: { content?: string }; finish_reason?: string }>;
@@ -370,21 +396,72 @@ async function structureFields(
     const raw = completion.choices?.[0]?.message?.content ?? "";
     const finish = completion.choices?.[0]?.finish_reason ?? "stop";
     if (!raw.trim()) {
-      return { fields: {}, llm_stage: "empty_response" };
+      return { fields: {}, candidates: [], llm_stage: "empty_response" };
     }
     const parsed = extractJsonObject(raw);
     if (!parsed) {
       console.warn(
         `[extract-url-content] ${domain} json_parse_failed (finish=${finish}, len=${raw.length})`,
       );
-      return { fields: {}, llm_stage: `parse_failed_${finish}` };
+      return { fields: {}, candidates: [], llm_stage: `parse_failed_${finish}` };
     }
-    return { fields: parsed, llm_stage: finish === "length" ? "ok_truncated" : "ok" };
+
+    // Two-bucket parser with back-compat: if "fields"/"candidates" missing,
+    // treat the whole object as the legacy fields blob.
+    const hasNewShape =
+      ("fields" in parsed && typeof parsed.fields === "object") ||
+      ("candidates" in parsed && Array.isArray(parsed.candidates));
+
+    let fields: Record<string, unknown>;
+    let rawCandidates: unknown[];
+    if (hasNewShape) {
+      fields = (parsed.fields && typeof parsed.fields === "object" && !Array.isArray(parsed.fields))
+        ? parsed.fields as Record<string, unknown>
+        : {};
+      rawCandidates = Array.isArray(parsed.candidates) ? parsed.candidates : [];
+    } else {
+      fields = parsed;
+      rawCandidates = [];
+    }
+
+    const candidates: CandidateField[] = rawCandidates
+      .filter((c): c is Record<string, unknown> => !!c && typeof c === "object")
+      .map((c) => ({
+        key: String(c.key ?? "").trim(),
+        value: c.value,
+        confidence: typeof c.confidence === "number" ? c.confidence : 0,
+        evidence: typeof c.evidence === "string" ? c.evidence.slice(0, 240) : undefined,
+      }))
+      .filter((c) => c.key && /^[a-z][a-z0-9_]*$/.test(c.key) && c.value != null && c.value !== "");
+
+    return { fields, candidates, llm_stage: finish === "length" ? "ok_truncated" : "ok" };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn(`[extract-url-content] ${domain} structuring exception: ${msg}`);
-    return { fields: {}, llm_stage: `exception:${msg.slice(0, 80)}` };
+    return { fields: {}, candidates: [], llm_stage: `exception:${msg.slice(0, 80)}` };
   }
+}
+
+/**
+ * Apply server-side confidence filter:
+ *  ≥ 0.85 AND key not yet in fields → promote to fields.
+ *  0.55 ≤ c < 0.85 → keep as candidate.
+ *  < 0.55 → drop.
+ */
+function partitionCandidates(
+  fields: Record<string, unknown>,
+  candidates: CandidateField[],
+): { promoted: Record<string, unknown>; kept: CandidateField[] } {
+  const promoted: Record<string, unknown> = {};
+  const kept: CandidateField[] = [];
+  for (const c of candidates) {
+    if (c.confidence >= 0.85 && !(c.key in fields) && !(c.key in promoted)) {
+      promoted[c.key] = c.value;
+    } else if (c.confidence >= 0.55) {
+      kept.push(c);
+    }
+  }
+  return { promoted, kept };
 }
 
 // ── Auto-template helper ───────────────────────────────────────────────
@@ -576,29 +653,51 @@ serve(async (req) => {
     return fail("template", "template_resolve_failed", 500, { domain });
   }
 
-  // ── 7. Structure fields with the LLM (best-effort) ───────────────────
+  // ── 7. Structure fields with the LLM (best-effort, two-bucket schema) ─
   const llmResult = OPENAI_API_KEY
     ? await structureFields(text, OPENAI_API_KEY, domain)
-    : { fields: {} as Record<string, unknown>, llm_stage: "no_api_key" };
-  const fields = llmResult.fields;
+    : {
+        fields: {} as Record<string, unknown>,
+        candidates: [] as CandidateField[],
+        llm_stage: "no_api_key",
+      };
+  const fields = { ...llmResult.fields };
+  const { promoted, kept: candidateFields } = partitionCandidates(fields, llmResult.candidates);
+  Object.assign(fields, promoted);
+
+  // ── 7b. Prose-Miner pass (deterministic gap-fill from chunks) ────────
+  let mined: Record<string, unknown> = {};
+  let provenance: ProvenanceEntry[] = [];
+  try {
+    const result = mineFromChunks(chunks, fields);
+    mined = result.fields;
+    provenance = result.provenance;
+    Object.assign(fields, mined);
+  } catch (err) {
+    console.warn(
+      `[extract-url-content] ${domain} prose-miner failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
   const fieldKeys = Object.keys(fields);
 
-  // ── 8. Persist ───────────────────────────────────────────────────────
+  // ── 8. Persist (candidate_fields/field_provenance written best-effort) ─
+  const persistRow: Record<string, unknown> = {
+    vault_asset_id: body.vault_asset_id,
+    template_id: activeTemplateId,
+    saved_model_id: body.saved_model_id ?? null,
+    property_uuid: body.property_uuid,
+    fields,
+    chunks,
+    extractor: "web_url",
+    extractor_version: "2",
+    candidate_fields: candidateFields.length > 0 ? candidateFields : null,
+    field_provenance: provenance.length > 0 ? provenance : null,
+  };
+
   const { data: upserted, error: upErr } = await serviceClient
     .from("property_extractions")
-    .upsert(
-      {
-        vault_asset_id: body.vault_asset_id,
-        template_id: activeTemplateId,
-        saved_model_id: body.saved_model_id ?? null,
-        property_uuid: body.property_uuid,
-        fields,
-        chunks,
-        extractor: "web_url",
-        extractor_version: "1",
-      },
-      { onConflict: "vault_asset_id,template_id" },
-    )
+    .upsert(persistRow, { onConflict: "vault_asset_id,template_id" })
     .select("id")
     .single();
   if (upErr || !upserted) {
@@ -619,7 +718,7 @@ serve(async (req) => {
     .eq("id", body.vault_asset_id);
 
   console.info(
-    `[extract-url-content] ${domain} text_len=${text.length} fields=${fieldKeys.length} chunks=${chunks.length} llm=${llmResult.llm_stage} ok`,
+    `[extract-url-content] ${domain} text_len=${text.length} fields=${fieldKeys.length} mined=${Object.keys(mined).length} candidates=${candidateFields.length} chunks=${chunks.length} llm=${llmResult.llm_stage} ok`,
   );
 
   return jsonResponse({
@@ -632,6 +731,8 @@ serve(async (req) => {
       domain,
       text_length: text.length,
       field_keys: fieldKeys.length,
+      mined_keys: Object.keys(mined).length,
+      candidate_count: candidateFields.length,
       llm_stage: llmResult.llm_stage,
       low_content_warning: lowContent,
     },
