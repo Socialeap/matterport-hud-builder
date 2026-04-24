@@ -1,130 +1,152 @@
+## Update `synthesize-answer` to Gemini-first routing (no MSP_PROD_KEY)
 
+### Goal
 
-## Fix the never-ending "Preparing..." spinner + redesign the indexing status UX
+Refactor only `supabase/functions/synthesize-answer/index.ts` so the visitor-facing Ask AI uses **Gemini 1.5 Flash-8B as primary**, **Gemini 1.5 Flash as fallback**, and **Groq only when explicitly enabled**. The Gemini API key is read **only** from `GEMINI_PRIMARY_MODEL`. `MSP_PROD_KEY` is removed from the file entirely (code, comments, logs).
 
-### Diagnosis — what's actually happening
+### Scope
 
-Both the **Property Docs** spinner (in `PropertyModelsSection > PropertyDocsPanel`) and **Property Intelligence (Ask AI)** (in `PropertyIntelligenceSection`) call the **same hook** — `usePropertyExtractions(propertyUuid)`. But each instance has **its own state**: separate `backfillStatus`, separate "already-backfilled" guard ref, separate worker.
+**In scope (single file):**
+- `supabase/functions/synthesize-answer/index.ts`
 
-When you import/resume a presentation, here's the actual bug chain:
+**Explicitly out of scope:**
+- No DB migrations, no new env vars required, no rename of secrets.
+- No changes to `src/lib/portal.functions.ts` (POST body `{ query, chunks }` stays identical).
+- No changes to `supabase/config.toml` (function already registered with `verify_jwt = false`).
+- No changes to local Ask runtime, Property Brain, or generated HTML.
+- No cache, token, BYOK, or budget logic — left as TODO comments for PR-2.
 
-1. Both panels mount for the same property at once.
-2. Both call `ensureExtractionEmbeddings([propertyUuid])` simultaneously.
-3. Both spawn a separate `EmbeddingWorkerClient` → 2 worker threads downloading the 23 MB Xenova model in parallel, fighting for cache slots.
-4. One worker often wins, the other times out at the 60-second `INIT_TIMEOUT_MS` ceiling — but in some race conditions the `init:ready` message arrives at a worker whose listener has been GC'd, so the promise neither resolves nor rejects until the **3-minute wall-clock** fires.
-5. Meanwhile, when extractions are **already enriched**, `ensureExtractionEmbeddings` short-circuits *before spawning the worker* — that's the panel that flips to "Indexed" instantly. That's why the "Property Intelligence" section shows complete while "Property Docs" is still spinning: the two hook instances are racing on different workers and getting different outcomes.
-6. The duplicate refresh button (lines 238–276 of `PropertyDocsPanel.tsx` are literally pasted twice) is unrelated cosmetic bloat but signals the file needs cleanup.
+### Secret + model resolution (code-level)
 
-Secondary UX issues:
-- "Preparing…" stays visible even after the row is clearly indexed (the message lags the actual state).
-- No clear single source-of-truth for "is this property's Ask AI ready?"
-- The user has no idea what "indexing" even means, why it's running, or whether it's safe to proceed.
-- Two parallel UIs render the same underlying status differently → guaranteed confusion.
+```ts
+// Gemini API key — single source. Despite the name, this secret holds the
+// API key value, not a model name.
+const GEMINI_API_KEY = Deno.env.get("GEMINI_PRIMARY_MODEL");
 
----
+// Model identifiers are hard-coded (not derived from secret names).
+const GEMINI_PRIMARY_MODEL_NAME  = "gemini-1.5-flash-8b";
+const GEMINI_FALLBACK_MODEL_NAME = "gemini-1.5-flash";
+const GROQ_FALLBACK_MODEL_NAME   = "llama-3.3-70b-versatile";
 
-### Three approaches considered
-
-| # | Approach | UX win | Complexity | Risk |
-|---|---|---|---|---|
-| **A** | **Singleton worker + shared status** — one `EmbeddingWorkerClient` per page, one indexing context shared between both panels via React context. Status is computed from extraction row state, not local hook state. | Highest — eliminates the race entirely, single visual source of truth | Medium — new context provider, refactor hook into a coordinator | Low — pure consolidation of existing logic |
-| **B** | Quick fix only — dedupe duplicate refresh button, add a cross-instance `Map<propertyUuid, Promise>` guard inside `ensureExtractionEmbeddings` so concurrent callers share the same in-flight job. Leave separate hook state. | Medium — fixes the spinner-hang, but the two panels still show divergent status text | Low | Low |
-| **C** | Server-side indexing flag — add `indexed_at` column to `property_extractions`, drop client-side worker entirely, do embeddings in the edge function. | Highest long-term — no model downloads, no worker management, instant status check | High — major architectural shift, edge function cost increase, potential cold-start latency | High — touches the entire RAG pipeline |
-
-**Recommendation: Approach A.** Highest UX leverage with contained scope. Approach C is the right end-state but should be its own separate plan after we validate the current pipeline's reliability. Approach B leaves the dual-status confusion, which is the core complaint.
-
----
-
-### Plan — Approach A
-
-#### 1. New `IndexingProvider` context (`src/lib/rag/indexing-context.tsx` — NEW)
-
-A page-scoped React provider that owns:
-- A single shared `EmbeddingWorkerClient` (lazy-spawned on first request, terminated on unmount).
-- A `Map<propertyUuid, IndexingStatus>` where status = `"idle" | "indexing" | "ready" | "failed"` plus a human message.
-- A `Map<propertyUuid, Promise<void>>` of in-flight jobs so concurrent `request(uuid)` calls dedupe to the same promise.
-- A `request(uuid)` method that any component can call; returns the existing promise if one is in flight.
-- A `subscribe(uuid, listener)` method for components to react to status transitions.
-
-Wraps the builder route once (`/p/$slug/builder`). Replaces the per-hook worker plumbing.
-
-#### 2. Refactor `usePropertyExtractions` (`src/hooks/usePropertyExtractions.ts`)
-
-- Remove the local `backfilledRef`, `okClearTimerRef`, internal `EmbeddingWorkerClient` invocations from `ensureExtractionEmbeddings`.
-- Replace the auto-backfill `useEffect` with: `const indexing = useIndexing(); useEffect(() => indexing.request(propertyUuid), [propertyUuid])`.
-- Re-derive `backfillStatus`/`backfillMessage` from `indexing.statusFor(propertyUuid)` so both panel instances see identical state.
-- Keep `extract()` / `extractFromUrl()` / `remove()` unchanged — they already drive the right side-effects.
-- `reindex()` becomes `indexing.requestForce(propertyUuid)`.
-
-#### 3. Single status component (`src/components/portal/IndexingStatusBadge.tsx` — NEW)
-
-One component, three rendered states, used in both `PropertyDocsPanel` and `PropertyIntelligenceSection`:
-
-```text
- ┌─ Indexing… (pulsing dot)        ← while running, with cancellable hint
- ├─ ✓ Ready for Ask AI             ← steady success badge
- └─ ⚠ Indexing failed [Retry]      ← with retry button + error tooltip
+// Groq is optional emergency fallback only.
+const GROQ_ENABLED = Deno.env.get("ENABLE_GROQ_FALLBACK") === "true";
+const GROQ_API_KEY = GROQ_ENABLED ? Deno.env.get("GROQ_API_KEY") : null;
 ```
 
-Reads `indexing.statusFor(uuid)` directly. Identical visual on both surfaces eliminates the "two different statuses" confusion immediately.
+`MSP_PROD_KEY` is not referenced anywhere — removed from imports, env reads, header comment, and warning logs.
 
-#### 4. Cleanup `PropertyDocsPanel.tsx`
+### Refactor: Gemini helper takes a model parameter
 
-- Delete the duplicated refresh button block (lines 258–276).
-- Replace the inline `BackfillPill` with `<IndexingStatusBadge propertyUuid={...} />`.
-- Section header copy: rename "Property Docs" → **"Property Docs (template-driven extraction)"** to clarify it's the schema-extracted view, not the Ask AI source.
-- Keep upload/extraction controls intact.
+Change signature from `streamGemini(query, context, apiKey, writer)` to:
 
-#### 5. Cleanup `PropertyIntelligenceSection.tsx`
+```ts
+streamGemini(modelName, query, context, apiKey, writer)
+```
 
-- Replace the per-asset "indexed/pending/failed" pills with the same `IndexingStatusBadge` plus a per-doc badge that ONLY reflects the row's own `chunks.length > 0`.
-- Section info banner gets a one-line status header at the top: *"Ask AI is **ready** for 2 of 3 properties."* — derived from the shared context.
+Build the URL from `modelName` (`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:streamGenerateContent?key=${apiKey}&alt=sse`). Used twice — once with `gemini-1.5-flash-8b`, once with `gemini-1.5-flash`. SSE parsing logic deduped.
 
-#### 6. Hard guarantee against stuck spinner
+### New provider chain
 
-In the new `IndexingProvider`:
-- Wrap every worker `init()`/`embedBatch()` call in `Promise.race([job, timeout(N)])`.
-- On timeout: set status to `failed`, terminate and respawn the worker, log to console with a recognizable tag for the next debugging session.
-- Add an explicit "force-resolve" hook that runs a final DB read of the affected row — if `chunks` are populated and `canonical_qas` is non-null, mark `ready` regardless of worker state (the work is actually done; the UI was just out of sync).
+```text
+1. Gemini Flash-8B  (primary)         — requires GEMINI_PRIMARY_MODEL
+       │ fail / empty / non-2xx (and no token emitted yet)
+       ▼
+2. Gemini Flash     (fallback)        — requires GEMINI_PRIMARY_MODEL
+       │ fail / empty / non-2xx (and no token emitted yet)
+       ▼
+3. Groq 3.3 70B     (emergency)       — only if ENABLE_GROQ_FALLBACK="true"
+                                          AND GROQ_API_KEY present
+       │ fail
+       ▼
+4. SSE error frame: "All providers are unavailable. Please try again later."
+```
 
-#### 7. Defensive UX touches
+A provider is only attempted when the previous attempt **emitted zero tokens**. Once any token reaches the writer we cannot retry mid-stream — the existing `emitted` flag in `streamGroq` / `streamGemini` already enforces this and is preserved.
 
-- Spinner text rotates: "Preparing model…" → "Embedding chunks…" → "Saving…" so a stuck phase is diagnosable from a screenshot.
-- After 30s of "indexing", a tiny "Taking longer than usual?" link appears that opens a small panel: shows row state (chunks count, has embeddings, has canonical_qas) and a Retry button.
-- The Re-index button is disabled (not just hidden) while another job is in flight, with a tooltip explaining why.
+### Startup / request validation
 
----
+Replace the current `!GROQ_API_KEY && !MSP_PROD_KEY` guard with:
 
-### Files touched
+- If `GEMINI_API_KEY` present → Gemini routing available (primary path).
+- Else if `GROQ_ENABLED && GROQ_API_KEY` → Groq emergency path only.
+- Else → `500 { error: "no_llm_keys_configured" }` (same shape as today).
 
-| File | Change |
-|---|---|
-| `src/lib/rag/indexing-context.tsx` | NEW — provider, shared worker, status map |
-| `src/components/portal/IndexingStatusBadge.tsx` | NEW — unified badge component |
-| `src/hooks/usePropertyExtractions.ts` | Strip worker management, consume context |
-| `src/components/portal/PropertyDocsPanel.tsx` | Remove dup refresh button, swap pill for badge, rename label |
-| `src/components/portal/PropertyIntelligenceSection.tsx` | Swap inline status for badge, add section-level summary |
-| `src/routes/p.$slug.builder.tsx` | Wrap builder content in `<IndexingProvider>` |
+Same JSON error response keys/status as before, so client-side error handling is unchanged.
 
-No DB migration. No edge-function changes. No new dependencies.
+### Logging (no secrets)
 
----
+Tagged single-line logs at each transition:
 
-### Verification checklist
+- `[synthesize-answer] gemini_primary attempt model=gemini-1.5-flash-8b`
+- `[synthesize-answer] gemini_primary ok model=gemini-1.5-flash-8b elapsed_ms=...`
+- `[synthesize-answer] gemini_primary failed reason=<status|empty|exception> trying gemini_fallback`
+- `[synthesize-answer] gemini_fallback attempt model=gemini-1.5-flash`
+- `[synthesize-answer] gemini_fallback ok model=gemini-1.5-flash elapsed_ms=...`
+- `[synthesize-answer] gemini_fallback failed reason=...`
+- `[synthesize-answer] groq_emergency disabled` (when both Gemini calls failed and flag off)
+- `[synthesize-answer] groq_emergency attempt model=llama-3.3-70b-versatile`
+- `[synthesize-answer] groq_emergency ok model=llama-3.3-70b-versatile`
+- `[synthesize-answer] all providers failed`
 
-1. Resume a presentation with both panels visible — single spinner appears in both surfaces, identical text, identical timing.
-2. After enrichment completes — both surfaces flip to "Ready for Ask AI" within the same render cycle.
-3. Resume a presentation whose extractions are already enriched — both surfaces show "Ready for Ask AI" within ~200ms, no model download, no spinner flash.
-4. Force a worker timeout (devtools throttle to "Offline" mid-init) — status flips to "Indexing failed" within 60s with a Retry button; Retry succeeds when network is restored.
-5. Click Re-index on Property Docs panel — Property Intelligence panel reflects the same "indexing" state simultaneously.
-6. No duplicate buttons in `PropertyDocsPanel` header.
-7. Network panel shows the Xenova model bundle downloaded **once** per session, not twice.
-8. Console logs contain a `[indexing]` tag on every state transition for future debugging.
+Elapsed time computed via `performance.now()` per attempt. No API keys or raw secret values logged.
 
-### What this plan deliberately does NOT do
+### Groq update
 
-- Does not move embedding to the server — that's the right call for later, separate plan.
-- Does not change the Ask AI runtime behavior — chunks/canonical_qas/fields all stay where they are.
-- Does not change extraction output, prose-mining, or LLM prompts (recently shipped, working as intended).
-- Does not add any new database columns or migrations.
+- Bump `GROQ_MODEL` constant to `llama-3.3-70b-versatile` (current `llama-3.1-70b-versatile` is deprecated).
+- Only call Groq when `GROQ_ENABLED === true`. Otherwise skip and log `groq_emergency disabled`.
+- Keep the existing 3-attempt 429 backoff inside `streamGroq` unchanged.
 
+### Input validation (preserved)
+
+Already enforced — keep as-is:
+- `query` trimmed, max 500 chars, reject empty.
+- `chunks` array, max 5, each `content` capped at 2,000 chars.
+- 600 max output tokens.
+- Reject non-POST and non-JSON.
+
+Add a `// TODO(PR-2): per-IP / per-token rate limit hook` comment near request entry.
+
+### Header comment rewrite
+
+Replace the existing top-of-file block. New version describes:
+- Purpose (visitor-facing synthesis bridge).
+- Provider chain: Gemini Flash-8B primary → Gemini Flash fallback → optional Groq emergency (gated by `ENABLE_GROQ_FALLBACK`).
+- Gemini API key is currently sourced from `GEMINI_PRIMARY_MODEL` (note that the secret name is misleading; it stores the key value, not the model name).
+- Security: keys never leave the function; strict input caps; `verify_jwt = false`.
+
+No mention of `MSP_PROD_KEY`.
+
+### Prompt and SSE format
+
+- `SYSTEM_PROMPT` unchanged (grounding + concise + "I don't have that information…" fallback).
+- Output SSE format unchanged: `data: {"token": "..."}\n\n` then `data: {"done": true}\n\n` or `data: {"error": "..."}\n\n`.
+- Response headers unchanged: `text/event-stream`, `no-cache`, `nosniff`, CORS.
+
+### TODO comment block for PR-2
+
+Single comment block near the top documenting (no code stubs):
+- presentation public token, source_context_hash, normalized_question_hash, property_uuid
+- answer cache lookup before model call
+- usage events emission
+- per-presentation / per-MSP budget caps
+- BYOK routing
+
+### Verification (after deploy)
+
+1. `npm run test:ask` — must pass (does not touch this function).
+2. `npm run verify:html` — must pass (no template changes).
+3. `rg "MSP_PROD_KEY" supabase/functions/synthesize-answer/index.ts` returns zero matches.
+4. Curl the deployed function with `{ query: "What is the square footage?", chunks: [...] }` and confirm streaming tokens.
+5. Edge function logs show `gemini_primary ok model=gemini-1.5-flash-8b`.
+6. Simulate primary failure (e.g. temporarily set bad model name in code locally) → confirm `gemini_primary failed` then `gemini_fallback ok`.
+7. With `ENABLE_GROQ_FALLBACK` unset and Gemini key absent → expect `no_llm_keys_configured` 500.
+8. With `ENABLE_GROQ_FALLBACK=true`, `GROQ_API_KEY` set, Gemini key absent → Groq path used, log shows `groq_emergency ok model=llama-3.3-70b-versatile`.
+
+### Risk / regression analysis
+
+- **Wire shape unchanged:** request body, response SSE frames, headers, and HTTP status codes match today's contract. Existing generated HTML presentations in the wild keep working.
+- **No client coupling:** `src/lib/portal.functions.ts` only references the URL; no body or response keys change.
+- **Hard secret cutover:** Per spec, `MSP_PROD_KEY` is fully removed. Any environment that still relied on it will need `GEMINI_PRIMARY_MODEL` set — confirmed already present in the secrets list.
+- **Groq deprecation:** Even though Groq is now optional, updating its model name to `llama-3.3-70b-versatile` prevents a silent failure if anyone enables the emergency flag.
+- **No partial-stream regressions:** Fallback only triggers when zero tokens were emitted — same invariant as today's Groq→Gemini path, just with a third hop appended.
+- **No build-time risk:** Pure edge-function refactor, no imports added, no Vite/SSR surface touched, no HTML template touched (so the recent backslash-escape bug class is not re-exposed).
