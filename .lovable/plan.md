@@ -1,152 +1,91 @@
-## Update `synthesize-answer` to Gemini-first routing (no MSP_PROD_KEY)
+## Updated diagnosis
 
-### Goal
+You are right: if you hard-refreshed, regenerated, and added new Property Intelligence data, this is not adequately explained by “older build.” The stronger diagnosis is:
 
-Refactor only `supabase/functions/synthesize-answer/index.ts` so the visitor-facing Ask AI uses **Gemini 1.5 Flash-8B as primary**, **Gemini 1.5 Flash as fallback**, and **Groq only when explicitly enabled**. The Gemini API key is read **only** from `GEMINI_PRIMARY_MODEL`. `MSP_PROD_KEY` is removed from the file entirely (code, comments, logs).
+**The main presentation IIFE is too fragile.** It contains the critical startup code (gate-button listeners and `frame.src = props[i].iframeUrl`) and the large inlined Ask AI / Property Intelligence runtime in the same `<script>` execution context. If anything in that context throws during parse or early startup, the page fails in the exact way you see: the gate buttons do nothing and the Matterport iframe never receives its `src`.
 
-### Scope
+The JSON draft itself is not the likely cause. The Matterport IDs and generated iframe URLs are valid. The issue is in how the generated HTML is structured and guarded.
 
-**In scope (single file):**
-- `supabase/functions/synthesize-answer/index.ts`
+## Plan
 
-**Explicitly out of scope:**
-- No DB migrations, no new env vars required, no rename of secrets.
-- No changes to `src/lib/portal.functions.ts` (POST body `{ query, chunks }` stays identical).
-- No changes to `supabase/config.toml` (function already registered with `verify_jwt = false`).
-- No changes to local Ask runtime, Property Brain, or generated HTML.
-- No cache, token, BYOK, or budget logic — left as TODO comments for PR-2.
+### 1. Split critical tour startup from Ask AI runtime
 
-### Secret + model resolution (code-level)
+Refactor `src/lib/portal.functions.ts` so the core tour shell is isolated from Property Intelligence code:
 
-```ts
-// Gemini API key — single source. Despite the name, this secret holds the
-// API key value, not a model name.
-const GEMINI_API_KEY = Deno.env.get("GEMINI_PRIMARY_MODEL");
+- Script A: minimal bootstrap only
+  - decode config
+  - define `props`, `frame`, `tabsEl`, etc.
+  - bind `gate-sound-btn` and `gate-silent-btn`
+  - assign initial `matterport-frame.src`
+  - setup tabs, HUD, contact, media modals
 
-// Model identifiers are hard-coded (not derived from secret names).
-const GEMINI_PRIMARY_MODEL_NAME  = "gemini-1.5-flash-8b";
-const GEMINI_FALLBACK_MODEL_NAME = "gemini-1.5-flash";
-const GROQ_FALLBACK_MODEL_NAME   = "llama-3.3-70b-versatile";
+- Script B: Ask AI / Property Intelligence runtime
+  - inlined `ASK_RUNTIME_JS`
+  - `__docsQa` pipeline
+  - Orama / embedding loading
+  - synthesis bridge
 
-// Groq is optional emergency fallback only.
-const GROQ_ENABLED = Deno.env.get("ENABLE_GROQ_FALLBACK") === "true";
-const GROQ_API_KEY = GROQ_ENABLED ? Deno.env.get("GROQ_API_KEY") : null;
+This makes the 3D tour and start buttons independent of the AI layer. Even if AI parsing/indexing fails, the tour still opens.
+
+### 2. Move `load(0)` earlier and make it fail-soft
+
+Update generated runtime so the iframe `src` is assigned as early as possible and guarded:
+
+```js
+try {
+  if (props.length > 0 && frame) frame.src = props[0].iframeUrl;
+} catch (err) {
+  console.error("presentation bootstrap failed", err);
+}
 ```
 
-`MSP_PROD_KEY` is not referenced anywhere — removed from imports, env reads, header comment, and warning logs.
+Then the richer `load(i)` function can update HUD/docs/tabs after bootstrap. This ensures the Matterport iframe is not blocked by later HUD or AI logic.
 
-### Refactor: Gemini helper takes a model parameter
+### 3. Add visible fallback behavior for gate buttons
 
-Change signature from `streamGemini(query, context, apiKey, writer)` to:
+If a future runtime error occurs, the gate buttons should still have a minimal inline fallback. Add simple `onclick` attributes or a tiny pre-bootstrap script that hides the gate independently of the full runtime.
 
-```ts
-streamGemini(modelName, query, context, apiKey, writer)
-```
+Goal: a future bug degrades to “HUD/Ask may be unavailable,” not “entire presentation is dead.”
 
-Build the URL from `modelName` (`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:streamGenerateContent?key=${apiKey}&alt=sse`). Used twice — once with `gemini-1.5-flash-8b`, once with `gemini-1.5-flash`. SSE parsing logic deduped.
+### 4. Strengthen the HTML verifier
 
-### New provider chain
+Extend `scripts/verify-portal-html.mjs` beyond escape/token checks to perform a smoke test on the assembled output:
 
-```text
-1. Gemini Flash-8B  (primary)         — requires GEMINI_PRIMARY_MODEL
-       │ fail / empty / non-2xx (and no token emitted yet)
-       ▼
-2. Gemini Flash     (fallback)        — requires GEMINI_PRIMARY_MODEL
-       │ fail / empty / non-2xx (and no token emitted yet)
-       ▼
-3. Groq 3.3 70B     (emergency)       — only if ENABLE_GROQ_FALLBACK="true"
-                                          AND GROQ_API_KEY present
-       │ fail
-       ▼
-4. SSE error frame: "All providers are unavailable. Please try again later."
-```
+- extract the generated main script sections;
+- validate the core startup script parses independently;
+- validate the Ask runtime parses independently;
+- assert required startup strings exist:
+  - `gate-sound-btn`
+  - `gate-silent-btn`
+  - `matterport-frame`
+  - `frame.src=props[i].iframeUrl` or equivalent guarded bootstrap assignment
 
-A provider is only attempted when the previous attempt **emitted zero tokens**. Once any token reaches the writer we cannot retry mid-stream — the existing `emitted` flag in `streamGroq` / `streamGemini` already enforces this and is preserved.
+This catches broken generated HTML structure before users download it.
 
-### Startup / request validation
+### 5. Add a fixture-level smoke test
 
-Replace the current `!GROQ_API_KEY && !MSP_PROD_KEY` guard with:
+Add a lightweight test script that runs against the uploaded/generated fixture shape:
 
-- If `GEMINI_API_KEY` present → Gemini routing available (primary path).
-- Else if `GROQ_ENABLED && GROQ_API_KEY` → Groq emergency path only.
-- Else → `500 { error: "no_llm_keys_configured" }` (same shape as today).
+- mock a tiny DOM with the gate buttons, tabs, and iframe;
+- execute the bootstrap portion;
+- assert:
+  - the iframe gets a non-empty Matterport URL;
+  - clicking `gate-silent-btn` hides the gate;
+  - clicking `gate-sound-btn` does not throw.
 
-Same JSON error response keys/status as before, so client-side error handling is unchanged.
+Wire it into `npm run verify:html` or a new package script so it runs with the existing Ask runtime tests.
 
-### Logging (no secrets)
+### 6. Verification
 
-Tagged single-line logs at each transition:
+After implementation, run:
 
-- `[synthesize-answer] gemini_primary attempt model=gemini-1.5-flash-8b`
-- `[synthesize-answer] gemini_primary ok model=gemini-1.5-flash-8b elapsed_ms=...`
-- `[synthesize-answer] gemini_primary failed reason=<status|empty|exception> trying gemini_fallback`
-- `[synthesize-answer] gemini_fallback attempt model=gemini-1.5-flash`
-- `[synthesize-answer] gemini_fallback ok model=gemini-1.5-flash elapsed_ms=...`
-- `[synthesize-answer] gemini_fallback failed reason=...`
-- `[synthesize-answer] groq_emergency disabled` (when both Gemini calls failed and flag off)
-- `[synthesize-answer] groq_emergency attempt model=llama-3.3-70b-versatile`
-- `[synthesize-answer] groq_emergency ok model=llama-3.3-70b-versatile`
-- `[synthesize-answer] all providers failed`
+- `npm run verify:html`
+- `npm run test:ask`
+- if available, generate a fresh HTML from the same uploaded draft and inspect that:
+  - the closing `</html>` is present;
+  - `#matterport-frame` has an initial/assigned Matterport `src`;
+  - the start buttons are bound or have fallback behavior.
 
-Elapsed time computed via `performance.now()` per attempt. No API keys or raw secret values logged.
+## Expected outcome
 
-### Groq update
-
-- Bump `GROQ_MODEL` constant to `llama-3.3-70b-versatile` (current `llama-3.1-70b-versatile` is deprecated).
-- Only call Groq when `GROQ_ENABLED === true`. Otherwise skip and log `groq_emergency disabled`.
-- Keep the existing 3-attempt 429 backoff inside `streamGroq` unchanged.
-
-### Input validation (preserved)
-
-Already enforced — keep as-is:
-- `query` trimmed, max 500 chars, reject empty.
-- `chunks` array, max 5, each `content` capped at 2,000 chars.
-- 600 max output tokens.
-- Reject non-POST and non-JSON.
-
-Add a `// TODO(PR-2): per-IP / per-token rate limit hook` comment near request entry.
-
-### Header comment rewrite
-
-Replace the existing top-of-file block. New version describes:
-- Purpose (visitor-facing synthesis bridge).
-- Provider chain: Gemini Flash-8B primary → Gemini Flash fallback → optional Groq emergency (gated by `ENABLE_GROQ_FALLBACK`).
-- Gemini API key is currently sourced from `GEMINI_PRIMARY_MODEL` (note that the secret name is misleading; it stores the key value, not the model name).
-- Security: keys never leave the function; strict input caps; `verify_jwt = false`.
-
-No mention of `MSP_PROD_KEY`.
-
-### Prompt and SSE format
-
-- `SYSTEM_PROMPT` unchanged (grounding + concise + "I don't have that information…" fallback).
-- Output SSE format unchanged: `data: {"token": "..."}\n\n` then `data: {"done": true}\n\n` or `data: {"error": "..."}\n\n`.
-- Response headers unchanged: `text/event-stream`, `no-cache`, `nosniff`, CORS.
-
-### TODO comment block for PR-2
-
-Single comment block near the top documenting (no code stubs):
-- presentation public token, source_context_hash, normalized_question_hash, property_uuid
-- answer cache lookup before model call
-- usage events emission
-- per-presentation / per-MSP budget caps
-- BYOK routing
-
-### Verification (after deploy)
-
-1. `npm run test:ask` — must pass (does not touch this function).
-2. `npm run verify:html` — must pass (no template changes).
-3. `rg "MSP_PROD_KEY" supabase/functions/synthesize-answer/index.ts` returns zero matches.
-4. Curl the deployed function with `{ query: "What is the square footage?", chunks: [...] }` and confirm streaming tokens.
-5. Edge function logs show `gemini_primary ok model=gemini-1.5-flash-8b`.
-6. Simulate primary failure (e.g. temporarily set bad model name in code locally) → confirm `gemini_primary failed` then `gemini_fallback ok`.
-7. With `ENABLE_GROQ_FALLBACK` unset and Gemini key absent → expect `no_llm_keys_configured` 500.
-8. With `ENABLE_GROQ_FALLBACK=true`, `GROQ_API_KEY` set, Gemini key absent → Groq path used, log shows `groq_emergency ok model=llama-3.3-70b-versatile`.
-
-### Risk / regression analysis
-
-- **Wire shape unchanged:** request body, response SSE frames, headers, and HTTP status codes match today's contract. Existing generated HTML presentations in the wild keep working.
-- **No client coupling:** `src/lib/portal.functions.ts` only references the URL; no body or response keys change.
-- **Hard secret cutover:** Per spec, `MSP_PROD_KEY` is fully removed. Any environment that still relied on it will need `GEMINI_PRIMARY_MODEL` set — confirmed already present in the secrets list.
-- **Groq deprecation:** Even though Groq is now optional, updating its model name to `llama-3.3-70b-versatile` prevents a silent failure if anyone enables the emergency flag.
-- **No partial-stream regressions:** Fallback only triggers when zero tokens were emitted — same invariant as today's Groq→Gemini path, just with a third hop appended.
-- **No build-time risk:** Pure edge-function refactor, no imports added, no Vite/SSR surface touched, no HTML template touched (so the recent backslash-escape bug class is not re-exposed).
+The generated HTML becomes production-safe in the most important way: **the Matterport tour startup no longer depends on the Ask AI / Property Intelligence layer.** The AI layer can still fail independently, but it cannot kill the welcome gate or prevent the iframe from loading.
