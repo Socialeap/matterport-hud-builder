@@ -220,6 +220,60 @@ var FIELD_COMPAT = {
       /^number_of_.*/, /^price.*/,
     ],
   },
+  // ── Hospitality / experience intents (added in Ask AI v2) ──
+  dining_recommendation: {
+    allow: [
+      /menu/, /food/, /dish/, /cuisine/, /signature.*/,
+      /^restaurant_name$/, /^restaurant_names?$/,
+      /^dining.*/, /^food_and_beverage.*/,
+    ],
+    // Don't recommend an address or a count when asked about food.
+    exclude: [
+      /^number_of_.*/, /^.*_count$/,
+      /^address.*/, /^location$/, /^agent.*/, /^booking.*/,
+      /^price.*/, /^.*_price$/,
+    ],
+  },
+  bar_program: {
+    allow: [
+      /cocktail/, /bar(_|$)/, /drink/, /beverage/, /spirits/,
+      /wine/, /mixology/,
+    ],
+    exclude: [
+      /^number_of_.*/, /^.*_count$/,
+      /^address.*/, /^agent.*/, /^booking.*/, /^restaurant_floor.*/,
+    ],
+  },
+  history_story: {
+    allow: [
+      /history/, /historical/, /heritage/, /legacy/, /story/,
+      /backstory/, /^historical_reference$/, /^narrative.*/,
+    ],
+    exclude: [
+      /^number_of_.*/, /^.*_count$/,
+      /^address.*/, /^agent.*/, /^price.*/, /^booking.*/,
+    ],
+  },
+  design_inspiration: {
+    allow: [
+      /inspiration/, /concept/, /design_(story|theme|inspiration)/,
+      /theme/, /motif/, /^neighborhood_inspiration$/,
+    ],
+    exclude: [
+      /^number_of_.*/, /^.*_count$/,
+      /^address.*/, /^agent.*/, /^price.*/, /^booking.*/,
+    ],
+  },
+  brand_chain: {
+    allow: [
+      /^hotel_chain$/, /^brand(_|$).*/, /^chain$/,
+      /^affiliation.*/, /^operator.*/, /^franchise.*/,
+    ],
+    exclude: [
+      /^number_of_.*/, /^.*_count$/,
+      /^address.*/, /^agent.*/, /^price.*/,
+    ],
+  },
   comparison: { allow: [], exclude: [] },
   unknown: { allow: [], exclude: [] },
 };
