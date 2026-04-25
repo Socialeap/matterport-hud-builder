@@ -169,14 +169,19 @@ serve(async (req) => {
   }
 
   // ── Parse body ──────────────────────────────────────────────────────────────
-  let body: { pdf_b64?: string };
+  // Two modes:
+  //   1. pdf_b64 — extract text from PDF (original flow)
+  //   2. mock_prompt — generate a rich template from a property-class
+  //      description like "boutique hotel with restaurant and bar".
+  //      Used by the MSP "Suggest a rich template" UI.
+  let body: { pdf_b64?: string; mock_prompt?: string };
   try {
-    body = (await req.json()) as { pdf_b64?: string };
+    body = (await req.json()) as { pdf_b64?: string; mock_prompt?: string };
   } catch {
     return jsonResponse({ error: "invalid_json" }, 400);
   }
-  if (!body.pdf_b64) {
-    return jsonResponse({ error: "missing_pdf_b64" }, 400);
+  if (!body.pdf_b64 && !body.mock_prompt) {
+    return jsonResponse({ error: "missing_pdf_b64_or_mock_prompt" }, 400);
   }
 
   // ── Decode PDF bytes ────────────────────────────────────────────────────────
