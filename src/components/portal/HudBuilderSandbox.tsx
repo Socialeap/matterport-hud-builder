@@ -758,6 +758,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
             logoUrl: finalLogoUrl ?? "",
             faviconUrl: finalFaviconUrl ?? "",
           },
+          enhancements,
         },
       });
       if (!result.success || !result.modelId) {
