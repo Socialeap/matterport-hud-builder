@@ -1038,7 +1038,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
 
             {extractionDirty && !extractionDirtyDismissed && !downloading && (
               <div className="sticky top-2 z-10 mb-3 flex items-start gap-2 rounded-lg border border-primary/40 bg-primary/10 p-3 text-sm shadow-sm">
-                <BookOpen className="mt-0.5 size-4 shrink-0 text-primary" />
+                <Sparkles className="mt-0.5 size-4 shrink-0 text-primary" />
                 <div className="flex-1">
                   <p className="font-medium text-foreground">Index updated</p>
                   <p className="text-xs text-muted-foreground">
