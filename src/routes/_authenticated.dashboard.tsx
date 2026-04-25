@@ -156,6 +156,41 @@ function DashboardLayout() {
                 Purchase a plan to access the full dashboard.
               </span>
             )}
+            <div className="ml-auto flex items-center">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="gap-2">
+                    <UserIcon className="size-4" />
+                    <span className="hidden sm:inline max-w-[180px] truncate">
+                      {user?.email ?? "Account"}
+                    </span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel className="truncate">
+                    {user?.email ?? "Signed in"}
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onSelect={() => navigate({ to: "/dashboard/account" })}
+                    className="cursor-pointer"
+                  >
+                    <UserIcon className="mr-2 size-4" />
+                    Account
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      void signOut();
+                    }}
+                    className="cursor-pointer text-destructive focus:text-destructive"
+                  >
+                    <LogOut className="mr-2 size-4" />
+                    Sign out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
           {expiryAlert && (
             <div className="px-6 pt-4">
