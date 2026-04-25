@@ -592,48 +592,115 @@ function EditorDialog({
             </select>
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="tpl-schema">Field Schema (JSON)</Label>
-            <Textarea
-              id="tpl-schema"
-              value={state.schema_text}
-              onChange={(e) =>
-                setState({ ...state, schema_text: e.target.value })
-              }
-              rows={12}
-              className="font-mono text-xs"
-            />
-            <p className="text-xs text-muted-foreground">
-              Shape: <code>{"{ type: 'object', properties: { name: { type, pattern? } } }"}</code>
-            </p>
+          {/* PRIMARY ACTION: AI Architect */}
+          <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-[11px]">
+            <span className="font-medium text-foreground">Start here →</span>{" "}
+            <span className="text-muted-foreground">
+              Describe your property and let the AI build the schema. You can
+              still hand-edit JSON or use a sample PDF below.
+            </span>
           </div>
-
           <TemplateArchitect
             docKind={state.doc_kind}
             disabled={saving}
-            onApply={(json) => setState({ ...state, schema_text: json })}
+            onApply={(json) => {
+              setState({ ...state, schema_text: json });
+              setJsonOpen(true);
+            }}
           />
 
-          <SchemaInductionSection
-            file={induceFile}
-            setFile={setInduceFile}
-            busy={induceBusy}
-            result={induceResult}
-            error={induceError}
-            onInduce={handleInduce}
-            onApply={handleApplyInducedSchema}
-            disabled={saving}
-          />
+          <div className="flex items-center gap-2 pt-1 text-[11px] uppercase tracking-wide text-muted-foreground/70">
+            <div className="h-px flex-1 bg-border" />
+            <span>Or use a different starting point</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
 
-          <DryRunSection
-            file={dryRunFile}
-            setFile={setDryRunFile}
-            busy={dryRunBusy}
-            result={dryRunResult}
-            error={dryRunError}
-            onRun={runDryRun}
-            disabled={saving}
-          />
+          {/* COLLAPSIBLE: JSON Schema editor */}
+          <Collapsible open={jsonOpen} onOpenChange={setJsonOpen}>
+            <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md border border-border bg-background px-3 py-2 text-xs font-medium hover:bg-accent">
+              <span className="flex items-center gap-2">
+                <FileJson className="size-3.5 text-muted-foreground" />
+                Edit JSON Schema directly
+              </span>
+              <ChevronDown
+                className={`size-3.5 text-muted-foreground transition ${jsonOpen ? "rotate-180" : ""}`}
+              />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="tpl-schema" className="sr-only">
+                  Field Schema (JSON)
+                </Label>
+                <Textarea
+                  id="tpl-schema"
+                  value={state.schema_text}
+                  onChange={(e) =>
+                    setState({ ...state, schema_text: e.target.value })
+                  }
+                  rows={12}
+                  className="font-mono text-xs"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Shape:{" "}
+                  <code>
+                    {"{ type: 'object', properties: { name: { type, pattern? } } }"}
+                  </code>
+                </p>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+
+          {/* COLLAPSIBLE: Auto-Generate from PDF */}
+          <Collapsible open={induceOpen} onOpenChange={setInduceOpen}>
+            <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md border border-border bg-background px-3 py-2 text-xs font-medium hover:bg-accent">
+              <span className="flex items-center gap-2">
+                <Sparkles className="size-3.5 text-muted-foreground" />
+                Auto-Generate from PDF
+              </span>
+              <ChevronDown
+                className={`size-3.5 text-muted-foreground transition ${induceOpen ? "rotate-180" : ""}`}
+              />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-2">
+              <SchemaInductionSection
+                file={induceFile}
+                setFile={setInduceFile}
+                busy={induceBusy}
+                result={induceResult}
+                error={induceError}
+                onInduce={handleInduce}
+                onApply={() => {
+                  handleApplyInducedSchema();
+                  setJsonOpen(true);
+                }}
+                disabled={saving}
+              />
+            </CollapsibleContent>
+          </Collapsible>
+
+          {/* COLLAPSIBLE: Dry Run */}
+          <Collapsible open={dryRunOpen} onOpenChange={setDryRunOpen}>
+            <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md border border-border bg-background px-3 py-2 text-xs font-medium hover:bg-accent">
+              <span className="flex items-center gap-2">
+                <Play className="size-3.5 text-muted-foreground" />
+                Dry Run against sample PDF
+              </span>
+              <ChevronDown
+                className={`size-3.5 text-muted-foreground transition ${dryRunOpen ? "rotate-180" : ""}`}
+              />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-2">
+              <DryRunSection
+                file={dryRunFile}
+                setFile={setDryRunFile}
+                busy={dryRunBusy}
+                result={dryRunResult}
+                error={dryRunError}
+                onRun={runDryRun}
+                disabled={saving}
+              />
+            </CollapsibleContent>
+          </Collapsible>
         </div>
 
         <DialogFooter>
