@@ -319,11 +319,11 @@ var INTENT_PATTERNS = [
   ]},
   { intent: "bar_program", patterns: [
     /\bwhat('s|\s+is)\s+the\s+(bar|cocktail|drink)\s+(program|like|menu)\b/,
-    /\btell\s+me\s+about\s+the\s+(bar|cocktail|drinks)\b/,
+    /\btell\s+me\s+about\s+(the\s+)?(bar|cocktail|drinks?)\b/,
     /\b(any\s+)?(signature|good)\s+(cocktail|drink)s?\b/,
     /\bwhat\s+drinks\s+do\s+they\s+(have|serve|offer)\b/,
     /\bwhat('s|\s+is)\s+the\s+(cocktail|bar)\s+program\b/,
-    /\bcocktail\s+program\b/,
+    /\bcocktail\s+program\b/, /\bcocktails?\b/,
   ]},
   { intent: "history_story", patterns: [
     /\bwhat('s|\s+is)\s+the\s+(history|story|backstory|heritage|legacy)\b/,
