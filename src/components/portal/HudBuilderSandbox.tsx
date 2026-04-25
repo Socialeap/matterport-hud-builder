@@ -296,6 +296,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     setModels(draft.models?.length ? draft.models : [createEmptyModel()]);
     setBehaviors(draft.behaviors || {});
     setAgent(draft.agent || { ...DEFAULT_AGENT });
+    setEnhancements(draft.enhancements ?? {});
   }, []);
 
   const handleResumeDraft = useCallback(() => {
@@ -325,9 +326,10 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
       behaviors,
       agent,
       reviewApproved: false,
+      enhancements,
     });
     toast.success("Draft exported");
-  }, [providerSlug, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent]);
+  }, [providerSlug, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent, enhancements]);
 
   const handleImportDraft = useCallback(async (file: File) => {
     const draft = await importDraftFile(file);
@@ -355,10 +357,11 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
         behaviors,
         agent,
         reviewApproved: false,
+        enhancements,
       });
     }, 500);
     return () => window.clearTimeout(handle);
-  }, [providerSlug, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent]);
+  }, [providerSlug, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent, enhancements]);
 
   // Post-payment polling: detect return from Stripe checkout and
   // auto-trigger the download once the webhook flips status to "paid".
