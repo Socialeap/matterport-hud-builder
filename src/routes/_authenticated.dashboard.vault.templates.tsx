@@ -539,10 +539,9 @@ function EditorDialog({
             {state.id ? "Edit Template" : "New Template"}
           </DialogTitle>
           <DialogDescription>
-            Fields declared here are extracted from every matching client
-            upload and surfaced to the Presentation Portal. If you upload a
-            sample PDF below to auto-induce the schema, the sample is used
-            only to infer fields — it isn't stored or read by Ask AI.
+            Use the AI Template Architect below to describe your property and
+            let Gemini draft a validated schema, or expand the advanced
+            sections to edit JSON, auto-induce from a PDF, or dry-run.
           </DialogDescription>
         </DialogHeader>
 
