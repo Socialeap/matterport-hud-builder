@@ -237,6 +237,128 @@ const TEMPLATES: Record<string, Template> = {
     answerTemplate: "It was listed on {value}.",
     format: "raw",
   },
+
+  // ── Hospitality-aware curated entries ─────────────────────────────
+  menu_highlight: {
+    questions: [
+      "What's on the menu?",
+      "What should I eat?",
+      "What's a good food to eat there?",
+      "What's the menu like?",
+      "Any signature dishes?",
+      "What's the food highlight?",
+      "What's the standout dish?",
+      "What's the best thing to order?",
+    ],
+    answerTemplate: "The menu highlight is {value}.",
+    format: "raw",
+  },
+  signature_dish: {
+    questions: [
+      "What's the signature dish?",
+      "What should I order?",
+      "What's the standout dish?",
+      "Any signature dishes?",
+      "What's the best dish?",
+    ],
+    answerTemplate: "The signature dish is {value}.",
+    format: "raw",
+  },
+  cocktail_program: {
+    questions: [
+      "What's the cocktail program?",
+      "Tell me about the cocktails.",
+      "What's the bar program like?",
+      "Any signature cocktails?",
+      "What drinks do they have?",
+      "What's the bar like?",
+    ],
+    answerTemplate: "The cocktail program: {value}.",
+    format: "raw",
+  },
+  restaurant_name: {
+    questions: [
+      "What's the restaurant called?",
+      "What's the name of the restaurant?",
+      "What's the restaurant?",
+      "Name of the on-site restaurant?",
+    ],
+    answerTemplate: "The on-site restaurant is {value}.",
+    format: "raw",
+  },
+  bar_name: {
+    questions: [
+      "What's the bar called?",
+      "What's the name of the bar?",
+      "What bar is on-site?",
+    ],
+    answerTemplate: "The on-site bar is {value}.",
+    format: "raw",
+  },
+  historical_reference: {
+    questions: [
+      "What's the historical reference?",
+      "Is there a historical story?",
+      "What's the history behind it?",
+      "Any historical significance?",
+      "What's the backstory?",
+    ],
+    answerTemplate: "Historical reference: {value}.",
+    format: "raw",
+  },
+  neighborhood_inspiration: {
+    questions: [
+      "What inspired the design?",
+      "What's the inspiration?",
+      "What's the story behind the property?",
+      "Tell me about the inspiration.",
+      "How is it tied to the neighborhood?",
+    ],
+    answerTemplate: "The neighborhood inspiration: {value}.",
+    format: "raw",
+  },
+  location_description: {
+    questions: [
+      "What's the area like?",
+      "Tell me about the location.",
+      "What's around the property?",
+      "What's nearby?",
+      "Where exactly is it?",
+    ],
+    answerTemplate: "Location: {value}.",
+    format: "raw",
+  },
+  hotel_chain: {
+    questions: [
+      "What hotel chain is it?",
+      "Is it part of a chain?",
+      "What brand is the hotel?",
+      "What chain does it belong to?",
+    ],
+    answerTemplate: "It's part of the {value} chain.",
+    format: "raw",
+  },
+  architect: {
+    questions: [
+      "Who was the architect?",
+      "Who designed the building?",
+      "Who built it?",
+      "Who's the architect?",
+    ],
+    answerTemplate: "The architect is {value}.",
+    format: "raw",
+  },
+  amenities: {
+    questions: [
+      "What amenities are there?",
+      "What features does it have?",
+      "What's available on-site?",
+      "Tell me about the amenities.",
+      "What facilities are available?",
+    ],
+    answerTemplate: "Amenities include: {value}.",
+    format: "raw",
+  },
 };
 
 // ── Value formatting ────────────────────────────────────────────────
