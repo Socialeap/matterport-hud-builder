@@ -197,13 +197,12 @@ function VaultTemplatesPage() {
             <ArrowLeft className="size-3" /> Back to Vault
           </Link>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            Property Doc Templates
+            Property Maps for AI Chat
           </h1>
           <p className="text-sm text-muted-foreground">
-            Define the field schema (price, address, beds, year built, etc.)
-            the AI uses when extracting data from your clients' property doc
-            uploads. Templates are schema-only — they aren't read at runtime
-            by the Ask AI chat.
+            Each map tells the AI which facts to pull from a kind of property
+            document (price, address, beds, amenities…). The AI Chat uses
+            these facts to answer your clients' questions.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -214,10 +213,10 @@ function VaultTemplatesPage() {
             title={
               editingDisabled
                 ? "Studio license inactive — paused"
-                : "Build a template with the AI Architect"
+                : "Build a map with AI assist"
             }
           >
-            <Wand2 className="mr-1 size-4" /> New with AI Architect
+            <Wand2 className="mr-1 size-4" /> New with AI
           </Button>
           <Button
             onClick={() => openCreate()}
@@ -230,7 +229,7 @@ function VaultTemplatesPage() {
                 : undefined
             }
           >
-            <Plus className="mr-1 size-4" /> Blank Template
+            <Plus className="mr-1 size-4" /> Blank map
           </Button>
         </div>
       </div>
@@ -296,10 +295,11 @@ function EmptyState({
     <div className="rounded-lg border border-dashed border-border bg-muted/20 p-8">
       <div className="text-center">
         <FileJson className="mx-auto size-10 text-muted-foreground/60" />
-        <p className="mt-3 text-sm font-medium">No templates yet</p>
+        <p className="mt-3 text-sm font-medium">No property maps yet</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          A Template defines what data the AI extracts from your clients'
-          uploaded Property Docs (price, address, amenities, etc.).
+          A map tells the AI which facts to pull from your clients' uploaded
+          property documents (price, address, amenities, etc.) so the AI Chat
+          can answer questions about them.
         </p>
       </div>
       <div className="mx-auto mt-6 grid max-w-2xl gap-3 sm:grid-cols-2">
@@ -315,10 +315,11 @@ function EmptyState({
               Recommended
             </Badge>
           </div>
-          <div className="font-semibold">Build with AI Architect</div>
+          <div className="font-semibold">Build with AI Mapper</div>
           <p className="text-xs text-muted-foreground">
-            Describe your property class. The AI suggests fields, you refine,
-            and a validated schema is built for you.
+            Describe your property class. The AI suggests the facts worth
+            pulling, you tick what matters, and a validated map is built for
+            you.
           </p>
           <span className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-primary">
             <Sparkles className="size-3" /> Start guided flow →
@@ -536,12 +537,12 @@ function EditorDialog({
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {state.id ? "Edit Template" : "New Template"}
+            {state.id ? "Edit Property Map" : "New Property Map"}
           </DialogTitle>
           <DialogDescription>
-            Use the AI Template Architect below to describe your property and
-            let Gemini draft a validated schema, or expand the advanced
-            sections to edit JSON, auto-induce from a PDF, or dry-run.
+            Use the AI-assisted Property Mapper below, or expand the advanced
+            sections to edit JSON directly, generate from a sample PDF, or
+            dry-run.
           </DialogDescription>
         </DialogHeader>
 
@@ -591,12 +592,12 @@ function EditorDialog({
             </select>
           </div>
 
-          {/* PRIMARY ACTION: AI Architect */}
+          {/* PRIMARY ACTION: Property Mapper */}
           <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-[11px]">
             <span className="font-medium text-foreground">Start here →</span>{" "}
             <span className="text-muted-foreground">
-              Describe your property and let the AI build the schema. You can
-              still hand-edit JSON or use a sample PDF below.
+              Describe the property and let the AI suggest the facts to pull.
+              You can still hand-edit JSON or use a sample PDF below.
             </span>
           </div>
           <TemplateArchitect
