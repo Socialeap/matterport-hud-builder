@@ -1133,19 +1133,21 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
               </AccordionItem>
 
               <AccordionItem
-                value="intelligence"
+                value="enhancements"
                 className="rounded-lg border bg-card shadow-sm"
               >
                 <AccordionTrigger className="px-4 py-3 hover:no-underline">
                   <span className="flex items-center gap-2 text-base font-semibold text-foreground">
-                    <BookOpen className="size-5 text-primary" />
-                    Property Intelligence (Ask AI)
+                    <Sparkles className="size-5 text-primary" />
+                    Enhancements
                   </span>
                 </AccordionTrigger>
                 <AccordionContent className="px-4 pb-4">
-                  <PropertyIntelligenceSection
+                  <EnhancementsSection
                     models={models}
                     savedModelId={savedModelId}
+                    enhancements={enhancements}
+                    onEnhancementsChange={setEnhancements}
                     onExtractionSuccess={() => {
                       setExtractionDirty(true);
                       setExtractionDirtyDismissed(false);
