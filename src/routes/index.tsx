@@ -449,9 +449,7 @@ function Index() {
               <Button size="sm" onClick={() => navigate({ to: "/dashboard" })}>Dashboard</Button>
             ) : (
               <>
-                <Button size="sm" variant="ghost" className="text-white/80 hover:bg-white/10 hover:text-white" onClick={() => navigate({ to: "/login" })}>
-                  Sign In
-                </Button>
+                <HeaderSignInMenu variant="desktop" />
                 <Button size="sm" onClick={() => navigate({ to: "/signup", search: { token: "", email: "" } })}>
                   Get Started
                 </Button>
