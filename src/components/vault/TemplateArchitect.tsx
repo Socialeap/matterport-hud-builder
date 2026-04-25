@@ -144,8 +144,9 @@ export function TemplateArchitect({ docKind, disabled, onApply }: Props) {
             </Badge>
           </div>
           <p className="mt-0.5 text-[11px] text-muted-foreground">
-            Describe the property → pick the facts that matter → we build the
-            map your AI Chat uses on uploaded property docs. No JSON required.
+            Describe a class or category of property → pick the facts that
+            matter → we build the reusable mapper your clients' AI Chat will
+            use on their uploaded property docs.
           </p>
         </div>
         {phase !== "describe" && (
@@ -221,13 +222,13 @@ function DescribePhase({
         htmlFor="architect-prop-descr"
         className="text-[11px] text-muted-foreground"
       >
-        Property class / type / description
+        Describe the class or category of property you want to architect.
       </Label>
       <Textarea
         id="architect-prop-descr"
         value={propDescr}
         onChange={(e) => setPropDescr(e.target.value)}
-        placeholder='e.g. "Lifestyle hotel with rooftop bar, 200 keys, 8,000 sqft of meeting space, signature Italian restaurant"'
+        placeholder="e.g. Boutique Hotels, Luxury Coworking, or Multi-Family Housing..."
         rows={3}
         className="text-xs"
         disabled={disabled || busy}
@@ -235,7 +236,7 @@ function DescribePhase({
       />
       <div className="flex items-center justify-between">
         <p className="text-[10px] text-muted-foreground">
-          The richer your description, the better the candidate fields.
+          The richer the class description, the smarter the candidate facts.
         </p>
         <Button
           size="sm"

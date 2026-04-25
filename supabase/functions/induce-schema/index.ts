@@ -337,7 +337,7 @@ Rules:
 - Every "key" must be lowercase snake_case, ≤40 chars.
 - No prose, no markdown, no commentary outside the JSON.`;
 
-  const user = `Draft a candidate field list for this property class:
+  const user = `Draft a candidate field list for this CLASS of property (a reusable mapping template, not a single listing). Prioritize "Source of Truth" facts a visitor would ask the Ask AI chat about — pricing, address, capacity, amenities, hours, hospitality stats, brand story, signature features:
 
 """${propDescr}"""`;
 
@@ -415,7 +415,9 @@ Rules:
 - Use the MSP-provided key names verbatim — do not rename.
 - Output ONLY the JSON object, no prose, no markdown.`;
 
-  const user = `Property class: "${propDescr}"
+  const user = `Build a reusable mapper schema for this CLASS of property. Every required field must be a Source-of-Truth fact a visitor might ask about in the Ask AI chat.
+
+Property class: "${propDescr}"
 Doc kind: "${docKind}"
 
 Kept fields (preserve every key):
