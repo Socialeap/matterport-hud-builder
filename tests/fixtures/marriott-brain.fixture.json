@@ -50,7 +50,13 @@
           "booking_url": "https://www.marriott.com/marquis-book",
           "official_website": "https://www.marriott.com/hotels/nycmq",
           "phone_number": "+1-212-398-1900",
-          "nightly_rate": "From $399/night"
+          "nightly_rate": "From $399/night",
+          "menu_highlight": "matzo ball soup and truffle grilled cheese",
+          "cocktail_program": "wood-smoked evening cocktail programme",
+          "restaurant_name": "Buttonwood",
+          "historical_reference": "Buttonwood Agreement",
+          "neighborhood_inspiration": "Wall Street history",
+          "hotel_chain": "IHG"
         },
         "field_provenance": {
           "number_of_rooms": { "source": "brochure", "confidence": 0.95 },
