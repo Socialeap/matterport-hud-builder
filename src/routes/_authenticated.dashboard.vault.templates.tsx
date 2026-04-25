@@ -206,18 +206,33 @@ function VaultTemplatesPage() {
             by the Ask AI chat.
           </p>
         </div>
-        <Button
-          onClick={openCreate}
-          size="sm"
-          disabled={editingDisabled}
-          title={
-            editingDisabled
-              ? "Studio license inactive — paused"
-              : undefined
-          }
-        >
-          <Plus className="mr-1 size-4" /> New Template
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={() => openCreate({ architect: true })}
+            size="sm"
+            disabled={editingDisabled}
+            title={
+              editingDisabled
+                ? "Studio license inactive — paused"
+                : "Build a template with the AI Architect"
+            }
+          >
+            <Wand2 className="mr-1 size-4" /> New with AI Architect
+          </Button>
+          <Button
+            onClick={() => openCreate()}
+            size="sm"
+            variant="outline"
+            disabled={editingDisabled}
+            title={
+              editingDisabled
+                ? "Studio license inactive — paused"
+                : undefined
+            }
+          >
+            <Plus className="mr-1 size-4" /> Blank Template
+          </Button>
+        </div>
       </div>
 
       {editingDisabled && (
