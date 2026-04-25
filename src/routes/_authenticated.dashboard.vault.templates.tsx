@@ -100,13 +100,32 @@ function VaultTemplatesPage() {
   const { isActive: lusActive, loading: lusLoading } = useLusLicense();
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [saving, setSaving] = useState(false);
+  const [forceArchitect, setForceArchitect] = useState(false);
+
+  const search = Route.useSearch();
+  const navigate = useNavigate();
 
   const editingDisabled = !lusLoading && !lusActive;
 
-  const openCreate = () => {
+  const openCreate = (opts?: { architect?: boolean }) => {
     if (editingDisabled) return;
+    setForceArchitect(!!opts?.architect);
     setEditor({ ...EMPTY_EDITOR });
   };
+
+  // Auto-open Architect flow when arriving via ?architect=1
+  useEffect(() => {
+    if (search.architect === 1 && !lusLoading && lusActive && !editor) {
+      setForceArchitect(true);
+      setEditor({ ...EMPTY_EDITOR });
+      navigate({
+        to: "/dashboard/vault/templates",
+        search: {},
+        replace: true,
+      });
+    }
+  }, [search.architect, lusLoading, lusActive, editor, navigate]);
+
   const openEdit = (t: VaultTemplate) =>
     setEditor({
       id: t.id,
