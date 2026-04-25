@@ -5,7 +5,16 @@ import { useAuth } from "@/hooks/use-auth";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, LogOut, User as UserIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { sendTransactionalEmail } from "@/lib/email/send";
 import { checkGrantExpiryEmailNeeded } from "@/lib/grant-expiry.functions";
 import { buildStudioUrl } from "@/lib/public-url";
@@ -21,7 +30,7 @@ interface ExpiryAlert {
 }
 
 function DashboardLayout() {
-  const { user, roles } = useAuth();
+  const { user, roles, signOut } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [tierChecked, setTierChecked] = useState(false);
@@ -147,6 +156,41 @@ function DashboardLayout() {
                 Purchase a plan to access the full dashboard.
               </span>
             )}
+            <div className="ml-auto flex items-center">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="gap-2">
+                    <UserIcon className="size-4" />
+                    <span className="hidden sm:inline max-w-[180px] truncate">
+                      {user?.email ?? "Account"}
+                    </span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel className="truncate">
+                    {user?.email ?? "Signed in"}
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onSelect={() => navigate({ to: "/dashboard/account" })}
+                    className="cursor-pointer"
+                  >
+                    <UserIcon className="mr-2 size-4" />
+                    Account
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      void signOut();
+                    }}
+                    className="cursor-pointer text-destructive focus:text-destructive"
+                  >
+                    <LogOut className="mr-2 size-4" />
+                    Sign out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
           {expiryAlert && (
             <div className="px-6 pt-4">

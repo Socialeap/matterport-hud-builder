@@ -75,10 +75,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      // Even if the network call fails, clear local state so the UI updates
+      console.warn("Supabase signOut failed; clearing local session anyway", e);
+    }
     setUser(null);
     setSession(null);
     setRoles([]);
+    // Hard redirect so any in-memory protected state is fully reset
+    if (typeof window !== "undefined") {
+      window.location.href = "/";
+    }
   }, []);
 
   return (
