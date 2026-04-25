@@ -388,7 +388,13 @@ function decideAnswer(inputs) {
   // Step 3 — Tier 1 canonical-QA with intent guard.
   var tier1 = tier1Rank(queryVec, query, (brain.canonicalQAs || []), intent, intentAllowsFn);
   var tier1Best = tier1.length ? tier1[0] : null;
-  if (tier1Best && tier1Best.score >= TIER1_SOFT) {
+  // Soft-floor acceptance: for value-bearing intents we trust the
+  // intentAllows filter that tier1Rank already applied. Anything still
+  // in the list is a category-correct candidate, so accept above the
+  // hard floor (TIER1_FLOOR) instead of TIER1_SOFT. For everything
+  // else we keep the stricter SOFT threshold.
+  var t1Threshold = (VALUE_BEARING_INTENTS[intent] ? TIER1_FLOOR : TIER1_SOFT);
+  if (tier1Best && tier1Best.score >= t1Threshold) {
     return {
       path: "canonical",
       text: tier1Best.qa.answer || "",
