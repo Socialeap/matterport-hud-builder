@@ -137,15 +137,15 @@ export function TemplateArchitect({ docKind, disabled, onApply }: Props) {
           <div className="flex items-center gap-1.5">
             <Wand2 className="size-3.5 text-primary" />
             <Label className="text-xs font-medium">
-              Guided Refinement Template Architect
+              Property Mapper for AI Chat
             </Label>
             <Badge variant="secondary" className="text-[10px]">
-              Gemini 2.5 Flash-Lite
+              AI-assisted · Gemini 2.5 Flash-Lite
             </Badge>
           </div>
           <p className="mt-0.5 text-[11px] text-muted-foreground">
-            Describe the property class → review candidate fields → finalize a
-            validated schema. No JSON editing required.
+            Describe the property → pick the facts that matter → we build the
+            map your AI Chat uses on uploaded property docs. No JSON required.
           </p>
         </div>
         {phase !== "describe" && (
