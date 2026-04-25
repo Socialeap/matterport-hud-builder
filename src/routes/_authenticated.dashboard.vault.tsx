@@ -691,6 +691,20 @@ function AssetEditorDialog({
           <DialogDescription>
             {category.utility} — {category.purpose}
           </DialogDescription>
+          {category.value === "property_doc" && (
+            <p className="mt-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-[11px] italic text-muted-foreground">
+              <Sparkles className="mr-1 inline size-3 text-primary" />
+              This document will be parsed against your active Template. Build
+              or edit it in{" "}
+              <Link
+                to="/dashboard/vault/templates"
+                className="font-medium not-italic text-primary hover:underline"
+              >
+                Vault → Property Docs → Template Architect
+              </Link>
+              .
+            </p>
+          )}
         </DialogHeader>
 
         <div className="space-y-4">
