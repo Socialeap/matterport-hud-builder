@@ -196,6 +196,48 @@
       "expectedPaths": ["strict_unknown", "canonical", "chunk"],
       "mustNotContain": ["1535 Broadway", "1,966"],
       "mayContain": []
+    },
+    {
+      "q": "What's a good food to eat there?",
+      "expectedIntent": "dining_recommendation",
+      "expectedPaths": ["canonical", "chunk", "strict_unknown"],
+      "mustNotContain": ["1535 Broadway", "New York, NY 10036", "1,966"],
+      "mayContain": ["matzo", "truffle", "menu"]
+    },
+    {
+      "q": "What should I eat?",
+      "expectedIntent": "dining_recommendation",
+      "expectedPaths": ["canonical", "chunk", "strict_unknown"],
+      "mustNotContain": ["1535 Broadway", "1,966"],
+      "mayContain": ["matzo", "truffle", "menu"]
+    },
+    {
+      "q": "Tell me about the cocktails.",
+      "expectedIntent": "bar_program",
+      "expectedPaths": ["canonical", "chunk", "strict_unknown"],
+      "mustNotContain": ["1535 Broadway", "1,966", "ballroom"],
+      "mayContain": ["cocktail", "wood-smoked"]
+    },
+    {
+      "q": "What's the historical reference?",
+      "expectedIntent": "history_story",
+      "expectedPaths": ["canonical", "chunk", "strict_unknown"],
+      "mustNotContain": ["1535 Broadway", "1,966"],
+      "mayContain": ["Buttonwood", "history"]
+    },
+    {
+      "q": "What inspired the design?",
+      "expectedIntent": "design_inspiration",
+      "expectedPaths": ["canonical", "chunk", "strict_unknown"],
+      "mustNotContain": ["1535 Broadway", "1,966", "agent"],
+      "mayContain": ["Wall Street", "inspiration"]
+    },
+    {
+      "q": "What hotel chain is it?",
+      "expectedIntent": "brand_chain",
+      "expectedPaths": ["canonical", "chunk", "strict_unknown"],
+      "mustNotContain": ["1535 Broadway", "1,966"],
+      "mayContain": ["IHG", "chain"]
     }
   ]
 }
