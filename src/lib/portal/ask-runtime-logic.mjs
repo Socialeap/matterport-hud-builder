@@ -14,6 +14,39 @@ var TIER1_FIELD_BOOST = 0.10;
 var TIER2_MIN = 0.50;
 var RRF_K = 60;
 
+// Value-bearing intents — a confidently classified intent on the query
+// side is itself strong evidence the candidate field is correct. For
+// these intents we accept any tier-1 hit above the hard floor (0.45),
+// because tier1Rank already filtered the list through intentAllows.
+// This is what lets "what's a good food to eat there?" hit
+// `menu_highlight` even when cosine is in the 0.45–0.55 band.
+var VALUE_BEARING_INTENTS = {
+  dining_recommendation: true,
+  bar_program: true,
+  history_story: true,
+  design_inspiration: true,
+  brand_chain: true,
+  designer_architect: true,
+  developer: true,
+  pricing: true,
+  parking: true,
+  accessibility: true,
+  summary: true,
+  amenity_presence: true,
+  restaurant_presence: true,
+  year_built: true,
+  history_opening: true,
+};
+
+// Per-intent strict-unknown copy for value-bearing misses.
+var VALUE_INTENT_MISS_COPY = {
+  dining_recommendation: "I don't have details on the menu or dining at this property yet.",
+  bar_program: "I don't have details on the bar or cocktail program for this property yet.",
+  history_story: "I don't have a historical backstory on file for this property yet.",
+  design_inspiration: "I don't have details on the design inspiration for this property yet.",
+  brand_chain: "I don't have brand or chain details for this property yet.",
+};
+
 // Per-action-intent miss copy. Keyed by intent. Shown when the intent
 // is an action intent but the brain lacks the required data — the
 // ladder terminates here instead of falling through to semantic tiers.
