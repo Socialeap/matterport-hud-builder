@@ -486,7 +486,7 @@ function Index() {
                 <Button size="sm" className="mt-2" onClick={() => navigate({ to: "/dashboard" })}>Dashboard</Button>
               ) : (
                 <>
-                  <Button size="sm" variant="ghost" className="justify-start text-white/80 hover:bg-white/10" onClick={() => navigate({ to: "/login" })}>Sign In</Button>
+                  <HeaderSignInMenu variant="mobile" />
                   <Button size="sm" className="mt-1" onClick={() => navigate({ to: "/signup", search: { token: "", email: "" } })}>Get Started</Button>
                 </>
               )}
