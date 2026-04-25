@@ -44,6 +44,22 @@ interface SavePresentationInput {
     /** Optional client-supplied favicon URL (already uploaded to storage). */
     faviconUrl?: string;
   };
+  /**
+   * Per-property Vault asset selections from the Enhancements panel.
+   * Persisted as `tour_config.enhancements`. Today only `spatial_audio`
+   * affects the generated tour (overrides per-property musicUrl); the rest
+   * are stored for forward compatibility.
+   */
+  enhancements?: Record<
+    string,
+    {
+      spatial_audio?: string | null;
+      visual_hud_filter?: string[];
+      interactive_widget?: string[];
+      custom_iconography?: string[];
+      external_link?: string[];
+    }
+  >;
 }
 
 export const savePresentationRequest = createServerFn({ method: "POST" })
