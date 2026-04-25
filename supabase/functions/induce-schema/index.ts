@@ -378,6 +378,122 @@ Rules:
   return { draft, usage };
 }
 
+// ── JSON repair + fallback synthesis (Turn 2 robustness) ────────────
+/**
+ * Best-effort repair for truncated/malformed Gemini JSON output.
+ * Returns the parsed object on success, or null on failure.
+ */
+function tryRepairJson(raw: string): unknown | null {
+  let s = stripFences(raw).trim();
+  if (!s) return null;
+
+  // Trim everything after the last balanced top-level '}'.
+  // Walk the string tracking string state + brace depth.
+  let depth = 0;
+  let inStr = false;
+  let escape = false;
+  let lastBalanced = -1;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (ch === "\\" && inStr) {
+      escape = true;
+      continue;
+    }
+    if (ch === '"') {
+      inStr = !inStr;
+      continue;
+    }
+    if (inStr) continue;
+    if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) lastBalanced = i;
+    }
+  }
+
+  if (lastBalanced > 0) {
+    const trimmed = s.slice(0, lastBalanced + 1);
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      // fall through to heuristic repair
+    }
+  }
+
+  // Heuristic: close an unterminated string, drop trailing commas, close braces.
+  if (inStr) s += '"';
+  s = s.replace(/,\s*([}\]])/g, "$1");
+  // Append missing closing braces based on residual depth.
+  // Recompute depth on the (possibly modified) string.
+  let d = 0;
+  let inS = false;
+  let esc = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (esc) { esc = false; continue; }
+    if (ch === "\\" && inS) { esc = true; continue; }
+    if (ch === '"') { inS = !inS; continue; }
+    if (inS) continue;
+    if (ch === "{") d++;
+    else if (ch === "}") d--;
+  }
+  while (d > 0) { s += "}"; d--; }
+
+  try {
+    return JSON.parse(s);
+  } catch {
+    return null;
+  }
+}
+
+/** Last-resort: build a valid Draft-07 schema purely from the MSP's kept items. */
+function synthesizeFallbackSchema(keptItems: KeptItem[]): JsonSchema {
+  const properties: Record<string, JsonSchemaField> = {};
+  for (const it of keptItems) {
+    if (!SNAKE.test(it.key)) continue;
+    properties[it.key] = {
+      type: "string",
+      description: it.desc?.trim() || it.title.trim() || it.key,
+    };
+  }
+  const required = Object.keys(properties).slice(0, Math.min(3, Object.keys(properties).length));
+  return { type: "object", properties, required };
+}
+
+/**
+ * Parse the Turn-2 Gemini response with three-tier resilience:
+ * 1. Strict JSON.parse on stripped text.
+ * 2. Repair pass (close strings, trim to last balanced brace, drop trailing commas).
+ * 3. Synthesize a deterministic schema from the MSP's kept items.
+ *
+ * Always returns a sanitised JsonSchema — never throws on a model failure.
+ */
+function parseRefineResponse(text: string, keptItems: KeptItem[]): JsonSchema {
+  const cleaned = stripFences(text);
+  // Tier 1: strict
+  try {
+    return sanitiseSchema(JSON.parse(cleaned));
+  } catch (e1) {
+    console.warn("[architect_refine] strict parse failed:", String(e1).slice(0, 200));
+  }
+  // Tier 2: repair
+  const repaired = tryRepairJson(cleaned);
+  if (repaired) {
+    try {
+      return sanitiseSchema(repaired);
+    } catch (e2) {
+      console.warn("[architect_refine] repaired sanitise failed:", String(e2).slice(0, 200));
+    }
+  }
+  // Tier 3: synthesize
+  console.warn("[architect_refine] used_fallback_synthesis items=", keptItems.length);
+  return synthesizeFallbackSchema(keptItems);
+}
+
 // ── Architect Turn 2: refine to schema ──────────────────────────────
 interface KeptItem {
   key: string;
