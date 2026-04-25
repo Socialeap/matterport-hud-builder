@@ -16,11 +16,11 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { Palette, Home, UserCircle, BookOpen } from "lucide-react";
+import { Palette, Home, UserCircle, Sparkles } from "lucide-react";
 import { BrandingSection } from "./BrandingSection";
 import { PropertyModelsSection } from "./PropertyModelsSection";
 import { AgentContactSection } from "./AgentContactSection";
-import { PropertyIntelligenceSection } from "./PropertyIntelligenceSection";
+import { EnhancementsSection, type EnhancementsByProperty } from "./EnhancementsSection";
 import { TourBehaviorModal } from "./TourBehaviorModal";
 import { HudPreview } from "./HudPreview";
 import { PortalSignupModal } from "./PortalSignupModal";
