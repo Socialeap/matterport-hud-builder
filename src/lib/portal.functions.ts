@@ -97,6 +97,10 @@ export const savePresentationRequest = createServerFn({ method: "POST" })
           behaviors: data.tourConfig,
           agent: data.agent,
           brandingOverrides: data.brandingOverrides,
+          // Per-property Vault asset selections (Enhancements panel).
+          // Forward-compatible: keys for future categories ride along
+          // even though only `spatial_audio` affects the runtime today.
+          enhancements: data.enhancements ?? {},
         } as unknown as import("@/integrations/supabase/types").Json,
         status: "pending_payment" as const,
         is_released: false,
