@@ -283,17 +283,65 @@ function VaultTemplatesPage() {
   );
 }
 
-function EmptyState({ onAdd }: { onAdd: () => void }) {
+function EmptyState({
+  onArchitect,
+  onBlank,
+  disabled,
+}: {
+  onArchitect: () => void;
+  onBlank: () => void;
+  disabled?: boolean;
+}) {
   return (
-    <div className="rounded-lg border border-dashed border-border bg-muted/20 py-12 text-center">
-      <FileJson className="mx-auto size-10 text-muted-foreground/60" />
-      <p className="mt-3 text-sm font-medium">No templates yet</p>
-      <p className="mt-1 text-xs text-muted-foreground">
-        Create your first template to start turning uploaded PDFs into structured Portal data.
-      </p>
-      <Button size="sm" variant="outline" className="mt-4" onClick={onAdd}>
-        <Plus className="mr-1 size-4" /> New Template
-      </Button>
+    <div className="rounded-lg border border-dashed border-border bg-muted/20 p-8">
+      <div className="text-center">
+        <FileJson className="mx-auto size-10 text-muted-foreground/60" />
+        <p className="mt-3 text-sm font-medium">No templates yet</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          A Template defines what data the AI extracts from your clients'
+          uploaded Property Docs (price, address, amenities, etc.).
+        </p>
+      </div>
+      <div className="mx-auto mt-6 grid max-w-2xl gap-3 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={onArchitect}
+          disabled={disabled}
+          className="group relative flex flex-col items-start gap-2 rounded-lg border-2 border-primary/40 bg-gradient-to-br from-primary/5 to-primary/10 p-4 text-left transition hover:border-primary disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <div className="flex w-full items-center justify-between">
+            <Wand2 className="size-5 text-primary" />
+            <Badge variant="secondary" className="text-[10px]">
+              Recommended
+            </Badge>
+          </div>
+          <div className="font-semibold">Build with AI Architect</div>
+          <p className="text-xs text-muted-foreground">
+            Describe your property class. The AI suggests fields, you refine,
+            and a validated schema is built for you.
+          </p>
+          <span className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-primary">
+            <Sparkles className="size-3" /> Start guided flow →
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={onBlank}
+          disabled={disabled}
+          className="group flex flex-col items-start gap-2 rounded-lg border border-border bg-background p-4 text-left transition hover:border-foreground/30 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <FileJson className="size-5 text-muted-foreground" />
+          <div className="font-semibold">Start from blank JSON</div>
+          <p className="text-xs text-muted-foreground">
+            For power users — author the JSON Schema directly, or paste a sample
+            PDF and auto-induce a draft.
+          </p>
+          <span className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-foreground">
+            <Plus className="size-3" /> Open blank editor →
+          </span>
+        </button>
+      </div>
     </div>
   );
 }
