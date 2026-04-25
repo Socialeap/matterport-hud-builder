@@ -23,6 +23,7 @@ import type {
 } from "@/lib/extraction/provider";
 import { dryRunTemplate, type DryRunSuccess } from "@/lib/extraction/dryrun";
 import { induceSchema, type InduceSchemaResult } from "@/lib/extraction/induce";
+import { TemplateArchitect } from "@/components/vault/TemplateArchitect";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
