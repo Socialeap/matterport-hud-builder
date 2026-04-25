@@ -205,6 +205,9 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
   const [agentAvatarFile, setAgentAvatarFile] = useState<File | null>(null);
   const [agentAvatarUploading, setAgentAvatarUploading] = useState(false);
 
+  // Per-property Vault asset selections (Enhancements panel).
+  const [enhancements, setEnhancements] = useState<EnhancementsByProperty>({});
+
   // Behavior modal
   const [behaviorModalOpen, setBehaviorModalOpen] = useState(false);
   const [behaviorModelId, setBehaviorModelId] = useState<string | null>(null);
