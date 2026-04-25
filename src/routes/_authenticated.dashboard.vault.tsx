@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Lock } from "lucide-react";
 import {
@@ -845,6 +845,24 @@ function AssetEditorDialog({
 }
 
 function PropertyDocArchitectCallout({ isStarter }: { isStarter: boolean }) {
+  const navigate = useNavigate();
+
+  const openMapper = () => {
+    // Force a fresh ?architect=1 hit so the templates page re-fires its
+    // auto-open effect, even if the user is already on /dashboard/vault/templates.
+    navigate({
+      to: "/dashboard/vault/templates",
+      search: { architect: 1 },
+    });
+  };
+
+  const manageMappers = () => {
+    navigate({
+      to: "/dashboard/vault/templates",
+      search: {},
+    });
+  };
+
   return (
     <Card className="border-2 border-primary/40 bg-gradient-to-br from-primary/5 via-background to-primary/10">
       <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
@@ -865,15 +883,16 @@ function PropertyDocArchitectCallout({ isStarter }: { isStarter: boolean }) {
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground">
-              Tell us what kind of property this is. The AI lists the facts
-              worth pulling from your property documents (price, address, room
-              counts, amenities, etc.). Tick what matters, and we build the
-              "map" your AI Chat uses to answer client questions.
+              Easily build a mapping template for each type or category of
+              property (e.g., Offices, Hotels, Apartments, Galleries, or
+              Luxury Rentals). Your clients can use these to help the AI scan
+              and convert their uploaded property data into real-world answers
+              to visitors in the "Ask AI" chat.
             </p>
             <p className="text-[11px] text-muted-foreground/80">
               <span className="font-medium text-foreground/80">How it works:</span>{" "}
-              Describe property → Pick the facts → Apply. Your AI Chat
-              instantly gets smarter on uploaded docs.
+              Describe property class → Select key facts → Finalize Mapper for
+              client use.
             </p>
           </div>
         </div>
@@ -884,22 +903,18 @@ function PropertyDocArchitectCallout({ isStarter }: { isStarter: boolean }) {
             </span>
           ) : (
             <>
-              <Button asChild size="sm" className="gap-1">
-                <Link
-                  to="/dashboard/vault/templates"
-                  search={{ architect: 1 }}
-                >
-                  <Sparkles className="size-3.5" />
-                  Open Property Mapper
-                  <ArrowRight className="size-3.5" />
-                </Link>
+              <Button size="sm" className="gap-1" onClick={openMapper}>
+                <Sparkles className="size-3.5" />
+                Open Property Mapper
+                <ArrowRight className="size-3.5" />
               </Button>
-              <Link
-                to="/dashboard/vault/templates"
+              <button
+                type="button"
+                onClick={manageMappers}
                 className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
               >
-                <FileJson className="size-3" /> Manage saved maps
-              </Link>
+                <FileJson className="size-3" /> Manage existing mappers
+              </button>
             </>
           )}
         </div>
