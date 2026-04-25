@@ -14,6 +14,8 @@ import {
   ExternalLink,
   FileJson,
   Upload,
+  Sparkles,
+  ArrowRight,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
