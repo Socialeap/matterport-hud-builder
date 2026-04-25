@@ -88,7 +88,16 @@
           { "id": "field:amenities:0", "field": "amenities", "question": "What amenities are available?", "answer": "Amenities include a fitness center, business center, concierge, and revolving rooftop restaurant.", "source_anchor_id": "field:amenities", "embedding": null },
           { "id": "field:amenities:1", "field": "amenities", "question": "Is there a theatre at the property?", "answer": "No — the amenities listed do not include a theatre.", "source_anchor_id": "field:amenities", "embedding": null },
           { "id": "field:parking:0", "field": "parking", "question": "Is there parking?", "answer": "Yes — valet parking is available on-site.", "source_anchor_id": "field:parking", "embedding": null },
-          { "id": "field:accessibility_features:0", "field": "accessibility_features", "question": "Is the property accessible?", "answer": "Yes — the hotel is fully ADA accessible.", "source_anchor_id": "field:accessibility_features", "embedding": null }
+          { "id": "field:accessibility_features:0", "field": "accessibility_features", "question": "Is the property accessible?", "answer": "Yes — the hotel is fully ADA accessible.", "source_anchor_id": "field:accessibility_features", "embedding": null },
+          { "id": "field:menu_highlight:0", "field": "menu_highlight", "question": "What's a good food to eat there?", "answer": "The menu highlight is matzo ball soup and truffle grilled cheese.", "source_anchor_id": "field:menu_highlight", "embedding": null },
+          { "id": "field:menu_highlight:1", "field": "menu_highlight", "question": "What should I eat?", "answer": "The menu highlight is matzo ball soup and truffle grilled cheese.", "source_anchor_id": "field:menu_highlight", "embedding": null },
+          { "id": "field:menu_highlight:2", "field": "menu_highlight", "question": "What's on the menu highlight?", "answer": "The menu highlight is matzo ball soup and truffle grilled cheese.", "source_anchor_id": "field:menu_highlight", "embedding": null },
+          { "id": "field:cocktail_program:0", "field": "cocktail_program", "question": "What's the cocktail program?", "answer": "The cocktail program is a wood-smoked evening cocktail programme.", "source_anchor_id": "field:cocktail_program", "embedding": null },
+          { "id": "field:cocktail_program:1", "field": "cocktail_program", "question": "Tell me about the cocktails.", "answer": "The cocktail program is a wood-smoked evening cocktail programme.", "source_anchor_id": "field:cocktail_program", "embedding": null },
+          { "id": "field:historical_reference:0", "field": "historical_reference", "question": "What's the historical reference?", "answer": "Historical reference: Buttonwood Agreement.", "source_anchor_id": "field:historical_reference", "embedding": null },
+          { "id": "field:historical_reference:1", "field": "historical_reference", "question": "Is there a historical story?", "answer": "Historical reference: Buttonwood Agreement.", "source_anchor_id": "field:historical_reference", "embedding": null },
+          { "id": "field:neighborhood_inspiration:0", "field": "neighborhood_inspiration", "question": "What inspired the design?", "answer": "The neighborhood inspiration: Wall Street history.", "source_anchor_id": "field:neighborhood_inspiration", "embedding": null },
+          { "id": "field:hotel_chain:0", "field": "hotel_chain", "question": "What hotel chain is it?", "answer": "It's part of the IHG chain.", "source_anchor_id": "field:hotel_chain", "embedding": null }
         ]
       }
     ]
