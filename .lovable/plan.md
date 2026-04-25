@@ -1,62 +1,124 @@
-## Rename: "Template Architect" → "Property Mapper for AI Chat"
+## Goal
 
-Your name is a clear win — it describes the **input** (Property data), the **action** (Mapping), and the **outcome** (smarter AI Chat). I have one small refinement to suggest, then a single recommendation; either is fine.
+Reorganize the Client Presentation Builder so every customization sourced from the MSP's Production Vault lives under a single new collapsible card called **Enhancements**. Inside, each Vault category is its own nested accordion. The user picks a property at the top, then toggles the assets that should apply to that property.
 
-### Naming options
+This pass is **phased**:
+- ✅ **Wired now**: Property Intelligence (Property Docs), Sound Library (vault audio overrides per‑property music URL).
+- 🟡 **UI present, runtime later**: Visual Portal Filters, Interactive Widgets, Custom Iconography, External Links — each shows the MSP's catalog with a "Coming soon" badge so the asset is visible but cannot be applied yet.
 
-1. **Property Mapper for AI Chat** (your pick) — clearest and most literal.
-2. *Property Knowledge Mapper* — slightly shorter, but loses the "AI Chat" payoff that explains *why* it matters.
+## UX layout (Builder, left column)
 
-**Recommendation: go with your name, "Property Mapper for AI Chat."** It anchors the feature to the visible benefit (the chat), which is exactly what an MSP cares about.
+```text
+[ Branding ]                       (existing)
+[ Property Models ]                (existing)
+[ Enhancements ]                   ← NEW collapsible card
+   ┌───────────────────────────────────────────────┐
+   │  Apply to: [ Tab: Property 1 ][ Property 2 ]… │  ← property tabs
+   │                                               │
+   │  ▸ Property Intelligence (Ask AI)             │  ← moved from outside
+   │  ▸ Sound Library                              │  ← NEW, wired
+   │  ▸ Property Docs (Floorplans, etc.)           │  ← already wired via Intelligence
+   │  ▸ Visual Portal Filters     [Coming soon]    │  ← NEW, UI only
+   │  ▸ Interactive Widgets       [Coming soon]    │  ← NEW, UI only
+   │  ▸ Custom Iconography        [Coming soon]    │  ← NEW, UI only
+   │  ▸ External Links            [Coming soon]    │  ← NEW, UI only
+   └───────────────────────────────────────────────┘
+[ Agent / Manager Contact ]        (existing)
+```
 
-I'll also rename the underlying motion from "Template Architect" → **"Property Mapper"**, and tag the AI step as "AI-assisted" inline rather than as a brand name.
+- Empty state per category: "Your provider hasn't published any assets in this category yet."
+- Each item row shows the asset's label, description, format chip, and a per-property toggle (or radio for Sound Library since only one ambient track plays at a time).
 
-### Plain-language explanation (used across all surfaces)
+## Behaviour details
 
-> **Property Mapper for AI Chat** — Tell us what kind of property this is. The AI will list the facts worth pulling from your property documents (price, address, room counts, amenities, etc.). You tick what matters, and we build the "map" the AI Chat uses to answer your clients' questions.
+**Property tab bar**
+- Reads from the same `models[]` already in `HudBuilderSandbox`.
+- Tab label = `model.propertyName || model.name || "Property N"`.
+- Selecting a tab scopes every nested category to that `model.id`.
 
-How it works (3 steps):
-1. **Describe** the property class.
-2. **Refine** the suggested facts.
-3. **Apply** — the AI Chat now knows what to look for in uploaded property docs.
+**Sound Library (wired)**
+- Lists `vault_assets` where `category_type='spatial_audio'` for the linked provider (RLS already permits clients to read their provider's active assets).
+- Per-property single-select. Choosing an asset overrides `model.musicUrl` for that property; "None" clears it.
+- Existing manual `musicUrl` text input in `PropertyModelsSection` stays as a fallback / advanced override; Sound Library selection wins when set.
+- Persisted into the existing draft autosave (no schema change) and into `saved_models.tour_config.enhancements` on save.
 
-### Surfaces to update
+**Property Intelligence (wired, moved)**
+- The current `<PropertyIntelligenceSection>` is rendered unchanged inside the new accordion's "Property Intelligence (Ask AI)" sub-item. No prop or runtime changes.
+- The wrapper passes the active property tab so the section opens on the correct property automatically.
 
-**1. `src/routes/_authenticated.dashboard.vault.tsx`**
-- `PropertyDocArchitectCallout` (lines 847–907):
-  - Heading: `AI Template Architect` → **`Property Mapper for AI Chat`**
-  - Pitch copy → the plain-language explanation above.
-  - "How it works" line → `Describe property → Pick the facts → Apply. Your AI Chat instantly gets smarter on uploaded docs.`
-  - Primary button: `Launch Template Architect` → **`Open Property Mapper`**
-  - Secondary link: `Manage existing templates` → **`Manage saved maps`**
-- Add Property Doc dialog hint (lines 694–707):
-  - "Build or edit it in Vault → Property Docs → Template Architect" → **"Build or edit it in Vault → Property Docs → Property Mapper"**
+**Property Docs (wired)**
+- Read-only catalog of the provider's `property_doc` vault assets, with an indicator showing which are already extracted/applied to the active property (mirrors logic already in `PropertyIntelligenceSection`). Acts as a discovery surface — actual upload/extract continues through Property Intelligence to avoid duplication.
 
-**2. `src/routes/_authenticated.dashboard.vault.templates.tsx`**
-- Page heading (line 200): `Property Doc Templates` → **`Property Maps for AI Chat`**
-- Page subtitle (lines 202–207): rewrite in plain language —
-  > "Each map tells the AI which facts to pull from a kind of property document (price, address, beds, amenities…). The AI Chat uses these facts to answer your clients."
-- Top-right button (line 220): `New with AI Architect` → **`New with AI`** (tooltip: "Build a map with AI assist")
-- Editor dialog title (lines 538–545): description rewrite —
-  > "Use the AI-assisted Property Mapper below, or expand the advanced sections to edit JSON, generate from a sample PDF, or dry-run."
-- "PRIMARY ACTION: AI Architect" callout (lines 594–601): retain, replace copy with: *"Start here → Describe the property and let AI suggest the facts. You can still hand-edit JSON or use a sample PDF below."*
-- EmptyState (lines 286–326): "Build with AI Architect" → **"Build with AI Mapper"**, copy refresh.
+**Coming-soon categories**
+- Render the catalog of MSP-published assets so clients can preview what's available.
+- Each row shows a disabled "Apply to this property" control with a `Coming soon` badge and a tooltip: "Your provider has published this asset. Runtime support is rolling out — selections aren't applied to the tour yet."
 
-**3. `src/components/vault/TemplateArchitect.tsx`** (component file is NOT renamed — only display strings)
-- Header label (line 140): `Guided Refinement Template Architect` → **`Property Mapper for AI Chat`**
-- Sub-line (lines 146–149): *"Describe the property → pick the facts that matter → we build the map your AI Chat uses on uploaded property docs. No JSON required."*
-- Keep the `Gemini 2.5 Flash-Lite` badge (it's accurate and developers will recognize it).
+## Persistence model (no DB migration this pass)
 
-### What is **not** changed
+Add a new field to the existing `saved_models.tour_config` JSONB blob:
 
-- File names (`TemplateArchitect.tsx`, route URLs, query param `?architect=1`, props like `forceArchitect`, `onArchitect`) — internal only, no user impact, and renaming would touch routing/types unnecessarily.
-- Backend / edge function (`induce-schema`) — naming is internal.
-- Database column names (`vault_templates`, `doc_kind`, etc.) — out of scope.
+```json
+{
+  "enhancements": {
+    "<propertyId>": {
+      "spatial_audio": "<vault_asset_id|null>",
+      "visual_hud_filter": ["<vault_asset_id>", ...],
+      "interactive_widget": [...],
+      "custom_iconography": [...],
+      "external_link": [...]
+    }
+  }
+}
+```
 
-### Verification
+- Read/write happens entirely client-side in `HudBuilderSandbox`.
+- Draft autosave (`src/lib/portal/draft-storage.ts`) gains a parallel `enhancements` field — backwards compatible (older drafts simply have it `undefined`).
+- `savePresentationRequest` already serializes the full state; `enhancements` rides along inside `tour_config`.
 
-- Visit `/dashboard/vault` → Property Docs tab → callout reads "Property Mapper for AI Chat" with new copy and button.
-- Click **Open Property Mapper** → editor opens, header inside Architect component reads "Property Mapper for AI Chat."
-- Empty templates page shows the renamed primary card.
-- Add Property Doc dialog hint points to "Property Mapper."
-- `npm run verify:html` passes; no TypeScript regressions (only string changes).
+## Runtime wiring this pass (Sound Library only)
+
+In `src/lib/portal.functions.ts` (and the corresponding generator that emits the standalone HTML), at the point where each property's `musicUrl` is resolved, pick in this order:
+1. `enhancements[propertyId].spatial_audio` → resolve to the vault asset's `asset_url`.
+2. Existing `model.musicUrl` text input.
+3. None.
+
+No changes to filter/widget/icon/link emission — those keys are written to `tour_config` but ignored by the generator.
+
+## Files to add or change
+
+**New**
+- `src/components/portal/EnhancementsSection.tsx` — the outer accordion shell, property tab bar, and category dispatcher.
+- `src/components/portal/enhancements/SoundLibraryPicker.tsx` — wired single-select per property.
+- `src/components/portal/enhancements/VaultCatalogList.tsx` — generic read-only/disabled list reused by all "Coming soon" categories.
+- `src/hooks/useVaultAssetsByCategory.ts` — typed query hook keyed by `(providerId, category_type)`.
+
+**Modified**
+- `src/components/portal/HudBuilderSandbox.tsx`
+  - Move the `intelligence` AccordionItem out and replace it with one new `enhancements` AccordionItem hosting `<EnhancementsSection>`.
+  - Add `enhancements` state + setter, thread into draft autosave and `savePresentationRequest`.
+- `src/lib/portal/draft-storage.ts` — extend `DraftState` with optional `enhancements` field.
+- `src/lib/portal.functions.ts` — read `tour_config.enhancements[propertyId].spatial_audio` and apply override before HTML generation.
+- `src/components/portal/PropertyIntelligenceSection.tsx` — accept an optional `activePropertyId` prop so the moved section honours the parent tab; default behaviour unchanged when omitted.
+
+**Untouched (intentional)**
+- No database migration, no edge function changes, no changes to the generated tour runtime apart from the music-source resolver.
+- `PropertyModelsSection` keeps its existing `musicUrl` input as the legacy fallback so already-saved draft files keep working.
+
+## Safety / regression review (trigger trace)
+
+1. **Existing drafts** load with `enhancements === undefined` → generator falls through to existing `model.musicUrl` path → unchanged output. ✅
+2. **Existing saved_models** in DB have `tour_config` without `enhancements` → same fallthrough on regenerate. ✅
+3. **Property Intelligence** keeps its own state, queries, and effects; only its mount location changes. The `extractionDirty` banner in `HudBuilderSandbox` continues to fire because the `onExtractionSuccess` callback is forwarded unchanged. ✅
+4. **Pricing / checkout flow** depends on `models.filter(m => m.matterportId).length`, not on enhancements — no impact. ✅
+5. **License / access guards** wrap the whole left column; the new section sits inside the same guard. ✅
+6. **Coming-soon assets** never reach the generator (the generator simply ignores those keys), so MSPs can publish them safely without breaking client tours. ✅
+7. **RLS** on `vault_assets` already permits clients to read active assets from their linked provider — the new picker uses that policy with no schema change. ✅
+
+## What this plan deliberately does NOT do
+
+- No runtime support yet for filters, widgets, icons, or links — surfaced as "Coming soon".
+- No new DB tables, migrations, or edge functions.
+- No changes to MSP-side Vault management UI.
+- No changes to pricing logic.
+
+Each "Coming soon" category will graduate to "wired" in a follow-up pass, one at a time, with its own runtime change and verification.

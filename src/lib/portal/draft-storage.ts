@@ -8,6 +8,7 @@
  * Zero backend involvement. All data stays in the user's browser.
  */
 import type { PropertyModel, AgentContact, TourBehavior } from "@/components/portal/types";
+import type { EnhancementsByProperty } from "@/components/portal/EnhancementsSection";
 
 const DRAFT_VERSION = 1;
 const KEY_PREFIX = "3dps:draft:";
@@ -21,6 +22,11 @@ export interface DraftState {
   behaviors: Record<string, TourBehavior>;
   agent: AgentContact;
   reviewApproved: boolean;
+  /**
+   * Per-property Vault asset selections. Optional for backwards compatibility
+   * with drafts saved before the Enhancements panel shipped.
+   */
+  enhancements?: EnhancementsByProperty;
 }
 
 interface DraftEnvelope {

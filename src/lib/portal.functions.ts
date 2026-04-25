@@ -44,6 +44,22 @@ interface SavePresentationInput {
     /** Optional client-supplied favicon URL (already uploaded to storage). */
     faviconUrl?: string;
   };
+  /**
+   * Per-property Vault asset selections from the Enhancements panel.
+   * Persisted as `tour_config.enhancements`. Today only `spatial_audio`
+   * affects the generated tour (overrides per-property musicUrl); the rest
+   * are stored for forward compatibility.
+   */
+  enhancements?: Record<
+    string,
+    {
+      spatial_audio?: string | null;
+      visual_hud_filter?: string[];
+      interactive_widget?: string[];
+      custom_iconography?: string[];
+      external_link?: string[];
+    }
+  >;
 }
 
 export const savePresentationRequest = createServerFn({ method: "POST" })
@@ -81,6 +97,10 @@ export const savePresentationRequest = createServerFn({ method: "POST" })
           behaviors: data.tourConfig,
           agent: data.agent,
           brandingOverrides: data.brandingOverrides,
+          // Per-property Vault asset selections (Enhancements panel).
+          // Forward-compatible: keys for future categories ride along
+          // even though only `spatial_audio` affects the runtime today.
+          enhancements: data.enhancements ?? {},
         } as unknown as import("@/integrations/supabase/types").Json,
         status: "pending_payment" as const,
         is_released: false,
@@ -177,6 +197,17 @@ interface TourConfigData {
     hudBgColor: string;
     gateLabel: string;
   };
+  /** Per-property Vault asset selections (see SavePresentationInput). */
+  enhancements?: Record<
+    string,
+    {
+      spatial_audio?: string | null;
+      visual_hud_filter?: string[];
+      interactive_widget?: string[];
+      custom_iconography?: string[];
+      external_link?: string[];
+    }
+  >;
 }
 
 function buildMatterportUrlServer(modelId: string, behavior: Record<string, unknown>): string {
@@ -504,6 +535,7 @@ export const generatePresentation = createServerFn({ method: "POST" })
     const behaviors = tourConfig.behaviors || {};
     const agent = tourConfig.agent || {};
     const overrides = (tourConfig.brandingOverrides || {}) as Record<string, string>;
+    const enhancements = tourConfig.enhancements ?? {};
 
     const brandName = overrides.brandName || brandingData?.brand_name || "Property Tours";
     const accentColor = overrides.accentColor || brandingData?.accent_color || "#3B82F6";
@@ -515,6 +547,29 @@ export const generatePresentation = createServerFn({ method: "POST" })
     // bake in the MSP's brand assets behind the client's back.
     const logoUrl = overrides.logoUrl || "";
     const faviconUrl = overrides.faviconUrl || "";
+
+    // Resolve any per-property spatial_audio vault asset selections to their
+    // public asset_url. Failure to load the catalog must NOT block the build —
+    // we silently fall back to the manual musicUrl on each property.
+    const audioAssetIds = Array.from(
+      new Set(
+        Object.values(enhancements)
+          .map((e) => e?.spatial_audio)
+          .filter((id): id is string => typeof id === "string" && id.length > 0),
+      ),
+    );
+    const audioUrlById = new Map<string, string>();
+    if (audioAssetIds.length > 0) {
+      const { data: audioRows } = await supabase
+        .from("vault_assets")
+        .select("id, asset_url, is_active, category_type")
+        .in("id", audioAssetIds);
+      for (const row of audioRows ?? []) {
+        if (row.is_active && row.category_type === "spatial_audio" && row.asset_url) {
+          audioUrlById.set(row.id, row.asset_url);
+        }
+      }
+    }
 
     // Build iframe URLs for each property
     const propertyEntries = properties
@@ -543,12 +598,20 @@ export const generatePresentation = createServerFn({ method: "POST" })
               embedUrl: m.embedUrl ?? "",
             };
           });
+
+        // Sound Library override → falls back to manual musicUrl when unset
+        // or when the asset is no longer active / readable.
+        const enhAudioId = enhancements[p.id]?.spatial_audio;
+        const overrideMusicUrl =
+          enhAudioId && audioUrlById.has(enhAudioId) ? audioUrlById.get(enhAudioId)! : "";
+        const resolvedMusicUrl = overrideMusicUrl || p.musicUrl || "";
+
         return {
           name: p.name || "Untitled",
           propertyName: p.propertyName || "",
           location: p.location || "",
           iframeUrl: buildMatterportUrlServer(p.matterportId, behavior),
-          musicUrl: p.musicUrl || "",
+          musicUrl: resolvedMusicUrl,
           cinematicVideoUrl: p.cinematicVideoUrl || "",
           enableNeighborhoodMap: !!(p.enableNeighborhoodMap && (p.location || "").trim()),
           multimedia,

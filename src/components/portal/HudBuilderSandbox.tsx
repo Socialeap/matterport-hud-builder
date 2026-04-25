@@ -16,11 +16,11 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { Palette, Home, UserCircle, BookOpen } from "lucide-react";
+import { Palette, Home, UserCircle, Sparkles } from "lucide-react";
 import { BrandingSection } from "./BrandingSection";
 import { PropertyModelsSection } from "./PropertyModelsSection";
 import { AgentContactSection } from "./AgentContactSection";
-import { PropertyIntelligenceSection } from "./PropertyIntelligenceSection";
+import { EnhancementsSection, type EnhancementsByProperty } from "./EnhancementsSection";
 import { TourBehaviorModal } from "./TourBehaviorModal";
 import { HudPreview } from "./HudPreview";
 import { PortalSignupModal } from "./PortalSignupModal";
@@ -205,6 +205,9 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
   const [agentAvatarFile, setAgentAvatarFile] = useState<File | null>(null);
   const [agentAvatarUploading, setAgentAvatarUploading] = useState(false);
 
+  // Per-property Vault asset selections (Enhancements panel).
+  const [enhancements, setEnhancements] = useState<EnhancementsByProperty>({});
+
   // Behavior modal
   const [behaviorModalOpen, setBehaviorModalOpen] = useState(false);
   const [behaviorModelId, setBehaviorModelId] = useState<string | null>(null);
@@ -293,6 +296,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     setModels(draft.models?.length ? draft.models : [createEmptyModel()]);
     setBehaviors(draft.behaviors || {});
     setAgent(draft.agent || { ...DEFAULT_AGENT });
+    setEnhancements(draft.enhancements ?? {});
   }, []);
 
   const handleResumeDraft = useCallback(() => {
@@ -322,9 +326,10 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
       behaviors,
       agent,
       reviewApproved: false,
+      enhancements,
     });
     toast.success("Draft exported");
-  }, [providerSlug, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent]);
+  }, [providerSlug, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent, enhancements]);
 
   const handleImportDraft = useCallback(async (file: File) => {
     const draft = await importDraftFile(file);
@@ -352,10 +357,11 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
         behaviors,
         agent,
         reviewApproved: false,
+        enhancements,
       });
     }, 500);
     return () => window.clearTimeout(handle);
-  }, [providerSlug, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent]);
+  }, [providerSlug, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent, enhancements]);
 
   // Post-payment polling: detect return from Stripe checkout and
   // auto-trigger the download once the webhook flips status to "paid".
@@ -752,6 +758,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
             logoUrl: finalLogoUrl ?? "",
             faviconUrl: finalFaviconUrl ?? "",
           },
+          enhancements,
         },
       });
       if (!result.success || !result.modelId) {
@@ -827,6 +834,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     faviconStorageUrl,
     modelCount,
     runDownload,
+    enhancements,
   ]);
 
   const handleAuthenticated = useCallback((newUserId: string) => {
@@ -1030,7 +1038,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
 
             {extractionDirty && !extractionDirtyDismissed && !downloading && (
               <div className="sticky top-2 z-10 mb-3 flex items-start gap-2 rounded-lg border border-primary/40 bg-primary/10 p-3 text-sm shadow-sm">
-                <BookOpen className="mt-0.5 size-4 shrink-0 text-primary" />
+                <Sparkles className="mt-0.5 size-4 shrink-0 text-primary" />
                 <div className="flex-1">
                   <p className="font-medium text-foreground">Index updated</p>
                   <p className="text-xs text-muted-foreground">
@@ -1125,19 +1133,21 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
               </AccordionItem>
 
               <AccordionItem
-                value="intelligence"
+                value="enhancements"
                 className="rounded-lg border bg-card shadow-sm"
               >
                 <AccordionTrigger className="px-4 py-3 hover:no-underline">
                   <span className="flex items-center gap-2 text-base font-semibold text-foreground">
-                    <BookOpen className="size-5 text-primary" />
-                    Property Intelligence (Ask AI)
+                    <Sparkles className="size-5 text-primary" />
+                    Enhancements
                   </span>
                 </AccordionTrigger>
                 <AccordionContent className="px-4 pb-4">
-                  <PropertyIntelligenceSection
+                  <EnhancementsSection
                     models={models}
                     savedModelId={savedModelId}
+                    enhancements={enhancements}
+                    onEnhancementsChange={setEnhancements}
                     onExtractionSuccess={() => {
                       setExtractionDirty(true);
                       setExtractionDirtyDismissed(false);
