@@ -256,7 +256,7 @@ function VaultTemplatesPage() {
           <div className="h-6 w-6 animate-spin rounded-full border-4 border-primary border-t-transparent" />
         </div>
       ) : sorted.length === 0 ? (
-        <EmptyState onAdd={openCreate} />
+        <EmptyState onArchitect={() => openCreate({ architect: true })} onBlank={() => openCreate()} disabled={editingDisabled} />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {sorted.map((t) => (
