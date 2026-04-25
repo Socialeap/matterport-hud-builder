@@ -1,7 +1,8 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
+  ChevronDown,
   FileJson,
   FileText,
   Lock,
@@ -11,6 +12,7 @@ import {
   Sparkles,
   Trash2,
   Upload,
+  Wand2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -45,10 +47,25 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+
+interface TemplatesSearch {
+  architect?: number;
+}
 
 export const Route = createFileRoute(
   "/_authenticated/dashboard/vault/templates",
 )({
+  validateSearch: (raw: Record<string, unknown>): TemplatesSearch => {
+    const v = raw.architect;
+    return {
+      architect: v === 1 || v === "1" || v === true ? 1 : undefined,
+    };
+  },
   component: VaultTemplatesPage,
 });
 
