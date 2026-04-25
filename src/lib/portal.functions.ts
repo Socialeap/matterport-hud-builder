@@ -197,6 +197,17 @@ interface TourConfigData {
     hudBgColor: string;
     gateLabel: string;
   };
+  /** Per-property Vault asset selections (see SavePresentationInput). */
+  enhancements?: Record<
+    string,
+    {
+      spatial_audio?: string | null;
+      visual_hud_filter?: string[];
+      interactive_widget?: string[];
+      custom_iconography?: string[];
+      external_link?: string[];
+    }
+  >;
 }
 
 function buildMatterportUrlServer(modelId: string, behavior: Record<string, unknown>): string {
