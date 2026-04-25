@@ -1,81 +1,62 @@
-## Why you can't find it
+## Rename: "Template Architect" → "Property Mapper for AI Chat"
 
-The Guided Refinement Template Architect was built and wired in, but it lives **3 clicks deep** with no signposting:
+Your name is a clear win — it describes the **input** (Property data), the **action** (Mapping), and the **outcome** (smarter AI Chat). I have one small refinement to suggest, then a single recommendation; either is fine.
 
-1. Property Docs tab → click **Manage Templates** (small text link)
-2. Click **+ New Template** (or **Edit** on an existing one)
-3. Scroll **past** the JSON Schema textarea — only then does the Architect appear, looking like a small sibling helper next to the older "Auto-Generate from Document" block.
+### Naming options
 
-That's why you see the JSON editor but no obvious AI workflow. Two fixes are needed: **surface it** from the Vault Property Docs tab, and **promote it** to the primary action inside the Templates editor.
+1. **Property Mapper for AI Chat** (your pick) — clearest and most literal.
+2. *Property Knowledge Mapper* — slightly shorter, but loses the "AI Chat" payoff that explains *why* it matters.
 
-## What we'll change
+**Recommendation: go with your name, "Property Mapper for AI Chat."** It anchors the feature to the visible benefit (the chat), which is exactly what an MSP cares about.
 
-### 1. Promote Architect on the Property Docs vault tab
-File: `src/routes/_authenticated.dashboard.vault.tsx`
+I'll also rename the underlying motion from "Template Architect" → **"Property Mapper"**, and tag the AI step as "AI-assisted" inline rather than as a brand name.
 
-Replace the small one-line "Manage Templates" strip (lines 460–478) with a richer **Template Architect callout card** that explains the AI workflow and is the primary entry point. Keep "Manage Templates" available as a secondary link.
+### Plain-language explanation (used across all surfaces)
 
-Card content (Pro members):
-- Sparkles/Wand icon + heading: **"AI Template Architect"**
-- One-sentence pitch: *"Describe the property class and our AI drafts the extraction schema your clients' Property Docs are scored against — no JSON required."*
-- Primary button: **"Launch Template Architect"** → routes to `/dashboard/vault/templates?architect=1`
-- Secondary link: "Manage existing templates"
+> **Property Mapper for AI Chat** — Tell us what kind of property this is. The AI will list the facts worth pulling from your property documents (price, address, room counts, amenities, etc.). You tick what matters, and we build the "map" the AI Chat uses to answer your clients' questions.
 
-Starter tier: locked variant with the same explanation and an "Unlock with Pro" CTA, matching the existing Starter pattern.
+How it works (3 steps):
+1. **Describe** the property class.
+2. **Refine** the suggested facts.
+3. **Apply** — the AI Chat now knows what to look for in uploaded property docs.
 
-### 2. Make the Architect the headline of the Templates editor
-File: `src/routes/_authenticated.dashboard.vault.templates.tsx`
+### Surfaces to update
 
-Restructure the EditorDialog body so MSPs encounter the AI workflow **first**, not buried below the JSON textarea:
+**1. `src/routes/_authenticated.dashboard.vault.tsx`**
+- `PropertyDocArchitectCallout` (lines 847–907):
+  - Heading: `AI Template Architect` → **`Property Mapper for AI Chat`**
+  - Pitch copy → the plain-language explanation above.
+  - "How it works" line → `Describe property → Pick the facts → Apply. Your AI Chat instantly gets smarter on uploaded docs.`
+  - Primary button: `Launch Template Architect` → **`Open Property Mapper`**
+  - Secondary link: `Manage existing templates` → **`Manage saved maps`**
+- Add Property Doc dialog hint (lines 694–707):
+  - "Build or edit it in Vault → Property Docs → Template Architect" → **"Build or edit it in Vault → Property Docs → Property Mapper"**
 
-```text
-┌─ Editor Dialog ──────────────────────────────┐
-│ Label · Doc Kind · Extractor                 │
-│                                              │
-│ ★ Guided Refinement Template Architect ★    │ ← promoted, expanded by default
-│   (Describe → Refine → Apply)                │
-│                                              │
-│ ─ Or use a different starting point ─        │
-│                                              │
-│ ▸ Auto-Generate from PDF (collapsed)         │
-│ ▸ Edit JSON Schema directly (collapsed)      │
-│ ▸ Dry Run against sample PDF (collapsed)     │
-└──────────────────────────────────────────────┘
-```
+**2. `src/routes/_authenticated.dashboard.vault.templates.tsx`**
+- Page heading (line 200): `Property Doc Templates` → **`Property Maps for AI Chat`**
+- Page subtitle (lines 202–207): rewrite in plain language —
+  > "Each map tells the AI which facts to pull from a kind of property document (price, address, beds, amenities…). The AI Chat uses these facts to answer your clients."
+- Top-right button (line 220): `New with AI Architect` → **`New with AI`** (tooltip: "Build a map with AI assist")
+- Editor dialog title (lines 538–545): description rewrite —
+  > "Use the AI-assisted Property Mapper below, or expand the advanced sections to edit JSON, generate from a sample PDF, or dry-run."
+- "PRIMARY ACTION: AI Architect" callout (lines 594–601): retain, replace copy with: *"Start here → Describe the property and let AI suggest the facts. You can still hand-edit JSON or use a sample PDF below."*
+- EmptyState (lines 286–326): "Build with AI Architect" → **"Build with AI Mapper"**, copy refresh.
 
-Concretely:
-- Move `<TemplateArchitect>` to the top of the form, immediately after Label/Doc Kind/Extractor.
-- Add a short header strip above it: *"Start here — describe your property and let the AI build the schema."*
-- Wrap the existing **JSON textarea**, **SchemaInductionSection** (PDF auto-generate), and **DryRunSection** in collapsible accordions, all collapsed by default. Power users can expand to see/edit JSON or dry-run.
-- When the Architect's "Apply to Editor" finishes, auto-expand the JSON accordion so the user can see what was applied (a single visual confirmation).
+**3. `src/components/vault/TemplateArchitect.tsx`** (component file is NOT renamed — only display strings)
+- Header label (line 140): `Guided Refinement Template Architect` → **`Property Mapper for AI Chat`**
+- Sub-line (lines 146–149): *"Describe the property → pick the facts that matter → we build the map your AI Chat uses on uploaded property docs. No JSON required."*
+- Keep the `Gemini 2.5 Flash-Lite` badge (it's accurate and developers will recognize it).
 
-### 3. Add an empty-state nudge on the Templates index
-File: `src/routes/_authenticated.dashboard.vault.templates.tsx` (the `EmptyState` component, lines 233–246)
+### What is **not** changed
 
-When the MSP has zero templates, replace the generic "No templates yet" with two side-by-side options:
-- **"Build with AI Architect"** (primary, recommended badge) → opens the editor with Architect pre-focused
-- **"Start from blank JSON"** (secondary) → current behavior
+- File names (`TemplateArchitect.tsx`, route URLs, query param `?architect=1`, props like `forceArchitect`, `onArchitect`) — internal only, no user impact, and renaming would touch routing/types unnecessarily.
+- Backend / edge function (`induce-schema`) — naming is internal.
+- Database column names (`vault_templates`, `doc_kind`, etc.) — out of scope.
 
-### 4. Auto-open Architect via query param
-File: `src/routes/_authenticated.dashboard.vault.templates.tsx`
+### Verification
 
-Read `?architect=1` from the URL on mount; when present, auto-open the New Template dialog with the Architect's Describe phase focused. Lets the vault tab's "Launch Template Architect" button drop the user straight into the workflow.
-
-### 5. Add a one-line label inside the Add Property Doc dialog (Client-side hint)
-File: `src/routes/_authenticated.dashboard.vault.tsx` (the asset editor dialog used for adding Property Docs)
-
-Add a small italicized note under "Add Property Docs": *"This document will be parsed against your active Template. Manage your AI Template in Vault → Property Docs → Template Architect."* This closes the loop so MSPs uploading a doc understand the linkage.
-
-## Files touched
-
-- `src/routes/_authenticated.dashboard.vault.tsx` — promoted Architect callout card on Property Docs tab; hint inside Add Property Doc dialog
-- `src/routes/_authenticated.dashboard.vault.templates.tsx` — reorder editor sections, add accordions, query-param auto-open, redesigned empty state
-- *(no changes to)* `src/components/vault/TemplateArchitect.tsx`, `supabase/functions/induce-schema/index.ts`, or `src/lib/extraction/canonical-keys.ts` — backend already works; this is pure UX surfacing.
-
-## Verification
-
-- Visit `/dashboard/vault` → Property Docs tab → confirm Architect callout card is visible above the asset list.
-- Click "Launch Template Architect" → editor opens with Architect at the top, in Describe phase.
-- Empty templates page shows the two-option chooser.
-- Existing JSON editing flow still works (accordions expand cleanly).
-- No regressions: run `npm run verify:html` and `scripts/test-ask-runtime.mjs`.
+- Visit `/dashboard/vault` → Property Docs tab → callout reads "Property Mapper for AI Chat" with new copy and button.
+- Click **Open Property Mapper** → editor opens, header inside Architect component reads "Property Mapper for AI Chat."
+- Empty templates page shows the renamed primary card.
+- Add Property Doc dialog hint points to "Property Mapper."
+- `npm run verify:html` passes; no TypeScript regressions (only string changes).

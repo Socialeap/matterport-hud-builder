@@ -694,13 +694,13 @@ function AssetEditorDialog({
           {category.value === "property_doc" && (
             <p className="mt-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-[11px] italic text-muted-foreground">
               <Sparkles className="mr-1 inline size-3 text-primary" />
-              This document will be parsed against your active Template. Build
-              or edit it in{" "}
+              This document will be parsed against your active map so the AI
+              Chat can answer questions about it. Build or edit it in{" "}
               <Link
                 to="/dashboard/vault/templates"
                 className="font-medium not-italic text-primary hover:underline"
               >
-                Vault → Property Docs → Template Architect
+                Vault → Property Docs → Property Mapper
               </Link>
               .
             </p>
@@ -855,23 +855,25 @@ function PropertyDocArchitectCallout({ isStarter }: { isStarter: boolean }) {
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-sm font-semibold text-foreground">
-                AI Template Architect
+                Property Mapper for AI Chat
               </p>
               <Badge variant="secondary" className="text-[10px]">
                 Recommended
               </Badge>
               <Badge variant="outline" className="text-[10px]">
-                Gemini 2.5 Flash-Lite
+                AI-assisted · Gemini 2.5 Flash-Lite
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground">
-              Describe the property class and our AI drafts the extraction
-              schema your clients' Property Docs are scored against — no JSON
-              required. Refine the candidate fields, then apply.
+              Tell us what kind of property this is. The AI lists the facts
+              worth pulling from your property documents (price, address, room
+              counts, amenities, etc.). Tick what matters, and we build the
+              "map" your AI Chat uses to answer client questions.
             </p>
             <p className="text-[11px] text-muted-foreground/80">
               <span className="font-medium text-foreground/80">How it works:</span>{" "}
-              Describe → Refine candidate fields → Finalize → Apply schema.
+              Describe property → Pick the facts → Apply. Your AI Chat
+              instantly gets smarter on uploaded docs.
             </p>
           </div>
         </div>
@@ -888,7 +890,7 @@ function PropertyDocArchitectCallout({ isStarter }: { isStarter: boolean }) {
                   search={{ architect: 1 }}
                 >
                   <Sparkles className="size-3.5" />
-                  Launch Template Architect
+                  Open Property Mapper
                   <ArrowRight className="size-3.5" />
                 </Link>
               </Button>
@@ -896,7 +898,7 @@ function PropertyDocArchitectCallout({ isStarter }: { isStarter: boolean }) {
                 to="/dashboard/vault/templates"
                 className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
               >
-                <FileJson className="size-3" /> Manage existing templates
+                <FileJson className="size-3" /> Manage saved maps
               </Link>
             </>
           )}
