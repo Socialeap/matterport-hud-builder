@@ -442,7 +442,7 @@ function decideAnswer(inputs) {
   if (hasIntent && allowedChunks.length === 0 && tier1.length === 0) {
     return {
       path: "strict_unknown",
-      text: STRICT_UNKNOWN_COPY,
+      text: VALUE_INTENT_MISS_COPY[intent] || STRICT_UNKNOWN_COPY,
       intent: intent,
       strictUnknown: true,
       needsSynthesis: false,
