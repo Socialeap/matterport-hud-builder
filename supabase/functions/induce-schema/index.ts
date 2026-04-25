@@ -1,15 +1,21 @@
 // induce-schema
 // ─────────────
-// Accepts a base64-encoded PDF, extracts its raw text via unpdf (same
-// library as pdfjs-heuristic), then sends that text to GPT-4o-mini to
-// produce a JSON Schema that describes the document's extractable fields.
+// Four modes, all powered by Google Gemini 2.5 Flash-Lite via the
+// AI Studio REST API. The API key lives in the Supabase secret
+// GEMINI_PRIMARY_MODEL (legacy name — it actually holds an AIza... key).
 //
-// The system prompt aligns the LLM's output to the canonical key set
-// recognised by canonical-questions.ts (list_price, square_feet, etc.)
-// so downstream Q&A generation works without any additional mapping.
+//   1. pdf_b64           — extract text from PDF, induce a JSON Schema.
+//   2. mock_prompt       — generate a rich template from a description.
+//   3. architect_draft   — Turn 1 of the Guided Refinement Architect:
+//                          returns a numbered list of candidate fields
+//                          tagged Foundational | Differentiator.
+//   4. architect_refine  — Turn 2: take the MSP's kept items and emit
+//                          a strict JSON Schema (Draft-07). Hidden
+//                          canonical keys are merged additively before
+//                          returning so the runtime Intent Router keeps
+//                          working regardless of MSP choices.
 //
 // Called once per template at MSP authoring time — never on hot paths.
-// Requires OPENAI_API_KEY set as a Supabase project secret.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.103.0";
@@ -20,8 +26,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-// Mirror of JsonSchemaField in _shared/extractors/types.ts.
-// "integer" from the LLM is normalised to "number" during sanitisation.
+// ── Types ────────────────────────────────────────────────────────────
 type FieldType = "string" | "number" | "boolean" | "date";
 
 interface JsonSchemaField {
@@ -36,9 +41,76 @@ interface JsonSchema {
   required?: string[];
 }
 
-// ── Exact system prompt from the product spec ────────────────────────────────
-const SYSTEM_PROMPT = `Role and Objective:
-You are an expert Data Architect and Real Estate Information Systems specialist. Your task is to analyze the provided raw text—which represents a real estate property document, flyer, or MLS listing—and automatically generate a standard JSON Schema (Draft-07) that perfectly models the key data points found within the document.
+interface CanonicalKeyDef {
+  type: FieldType;
+  description: string;
+}
+
+// ── Hidden canonical keys (mirror of src/lib/extraction/canonical-keys.ts).
+// Edge function runs in Deno and cannot import from src/, so we duplicate.
+// Keep the two files in sync.
+const REQUIRED_CANONICAL_KEYS: Record<string, CanonicalKeyDef> = {
+  property_address: {
+    type: "string",
+    description: "Full street address of the property (canonical).",
+  },
+};
+
+const DOC_KIND_CANONICAL_KEYS: Record<string, Record<string, CanonicalKeyDef>> = {
+  hud_statement: {
+    purchase_price: { type: "number", description: "Purchase price (USD)." },
+    sale_price: { type: "number", description: "Sale price (USD)." },
+    closing_date: { type: "string", description: "Closing date (ISO 8601)." },
+  },
+  hospitality: {
+    number_of_rooms: { type: "number", description: "Total guest rooms / keys." },
+    number_of_suites: { type: "number", description: "Total suites." },
+    total_meeting_sqft: {
+      type: "number",
+      description: "Total meeting / event space in square feet.",
+    },
+    menu_highlight: {
+      type: "string",
+      description: "Signature menu item or chef specialty.",
+    },
+  },
+  commercial: {
+    square_feet: { type: "number", description: "Total leasable square feet." },
+    year_built: { type: "number", description: "Year the building was built." },
+    property_type: {
+      type: "string",
+      description: "Commercial property type (office, retail, industrial, etc.).",
+    },
+  },
+  residential: {
+    list_price: { type: "number", description: "List price (USD)." },
+    bedrooms: { type: "number", description: "Number of bedrooms." },
+    bathrooms: { type: "number", description: "Number of bathrooms." },
+    square_feet: { type: "number", description: "Living area in square feet." },
+    year_built: { type: "number", description: "Year built." },
+  },
+};
+
+function getCanonicalKeysFor(
+  docKind: string | undefined,
+): Record<string, CanonicalKeyDef> {
+  const kind = (docKind ?? "").trim().toLowerCase();
+  return {
+    ...REQUIRED_CANONICAL_KEYS,
+    ...(DOC_KIND_CANONICAL_KEYS[kind] ?? {}),
+  };
+}
+
+// ── Mission Context (Architect system prompt prefix) ────────────────
+const ARCHITECT_MISSION = `Mission: Transform raw property documents into a structured "Property Brain" — a digital knowledge base that translates unstructured info (PDFs, brochures) into a verified set of facts. This serves as the definitive source of truth for an AI-guided 3D tour, allowing the AI to provide authoritative, factual answers.
+
+Purpose: Raw documents often contain overlapping info. By defining a precise schema, we create a map that helps the AI navigate these facts, preventing critical errors and ensuring every visitor answer is grounded in verified data.
+
+Scope: Build a template that captures both Foundational facts (standard specs like sqft, year_built, address) and Differentiators (unique features like dining concepts, history, design inspiration). The objective is a "zero-hallucination" environment where the AI speaks only from the data provided.`;
+
+// ── Original PDF system prompt (kept verbatim, now sent to Gemini) ──
+const PDF_SYSTEM_PROMPT = `Role and Objective:
+You are an expert Data Architect and Real Estate Information Systems specialist. Your task is to analyze the provided raw text — which represents a real estate property document, flyer, or MLS listing — and automatically generate a standard JSON Schema (Draft-07) that perfectly models the key data points found within the document.
 
 System Context & Alignment:
 This schema will be used by an automated extraction engine to pull structured data from future documents of this type. To ensure maximum compatibility with our downstream Q&A systems, you must map the concepts you find in the document to the following standardized field keys whenever applicable:
@@ -55,23 +127,20 @@ This schema will be used by an automated extraction engine to pull structured da
 * listing_date, closing_date (string)
 
 Instructions:
-1. Analyze the Text: Carefully read the user-provided document text. Identify all distinct, extractable data fields (e.g., prices, features, addresses, dates, contacts).
-2. Map to Standard Keys: If a field you identify matches the concept of one of our standard keys listed above, you MUST use our standard key.
-3. Create Custom Keys: If you find important extractable information that does not fit a standard key (e.g., "Roof Type", "School District", "Heating System"), create a clear, lowercase, snake_case key for it. Beyond the standard keys above, you SHOULD include any other extractable concepts the document covers — amenities, design notes, hospitality stats (number_of_rooms, number_of_suites, meeting_space_sqft, ballroom_capacity), commercial details, sustainability ratings, neighborhood descriptors, brand affiliations, etc. — add custom snake_case keys for them in \`properties\` so the runtime extractor knows to look for them too. Aim for a comprehensive schema (10–30 properties when content permits).
-4. Determine Data Types: Assign the correct JSON data type (string, number, integer, boolean) to each field. Ensure financial amounts and measurements are typed appropriately (usually as number).
+1. Analyze the Text: Carefully read the user-provided document text. Identify all distinct, extractable data fields.
+2. Map to Standard Keys: If a field you identify matches the concept of one of our standard keys above, you MUST use our standard key.
+3. Create Custom Keys: If you find important extractable information that does not fit a standard key (e.g., "Roof Type", "School District"), create a clear, lowercase, snake_case key. Beyond the standard keys above, you SHOULD include any other extractable concepts the document covers — amenities, design notes, hospitality stats, commercial details, sustainability ratings, neighborhood descriptors, brand affiliations, etc. — add custom snake_case keys for them in \`properties\` so the runtime extractor knows to look for them too. Aim for a comprehensive schema (10–30 properties when content permits).
+4. Determine Data Types: Assign the correct JSON data type to each field. Financial amounts and measurements should be number.
 5. Add Descriptions: Write a brief, clear description for every property in the schema.
-6. Assign Required Fields: Identify 2 to 5 core fields that are absolutely essential to this type of document and list them in the schema's required array.
+6. Assign Required Fields: Identify 2 to 5 core fields and list them in the required array.
 
 Strict Output Constraints:
-* You must output ONLY a valid JSON object.
-* Do NOT wrap the JSON in markdown formatting blocks (e.g., do not use \`\`\`json ... \`\`\`).
-* Do NOT include any conversational text, pleasantries, explanations, or introductory statements.
-* The output must begin with { and end with }. Failure to return parseable JSON will break the application pipeline.`;
+* Output ONLY a valid JSON object that begins with { and ends with }.
+* Do NOT wrap in markdown code fences. Do NOT include any prose.`;
 
 const MAX_PDF_BYTES = 10 * 1024 * 1024;
-// GPT-4o-mini context window is large; 12 000 chars (~3 000 tokens) is
-// enough to surface all fields in a typical real-estate PDF.
 const MAX_TEXT_CHARS = 12_000;
+const GEMINI_MODEL = "gemini-2.5-flash-lite";
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -88,7 +157,6 @@ function decodeBase64(b64: string): Uint8Array {
   return out;
 }
 
-// Strip markdown code fences the LLM might emit despite the prompt.
 function stripFences(raw: string): string {
   return raw
     .replace(/^```(?:json)?\s*/i, "")
@@ -96,8 +164,71 @@ function stripFences(raw: string): string {
     .trim();
 }
 
-// Normalise the raw LLM object into our internal JsonSchema shape.
-// "integer" → "number"; any unrecognised type → "string".
+// ── Gemini caller ────────────────────────────────────────────────────
+interface GeminiOpts {
+  apiKey: string;
+  systemPrompt: string;
+  userPrompt: string;
+  /** -1 = dynamic, 0 = no thinking (fastest), >0 = budget. */
+  thinkingBudget: number;
+  maxOutputTokens: number;
+  temperature?: number;
+  /** Optional strict response schema for Turn 2. */
+  responseSchema?: Record<string, unknown>;
+}
+
+interface GeminiResult {
+  text: string;
+  usage: { prompt: number; completion: number; total: number };
+}
+
+async function callGemini(opts: GeminiOpts): Promise<GeminiResult> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(opts.apiKey)}`;
+  const generationConfig: Record<string, unknown> = {
+    temperature: opts.temperature ?? 0.2,
+    topP: 0.95,
+    maxOutputTokens: opts.maxOutputTokens,
+    responseMimeType: "application/json",
+    thinkingConfig: { thinkingBudget: opts.thinkingBudget },
+  };
+  if (opts.responseSchema) {
+    generationConfig.responseSchema = opts.responseSchema;
+  }
+  const body = {
+    contents: [{ role: "user", parts: [{ text: opts.userPrompt }] }],
+    systemInstruction: { role: "system", parts: [{ text: opts.systemPrompt }] },
+    generationConfig,
+  };
+
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) {
+    const detail = await resp.text();
+    throw new Error(`gemini_${resp.status}:${detail.slice(0, 400)}`);
+  }
+  const json = (await resp.json()) as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    usageMetadata?: {
+      promptTokenCount?: number;
+      candidatesTokenCount?: number;
+      totalTokenCount?: number;
+    };
+  };
+  const text = json.candidates?.[0]?.content?.parts
+    ?.map((p) => p.text ?? "")
+    .join("") ?? "";
+  const usage = {
+    prompt: json.usageMetadata?.promptTokenCount ?? 0,
+    completion: json.usageMetadata?.candidatesTokenCount ?? 0,
+    total: json.usageMetadata?.totalTokenCount ?? 0,
+  };
+  return { text, usage };
+}
+
+// ── Schema sanitisation + validation ────────────────────────────────
 function sanitiseSchema(raw: unknown): JsonSchema {
   if (
     typeof raw !== "object" ||
@@ -114,7 +245,6 @@ function sanitiseSchema(raw: unknown): JsonSchema {
     if (typeof val !== "object" || val === null) continue;
     const v = val as Record<string, unknown>;
     let type = String(v.type ?? "string");
-    // JSON Schema Draft-07 has "integer"; our extractor only knows "number".
     if (type === "integer") type = "number";
     if (!["string", "number", "boolean", "date"].includes(type)) type = "string";
     const field: JsonSchemaField = { type: type as FieldType };
@@ -136,6 +266,196 @@ function sanitiseSchema(raw: unknown): JsonSchema {
   return schema;
 }
 
+const SNAKE = /^[a-z][a-z0-9_]*$/;
+
+function validateSchemaStrict(schema: JsonSchema): string | null {
+  const keys = Object.keys(schema.properties);
+  if (keys.length < 3) return "schema must have at least 3 properties";
+  if (keys.length > 60) return "schema must have at most 60 properties";
+  for (const k of keys) {
+    if (!SNAKE.test(k)) return `key "${k}" is not snake_case`;
+    const f = schema.properties[k];
+    if (!["string", "number", "boolean", "date"].includes(f.type)) {
+      return `key "${k}" has invalid type "${f.type}"`;
+    }
+  }
+  if (schema.required) {
+    for (const r of schema.required) {
+      if (!(r in schema.properties)) {
+        return `required key "${r}" not in properties`;
+      }
+    }
+  }
+  return null;
+}
+
+/** Additive merge — never overwrites an MSP-defined property. */
+function mergeCanonicalKeys(
+  schema: JsonSchema,
+  docKind: string | undefined,
+): { schema: JsonSchema; added: string[] } {
+  const canonical = getCanonicalKeysFor(docKind);
+  const added: string[] = [];
+  const properties = { ...schema.properties };
+  for (const [k, def] of Object.entries(canonical)) {
+    if (!(k in properties)) {
+      properties[k] = { type: def.type, description: def.description };
+      added.push(k);
+    }
+  }
+  return {
+    schema: { ...schema, properties },
+    added,
+  };
+}
+
+// ── Architect Turn 1: draft candidates ──────────────────────────────
+interface DraftItem {
+  id: number;
+  key: string;
+  label: "Foundational" | "Differentiator";
+  title: string;
+  desc: string;
+}
+
+async function runArchitectDraft(
+  apiKey: string,
+  propDescr: string,
+): Promise<{ draft: DraftItem[]; usage: GeminiResult["usage"] }> {
+  const system = `${ARCHITECT_MISSION}
+
+You are the Property Template Architect (Turn 1: Draft).
+
+Output contract — STRICT:
+Return ONLY a valid JSON object of shape:
+{ "draft": [ { "id": <int starting at 1>, "key": "<snake_case>", "label": "Foundational" | "Differentiator", "title": "<human-readable name>", "desc": "<≤120 char explanation>" } ] }
+
+Rules:
+- 12 to 24 items.
+- "Foundational" = standard specs always extractable from any doc of this class (sqft, year_built, address-like).
+- "Differentiator" = unique features that make THIS property stand out (signature dish, brand story, design note).
+- Every "key" must be lowercase snake_case, ≤40 chars.
+- No prose, no markdown, no commentary outside the JSON.`;
+
+  const user = `Draft a candidate field list for this property class:
+
+"""${propDescr}"""`;
+
+  const { text, usage } = await callGemini({
+    apiKey,
+    systemPrompt: system,
+    userPrompt: user,
+    thinkingBudget: 0, // fastest path for the draft
+    maxOutputTokens: 1500,
+    temperature: 0.3,
+  });
+
+  const parsed = JSON.parse(stripFences(text)) as { draft?: unknown };
+  const rawDraft = Array.isArray(parsed.draft) ? parsed.draft : [];
+  const draft: DraftItem[] = [];
+  for (let i = 0; i < rawDraft.length; i++) {
+    const it = rawDraft[i];
+    if (typeof it !== "object" || it === null) continue;
+    const o = it as Record<string, unknown>;
+    const key = String(o.key ?? "").trim();
+    const title = String(o.title ?? "").trim();
+    const desc = String(o.desc ?? "").trim();
+    const label = o.label === "Foundational" || o.label === "Differentiator"
+      ? o.label
+      : "Foundational";
+    if (!SNAKE.test(key) || !title) continue;
+    draft.push({
+      id: typeof o.id === "number" ? o.id : i + 1,
+      key,
+      label,
+      title,
+      desc: desc.slice(0, 200),
+    });
+  }
+  if (draft.length < 6) {
+    throw new Error(`draft_too_short:${draft.length}`);
+  }
+  return { draft, usage };
+}
+
+// ── Architect Turn 2: refine to schema ──────────────────────────────
+interface KeptItem {
+  key: string;
+  title: string;
+  desc?: string;
+}
+
+async function runArchitectRefine(
+  apiKey: string,
+  propDescr: string,
+  docKind: string,
+  keptItems: KeptItem[],
+): Promise<{
+  schema: JsonSchema;
+  hidden_keys_added: string[];
+  usage: GeminiResult["usage"];
+}> {
+  const system = `${ARCHITECT_MISSION}
+
+You are the Property Template Architect (Turn 2: Final Schema).
+
+Convert the user's KEPT field list into a strict JSON Schema (Draft-07):
+{
+  "type": "object",
+  "properties": {
+    "<snake_case_key>": { "type": "string|number|boolean", "description": "<short>" },
+    ...
+  },
+  "required": ["...", "..."]
+}
+
+Rules:
+- Every property MUST have a type from {string, number, boolean} and a non-empty description.
+- Pick 2 to 5 essentials for the "required" array.
+- Use the MSP-provided key names verbatim — do not rename.
+- Output ONLY the JSON object, no prose, no markdown.`;
+
+  const user = `Property class: "${propDescr}"
+Doc kind: "${docKind}"
+
+Kept fields (preserve every key):
+${JSON.stringify(keptItems, null, 2)}`;
+
+  const { text, usage } = await callGemini({
+    apiKey,
+    systemPrompt: system,
+    userPrompt: user,
+    thinkingBudget: -1, // dynamic — schema correctness matters
+    maxOutputTokens: 2000,
+    temperature: 0.1,
+  });
+
+  const parsed = JSON.parse(stripFences(text));
+  const sanitised = sanitiseSchema(parsed);
+
+  // Force MSP keys to be present even if Gemini dropped any.
+  for (const it of keptItems) {
+    if (!(it.key in sanitised.properties) && SNAKE.test(it.key)) {
+      sanitised.properties[it.key] = {
+        type: "string",
+        description: it.desc || it.title,
+      };
+    }
+  }
+
+  const merged = mergeCanonicalKeys(sanitised, docKind);
+  const validationErr = validateSchemaStrict(merged.schema);
+  if (validationErr) {
+    throw new Error(`schema_validation_failed:${validationErr}`);
+  }
+  return {
+    schema: merged.schema,
+    hidden_keys_added: merged.added,
+    usage,
+  };
+}
+
+// ── Handler ─────────────────────────────────────────────────────────
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -146,20 +466,20 @@ serve(async (req) => {
 
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
   const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
-  const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+  // Legacy secret name — actually holds the Gemini API key (AIza...).
+  const GEMINI_API_KEY = Deno.env.get("GEMINI_PRIMARY_MODEL");
 
   if (!SUPABASE_URL || !ANON_KEY) {
     return jsonResponse({ error: "supabase_env_missing" }, 500);
   }
-  if (!OPENAI_API_KEY) {
-    return jsonResponse({ error: "openai_key_missing" }, 500);
+  if (!GEMINI_API_KEY) {
+    return jsonResponse({ error: "gemini_key_missing" }, 500);
   }
 
-  // ── Auth ────────────────────────────────────────────────────────────────────
+  // Auth
   const authHeader = req.headers.get("Authorization") ?? "";
   const jwt = authHeader.replace(/^Bearer\s+/i, "");
   if (!jwt) return jsonResponse({ error: "unauthorized" }, 401);
-
   const userClient = createClient(SUPABASE_URL, ANON_KEY, {
     global: { headers: { Authorization: authHeader } },
   });
@@ -168,23 +488,124 @@ serve(async (req) => {
     return jsonResponse({ error: "unauthorized" }, 401);
   }
 
-  // ── Parse body ──────────────────────────────────────────────────────────────
-  // Two modes:
-  //   1. pdf_b64 — extract text from PDF (original flow)
-  //   2. mock_prompt — generate a rich template from a property-class
-  //      description like "boutique hotel with restaurant and bar".
-  //      Used by the MSP "Suggest a rich template" UI.
-  let body: { pdf_b64?: string; mock_prompt?: string };
+  // Parse body
+  let body: {
+    pdf_b64?: string;
+    mock_prompt?: string;
+    mode?: string;
+    prop_descr?: string;
+    doc_kind?: string;
+    kept_items?: KeptItem[];
+  };
   try {
-    body = (await req.json()) as { pdf_b64?: string; mock_prompt?: string };
+    body = await req.json();
   } catch {
     return jsonResponse({ error: "invalid_json" }, 400);
   }
-  if (!body.pdf_b64 && !body.mock_prompt) {
-    return jsonResponse({ error: "missing_pdf_b64_or_mock_prompt" }, 400);
+
+  // ── Architect Turn 1 ─────────────────────────────────────────────
+  if (body.mode === "architect_draft") {
+    const propDescr = (body.prop_descr ?? "").trim();
+    if (propDescr.length < 4) {
+      return jsonResponse({ error: "prop_descr_too_short" }, 400);
+    }
+    if (propDescr.length > 1000) {
+      return jsonResponse({ error: "prop_descr_too_long" }, 400);
+    }
+    try {
+      const out = await runArchitectDraft(GEMINI_API_KEY, propDescr);
+      console.log("[architect_draft] usage", out.usage, "items", out.draft.length);
+      return jsonResponse({ draft: out.draft, usage: out.usage });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[architect_draft] failed", msg);
+      return jsonResponse({ error: "architect_draft_failed", detail: msg }, 502);
+    }
   }
 
-  // ── Decode PDF bytes ────────────────────────────────────────────────────────
+  // ── Architect Turn 2 ─────────────────────────────────────────────
+  if (body.mode === "architect_refine") {
+    const propDescr = (body.prop_descr ?? "").trim();
+    const docKind = (body.doc_kind ?? "").trim();
+    const kept = Array.isArray(body.kept_items) ? body.kept_items : [];
+    if (propDescr.length < 4) {
+      return jsonResponse({ error: "prop_descr_too_short" }, 400);
+    }
+    if (kept.length < 3) {
+      return jsonResponse({ error: "kept_items_too_few", min: 3 }, 400);
+    }
+    if (kept.length > 60) {
+      return jsonResponse({ error: "kept_items_too_many", max: 60 }, 400);
+    }
+    // Sanitise kept items
+    const cleanKept: KeptItem[] = [];
+    for (const it of kept) {
+      if (!it || typeof it !== "object") continue;
+      const k = String(it.key ?? "").trim();
+      const t = String(it.title ?? "").trim();
+      if (!SNAKE.test(k) || !t) continue;
+      cleanKept.push({ key: k, title: t, desc: String(it.desc ?? "").slice(0, 200) });
+    }
+    if (cleanKept.length < 3) {
+      return jsonResponse({ error: "kept_items_invalid" }, 400);
+    }
+    try {
+      const out = await runArchitectRefine(
+        GEMINI_API_KEY,
+        propDescr,
+        docKind,
+        cleanKept,
+      );
+      console.log(
+        "[architect_refine] usage",
+        out.usage,
+        "props",
+        Object.keys(out.schema.properties).length,
+        "added",
+        out.hidden_keys_added,
+      );
+      return jsonResponse({
+        schema: out.schema,
+        hidden_keys_added: out.hidden_keys_added,
+        usage: out.usage,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[architect_refine] failed", msg);
+      return jsonResponse({ error: "architect_refine_failed", detail: msg }, 502);
+    }
+  }
+
+  // ── Mock-prompt mode (text → schema) ─────────────────────────────
+  if (body.mock_prompt) {
+    const prompt = body.mock_prompt.trim();
+    if (!prompt) return jsonResponse({ error: "empty_mock_prompt" }, 400);
+    try {
+      const { text, usage } = await callGemini({
+        apiKey: GEMINI_API_KEY,
+        systemPrompt: PDF_SYSTEM_PROMPT,
+        userPrompt: prompt,
+        thinkingBudget: -1,
+        maxOutputTokens: 2000,
+        temperature: 0.1,
+      });
+      const schema = sanitiseSchema(JSON.parse(stripFences(text)));
+      if (Object.keys(schema.properties).length === 0) {
+        return jsonResponse({ error: "no_fields_detected" }, 422);
+      }
+      console.log("[mock_prompt] usage", usage);
+      return jsonResponse({ schema, text_preview: prompt.slice(0, 500) });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return jsonResponse({ error: "mock_prompt_failed", detail: msg }, 502);
+    }
+  }
+
+  // ── PDF mode ─────────────────────────────────────────────────────
+  if (!body.pdf_b64) {
+    return jsonResponse({ error: "missing_pdf_b64_or_mock_prompt_or_mode" }, 400);
+  }
+
   let bytes: Uint8Array;
   try {
     bytes = decodeBase64(body.pdf_b64);
@@ -197,7 +618,6 @@ serve(async (req) => {
     return jsonResponse({ error: "pdf_too_large", max_bytes: MAX_PDF_BYTES }, 413);
   }
 
-  // ── Extract text (same unpdf module as pdfjs-heuristic) ────────────────────
   let fullText: string;
   try {
     interface UnpdfModule {
@@ -210,7 +630,6 @@ serve(async (req) => {
     const unpdf = (await import(
       "https://esm.sh/unpdf@0.12.1"
     )) as unknown as UnpdfModule;
-
     const pdf = await unpdf.getDocumentProxy(bytes);
     const { text: raw } = await unpdf.extractText(pdf, { mergePages: true });
     fullText = typeof raw === "string" ? raw : (raw as string[]).join("\n");
@@ -223,56 +642,25 @@ serve(async (req) => {
     return jsonResponse({ error: "empty_pdf_text" }, 422);
   }
 
-  // Truncate to stay within a reasonable token budget.
   const truncated =
-    fullText.length > MAX_TEXT_CHARS
-      ? fullText.slice(0, MAX_TEXT_CHARS)
-      : fullText;
+    fullText.length > MAX_TEXT_CHARS ? fullText.slice(0, MAX_TEXT_CHARS) : fullText;
 
-  // ── Call GPT-4o-mini ────────────────────────────────────────────────────────
-  let llmRaw: string;
-  try {
-    const resp = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: truncated },
-        ],
-        max_tokens: 2000,
-        temperature: 0.1,
-      }),
-    });
-
-    if (!resp.ok) {
-      const detail = await resp.text();
-      return jsonResponse({ error: "openai_error", detail }, 502);
-    }
-
-    const completion = (await resp.json()) as {
-      choices: Array<{ message: { content: string } }>;
-    };
-    llmRaw = completion.choices?.[0]?.message?.content ?? "";
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return jsonResponse({ error: "openai_request_failed", detail: msg }, 502);
-  }
-
-  // ── Parse + sanitise schema ─────────────────────────────────────────────────
   let schema: JsonSchema;
   try {
-    const stripped = stripFences(llmRaw);
-    const parsed = JSON.parse(stripped) as unknown;
-    schema = sanitiseSchema(parsed);
+    const { text, usage } = await callGemini({
+      apiKey: GEMINI_API_KEY,
+      systemPrompt: PDF_SYSTEM_PROMPT,
+      userPrompt: truncated,
+      thinkingBudget: -1,
+      maxOutputTokens: 2000,
+      temperature: 0.1,
+    });
+    schema = sanitiseSchema(JSON.parse(stripFences(text)));
+    console.log("[pdf_b64] usage", usage);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return jsonResponse(
-      { error: "schema_parse_failed", detail: msg, raw_output: llmRaw.slice(0, 500) },
+      { error: "schema_parse_failed", detail: msg },
       422,
     );
   }

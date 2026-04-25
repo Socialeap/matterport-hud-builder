@@ -23,6 +23,7 @@ import type {
 } from "@/lib/extraction/provider";
 import { dryRunTemplate, type DryRunSuccess } from "@/lib/extraction/dryrun";
 import { induceSchema, type InduceSchemaResult } from "@/lib/extraction/induce";
+import { TemplateArchitect } from "@/components/vault/TemplateArchitect";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -484,6 +485,12 @@ function EditorDialog({
               Shape: <code>{"{ type: 'object', properties: { name: { type, pattern? } } }"}</code>
             </p>
           </div>
+
+          <TemplateArchitect
+            docKind={state.doc_kind}
+            disabled={saving}
+            onApply={(json) => setState({ ...state, schema_text: json })}
+          />
 
           <SchemaInductionSection
             file={induceFile}
