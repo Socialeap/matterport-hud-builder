@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Lock } from "lucide-react";
 import {
@@ -172,6 +172,7 @@ const emptyForm: AssetFormState = {
 
 function VaultPage() {
   const { user } = useAuth();
+  const location = useLocation();
   
   const [assets, setAssets] = useState<VaultAsset[]>([]);
   const [loading, setLoading] = useState(true);
@@ -388,6 +389,10 @@ function VaultPage() {
   const goToPricing = () => {
     window.location.href = "/#pricing";
   };
+
+  if (location.pathname !== "/dashboard/vault") {
+    return <Outlet />;
+  }
 
 
   return (
@@ -845,24 +850,6 @@ function AssetEditorDialog({
 }
 
 function PropertyDocArchitectCallout({ isStarter }: { isStarter: boolean }) {
-  const navigate = useNavigate();
-
-  const openMapper = () => {
-    // Force a fresh ?architect=1 hit so the templates page re-fires its
-    // auto-open effect, even if the user is already on /dashboard/vault/templates.
-    navigate({
-      to: "/dashboard/vault/templates",
-      search: { architect: 1 },
-    });
-  };
-
-  const manageMappers = () => {
-    navigate({
-      to: "/dashboard/vault/templates",
-      search: {},
-    });
-  };
-
   return (
     <Card className="border-2 border-primary/40 bg-gradient-to-br from-primary/5 via-background to-primary/10">
       <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
@@ -903,18 +890,20 @@ function PropertyDocArchitectCallout({ isStarter }: { isStarter: boolean }) {
             </span>
           ) : (
             <>
-              <Button size="sm" className="gap-1" onClick={openMapper}>
-                <Sparkles className="size-3.5" />
-                Open Property Mapper
-                <ArrowRight className="size-3.5" />
+              <Button asChild size="sm" className="gap-1">
+                <Link to="/dashboard/vault/templates" search={{ architect: 1 }}>
+                  <Sparkles className="size-3.5" />
+                  Open Property Mapper
+                  <ArrowRight className="size-3.5" />
+                </Link>
               </Button>
-              <button
-                type="button"
-                onClick={manageMappers}
+              <Link
+                to="/dashboard/vault/templates"
+                search={{}}
                 className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
               >
                 <FileJson className="size-3" /> Manage existing mappers
-              </button>
+              </Link>
             </>
           )}
         </div>
