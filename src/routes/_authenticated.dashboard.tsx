@@ -30,7 +30,7 @@ interface ExpiryAlert {
 }
 
 function DashboardLayout() {
-  const { user, roles } = useAuth();
+  const { user, roles, signOut } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [tierChecked, setTierChecked] = useState(false);
