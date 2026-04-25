@@ -237,6 +237,128 @@ const TEMPLATES: Record<string, Template> = {
     answerTemplate: "It was listed on {value}.",
     format: "raw",
   },
+
+  // ── Hospitality-aware curated entries ─────────────────────────────
+  menu_highlight: {
+    questions: [
+      "What's on the menu?",
+      "What should I eat?",
+      "What's a good food to eat there?",
+      "What's the menu like?",
+      "Any signature dishes?",
+      "What's the food highlight?",
+      "What's the standout dish?",
+      "What's the best thing to order?",
+    ],
+    answerTemplate: "The menu highlight is {value}.",
+    format: "raw",
+  },
+  signature_dish: {
+    questions: [
+      "What's the signature dish?",
+      "What should I order?",
+      "What's the standout dish?",
+      "Any signature dishes?",
+      "What's the best dish?",
+    ],
+    answerTemplate: "The signature dish is {value}.",
+    format: "raw",
+  },
+  cocktail_program: {
+    questions: [
+      "What's the cocktail program?",
+      "Tell me about the cocktails.",
+      "What's the bar program like?",
+      "Any signature cocktails?",
+      "What drinks do they have?",
+      "What's the bar like?",
+    ],
+    answerTemplate: "The cocktail program: {value}.",
+    format: "raw",
+  },
+  restaurant_name: {
+    questions: [
+      "What's the restaurant called?",
+      "What's the name of the restaurant?",
+      "What's the restaurant?",
+      "Name of the on-site restaurant?",
+    ],
+    answerTemplate: "The on-site restaurant is {value}.",
+    format: "raw",
+  },
+  bar_name: {
+    questions: [
+      "What's the bar called?",
+      "What's the name of the bar?",
+      "What bar is on-site?",
+    ],
+    answerTemplate: "The on-site bar is {value}.",
+    format: "raw",
+  },
+  historical_reference: {
+    questions: [
+      "What's the historical reference?",
+      "Is there a historical story?",
+      "What's the history behind it?",
+      "Any historical significance?",
+      "What's the backstory?",
+    ],
+    answerTemplate: "Historical reference: {value}.",
+    format: "raw",
+  },
+  neighborhood_inspiration: {
+    questions: [
+      "What inspired the design?",
+      "What's the inspiration?",
+      "What's the story behind the property?",
+      "Tell me about the inspiration.",
+      "How is it tied to the neighborhood?",
+    ],
+    answerTemplate: "The neighborhood inspiration: {value}.",
+    format: "raw",
+  },
+  location_description: {
+    questions: [
+      "What's the area like?",
+      "Tell me about the location.",
+      "What's around the property?",
+      "What's nearby?",
+      "Where exactly is it?",
+    ],
+    answerTemplate: "Location: {value}.",
+    format: "raw",
+  },
+  hotel_chain: {
+    questions: [
+      "What hotel chain is it?",
+      "Is it part of a chain?",
+      "What brand is the hotel?",
+      "What chain does it belong to?",
+    ],
+    answerTemplate: "It's part of the {value} chain.",
+    format: "raw",
+  },
+  architect: {
+    questions: [
+      "Who was the architect?",
+      "Who designed the building?",
+      "Who built it?",
+      "Who's the architect?",
+    ],
+    answerTemplate: "The architect is {value}.",
+    format: "raw",
+  },
+  amenities: {
+    questions: [
+      "What amenities are there?",
+      "What features does it have?",
+      "What's available on-site?",
+      "Tell me about the amenities.",
+      "What facilities are available?",
+    ],
+    answerTemplate: "Amenities include: {value}.",
+    format: "raw",
+  },
 };
 
 // ── Value formatting ────────────────────────────────────────────────
@@ -512,11 +634,116 @@ function buildGenericTemplate(field: string): Template {
     );
   }
 
+  // Vocabulary-aware paraphrases. We layer natural-language phrasings
+  // onto the structural ones above whenever the field name contains a
+  // recognised concept token. This is what lets a viewer ask "what
+  // should I eat?" and still hit `menu_highlight`, `signature_dish`, etc.
+  // The map is intentionally generous — over-emission is fine because
+  // the runtime cosine selects top-1.
+  for (const phrase of vocabularyPhrases(tokens, fieldLower, label)) {
+    questions.push(phrase);
+  }
+
   return {
     questions,
     answerTemplate,
     format,
   };
+}
+
+// Concept token → natural-language phrasings a visitor would actually
+// type. Keys are tokens that may appear inside a field name (after
+// snake_case → token splitting). Multiple keys can hit on one field
+// (e.g. `cocktail_program` matches both "cocktail" and "program") and
+// their phrasings are combined.
+const VOCAB_MAP: Record<string, string[]> = {
+  // Food & beverage
+  menu: ["What's on the menu?", "What should I eat?", "What's a good food?", "Any signature dishes?", "What food do they serve?"],
+  food: ["What's the food like?", "What should I eat there?", "What's a good food to try?", "Any good food?", "What kind of food?"],
+  dish: ["Any signature dishes?", "What's the signature dish?", "What dishes do they serve?", "What should I order?"],
+  cuisine: ["What kind of cuisine?", "What's the cuisine?", "What type of food do they serve?"],
+  dining: ["Where can I dine?", "What's the dining like?", "Any good dining options?", "Where should I eat?"],
+  restaurant: ["What restaurants are there?", "Any good restaurants?", "Where can I eat?", "Tell me about the restaurants."],
+  cocktail: ["What's the cocktail program?", "Tell me about the cocktails.", "Any signature cocktails?", "What drinks do they have?"],
+  bar: ["What's the bar like?", "Tell me about the bar.", "Any good drinks?", "Where can I get a drink?"],
+  drink: ["What drinks do they serve?", "What's there to drink?", "Tell me about the drinks."],
+  beverage: ["What beverages are offered?", "Tell me about the beverages.", "What's there to drink?"],
+
+  // Hospitality experience
+  experience: ["What's the experience like?", "Tell me about the experience.", "What can I expect?"],
+  vibe: ["What's the vibe?", "What's the atmosphere like?", "What's the mood?"],
+  atmosphere: ["What's the atmosphere?", "What's the vibe like?", "What's the mood?"],
+  concept: ["What's the concept?", "Tell me about the concept.", "What's the idea behind it?"],
+  inspiration: ["What inspired it?", "What's the inspiration?", "Tell me the story behind the design."],
+  story: ["Tell me the story.", "What's the story?", "Is there a story behind it?"],
+  history: ["What's the history?", "Tell me the history.", "Is there a backstory?", "What's the historical context?"],
+  historical: ["What's the historical reference?", "Is there a historical story?", "What's the history?"],
+  legacy: ["What's the legacy?", "Tell me about its legacy.", "What's the heritage?"],
+  heritage: ["What's the heritage?", "Tell me about the heritage.", "Any historical significance?"],
+
+  // Place & neighborhood
+  neighborhood: ["What's the neighborhood like?", "Tell me about the area.", "What's around the property?", "What's nearby?"],
+  area: ["What's the area like?", "What's in the area?", "Tell me about the area."],
+  district: ["What district is it in?", "Tell me about the district.", "What's the district like?"],
+  nearby: ["What's nearby?", "What's around here?", "Anything around the property?"],
+  landmark: ["Any landmarks nearby?", "What landmarks are close?", "Famous landmarks near here?"],
+
+  // Design / build credits
+  architect: ["Who's the architect?", "Who designed the building?", "Who built it architecturally?"],
+  designer: ["Who's the designer?", "Who designed the interiors?", "Who's the interior designer?"],
+  designed: ["Who designed it?", "Who did the design?"],
+  developer: ["Who developed it?", "Who's the developer?", "Who built it?"],
+  builder: ["Who built it?", "Who's the builder?", "Who's the construction company?"],
+  brand: ["What brand is it?", "What's the brand?", "Who's it branded under?", "What chain is it?"],
+  chain: ["What chain is it?", "What hotel chain?", "Is it part of a chain?"],
+  affiliation: ["What's the brand affiliation?", "What's it affiliated with?"],
+
+  // People / occupancy
+  capacity: ["What's the capacity?", "How many people can it hold?", "What's the max capacity?"],
+  occupancy: ["What's the occupancy?", "How many guests can stay?", "What's the room occupancy?"],
+  guest: ["How many guests?", "Tell me about guest accommodations.", "What's the guest experience?"],
+
+  // Spaces
+  ballroom: ["Tell me about the ballrooms.", "What ballrooms are there?", "Any event space?"],
+  meeting: ["Any meeting space?", "What meeting rooms are available?", "Tell me about the meeting space."],
+  event: ["What event space is there?", "Can I host an event?", "Tell me about event spaces."],
+  spa: ["Is there a spa?", "Tell me about the spa.", "What spa services?"],
+  pool: ["Is there a pool?", "Tell me about the pool.", "Pool details?"],
+  gym: ["Is there a gym?", "Tell me about the gym.", "Fitness facilities?"],
+  fitness: ["Tell me about fitness facilities.", "Is there a fitness center?", "Gym details?"],
+
+  // Sustainability
+  sustainability: ["Is it sustainable?", "Tell me about sustainability.", "Any green credentials?"],
+  certification: ["Any certifications?", "What certifications does it have?", "Is it LEED certified?"],
+  leed: ["Is it LEED certified?", "What's the LEED rating?"],
+};
+
+function vocabularyPhrases(tokens: string[], fieldLower: string, label: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  // Match against tokens AND substring of the field name (so
+  // "cocktail_program" hits "cocktail" via tokens, and `restaurantname`
+  // would still hit "restaurant" via substring).
+  for (const [concept, phrases] of Object.entries(VOCAB_MAP)) {
+    const tokenHit = tokens.includes(concept);
+    const subHit = !tokenHit && fieldLower.includes(concept);
+    if (!tokenHit && !subHit) continue;
+    for (const p of phrases) {
+      const key = p.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(p);
+    }
+  }
+  // If we found vocabulary hits, also include a "tell me about <label>"
+  // fallback that uses the full humanized field name verbatim — this
+  // grounds embeddings to the field name itself.
+  if (out.length > 0) {
+    const tellMe = `Tell me about the ${label}.`;
+    const key = tellMe.toLowerCase();
+    if (!seen.has(key)) out.push(tellMe);
+  }
+  return out;
 }
 
 /**

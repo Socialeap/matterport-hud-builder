@@ -220,6 +220,60 @@ var FIELD_COMPAT = {
       /^number_of_.*/, /^price.*/,
     ],
   },
+  // ── Hospitality / experience intents (added in Ask AI v2) ──
+  dining_recommendation: {
+    allow: [
+      /menu/, /food/, /dish/, /cuisine/, /signature.*/,
+      /^restaurant_name$/, /^restaurant_names?$/,
+      /^dining.*/, /^food_and_beverage.*/,
+    ],
+    // Don't recommend an address or a count when asked about food.
+    exclude: [
+      /^number_of_.*/, /^.*_count$/,
+      /^address.*/, /^location$/, /^agent.*/, /^booking.*/,
+      /^price.*/, /^.*_price$/,
+    ],
+  },
+  bar_program: {
+    allow: [
+      /cocktail/, /bar(_|$)/, /drink/, /beverage/, /spirits/,
+      /wine/, /mixology/,
+    ],
+    exclude: [
+      /^number_of_.*/, /^.*_count$/,
+      /^address.*/, /^agent.*/, /^booking.*/, /^restaurant_floor.*/,
+    ],
+  },
+  history_story: {
+    allow: [
+      /history/, /historical/, /heritage/, /legacy/, /story/,
+      /backstory/, /^historical_reference$/, /^narrative.*/,
+    ],
+    exclude: [
+      /^number_of_.*/, /^.*_count$/,
+      /^address.*/, /^agent.*/, /^price.*/, /^booking.*/,
+    ],
+  },
+  design_inspiration: {
+    allow: [
+      /inspiration/, /concept/, /design_(story|theme|inspiration)/,
+      /theme/, /motif/, /^neighborhood_inspiration$/,
+    ],
+    exclude: [
+      /^number_of_.*/, /^.*_count$/,
+      /^address.*/, /^agent.*/, /^price.*/, /^booking.*/,
+    ],
+  },
+  brand_chain: {
+    allow: [
+      /^hotel_chain$/, /^brand(_|$).*/, /^chain$/,
+      /^affiliation.*/, /^operator.*/, /^franchise.*/,
+    ],
+    exclude: [
+      /^number_of_.*/, /^.*_count$/,
+      /^address.*/, /^agent.*/, /^price.*/,
+    ],
+  },
   comparison: { allow: [], exclude: [] },
   unknown: { allow: [], exclude: [] },
 };
@@ -248,6 +302,47 @@ var INTENT_PATTERNS = [
   { intent: "restaurant_count", patterns: [
     /\bhow\s+many\s+(restaurants|dining\s+options|eateries)\b/,
     /\b(number\s+of|count\s+of)\s+restaurants?\b/,
+  ]},
+  // dining_recommendation/bar_program win over restaurant_presence for
+  // "what should I eat" / "what's the bar like" queries — but lose to
+  // restaurant_location (above) when the user explicitly asks about floor.
+  { intent: "dining_recommendation", patterns: [
+    /\bwhat('s|\s+is)?\s+(a\s+)?(good|best)\s+(food|dish|thing\s+to\s+eat)\b/,
+    /\bwhat\s+should\s+i\s+(eat|order|try)\b/,
+    /\bwhat('s|\s+is)\s+on\s+the\s+menu\b/,
+    /\bwhat('s|\s+is)\s+the\s+(menu|food|cuisine|dining)\s+(like|highlight|standout)\b/,
+    /\b(any\s+)?(signature|standout|favorite)\s+(dish|food|meal)\b/,
+    /\bwhat\s+kind\s+of\s+(food|cuisine|dishes)\b/,
+    /\bwhat\s+do\s+they\s+serve\b/,
+    /\bfavorite\s+(dinner|lunch|breakfast|menu)\s+item\b/,
+    /\b(menu|food)\s+highlight\b/,
+  ]},
+  { intent: "bar_program", patterns: [
+    /\bwhat('s|\s+is)\s+the\s+(bar|cocktail|drink)\s+(program|like|menu)\b/,
+    /\btell\s+me\s+about\s+(the\s+)?(bar|cocktail|drinks?)\b/,
+    /\b(any\s+)?(signature|good)\s+(cocktail|drink)s?\b/,
+    /\bwhat\s+drinks\s+do\s+they\s+(have|serve|offer)\b/,
+    /\bwhat('s|\s+is)\s+the\s+(cocktail|bar)\s+program\b/,
+    /\bcocktail\s+program\b/, /\bcocktails?\b/,
+  ]},
+  { intent: "history_story", patterns: [
+    /\bwhat('s|\s+is)\s+the\s+(history|story|backstory|heritage|legacy)\b/,
+    /\btell\s+me\s+(the|about\s+the)\s+(history|story|backstory)\b/,
+    /\bis\s+there\s+a\s+(story|history|backstory)\s+behind\b/,
+    /\bhistorical\s+(reference|significance|context)\b/,
+    /\bany\s+historical\b/,
+  ]},
+  { intent: "design_inspiration", patterns: [
+    /\bwhat('s|\s+is)\s+the\s+(inspiration|concept|theme|story\s+behind\s+the\s+design)\b/,
+    /\bwhat\s+inspired\s+(it|this|the\s+(design|property|hotel|space))\b/,
+    /\btell\s+me\s+about\s+the\s+(inspiration|concept|theme|design\s+story)\b/,
+    /\bdesign\s+(inspiration|story|concept|theme)\b/,
+  ]},
+  { intent: "brand_chain", patterns: [
+    /\bwhat\s+(hotel\s+)?chain\b/,
+    /\bis\s+it\s+part\s+of\s+a\s+chain\b/,
+    /\bwhat\s+brand\s+(is|of)\s+(it|the\s+(hotel|property))\b/,
+    /\bwhat('s|\s+is)\s+the\s+brand\b/,
   ]},
   { intent: "restaurant_presence", patterns: [
     /\b(is|are)\s+there\s+(a|any)?\s*(restaurants?|dining|bar|cafe)\b/,

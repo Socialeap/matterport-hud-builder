@@ -14,6 +14,39 @@ var TIER1_FIELD_BOOST = 0.10;
 var TIER2_MIN = 0.50;
 var RRF_K = 60;
 
+// Value-bearing intents — a confidently classified intent on the query
+// side is itself strong evidence the candidate field is correct. For
+// these intents we accept any tier-1 hit above the hard floor (0.45),
+// because tier1Rank already filtered the list through intentAllows.
+// This is what lets "what's a good food to eat there?" hit
+// `menu_highlight` even when cosine is in the 0.45–0.55 band.
+var VALUE_BEARING_INTENTS = {
+  dining_recommendation: true,
+  bar_program: true,
+  history_story: true,
+  design_inspiration: true,
+  brand_chain: true,
+  designer_architect: true,
+  developer: true,
+  pricing: true,
+  parking: true,
+  accessibility: true,
+  summary: true,
+  amenity_presence: true,
+  restaurant_presence: true,
+  year_built: true,
+  history_opening: true,
+};
+
+// Per-intent strict-unknown copy for value-bearing misses.
+var VALUE_INTENT_MISS_COPY = {
+  dining_recommendation: "I don't have details on the menu or dining at this property yet.",
+  bar_program: "I don't have details on the bar or cocktail program for this property yet.",
+  history_story: "I don't have a historical backstory on file for this property yet.",
+  design_inspiration: "I don't have details on the design inspiration for this property yet.",
+  brand_chain: "I don't have brand or chain details for this property yet.",
+};
+
 // Per-action-intent miss copy. Keyed by intent. Shown when the intent
 // is an action intent but the brain lacks the required data — the
 // ladder terminates here instead of falling through to semantic tiers.
@@ -355,7 +388,13 @@ function decideAnswer(inputs) {
   // Step 3 — Tier 1 canonical-QA with intent guard.
   var tier1 = tier1Rank(queryVec, query, (brain.canonicalQAs || []), intent, intentAllowsFn);
   var tier1Best = tier1.length ? tier1[0] : null;
-  if (tier1Best && tier1Best.score >= TIER1_SOFT) {
+  // Soft-floor acceptance: for value-bearing intents we trust the
+  // intentAllows filter that tier1Rank already applied. Anything still
+  // in the list is a category-correct candidate, so accept above the
+  // hard floor (TIER1_FLOOR) instead of TIER1_SOFT. For everything
+  // else we keep the stricter SOFT threshold.
+  var t1Threshold = (VALUE_BEARING_INTENTS[intent] ? TIER1_FLOOR : TIER1_SOFT);
+  if (tier1Best && tier1Best.score >= t1Threshold) {
     return {
       path: "canonical",
       text: tier1Best.qa.answer || "",
@@ -403,7 +442,7 @@ function decideAnswer(inputs) {
   if (hasIntent && allowedChunks.length === 0 && tier1.length === 0) {
     return {
       path: "strict_unknown",
-      text: STRICT_UNKNOWN_COPY,
+      text: VALUE_INTENT_MISS_COPY[intent] || STRICT_UNKNOWN_COPY,
       intent: intent,
       strictUnknown: true,
       needsSynthesis: false,
