@@ -14,6 +14,8 @@ import {
   ExternalLink,
   FileJson,
   Upload,
+  Sparkles,
+  ArrowRight,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -458,23 +460,7 @@ function VaultPage() {
             <CategoryGuide category={c} />
 
             {c.value === "property_doc" && (
-              <div className="flex items-center justify-between rounded-md border border-dashed border-border bg-muted/20 px-3 py-2 text-xs">
-                <span className="text-muted-foreground">
-                  Define the schema your clients' property docs are extracted against.
-                </span>
-                {isStarter ? (
-                  <span className="inline-flex items-center gap-1 font-medium text-muted-foreground">
-                    <Lock className="size-3.5" /> Manage Templates
-                  </span>
-                ) : (
-                  <Link
-                    to="/dashboard/vault/templates"
-                    className="inline-flex items-center gap-1 font-medium hover:text-foreground"
-                  >
-                    <FileJson className="size-3.5" /> Manage Templates
-                  </Link>
-                )}
-              </div>
+              <PropertyDocArchitectCallout isStarter={isStarter} />
             )}
 
             <div className="flex items-center justify-between">
@@ -705,6 +691,20 @@ function AssetEditorDialog({
           <DialogDescription>
             {category.utility} — {category.purpose}
           </DialogDescription>
+          {category.value === "property_doc" && (
+            <p className="mt-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-[11px] italic text-muted-foreground">
+              <Sparkles className="mr-1 inline size-3 text-primary" />
+              This document will be parsed against your active Template. Build
+              or edit it in{" "}
+              <Link
+                to="/dashboard/vault/templates"
+                className="font-medium not-italic text-primary hover:underline"
+              >
+                Vault → Property Docs → Template Architect
+              </Link>
+              .
+            </p>
+          )}
         </DialogHeader>
 
         <div className="space-y-4">
@@ -841,5 +841,67 @@ function AssetEditorDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function PropertyDocArchitectCallout({ isStarter }: { isStarter: boolean }) {
+  return (
+    <Card className="border-2 border-primary/40 bg-gradient-to-br from-primary/5 via-background to-primary/10">
+      <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/15">
+            <Wand2 className="size-5 text-primary" />
+          </div>
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-semibold text-foreground">
+                AI Template Architect
+              </p>
+              <Badge variant="secondary" className="text-[10px]">
+                Recommended
+              </Badge>
+              <Badge variant="outline" className="text-[10px]">
+                Gemini 2.5 Flash-Lite
+              </Badge>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Describe the property class and our AI drafts the extraction
+              schema your clients' Property Docs are scored against — no JSON
+              required. Refine the candidate fields, then apply.
+            </p>
+            <p className="text-[11px] text-muted-foreground/80">
+              <span className="font-medium text-foreground/80">How it works:</span>{" "}
+              Describe → Refine candidate fields → Finalize → Apply schema.
+            </p>
+          </div>
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          {isStarter ? (
+            <span className="inline-flex items-center gap-1 rounded-md border border-border bg-muted px-3 py-2 text-xs font-medium text-muted-foreground">
+              <Lock className="size-3.5" /> Pro feature
+            </span>
+          ) : (
+            <>
+              <Button asChild size="sm" className="gap-1">
+                <Link
+                  to="/dashboard/vault/templates"
+                  search={{ architect: 1 }}
+                >
+                  <Sparkles className="size-3.5" />
+                  Launch Template Architect
+                  <ArrowRight className="size-3.5" />
+                </Link>
+              </Button>
+              <Link
+                to="/dashboard/vault/templates"
+                className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+              >
+                <FileJson className="size-3" /> Manage existing templates
+              </Link>
+            </>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }

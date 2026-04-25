@@ -1,91 +1,81 @@
-## Updated diagnosis
+## Why you can't find it
 
-You are right: if you hard-refreshed, regenerated, and added new Property Intelligence data, this is not adequately explained by “older build.” The stronger diagnosis is:
+The Guided Refinement Template Architect was built and wired in, but it lives **3 clicks deep** with no signposting:
 
-**The main presentation IIFE is too fragile.** It contains the critical startup code (gate-button listeners and `frame.src = props[i].iframeUrl`) and the large inlined Ask AI / Property Intelligence runtime in the same `<script>` execution context. If anything in that context throws during parse or early startup, the page fails in the exact way you see: the gate buttons do nothing and the Matterport iframe never receives its `src`.
+1. Property Docs tab → click **Manage Templates** (small text link)
+2. Click **+ New Template** (or **Edit** on an existing one)
+3. Scroll **past** the JSON Schema textarea — only then does the Architect appear, looking like a small sibling helper next to the older "Auto-Generate from Document" block.
 
-The JSON draft itself is not the likely cause. The Matterport IDs and generated iframe URLs are valid. The issue is in how the generated HTML is structured and guarded.
+That's why you see the JSON editor but no obvious AI workflow. Two fixes are needed: **surface it** from the Vault Property Docs tab, and **promote it** to the primary action inside the Templates editor.
 
-## Plan
+## What we'll change
 
-### 1. Split critical tour startup from Ask AI runtime
+### 1. Promote Architect on the Property Docs vault tab
+File: `src/routes/_authenticated.dashboard.vault.tsx`
 
-Refactor `src/lib/portal.functions.ts` so the core tour shell is isolated from Property Intelligence code:
+Replace the small one-line "Manage Templates" strip (lines 460–478) with a richer **Template Architect callout card** that explains the AI workflow and is the primary entry point. Keep "Manage Templates" available as a secondary link.
 
-- Script A: minimal bootstrap only
-  - decode config
-  - define `props`, `frame`, `tabsEl`, etc.
-  - bind `gate-sound-btn` and `gate-silent-btn`
-  - assign initial `matterport-frame.src`
-  - setup tabs, HUD, contact, media modals
+Card content (Pro members):
+- Sparkles/Wand icon + heading: **"AI Template Architect"**
+- One-sentence pitch: *"Describe the property class and our AI drafts the extraction schema your clients' Property Docs are scored against — no JSON required."*
+- Primary button: **"Launch Template Architect"** → routes to `/dashboard/vault/templates?architect=1`
+- Secondary link: "Manage existing templates"
 
-- Script B: Ask AI / Property Intelligence runtime
-  - inlined `ASK_RUNTIME_JS`
-  - `__docsQa` pipeline
-  - Orama / embedding loading
-  - synthesis bridge
+Starter tier: locked variant with the same explanation and an "Unlock with Pro" CTA, matching the existing Starter pattern.
 
-This makes the 3D tour and start buttons independent of the AI layer. Even if AI parsing/indexing fails, the tour still opens.
+### 2. Make the Architect the headline of the Templates editor
+File: `src/routes/_authenticated.dashboard.vault.templates.tsx`
 
-### 2. Move `load(0)` earlier and make it fail-soft
+Restructure the EditorDialog body so MSPs encounter the AI workflow **first**, not buried below the JSON textarea:
 
-Update generated runtime so the iframe `src` is assigned as early as possible and guarded:
-
-```js
-try {
-  if (props.length > 0 && frame) frame.src = props[0].iframeUrl;
-} catch (err) {
-  console.error("presentation bootstrap failed", err);
-}
+```text
+┌─ Editor Dialog ──────────────────────────────┐
+│ Label · Doc Kind · Extractor                 │
+│                                              │
+│ ★ Guided Refinement Template Architect ★    │ ← promoted, expanded by default
+│   (Describe → Refine → Apply)                │
+│                                              │
+│ ─ Or use a different starting point ─        │
+│                                              │
+│ ▸ Auto-Generate from PDF (collapsed)         │
+│ ▸ Edit JSON Schema directly (collapsed)      │
+│ ▸ Dry Run against sample PDF (collapsed)     │
+└──────────────────────────────────────────────┘
 ```
 
-Then the richer `load(i)` function can update HUD/docs/tabs after bootstrap. This ensures the Matterport iframe is not blocked by later HUD or AI logic.
+Concretely:
+- Move `<TemplateArchitect>` to the top of the form, immediately after Label/Doc Kind/Extractor.
+- Add a short header strip above it: *"Start here — describe your property and let the AI build the schema."*
+- Wrap the existing **JSON textarea**, **SchemaInductionSection** (PDF auto-generate), and **DryRunSection** in collapsible accordions, all collapsed by default. Power users can expand to see/edit JSON or dry-run.
+- When the Architect's "Apply to Editor" finishes, auto-expand the JSON accordion so the user can see what was applied (a single visual confirmation).
 
-### 3. Add visible fallback behavior for gate buttons
+### 3. Add an empty-state nudge on the Templates index
+File: `src/routes/_authenticated.dashboard.vault.templates.tsx` (the `EmptyState` component, lines 233–246)
 
-If a future runtime error occurs, the gate buttons should still have a minimal inline fallback. Add simple `onclick` attributes or a tiny pre-bootstrap script that hides the gate independently of the full runtime.
+When the MSP has zero templates, replace the generic "No templates yet" with two side-by-side options:
+- **"Build with AI Architect"** (primary, recommended badge) → opens the editor with Architect pre-focused
+- **"Start from blank JSON"** (secondary) → current behavior
 
-Goal: a future bug degrades to “HUD/Ask may be unavailable,” not “entire presentation is dead.”
+### 4. Auto-open Architect via query param
+File: `src/routes/_authenticated.dashboard.vault.templates.tsx`
 
-### 4. Strengthen the HTML verifier
+Read `?architect=1` from the URL on mount; when present, auto-open the New Template dialog with the Architect's Describe phase focused. Lets the vault tab's "Launch Template Architect" button drop the user straight into the workflow.
 
-Extend `scripts/verify-portal-html.mjs` beyond escape/token checks to perform a smoke test on the assembled output:
+### 5. Add a one-line label inside the Add Property Doc dialog (Client-side hint)
+File: `src/routes/_authenticated.dashboard.vault.tsx` (the asset editor dialog used for adding Property Docs)
 
-- extract the generated main script sections;
-- validate the core startup script parses independently;
-- validate the Ask runtime parses independently;
-- assert required startup strings exist:
-  - `gate-sound-btn`
-  - `gate-silent-btn`
-  - `matterport-frame`
-  - `frame.src=props[i].iframeUrl` or equivalent guarded bootstrap assignment
+Add a small italicized note under "Add Property Docs": *"This document will be parsed against your active Template. Manage your AI Template in Vault → Property Docs → Template Architect."* This closes the loop so MSPs uploading a doc understand the linkage.
 
-This catches broken generated HTML structure before users download it.
+## Files touched
 
-### 5. Add a fixture-level smoke test
+- `src/routes/_authenticated.dashboard.vault.tsx` — promoted Architect callout card on Property Docs tab; hint inside Add Property Doc dialog
+- `src/routes/_authenticated.dashboard.vault.templates.tsx` — reorder editor sections, add accordions, query-param auto-open, redesigned empty state
+- *(no changes to)* `src/components/vault/TemplateArchitect.tsx`, `supabase/functions/induce-schema/index.ts`, or `src/lib/extraction/canonical-keys.ts` — backend already works; this is pure UX surfacing.
 
-Add a lightweight test script that runs against the uploaded/generated fixture shape:
+## Verification
 
-- mock a tiny DOM with the gate buttons, tabs, and iframe;
-- execute the bootstrap portion;
-- assert:
-  - the iframe gets a non-empty Matterport URL;
-  - clicking `gate-silent-btn` hides the gate;
-  - clicking `gate-sound-btn` does not throw.
-
-Wire it into `npm run verify:html` or a new package script so it runs with the existing Ask runtime tests.
-
-### 6. Verification
-
-After implementation, run:
-
-- `npm run verify:html`
-- `npm run test:ask`
-- if available, generate a fresh HTML from the same uploaded draft and inspect that:
-  - the closing `</html>` is present;
-  - `#matterport-frame` has an initial/assigned Matterport `src`;
-  - the start buttons are bound or have fallback behavior.
-
-## Expected outcome
-
-The generated HTML becomes production-safe in the most important way: **the Matterport tour startup no longer depends on the Ask AI / Property Intelligence layer.** The AI layer can still fail independently, but it cannot kill the welcome gate or prevent the iframe from loading.
+- Visit `/dashboard/vault` → Property Docs tab → confirm Architect callout card is visible above the asset list.
+- Click "Launch Template Architect" → editor opens with Architect at the top, in Describe phase.
+- Empty templates page shows the two-option chooser.
+- Existing JSON editing flow still works (accordions expand cleanly).
+- No regressions: run `npm run verify:html` and `scripts/test-ask-runtime.mjs`.

@@ -1,7 +1,8 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
+  ChevronDown,
   FileJson,
   FileText,
   Lock,
@@ -11,6 +12,7 @@ import {
   Sparkles,
   Trash2,
   Upload,
+  Wand2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -45,10 +47,25 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+
+interface TemplatesSearch {
+  architect?: number;
+}
 
 export const Route = createFileRoute(
   "/_authenticated/dashboard/vault/templates",
 )({
+  validateSearch: (raw: Record<string, unknown>): TemplatesSearch => {
+    const v = raw.architect;
+    return {
+      architect: v === 1 || v === "1" || v === true ? 1 : undefined,
+    };
+  },
   component: VaultTemplatesPage,
 });
 
@@ -83,13 +100,32 @@ function VaultTemplatesPage() {
   const { isActive: lusActive, loading: lusLoading } = useLusLicense();
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [saving, setSaving] = useState(false);
+  const [forceArchitect, setForceArchitect] = useState(false);
+
+  const search = Route.useSearch();
+  const navigate = useNavigate();
 
   const editingDisabled = !lusLoading && !lusActive;
 
-  const openCreate = () => {
+  const openCreate = (opts?: { architect?: boolean }) => {
     if (editingDisabled) return;
+    setForceArchitect(!!opts?.architect);
     setEditor({ ...EMPTY_EDITOR });
   };
+
+  // Auto-open Architect flow when arriving via ?architect=1
+  useEffect(() => {
+    if (search.architect === 1 && !lusLoading && lusActive && !editor) {
+      setForceArchitect(true);
+      setEditor({ ...EMPTY_EDITOR });
+      navigate({
+        to: "/dashboard/vault/templates",
+        search: {},
+        replace: true,
+      });
+    }
+  }, [search.architect, lusLoading, lusActive, editor, navigate]);
+
   const openEdit = (t: VaultTemplate) =>
     setEditor({
       id: t.id,
@@ -170,18 +206,33 @@ function VaultTemplatesPage() {
             by the Ask AI chat.
           </p>
         </div>
-        <Button
-          onClick={openCreate}
-          size="sm"
-          disabled={editingDisabled}
-          title={
-            editingDisabled
-              ? "Studio license inactive — paused"
-              : undefined
-          }
-        >
-          <Plus className="mr-1 size-4" /> New Template
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={() => openCreate({ architect: true })}
+            size="sm"
+            disabled={editingDisabled}
+            title={
+              editingDisabled
+                ? "Studio license inactive — paused"
+                : "Build a template with the AI Architect"
+            }
+          >
+            <Wand2 className="mr-1 size-4" /> New with AI Architect
+          </Button>
+          <Button
+            onClick={() => openCreate()}
+            size="sm"
+            variant="outline"
+            disabled={editingDisabled}
+            title={
+              editingDisabled
+                ? "Studio license inactive — paused"
+                : undefined
+            }
+          >
+            <Plus className="mr-1 size-4" /> Blank Template
+          </Button>
+        </div>
       </div>
 
       {editingDisabled && (
@@ -205,7 +256,7 @@ function VaultTemplatesPage() {
           <div className="h-6 w-6 animate-spin rounded-full border-4 border-primary border-t-transparent" />
         </div>
       ) : sorted.length === 0 ? (
-        <EmptyState onAdd={openCreate} />
+        <EmptyState onArchitect={() => openCreate({ architect: true })} onBlank={() => openCreate()} disabled={editingDisabled} />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {sorted.map((t) => (
@@ -225,22 +276,72 @@ function VaultTemplatesPage() {
         setState={setEditor}
         saving={saving}
         onSave={handleSave}
+        forceArchitect={forceArchitect}
+        onClosed={() => setForceArchitect(false)}
       />
     </div>
   );
 }
 
-function EmptyState({ onAdd }: { onAdd: () => void }) {
+function EmptyState({
+  onArchitect,
+  onBlank,
+  disabled,
+}: {
+  onArchitect: () => void;
+  onBlank: () => void;
+  disabled?: boolean;
+}) {
   return (
-    <div className="rounded-lg border border-dashed border-border bg-muted/20 py-12 text-center">
-      <FileJson className="mx-auto size-10 text-muted-foreground/60" />
-      <p className="mt-3 text-sm font-medium">No templates yet</p>
-      <p className="mt-1 text-xs text-muted-foreground">
-        Create your first template to start turning uploaded PDFs into structured Portal data.
-      </p>
-      <Button size="sm" variant="outline" className="mt-4" onClick={onAdd}>
-        <Plus className="mr-1 size-4" /> New Template
-      </Button>
+    <div className="rounded-lg border border-dashed border-border bg-muted/20 p-8">
+      <div className="text-center">
+        <FileJson className="mx-auto size-10 text-muted-foreground/60" />
+        <p className="mt-3 text-sm font-medium">No templates yet</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          A Template defines what data the AI extracts from your clients'
+          uploaded Property Docs (price, address, amenities, etc.).
+        </p>
+      </div>
+      <div className="mx-auto mt-6 grid max-w-2xl gap-3 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={onArchitect}
+          disabled={disabled}
+          className="group relative flex flex-col items-start gap-2 rounded-lg border-2 border-primary/40 bg-gradient-to-br from-primary/5 to-primary/10 p-4 text-left transition hover:border-primary disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <div className="flex w-full items-center justify-between">
+            <Wand2 className="size-5 text-primary" />
+            <Badge variant="secondary" className="text-[10px]">
+              Recommended
+            </Badge>
+          </div>
+          <div className="font-semibold">Build with AI Architect</div>
+          <p className="text-xs text-muted-foreground">
+            Describe your property class. The AI suggests fields, you refine,
+            and a validated schema is built for you.
+          </p>
+          <span className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-primary">
+            <Sparkles className="size-3" /> Start guided flow →
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={onBlank}
+          disabled={disabled}
+          className="group flex flex-col items-start gap-2 rounded-lg border border-border bg-background p-4 text-left transition hover:border-foreground/30 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <FileJson className="size-5 text-muted-foreground" />
+          <div className="font-semibold">Start from blank JSON</div>
+          <p className="text-xs text-muted-foreground">
+            For power users — author the JSON Schema directly, or paste a sample
+            PDF and auto-induce a draft.
+          </p>
+          <span className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-foreground">
+            <Plus className="size-3" /> Open blank editor →
+          </span>
+        </button>
+      </div>
     </div>
   );
 }
@@ -301,11 +402,15 @@ function EditorDialog({
   setState,
   saving,
   onSave,
+  forceArchitect,
+  onClosed,
 }: {
   state: EditorState | null;
   setState: (next: EditorState | null) => void;
   saving: boolean;
   onSave: () => void;
+  forceArchitect?: boolean;
+  onClosed?: () => void;
 }) {
   const open = state !== null;
   const [dryRunFile, setDryRunFile] = useState<File | null>(null);
@@ -317,6 +422,19 @@ function EditorDialog({
   const [induceBusy, setInduceBusy] = useState(false);
   const [induceResult, setInduceResult] = useState<InduceSchemaResult | null>(null);
   const [induceError, setInduceError] = useState<string | null>(null);
+
+  const [jsonOpen, setJsonOpen] = useState(false);
+  const [induceOpen, setInduceOpen] = useState(false);
+  const [dryRunOpen, setDryRunOpen] = useState(false);
+
+  // When forceArchitect (came in via "Launch Architect"), keep advanced
+  // sections collapsed. When editing an existing template, default-open the
+  // JSON section so users can see what's there.
+  useEffect(() => {
+    if (state?.id && !forceArchitect) {
+      setJsonOpen(true);
+    }
+  }, [state?.id, forceArchitect]);
 
   const resetDryRun = () => {
     setDryRunFile(null);
@@ -336,6 +454,10 @@ function EditorDialog({
     setState(null);
     resetDryRun();
     resetInduction();
+    setJsonOpen(false);
+    setInduceOpen(false);
+    setDryRunOpen(false);
+    onClosed?.();
   };
 
   if (!state) {
@@ -417,10 +539,9 @@ function EditorDialog({
             {state.id ? "Edit Template" : "New Template"}
           </DialogTitle>
           <DialogDescription>
-            Fields declared here are extracted from every matching client
-            upload and surfaced to the Presentation Portal. If you upload a
-            sample PDF below to auto-induce the schema, the sample is used
-            only to infer fields — it isn't stored or read by Ask AI.
+            Use the AI Template Architect below to describe your property and
+            let Gemini draft a validated schema, or expand the advanced
+            sections to edit JSON, auto-induce from a PDF, or dry-run.
           </DialogDescription>
         </DialogHeader>
 
@@ -470,48 +591,115 @@ function EditorDialog({
             </select>
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="tpl-schema">Field Schema (JSON)</Label>
-            <Textarea
-              id="tpl-schema"
-              value={state.schema_text}
-              onChange={(e) =>
-                setState({ ...state, schema_text: e.target.value })
-              }
-              rows={12}
-              className="font-mono text-xs"
-            />
-            <p className="text-xs text-muted-foreground">
-              Shape: <code>{"{ type: 'object', properties: { name: { type, pattern? } } }"}</code>
-            </p>
+          {/* PRIMARY ACTION: AI Architect */}
+          <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-[11px]">
+            <span className="font-medium text-foreground">Start here →</span>{" "}
+            <span className="text-muted-foreground">
+              Describe your property and let the AI build the schema. You can
+              still hand-edit JSON or use a sample PDF below.
+            </span>
           </div>
-
           <TemplateArchitect
             docKind={state.doc_kind}
             disabled={saving}
-            onApply={(json) => setState({ ...state, schema_text: json })}
+            onApply={(json) => {
+              setState({ ...state, schema_text: json });
+              setJsonOpen(true);
+            }}
           />
 
-          <SchemaInductionSection
-            file={induceFile}
-            setFile={setInduceFile}
-            busy={induceBusy}
-            result={induceResult}
-            error={induceError}
-            onInduce={handleInduce}
-            onApply={handleApplyInducedSchema}
-            disabled={saving}
-          />
+          <div className="flex items-center gap-2 pt-1 text-[11px] uppercase tracking-wide text-muted-foreground/70">
+            <div className="h-px flex-1 bg-border" />
+            <span>Or use a different starting point</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
 
-          <DryRunSection
-            file={dryRunFile}
-            setFile={setDryRunFile}
-            busy={dryRunBusy}
-            result={dryRunResult}
-            error={dryRunError}
-            onRun={runDryRun}
-            disabled={saving}
-          />
+          {/* COLLAPSIBLE: JSON Schema editor */}
+          <Collapsible open={jsonOpen} onOpenChange={setJsonOpen}>
+            <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md border border-border bg-background px-3 py-2 text-xs font-medium hover:bg-accent">
+              <span className="flex items-center gap-2">
+                <FileJson className="size-3.5 text-muted-foreground" />
+                Edit JSON Schema directly
+              </span>
+              <ChevronDown
+                className={`size-3.5 text-muted-foreground transition ${jsonOpen ? "rotate-180" : ""}`}
+              />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="tpl-schema" className="sr-only">
+                  Field Schema (JSON)
+                </Label>
+                <Textarea
+                  id="tpl-schema"
+                  value={state.schema_text}
+                  onChange={(e) =>
+                    setState({ ...state, schema_text: e.target.value })
+                  }
+                  rows={12}
+                  className="font-mono text-xs"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Shape:{" "}
+                  <code>
+                    {"{ type: 'object', properties: { name: { type, pattern? } } }"}
+                  </code>
+                </p>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+
+          {/* COLLAPSIBLE: Auto-Generate from PDF */}
+          <Collapsible open={induceOpen} onOpenChange={setInduceOpen}>
+            <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md border border-border bg-background px-3 py-2 text-xs font-medium hover:bg-accent">
+              <span className="flex items-center gap-2">
+                <Sparkles className="size-3.5 text-muted-foreground" />
+                Auto-Generate from PDF
+              </span>
+              <ChevronDown
+                className={`size-3.5 text-muted-foreground transition ${induceOpen ? "rotate-180" : ""}`}
+              />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-2">
+              <SchemaInductionSection
+                file={induceFile}
+                setFile={setInduceFile}
+                busy={induceBusy}
+                result={induceResult}
+                error={induceError}
+                onInduce={handleInduce}
+                onApply={() => {
+                  handleApplyInducedSchema();
+                  setJsonOpen(true);
+                }}
+                disabled={saving}
+              />
+            </CollapsibleContent>
+          </Collapsible>
+
+          {/* COLLAPSIBLE: Dry Run */}
+          <Collapsible open={dryRunOpen} onOpenChange={setDryRunOpen}>
+            <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md border border-border bg-background px-3 py-2 text-xs font-medium hover:bg-accent">
+              <span className="flex items-center gap-2">
+                <Play className="size-3.5 text-muted-foreground" />
+                Dry Run against sample PDF
+              </span>
+              <ChevronDown
+                className={`size-3.5 text-muted-foreground transition ${dryRunOpen ? "rotate-180" : ""}`}
+              />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-2">
+              <DryRunSection
+                file={dryRunFile}
+                setFile={setDryRunFile}
+                busy={dryRunBusy}
+                result={dryRunResult}
+                error={dryRunError}
+                onRun={runDryRun}
+                disabled={saving}
+              />
+            </CollapsibleContent>
+          </Collapsible>
         </div>
 
         <DialogFooter>
