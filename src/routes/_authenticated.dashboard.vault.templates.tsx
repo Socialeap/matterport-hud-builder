@@ -486,6 +486,12 @@ function EditorDialog({
             </p>
           </div>
 
+          <TemplateArchitect
+            docKind={state.doc_kind}
+            disabled={saving}
+            onApply={(json) => setState({ ...state, schema_text: json })}
+          />
+
           <SchemaInductionSection
             file={induceFile}
             setFile={setInduceFile}
