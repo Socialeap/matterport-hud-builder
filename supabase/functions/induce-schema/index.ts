@@ -428,12 +428,11 @@ ${JSON.stringify(keptItems, null, 2)}`;
     systemPrompt: system,
     userPrompt: user,
     thinkingBudget: -1, // dynamic — schema correctness matters
-    maxOutputTokens: 2000,
+    maxOutputTokens: 8000, // bumped from 2000: 20+ kept fields can blow past 2K
     temperature: 0.1,
   });
 
-  const parsed = JSON.parse(stripFences(text));
-  const sanitised = sanitiseSchema(parsed);
+  const sanitised = parseRefineResponse(text, keptItems);
 
   // Force MSP keys to be present even if Gemini dropped any.
   for (const it of keptItems) {
