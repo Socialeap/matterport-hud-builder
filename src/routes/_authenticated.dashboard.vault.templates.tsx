@@ -402,11 +402,15 @@ function EditorDialog({
   setState,
   saving,
   onSave,
+  forceArchitect,
+  onClosed,
 }: {
   state: EditorState | null;
   setState: (next: EditorState | null) => void;
   saving: boolean;
   onSave: () => void;
+  forceArchitect?: boolean;
+  onClosed?: () => void;
 }) {
   const open = state !== null;
   const [dryRunFile, setDryRunFile] = useState<File | null>(null);
@@ -418,6 +422,19 @@ function EditorDialog({
   const [induceBusy, setInduceBusy] = useState(false);
   const [induceResult, setInduceResult] = useState<InduceSchemaResult | null>(null);
   const [induceError, setInduceError] = useState<string | null>(null);
+
+  const [jsonOpen, setJsonOpen] = useState(false);
+  const [induceOpen, setInduceOpen] = useState(false);
+  const [dryRunOpen, setDryRunOpen] = useState(false);
+
+  // When forceArchitect (came in via "Launch Architect"), keep advanced
+  // sections collapsed. When editing an existing template, default-open the
+  // JSON section so users can see what's there.
+  useEffect(() => {
+    if (state?.id && !forceArchitect) {
+      setJsonOpen(true);
+    }
+  }, [state?.id, forceArchitect]);
 
   const resetDryRun = () => {
     setDryRunFile(null);
@@ -437,6 +454,10 @@ function EditorDialog({
     setState(null);
     resetDryRun();
     resetInduction();
+    setJsonOpen(false);
+    setInduceOpen(false);
+    setDryRunOpen(false);
+    onClosed?.();
   };
 
   if (!state) {
