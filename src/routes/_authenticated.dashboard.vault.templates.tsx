@@ -276,6 +276,8 @@ function VaultTemplatesPage() {
         setState={setEditor}
         saving={saving}
         onSave={handleSave}
+        forceArchitect={forceArchitect}
+        onClosed={() => setForceArchitect(false)}
       />
     </div>
   );
