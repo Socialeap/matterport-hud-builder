@@ -834,6 +834,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     faviconStorageUrl,
     modelCount,
     runDownload,
+    enhancements,
   ]);
 
   const handleAuthenticated = useCallback((newUserId: string) => {
