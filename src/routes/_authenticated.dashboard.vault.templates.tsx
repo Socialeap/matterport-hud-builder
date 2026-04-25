@@ -113,18 +113,24 @@ function VaultTemplatesPage() {
     setEditor({ ...EMPTY_EDITOR });
   };
 
-  // Auto-open Architect flow when arriving via ?architect=1
+  // Auto-open Architect flow whenever ?architect=1 is present in the URL.
+  // Clearing the param immediately lets a subsequent click re-fire this effect.
   useEffect(() => {
-    if (search.architect === 1 && !lusLoading && lusActive && !editor) {
-      setForceArchitect(true);
-      setEditor({ ...EMPTY_EDITOR });
-      navigate({
-        to: "/dashboard/vault/templates",
-        search: {},
-        replace: true,
-      });
+    if (search.architect !== 1) return;
+    if (lusLoading) return;
+    if (!lusActive) {
+      // License inactive — silently strip the param so we don't keep retrying.
+      navigate({ to: "/dashboard/vault/templates", search: {}, replace: true });
+      return;
     }
-  }, [search.architect, lusLoading, lusActive, editor, navigate]);
+    setForceArchitect(true);
+    setEditor({ ...EMPTY_EDITOR });
+    navigate({
+      to: "/dashboard/vault/templates",
+      search: {},
+      replace: true,
+    });
+  }, [search.architect, lusLoading, lusActive, navigate]);
 
   const openEdit = (t: VaultTemplate) =>
     setEditor({
@@ -200,9 +206,10 @@ function VaultTemplatesPage() {
             Property Maps for AI Chat
           </h1>
           <p className="text-sm text-muted-foreground">
-            Each map tells the AI which facts to pull from a kind of property
-            document (price, address, beds, amenities…). The AI Chat uses
-            these facts to answer your clients' questions.
+            Each mapper is a reusable blueprint for a type or category of
+            property. Your clients pick the right mapper, and the AI uses it
+            to pull verified facts from their uploaded property documents to
+            answer visitor questions in the "Ask AI" chat.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -295,11 +302,11 @@ function EmptyState({
     <div className="rounded-lg border border-dashed border-border bg-muted/20 p-8">
       <div className="text-center">
         <FileJson className="mx-auto size-10 text-muted-foreground/60" />
-        <p className="mt-3 text-sm font-medium">No property maps yet</p>
+        <p className="mt-3 text-sm font-medium">No property mappers yet</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          A map tells the AI which facts to pull from your clients' uploaded
-          property documents (price, address, amenities, etc.) so the AI Chat
-          can answer questions about them.
+          Each mapper is a reusable blueprint for a class of property your
+          clients work with. Build one per type or category, and the AI will
+          use it to pull verified facts from their uploaded property docs.
         </p>
       </div>
       <div className="mx-auto mt-6 grid max-w-2xl gap-3 sm:grid-cols-2">
@@ -317,9 +324,9 @@ function EmptyState({
           </div>
           <div className="font-semibold">Build with AI Mapper</div>
           <p className="text-xs text-muted-foreground">
-            Describe your property class. The AI suggests the facts worth
-            pulling, you tick what matters, and a validated map is built for
-            you.
+            Describe a class or category of property. The AI suggests the
+            facts worth pulling, you tick what matters, and a validated
+            mapper is built for client use.
           </p>
           <span className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-primary">
             <Sparkles className="size-3" /> Start guided flow →
