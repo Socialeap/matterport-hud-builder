@@ -46,9 +46,10 @@ const CARDS: PathCard[] = [
   {
     path: "library",
     icon: Library,
-    title: "Use Proven Template",
+    title: "Use a Pre-Built Template",
     blurb:
-      "Start from a battle-tested industry baseline or clone one of your saved maps.",
+      "Pick a ready-made map for your industry. Auto-fills 30+ fields — fastest way to start.",
+    badge: "1-click",
   },
   {
     path: "manual",

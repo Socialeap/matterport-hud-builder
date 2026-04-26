@@ -2,10 +2,15 @@
  * Final step shared by every wizard path: name the map and review the
  * detected fields before saving. Advanced settings are hidden behind a
  * disclosure so the default flow stays simple.
+ *
+ * For the Library and PDF paths the schema is already pre-populated, so we:
+ *   1. Show a clear "Ready to save" callout above the name input.
+ *   2. Auto-expand the field preview so the user sees exactly what they're
+ *      getting (no more "is anything happening?" feeling).
  */
 
 import { useMemo, useState } from "react";
-import { ChevronDown, ListChecks } from "lucide-react";
+import { CheckCircle2, ChevronDown, ListChecks } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -69,10 +74,31 @@ function parseSchema(text: string): ParsedSchema {
 
 export function ReviewStep({ draft, onChange, disabled }: Props) {
   const parsed = useMemo(() => parseSchema(draft.schema_text), [draft.schema_text]);
-  const [fieldsOpen, setFieldsOpen] = useState(false);
+
+  // For library/pdf paths the schema is pre-loaded — open the field list by
+  // default so the user sees the value without having to click anything.
+  const isPrePopulated = draft.path === "library" || draft.path === "pdf";
+  const [fieldsOpen, setFieldsOpen] = useState(isPrePopulated);
 
   return (
     <div className="space-y-4">
+      {/* "Ready to save" callout — only when schema is valid AND pre-populated */}
+      {isPrePopulated && parsed.ok && parsed.fieldCount > 0 && (
+        <div className="flex items-start gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3">
+          <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
+          <div className="space-y-0.5">
+            <p className="text-xs font-semibold text-foreground">
+              Ready to save — {parsed.fieldCount} field
+              {parsed.fieldCount === 1 ? "" : "s"} loaded
+            </p>
+            <p className="text-[11px] text-muted-foreground">
+              Your AI Chat will pull these facts from any document a client
+              uploads. Just give your map a name and click {draft.id ? "Save Changes" : "Create Map"}.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="space-y-1.5">
         <Label htmlFor="wizard-label" className="text-sm font-medium">
           Map name
@@ -122,7 +148,7 @@ export function ReviewStep({ draft, onChange, disabled }: Props) {
         {parsed.ok && (
           <Collapsible open={fieldsOpen} onOpenChange={setFieldsOpen}>
             <CollapsibleContent className="mt-3">
-              <ul className="max-h-48 space-y-1 overflow-y-auto rounded-md border border-border bg-background p-2 text-[11px]">
+              <ul className="max-h-64 space-y-1 overflow-y-auto rounded-md border border-border bg-background p-2 text-[11px]">
                 {parsed.fields.map((f) => (
                   <li key={f.key} className="flex items-start gap-2">
                     <span className="font-mono text-muted-foreground">

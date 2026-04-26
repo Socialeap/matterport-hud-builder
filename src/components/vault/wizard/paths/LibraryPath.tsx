@@ -69,17 +69,20 @@ export function LibraryPath({ draft, onChange, onAdvance, disabled }: Props) {
     return (
       <div className="space-y-5">
         <p className="text-xs text-muted-foreground">
-          Start from a battle-tested baseline. Pick an industry standard or
-          clone one of your own saved maps — you'll be able to rename and
-          customize it next.
+          Pick a pre-built template below — we'll auto-fill 30+ industry-grade
+          fields so your map is ready to save in one click. Or copy one of
+          your existing templates as a starting point.
         </p>
 
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <Sparkles className="size-3.5 text-primary" />
             <h3 className="text-xs font-semibold uppercase tracking-wide">
-              Industry Standards
+              Pre-Built Templates
             </h3>
+            <Badge variant="secondary" className="text-[9px]">
+              Recommended
+            </Badge>
           </div>
           <div className="grid gap-2 sm:grid-cols-2">
             {STARTER_TEMPLATES.map((s) => {
@@ -105,6 +108,9 @@ export function LibraryPath({ draft, onChange, onAdvance, disabled }: Props) {
                   <p className="text-[10px] text-muted-foreground leading-snug">
                     {s.tagline}
                   </p>
+                  <span className="mt-0.5 text-[9.5px] font-medium text-primary/80">
+                    Auto-fills {fieldCount} fields →
+                  </span>
                 </button>
               );
             })}
@@ -115,8 +121,11 @@ export function LibraryPath({ draft, onChange, onAdvance, disabled }: Props) {
           <div className="flex items-center gap-2">
             <FileText className="size-3.5 text-muted-foreground" />
             <h3 className="text-xs font-semibold uppercase tracking-wide">
-              My Templates
+              Your Saved Templates
             </h3>
+            <span className="text-[10px] text-muted-foreground">
+              — copy and rename
+            </span>
             {!loading && (
               <Badge variant="outline" className="text-[9px]">
                 {sortedUserTemplates.length}
@@ -130,8 +139,8 @@ export function LibraryPath({ draft, onChange, onAdvance, disabled }: Props) {
             </p>
           ) : sortedUserTemplates.length === 0 ? (
             <p className="rounded-md border border-dashed border-border bg-muted/20 p-3 text-[11px] text-muted-foreground">
-              You don't have any saved maps yet. Pick an Industry Standard
-              above to get started.
+              You haven't saved any templates yet. Pick a pre-built one above
+              — it's the fastest way to start.
             </p>
           ) : (
             <ul className="space-y-1">
