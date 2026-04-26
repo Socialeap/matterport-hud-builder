@@ -84,10 +84,11 @@ export function ReviewStep({ draft, onChange, disabled }: Props) {
   // If this draft was cloned from a Pre-Built starter, surface its name +
   // promised field count so the MSP user can confirm at a glance that the
   // full template made it through.
-  const starter =
-    draft.source && draft.source.kind === "starter"
-      ? STARTER_TEMPLATES.find((s) => s.id === draft.source!.ref) ?? null
-      : null;
+  const starter = (() => {
+    if (!draft.source || draft.source.kind !== "starter") return null;
+    const ref = draft.source.ref;
+    return STARTER_TEMPLATES.find((s) => s.id === ref) ?? null;
+  })();
   const promisedCount = starter
     ? Object.keys(starter.schema.properties).length
     : null;
