@@ -21,6 +21,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import type { JsonSchema } from "@/lib/extraction/provider";
+import { STARTER_TEMPLATES } from "@/lib/vault/starter-templates";
 import type { WizardDraft } from "../types";
 import { AdvancedSettings } from "./AdvancedSettings";
 
