@@ -14,17 +14,19 @@ import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 
 import { useAuth } from "@/hooks/use-auth";
-import { useAvailableTemplates } from "@/hooks/useAvailableTemplates";
 import { useAvailablePropertyDocs } from "@/hooks/useAvailablePropertyDocs";
 import { usePropertyExtractions } from "@/hooks/usePropertyExtractions";
 import { useIndexing } from "@/lib/rag/indexing-context";
 import { supabase } from "@/integrations/supabase/client";
 import { uploadVaultAsset } from "@/lib/storage";
-import { induceSchema } from "@/lib/extraction/induce";
-import type { JsonSchema, JsonSchemaField } from "@/lib/extraction/provider";
+import { induceSchema, InduceSchemaError } from "@/lib/extraction/induce";
 
-import { friendlyError } from "../friendly-errors";
-import { resolveProfileTemplate, getCategory } from "../profiles";
+import { failureToCopy, friendlyError } from "../friendly-errors";
+import {
+  getCategory,
+  mergeFieldsIntoTemplate,
+  resolveProfileTemplate,
+} from "../profiles";
 import type {
   TrainingPhase,
   TrainingResult,
