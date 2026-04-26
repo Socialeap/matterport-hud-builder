@@ -543,25 +543,43 @@ function ModelRow({
             compact
           />
         </div>
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-7 text-xs"
-          onClick={openDialog}
-          disabled={isFrozen || busy || running || !user}
-        >
-          {busy ? (
-            <>
-              <Loader2 className="mr-1 size-3 animate-spin" />
-              {busyMessage || "Working…"}
-            </>
-          ) : (
-            <>
-              <Upload className="mr-1 size-3" />
-              {hasTemplates ? "Upload Doc" : "Upload & Auto-Detect"}
-            </>
+        <div className="flex shrink-0 items-center gap-1">
+          {hasTemplates && hasVaultDocs && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs"
+              onClick={() => {
+                setPickedVaultAssetId("");
+                setPickedTemplateId(templates[0]?.id ?? "");
+                setVaultPickerOpen(true);
+              }}
+              disabled={isFrozen || busy || running || !user}
+              title="Run a curated template against a doc your provider already published"
+            >
+              <Library className="mr-1 size-3" /> From vault…
+            </Button>
           )}
-        </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs"
+            onClick={openDialog}
+            disabled={isFrozen || busy || running || !user}
+          >
+            {busy ? (
+              <>
+                <Loader2 className="mr-1 size-3 animate-spin" />
+                {busyMessage || "Working…"}
+              </>
+            ) : (
+              <>
+                <Upload className="mr-1 size-3" />
+                {hasTemplates ? "Upload Doc" : "Upload & Auto-Detect"}
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
       {loading ? (
