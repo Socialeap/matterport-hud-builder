@@ -44,19 +44,13 @@ export interface SavePayload {
 
 interface Props {
   draft: WizardDraft | null;
-  setDraft: (next: WizardDraft | null) => void;
+  setDraft: React.Dispatch<React.SetStateAction<WizardDraft | null>>;
   saving: boolean;
   onSave: (payload: SavePayload) => Promise<boolean | void>;
 }
 
 export function WizardModal({ draft, setDraft, saving, onSave }: Props) {
   const open = draft !== null;
-  // The Smart-AI path wraps TemplateArchitect which has its own internal phases
-  // (Describe → Refine → Finalized). Their "Apply to Editor" callback is what
-  // tells us we can advance to the final step. To keep the global progress bar
-  // honest, we collapse the AI path's internal phases into a single visual
-  // "Build with AI" step + "Name & save" step — even though step counters are
-  // 0/1/2 internally for compatibility with the shared structure.
   const totalSteps = draft ? PATH_STEP_COUNT[draft.path] : 0;
   const stepLabels = draft ? PATH_STEP_LABELS[draft.path] : [];
 
@@ -65,23 +59,36 @@ export function WizardModal({ draft, setDraft, saving, onSave }: Props) {
     setDraft(null);
   };
 
-  const update = (patch: Partial<WizardDraft>) => {
-    if (!draft) return;
-    setDraft({ ...draft, ...patch });
-  };
+  // CRITICAL: Use functional updates so successive calls (onChange + onAdvance)
+  // compose without losing each other's patches. Previously the wizard read
+  // a stale `draft` snapshot inside both calls — causing rich starter schemas
+  // to be overwritten by the step bump back to the default 2-field schema.
+  const update = useCallback(
+    (patch: Partial<WizardDraft>) => {
+      setDraft((prev) => (prev ? { ...prev, ...patch } : prev));
+    },
+    [setDraft],
+  );
+
+  const advanceTo = useCallback(
+    (step: number) => {
+      setDraft((prev) => (prev ? { ...prev, step } : prev));
+    },
+    [setDraft],
+  );
 
   const goNext = () => {
-    if (!draft) return;
-    if (draft.step < totalSteps - 1) {
-      setDraft({ ...draft, step: draft.step + 1 });
-    }
+    setDraft((prev) => {
+      if (!prev) return prev;
+      const max = PATH_STEP_COUNT[prev.path] - 1;
+      return prev.step < max ? { ...prev, step: prev.step + 1 } : prev;
+    });
   };
 
   const goBack = () => {
-    if (!draft) return;
-    if (draft.step > 0) {
-      setDraft({ ...draft, step: draft.step - 1 });
-    }
+    setDraft((prev) =>
+      prev && prev.step > 0 ? { ...prev, step: prev.step - 1 } : prev,
+    );
   };
 
   const handleSave = async () => {
@@ -102,11 +109,35 @@ export function WizardModal({ draft, setDraft, saving, onSave }: Props) {
       );
       return;
     }
+
+    // SAFETY NET: If the user picked a Pre-Built Template starter, ensure the
+    // schema we save matches the starter's promised field count. If something
+    // upstream stripped fields (state race, accidental edit), fall back to the
+    // canonical starter schema so the saved map always honors the "Auto-fills
+    // N fields" promise on the picker card.
+    let extractor = draft.extractor;
+    let docKind = (draft.doc_kind || "general").trim();
+    if (draft.source?.kind === "starter") {
+      const starter = STARTER_TEMPLATES.find((s) => s.id === draft.source!.ref);
+      if (starter) {
+        const promised = Object.keys(starter.schema.properties).length;
+        const actual = Object.keys(schema.properties).length;
+        if (actual < promised) {
+          schema = starter.schema;
+          extractor = starter.extractor;
+          docKind = starter.doc_kind;
+          toast.message(
+            `Restored full ${promised}-field template (was ${actual}).`,
+          );
+        }
+      }
+    }
+
     const ok = await onSave({
       id: draft.id,
       label: draft.label.trim(),
-      doc_kind: (draft.doc_kind || "general").trim(),
-      extractor: draft.extractor,
+      doc_kind: docKind,
+      extractor,
       field_schema: schema,
     });
     if (ok !== false) close();
