@@ -56,11 +56,50 @@ async function fileToBase64(file: File): Promise<string> {
   return btoa(binary);
 }
 
+/**
+ * Discriminated reason for an induce-schema failure. Lets the wizard
+ * branch on user-actionable cases (e.g. show "image-only PDF" notice)
+ * without parsing error strings.
+ */
+export type InduceFailureKind =
+  | "empty_pdf_text"
+  | "no_fields"
+  | "parse_failed"
+  | "other";
+
+export class InduceSchemaError extends Error {
+  kind: InduceFailureKind;
+  status: number;
+  detail?: string;
+  constructor(args: { kind: InduceFailureKind; status: number; detail?: string; message: string }) {
+    super(args.message);
+    this.kind = args.kind;
+    this.status = args.status;
+    this.detail = args.detail;
+  }
+}
+
+function classifyError(code: string | undefined): InduceFailureKind {
+  if (code === "empty_pdf_text") return "empty_pdf_text";
+  if (code === "no_fields_detected") return "no_fields";
+  if (code === "schema_parse_failed") return "parse_failed";
+  return "other";
+}
+
 function unwrap<T>(data: T | { error: string; detail?: string } | null): T {
-  if (!data) throw new Error("induce-schema returned no data");
+  if (!data) throw new InduceSchemaError({
+    kind: "other",
+    status: 0,
+    message: "induce-schema returned no data",
+  });
   if (typeof data === "object" && data !== null && "error" in data) {
     const e = data as { error: string; detail?: string };
-    throw new Error(`${e.error}${e.detail ? `: ${e.detail}` : ""}`);
+    throw new InduceSchemaError({
+      kind: classifyError(e.error),
+      status: 422,
+      detail: e.detail,
+      message: `${e.error}${e.detail ? `: ${e.detail}` : ""}`,
+    });
   }
   return data as T;
 }
