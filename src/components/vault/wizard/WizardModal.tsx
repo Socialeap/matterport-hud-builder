@@ -288,7 +288,9 @@ export function WizardModal({ draft, setDraft, saving, onSave }: Props) {
                   ? "Saving…"
                   : draft.id
                     ? "Save Changes"
-                    : "Create Map"}
+                    : starterFieldCount
+                      ? `Save ${starterFieldCount}-Field Template`
+                      : "Create Map"}
               </Button>
             )}
           </div>
