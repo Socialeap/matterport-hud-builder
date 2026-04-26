@@ -1,248 +1,82 @@
-# Plan: Multi-Path Wizard for Property Maps
+## What's actually happening (and why it looks broken)
 
-## Goal
-Replace the redundant Templates dashboard buttons and the monolithic "New Property Map" modal with a 4-path entry hub feeding a step-based wizard. No backend, API, or extraction-logic changes.
+I dug into the wizard wiring and the issue is **not** that the cloning is incomplete — `LibraryPath.pickStarter()` already copies the entire starter schema into the draft and jumps straight to the Review step. The user does **zero manual schema work**. They just confirm the name and click "Create Map".
 
----
+The problem is **perception**, in three layers:
 
-## Diagnostic — Current State Audit
+1. **The 2-field map in your screenshot is an old user template** (pre-existing under "My Templates"), not a starter clone. So it's a legacy data issue, not a wizard bug.
+2. **The Review step hides the fields by default** (`fieldsOpen = false`), so even when 14 fields ARE pre-loaded, the user sees an empty-looking panel and assumes nothing happened.
+3. **Today's starters carry only 14–16 fields**, which feels thin compared to what a real residential listing or hotel fact sheet contains.
+4. **The copy "clone one of your own saved maps"** is jargon — both you and the end user have no idea what it means.
 
-| File | Status | Role in refactor |
+This plan fixes all four.
+
+## The fix
+
+### 1. Massively expand the 5 starter schemas (`src/lib/vault/starter-templates.ts`)
+
+Each starter rewritten to be **30–40 fields**, exhaustively covering its document genre. Field types stay within the allowed `string | number | boolean | date` union; every field gets an extraction-grade `description`; `required[]` stays lean (3–5 truly mission-critical fields per template).
+
+| Template | Today | Target |
 |---|---|---|
-| `src/routes/_authenticated.dashboard.vault.templates.tsx` (964 lines) | Stable but bloated. Top-right `New with AI` + `Blank map` buttons duplicate the empty-state cards. The `EditorDialog` mounts Architect, raw JSON, PDF induction, and Dry Run all at once. | Heavy rewrite of `EditorDialog` + `EmptyState` + header. |
-| `src/components/vault/TemplateArchitect.tsx` (470 lines) | Stable. Self-contained 3-phase flow (Describe → Refine → Finalized). Calls `architectDraft` / `architectRefine`. | Reused as-is inside the Smart AI path. No internal changes. |
-| `src/lib/extraction/induce.ts` | Stable. `induceSchema(pdf)` powers the PDF path. | Reused as-is. |
-| `src/lib/extraction/dryrun.ts` | Stable. Powers Dry Run. | Reused, but moved to optional last-step action (not collapsible always-on). |
-| `src/hooks/useVaultTemplates.ts` | Stable. `create/update/remove`. | Untouched. |
-| `src/lib/vault/starter-templates.ts` | **New** — static seeded library. | New file. |
+| Residential Real Estate | 14 | ~36 |
+| Hospitality / Boutique Hotel | 15 | ~38 |
+| Commercial Office | 15 | ~36 |
+| Multi-Family Housing | 16 | ~38 |
+| Coworking / Flex Workspace | 14 | ~34 |
 
-No latent inconsistencies found in the chain. `forceArchitect` URL param + `?architect=1` deep link still need to work and will be preserved (deep-links straight into Smart AI path).
+Field expansion hits things like: half-baths, basement type, roof age, HVAC, flood zone, listing agent, last sold date (residential); brand affiliation, ADR, occupancy rate, ballroom sqft, loyalty program, distance-to-airport (hospitality); building class, ceiling height, slab-to-slab, NNN charges, EV charging, transit score (office); unit-mix breakdown by bedroom, cap rate, price per unit, expense ratio (multi-family); workstation counts, day-pass price, podcast studio, member-app, transit-distance (coworking).
 
----
+The card field-count badges will auto-update because they read `Object.keys(s.schema.properties).length` directly — no UI changes needed for that.
 
-## Trigger Trace (4 paths)
+### 2. Make "ready to use" visually obvious in the Review step (`src/components/vault/wizard/steps/ReviewStep.tsx`)
 
-```text
-Dashboard
-  ├─ Card click  → setEditor(EMPTY_DRAFT) + setWizardPath('ai'|'pdf'|'library'|'manual')
-  │                                              │
-  │                                              ▼
-  │                                       WizardModal (open)
-  │                                              │
-  │                                  ┌───────────┼───────────┬───────────┐
-  │                                  ▼           ▼           ▼           ▼
-  │                              SmartAI       PDF        Library     Manual
-  │                              (3 steps)   (3 steps)   (2 steps)   (2 steps)
-  │                                  │           │           │           │
-  │                                  └───────────┴─────┬─────┴───────────┘
-  │                                                    ▼
-  │                                            draft mutated
-  │                                                    ▼
-  │                                       Final step → Save (create/update)
-  │                                                    ▼
-  │                                            close + refresh list
-  ▼
-Edit existing card  → setEditor(populated) + setWizardPath('manual') → jumps straight to final step
-```
+Two small UX changes that remove all ambiguity:
 
-Existing `?architect=1` deep link → opens hub with Smart AI preselected (preserves current behavior from the portal).
+- **Show the field list expanded by default** when the user arrived via the **library** or **pdf** paths (where fields are pre-detected). For `manual` and `ai` paths, keep it collapsed.
+- **Add a green "Ready to save" callout** above the name input when the schema is valid and pre-populated, like:
+  ```text
+  ✓ 36 fields detected and ready to use. Just give your map a name below.
+  ```
+  This single line eliminates the "is anything happening?" feeling.
 
----
+### 3. Replace confusing copy in the library picker (`src/components/vault/wizard/paths/LibraryPath.tsx`)
 
-## Sub-component Split
-
-New folder: `src/components/vault/wizard/`
-
-```text
-wizard/
-  WizardModal.tsx              ← shell: progress bar, Next/Back footer, step routing
-  WizardHub.tsx                ← (used in dashboard, not modal) the 4 cards
-  paths/
-    SmartAIPath.tsx            ← wraps existing TemplateArchitect
-    PdfPath.tsx                ← wraps existing SchemaInductionSection
-    LibraryPath.tsx            ← lists starter library + user's own templates to clone
-    ManualPath.tsx             ← raw JSON editor + Dry Run
-  steps/
-    NameStep.tsx               ← shared: Label input (final-step gate)
-    AdvancedSettings.tsx       ← collapsible: Doc Kind + Extractor + Raw JSON peek
-    ReviewStep.tsx             ← shared: schema preview + field count + Save button
-```
-
-`TemplateArchitect.tsx`, `SchemaInductionSection`, `DryRunSection` are **kept intact** and imported by the new path components — zero risk of breaking the working AI/PDF flows.
-
----
-
-## Draft State Strategy
-
-Single `WizardDraft` object owned by `VaultTemplatesPage`, threaded down. Same shape as today's `EditorState` plus path metadata.
-
-```ts
-type WizardPath = 'ai' | 'pdf' | 'library' | 'manual';
-
-interface WizardDraft {
-  id: string | null;            // null = create, set = edit existing
-  path: WizardPath;
-  step: number;                 // 0-indexed; per-path max
-  label: string;
-  doc_kind: string;
-  extractor: ExtractorId;
-  schema_text: string;          // canonical source of truth, JSON-stringified
-  source: { kind: 'starter'|'cloned'|'pdf'|'ai'|'manual'; ref?: string } | null;
-}
-```
-
-Rules:
-- Each path mutates only `schema_text` (and optionally `doc_kind` / `label`) via callbacks. Mutations are **non-destructive** until the user clicks `Save`.
-- Path can be switched only by closing the modal (cards on hub). Once inside a path, only Next/Back are exposed → no accidental cross-path state leakage.
-- Edit-existing flow auto-selects `manual` path and jumps to final step (preserves current "edit JSON directly" capability).
-
----
-
-## Per-Path Step Flow
-
-### Smart AI Blueprint (3 steps)
-1. **Describe property class** — Textarea (current Phase 1 of `TemplateArchitect`).
-2. **Pick the facts** — Checklist (current Phase 2). On Finalize → schema written to draft.
-3. **Name & Save** — Label input + collapsible Advanced (Doc Kind, Extractor, Raw JSON peek) + optional Dry Run button.
-
-### Auto-Extract from PDF (3 steps)
-1. **Upload sample document** — File input.
-2. **Generate & review fields** — Calls `induceSchema`; shows detected fields list.
-3. **Name & Save** — Same final step as above.
-
-### Use Proven Template (2 steps)
-1. **Pick a starting point** — Two sections:
-   - **Industry Standards** (from `src/lib/vault/starter-templates.ts` — Residential, Hospitality, Commercial Office, Multi-Family, Coworking).
-   - **My Templates** (clones from `useVaultTemplates`).
-   Selecting one populates draft (`label` gets " (Copy)" suffix when cloning user's own).
-2. **Name & Save** — Same final step.
-
-### Pro Developer Setup (2 steps)
-1. **Author JSON Schema** — Raw JSON textarea, large; live syntax check; current `EMPTY_EDITOR` schema as default.
-2. **Name & Save** — Same final step (Advanced is *expanded by default* here — power users want it).
-
----
-
-## Final Step — "Name & Save" (shared)
-
-Layout from top to bottom:
-- **Label** (required, only visible field by default).
-- **Schema preview pill** — read-only "12 fields detected" + "Show fields" disclosure.
-- **Advanced Settings** (`<Collapsible>`, default closed except Pro path):
-  - Doc Kind input.
-  - Extractor select (`pdfjs_heuristic` / `donut` disabled).
-  - Raw JSON textarea (mono-font, last-resort edit).
-- **Optional: Dry Run** button → opens current `DryRunSection` inline.
-
-Footer: `[← Back]  [Cancel]  [Create Template]`.
-
----
-
-## Progress Indicator
-
-Top of modal, full-width pill bar:
-
-```text
-●━━━━○━━━━○        Step 1 of 3 · Describe property
-```
-
-- Circles fill in primary color as user advances.
-- Current-step label shown to the right.
-- Click on a previous filled circle = jump back (cheap, draft is preserved).
-
----
-
-## Copy Update Map
-
-| Old (technical) | New (result-oriented) |
+| Before | After |
 |---|---|
-| Schema | Intelligence Structure |
-| JSON Schema | Field Blueprint |
-| Extractor | Data Extractor |
-| Heuristic | Pattern Reader |
-| Induce | Teach AI / Auto-Detect |
-| Dry Run | Test on Sample |
-| Doc Kind | Document Type |
-| Property Mapper | Property Intelligence Map |
+| "Pick an industry standard or **clone one of your own saved maps**" | "Start from a pre-built industry template below — or copy and tweak one you've already saved." |
+| Section: "Industry Standards" | "**Pre-Built Templates** *(recommended)*" |
+| Section: "My Templates" | "**Your Saved Templates** — copy and rename" |
+| Empty state: "You don't have any saved maps yet. Pick an Industry Standard above to get started." | "You haven't saved any templates yet. Pick a pre-built one above — it's the fastest way to start." |
 
-Path card titles stay short and result-focused:
-- **Smart AI Blueprint** — "Describe what you sell — AI builds the map."
-- **Auto-Extract from PDF** — "Drop a sample doc — we'll detect every field."
-- **Use Proven Template** — "Start from a battle-tested industry baseline."
-- **Pro Developer Setup** — "Hand-author the field blueprint."
+Plus a small hint chip on each Industry Standard card: "Auto-fills [N] fields" so the user knows clicking the card does the work for them.
 
----
+### 4. Reword the wizard hub card for the library path (`src/components/vault/wizard/WizardHub.tsx`)
 
-## Dashboard Changes (`vault.templates.tsx`)
+Audit and make sure the card label and tagline say something like "Use a Pre-Built Template — Pick a ready-made map for your industry. Auto-fills 30+ fields. Recommended for most users." (Exact copy verified after I view the hub file in implementation.)
 
-1. **Header**: Remove the right-side `[New with AI] [Blank map]` cluster entirely. Title + subtitle stay.
-2. **EmptyState**: Replace 2-card layout with the new 4-card `WizardHub` (also rendered when templates exist, in a compact horizontal strip above the grid as the primary entry point).
-3. **EditorDialog**: Replaced by `<WizardModal />`. Open/close logic identical.
-4. **Deep link** (`?architect=1`): Opens `WizardModal` with `path='ai'` preselected (preserves portal flow).
-5. **Edit click on existing card**: Opens `WizardModal` with `path='manual'`, `step=last`, fully populated.
+### 5. Final-step button copy stays "Create Map" but only the name field is required
 
----
+The schema is already valid because it came from the starter. The user literally only types a name (or accepts the default like "Residential Property Map") and hits Create. That IS the wizard — fully automated, one-click after the picker.
 
-## Phased Implementation (validated before next phase begins)
+## Files touched
 
-**Phase 1 — Static foundations (no behavior change yet)**
-- Create `src/lib/vault/starter-templates.ts` (5 rich starter blueprints).
-- Create `src/components/vault/wizard/` skeleton + types. No imports yet from the route.
-- `tsc --noEmit` must pass.
+- `src/lib/vault/starter-templates.ts` — full rewrite of all 5 schemas
+- `src/components/vault/wizard/steps/ReviewStep.tsx` — auto-expand field list for library/pdf paths, add "Ready to save" callout
+- `src/components/vault/wizard/paths/LibraryPath.tsx` — copy rewrite, section relabels, "Auto-fills N fields" hint
+- `src/components/vault/wizard/WizardHub.tsx` — copy audit on the library card
 
-**Phase 2 — WizardModal shell + Manual path**
-- Build `WizardModal`, progress bar, Next/Back, `ManualPath` (simplest), shared `NameStep`, `AdvancedSettings`.
-- Wire into route as a *parallel* dialog behind a feature flag (or temporary alt button). Old EditorDialog still works.
-- Verify create + edit through manual path.
+## Files NOT touched
 
-**Phase 3 — Smart AI + PDF paths**
-- Wrap existing `TemplateArchitect` in `SmartAIPath` (no internal changes).
-- Wrap existing `SchemaInductionSection` in `PdfPath` (no internal changes).
-- Verify both flows still produce the same final draft.
+- Wizard navigation, modal shell, draft state, save handler, AdvancedSettings — all already work correctly.
+- The user's pre-existing 2-field "Coworking Space" template stays untouched (their data, their choice). They can delete it manually and re-clone from the new richer starter if they want.
 
-**Phase 4 — Library path**
-- Build `LibraryPath` consuming `starter-templates.ts` + existing user templates.
-- Verify clone produces editable draft.
+## Verification after the change
 
-**Phase 5 — Dashboard cutover**
-- Remove top-right buttons.
-- Replace `EmptyState` cards with `WizardHub` (4 cards).
-- Swap `EditorDialog` → `WizardModal` everywhere; preserve `?architect=1` and edit-existing entry points.
-- Delete now-unused `EmptyState` component and inline JSON/Induce/DryRun collapsible blocks from the route file (the underlying `SchemaInductionSection` / `DryRunSection` move into wizard step files).
-- `tsc --noEmit` + manual click-through every path including edit-existing.
+1. `tsc --noEmit` — every field uses an allowed type; `required[]` only references existing keys.
+2. Open wizard → "Use a Pre-Built Template" → pick "Residential Real Estate" → land on Review step → see "✓ 36 fields ready to use" with the field list already expanded → type nothing (default name pre-filled) → click Create Map → done.
+3. Reopen the saved map via Edit → confirm all 36 fields round-trip intact.
 
----
+## Optional follow-up (not in this PR)
 
-## Safety / Regression Guards
-
-- `TemplateArchitect.tsx` is **not modified** — eliminates risk to the working AI flow.
-- `induceSchema` / `dryRunTemplate` / `useVaultTemplates` APIs are **not touched**.
-- `?architect=1` deep link behavior is preserved (covered in Phase 5 acceptance).
-- Edit-existing-template path is preserved (auto-routes to manual/final step).
-- Old `EditorDialog` is removed only in Phase 5 after the new shell is verified — single atomic swap.
-- Each phase ends with `tsc --noEmit` and a smoke check before the next begins.
-
----
-
-## Files Touched
-
-**New:**
-- `src/lib/vault/starter-templates.ts`
-- `src/components/vault/wizard/WizardModal.tsx`
-- `src/components/vault/wizard/WizardHub.tsx`
-- `src/components/vault/wizard/paths/SmartAIPath.tsx`
-- `src/components/vault/wizard/paths/PdfPath.tsx`
-- `src/components/vault/wizard/paths/LibraryPath.tsx`
-- `src/components/vault/wizard/paths/ManualPath.tsx`
-- `src/components/vault/wizard/steps/NameStep.tsx`
-- `src/components/vault/wizard/steps/AdvancedSettings.tsx`
-- `src/components/vault/wizard/steps/ReviewStep.tsx`
-- `src/components/vault/wizard/types.ts`
-
-**Modified:**
-- `src/routes/_authenticated.dashboard.vault.templates.tsx` (header trim, hub swap, dialog swap, removal of inline collapsibles)
-
-**Untouched (verified safe):**
-- `src/components/vault/TemplateArchitect.tsx`
-- `src/lib/extraction/*`
-- `src/hooks/useVaultTemplates.ts`
+If you want a one-click "Reset to Pre-Built Template" action on existing user templates (so the legacy 2-field "Coworking Space" can be auto-upgraded), that's a small follow-up. Just say the word.
