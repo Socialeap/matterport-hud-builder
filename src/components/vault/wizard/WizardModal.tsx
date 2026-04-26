@@ -6,7 +6,7 @@
  * Save delegates back to the parent (which calls useVaultTemplates.create/update).
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ArrowRight, X } from "lucide-react";
 import { toast } from "sonner";
 
@@ -20,6 +20,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { JsonSchema } from "@/lib/extraction/provider";
+import { STARTER_TEMPLATES } from "@/lib/vault/starter-templates";
 
 import {
   PATH_STEP_COUNT,
