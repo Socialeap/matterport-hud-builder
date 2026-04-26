@@ -85,7 +85,7 @@ export function ReviewStep({ draft, onChange, disabled }: Props) {
   // promised field count so the MSP user can confirm at a glance that the
   // full template made it through.
   const starter =
-    draft.source?.kind === "starter"
+    draft.source && draft.source.kind === "starter"
       ? STARTER_TEMPLATES.find((s) => s.id === draft.source!.ref) ?? null
       : null;
   const promisedCount = starter
