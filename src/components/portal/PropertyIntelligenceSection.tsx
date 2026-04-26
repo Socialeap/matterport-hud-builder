@@ -4,8 +4,10 @@ import {
   BookOpen,
   CheckCircle2,
   FileText,
+  Library,
   Loader2,
   Lock,
+  Play,
   RefreshCw,
   Snowflake,
   Sparkles,
@@ -174,7 +176,7 @@ function ModelRow({
     extractFromUrl,
     remove,
   } = usePropertyExtractions(model.id);
-  const { refresh: refreshDocs } = useAvailablePropertyDocs();
+  const { docs: vaultDocs, refresh: refreshDocs } = useAvailablePropertyDocs();
   const { isFrozen, freeze: freezeRow } = useLusFreeze(model.id);
 
   // Tracks vault_assets uploaded/registered in this session for this property.
@@ -232,7 +234,15 @@ function ModelRow({
   const [busyMessage, setBusyMessage] = useState<string>("");
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // "From vault…" picker — runs a curated template against an existing
+  // provider-published doc. This was the one feature only PropertyDocsPanel
+  // exposed; bringing it inline here closes that gap.
+  const [vaultPickerOpen, setVaultPickerOpen] = useState(false);
+  const [pickedVaultAssetId, setPickedVaultAssetId] = useState<string>("");
+  const [pickedTemplateId, setPickedTemplateId] = useState<string>("");
+
   const hasTemplates = templates.length > 0;
+  const hasVaultDocs = vaultDocs.length > 0;
   const displayName =
     model.propertyName?.trim() ||
     model.name?.trim() ||
@@ -502,6 +512,40 @@ function ModelRow({
     }
   };
 
+  // Run a curated template against an existing vault doc (the legacy
+  // PropertyDocsPanel "Run Extraction" flow, surfaced inline here).
+  const handleRunFromVault = async () => {
+    if (!pickedVaultAssetId || !pickedTemplateId) return;
+    const asset = vaultDocs.find((d) => d.id === pickedVaultAssetId);
+    setBusy(true);
+    setBusyMessage("Extracting & indexing…");
+    try {
+      if (asset) {
+        trackAsset({
+          id: asset.id,
+          label: asset.label,
+          asset_url: asset.asset_url,
+          mime_type: asset.mime_type,
+        });
+      }
+      const res = await extract({
+        vault_asset_id: pickedVaultAssetId,
+        template_id: pickedTemplateId,
+        saved_model_id: savedModelId,
+      });
+      if (res) {
+        toast.success(`Indexed ${res.chunks_indexed} chunks for ${displayName}`);
+        onExtractionSuccess?.();
+        setVaultPickerOpen(false);
+        setPickedVaultAssetId("");
+        setPickedTemplateId("");
+      }
+    } finally {
+      setBusy(false);
+      setBusyMessage("");
+    }
+  };
+
   return (
     <li className="rounded-md border border-border/60 bg-muted/10 p-3 space-y-2">
       <div className="flex items-center justify-between gap-2">
@@ -533,25 +577,43 @@ function ModelRow({
             compact
           />
         </div>
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-7 text-xs"
-          onClick={openDialog}
-          disabled={isFrozen || busy || running || !user}
-        >
-          {busy ? (
-            <>
-              <Loader2 className="mr-1 size-3 animate-spin" />
-              {busyMessage || "Working…"}
-            </>
-          ) : (
-            <>
-              <Upload className="mr-1 size-3" />
-              {hasTemplates ? "Upload Doc" : "Upload & Auto-Detect"}
-            </>
+        <div className="flex shrink-0 items-center gap-1">
+          {hasTemplates && hasVaultDocs && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs"
+              onClick={() => {
+                setPickedVaultAssetId("");
+                setPickedTemplateId(templates[0]?.id ?? "");
+                setVaultPickerOpen(true);
+              }}
+              disabled={isFrozen || busy || running || !user}
+              title="Run a curated template against a doc your provider already published"
+            >
+              <Library className="mr-1 size-3" /> From vault…
+            </Button>
           )}
-        </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs"
+            onClick={openDialog}
+            disabled={isFrozen || busy || running || !user}
+          >
+            {busy ? (
+              <>
+                <Loader2 className="mr-1 size-3 animate-spin" />
+                {busyMessage || "Working…"}
+              </>
+            ) : (
+              <>
+                <Upload className="mr-1 size-3" />
+                {hasTemplates ? "Upload Doc" : "Upload & Auto-Detect"}
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
       {loading ? (
@@ -712,6 +774,91 @@ function ModelRow({
               ) : (
                 <>
                   <Upload className="mr-1 size-3.5" /> Upload & Index
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* "From vault…" picker — runs a curated template against an existing
+          provider-published doc. Mirrors the legacy PropertyDocsPanel flow. */}
+      <Dialog
+        open={vaultPickerOpen}
+        onOpenChange={(o) => {
+          setVaultPickerOpen(o);
+          if (!o) {
+            setPickedVaultAssetId("");
+            setPickedTemplateId("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Run Extraction From Vault</DialogTitle>
+            <DialogDescription>
+              Pick a doc your provider has already published and a template
+              to extract against. Fields will populate the Ask AI panel for{" "}
+              <strong>{displayName}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Vault Doc</Label>
+              <select
+                value={pickedVaultAssetId}
+                onChange={(e) => setPickedVaultAssetId(e.target.value)}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="">Select a property doc…</option>
+                {vaultDocs.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs">Template</Label>
+              <select
+                value={pickedTemplateId}
+                onChange={(e) => setPickedTemplateId(e.target.value)}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="">Select a template…</option>
+                {templates.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.label} ({t.doc_kind})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setVaultPickerOpen(false)}
+              disabled={busy || running}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleRunFromVault}
+              disabled={
+                busy || running || !pickedVaultAssetId || !pickedTemplateId
+              }
+            >
+              {busy ? (
+                <>
+                  <Loader2 className="mr-1 size-3.5 animate-spin" />
+                  {busyMessage || "Extracting…"}
+                </>
+              ) : (
+                <>
+                  <Play className="mr-1 size-3.5" /> Run
                 </>
               )}
             </Button>

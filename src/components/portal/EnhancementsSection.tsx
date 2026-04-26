@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { PropertyIntelligenceSection } from "./PropertyIntelligenceSection";
 import { SoundLibraryPicker } from "./enhancements/SoundLibraryPicker";
@@ -146,21 +147,48 @@ export function EnhancementsSection({
 
       {/* Nested category accordion */}
       <Accordion type="single" collapsible className="space-y-2">
-        {/* Property Intelligence — wired (moved from outer accordion) */}
-        <AccordionItem value="intelligence" className="rounded-md border bg-card">
+        {/* Unified Property Intelligence + Docs — single accordion, two tabs */}
+        <AccordionItem value="intelligence-docs" className="rounded-md border bg-card">
           <AccordionTrigger className="px-3 py-2 hover:no-underline">
             <span className="flex items-center gap-2 text-sm font-semibold">
               <BookOpen className="size-4 text-primary" />
-              Property Intelligence (Ask AI)
+              Property Intelligence &amp; Docs
               <Badge variant="secondary" className="ml-1">Wired</Badge>
             </span>
           </AccordionTrigger>
           <AccordionContent className="px-3 pb-3">
-            <PropertyIntelligenceSection
-              models={models}
-              savedModelId={savedModelId}
-              onExtractionSuccess={onExtractionSuccess}
-            />
+            <Tabs defaultValue="ask" className="w-full">
+              <TabsList className="mb-3">
+                <TabsTrigger value="ask" className="gap-1.5">
+                  <BookOpen className="size-3.5" />
+                  Ask AI
+                </TabsTrigger>
+                <TabsTrigger value="catalog" className="gap-1.5">
+                  <FileText className="size-3.5" />
+                  Provider Catalog
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="ask" className="mt-0 space-y-2">
+                <PropertyIntelligenceSection
+                  models={models}
+                  savedModelId={savedModelId}
+                  onExtractionSuccess={onExtractionSuccess}
+                />
+              </TabsContent>
+
+              <TabsContent value="catalog" className="mt-0 space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  Docs (floorplans, datasheets, listings) your provider has
+                  already published. Anything you upload via{" "}
+                  <strong>Ask AI</strong> is also added here for future tours.
+                </p>
+                <VaultCatalogList
+                  category="property_doc"
+                  emptyHint="Your provider hasn't published any property docs yet."
+                />
+              </TabsContent>
+            </Tabs>
           </AccordionContent>
         </AccordionItem>
 
@@ -188,29 +216,6 @@ export function EnhancementsSection({
           </AccordionContent>
         </AccordionItem>
 
-        {/* Property Docs — discovery surface (real wiring is in Property Intelligence) */}
-        <AccordionItem value="docs" className="rounded-md border bg-card">
-          <AccordionTrigger className="px-3 py-2 hover:no-underline">
-            <span className="flex items-center gap-2 text-sm font-semibold">
-              <FileText className="size-4 text-primary" />
-              Property Docs
-              <Badge variant="secondary" className="ml-1">Wired</Badge>
-            </span>
-          </AccordionTrigger>
-          <AccordionContent className="px-3 pb-3 space-y-2">
-            <p className="text-xs text-muted-foreground">
-              Docs (floorplans, datasheets, listings) become Q&A inside the
-              Ask AI panel. Use{" "}
-              <strong>Property Intelligence</strong> above to upload or paste a
-              URL — the catalog below shows what your provider has already
-              published.
-            </p>
-            <VaultCatalogList
-              category="property_doc"
-              emptyHint="Your provider hasn't published any property docs yet."
-            />
-          </AccordionContent>
-        </AccordionItem>
 
         {/* Coming-soon categories */}
         <AccordionItem value="filters" className="rounded-md border bg-card">
