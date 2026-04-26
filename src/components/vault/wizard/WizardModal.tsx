@@ -118,7 +118,8 @@ export function WizardModal({ draft, setDraft, saving, onSave }: Props) {
     let extractor = draft.extractor;
     let docKind = (draft.doc_kind || "general").trim();
     if (draft.source?.kind === "starter") {
-      const starter = STARTER_TEMPLATES.find((s) => s.id === draft.source!.ref);
+      const ref = draft.source.ref;
+      const starter = STARTER_TEMPLATES.find((s) => s.id === ref);
       if (starter) {
         const promised = Object.keys(starter.schema.properties).length;
         const actual = Object.keys(schema.properties).length;
