@@ -104,12 +104,38 @@ function unwrap<T>(data: T | { error: string; detail?: string } | null): T {
   return data as T;
 }
 
+async function readErrorBody(err: unknown): Promise<{ error?: string; detail?: string } | null> {
+  // supabase-js v2 FunctionsHttpError exposes the raw Response under .context.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ctx = (err as any)?.context;
+  if (ctx && typeof ctx.json === "function") {
+    try { return await ctx.json(); } catch { /* fall through */ }
+  }
+  if (ctx && typeof ctx.text === "function") {
+    try {
+      const t = await ctx.text();
+      return JSON.parse(t);
+    } catch { /* not json */ }
+  }
+  return null;
+}
+
 export async function induceSchema(pdfFile: File): Promise<InduceSchemaResult> {
   const pdf_b64 = await fileToBase64(pdfFile);
   const { data, error } = await supabase.functions.invoke("induce-schema", {
     body: { pdf_b64 },
   });
-  if (error) throw error;
+  if (error) {
+    const body = await readErrorBody(error);
+    throw new InduceSchemaError({
+      kind: classifyError(body?.error),
+      status: 422,
+      detail: body?.detail,
+      message: body?.error
+        ? `${body.error}${body.detail ? `: ${body.detail}` : ""}`
+        : (error as Error).message ?? "induce-schema failed",
+    });
+  }
   return unwrap<InduceSchemaResult>(data);
 }
 
