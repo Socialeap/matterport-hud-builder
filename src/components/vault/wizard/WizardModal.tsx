@@ -173,6 +173,20 @@ export function WizardModal({ draft, setDraft, saving, onSave }: Props) {
   const isFinalStep = draft.step === totalSteps - 1;
   const currentStepLabel = stepLabels[draft.step] ?? "";
 
+  // Compute starter context for the final-step save button label.
+  const starterFieldCount = (() => {
+    if (draft.source?.kind !== "starter") return null;
+    const ref = draft.source.ref;
+    const starter = STARTER_TEMPLATES.find((s) => s.id === ref);
+    return starter ? Object.keys(starter.schema.properties).length : null;
+  })();
+
+  const modalTitle = draft.id
+    ? "Edit Property Map"
+    : draft.path === "library"
+      ? "Use a Pre-Built Template"
+      : PATH_TITLES[draft.path];
+
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) close(); }}>
       <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
