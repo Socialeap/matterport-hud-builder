@@ -14,6 +14,18 @@ var TIER1_FIELD_BOOST = 0.10;
 var TIER2_MIN = 0.50;
 var RRF_K = 60;
 
+// Phase A — raw-chunk escalation. When canonical missed the soft floor
+// AND a raw_chunk hit scored well above the synthesis-trigger band, we
+// return the chunk content directly and skip the synthesize-answer
+// edge call entirely. This is the cost-control path: an obviously
+// matching paragraph from the source PDF doesn't need an LLM rewrite.
+//
+// The threshold is intentionally tighter than TIER1_SOFT to avoid
+// pre-empting a synthesis pass that could produce a better-worded
+// answer. Tuned against the test fixture; expect to adjust once
+// real-traffic confidence histograms are available.
+var RAW_CHUNK_DIRECT_FLOOR = 0.62;
+
 // Value-bearing intents — a confidently classified intent on the query
 // side is itself strong evidence the candidate field is correct. For
 // these intents we accept any tier-1 hit above the hard floor (0.45),
@@ -406,6 +418,45 @@ function decideAnswer(inputs) {
     };
   }
 
+  // Step 3.5 — raw-chunk direct escalation. Only triggers when:
+  //   - canonical missed the soft floor (or returned nothing), AND
+  //   - a chunk classified as `raw_chunk` (or with kind unset, for
+  //     legacy rows that pre-date Phase A) scored above the direct
+  //     floor AND is intent-allowed.
+  // This deliberately runs BEFORE curated/synthesis so we get the
+  // cost-control win without breaking the curated tier when curated
+  // has a stronger semantic match. We bias toward synthesis whenever
+  // the chunk score is in the borderline band by setting the floor
+  // tighter than TIER1_SOFT.
+  if (chunkHits && chunkHits.length) {
+    var bestRaw = null;
+    for (var rc = 0; rc < chunkHits.length; rc++) {
+      var hit = chunkHits[rc];
+      if (!hit) continue;
+      var hitKind = hit.kind || "raw_chunk"; // legacy rows -> raw_chunk
+      if (hitKind !== "raw_chunk") continue;
+      if (Number(hit.score || 0) < RAW_CHUNK_DIRECT_FLOOR) continue;
+      // Respect intent allow-list if the section can be classified.
+      if (intentAllowsFn && intent && intent !== "unknown") {
+        var sect = String(hit.section || hit.source || "").toLowerCase().replace(/[^a-z0-9_]+/g, "_");
+        if (sect && !intentAllowsFn(sect, intent)) continue;
+      }
+      bestRaw = hit;
+      break;
+    }
+    if (bestRaw) {
+      return {
+        path: "chunk",
+        text: bestRaw.content || "",
+        intent: intent,
+        strictUnknown: false,
+        needsSynthesis: false,
+        synthChunks: [],
+        sourceLabel: bestRaw.source || bestRaw.section || null,
+      };
+    }
+  }
+
   // Step 4 — Tier 2 curated hybrid search (caller supplied hits).
   var curatedFiltered = curatedFilter(curatedHits, intent, intentAllowsFn);
   var tier2Best = null;
@@ -518,6 +569,7 @@ export {
   TIER1_FLOOR,
   TIER1_FIELD_BOOST,
   TIER2_MIN,
+  RAW_CHUNK_DIRECT_FLOOR,
   RRF_K,
   ACTION_MISS_COPY,
   STRICT_UNKNOWN_COPY,

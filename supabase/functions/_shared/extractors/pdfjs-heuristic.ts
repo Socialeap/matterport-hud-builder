@@ -8,9 +8,10 @@ import type {
   ExtractionProvider,
   ExtractionResult,
   JsonSchemaField,
-  PropertyChunk,
   VaultTemplate,
 } from "./types.ts";
+import { cleanDocumentText } from "../document-cleaning.ts";
+import { slidingWindowChunks } from "../text-chunker.ts";
 
 interface UnpdfModule {
   extractText(
@@ -23,9 +24,7 @@ const unpdf = (await import(
   "https://esm.sh/unpdf@0.12.1"
 )) as unknown as UnpdfModule;
 
-const VERSION = "1.1.0";
-const CHUNK_CHARS = 1200;
-const CHUNK_OVERLAP = 150;
+const VERSION = "1.2.0";
 
 interface FflateModule {
   unzipSync(data: Uint8Array): Record<string, Uint8Array>;
@@ -35,10 +34,17 @@ export const pdfjsHeuristic: ExtractionProvider = {
   id: "pdfjs_heuristic",
   version: VERSION,
   async extract({ bytes, template, mimeType }): Promise<ExtractionResult> {
-    const text = await extractTextByMime(bytes, mimeType);
-    const fields = coerceFields(text, template);
-    const chunks = chunkText(text, template.doc_kind);
-    return { fields, chunks, rawText: text };
+    const rawText = await extractTextByMime(bytes, mimeType);
+    // Clean once for chunking; field coercion still runs against the
+    // raw text so label-based regexes that rely on original whitespace
+    // continue to match.
+    const cleaned = cleanDocumentText(rawText);
+    const fields = coerceFields(rawText, template);
+    const chunks = slidingWindowChunks(cleaned, {
+      section: template.doc_kind,
+      source: "pdf",
+    });
+    return { fields, chunks, rawText };
   },
 };
 
@@ -205,23 +211,3 @@ function cast(raw: string, type: JsonSchemaField["type"]): unknown {
   }
 }
 
-function chunkText(text: string, section: string): PropertyChunk[] {
-  const clean = text.replace(/\s+/g, " ").trim();
-  if (!clean) return [];
-
-  const chunks: PropertyChunk[] = [];
-  let start = 0;
-  let idx = 0;
-  while (start < clean.length) {
-    const end = Math.min(start + CHUNK_CHARS, clean.length);
-    chunks.push({
-      id: `${section}-${idx}`,
-      section,
-      content: clean.slice(start, end),
-    });
-    if (end === clean.length) break;
-    start = end - CHUNK_OVERLAP;
-    idx += 1;
-  }
-  return chunks;
-}

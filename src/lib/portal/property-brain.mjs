@@ -112,6 +112,10 @@ function _collectChunks(entries) {
         content: String(ch.content || ""),
         embedding: Array.isArray(ch.embedding) ? ch.embedding : null,
         templateLabel: label,
+        // Phase A — propagate metadata when present. Old chunks omit it
+        // and the runtime treats missing `kind` as `raw_chunk`.
+        kind: (ch.kind === "raw_chunk" || ch.kind === "field_chunk") ? ch.kind : undefined,
+        source: (typeof ch.source === "string" && ch.source) ? ch.source : undefined,
       });
     }
   }
