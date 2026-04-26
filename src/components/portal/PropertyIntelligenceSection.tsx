@@ -512,6 +512,40 @@ function ModelRow({
     }
   };
 
+  // Run a curated template against an existing vault doc (the legacy
+  // PropertyDocsPanel "Run Extraction" flow, surfaced inline here).
+  const handleRunFromVault = async () => {
+    if (!pickedVaultAssetId || !pickedTemplateId) return;
+    const asset = vaultDocs.find((d) => d.id === pickedVaultAssetId);
+    setBusy(true);
+    setBusyMessage("Extracting & indexing…");
+    try {
+      if (asset) {
+        trackAsset({
+          id: asset.id,
+          label: asset.label,
+          asset_url: asset.asset_url,
+          mime_type: asset.mime_type,
+        });
+      }
+      const res = await extract({
+        vault_asset_id: pickedVaultAssetId,
+        template_id: pickedTemplateId,
+        saved_model_id: savedModelId,
+      });
+      if (res) {
+        toast.success(`Indexed ${res.chunks_indexed} chunks for ${displayName}`);
+        onExtractionSuccess?.();
+        setVaultPickerOpen(false);
+        setPickedVaultAssetId("");
+        setPickedTemplateId("");
+      }
+    } finally {
+      setBusy(false);
+      setBusyMessage("");
+    }
+  };
+
   return (
     <li className="rounded-md border border-border/60 bg-muted/10 p-3 space-y-2">
       <div className="flex items-center justify-between gap-2">
