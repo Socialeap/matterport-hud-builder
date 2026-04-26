@@ -780,6 +780,91 @@ function ModelRow({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* "From vault…" picker — runs a curated template against an existing
+          provider-published doc. Mirrors the legacy PropertyDocsPanel flow. */}
+      <Dialog
+        open={vaultPickerOpen}
+        onOpenChange={(o) => {
+          setVaultPickerOpen(o);
+          if (!o) {
+            setPickedVaultAssetId("");
+            setPickedTemplateId("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Run Extraction From Vault</DialogTitle>
+            <DialogDescription>
+              Pick a doc your provider has already published and a template
+              to extract against. Fields will populate the Ask AI panel for{" "}
+              <strong>{displayName}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Vault Doc</Label>
+              <select
+                value={pickedVaultAssetId}
+                onChange={(e) => setPickedVaultAssetId(e.target.value)}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="">Select a property doc…</option>
+                {vaultDocs.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs">Template</Label>
+              <select
+                value={pickedTemplateId}
+                onChange={(e) => setPickedTemplateId(e.target.value)}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="">Select a template…</option>
+                {templates.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.label} ({t.doc_kind})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setVaultPickerOpen(false)}
+              disabled={busy || running}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleRunFromVault}
+              disabled={
+                busy || running || !pickedVaultAssetId || !pickedTemplateId
+              }
+            >
+              {busy ? (
+                <>
+                  <Loader2 className="mr-1 size-3.5 animate-spin" />
+                  {busyMessage || "Extracting…"}
+                </>
+              ) : (
+                <>
+                  <Play className="mr-1 size-3.5" /> Run
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </li>
   );
 }
