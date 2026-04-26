@@ -41,6 +41,13 @@ var VALUE_BEARING_INTENTS = {
   designer_architect: true,
   developer: true,
   pricing: true,
+  unit_count: true,
+  property_dimension: true,
+  investment_metric: true,
+  zoning_context: true,
+  space_capacity: true,
+  catering_service: true,
+  island_context: true,
   parking: true,
   accessibility: true,
   summary: true,
@@ -57,6 +64,13 @@ var VALUE_INTENT_MISS_COPY = {
   history_story: "I don't have a historical backstory on file for this property yet.",
   design_inspiration: "I don't have details on the design inspiration for this property yet.",
   brand_chain: "I don't have brand or chain details for this property yet.",
+  unit_count: "I don't have unit-count details for this property yet.",
+  property_dimension: "I don't have that size or dimension detail for this property yet.",
+  investment_metric: "I don't have that investment metric for this property yet.",
+  zoning_context: "I don't have zoning or land-use details for this property yet.",
+  space_capacity: "I don't have capacity details for that space yet.",
+  catering_service: "I don't have catering details for this property yet.",
+  island_context: "I don't have land or island-context details for this property yet.",
 };
 
 // Per-action-intent miss copy. Keyed by intent. Shown when the intent
@@ -109,6 +123,121 @@ function _intentMatchesChunkSection(section, intent, intentAllowsFn) {
   // a field suffix — run it through intentAllows as-is.
   var s = String(section || "").toLowerCase().replace(/[^a-z0-9_]+/g, "_");
   return intentAllowsFn(s, intent);
+}
+
+var _EVIDENCE_STOPWORDS = {
+  what: true,
+  whats: true,
+  when: true,
+  where: true,
+  which: true,
+  who: true,
+  how: true,
+  much: true,
+  many: true,
+  does: true,
+  doe: true,
+  this: true,
+  that: true,
+  there: true,
+  they: true,
+  have: true,
+  with: true,
+  about: true,
+  property: true,
+  ranch: true,
+};
+
+var _INTENT_EVIDENCE_TERMS = {
+  pricing: ["price", "cost", "fee", "fees", "rate", "rates", "package", "packages", "site", "bar", "service", "catering", "person"],
+  unit_count: ["unit", "units", "apartment", "apartments", "residences", "count", "total"],
+  property_dimension: ["square", "feet", "sqft", "rsf", "rentable", "building", "size", "area", "lot", "acre", "acres", "clear", "height", "frontage", "traffic"],
+  investment_metric: ["noi", "net", "operating", "income", "cap", "rate", "occupancy", "occupied"],
+  zoning_context: ["zoning", "zoned", "land", "use", "permitted", "restriction", "restrictions"],
+  space_capacity: ["capacity", "hold", "holds", "guest", "guests", "people", "seated", "seat", "seats", "deck", "pavilion", "ceremony", "reception", "accommodating"],
+  catering_service: ["catering", "buffet", "food", "dining", "per", "person", "mandatory", "available"],
+  island_context: ["island", "surrounded", "inholding", "forest", "jurisdiction", "land", "federal", "oversight"],
+  amenity_presence: ["available", "amenity", "amenities", "feature", "features", "on-site", "onsite"],
+  restaurant_presence: ["restaurant", "dining", "food", "bar", "on-site", "onsite"],
+  bar_program: ["bar", "cocktail", "drink", "beverage", "service"],
+};
+
+function _expandedEvidenceTokens(query, intent) {
+  var raw = _queryTokens(query);
+  var out = {};
+  for (var t in raw) {
+    if (!Object.prototype.hasOwnProperty.call(raw, t)) continue;
+    if (_EVIDENCE_STOPWORDS[t]) continue;
+    out[t] = true;
+    if (t.length > 4 && t.slice(-1) === "s") out[t.slice(0, -1)] = true;
+  }
+  var extras = _INTENT_EVIDENCE_TERMS[intent] || [];
+  for (var i = 0; i < extras.length; i++) out[extras[i]] = true;
+  return out;
+}
+
+function _splitEvidenceSentences(content) {
+  var clean = String(content || "")
+    .replace(/[•●]\s*/g, ". ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!clean) return [];
+  var matches = clean.match(/[^.!?]+[.!?]?/g) || [clean];
+  var out = [];
+  for (var i = 0; i < matches.length; i++) {
+    var s = matches[i].replace(/^[\s:;,\-–—)]+/, "").trim();
+    if (!s || s.length < 18) continue;
+    out.push(s);
+  }
+  return out;
+}
+
+function _scoreEvidenceSentence(sentence, tokens) {
+  var s = String(sentence || "").toLowerCase();
+  if (!s) return 0;
+  var score = 0;
+  for (var t in tokens) {
+    if (!Object.prototype.hasOwnProperty.call(tokens, t)) continue;
+    if (s.indexOf(t) >= 0) score += 1;
+  }
+  if (/\$[\d,]+/.test(s)) score += 1;
+  if (/\b\d{2,5}\s+(guests|people|attendees|seated)\b/.test(s)) score += 1;
+  if (/:\s/.test(sentence)) score += 0.25;
+  // Mid-sentence sliding-window fragments are the main UX failure; keep
+  // them as candidates, but prefer complete-looking evidence.
+  if (/^[a-z(]/.test(sentence)) score -= 0.75;
+  return score;
+}
+
+function _looksSpecificQuery(query, terms) {
+  var q = String(query || "").toLowerCase();
+  for (var i = 0; i < terms.length; i++) {
+    if (q.indexOf(terms[i]) >= 0) return true;
+  }
+  return false;
+}
+
+function extractiveChunkAnswer(query, content, intent) {
+  var sentences = _splitEvidenceSentences(content);
+  if (!sentences.length) return String(content || "").trim();
+  var tokens = _expandedEvidenceTokens(query, intent);
+  var scored = [];
+  for (var i = 0; i < sentences.length; i++) {
+    var score = _scoreEvidenceSentence(sentences[i], tokens);
+    if (score > 0) scored.push({ idx: i, score: score, text: sentences[i] });
+  }
+  if (!scored.length) {
+    return sentences.slice(0, 2).join(" ").slice(0, 500).trim();
+  }
+  scored.sort(function (a, b) {
+    if (b.score !== a.score) return b.score - a.score;
+    return a.idx - b.idx;
+  });
+  var specificPricing = _looksSpecificQuery(query, ["bar", "catering", "site fee", "site fees", "buyout", "accommodation"]);
+  var limit = (intent === "pricing" && !specificPricing) ? 3 : 1;
+  var picked = scored.slice(0, limit);
+  picked.sort(function (a, b) { return a.idx - b.idx; });
+  return picked.map(function (p) { return p.text; }).join(" ").slice(0, 700).trim();
 }
 
 // Reciprocal Rank Fusion. Identical formula to the current __dqaRRF.
@@ -447,7 +576,7 @@ function decideAnswer(inputs) {
     if (bestRaw) {
       return {
         path: "chunk",
-        text: bestRaw.content || "",
+        text: extractiveChunkAnswer(query, bestRaw.content || "", intent),
         intent: intent,
         strictUnknown: false,
         needsSynthesis: false,
@@ -544,7 +673,7 @@ function decideAnswer(inputs) {
     var chunk = top.item;
     return {
       path: "chunk",
-      text: chunk.content || "",
+      text: extractiveChunkAnswer(query, chunk.content || "", intent),
       intent: intent,
       strictUnknown: false,
       needsSynthesis: false,
@@ -579,5 +708,6 @@ export {
   curatedFilter,
   rescoreChunksByIntent,
   assembleSynthChunks,
+  extractiveChunkAnswer,
   decideAnswer,
 };

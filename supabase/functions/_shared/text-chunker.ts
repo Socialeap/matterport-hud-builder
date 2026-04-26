@@ -69,6 +69,80 @@ function scoreQuality(text: string): number {
   return Number(score.toFixed(3));
 }
 
+function splitEvidenceUnits(text: string): string[] {
+  const clean = String(text || "").replace(/\s+/g, " ").trim();
+  if (!clean) return [];
+
+  const units: string[] = [];
+  const labelRe =
+    /(?:^|[.;]\s+)([A-Z][A-Za-z0-9 /&()+.'-]{2,52}):\s*([^:]{12,520}?)(?=(?:[.;]\s+[A-Z][A-Za-z0-9 /&()+.'-]{2,52}:\s)|$)/g;
+  let m: RegExpExecArray | null;
+  while ((m = labelRe.exec(clean)) !== null) {
+    const label = m[1].trim();
+    const value = m[2].trim().replace(/[.;]\s*$/, "");
+    if (label && value) units.push(`${label}: ${value}.`);
+  }
+
+  const sentences = clean.match(/[^.!?]+[.!?]?/g) ?? [];
+  for (const sentence of sentences) {
+    const s = sentence.replace(/^[\s:;,.\-–—)]+/, "").trim();
+    if (s.length < 24) continue;
+    if (s.length <= 520) {
+      units.push(s);
+      continue;
+    }
+    for (const piece of s.split(/;\s+|,\s+(?=(?:and|including|with|which|while)\b)/i)) {
+      const p = piece.trim();
+      if (p.length >= 24 && p.length <= 520) units.push(p);
+    }
+  }
+
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const unit of units) {
+    const u = unit.replace(/\s+/g, " ").trim();
+    const key = u.toLowerCase();
+    if (!u || seen.has(key)) continue;
+    seen.add(key);
+    out.push(u);
+  }
+  return out.length > 0 ? out : [clean];
+}
+
+function sentenceWindowChunks(
+  text: string,
+  chunkChars: number,
+  overlapChars: number,
+  maxChunks: number,
+): string[] {
+  const units = splitEvidenceUnits(text);
+  const chunks: string[] = [];
+  let buf = "";
+  let carry = "";
+
+  for (const unit of units) {
+    const candidate = buf ? `${buf} ${unit}` : unit;
+    if (candidate.length <= chunkChars) {
+      buf = candidate;
+      continue;
+    }
+    if (buf) {
+      chunks.push(buf);
+      if (chunks.length >= maxChunks) return chunks;
+      carry = overlapChars > 0 ? buf.slice(Math.max(0, buf.length - overlapChars)) : "";
+    }
+    buf = carry ? `${carry} ${unit}`.trim() : unit;
+    if (buf.length > chunkChars * 1.5) {
+      chunks.push(buf.slice(0, chunkChars));
+      if (chunks.length >= maxChunks) return chunks;
+      buf = buf.slice(Math.max(0, chunkChars - overlapChars)).trim();
+    }
+  }
+
+  if (buf && chunks.length < maxChunks) chunks.push(buf);
+  return chunks;
+}
+
 /** Slide a window over `text` and emit `PropertyChunk`s carrying
  *  Phase A metadata. */
 export function slidingWindowChunks(
@@ -85,11 +159,14 @@ export function slidingWindowChunks(
   if (!clean) return [];
 
   const out: PropertyChunk[] = [];
-  let start = 0;
-  let idx = 0;
-  while (start < clean.length && out.length < maxChunks) {
-    const end = Math.min(start + chunkChars, clean.length);
-    const content = clean.slice(start, end);
+  const windows = sentenceWindowChunks(
+    clean,
+    chunkChars,
+    overlapChars,
+    maxChunks,
+  );
+  for (let idx = 0; idx < windows.length; idx++) {
+    const content = windows[idx];
     const visibility: ChunkVisibility = classifyChunkVisibility(content);
     out.push({
       id: `${section}-${idx}`,
@@ -101,9 +178,6 @@ export function slidingWindowChunks(
       tokenEstimate: estimateTokens(content),
       visibility,
     });
-    if (end === clean.length) break;
-    start = end - overlapChars;
-    idx += 1;
   }
   return out;
 }

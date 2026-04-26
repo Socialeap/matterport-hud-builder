@@ -182,9 +182,86 @@ var FIELD_COMPAT = {
     allow: [
       /^price.*/, /^.*_price$/, /^rate.*/, /^cost.*/,
       /^nightly_rate$/, /^room_rate$/, /^adr$/,
+      /^.*fee.*/, /^.*fees.*/, /^.*package.*/,
+      /^bar_service.*/, /^catering.*/, /^site_fee.*/,
+      /^.*_per_person$/,
+      /^lease_rate$/, /^rent$/, /^cam_charges$/, /^nnn_charges$/,
+      /^noi$/, /^cap_rate$/,
     ],
     exclude: [
       /^number_of_.*/, /^address.*/, /^agent.*/,
+    ],
+  },
+  unit_count: {
+    allow: [
+      /^number_of_units$/, /^units$/, /^unit_count$/,
+      /^apartment_count$/, /^suite_count$/,
+    ],
+    exclude: [
+      /^number_of_rooms$/, /^number_of_bedrooms$/, /^number_of_bathrooms$/,
+      /^price.*/, /^.*_price$/, /^address.*/,
+    ],
+  },
+  property_dimension: {
+    allow: [
+      /^square_feet$/, /^sqft$/, /^living_area$/,
+      /^rentable_square_feet$/, /^building_square_feet$/,
+      /^lot_size$/, /^property_size_acres$/, /^acreage$/,
+      /^clear_height$/, /^ceiling_height$/, /^frontage$/,
+      /^traffic_count$/,
+    ],
+    exclude: [
+      /^price.*/, /^.*_price$/, /(^|_)fees?($|_)/, /^agent.*/,
+    ],
+  },
+  investment_metric: {
+    allow: [
+      /^noi$/, /^cap_rate$/, /^occupancy_rate$/,
+      /^cash_flow$/, /^gross_income$/, /^net_operating_income$/,
+    ],
+    exclude: [
+      /^agent.*/, /^address.*/, /^number_of_rooms$/,
+    ],
+  },
+  zoning_context: {
+    allow: [
+      /^zoning$/, /^zoned$/, /^land_use$/, /^permitted_use.*/,
+      /^restrictions?$/, /^use_restrictions?$/,
+    ],
+    exclude: [
+      /^price.*/, /^.*_price$/, /^agent.*/, /^number_of_.*/,
+    ],
+  },
+  space_capacity: {
+    allow: [
+      /^.*capacity.*/, /^.*occupancy.*/,
+      /^.*guest.*/, /^.*guests.*/,
+      /^.*pavilion.*/, /^.*deck.*/, /^.*ceremony.*/, /^.*reception.*/,
+      /^.*seated.*/, /^.*lodging.*/, /^.*accommodation.*/,
+      /^minimum_guests$/, /^maximum_guests$/,
+    ],
+    exclude: [
+      /^price.*/, /^.*_price$/, /(^|_)fees?($|_)/, /^.*cost.*/, /^rate.*/,
+      /^address.*/, /^agent.*/, /^parking.*/,
+    ],
+  },
+  catering_service: {
+    allow: [
+      /^catering.*/, /^in_house_catering.*/, /^on_site_catering.*/,
+      /^buffet.*/, /^food_service.*/, /^dining.*/,
+    ],
+    exclude: [
+      /^bar_service.*/, /^cocktail.*/, /^number_of_.*/, /^address.*/, /^agent.*/,
+    ],
+  },
+  island_context: {
+    allow: [
+      /^.*island.*/, /^.*inholding.*/, /^surrounding.*/,
+      /^land_.*/, /^zoning.*/, /^jurisdiction.*/,
+      /^national_forest.*/,
+    ],
+    exclude: [
+      /^price.*/, /^.*_price$/, /(^|_)fees?($|_)/, /^number_of_.*/, /^agent.*/,
     ],
   },
   availability: {
@@ -349,10 +426,26 @@ var INTENT_PATTERNS = [
     /\b(do\s+(they|you)\s+have|have\s+you\s+got)\s+(a\s+)?(restaurants?|dining|food)\b/,
     /\bwhere\s+can\s+i\s+eat\b/, /\bplaces?\s+to\s+eat\b/,
   ]},
+  { intent: "catering_service", patterns: [
+    /\b(on[-\s]?site|in[-\s]?house)?\s*catering\b/,
+    /\bcatering\s+(available|included|cost|price|service|services)\b/,
+    /\bdo(es)?\s+(it|this|they|you)\s+have\s+(on[-\s]?site\s+)?catering\b/,
+  ]},
   { intent: "ballrooms_count", patterns: [
     /\bhow\s+many\s+(ballrooms?|event\s+spaces?|banquet\s+halls?)\b/,
     /\b(number\s+of|count\s+of)\s+ballrooms?\b/,
     /\bballroom\s+count\b/,
+  ]},
+  { intent: "unit_count", patterns: [
+    /\bhow\s+many\s+(units|apartments|residences)\b/,
+    /\b(number\s+of|count\s+of|total)\s+(units|apartments|residences)\b/,
+    /\bunit\s+count\b/,
+  ]},
+  { intent: "space_capacity", patterns: [
+    /\b(capacity|max(?:imum)?\s+capacity|minimum\s+guests?)\b/,
+    /\bhow\s+many\s+(people|guests|attendees)\b.*\b(hold|holds|fit|seat|seats|accommodate|accommodates)\b/,
+    /\b(hold|holds|fit|seat|seats|accommodate|accommodates)\b.*\b(people|guests|attendees)\b/,
+    /\b(ceremony\s+deck|reception\s+pavilion|cocktail\s+pavilion|pavilion|deck)\b.*\b(hold|holds|capacity|guests|seated)\b/,
   ]},
   { intent: "rooms_count", patterns: [
     /\bhow\s+many\s+(rooms|guest\s+rooms|keys|suites)\b/,
@@ -395,10 +488,36 @@ var INTENT_PATTERNS = [
     /\bwho\s+is\s+the\s+developer\b/,
     /\bdeveloper\b/, /\bconstruction\s+company\b/,
   ]},
+  { intent: "investment_metric", patterns: [
+    /\bnoi\b/, /\bnet\s+operating\s+income\b/,
+    /\bcap\s+rate\b/, /\bcapitalization\s+rate\b/,
+    /\boccupancy\s+rate\b/, /\bhow\s+occupied\b/,
+  ]},
+  { intent: "property_dimension", patterns: [
+    /\b(square\s+feet|sq\.?\s*ft\.?|sqft|rsf|rentable\s+(area|square\s+feet))\b/,
+    /\bbuilding\s+(size|area)\b/, /\blot\s+size\b/, /\bacreage\b/,
+    /\b(clear|ceiling)\s+height\b/, /\bfrontage\b/, /\btraffic\s+count\b/,
+  ]},
   { intent: "pricing", patterns: [
+    /\bwhat('s|\s+is)\s+the\s+(price|cost|rate|fee)\b/,
+    /\b(price|cost|rate|rates|fees?)\b\s*\??$/,
+    /\b(site\s+fees?|bar\s+service|catering|package|packages?|rent|lease)\b.*\b(cost|price|rate|fee|fees|per\s+person)\b/,
+    /\bhow\s+much\s+(does|doe|do|is|are|would|will)?\b.*\b(cost|price|rate|fee|fees|rent|lease|bar\s+service|catering|package)\b/,
     /\bhow\s+much\s+(does|is|it\s+cost)\b/,
     /\b(price|cost|rate|rates)\s+(per|for|of)\b/,
     /\bnightly\s+rate\b/, /\broom\s+rate\b/, /\bwhat.+cost\b/,
+    /\b(lease|rental)\s+rate\b/, /\b(cam|nnn|triple\s+net)\b/,
+  ]},
+  { intent: "island_context", patterns: [
+    /\b(is|considered|called)\b.*\bisland\b/,
+    /\bprivate\s+island\b/,
+    /\binholding\b/,
+    /\bsurrounded\s+by\b.*\bnational\s+forest\b/,
+  ]},
+  { intent: "zoning_context", patterns: [
+    /\bwhat('s|\s+is)\s+the\s+zoning\b/,
+    /\bhow\s+is\s+it\s+zoned\b/,
+    /\bzoning\b/, /\bland\s+use\b/, /\bpermitted\s+use\b/,
   ]},
   { intent: "availability", patterns: [
     /\b(is\s+it|are\s+they)\s+available\b/,

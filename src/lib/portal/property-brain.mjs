@@ -93,6 +93,106 @@ function _collectCanonicalQAs(entries, tagIntentsFn) {
         intents: intents,
       });
     }
+    var candidateQAs = _collectCandidateQAs(entries[e], tagIntentsFn);
+    for (var cq = 0; cq < candidateQAs.length; cq++) out.push(candidateQAs[cq]);
+  }
+  return out;
+}
+
+function _humanizeFieldName(field) {
+  return String(field || "")
+    .replace(/[_-]+/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .toLowerCase()
+    .trim();
+}
+
+function _candidateQuestions(field) {
+  var label = _humanizeFieldName(field);
+  if (!label) return [];
+  var out = [
+    "What is the " + label + "?",
+    "What's the " + label + "?",
+    "Tell me about the " + label + ".",
+    label.charAt(0).toUpperCase() + label.slice(1) + "?",
+  ];
+  var lower = String(field || "").toLowerCase();
+  if (/price|cost|fee|rate|rent|tax|noi|cap_rate|payment|charge/.test(lower)) {
+    out.push(
+      "How much is the " + label + "?",
+      "How much does the " + label + " cost?",
+      "What's the cost?"
+    );
+  }
+  if (/size|area|sqft|square|acre|height|frontage|width|depth/.test(lower)) {
+    out.push(
+      "How big is the " + label + "?",
+      "What's the size?",
+      "What are the dimensions?"
+    );
+  }
+  if (/capacity|occupancy|guest|seat|people|unit|room|bed|bath|parking|space|dock|door|loading/.test(lower)) {
+    out.push(
+      "How many " + label + "?",
+      "How many " + label + " are there?",
+      "What's the " + label + " count?",
+      "What's the capacity?"
+    );
+  }
+  return out;
+}
+
+function _formatCandidateAnswer(field, value, evidence, confidence) {
+  var label = _humanizeFieldName(field);
+  var raw = (typeof value === "object") ? JSON.stringify(value) : String(value);
+  var answer = label ? ("The " + label + " is " + raw + ".") : raw;
+  if (evidence && typeof evidence === "string") {
+    var ev = evidence.trim().replace(/\s+/g, " ");
+    if (ev && ev.length <= 180 && answer.toLowerCase().indexOf(ev.toLowerCase()) < 0) {
+      answer += " Source note: " + ev;
+    }
+  }
+  if (typeof confidence === "number" && confidence < 0.85) {
+    answer = "The documents indicate that " + answer.charAt(0).toLowerCase() + answer.slice(1);
+  }
+  return answer;
+}
+
+function _collectCandidateQAs(entry, tagIntentsFn) {
+  var candidates = (entry && entry.candidate_fields) || [];
+  if (!Array.isArray(candidates) || !candidates.length) return [];
+  var out = [];
+  var seen = {};
+  for (var i = 0; i < candidates.length; i++) {
+    var c = candidates[i];
+    if (!c || typeof c !== "object") continue;
+    var field = typeof c.key === "string" ? c.key.trim() : "";
+    if (!/^[a-z][a-z0-9_]*$/.test(field)) continue;
+    var value = c.value;
+    if (value == null || value === "" || typeof value === "object") continue;
+    var confidence = typeof c.confidence === "number" ? c.confidence : 0;
+    // Medium-confidence candidates are useful, but only when there is
+    // enough confidence to beat raw prose. Lower values stay out of the
+    // visitor-facing answer path and remain available to builder UI.
+    if (confidence < 0.72) continue;
+    var questions = _candidateQuestions(field);
+    var answer = _formatCandidateAnswer(field, value, c.evidence, confidence);
+    var intents = tagIntentsFn ? tagIntentsFn({ field: field }) : [];
+    for (var q = 0; q < questions.length; q++) {
+      var question = questions[q];
+      var key = field + "::" + question.toLowerCase();
+      if (seen[key]) continue;
+      seen[key] = true;
+      out.push({
+        id: "candidate:" + field + ":" + q,
+        field: field,
+        question: question,
+        answer: answer,
+        source_anchor_id: "candidate:" + field,
+        embedding: null,
+        intents: intents,
+      });
+    }
   }
   return out;
 }

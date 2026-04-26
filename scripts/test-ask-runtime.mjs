@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 
 import { classifyIntent, intentAllows, tagQAIntents } from "../src/lib/portal/ask-intents.mjs";
 import { buildPropertyBrain } from "../src/lib/portal/property-brain.mjs";
-import { decideAnswer } from "../src/lib/portal/ask-runtime-logic.mjs";
+import { decideAnswer, extractiveChunkAnswer } from "../src/lib/portal/ask-runtime-logic.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_PATH = path.resolve(__dirname, "..", "tests/fixtures/marriott-brain.fixture.json");
@@ -83,6 +83,250 @@ function assertAnyOf(haystack, needles) {
   );
 }
 
+function pineyBrain() {
+  return buildPropertyBrain({
+    propertyIndex: 0,
+    propertyUuid: "piney-1",
+    configProperty: {
+      id: "piney-1",
+      name: "Piney River Ranch",
+      propertyName: "Piney River Ranch",
+      location: "700 Red Sandstone Vail, CO, 81658",
+    },
+    agent: {},
+    brandName: "Transcendence Media",
+    extractionEntries: [
+      {
+        template_id: "piney",
+        template_label: "Piney River Property Doc",
+        fields: {
+          ceremony_deck_capacity: 200,
+          reception_pavilion_capacity: 200,
+          reception_pavilion_square_feet: 3054,
+          venue_max_capacity: 200,
+          catering_cost_per_person: 100,
+          on_site_catering: "In-house buffet-style catering is mandatory and starts at $100 per person.",
+          bar_service_cost_range: "$51 to $60 per person",
+          site_fee_starting: 14000,
+          saturday_site_fee: 19000,
+          private_island_context: "The ranch is a private island entirely surrounded by thousands of acres of the White River National Forest.",
+        },
+        chunks: [
+          {
+            id: "pricing",
+            section: "Pricing & Packages",
+            content: "Site Fees: According to WeddingWire, 2026 site fees start at $14,000, increasing to $19,000 for Saturdays. In-House Catering: Mandatory buffet-style catering starts at $100 per person. Bar Service: Multi-hour bar packages range from approximately $51 to $60 per person.",
+            embedding: null,
+            kind: "raw_chunk",
+          },
+        ],
+        canonical_qas: [
+          {
+            id: "field:bar_service_cost_range:0",
+            field: "bar_service_cost_range",
+            question: "How much does bar service cost?",
+            answer: "Bar service ranges from $51 to $60 per person.",
+            source_anchor_id: "field:bar_service_cost_range",
+            embedding: null,
+          },
+          {
+            id: "field:site_fee_starting:0",
+            field: "site_fee_starting",
+            question: "What's the price?",
+            answer: "Site fees start at $14,000.",
+            source_anchor_id: "field:site_fee_starting",
+            embedding: null,
+          },
+          {
+            id: "field:on_site_catering:0",
+            field: "on_site_catering",
+            question: "Is on-site catering available?",
+            answer: "Yes. In-house buffet-style catering is mandatory and starts at $100 per person.",
+            source_anchor_id: "field:on_site_catering",
+            embedding: null,
+          },
+          {
+            id: "field:reception_pavilion_capacity:0",
+            field: "reception_pavilion_capacity",
+            question: "What is the capacity of the pavilion?",
+            answer: "The Reception Pavilion accommodates up to 200 seated guests.",
+            source_anchor_id: "field:reception_pavilion_capacity",
+            embedding: null,
+          },
+          {
+            id: "field:ceremony_deck_capacity:0",
+            field: "ceremony_deck_capacity",
+            question: "How many people does the Ceremony Deck hold?",
+            answer: "The Ceremony Deck seats up to 200 guests.",
+            source_anchor_id: "field:ceremony_deck_capacity",
+            embedding: null,
+          },
+          {
+            id: "field:private_island_context:0",
+            field: "private_island_context",
+            question: "Is the ranch considered an island?",
+            answer: "It is described as a private island because it is surrounded by thousands of acres of White River National Forest.",
+            source_anchor_id: "field:private_island_context",
+            embedding: null,
+          },
+        ],
+        candidate_fields: {},
+        field_provenance: {},
+      },
+    ],
+    curatedQAs: [],
+    hasDocs: true,
+    hasQA: false,
+    tagIntents: tagQAIntents,
+  });
+}
+
+function runPiney(query) {
+  const brain = pineyBrain();
+  const { intent } = classifyIntent(query);
+  return decideAnswer({
+    brain,
+    query,
+    queryVec: null,
+    intent,
+    intentAllows,
+    curatedHits: [],
+    chunkHits: brain.chunks.map((c) => ({
+      id: c.id,
+      source: c.section,
+      section: c.section,
+      content: c.content,
+      score: 0.8,
+      kind: "raw_chunk",
+    })),
+    canSynthesize: true,
+  });
+}
+
+function commercialBrain() {
+  return buildPropertyBrain({
+    propertyIndex: 0,
+    propertyUuid: "commercial-1",
+    configProperty: {
+      id: "commercial-1",
+      name: "Generic Mixed-Use Asset",
+      propertyName: "Generic Mixed-Use Asset",
+      location: "100 Market St, Denver, CO 80202",
+    },
+    agent: {},
+    brandName: "Transcendence Media",
+    extractionEntries: [
+      {
+        template_id: "commercial",
+        template_label: "Commercial Offering Memo",
+        fields: {
+          lease_rate: "$32/SF/YR",
+          cam_charges: "$6.50/SF",
+          number_of_units: 48,
+          rentable_square_feet: 12000,
+          clear_height: "24 ft",
+          zoning: "C-2",
+          cap_rate: "5.8%",
+        },
+        candidate_fields: [
+          {
+            key: "dock_doors",
+            value: "4 dock-high doors",
+            confidence: 0.82,
+            evidence: "Dock Doors: 4 dock-high doors",
+          },
+        ],
+        chunks: [
+          {
+            id: "overview",
+            section: "Offering Details",
+            content: "Lease Rate: $32/SF/YR. CAM: $6.50/SF. Units: 48. Rentable SF: 12,000. Clear Height: 24 ft. Zoning: C-2. Cap Rate: 5.8%. Dock Doors: 4 dock-high doors.",
+            embedding: null,
+            kind: "raw_chunk",
+          },
+        ],
+        canonical_qas: [
+          {
+            id: "field:lease_rate:0",
+            field: "lease_rate",
+            question: "How much is rent?",
+            answer: "The lease rate is $32/SF/YR.",
+            source_anchor_id: "field:lease_rate",
+            embedding: null,
+          },
+          {
+            id: "field:number_of_units:0",
+            field: "number_of_units",
+            question: "How many units are there?",
+            answer: "It has 48 units.",
+            source_anchor_id: "field:number_of_units",
+            embedding: null,
+          },
+          {
+            id: "field:rentable_square_feet:0",
+            field: "rentable_square_feet",
+            question: "How many rentable square feet?",
+            answer: "The rentable area is 12,000 square feet.",
+            source_anchor_id: "field:rentable_square_feet",
+            embedding: null,
+          },
+          {
+            id: "field:clear_height:0",
+            field: "clear_height",
+            question: "What's the clear height?",
+            answer: "The clear height is 24 ft.",
+            source_anchor_id: "field:clear_height",
+            embedding: null,
+          },
+          {
+            id: "field:zoning:0",
+            field: "zoning",
+            question: "What's the zoning?",
+            answer: "The zoning is C-2.",
+            source_anchor_id: "field:zoning",
+            embedding: null,
+          },
+          {
+            id: "field:cap_rate:0",
+            field: "cap_rate",
+            question: "What's the cap rate?",
+            answer: "The cap rate is 5.8%.",
+            source_anchor_id: "field:cap_rate",
+            embedding: null,
+          },
+        ],
+        field_provenance: {},
+      },
+    ],
+    curatedQAs: [],
+    hasDocs: true,
+    hasQA: false,
+    tagIntents: tagQAIntents,
+  });
+}
+
+function runCommercial(query) {
+  const brain = commercialBrain();
+  const { intent } = classifyIntent(query);
+  return decideAnswer({
+    brain,
+    query,
+    queryVec: null,
+    intent,
+    intentAllows,
+    curatedHits: [],
+    chunkHits: brain.chunks.map((c) => ({
+      id: c.id,
+      source: c.section,
+      section: c.section,
+      content: c.content,
+      score: 0.8,
+      kind: "raw_chunk",
+    })),
+    canSynthesize: true,
+  });
+}
+
 test("Ask AI regression — Marriott fixture", async (t) => {
   for (const q of FIXTURE.questions) {
     await t.test(q.q, () => {
@@ -137,6 +381,131 @@ test("intent taxonomy — known failure cases are blocked by field-compat", () =
   assert.equal(intentAllows("agent_name", "contact_agent"), true);
   assert.equal(intentAllows("number_of_rooms", "location"), false,
     "location MUST NOT allow number_of_rooms");
+
+  assert.equal(intentAllows("number_of_units", "unit_count"), true);
+  assert.equal(intentAllows("number_of_rooms", "unit_count"), false,
+    "unit_count MUST NOT allow number_of_rooms");
+  assert.equal(intentAllows("clear_height", "property_dimension"), true);
+  assert.equal(intentAllows("lease_rate", "pricing"), true);
+  assert.equal(intentAllows("cam_charges", "pricing"), true);
+  assert.equal(intentAllows("noi", "investment_metric"), true);
+  assert.equal(intentAllows("zoning", "zoning_context"), true);
+});
+
+test("Piney venue questions — route to canonical answers instead of raw blobs", () => {
+  const cases = [
+    {
+      q: "what's the price?",
+      intent: "pricing",
+      contains: ["$14,000"],
+      missing: ["sleeping 8", "wood-burning"],
+    },
+    {
+      q: "HOw much doe bar service cost?",
+      intent: "pricing",
+      contains: ["$51", "$60"],
+      missing: ["Glamping", "Cabins"],
+    },
+    {
+      q: "Is on-site catering available?",
+      intent: "catering_service",
+      contains: ["catering", "$100"],
+      missing: ["Road", "White River"],
+    },
+    {
+      q: "What is the capacity is the pavillion?",
+      intent: "space_capacity",
+      contains: ["200", "Pavilion"],
+      missing: ["Denver Water", "lease"],
+    },
+    {
+      q: "How many people does the Ceremony Deck hold?",
+      intent: "space_capacity",
+      contains: ["200", "Ceremony Deck"],
+      missing: ["Glamping", "site fees"],
+    },
+    {
+      q: "Is the ranch considered an island?",
+      intent: "island_context",
+      contains: ["private island", "White River"],
+      missing: ["Bar Service", "$51"],
+    },
+  ];
+
+  for (const c of cases) {
+    const classification = classifyIntent(c.q);
+    assert.equal(classification.intent, c.intent, `Intent mismatch for ${c.q}`);
+    const decision = runPiney(c.q);
+    assert.equal(decision.path, "canonical", `Expected canonical for ${c.q}; got ${decision.path}`);
+    assertAnyOf(decision.text, c.contains);
+    assertMissing(decision.text, c.missing);
+  }
+});
+
+test("Piney raw chunk fallback — extracts a concise sentence instead of dumping the chunk", () => {
+  const chunk = "(sleeping 8) and two smaller ones (sleeping 4). Glamping: Three safari-style glamping tents equipped with wood-burning stoves and Keurig machines. Site Fees: According to WeddingWire, 2026 site fees start at $14,000, increasing to $19,000 for Saturdays. In-House Catering: Mandatory buffet-style catering starts at $100 per person. Bar Service: Multi-hour bar packages range from approximately $51 to $60 per person.";
+
+  const generalPrice = extractiveChunkAnswer("what's the price?", chunk, "pricing");
+  assert.ok(generalPrice.includes("$14,000"), generalPrice);
+  assert.ok(!generalPrice.startsWith("(sleeping 8)"), generalPrice);
+  assert.ok(generalPrice.length < chunk.length, "fallback should be shorter than the source chunk");
+
+  const barOnly = extractiveChunkAnswer("How much does bar service cost?", chunk, "pricing");
+  assert.ok(barOnly.includes("$51") && barOnly.includes("$60"), barOnly);
+  assert.ok(!barOnly.includes("Glamping"), barOnly);
+});
+
+test("Ask AI generality — commercial and multifamily facts route through canonical facts", () => {
+  const cases = [
+    {
+      q: "How much is rent?",
+      intent: "pricing",
+      contains: ["$32", "SF"],
+    },
+    {
+      q: "How many units are there?",
+      intent: "unit_count",
+      contains: ["48", "units"],
+    },
+    {
+      q: "How many rentable square feet?",
+      intent: "property_dimension",
+      contains: ["12,000", "square feet"],
+    },
+    {
+      q: "What's the clear height?",
+      intent: "property_dimension",
+      contains: ["24 ft"],
+    },
+    {
+      q: "What's the zoning?",
+      intent: "zoning_context",
+      contains: ["C-2"],
+    },
+    {
+      q: "What's the cap rate?",
+      intent: "investment_metric",
+      contains: ["5.8%"],
+    },
+  ];
+
+  for (const c of cases) {
+    const classification = classifyIntent(c.q);
+    assert.equal(classification.intent, c.intent, `Intent mismatch for ${c.q}`);
+    const decision = runCommercial(c.q);
+    assert.equal(decision.path, "canonical", `Expected canonical for ${c.q}; got ${decision.path}`);
+    assertAnyOf(decision.text, c.contains);
+    assertMissing(decision.text, ["Ceremony Deck", "Pavilion", "Piney"]);
+  }
+});
+
+test("Ask AI generality — medium-confidence candidate fields can answer before raw prose", () => {
+  const classification = classifyIntent("How many dock doors are there?");
+  assert.equal(classification.intent, "unknown");
+  const decision = runCommercial("How many dock doors are there?");
+  assert.equal(decision.path, "canonical");
+  assertAnyOf(decision.text, ["4 dock-high doors"]);
+  assertMissing(decision.text, ["Lease Rate", "Clear Height"]);
 });
 
 test("property brain — actions and entities composed from fixture", () => {

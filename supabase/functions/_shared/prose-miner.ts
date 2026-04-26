@@ -48,10 +48,149 @@ function moneyToNumber(amountStr: string, unit?: string): number | null {
   return base;
 }
 
+function wordOrNumberToNumber(s: string): number | null {
+  const direct = toNumber(s);
+  if (direct != null) return direct;
+  const words: Record<string, number> = {
+    one: 1,
+    two: 2,
+    three: 3,
+    four: 4,
+    five: 5,
+    six: 6,
+    seven: 7,
+    eight: 8,
+    nine: 9,
+    ten: 10,
+    eleven: 11,
+    twelve: 12,
+  };
+  return words[s.toLowerCase()] ?? null;
+}
+
 function snippetAround(text: string, idx: number, len: number, pad = 25): string {
   const start = Math.max(0, idx - pad);
   const end = Math.min(text.length, idx + len + pad);
   return text.slice(start, end).replace(/\s+/g, " ").trim().slice(0, 160);
+}
+
+function slugifyLabel(label: string): string {
+  return label
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 64);
+}
+
+function canonicalFieldForLabel(label: string): string {
+  const key = slugifyLabel(label);
+  const aliasRules: Array<[RegExp, string]> = [
+    [/^(asking|list|listing)_price$/, "list_price"],
+    [/^(sale|sold)_price$/, "sale_price"],
+    [/^purchase_price$/, "purchase_price"],
+    [/^(lease|rental|asking)_rate$/, "lease_rate"],
+    [/^(rent|monthly_rent)$/, "rent"],
+    [/^(cam|cam_charges?|common_area_maintenance)$/, "cam_charges"],
+    [/^(nnn|triple_net|triple_net_charges?)$/, "nnn_charges"],
+    [/^(noi|net_operating_income)$/, "noi"],
+    [/^cap_rate$/, "cap_rate"],
+    [/^(occupancy|occupied)$/, "occupancy_rate"],
+    [/^(units|unit_count|number_of_units)$/, "number_of_units"],
+    [/^(rentable_sf|rentable_sq_ft|rentable_square_feet|rsf)$/, "rentable_square_feet"],
+    [/^(building_sf|building_size|building_area|gross_building_area)$/, "building_square_feet"],
+    [/^(lot_size|land_area|site_area|acreage)$/, "lot_size"],
+    [/^(clear_height|ceiling_height)$/, "clear_height"],
+    [/^(dock_doors?|loading_doors?)$/, "dock_doors"],
+    [/^(drive_ins?|drive_in_doors?)$/, "drive_in_doors"],
+    [/^(parking|parking_spaces|parking_count)$/, "parking_spaces"],
+    [/^(parking_ratio)$/, "parking_ratio"],
+    [/^(frontage|storefront_frontage)$/, "frontage"],
+    [/^(traffic_count|vehicle_count|vpd|adt)$/, "traffic_count"],
+    [/^(zoning|zoned)$/, "zoning"],
+    [/^(year_built|built)$/, "year_built"],
+    [/^(year_renovated|renovated)$/, "year_renovated"],
+    [/^(hoa|hoa_fee|hoa_dues)$/, "hoa_fee"],
+    [/^(taxes|property_taxes|annual_taxes)$/, "property_taxes"],
+    [/^(bedrooms|beds|bed_count)$/, "bedrooms"],
+    [/^(bathrooms|baths|bath_count)$/, "bathrooms"],
+    [/^(availability|available)$/, "availability"],
+    [/^(address|property_address|location)$/, "property_address"],
+    [/^(contact|phone|telephone)$/, "phone_number"],
+    [/^(email|contact_email)$/, "email"],
+  ];
+  for (const [pattern, field] of aliasRules) {
+    if (pattern.test(key)) return field;
+  }
+  return key;
+}
+
+function normalizeLabelValue(field: string, raw: string): unknown {
+  const value = raw.trim().replace(/\s+/g, " ").replace(/[.;]\s*$/, "");
+  if (!value) return null;
+
+  if (/^(number_of_|.*_count$|units$|dock_doors|drive_in_doors|parking_spaces|year_built|year_renovated)$/.test(field)) {
+    const n = toNumber(value);
+    return n ?? value;
+  }
+  if (/price|cost|fee|tax|noi|rent$|charge/.test(field)) {
+    const money = value.match(/\$?\s*([\d,]+(?:\.\d+)?)(?:\s*(million|m|billion|b|k))?/i);
+    if (money && value.replace(money[0], "").trim().length < 12) {
+      return moneyToNumber(money[1], money[2]);
+    }
+  }
+  if (/cap_rate|occupancy_rate/.test(field)) {
+    const pct = value.match(/(\d+(?:\.\d+)?)\s*%/);
+    return pct ? `${pct[1]}%` : value;
+  }
+  return value.slice(0, 300);
+}
+
+function mineLabelValueFacts(
+  chunks: PropertyChunk[],
+  claimed: Set<string>,
+): MineResult {
+  const fields: Record<string, unknown> = {};
+  const provenance: ProvenanceEntry[] = [];
+  const labelRe =
+    /(?:^|[•●.;]\s+)([A-Z][A-Za-z0-9 /&()+.'-]{2,52}):\s*([^:]{2,360}?)(?=(?:[•●.;]\s+[A-Z][A-Za-z0-9 /&()+.'-]{2,52}:\s)|$)/g;
+  const stopLabels = new Set([
+    "source",
+    "sources",
+    "notes",
+    "note",
+    "description",
+    "overview",
+    "summary",
+  ]);
+
+  for (const chunk of chunks) {
+    const text = (chunk.content ?? "").replace(/\s+/g, " ").trim();
+    if (!text) continue;
+    let m: RegExpExecArray | null;
+    while ((m = labelRe.exec(text)) !== null) {
+      const label = m[1].trim();
+      const labelKey = slugifyLabel(label);
+      if (!labelKey || stopLabels.has(labelKey)) continue;
+      if (labelKey.split("_").length > 6) continue;
+      const field = canonicalFieldForLabel(label);
+      if (!field || claimed.has(field) || field in fields) continue;
+      const value = normalizeLabelValue(field, m[2]);
+      if (value == null || value === "" || (typeof value === "number" && !Number.isFinite(value))) {
+        continue;
+      }
+      fields[field] = value;
+      provenance.push({
+        field,
+        chunk_id: chunk.id,
+        snippet: snippetAround(text, m.index, m[0].length),
+      });
+      claimed.add(field);
+      if (Object.keys(fields).length >= 80) return { fields, provenance };
+    }
+  }
+
+  return { fields, provenance };
 }
 
 // ── Pattern registry ─────────────────────────────────────────────────────────
@@ -60,6 +199,136 @@ function snippetAround(text: string, idx: number, len: number, pad = 25): string
 // per field across the entire document (first match wins).
 
 const PATTERNS: PatternSpec[] = [
+  // Venue / event property facts
+  {
+    field: "property_size_acres",
+    pattern: /\b(\d{1,5}(?:\.\d+)?)\s*[-\s]?acre(?:s)?\b/i,
+    transform: (m) => toNumber(m[1]),
+  },
+  {
+    field: "operating_season",
+    pattern: /\bopen seasonally from\s+(.{8,120}?)(?=\.|\s*\[)/i,
+    transform: (m) => m[1].trim().replace(/\s+/g, " "),
+  },
+  {
+    field: "property_address",
+    pattern: /\b(\d{1,6}\s+[A-Z][A-Za-z0-9 .'-]+?\s+[A-Z][A-Za-z .'-]+,\s*[A-Z]{2},?\s*\d{5})\b/,
+    transform: (m) => m[1].trim().replace(/\s+/g, " "),
+  },
+  {
+    field: "ceremony_deck_capacity",
+    pattern: /\bCeremony Deck:[^.]*?\b(?:up to|for)\s+(\d{2,5})\s+guests?\b/i,
+    transform: (m) => toNumber(m[1]),
+  },
+  {
+    field: "reception_pavilion_square_feet",
+    pattern: /\bReception Pavilion:\s*(?:A\s+)?([\d,]{3,9})\s*sq\.?\s*ft\.?/i,
+    transform: (m) => toNumber(m[1]),
+  },
+  {
+    field: "reception_pavilion_capacity",
+    pattern: /\bReception Pavilion:[^.]*?\baccommodat(?:ing|es?)\s+up\s+to\s+(\d{2,5})\s+(?:seated\s+)?guests?\b/i,
+    transform: (m) => toNumber(m[1]),
+  },
+  {
+    field: "venue_minimum_guests",
+    pattern: /\bminimum\s+of\s+(\d{1,5})\s+guests?\b/i,
+    transform: (m) => toNumber(m[1]),
+  },
+  {
+    field: "venue_max_capacity",
+    pattern: /\b(?:maximum\s+of|holds?\s+a\s+maximum\s+of)\s+(\d{2,5})\b/i,
+    transform: (m) => toNumber(m[1]),
+  },
+  {
+    field: "lodging_capacity",
+    pattern: /\baccommodations?\s+for\s+up\s+to\s+(\d{1,5})\s+guests?\b/i,
+    transform: (m) => toNumber(m[1]),
+  },
+  {
+    field: "cabin_count",
+    pattern: /\bCabins:\s*(\d{1,3}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+guest\s+cabins?\b/i,
+    transform: (m) => wordOrNumberToNumber(m[1]),
+  },
+  {
+    field: "glamping_tent_count",
+    pattern: /\bGlamping:\s*(\d{1,3}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+safari[-\s]+style\s+glamping\s+tents?\b/i,
+    transform: (m) => wordOrNumberToNumber(m[1]),
+  },
+  {
+    field: "dining_description",
+    pattern: /\bDining:\s*([^.]{20,220}\.)/i,
+    transform: (m) => m[1].trim().replace(/\s+/g, " "),
+  },
+  {
+    field: "on_site_catering",
+    pattern: /\bIn[-\s]?House Catering:\s*([^.]{20,220}\.)/i,
+    transform: (m) => m[1].trim().replace(/\s+/g, " "),
+  },
+  {
+    field: "catering_cost_per_person",
+    pattern: /\bCatering:[^.]*?\bstarts?\s+at\s+\$([\d,]+)\s+per\s+person\b/i,
+    transform: (m) => toNumber(m[1]),
+  },
+  {
+    field: "bar_service_cost_range",
+    pattern: /\bBar Service:[^.]*?\brange\s+from\s+approximately\s+\$([\d,]+)\s+to\s+\$([\d,]+)\s+per\s+person\b/i,
+    transform: (m) => `$${m[1]} to $${m[2]} per person`,
+  },
+  {
+    field: "site_fee_starting",
+    pattern: /\bsite fees?\s+start\s+at\s+\$([\d,]+)\b/i,
+    transform: (m) => moneyToNumber(m[1]),
+  },
+  {
+    field: "saturday_site_fee",
+    pattern: /\bincreasing\s+to\s+\$([\d,]+)\s+for\s+Saturdays\b/i,
+    transform: (m) => moneyToNumber(m[1]),
+  },
+  {
+    field: "accommodation_buyout_starting",
+    pattern: /\bAll[-\s]Accommodation Buyout:[^.]*?\bstarting\s+around\s+\$([\d,]+)\b/i,
+    transform: (m) => moneyToNumber(m[1]),
+  },
+  {
+    field: "access_road_distance_miles",
+    pattern: /\baccessed\s+via\s+a\s+(\d{1,3})[-\s]?mile\s+unpaved\s+road\b/i,
+    transform: (m) => toNumber(m[1]),
+  },
+  {
+    field: "drive_time_minutes",
+    pattern: /\bdrive\s+takes\s+roughly\s+(\d{1,3})\s+minutes\b/i,
+    transform: (m) => toNumber(m[1]),
+  },
+  {
+    field: "wifi_cell_service",
+    pattern: /\b(no\s+Wi[-\s]?Fi\s+or\s+reliable\s+cell\s+service[^.]*\.)/i,
+    transform: (m) => m[1].trim().replace(/\s+/g, " "),
+  },
+  {
+    field: "land_owner",
+    pattern: /\bLand Owner:[^.]*?\bowned\s+by\s+the\s+([^.;]+?)(?=\.|\s+Board\b)/i,
+    transform: (m) => {
+      const owner = m[1].trim().replace(/\s+/g, " ");
+      return /board$/i.test(owner) ? owner : `${owner} Board`;
+    },
+  },
+  {
+    field: "operator",
+    pattern: /\boperators?—currently\s+([^—.]+?)(?:—|\.)/i,
+    transform: (m) => m[1].trim().replace(/\s+/g, " "),
+  },
+  {
+    field: "private_island_context",
+    pattern: /\b(the ranch is a private "island"[^.]*\.)/i,
+    transform: (m) => m[1].trim().replace(/\s+/g, " "),
+  },
+  {
+    field: "off_grid_utilities",
+    pattern: /\b(The property operates completely off[-\s]grid[^.]*\.)/i,
+    transform: (m) => m[1].trim().replace(/\s+/g, " "),
+  },
+
   // Hospitality / commercial
   // Allow commas inside digits ("1,957 rooms"); require ≥3 digits to avoid
   // catching "5 rooms" in residential prose. Min 100 rooms = hotel-scale.
@@ -187,6 +456,10 @@ export function mineFromChunks(
       (k) => existingFields[k] != null && existingFields[k] !== "",
     ),
   );
+
+  const labelFacts = mineLabelValueFacts(chunks, claimed);
+  Object.assign(fields, labelFacts.fields);
+  provenance.push(...labelFacts.provenance);
 
   for (const spec of PATTERNS) {
     if (claimed.has(spec.field)) continue;
