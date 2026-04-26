@@ -56,13 +56,68 @@ async function fileToBase64(file: File): Promise<string> {
   return btoa(binary);
 }
 
+/**
+ * Discriminated reason for an induce-schema failure. Lets the wizard
+ * branch on user-actionable cases (e.g. show "image-only PDF" notice)
+ * without parsing error strings.
+ */
+export type InduceFailureKind =
+  | "empty_pdf_text"
+  | "no_fields"
+  | "parse_failed"
+  | "other";
+
+export class InduceSchemaError extends Error {
+  kind: InduceFailureKind;
+  status: number;
+  detail?: string;
+  constructor(args: { kind: InduceFailureKind; status: number; detail?: string; message: string }) {
+    super(args.message);
+    this.kind = args.kind;
+    this.status = args.status;
+    this.detail = args.detail;
+  }
+}
+
+function classifyError(code: string | undefined): InduceFailureKind {
+  if (code === "empty_pdf_text") return "empty_pdf_text";
+  if (code === "no_fields_detected") return "no_fields";
+  if (code === "schema_parse_failed") return "parse_failed";
+  return "other";
+}
+
 function unwrap<T>(data: T | { error: string; detail?: string } | null): T {
-  if (!data) throw new Error("induce-schema returned no data");
+  if (!data) throw new InduceSchemaError({
+    kind: "other",
+    status: 0,
+    message: "induce-schema returned no data",
+  });
   if (typeof data === "object" && data !== null && "error" in data) {
     const e = data as { error: string; detail?: string };
-    throw new Error(`${e.error}${e.detail ? `: ${e.detail}` : ""}`);
+    throw new InduceSchemaError({
+      kind: classifyError(e.error),
+      status: 422,
+      detail: e.detail,
+      message: `${e.error}${e.detail ? `: ${e.detail}` : ""}`,
+    });
   }
   return data as T;
+}
+
+async function readErrorBody(err: unknown): Promise<{ error?: string; detail?: string } | null> {
+  // supabase-js v2 FunctionsHttpError exposes the raw Response under .context.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ctx = (err as any)?.context;
+  if (ctx && typeof ctx.json === "function") {
+    try { return await ctx.json(); } catch { /* fall through */ }
+  }
+  if (ctx && typeof ctx.text === "function") {
+    try {
+      const t = await ctx.text();
+      return JSON.parse(t);
+    } catch { /* not json */ }
+  }
+  return null;
 }
 
 export async function induceSchema(pdfFile: File): Promise<InduceSchemaResult> {
@@ -70,7 +125,17 @@ export async function induceSchema(pdfFile: File): Promise<InduceSchemaResult> {
   const { data, error } = await supabase.functions.invoke("induce-schema", {
     body: { pdf_b64 },
   });
-  if (error) throw error;
+  if (error) {
+    const body = await readErrorBody(error);
+    throw new InduceSchemaError({
+      kind: classifyError(body?.error),
+      status: 422,
+      detail: body?.detail,
+      message: body?.error
+        ? `${body.error}${body.detail ? `: ${body.detail}` : ""}`
+        : (error as Error).message ?? "induce-schema failed",
+    });
+  }
   return unwrap<InduceSchemaResult>(data);
 }
 

@@ -14,17 +14,19 @@ import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 
 import { useAuth } from "@/hooks/use-auth";
-import { useAvailableTemplates } from "@/hooks/useAvailableTemplates";
 import { useAvailablePropertyDocs } from "@/hooks/useAvailablePropertyDocs";
 import { usePropertyExtractions } from "@/hooks/usePropertyExtractions";
 import { useIndexing } from "@/lib/rag/indexing-context";
 import { supabase } from "@/integrations/supabase/client";
 import { uploadVaultAsset } from "@/lib/storage";
-import { induceSchema } from "@/lib/extraction/induce";
-import type { JsonSchema, JsonSchemaField } from "@/lib/extraction/provider";
+import { induceSchema, InduceSchemaError } from "@/lib/extraction/induce";
 
-import { friendlyError } from "../friendly-errors";
-import { resolveProfileTemplate, getCategory } from "../profiles";
+import { failureToCopy, friendlyError } from "../friendly-errors";
+import {
+  getCategory,
+  mergeFieldsIntoTemplate,
+  resolveProfileTemplate,
+} from "../profiles";
 import type {
   TrainingPhase,
   TrainingResult,
@@ -91,12 +93,12 @@ export function TrainingStep({
   onBack,
 }: Props) {
   const { user } = useAuth();
-  const { templates, refresh: refreshTemplates } = useAvailableTemplates();
   const { refresh: refreshDocs } = useAvailablePropertyDocs();
-  const { extract, extractFromUrl } = usePropertyExtractions(propertyUuid);
+  const { extract, extractFromUrl, failuresByAsset } = usePropertyExtractions(propertyUuid);
   const indexing = useIndexing();
 
   const [activated, setActivated] = useState(false);
+  const [induceNotice, setInduceNotice] = useState<string | null>(null);
   // Guard against double-fires from React-strict-mode-style remounts.
   const ranRef = useRef(false);
 
@@ -118,15 +120,17 @@ export function TrainingStep({
     }
 
     const run = async () => {
+      let stagedAssetId: string | null = null;
       try {
-        // ── Resolve template (curated or cloned starter) ────────────────
+        // ── Resolve template (curated or freshly cloned starter) ────────
+        // resolveProfileTemplate now queries Postgres directly + verifies
+        // the row persisted, so the returned id is guaranteed to satisfy
+        // extract-property-doc's (template_id, provider_id) join.
         onPhaseChange("reading", null);
-        const { templateId, cloned } = await resolveProfileTemplate({
+        const { templateId } = await resolveProfileTemplate({
           providerId: user.id,
           category: state.profileCategory!,
-          availableTemplates: templates,
         });
-        if (cloned) refreshTemplates();
 
         // ── Stage source: upload file, register URL, or reuse vault id ──
         const { vaultAssetId, isUrl, file } = await ensureVaultAsset({
@@ -134,33 +138,38 @@ export function TrainingStep({
           providerId: user.id,
           propertyName,
         });
+        stagedAssetId = vaultAssetId;
         await refreshDocs();
 
         // ── Optional field induction (PDF only) ─────────────────────────
-        // We DON'T mutate the saved profile; if induce-schema returns
-        // properties not already in the profile, the merged schema is
-        // attached as a one-shot override via a transient template clone.
-        let effectiveTemplateId = templateId;
+        // Additively merges into the resolved profile template's schema.
+        // Failures are non-fatal — we log a friendly notice and continue
+        // with the standard profile so a single image-only PDF doesn't
+        // block the whole run.
+        setInduceNotice(null);
         if (file && file.type === "application/pdf") {
           try {
             const induced = await induceSchema(file);
             if (induced?.schema?.properties) {
-              const merged = mergeSchemas(
-                getTemplateSchema(templates, templateId),
-                induced.schema,
-              );
-              if (merged) {
-                const overrideId = await createOverrideTemplate({
-                  providerId: user.id,
-                  baseLabel: cat.label,
-                  schema: merged,
-                  docKind: cat.docKind,
-                });
-                if (overrideId) effectiveTemplateId = overrideId;
+              const added = await mergeFieldsIntoTemplate({
+                templateId,
+                inducedProperties: induced.schema.properties as Record<
+                  string,
+                  { type: string; description?: string }
+                >,
+              });
+              if (added > 0) {
+                setInduceNotice(
+                  `Detected ${added} extra field${added === 1 ? "" : "s"} from your document.`,
+                );
               }
             }
           } catch (err) {
-            // Best-effort — silently fall back to the profile schema.
+            if (err instanceof InduceSchemaError && err.kind === "empty_pdf_text") {
+              setInduceNotice(
+                "Your PDF appears to be image-only — extraction will use the standard profile fields.",
+              );
+            }
             console.warn("[ai-wizard] induce-schema skipped:", err);
           }
         }
@@ -176,16 +185,17 @@ export function TrainingStep({
             })
           : await extract({
               vault_asset_id: vaultAssetId,
-              template_id: effectiveTemplateId,
+              template_id: templateId,
               saved_model_id: savedModelId,
             });
 
         if (!extractRes) {
-          // Hook surfaced its own toast; map to friendly copy.
-          onPhaseChange(
-            "error",
-            "Training stopped during extraction. Try again or use a different document.",
-          );
+          // Hook captured a structured failure for this asset — surface it.
+          const failure = failuresByAsset[vaultAssetId];
+          const copy = failure
+            ? failureToCopy(failure)
+            : "Training stopped before it could finish. Try again or use a different document.";
+          onPhaseChange("error", copy);
           ranRef.current = false;
           return;
         }
@@ -201,14 +211,18 @@ export function TrainingStep({
         const fields = extractRes.fields ?? {};
         onComplete({
           vaultAssetId,
-          templateId: effectiveTemplateId,
+          templateId,
           fields,
           chunkCount: extractRes.chunks_indexed,
         });
         onPhaseChange("ready", null);
       } catch (err) {
+        // Last-resort: if a structured failure was recorded for the asset
+        // we just staged, prefer that copy over the generic mapper.
+        const recorded = stagedAssetId ? failuresByAsset[stagedAssetId] : undefined;
+        const copy = recorded ? failureToCopy(recorded) : friendlyError(err);
         console.error("[ai-wizard] training pipeline failed:", err);
-        onPhaseChange("error", friendlyError(err));
+        onPhaseChange("error", copy);
         ranRef.current = false;
       }
     };
@@ -351,6 +365,13 @@ export function TrainingStep({
         </div>
       )}
 
+      {induceNotice && phase !== "error" && (
+        <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-300">
+          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+          <p className="leading-snug">{induceNotice}</p>
+        </div>
+      )}
+
       {phase === "ready" && (
         <div className="flex items-start gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/5 p-3 text-xs text-emerald-700 dark:text-emerald-300">
           <Sparkles className="mt-0.5 size-3.5 shrink-0" />
@@ -445,57 +466,10 @@ async function ensureVaultAsset(args: {
   return { vaultAssetId: data.id, isUrl: false, file };
 }
 
-function getTemplateSchema(
-  templates: ReturnType<typeof useAvailableTemplates>["templates"],
-  templateId: string,
-): JsonSchema | null {
-  const t = templates.find((x) => x.id === templateId);
-  return (t?.field_schema as JsonSchema | undefined) ?? null;
-}
+// (legacy `createOverrideTemplate` / `mergeSchemas` helpers removed —
+// induced fields now merge in-place via `mergeFieldsIntoTemplate` so we
+// never produce orphan `is_active=false` rows that confuse extract-property-doc.)
 
-/**
- * Returns a merged JsonSchema if `induced` adds at least one property the
- * profile doesn't already cover. Returns null if no merge is needed.
- */
-function mergeSchemas(
-  base: JsonSchema | null,
-  induced: JsonSchema | null,
-): JsonSchema | null {
-  if (!base || !induced?.properties) return null;
-  const baseProps = base.properties ?? {};
-  const indProps = induced.properties ?? {};
-  const newKeys = Object.keys(indProps).filter((k) => !(k in baseProps));
-  if (newKeys.length === 0) return null;
-  const mergedProps: Record<string, JsonSchemaField> = { ...baseProps };
-  for (const k of newKeys) mergedProps[k] = indProps[k];
-  return {
-    type: "object",
-    properties: mergedProps,
-    required: base.required ?? [],
-  };
-}
-
-async function createOverrideTemplate(args: {
-  providerId: string;
-  baseLabel: string;
-  schema: JsonSchema;
-  docKind: string;
-}): Promise<string | null> {
-  const { data, error } = await supabase
-    .from("vault_templates")
-    .insert({
-      provider_id: args.providerId,
-      label: `Auto-detected: ${args.baseLabel} (${new Date().toISOString().slice(0, 10)})`,
-      doc_kind: args.docKind,
-      field_schema: args.schema as unknown as never,
-      extractor: "pdfjs_heuristic",
-      is_active: false, // hidden — only used for this run
-    })
-    .select("id")
-    .single();
-  if (error || !data) return null;
-  return data.id;
-}
 
 async function waitForIndexing(
   propertyUuid: string,
