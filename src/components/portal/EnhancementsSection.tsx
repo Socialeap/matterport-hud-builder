@@ -161,7 +161,7 @@ export function EnhancementsSection({
               <TabsList className="mb-3">
                 <TabsTrigger value="ask" className="gap-1.5">
                   <BookOpen className="size-3.5" />
-                  Ask AI
+                  AI Chat Assistant
                 </TabsTrigger>
                 <TabsTrigger value="catalog" className="gap-1.5">
                   <FileText className="size-3.5" />
