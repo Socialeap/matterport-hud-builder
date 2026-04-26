@@ -1348,6 +1348,52 @@ function __dqaActiveEntries(i){
   var uuid=uuidByIndex[i];
   return uuid?(data[uuid]||[]):[];
 }
+function __dqaEvidenceUnits(content){
+  var raw=String(content||"").trim();
+  if(!raw) return [];
+  var normalized=raw
+    .replace(/[•●]\\s*/g,". ")
+    .replace(/\\s+/g," ")
+    .trim();
+  if(!normalized) return [];
+
+  var units=[];
+  var labelRe=/(?:^|[.;]\\s+)([A-Z][A-Za-z0-9 /&()+.'-]{2,52}):\\s*([^:]{12,420}?)(?=(?:[.;]\\s+[A-Z][A-Za-z0-9 /&()+.'-]{2,52}:\\s)|$)/g;
+  var m;
+  while((m=labelRe.exec(normalized))!==null){
+    var label=String(m[1]||"").trim();
+    var value=String(m[2]||"").trim().replace(/[.;]\\s*$/,"");
+    if(label&&value) units.push((label+": "+value+".").trim());
+  }
+
+  var sentences=normalized.match(/[^.!?]+[.!?]?/g)||[];
+  for(var i=0;i<sentences.length;i++){
+    var s=sentences[i].replace(/^[\\s:;,.\\-–—)]+/,"").trim();
+    if(s.length<24) continue;
+    if(s.length>520){
+      var bits=s.split(/;\\s+|,\\s+(?=(?:and|including|with|which|while)\\b)/i);
+      for(var b=0;b<bits.length;b++){
+        var bit=bits[b].trim();
+        if(bit.length>=24&&bit.length<=520) units.push(bit);
+      }
+    }else{
+      units.push(s);
+    }
+  }
+
+  var out=[];
+  var seen={};
+  for(var u=0;u<units.length;u++){
+    var clean=units[u].replace(/\\s+/g," ").trim();
+    if(!clean) continue;
+    var key=clean.toLowerCase();
+    if(seen[key]) continue;
+    seen[key]=true;
+    out.push(clean);
+    if(out.length>=32) break;
+  }
+  return out.length?out:[normalized.slice(0,520)];
+}
 function __dqaCollectChunkDocs(entries){
   // Returns {docs, hasEmbeddings}. docs are Orama-ready objects; the
   // flag tells the caller which schema to build.
@@ -1362,16 +1408,19 @@ function __dqaCollectChunkDocs(entries){
       var ch=chunks[c];
       var hasEmb=Array.isArray(ch.embedding)&&ch.embedding.length>0;
       if(hasEmb) withEmb++;
-      docs.push({
-        id:label+"#chunk#"+(ch.id||c),
-        source:label+" \u2192 "+(ch.section||"section"),
-        content:String(ch.content||""),
-        embedding:hasEmb?ch.embedding:null,
-        // Phase A \u2014 propagate chunk kind to runtime so the decision
-        // ladder can use the raw-chunk direct-escalation tier. Legacy
-        // rows without a kind field default to raw_chunk via the runtime.
-        kind:(ch.kind==="raw_chunk"||ch.kind==="field_chunk")?ch.kind:"raw_chunk"
-      });
+      var units=__dqaEvidenceUnits(ch.content||"");
+      for(var u=0;u<units.length;u++){
+        docs.push({
+          id:label+"#chunk#"+(ch.id||c)+"#u#"+u,
+          source:label+" \u2192 "+(ch.section||"section"),
+          content:units[u],
+          // Evidence units inherit the parent vector. BM25 ranks the
+          // unit text; vector recall still benefits from the parent
+          // semantic embedding without another model pass.
+          embedding:hasEmb?ch.embedding:null,
+          kind:(ch.kind==="raw_chunk"||ch.kind==="field_chunk")?ch.kind:"raw_chunk"
+        });
+      }
     }
     // Fields are also indexed for BM25 fallback; they never carry
     // embeddings (tier 1 covers these via canonical_qas).

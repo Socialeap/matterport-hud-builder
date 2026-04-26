@@ -515,6 +515,161 @@ const TEMPLATES: Record<string, Template> = {
     answerTemplate: "The operating season is {value}.",
     format: "raw",
   },
+  lease_rate: {
+    questions: [
+      "What's the lease rate?",
+      "How much is rent?",
+      "What is the rental rate?",
+      "How much does the space lease for?",
+    ],
+    answerTemplate: "The lease rate is {value}.",
+    format: "raw",
+  },
+  cam_charges: {
+    questions: [
+      "What are the CAM charges?",
+      "How much is CAM?",
+      "What are the common area maintenance charges?",
+      "Are there CAM fees?",
+    ],
+    answerTemplate: "CAM charges are {value}.",
+    format: "raw",
+  },
+  nnn_charges: {
+    questions: [
+      "What are the NNN charges?",
+      "How much are triple net charges?",
+      "What are the triple net fees?",
+    ],
+    answerTemplate: "NNN charges are {value}.",
+    format: "raw",
+  },
+  noi: {
+    questions: [
+      "What's the NOI?",
+      "What is net operating income?",
+      "How much NOI does it have?",
+    ],
+    answerTemplate: "The NOI is {value}.",
+    format: "currency",
+  },
+  cap_rate: {
+    questions: [
+      "What's the cap rate?",
+      "What is the capitalization rate?",
+      "What cap rate is listed?",
+    ],
+    answerTemplate: "The cap rate is {value}.",
+    format: "raw",
+  },
+  occupancy_rate: {
+    questions: [
+      "What's the occupancy?",
+      "What is the occupancy rate?",
+      "How occupied is it?",
+    ],
+    answerTemplate: "The occupancy rate is {value}.",
+    format: "raw",
+  },
+  number_of_units: {
+    questions: [
+      "How many units are there?",
+      "What's the unit count?",
+      "How many apartments or units does it have?",
+    ],
+    answerTemplate: "It has {value} units.",
+    format: "number",
+  },
+  rentable_square_feet: {
+    questions: [
+      "How many rentable square feet?",
+      "What's the RSF?",
+      "How large is the rentable area?",
+    ],
+    answerTemplate: "The rentable area is {value} square feet.",
+    format: "number",
+  },
+  building_square_feet: {
+    questions: [
+      "How large is the building?",
+      "What's the building size?",
+      "How many square feet is the building?",
+    ],
+    answerTemplate: "The building is {value} square feet.",
+    format: "number",
+  },
+  clear_height: {
+    questions: [
+      "What's the clear height?",
+      "What is the ceiling height?",
+      "How tall is the warehouse clearance?",
+    ],
+    answerTemplate: "The clear height is {value}.",
+    format: "raw",
+  },
+  dock_doors: {
+    questions: [
+      "How many dock doors are there?",
+      "Does it have loading docks?",
+      "What loading doors are available?",
+    ],
+    answerTemplate: "Dock doors: {value}.",
+    format: "raw",
+  },
+  drive_in_doors: {
+    questions: [
+      "How many drive-in doors are there?",
+      "Does it have drive-in doors?",
+      "What drive-in access is available?",
+    ],
+    answerTemplate: "Drive-in doors: {value}.",
+    format: "raw",
+  },
+  parking_ratio: {
+    questions: [
+      "What's the parking ratio?",
+      "How much parking is available?",
+      "What is the parking availability?",
+    ],
+    answerTemplate: "The parking ratio is {value}.",
+    format: "raw",
+  },
+  frontage: {
+    questions: [
+      "What's the frontage?",
+      "How much street frontage does it have?",
+      "What is the storefront frontage?",
+    ],
+    answerTemplate: "The frontage is {value}.",
+    format: "raw",
+  },
+  traffic_count: {
+    questions: [
+      "What's the traffic count?",
+      "How much traffic passes the property?",
+      "What is the vehicle count?",
+    ],
+    answerTemplate: "The traffic count is {value}.",
+    format: "raw",
+  },
+  zoning: {
+    questions: [
+      "What's the zoning?",
+      "How is it zoned?",
+      "What zoning applies to the property?",
+    ],
+    answerTemplate: "The zoning is {value}.",
+    format: "raw",
+  },
+  availability: {
+    questions: [
+      "Is it available?",
+      "When is it available?",
+      "What's the availability?",
+    ],
+    answerTemplate: "Availability: {value}.",
+    format: "raw",
+  },
 };
 
 // ── Value formatting ────────────────────────────────────────────────
@@ -856,7 +1011,7 @@ const VOCAB_MAP: Record<string, string[]> = {
 
   // People / occupancy
   capacity: ["What's the capacity?", "How many people can it hold?", "What's the max capacity?"],
-  occupancy: ["What's the occupancy?", "How many guests can stay?", "What's the room occupancy?"],
+  occupancy: ["What's the occupancy?", "How many guests can stay?", "What's the room occupancy?", "How occupied is it?", "What is the occupancy rate?"],
   guest: ["How many guests?", "Tell me about guest accommodations.", "What's the guest experience?"],
   guests: ["How many guests?", "How many guests can it hold?", "What's the guest capacity?"],
 
@@ -879,7 +1034,7 @@ const VOCAB_MAP: Record<string, string[]> = {
   // Land / operating context
   island: ["Is it considered an island?", "Why is it called an island?", "Is it surrounded by public land?"],
   inholding: ["Is it an inholding?", "Tell me about the land ownership context."],
-  zoning: ["Tell me about zoning.", "Any land-use constraints?"],
+  zoning: ["Tell me about zoning.", "Any land-use constraints?", "What's the zoning?", "How is it zoned?"],
   owner: ["Who owns the land?", "Who is the owner?"],
   operator: ["Who operates the property?", "Who runs the ranch?"],
   season: ["When is it open?", "What's the operating season?", "Is it seasonal?"],
@@ -887,6 +1042,23 @@ const VOCAB_MAP: Record<string, string[]> = {
   road: ["How is the road access?", "Tell me about the road.", "How long is the access road?"],
   wifi: ["Is there Wi-Fi?", "Does it have Wi-Fi?"],
   cell: ["Is there cell service?", "Does it have reliable cell service?"],
+
+  // Commercial / investment
+  lease: ["What's the lease rate?", "How much is rent?", "Tell me about lease terms."],
+  rent: ["How much is rent?", "What's the rent?", "What's the rental rate?"],
+  cam: ["What are the CAM charges?", "How much is CAM?"],
+  nnn: ["What are the NNN charges?", "How much are triple net charges?"],
+  noi: ["What's the NOI?", "What is net operating income?"],
+  cap: ["What's the cap rate?", "What is the capitalization rate?"],
+  units: ["How many units are there?", "What's the unit count?"],
+  rentable: ["How many rentable square feet?", "What's the RSF?"],
+  clear: ["What's the clear height?", "What is the ceiling height?"],
+  height: ["What's the height?", "What is the ceiling height?", "What's the clear height?"],
+  dock: ["How many dock doors are there?", "Does it have loading docks?"],
+  doors: ["How many doors are there?", "What loading doors are available?"],
+  frontage: ["What's the frontage?", "How much street frontage does it have?"],
+  traffic: ["What's the traffic count?", "How much traffic passes the property?"],
+  available: ["Is it available?", "When is it available?", "What's the availability?"],
 
   // Sustainability
   sustainability: ["Is it sustainable?", "Tell me about sustainability.", "Any green credentials?"],

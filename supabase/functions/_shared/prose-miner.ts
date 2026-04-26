@@ -74,6 +74,125 @@ function snippetAround(text: string, idx: number, len: number, pad = 25): string
   return text.slice(start, end).replace(/\s+/g, " ").trim().slice(0, 160);
 }
 
+function slugifyLabel(label: string): string {
+  return label
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 64);
+}
+
+function canonicalFieldForLabel(label: string): string {
+  const key = slugifyLabel(label);
+  const aliasRules: Array<[RegExp, string]> = [
+    [/^(asking|list|listing)_price$/, "list_price"],
+    [/^(sale|sold)_price$/, "sale_price"],
+    [/^purchase_price$/, "purchase_price"],
+    [/^(lease|rental|asking)_rate$/, "lease_rate"],
+    [/^(rent|monthly_rent)$/, "rent"],
+    [/^(cam|cam_charges?|common_area_maintenance)$/, "cam_charges"],
+    [/^(nnn|triple_net|triple_net_charges?)$/, "nnn_charges"],
+    [/^(noi|net_operating_income)$/, "noi"],
+    [/^cap_rate$/, "cap_rate"],
+    [/^(occupancy|occupied)$/, "occupancy_rate"],
+    [/^(units|unit_count|number_of_units)$/, "number_of_units"],
+    [/^(rentable_sf|rentable_sq_ft|rentable_square_feet|rsf)$/, "rentable_square_feet"],
+    [/^(building_sf|building_size|building_area|gross_building_area)$/, "building_square_feet"],
+    [/^(lot_size|land_area|site_area|acreage)$/, "lot_size"],
+    [/^(clear_height|ceiling_height)$/, "clear_height"],
+    [/^(dock_doors?|loading_doors?)$/, "dock_doors"],
+    [/^(drive_ins?|drive_in_doors?)$/, "drive_in_doors"],
+    [/^(parking|parking_spaces|parking_count)$/, "parking_spaces"],
+    [/^(parking_ratio)$/, "parking_ratio"],
+    [/^(frontage|storefront_frontage)$/, "frontage"],
+    [/^(traffic_count|vehicle_count|vpd|adt)$/, "traffic_count"],
+    [/^(zoning|zoned)$/, "zoning"],
+    [/^(year_built|built)$/, "year_built"],
+    [/^(year_renovated|renovated)$/, "year_renovated"],
+    [/^(hoa|hoa_fee|hoa_dues)$/, "hoa_fee"],
+    [/^(taxes|property_taxes|annual_taxes)$/, "property_taxes"],
+    [/^(bedrooms|beds|bed_count)$/, "bedrooms"],
+    [/^(bathrooms|baths|bath_count)$/, "bathrooms"],
+    [/^(availability|available)$/, "availability"],
+    [/^(address|property_address|location)$/, "property_address"],
+    [/^(contact|phone|telephone)$/, "phone_number"],
+    [/^(email|contact_email)$/, "email"],
+  ];
+  for (const [pattern, field] of aliasRules) {
+    if (pattern.test(key)) return field;
+  }
+  return key;
+}
+
+function normalizeLabelValue(field: string, raw: string): unknown {
+  const value = raw.trim().replace(/\s+/g, " ").replace(/[.;]\s*$/, "");
+  if (!value) return null;
+
+  if (/^(number_of_|.*_count$|units$|dock_doors|drive_in_doors|parking_spaces|year_built|year_renovated)$/.test(field)) {
+    const n = toNumber(value);
+    return n ?? value;
+  }
+  if (/price|cost|fee|tax|noi|rent$|charge/.test(field)) {
+    const money = value.match(/\$?\s*([\d,]+(?:\.\d+)?)(?:\s*(million|m|billion|b|k))?/i);
+    if (money && value.replace(money[0], "").trim().length < 12) {
+      return moneyToNumber(money[1], money[2]);
+    }
+  }
+  if (/cap_rate|occupancy_rate/.test(field)) {
+    const pct = value.match(/(\d+(?:\.\d+)?)\s*%/);
+    return pct ? `${pct[1]}%` : value;
+  }
+  return value.slice(0, 300);
+}
+
+function mineLabelValueFacts(
+  chunks: PropertyChunk[],
+  claimed: Set<string>,
+): MineResult {
+  const fields: Record<string, unknown> = {};
+  const provenance: ProvenanceEntry[] = [];
+  const labelRe =
+    /(?:^|[•●.;]\s+)([A-Z][A-Za-z0-9 /&()+.'-]{2,52}):\s*([^:]{2,360}?)(?=(?:[•●.;]\s+[A-Z][A-Za-z0-9 /&()+.'-]{2,52}:\s)|$)/g;
+  const stopLabels = new Set([
+    "source",
+    "sources",
+    "notes",
+    "note",
+    "description",
+    "overview",
+    "summary",
+  ]);
+
+  for (const chunk of chunks) {
+    const text = (chunk.content ?? "").replace(/\s+/g, " ").trim();
+    if (!text) continue;
+    let m: RegExpExecArray | null;
+    while ((m = labelRe.exec(text)) !== null) {
+      const label = m[1].trim();
+      const labelKey = slugifyLabel(label);
+      if (!labelKey || stopLabels.has(labelKey)) continue;
+      if (labelKey.split("_").length > 6) continue;
+      const field = canonicalFieldForLabel(label);
+      if (!field || claimed.has(field) || field in fields) continue;
+      const value = normalizeLabelValue(field, m[2]);
+      if (value == null || value === "" || (typeof value === "number" && !Number.isFinite(value))) {
+        continue;
+      }
+      fields[field] = value;
+      provenance.push({
+        field,
+        chunk_id: chunk.id,
+        snippet: snippetAround(text, m.index, m[0].length),
+      });
+      claimed.add(field);
+      if (Object.keys(fields).length >= 80) return { fields, provenance };
+    }
+  }
+
+  return { fields, provenance };
+}
+
 // ── Pattern registry ─────────────────────────────────────────────────────────
 //
 // Order matters: more specific patterns first. Each pattern fires at most once
@@ -337,6 +456,10 @@ export function mineFromChunks(
       (k) => existingFields[k] != null && existingFields[k] !== "",
     ),
   );
+
+  const labelFacts = mineLabelValueFacts(chunks, claimed);
+  Object.assign(fields, labelFacts.fields);
+  provenance.push(...labelFacts.provenance);
 
   for (const spec of PATTERNS) {
     if (claimed.has(spec.field)) continue;
