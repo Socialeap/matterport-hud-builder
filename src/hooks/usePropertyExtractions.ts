@@ -130,11 +130,11 @@ export function usePropertyExtractions(propertyUuid: string | null) {
   // Page-scoped dedupe lives inside the provider so two panels sharing
   // a property only pay for one job.
   useEffect(() => {
-    if (!propertyUuid || loading) return;
+    if (!propertyUuid || loading || extractions.length === 0) return;
     indexing.request(propertyUuid).catch((err) => {
       console.warn("[doc-qa] indexing request failed:", err);
     });
-  }, [propertyUuid, loading, indexing]);
+  }, [propertyUuid, loading, extractions.length, indexing.request]);
 
   const extract = useCallback(
     async (input: {
@@ -170,7 +170,7 @@ export function usePropertyExtractions(propertyUuid: string | null) {
         setRunning(false);
       }
     },
-    [propertyUuid, refresh, clearFailure, recordFailure, indexing],
+    [propertyUuid, refresh, clearFailure, recordFailure, indexing.requestForce],
   );
 
   const extractFromUrl = useCallback(
@@ -208,7 +208,7 @@ export function usePropertyExtractions(propertyUuid: string | null) {
         setRunning(false);
       }
     },
-    [propertyUuid, refresh, clearFailure, recordFailure, indexing],
+    [propertyUuid, refresh, clearFailure, recordFailure, indexing.requestForce],
   );
 
   const remove = useCallback(
@@ -239,7 +239,7 @@ export function usePropertyExtractions(propertyUuid: string | null) {
       const msg = err instanceof Error ? err.message : String(err);
       toast.error(`Re-index failed: ${msg}`);
     }
-  }, [propertyUuid, fetchRows, indexing]);
+  }, [propertyUuid, fetchRows, indexing.requestForce]);
 
   return {
     extractions,
