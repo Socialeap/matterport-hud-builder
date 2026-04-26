@@ -459,57 +459,10 @@ async function ensureVaultAsset(args: {
   return { vaultAssetId: data.id, isUrl: false, file };
 }
 
-function getTemplateSchema(
-  templates: ReturnType<typeof useAvailableTemplates>["templates"],
-  templateId: string,
-): JsonSchema | null {
-  const t = templates.find((x) => x.id === templateId);
-  return (t?.field_schema as JsonSchema | undefined) ?? null;
-}
+// (legacy `createOverrideTemplate` / `mergeSchemas` helpers removed —
+// induced fields now merge in-place via `mergeFieldsIntoTemplate` so we
+// never produce orphan `is_active=false` rows that confuse extract-property-doc.)
 
-/**
- * Returns a merged JsonSchema if `induced` adds at least one property the
- * profile doesn't already cover. Returns null if no merge is needed.
- */
-function mergeSchemas(
-  base: JsonSchema | null,
-  induced: JsonSchema | null,
-): JsonSchema | null {
-  if (!base || !induced?.properties) return null;
-  const baseProps = base.properties ?? {};
-  const indProps = induced.properties ?? {};
-  const newKeys = Object.keys(indProps).filter((k) => !(k in baseProps));
-  if (newKeys.length === 0) return null;
-  const mergedProps: Record<string, JsonSchemaField> = { ...baseProps };
-  for (const k of newKeys) mergedProps[k] = indProps[k];
-  return {
-    type: "object",
-    properties: mergedProps,
-    required: base.required ?? [],
-  };
-}
-
-async function createOverrideTemplate(args: {
-  providerId: string;
-  baseLabel: string;
-  schema: JsonSchema;
-  docKind: string;
-}): Promise<string | null> {
-  const { data, error } = await supabase
-    .from("vault_templates")
-    .insert({
-      provider_id: args.providerId,
-      label: `Auto-detected: ${args.baseLabel} (${new Date().toISOString().slice(0, 10)})`,
-      doc_kind: args.docKind,
-      field_schema: args.schema as unknown as never,
-      extractor: "pdfjs_heuristic",
-      is_active: false, // hidden — only used for this run
-    })
-    .select("id")
-    .single();
-  if (error || !data) return null;
-  return data.id;
-}
 
 async function waitForIndexing(
   propertyUuid: string,
