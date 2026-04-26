@@ -192,7 +192,7 @@ export function WizardModal({ draft, setDraft, saving, onSave }: Props) {
           totalSteps={totalSteps}
           currentStep={draft.step}
           labels={stepLabels}
-          onJump={(idx) => setDraft({ ...draft, step: idx })}
+          onJump={(idx) => advanceTo(idx)}
         />
 
         <div className="min-h-[260px] py-2">
@@ -200,7 +200,7 @@ export function WizardModal({ draft, setDraft, saving, onSave }: Props) {
             <SmartAIPath
               draft={draft}
               onChange={update}
-              onSchemaApplied={() => setDraft({ ...draft, step: 2 })}
+              onSchemaApplied={() => advanceTo(2)}
               disabled={saving}
             />
           )}
@@ -208,7 +208,11 @@ export function WizardModal({ draft, setDraft, saving, onSave }: Props) {
             <PdfPath
               draft={draft}
               onChange={update}
-              onAdvance={() => setDraft({ ...draft, step: Math.max(draft.step + 1, 1) })}
+              onAdvance={() =>
+                setDraft((prev) =>
+                  prev ? { ...prev, step: Math.max(prev.step + 1, 1) } : prev,
+                )
+              }
               disabled={saving}
             />
           )}
@@ -216,7 +220,7 @@ export function WizardModal({ draft, setDraft, saving, onSave }: Props) {
             <LibraryPath
               draft={draft}
               onChange={update}
-              onAdvance={() => setDraft({ ...draft, step: 1 })}
+              onAdvance={() => advanceTo(1)}
               disabled={saving}
             />
           )}
