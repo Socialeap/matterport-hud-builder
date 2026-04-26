@@ -1,152 +1,83 @@
-## Goal
+# Fix: "Train Your AI Chat Assistant" wizard fails after PDF upload
 
-Replace today's developer-facing flow ("Upload Doc / From vault / Run Extraction / Templates") with a single guided 4-step wizard called **"Train Your Property's AI Chat"**. One entry point per property; no more forking between Vault and Upload before the user understands the destination.
+## What's actually happening (root cause)
 
-## End-User Journey (the new wizard)
+I traced the failing run for property "Chaska Commons Coworking" using DB inspection:
 
-A single button per property — **"Set Up AI Chat Assistant"** (replaces today's "Upload Doc" + "From vault…" pair) — opens a Shadcn `Dialog` with a 4-step `Stepper` header.
+1. **Two PDF uploads succeeded** (vault_assets rows + storage objects exist for provider `891e4f9e…`).
+2. **No `coworking_brochure` template was created** in `vault_templates` for that provider — even though the wizard reached the "extracting" phase, which means `resolveProfileTemplate()` returned a `templateId`.
+3. **`extract-property-doc` returned HTTP 404.** That status only comes from two paths in the function: `asset_not_found` (line 112) or `template_not_found` (line 145). Since the asset clearly exists, the failure is **`template_not_found`** — the `templateId` returned by the wizard does not match any `vault_templates` row whose `provider_id` equals the asset's `provider_id`.
+4. **`induce-schema` returned 422** ahead of that. Likely `empty_pdf_text` (image-heavy brochure with no extractable text via `unpdf` — there is no OCR fallback). The wizard catches this and continues, which is correct. But it masks a strong signal that the same PDF will likely fail downstream too.
 
-```text
-[1 Profile] ─► [2 Source] ─► [3 Training] ─► [4 Verify]
-```
+The wizard then displays the generic "Training stopped during extraction" message because `extract()` returned `null` and the friendly-error mapper has no insight into _why_.
 
-1. **Step 1 — Property Profile.** Visual card grid of property categories (Co-working, Residential, Commercial Office, Hospitality, Multi-Family). Each card maps internally to the matching `vault_template` (provider's curated template if present, otherwise the matching `STARTER_TEMPLATES` entry — auto-cloned into the provider's vault on first use). Heading: *"What kind of space should the AI learn about?"*
-2. **Step 2 — Knowledge Source.** A single drop-zone (PDF / DOCX / TXT / RTF, plus URL paste). Below: collapsed "Use a document already in your library" link that expands a list of existing `property_doc` vault assets. Auto-naming: `{PropertyName} — {YYYY-MM-DD}` (no Label field shown).
-3. **Step 3 — Training.** Single primary button **"Activate AI Learning"**. After click, three sequential phase chips animate with a pulsing progress bar:
-   - *Reading document…* (upload + storage registration)
-   - *Extracting key facts…* (extract-property-doc invocation)
-   - *Optimizing chat responses…* (waiting on `IndexingProvider` `phase === "ready"`)
+### Why the template silently disappears
 
-   Friendly errors map raw failures: PDF parse → *"The AI had trouble reading this page. Try a clearer copy?"*, network → *"Couldn't reach our training service — try again."*, low-content URL → *"This page didn't have much text. A PDF datasheet works best."*
-4. **Step 4 — Verify (Payoff).** Green confirmation card: *"Your AI is now familiar with {PropertyName}. It learned X facts and Y context chunks."* Lists 3 auto-suggested questions (derived from the highest-confidence extracted fields, e.g. *"What's the list price?"*, *"How many bedrooms?"*). Two buttons:
-   - **Done** (closes wizard, returns to Enhancements panel with the new doc visible).
-   - **Test now** — expands an inline mini chat in the same modal that calls the existing Ask runtime against this property.
+`resolveProfileTemplate()` (in `profiles.ts`) does an INSERT on `vault_templates` and reads back `data.id`. The hook `useAvailableTemplates` is queried with the **stale closure value** of `templates` at effect time, so on a "Try Again" retry it can re-clone, mis-match, or swap to a wrong template id between renders. Combined with three other defects:
 
-Footer always shows **Back** + the step's primary action — never a Cancel button (closing happens via the modal's X to reduce "I'm failing" feel).
+- `effectiveTemplateId` can be set to an `is_active = false` "override" template the extract function _can_ still find (since extract doesn't filter by `is_active`), but RLS for clients reading templates filters on `is_active` — so on subsequent client visits the row appears to vanish.
+- `induceSchema` 422 is silently swallowed; users get no feedback that their PDF is image-only.
+- The friendly-error mapper never surfaces `template`/`asset` stages — it always falls through to the generic copy.
 
-## Terminology Translation (applied across all wizard copy)
+## The fix (4 surgical changes, no schema migrations)
 
-| Current term | New user-facing term |
-|---|---|
-| Extraction | AI Training / Learning |
-| Run / Run Extraction | Activate AI Learning |
-| Template | Property Profile |
-| Vault Doc | Source Material |
-| Property Intelligence | AI Chat Assistant |
-| Indexed | Ready |
-| Frozen | Paused |
+### 1. Make template resolution authoritative (server-truth, not client cache)
 
-Internal code keeps its current names — translation happens at the component/UI string layer only.
+Rewrite `resolveProfileTemplate()` to:
+- Query `vault_templates` directly by `(provider_id, doc_kind, is_active=true)` instead of trusting the React `templates` cache. This eliminates the stale-closure race entirely.
+- After insert, immediately re-`select` the row by id to confirm it persisted (catches any silent RLS or trigger rollback).
+- Throw a precise, localized error if the verification select returns nothing: `"Couldn't save the {Profile} profile. Try again — if it keeps happening, contact support."` Include the attempted provider_id in `console.error` for debug.
 
-## Technical Plan
+### 2. Stop creating "hidden" override templates
 
-### Files to add
+In `TrainingStep.tsx`, replace the `createOverrideTemplate({ is_active: false })` flow with an **in-memory schema merge passed only via the extraction call's metadata** — but since `extract-property-doc` doesn't accept ad-hoc schemas, the simpler fix is:
 
-```text
-src/components/portal/ai-training-wizard/
-├── AiTrainingWizard.tsx          # Modal shell + stepper + state machine
-├── steps/
-│   ├── ProfileStep.tsx           # Card grid (categories)
-│   ├── SourceStep.tsx            # Drop-zone + library expander
-│   ├── TrainingStep.tsx          # 3-phase progress + error mapper
-│   └── VerifyStep.tsx            # Success card + suggested Qs + inline chat
-├── friendly-errors.ts            # Maps ExtractionError → user copy
-└── profiles.ts                   # Maps category → template id (curated or starter clone)
-```
+- **If induce returns extra fields, UPDATE the resolved profile template's `field_schema`** in place (additive merge — never remove existing keys). The profile template is the provider's clone, so this is safe.
+- This guarantees `effectiveTemplateId === templateId` (no orphaned hidden rows, no `is_active=false` mismatch surface).
 
-### Files to modify
+### 3. Surface real extraction errors instead of generic "Training stopped"
 
-- **`src/components/portal/PropertyIntelligenceSection.tsx`** — strip both legacy dialogs (Upload + From-vault picker), strip the `ensureAutoTemplate` / `induceSchema` helpers (logic moves into the wizard's training step), strip the `templateId` / `vaultPickerOpen` / `pickedVaultAssetId` state. Keep: per-model row, status pills, asset list, delete/reindex actions, LUS gate. Replace the two header buttons with one **"Set Up AI Chat Assistant"** button that opens `<AiTrainingWizard model={...} savedModelId={...} onComplete={onExtractionSuccess} />`.
-- **`src/components/portal/EnhancementsSection.tsx`** — rename the "Ask AI" tab label to **"AI Chat Assistant"**; keep its mounting of `PropertyIntelligenceSection` unchanged.
+Update `friendly-errors.ts` and `TrainingStep.tsx`:
+- When `extract()` returns null, read `failuresByAsset[vaultAssetId]` from the `usePropertyExtractions` hook to get the actual `{ stage, detail, status }`.
+- Map known stages to user copy:
+  - `template`/`asset` 404 → "We couldn't connect your document to the chosen profile. Try selecting the profile again."
+  - `download` → "We couldn't open the uploaded file. Try uploading it again."
+  - `extraction` → "This document couldn't be read automatically. Try a text-based PDF (not a scanned image)."
+  - `groq`/`embed` → "The AI was busy. Please try again in a moment."
+- Pass that mapped string to `onPhaseChange("error", copy)` so the user sees specific, actionable guidance.
 
-### Files to delete
+### 4. Warn (don't fail) when induce-schema returns 422 on image-only PDFs
 
-- **`src/components/portal/PropertyDocsPanel.tsx`** — already orphaned (no React import in tree). The unrelated `buildPropertyDocsPanel` server HTML helper in `src/lib/portal.functions.ts` stays untouched.
+In the same step, detect the `empty_pdf_text` 422 specifically and:
+- Show an inline notice in the success path: *"Your PDF appears to be image-only — extraction will use the standard profile fields."*
+- Still proceed with extraction (current behavior), but keep the user informed.
 
-### Wizard state machine (single source of truth)
+### 5. Drive-by: fix the unrelated TS build break
 
-```ts
-type WizardState = {
-  step: 1 | 2 | 3 | 4;
-  profileId: string | null;          // resolved vault_template.id
-  profileCategory: CategoryKey | null;
-  source:
-    | { kind: "file"; file: File }
-    | { kind: "vault"; assetId: string }
-    | { kind: "url"; url: string }
-    | null;
-  vaultAssetId: string | null;       // populated after upload/registration
-  trainingPhase: "idle" | "reading" | "extracting" | "optimizing" | "ready" | "error";
-  errorCopy: string | null;
-  result: { fields: Record<string, unknown>; chunkCount: number } | null;
-};
-```
+`src/lib/portal.functions.ts` lines 331/335 have a TS2352 error introduced in the previous refactor (chunk type cast missing required `kind`/`source` fields). Patch by mapping over the chunks and supplying defaults (`kind: "raw_chunk"`, `source: "pdf"`) before the cast — these are the same defaults the runtime already assumes elsewhere.
 
-### Step 3 control flow (the heart of the refactor)
+## Files touched
 
-```text
-onActivate():
-  ├── resolve profile → templateId
-  │     - if provider has vault_template matching profileCategory → use it
-  │     - else: clone STARTER_TEMPLATES[profileCategory] into vault_templates,
-  │             flagged is_active=true, then use the new id
-  ├── set phase = "reading"
-  │     - file path:  uploadVaultAsset → insert vault_assets row
-  │     - vault path: reuse existing assetId (skip upload)
-  │     - url path:   insert text/uri-list vault_assets row
-  ├── set phase = "extracting"
-  │     - PDFs: induceSchema → merge new properties into a per-extraction
-  │             schema overlay (selected profile's required[] preserved)
-  │     - call extract / extractFromUrl with resolved templateId
-  ├── set phase = "optimizing"
-  │     - subscribe to indexing.statusFor(propertyUuid); resolve when "ready"
-  │     - timeout fallback: 25s → still advance, show "Indexing continues in background"
-  └── set phase = "ready", advance to step 4
-```
+- `src/components/portal/ai-training-wizard/profiles.ts` — authoritative resolution + post-insert verification.
+- `src/components/portal/ai-training-wizard/steps/TrainingStep.tsx` — drop hidden-override path, additive in-place schema update, wire failure copy through, surface 422 inline notice.
+- `src/components/portal/ai-training-wizard/friendly-errors.ts` — new stage→copy map.
+- `src/lib/extraction/induce.ts` — return a typed `{ kind: "empty_pdf_text" | "no_fields" | "other" }` discriminator on failure so the wizard can branch cleanly.
+- `src/lib/portal.functions.ts` — fix TS2352 chunk cast.
 
-Auto-fill mode is **"Selected Profile + induce extra fields from the doc"** (per Q2). Implementation: in step 3, when the doc is a PDF, call `induceSchema` and merge any properties not already present in the profile schema into a *per-extraction* schema before sending to `extract-property-doc`. The provider's saved profile template is **not** mutated — the merge is local to this run, so the profile stays predictable across uses while individual extractions still capture doc-specific extras.
+## Ripple-effect check
 
-### Verification step (Q1: card + optional Test-now chat)
+- **Other callers of `resolveProfileTemplate`**: only `TrainingStep.tsx` uses it. Safe.
+- **`useAvailableTemplates` consumers**: untouched — we just stop relying on the cache inside the wizard.
+- **`extract-property-doc` contract**: unchanged. We're sending the exact same payload shape; only the source of `template_id` is hardened.
+- **Existing "AI Profile: Hospitality" template** (already in DB): now becomes the canonical Hospitality template — additive merges only, never overwrites.
+- **`PropertyIntelligenceSection` / `EnhancementsSection`**: read failures via the same hook; the new `failuresByAsset` lookup is read-only.
+- **Migration / RLS**: none required. Insert/Update on `vault_templates` already permitted by the existing "Providers manage their templates" policy for providers; clients still cannot reach this code path because step 1 of the wizard's profile clone requires `auth.uid() = provider_id`.
 
-- Default view: success card showing field count, suggested questions (`Object.keys(result.fields).slice(0, 3).map(humanize)`), and two CTAs.
-- **Test now** mounts a minimal `<AskMiniChat propertyUuid={model.id} />` directly inside the dialog body. Reuse the existing Ask runtime path used by the published portal — call it via the same RPC the live `Ask` button uses (no new server function). If the Ask runtime needs a saved-model context that doesn't yet exist in the builder, the chat instead surfaces a one-line preview using the extracted facts (graceful fallback) so the wizard always closes on a positive note.
+## What this does NOT change
 
-### Data-flow safety audit (no regressions)
+- The visual layout of the wizard (still 4 steps).
+- The set of starter templates / profile cards.
+- Any database schema, RLS, or edge function source.
+- The Verify step or the embedded chat.
 
-- **`useAvailableTemplates` / `useAvailablePropertyDocs`** — unchanged. Wizard reads them; refresh on success.
-- **`usePropertyExtractions.extract / extractFromUrl`** — unchanged signatures; wizard calls these with the resolved template id (curated, cloned starter, or auto-induced).
-- **`IndexingProvider`** — already shared between PIS and the deleted PDP. Wizard subscribes via the same `useIndexing()` hook for phase-3 progress; no new context needed.
-- **LUS gate (`useLusLicense`) and per-property freeze (`useLusFreeze`)** — wizard's "Set Up AI Chat Assistant" button respects both, identical to today's Upload button gating. The wizard never opens when frozen or LUS-inactive; existing extractions still render read-only.
-- **Server functions (`extract-property-doc`, `extract-url-content`, `induce-schema`)** — no signature or behavior changes. Wizard is a pure UI/state refactor on top of the existing extraction pipeline.
-- **`portal.functions.ts > buildPropertyDocsPanel`** — server-side runtime tour HTML. Untouched.
-- **Saved-model id propagation** — wizard receives `savedModelId` from `EnhancementsSection` and forwards it into `extract({ saved_model_id })` exactly as PIS does today, so canonical-Q&A enrichment continues to fire.
-
-### Friendly error map
-
-```ts
-// friendly-errors.ts
-export function friendly(err: ExtractionError): string {
-  switch (err.stage) {
-    case "fetch_pdf":        return "Couldn't open this PDF. Try a different copy.";
-    case "parse_pdf":        return "The AI had trouble reading this page. A clearer scan or text-based PDF works best.";
-    case "fetch_url":        return "Couldn't reach that page. Check the URL and try again.";
-    case "low_content":      return "This document had very little text. Try a more detailed datasheet.";
-    case "embed":            return "Indexing is still finishing in the background — you can close this and check status on the property card.";
-    default:                 return "Something interrupted the AI training. Try again, or use a different document.";
-  }
-}
-```
-
-### Step-by-step rollout (single message)
-
-1. Create `ai-training-wizard/` folder with the 5 new files above.
-2. Update `PropertyIntelligenceSection.tsx` — strip dead state/dialogs, mount the wizard, keep status list.
-3. Rename Enhancements tab label to "AI Chat Assistant".
-4. Delete `PropertyDocsPanel.tsx`.
-5. Type-check (`tsc --noEmit`) — confirm no other importers broke.
-
-## Open architectural notes
-
-- The starter template auto-clone in step 3 means a provider who has never authored a Co-working profile will silently get one in their vault the first time a client trains on a Co-working property. Visible in `/dashboard/vault/templates` afterwards. This matches today's `ensureAutoTemplate` behavior (which also writes hidden templates), just better-named.
-- The wizard never asks for a Label or a Doc Kind. Auto-naming is `{PropertyName} — {ISO date}` for assets and `{Profile} for {PropertyName}` for cloned templates.
-- "Test now" inline chat reuses the published Ask runtime path; if the property has not yet been saved into a `saved_models` row (rare in builder context), the wizard falls back to a static "Here's what I learned" preview so the wizard always closes positively.
+After this lands, the user retrying the same PDF will see _either_ a successful extraction (most likely — the underlying pipeline works for non-image PDFs) or a clear, specific error pointing at the real problem (image-only PDF, profile mismatch, etc.) instead of the opaque "Training stopped during extraction".
