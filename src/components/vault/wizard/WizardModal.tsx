@@ -6,7 +6,7 @@
  * Save delegates back to the parent (which calls useVaultTemplates.create/update).
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ArrowRight, X } from "lucide-react";
 import { toast } from "sonner";
 
@@ -20,6 +20,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { JsonSchema } from "@/lib/extraction/provider";
+import { STARTER_TEMPLATES } from "@/lib/vault/starter-templates";
 
 import {
   PATH_STEP_COUNT,
@@ -43,19 +44,13 @@ export interface SavePayload {
 
 interface Props {
   draft: WizardDraft | null;
-  setDraft: (next: WizardDraft | null) => void;
+  setDraft: React.Dispatch<React.SetStateAction<WizardDraft | null>>;
   saving: boolean;
   onSave: (payload: SavePayload) => Promise<boolean | void>;
 }
 
 export function WizardModal({ draft, setDraft, saving, onSave }: Props) {
   const open = draft !== null;
-  // The Smart-AI path wraps TemplateArchitect which has its own internal phases
-  // (Describe → Refine → Finalized). Their "Apply to Editor" callback is what
-  // tells us we can advance to the final step. To keep the global progress bar
-  // honest, we collapse the AI path's internal phases into a single visual
-  // "Build with AI" step + "Name & save" step — even though step counters are
-  // 0/1/2 internally for compatibility with the shared structure.
   const totalSteps = draft ? PATH_STEP_COUNT[draft.path] : 0;
   const stepLabels = draft ? PATH_STEP_LABELS[draft.path] : [];
 
@@ -64,23 +59,36 @@ export function WizardModal({ draft, setDraft, saving, onSave }: Props) {
     setDraft(null);
   };
 
-  const update = (patch: Partial<WizardDraft>) => {
-    if (!draft) return;
-    setDraft({ ...draft, ...patch });
-  };
+  // CRITICAL: Use functional updates so successive calls (onChange + onAdvance)
+  // compose without losing each other's patches. Previously the wizard read
+  // a stale `draft` snapshot inside both calls — causing rich starter schemas
+  // to be overwritten by the step bump back to the default 2-field schema.
+  const update = useCallback(
+    (patch: Partial<WizardDraft>) => {
+      setDraft((prev) => (prev ? { ...prev, ...patch } : prev));
+    },
+    [setDraft],
+  );
+
+  const advanceTo = useCallback(
+    (step: number) => {
+      setDraft((prev) => (prev ? { ...prev, step } : prev));
+    },
+    [setDraft],
+  );
 
   const goNext = () => {
-    if (!draft) return;
-    if (draft.step < totalSteps - 1) {
-      setDraft({ ...draft, step: draft.step + 1 });
-    }
+    setDraft((prev) => {
+      if (!prev) return prev;
+      const max = PATH_STEP_COUNT[prev.path] - 1;
+      return prev.step < max ? { ...prev, step: prev.step + 1 } : prev;
+    });
   };
 
   const goBack = () => {
-    if (!draft) return;
-    if (draft.step > 0) {
-      setDraft({ ...draft, step: draft.step - 1 });
-    }
+    setDraft((prev) =>
+      prev && prev.step > 0 ? { ...prev, step: prev.step - 1 } : prev,
+    );
   };
 
   const handleSave = async () => {
@@ -101,11 +109,36 @@ export function WizardModal({ draft, setDraft, saving, onSave }: Props) {
       );
       return;
     }
+
+    // SAFETY NET: If the user picked a Pre-Built Template starter, ensure the
+    // schema we save matches the starter's promised field count. If something
+    // upstream stripped fields (state race, accidental edit), fall back to the
+    // canonical starter schema so the saved map always honors the "Auto-fills
+    // N fields" promise on the picker card.
+    let extractor = draft.extractor;
+    let docKind = (draft.doc_kind || "general").trim();
+    if (draft.source?.kind === "starter") {
+      const ref = draft.source.ref;
+      const starter = STARTER_TEMPLATES.find((s) => s.id === ref);
+      if (starter) {
+        const promised = Object.keys(starter.schema.properties).length;
+        const actual = Object.keys(schema.properties).length;
+        if (actual < promised) {
+          schema = starter.schema;
+          extractor = starter.extractor;
+          docKind = starter.doc_kind;
+          toast.message(
+            `Restored full ${promised}-field template (was ${actual}).`,
+          );
+        }
+      }
+    }
+
     const ok = await onSave({
       id: draft.id,
       label: draft.label.trim(),
-      doc_kind: (draft.doc_kind || "general").trim(),
-      extractor: draft.extractor,
+      doc_kind: docKind,
+      extractor,
       field_schema: schema,
     });
     if (ok !== false) close();
@@ -140,12 +173,26 @@ export function WizardModal({ draft, setDraft, saving, onSave }: Props) {
   const isFinalStep = draft.step === totalSteps - 1;
   const currentStepLabel = stepLabels[draft.step] ?? "";
 
+  // Compute starter context for the final-step save button label.
+  const starterFieldCount = (() => {
+    if (draft.source?.kind !== "starter") return null;
+    const ref = draft.source.ref;
+    const starter = STARTER_TEMPLATES.find((s) => s.id === ref);
+    return starter ? Object.keys(starter.schema.properties).length : null;
+  })();
+
+  const modalTitle = draft.id
+    ? "Edit Property Map"
+    : draft.path === "library"
+      ? "Use a Pre-Built Template"
+      : PATH_TITLES[draft.path];
+
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) close(); }}>
       <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            {draft.id ? "Edit Property Map" : PATH_TITLES[draft.path]}
+            {modalTitle}
           </DialogTitle>
           <DialogDescription>
             {draft.id
@@ -159,7 +206,7 @@ export function WizardModal({ draft, setDraft, saving, onSave }: Props) {
           totalSteps={totalSteps}
           currentStep={draft.step}
           labels={stepLabels}
-          onJump={(idx) => setDraft({ ...draft, step: idx })}
+          onJump={(idx) => advanceTo(idx)}
         />
 
         <div className="min-h-[260px] py-2">
@@ -167,7 +214,7 @@ export function WizardModal({ draft, setDraft, saving, onSave }: Props) {
             <SmartAIPath
               draft={draft}
               onChange={update}
-              onSchemaApplied={() => setDraft({ ...draft, step: 2 })}
+              onSchemaApplied={() => advanceTo(2)}
               disabled={saving}
             />
           )}
@@ -175,7 +222,11 @@ export function WizardModal({ draft, setDraft, saving, onSave }: Props) {
             <PdfPath
               draft={draft}
               onChange={update}
-              onAdvance={() => setDraft({ ...draft, step: Math.max(draft.step + 1, 1) })}
+              onAdvance={() =>
+                setDraft((prev) =>
+                  prev ? { ...prev, step: Math.max(prev.step + 1, 1) } : prev,
+                )
+              }
               disabled={saving}
             />
           )}
@@ -183,7 +234,7 @@ export function WizardModal({ draft, setDraft, saving, onSave }: Props) {
             <LibraryPath
               draft={draft}
               onChange={update}
-              onAdvance={() => setDraft({ ...draft, step: 1 })}
+              onAdvance={() => advanceTo(1)}
               disabled={saving}
             />
           )}
@@ -237,7 +288,9 @@ export function WizardModal({ draft, setDraft, saving, onSave }: Props) {
                   ? "Saving…"
                   : draft.id
                     ? "Save Changes"
-                    : "Create Map"}
+                    : starterFieldCount
+                      ? `Save ${starterFieldCount}-Field Template`
+                      : "Create Map"}
               </Button>
             )}
           </div>
