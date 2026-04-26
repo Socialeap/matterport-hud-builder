@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { PropertyIntelligenceSection } from "./PropertyIntelligenceSection";
 import { SoundLibraryPicker } from "./enhancements/SoundLibraryPicker";
