@@ -1,62 +1,67 @@
-## Root Cause
+# Unify Property Intelligence + Property Docs into one section
 
-The Gemini API connection is **healthy** — the issue is not an outage or a bad key.
+## Why this is still split
 
-Edge function logs from `induce-schema` show two consecutive failures on Turn 2 (`architect_refine`), both with the same signature:
+A pass was made earlier, but it stopped halfway:
 
-```
-[architect_refine] failed Unterminated string in JSON at position 234 (line 10 column 42)
-[architect_refine] failed Expected double-quoted property name in JSON at position 192 (line 9 column 24)
-```
+1. **`PropertyIntelligenceSection`** lives inside `EnhancementsSection` → "Property Intelligence (Ask AI)" accordion. This is the **active** ingest surface (file upload + URL paste + auto-template).
+2. **`PropertyDocsPanel`** is *still* mounted inside `PropertyModelsSection.tsx` (line 243), rendered per-property card. This is a **second** full ingest surface (curated-template extraction + reindex + freeze). Both panels already share state via `usePropertyExtractions` + `useIndexing`, so the data is unified — but the **UI is not**.
+3. **"Property Docs" accordion item** in `EnhancementsSection` is a stub `VaultCatalogList` that just lists provider-published docs and tells the user to scroll back up to Property Intelligence.
 
-What is happening:
-1. Turn 1 (`architect_draft`) succeeds (HTTP 200, 20–22 candidate items returned).
-2. The user keeps **20 of 20 fields** (visible in the screenshot).
-3. Turn 2 sends those 20 fields back to Gemini and asks for a strict JSON Schema with descriptions and `required[]`.
-4. The response gets cut off mid-string because `maxOutputTokens: 2000` is **too small** for 20+ properties (each needs `{type, description}`) plus the canonical-key merge overhead. The model emits a truncated JSON blob, `JSON.parse` throws, and the function returns **502** to the browser — which is what Chrome surfaces as "Edge Function returned a non-2xx status code".
+Net effect: clients see the same docs in **3 places** with confusing overlap, and the panel inside Property Models duplicates everything Property Intelligence already does.
 
-So the user-visible error is real, but it is a **token-budget / response-robustness bug**, not a Gemini connectivity problem.
+## The fix: one section, two tabs
 
-## The Fix
+Replace the two separate accordion items ("Property Intelligence" and "Property Docs") with **one accordion item** called **"Property Intelligence & Docs"** (Wired). Inside it, a simple `Tabs` switch:
 
-Three small, safe changes in `supabase/functions/induce-schema/index.ts`:
+- **Tab 1 — Ask AI** (default): the existing `PropertyIntelligenceSection` UI — per-property rows with Upload / Paste URL / status pills. This is the "do something" tab.
+- **Tab 2 — Provider Catalog**: the existing `VaultCatalogList category="property_doc"` — read-only list of docs the MSP has published. This is the "browse what's available" tab.
 
-### 1. Raise the output-token budget for Turn 2
+Both tabs scope to the same active property selected by the existing "Apply to:" tab bar above the accordion, so the mental model stays "pick a property → see/add its intelligence."
 
-Bump `maxOutputTokens` for `runArchitectRefine` from **2000 → 8000**. Gemini 2.5 Flash-Lite supports up to 8K output tokens; the refine call is rare (authoring-time only, not a hot path) so cost is negligible. This alone would have prevented today's failure.
+## Remove the duplicate inside Property Models
 
-### 2. Add a JSON-repair fallback before parsing
+Delete the `<PropertyDocsPanel>` mount from `PropertyModelsSection.tsx`. All of its capabilities (upload, run extraction, reindex, delete, freeze badges, indexing status) already exist inside `PropertyIntelligenceSection`'s `ModelRow` — the unified Enhancements section becomes the single source of truth.
 
-Wrap the `JSON.parse(stripFences(text))` call in `runArchitectRefine` with a tolerant repair pass that:
-- Trims to the last balanced `}`.
-- Closes any unterminated string literal at end-of-buffer.
-- Strips trailing commas.
+`PropertyDocsPanel.tsx` itself is left in the repo (not deleted) because `src/lib/portal.functions.ts` references a *different* server-side helper called `buildPropertyDocsPanel` for the generated end-product HTML — those are unrelated despite the name. We just stop importing the React component.
 
-If repair succeeds, parse and continue; if it still fails, fall through to the existing `throw`. This makes the function resilient to occasional model truncation even if the budget is exceeded again.
+## Trigger-flow trace (safety check)
 
-### 3. Add a deterministic last-resort schema synthesizer
+Before committing, mentally walk every place `PropertyDocsPanel` participates today:
 
-If both the raw parse and the repair attempt fail, synthesize a valid Draft-07 schema directly from the user's `keptItems` (every kept field becomes `{ type: "string", description: <desc or title> }`, with the first 3 fields as `required`), then run the canonical-key merge. The MSP still gets a working mapper named after their property class — they never see a 502 — and they can refine field types in the JSON editor afterward. We log a `[architect_refine] used_fallback_synthesis` warning so we can monitor frequency.
+1. **Indexing job kickoff** — driven by `usePropertyExtractions` → `useIndexing.request()`. Already triggered identically by `PropertyIntelligenceSection`'s `ModelRow`. Removing the duplicate panel cannot starve indexing, because the unified section still mounts `usePropertyExtractions(model.id)` for every property.
+2. **`onExtractionSuccess` callback** — currently flows from `PropertyIntelligenceSection` up through `EnhancementsSection` to the builder (used to refresh saved-model state). `PropertyDocsPanel` does **not** call this callback, so removing it changes nothing on this wire.
+3. **Freeze / LUS license gating** — both panels read `useLusFreeze` / `useLusLicense` independently. The Intelligence panel already renders the LUS-paused banner. Removing the Docs panel does not bypass any gate.
+4. **Provider-vault picker ("pick existing doc + run template")** — this is the *one* feature only `PropertyDocsPanel` exposes today. Property Intelligence assumes upload-or-URL only. To avoid a regression for providers who curate templates, **add a third action** to each `ModelRow` in Property Intelligence: a small "From vault…" button that opens the existing picker dialog (vault doc × template) and calls the same `extract()` path. This preserves the curated-template workflow inside the unified section.
+5. **End-product HTML generation** — server-side `buildPropertyDocsPanel` in `src/lib/portal.functions.ts` is untouched; it reads from `property_extractions` rows in the DB, which both ingest paths already write to.
+6. **Indexing-status badge** — `IndexingStatusBadge` is rendered by both panels today; the unified section already renders it via the Intelligence rows, so visitors see no change.
 
-### Why these three together
+## Technical changes (concise)
 
-- (1) eliminates the **current** failure mode for ≤40-field schemas.
-- (2) handles transient model truncation without losing the LLM's type/description choices.
-- (3) guarantees the **"Finalize Schema" button never throws a 502 to the MSP** even under worst-case model misbehavior — preserving the user's workflow.
+- `src/components/portal/EnhancementsSection.tsx`
+  - Replace the two AccordionItems (`intelligence` + `docs`) with one item `intelligence-docs` containing a `Tabs` (`Ask AI` / `Provider Catalog`).
+  - Inside Tab 1: `<PropertyIntelligenceSection ... />` (unchanged props).
+  - Inside Tab 2: `<VaultCatalogList category="property_doc" emptyHint="Your provider hasn't published any property docs yet." />`.
+  - Update intro copy to reflect the merge.
+- `src/components/portal/PropertyModelsSection.tsx`
+  - Remove `import { PropertyDocsPanel }` and the `<PropertyDocsPanel ... />` JSX block (lines 23 + 243-246). Leave everything else untouched.
+- `src/components/portal/PropertyIntelligenceSection.tsx`
+  - Add a "From vault…" action button next to each row's existing "Upload / URL" actions. Reuses the same picker UX as today's `PropertyDocsPanel` (vault doc + template selects → `extract({ vault_asset_id, template_id, saved_model_id })`).
+  - Only render the button when `templates.length > 0` AND there is at least one provider-published `property_doc` (use `useAvailablePropertyDocs`).
+  - All other rows / failure handling / busy-state code stays intact.
+- No DB / RLS / edge-function changes. No changes to `usePropertyExtractions`, `IndexingProvider`, or the worker.
 
-No client-side changes, no schema/database changes, no new secrets. The existing `LOVABLE_API_KEY` / `GEMINI_PRIMARY_MODEL` plumbing stays exactly as-is.
+## Out of scope
 
-## Files Modified
+- Deleting `PropertyDocsPanel.tsx` from disk (kept dormant; cheap revert path if a regression surfaces).
+- Renaming the server-side `buildPropertyDocsPanel` helper.
+- Any change to how the published tour renders the Ask AI panel.
 
-- **`supabase/functions/induce-schema/index.ts`**
-  - Increase `maxOutputTokens` in `runArchitectRefine` to 8000.
-  - Add a `tryRepairJson(text)` helper.
-  - Add a `synthesizeFallbackSchema(keptItems)` helper.
-  - Update the parse path in `runArchitectRefine` to: parse → repair → synthesize, in that order.
+## Verification after implementation
 
-## Verification Plan
-
-After deploy:
-1. Reproduce the original flow ("Event Space" / 20 fields) and confirm Finalize succeeds.
-2. Check `induce-schema` logs for `[architect_refine] usage` instead of `failed`.
-3. Confirm the resulting mapper applies cleanly to the editor.
+1. `tsc --noEmit` — confirm no broken imports after removing the panel mount.
+2. Open a property in the builder → Enhancements → expand "Property Intelligence & Docs" → confirm both tabs render, Ask AI shows the per-property rows, Provider Catalog shows the published docs list.
+3. Confirm the Property Models card no longer renders the second "Property Docs" subpanel.
+4. Upload a doc via Ask AI → confirm extraction completes, indexing status flips ready, and the same row appears in the Provider Catalog tab (since it became a vault asset).
+5. Paste a URL → confirm same path works.
+6. With curated templates published by the provider, click "From vault…" → confirm the picker runs the curated-template extraction.
