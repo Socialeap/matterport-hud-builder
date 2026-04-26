@@ -328,11 +328,11 @@ async function loadExtractionsByProperty(
             kind:
               (c as { kind?: unknown }).kind === "raw_chunk" ||
               (c as { kind?: unknown }).kind === "field_chunk"
-                ? ((c as { kind: "raw_chunk" | "field_chunk" }).kind)
+                ? ((c as unknown as { kind: "raw_chunk" | "field_chunk" }).kind)
                 : undefined,
             source:
               typeof (c as { source?: unknown }).source === "string"
-                ? String((c as { source: string }).source)
+                ? String((c as unknown as { source: string }).source)
                 : undefined,
           })),
         canonical_qas: rawCanonicalQAs
