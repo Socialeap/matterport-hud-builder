@@ -20,7 +20,6 @@ import {
   X,
 } from "lucide-react";
 import type { PropertyModel, MediaAsset } from "./types";
-import { PropertyDocsPanel } from "./PropertyDocsPanel";
 import { MediaSyncModal } from "./MediaSyncModal";
 import { useLusLicense } from "@/hooks/useLusLicense";
 import { parseCinematicVideo } from "@/lib/video-embed";
@@ -239,11 +238,6 @@ export function PropertyModelsSection({
                 </div>
               </div>
             ) : null}
-
-            <PropertyDocsPanel
-              propertyUuid={model.id}
-              savedModelId={savedModelId ?? null}
-            />
           </div>
         ))}
     </div>
