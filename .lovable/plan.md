@@ -1,67 +1,248 @@
-# Unify Property Intelligence + Property Docs into one section
+# Plan: Multi-Path Wizard for Property Maps
 
-## Why this is still split
+## Goal
+Replace the redundant Templates dashboard buttons and the monolithic "New Property Map" modal with a 4-path entry hub feeding a step-based wizard. No backend, API, or extraction-logic changes.
 
-A pass was made earlier, but it stopped halfway:
+---
 
-1. **`PropertyIntelligenceSection`** lives inside `EnhancementsSection` → "Property Intelligence (Ask AI)" accordion. This is the **active** ingest surface (file upload + URL paste + auto-template).
-2. **`PropertyDocsPanel`** is *still* mounted inside `PropertyModelsSection.tsx` (line 243), rendered per-property card. This is a **second** full ingest surface (curated-template extraction + reindex + freeze). Both panels already share state via `usePropertyExtractions` + `useIndexing`, so the data is unified — but the **UI is not**.
-3. **"Property Docs" accordion item** in `EnhancementsSection` is a stub `VaultCatalogList` that just lists provider-published docs and tells the user to scroll back up to Property Intelligence.
+## Diagnostic — Current State Audit
 
-Net effect: clients see the same docs in **3 places** with confusing overlap, and the panel inside Property Models duplicates everything Property Intelligence already does.
+| File | Status | Role in refactor |
+|---|---|---|
+| `src/routes/_authenticated.dashboard.vault.templates.tsx` (964 lines) | Stable but bloated. Top-right `New with AI` + `Blank map` buttons duplicate the empty-state cards. The `EditorDialog` mounts Architect, raw JSON, PDF induction, and Dry Run all at once. | Heavy rewrite of `EditorDialog` + `EmptyState` + header. |
+| `src/components/vault/TemplateArchitect.tsx` (470 lines) | Stable. Self-contained 3-phase flow (Describe → Refine → Finalized). Calls `architectDraft` / `architectRefine`. | Reused as-is inside the Smart AI path. No internal changes. |
+| `src/lib/extraction/induce.ts` | Stable. `induceSchema(pdf)` powers the PDF path. | Reused as-is. |
+| `src/lib/extraction/dryrun.ts` | Stable. Powers Dry Run. | Reused, but moved to optional last-step action (not collapsible always-on). |
+| `src/hooks/useVaultTemplates.ts` | Stable. `create/update/remove`. | Untouched. |
+| `src/lib/vault/starter-templates.ts` | **New** — static seeded library. | New file. |
 
-## The fix: one section, two tabs
+No latent inconsistencies found in the chain. `forceArchitect` URL param + `?architect=1` deep link still need to work and will be preserved (deep-links straight into Smart AI path).
 
-Replace the two separate accordion items ("Property Intelligence" and "Property Docs") with **one accordion item** called **"Property Intelligence & Docs"** (Wired). Inside it, a simple `Tabs` switch:
+---
 
-- **Tab 1 — Ask AI** (default): the existing `PropertyIntelligenceSection` UI — per-property rows with Upload / Paste URL / status pills. This is the "do something" tab.
-- **Tab 2 — Provider Catalog**: the existing `VaultCatalogList category="property_doc"` — read-only list of docs the MSP has published. This is the "browse what's available" tab.
+## Trigger Trace (4 paths)
 
-Both tabs scope to the same active property selected by the existing "Apply to:" tab bar above the accordion, so the mental model stays "pick a property → see/add its intelligence."
+```text
+Dashboard
+  ├─ Card click  → setEditor(EMPTY_DRAFT) + setWizardPath('ai'|'pdf'|'library'|'manual')
+  │                                              │
+  │                                              ▼
+  │                                       WizardModal (open)
+  │                                              │
+  │                                  ┌───────────┼───────────┬───────────┐
+  │                                  ▼           ▼           ▼           ▼
+  │                              SmartAI       PDF        Library     Manual
+  │                              (3 steps)   (3 steps)   (2 steps)   (2 steps)
+  │                                  │           │           │           │
+  │                                  └───────────┴─────┬─────┴───────────┘
+  │                                                    ▼
+  │                                            draft mutated
+  │                                                    ▼
+  │                                       Final step → Save (create/update)
+  │                                                    ▼
+  │                                            close + refresh list
+  ▼
+Edit existing card  → setEditor(populated) + setWizardPath('manual') → jumps straight to final step
+```
 
-## Remove the duplicate inside Property Models
+Existing `?architect=1` deep link → opens hub with Smart AI preselected (preserves current behavior from the portal).
 
-Delete the `<PropertyDocsPanel>` mount from `PropertyModelsSection.tsx`. All of its capabilities (upload, run extraction, reindex, delete, freeze badges, indexing status) already exist inside `PropertyIntelligenceSection`'s `ModelRow` — the unified Enhancements section becomes the single source of truth.
+---
 
-`PropertyDocsPanel.tsx` itself is left in the repo (not deleted) because `src/lib/portal.functions.ts` references a *different* server-side helper called `buildPropertyDocsPanel` for the generated end-product HTML — those are unrelated despite the name. We just stop importing the React component.
+## Sub-component Split
 
-## Trigger-flow trace (safety check)
+New folder: `src/components/vault/wizard/`
 
-Before committing, mentally walk every place `PropertyDocsPanel` participates today:
+```text
+wizard/
+  WizardModal.tsx              ← shell: progress bar, Next/Back footer, step routing
+  WizardHub.tsx                ← (used in dashboard, not modal) the 4 cards
+  paths/
+    SmartAIPath.tsx            ← wraps existing TemplateArchitect
+    PdfPath.tsx                ← wraps existing SchemaInductionSection
+    LibraryPath.tsx            ← lists starter library + user's own templates to clone
+    ManualPath.tsx             ← raw JSON editor + Dry Run
+  steps/
+    NameStep.tsx               ← shared: Label input (final-step gate)
+    AdvancedSettings.tsx       ← collapsible: Doc Kind + Extractor + Raw JSON peek
+    ReviewStep.tsx             ← shared: schema preview + field count + Save button
+```
 
-1. **Indexing job kickoff** — driven by `usePropertyExtractions` → `useIndexing.request()`. Already triggered identically by `PropertyIntelligenceSection`'s `ModelRow`. Removing the duplicate panel cannot starve indexing, because the unified section still mounts `usePropertyExtractions(model.id)` for every property.
-2. **`onExtractionSuccess` callback** — currently flows from `PropertyIntelligenceSection` up through `EnhancementsSection` to the builder (used to refresh saved-model state). `PropertyDocsPanel` does **not** call this callback, so removing it changes nothing on this wire.
-3. **Freeze / LUS license gating** — both panels read `useLusFreeze` / `useLusLicense` independently. The Intelligence panel already renders the LUS-paused banner. Removing the Docs panel does not bypass any gate.
-4. **Provider-vault picker ("pick existing doc + run template")** — this is the *one* feature only `PropertyDocsPanel` exposes today. Property Intelligence assumes upload-or-URL only. To avoid a regression for providers who curate templates, **add a third action** to each `ModelRow` in Property Intelligence: a small "From vault…" button that opens the existing picker dialog (vault doc × template) and calls the same `extract()` path. This preserves the curated-template workflow inside the unified section.
-5. **End-product HTML generation** — server-side `buildPropertyDocsPanel` in `src/lib/portal.functions.ts` is untouched; it reads from `property_extractions` rows in the DB, which both ingest paths already write to.
-6. **Indexing-status badge** — `IndexingStatusBadge` is rendered by both panels today; the unified section already renders it via the Intelligence rows, so visitors see no change.
+`TemplateArchitect.tsx`, `SchemaInductionSection`, `DryRunSection` are **kept intact** and imported by the new path components — zero risk of breaking the working AI/PDF flows.
 
-## Technical changes (concise)
+---
 
-- `src/components/portal/EnhancementsSection.tsx`
-  - Replace the two AccordionItems (`intelligence` + `docs`) with one item `intelligence-docs` containing a `Tabs` (`Ask AI` / `Provider Catalog`).
-  - Inside Tab 1: `<PropertyIntelligenceSection ... />` (unchanged props).
-  - Inside Tab 2: `<VaultCatalogList category="property_doc" emptyHint="Your provider hasn't published any property docs yet." />`.
-  - Update intro copy to reflect the merge.
-- `src/components/portal/PropertyModelsSection.tsx`
-  - Remove `import { PropertyDocsPanel }` and the `<PropertyDocsPanel ... />` JSX block (lines 23 + 243-246). Leave everything else untouched.
-- `src/components/portal/PropertyIntelligenceSection.tsx`
-  - Add a "From vault…" action button next to each row's existing "Upload / URL" actions. Reuses the same picker UX as today's `PropertyDocsPanel` (vault doc + template selects → `extract({ vault_asset_id, template_id, saved_model_id })`).
-  - Only render the button when `templates.length > 0` AND there is at least one provider-published `property_doc` (use `useAvailablePropertyDocs`).
-  - All other rows / failure handling / busy-state code stays intact.
-- No DB / RLS / edge-function changes. No changes to `usePropertyExtractions`, `IndexingProvider`, or the worker.
+## Draft State Strategy
 
-## Out of scope
+Single `WizardDraft` object owned by `VaultTemplatesPage`, threaded down. Same shape as today's `EditorState` plus path metadata.
 
-- Deleting `PropertyDocsPanel.tsx` from disk (kept dormant; cheap revert path if a regression surfaces).
-- Renaming the server-side `buildPropertyDocsPanel` helper.
-- Any change to how the published tour renders the Ask AI panel.
+```ts
+type WizardPath = 'ai' | 'pdf' | 'library' | 'manual';
 
-## Verification after implementation
+interface WizardDraft {
+  id: string | null;            // null = create, set = edit existing
+  path: WizardPath;
+  step: number;                 // 0-indexed; per-path max
+  label: string;
+  doc_kind: string;
+  extractor: ExtractorId;
+  schema_text: string;          // canonical source of truth, JSON-stringified
+  source: { kind: 'starter'|'cloned'|'pdf'|'ai'|'manual'; ref?: string } | null;
+}
+```
 
-1. `tsc --noEmit` — confirm no broken imports after removing the panel mount.
-2. Open a property in the builder → Enhancements → expand "Property Intelligence & Docs" → confirm both tabs render, Ask AI shows the per-property rows, Provider Catalog shows the published docs list.
-3. Confirm the Property Models card no longer renders the second "Property Docs" subpanel.
-4. Upload a doc via Ask AI → confirm extraction completes, indexing status flips ready, and the same row appears in the Provider Catalog tab (since it became a vault asset).
-5. Paste a URL → confirm same path works.
-6. With curated templates published by the provider, click "From vault…" → confirm the picker runs the curated-template extraction.
+Rules:
+- Each path mutates only `schema_text` (and optionally `doc_kind` / `label`) via callbacks. Mutations are **non-destructive** until the user clicks `Save`.
+- Path can be switched only by closing the modal (cards on hub). Once inside a path, only Next/Back are exposed → no accidental cross-path state leakage.
+- Edit-existing flow auto-selects `manual` path and jumps to final step (preserves current "edit JSON directly" capability).
+
+---
+
+## Per-Path Step Flow
+
+### Smart AI Blueprint (3 steps)
+1. **Describe property class** — Textarea (current Phase 1 of `TemplateArchitect`).
+2. **Pick the facts** — Checklist (current Phase 2). On Finalize → schema written to draft.
+3. **Name & Save** — Label input + collapsible Advanced (Doc Kind, Extractor, Raw JSON peek) + optional Dry Run button.
+
+### Auto-Extract from PDF (3 steps)
+1. **Upload sample document** — File input.
+2. **Generate & review fields** — Calls `induceSchema`; shows detected fields list.
+3. **Name & Save** — Same final step as above.
+
+### Use Proven Template (2 steps)
+1. **Pick a starting point** — Two sections:
+   - **Industry Standards** (from `src/lib/vault/starter-templates.ts` — Residential, Hospitality, Commercial Office, Multi-Family, Coworking).
+   - **My Templates** (clones from `useVaultTemplates`).
+   Selecting one populates draft (`label` gets " (Copy)" suffix when cloning user's own).
+2. **Name & Save** — Same final step.
+
+### Pro Developer Setup (2 steps)
+1. **Author JSON Schema** — Raw JSON textarea, large; live syntax check; current `EMPTY_EDITOR` schema as default.
+2. **Name & Save** — Same final step (Advanced is *expanded by default* here — power users want it).
+
+---
+
+## Final Step — "Name & Save" (shared)
+
+Layout from top to bottom:
+- **Label** (required, only visible field by default).
+- **Schema preview pill** — read-only "12 fields detected" + "Show fields" disclosure.
+- **Advanced Settings** (`<Collapsible>`, default closed except Pro path):
+  - Doc Kind input.
+  - Extractor select (`pdfjs_heuristic` / `donut` disabled).
+  - Raw JSON textarea (mono-font, last-resort edit).
+- **Optional: Dry Run** button → opens current `DryRunSection` inline.
+
+Footer: `[← Back]  [Cancel]  [Create Template]`.
+
+---
+
+## Progress Indicator
+
+Top of modal, full-width pill bar:
+
+```text
+●━━━━○━━━━○        Step 1 of 3 · Describe property
+```
+
+- Circles fill in primary color as user advances.
+- Current-step label shown to the right.
+- Click on a previous filled circle = jump back (cheap, draft is preserved).
+
+---
+
+## Copy Update Map
+
+| Old (technical) | New (result-oriented) |
+|---|---|
+| Schema | Intelligence Structure |
+| JSON Schema | Field Blueprint |
+| Extractor | Data Extractor |
+| Heuristic | Pattern Reader |
+| Induce | Teach AI / Auto-Detect |
+| Dry Run | Test on Sample |
+| Doc Kind | Document Type |
+| Property Mapper | Property Intelligence Map |
+
+Path card titles stay short and result-focused:
+- **Smart AI Blueprint** — "Describe what you sell — AI builds the map."
+- **Auto-Extract from PDF** — "Drop a sample doc — we'll detect every field."
+- **Use Proven Template** — "Start from a battle-tested industry baseline."
+- **Pro Developer Setup** — "Hand-author the field blueprint."
+
+---
+
+## Dashboard Changes (`vault.templates.tsx`)
+
+1. **Header**: Remove the right-side `[New with AI] [Blank map]` cluster entirely. Title + subtitle stay.
+2. **EmptyState**: Replace 2-card layout with the new 4-card `WizardHub` (also rendered when templates exist, in a compact horizontal strip above the grid as the primary entry point).
+3. **EditorDialog**: Replaced by `<WizardModal />`. Open/close logic identical.
+4. **Deep link** (`?architect=1`): Opens `WizardModal` with `path='ai'` preselected (preserves portal flow).
+5. **Edit click on existing card**: Opens `WizardModal` with `path='manual'`, `step=last`, fully populated.
+
+---
+
+## Phased Implementation (validated before next phase begins)
+
+**Phase 1 — Static foundations (no behavior change yet)**
+- Create `src/lib/vault/starter-templates.ts` (5 rich starter blueprints).
+- Create `src/components/vault/wizard/` skeleton + types. No imports yet from the route.
+- `tsc --noEmit` must pass.
+
+**Phase 2 — WizardModal shell + Manual path**
+- Build `WizardModal`, progress bar, Next/Back, `ManualPath` (simplest), shared `NameStep`, `AdvancedSettings`.
+- Wire into route as a *parallel* dialog behind a feature flag (or temporary alt button). Old EditorDialog still works.
+- Verify create + edit through manual path.
+
+**Phase 3 — Smart AI + PDF paths**
+- Wrap existing `TemplateArchitect` in `SmartAIPath` (no internal changes).
+- Wrap existing `SchemaInductionSection` in `PdfPath` (no internal changes).
+- Verify both flows still produce the same final draft.
+
+**Phase 4 — Library path**
+- Build `LibraryPath` consuming `starter-templates.ts` + existing user templates.
+- Verify clone produces editable draft.
+
+**Phase 5 — Dashboard cutover**
+- Remove top-right buttons.
+- Replace `EmptyState` cards with `WizardHub` (4 cards).
+- Swap `EditorDialog` → `WizardModal` everywhere; preserve `?architect=1` and edit-existing entry points.
+- Delete now-unused `EmptyState` component and inline JSON/Induce/DryRun collapsible blocks from the route file (the underlying `SchemaInductionSection` / `DryRunSection` move into wizard step files).
+- `tsc --noEmit` + manual click-through every path including edit-existing.
+
+---
+
+## Safety / Regression Guards
+
+- `TemplateArchitect.tsx` is **not modified** — eliminates risk to the working AI flow.
+- `induceSchema` / `dryRunTemplate` / `useVaultTemplates` APIs are **not touched**.
+- `?architect=1` deep link behavior is preserved (covered in Phase 5 acceptance).
+- Edit-existing-template path is preserved (auto-routes to manual/final step).
+- Old `EditorDialog` is removed only in Phase 5 after the new shell is verified — single atomic swap.
+- Each phase ends with `tsc --noEmit` and a smoke check before the next begins.
+
+---
+
+## Files Touched
+
+**New:**
+- `src/lib/vault/starter-templates.ts`
+- `src/components/vault/wizard/WizardModal.tsx`
+- `src/components/vault/wizard/WizardHub.tsx`
+- `src/components/vault/wizard/paths/SmartAIPath.tsx`
+- `src/components/vault/wizard/paths/PdfPath.tsx`
+- `src/components/vault/wizard/paths/LibraryPath.tsx`
+- `src/components/vault/wizard/paths/ManualPath.tsx`
+- `src/components/vault/wizard/steps/NameStep.tsx`
+- `src/components/vault/wizard/steps/AdvancedSettings.tsx`
+- `src/components/vault/wizard/steps/ReviewStep.tsx`
+- `src/components/vault/wizard/types.ts`
+
+**Modified:**
+- `src/routes/_authenticated.dashboard.vault.templates.tsx` (header trim, hub swap, dialog swap, removal of inline collapsibles)
+
+**Untouched (verified safe):**
+- `src/components/vault/TemplateArchitect.tsx`
+- `src/lib/extraction/*`
+- `src/hooks/useVaultTemplates.ts`
