@@ -22,7 +22,7 @@
  * re-embed-on-every-load tax.
  */
 import { supabase } from "@/integrations/supabase/client";
-import { EmbeddingWorkerClient } from "./embedding-worker-client";
+import { EmbeddingWorkerClient, MAX_TEXTS_PER_EMBED } from "./embedding-worker-client";
 import type { Json } from "@/integrations/supabase/types";
 import {
   buildCanonicalQAs,
@@ -30,7 +30,14 @@ import {
   type CanonicalQA,
   type EmbeddedCanonicalQA,
 } from "./canonical-questions";
-import { EMBEDDING_DIM } from "./types";
+import { EMBEDDING_DIM, type ChunkKind, type ChunkSource, type ChunkVisibility } from "./types";
+
+/** Internal batch size — well below MAX_TEXTS_PER_EMBED so a single
+ *  long row never trips the worker's hard cap. Bigger batches reduce
+ *  worker round-trips; smaller batches keep postMessage payloads small
+ *  and let the IndexingStatusBadge tick more often. 64 is the sweet
+ *  spot we've measured against MiniLM-L6-v2 in the worker. */
+const EMBED_BATCH_SIZE = Math.min(64, MAX_TEXTS_PER_EMBED);
 
 interface RawExtractionRow {
   id: string;
@@ -45,6 +52,14 @@ interface RawChunk {
   section: string;
   content: string;
   embedding?: number[] | null;
+  // Phase A — additive metadata. All optional so legacy rows still parse.
+  kind?: ChunkKind;
+  source?: ChunkSource;
+  pageStart?: number;
+  pageEnd?: number;
+  qualityScore?: number;
+  tokenEstimate?: number;
+  visibility?: ChunkVisibility;
 }
 
 export interface EnrichmentStats {
@@ -141,21 +156,33 @@ export async function ensureExtractionEmbeddings(
         const fields = (row.fields ?? {}) as Record<string, unknown>;
         const canonicalQAs: CanonicalQA[] = buildCanonicalQAs(fields);
 
-        // One batch, two slices: chunk texts first, canonical-question texts
-        // second. Halves the worker round-trips vs. embedding each group.
+        // Build one flat array (chunks first, then canonical questions),
+        // then split it into capped batches. Each batch preserves the
+        // "halve the round-trip" concat from the original implementation;
+        // the cap prevents oversize postMessage payloads on large PDFs.
         const chunkTexts = rawChunks.map((c) => `${c.section}: ${c.content}`);
         const questionTexts = canonicalQuestionTexts(canonicalQAs);
-        const batch = [...chunkTexts, ...questionTexts];
+        const flat = [...chunkTexts, ...questionTexts];
 
-        let vectors: number[][] = [];
-        if (batch.length > 0) {
-          vectors = await worker.embedBatch(batch);
+        const vectors: number[][] = [];
+        const batchCount = Math.ceil(flat.length / EMBED_BATCH_SIZE) || 0;
+        for (let b = 0; b < batchCount; b++) {
+          const start = b * EMBED_BATCH_SIZE;
+          const end = Math.min(start + EMBED_BATCH_SIZE, flat.length);
+          onProgress(
+            `Indexing row ${i} of ${rowsNeedingWork.length} (batch ${b + 1}/${batchCount})…`,
+          );
+          const part = await worker.embedBatch(flat.slice(start, end));
+          for (const v of part) vectors.push(v);
         }
 
         const chunkVectors = vectors.slice(0, chunkTexts.length);
         const questionVectors = vectors.slice(chunkTexts.length);
 
         const enrichedChunks: RawChunk[] = rawChunks.map((c, j) => ({
+          // Preserve every metadata field on the way through; only
+          // `embedding` is computed/refreshed.
+          ...c,
           id: c.id,
           section: c.section,
           content: c.content,

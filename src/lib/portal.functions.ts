@@ -307,11 +307,19 @@ async function loadExtractionsByProperty(
               section: string;
               content: string;
               embedding?: unknown;
+              visibility?: unknown;
             } =>
               !!c &&
               typeof c === "object" &&
               typeof (c as { content?: unknown }).content === "string",
           )
+          // Phase A — drop private chunks at the injection boundary.
+          // Default visibility is `public`, so legacy rows persisted
+          // before metadata was introduced ride along unchanged.
+          .filter((c) => {
+            const v = (c as { visibility?: unknown }).visibility;
+            return v !== "private";
+          })
           .map((c) => ({
             id: String(c.id ?? ""),
             section: String(c.section ?? ""),
@@ -1347,7 +1355,11 @@ function __dqaCollectChunkDocs(entries){
         id:label+"#chunk#"+(ch.id||c),
         source:label+" \u2192 "+(ch.section||"section"),
         content:String(ch.content||""),
-        embedding:hasEmb?ch.embedding:null
+        embedding:hasEmb?ch.embedding:null,
+        // Phase A \u2014 propagate chunk kind to runtime so the decision
+        // ladder can use the raw-chunk direct-escalation tier. Legacy
+        // rows without a kind field default to raw_chunk via the runtime.
+        kind:(ch.kind==="raw_chunk"||ch.kind==="field_chunk")?ch.kind:"raw_chunk"
       });
     }
     // Fields are also indexed for BM25 fallback; they never carry
@@ -1362,7 +1374,8 @@ function __dqaCollectChunkDocs(entries){
         id:label+"#field#"+fkeys[k],
         source:label+" \u2192 "+fkeys[k],
         content:fkeys[k]+": "+text,
-        embedding:null
+        embedding:null,
+        kind:"field_chunk"
       });
     }
   }
@@ -1380,8 +1393,8 @@ async function __dqaRebuildIndex(i){
   var useHybrid=collected.hasEmbeddings&&!!__docsQa.embedPipeline;
   __docsQa.mode=useHybrid?"hybrid":"bm25";
   var schema=useHybrid
-    ? {id:"string",source:"string",content:"string",embedding:"vector[384]"}
-    : {id:"string",source:"string",content:"string"};
+    ? {id:"string",source:"string",content:"string",kind:"string",embedding:"vector[384]"}
+    : {id:"string",source:"string",content:"string",kind:"string"};
   __docsQa.db=await om.create({
     schema:schema,
     components:{tokenizer:{language:"english",stemming:true}}
@@ -1393,11 +1406,11 @@ async function __dqaRebuildIndex(i){
       // Synthesize a zero vector so they stay in the BM25 lane.
       var emb=doc.embedding||new Array(384).fill(0);
       await om.insert(__docsQa.db,{
-        id:doc.id,source:doc.source,content:doc.content,embedding:emb
+        id:doc.id,source:doc.source,content:doc.content,kind:doc.kind||"raw_chunk",embedding:emb
       });
     }else{
       await om.insert(__docsQa.db,{
-        id:doc.id,source:doc.source,content:doc.content
+        id:doc.id,source:doc.source,content:doc.content,kind:doc.kind||"raw_chunk"
       });
     }
   }
@@ -1567,7 +1580,8 @@ async function __dqaInit(){
               section:doc.source||"",
               content:String(doc.content||""),
               templateLabel:"",
-              score:hits[ch].score||0
+              score:hits[ch].score||0,
+              kind:doc.kind||"raw_chunk"
             });
           }
         }catch(docsErr){

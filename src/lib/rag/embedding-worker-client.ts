@@ -26,6 +26,18 @@ function embedTimeoutMs(batchSize: number) {
   return Math.max(45_000, batchSize * 1500);
 }
 
+/** Hard ceiling on a single `embedBatch` call. Anything larger should
+ *  be chunked by the caller (extraction-hydrator does this). The cap
+ *  exists as a defense-in-depth check — once a postMessage payload
+ *  crosses ~10–20 MB the worker's structured-clone serialization becomes
+ *  the dominant cost and timeouts stop being meaningful. */
+export const MAX_TEXTS_PER_EMBED = 128;
+
+/** Hard ceiling on per-text length, in characters. The MiniLM tokenizer
+ *  truncates to 512 tokens (~2000 characters of English) anyway; we cap
+ *  at 8000 so a misbehaving caller can't smuggle a 1 MB string per row. */
+export const MAX_CHARS_PER_TEXT = 8_000;
+
 export class EmbeddingWorkerClient {
   private worker: Worker | null = null;
   private pendingEmbeds = new Map<
@@ -114,17 +126,30 @@ export class EmbeddingWorkerClient {
     if (!this.worker) {
       return Promise.reject(new Error("Worker has been terminated"));
     }
+    if (texts.length > MAX_TEXTS_PER_EMBED) {
+      return Promise.reject(
+        new Error(
+          `embedBatch rejected: ${texts.length} texts exceeds MAX_TEXTS_PER_EMBED=${MAX_TEXTS_PER_EMBED}; chunk the call upstream`,
+        ),
+      );
+    }
+    // Defensive: clip overly long inputs so a single oversized text
+    // can't blow up the postMessage clone or wedge the tokenizer.
+    const safeTexts = texts.map((t) => {
+      const s = typeof t === "string" ? t : String(t ?? "");
+      return s.length > MAX_CHARS_PER_TEXT ? s.slice(0, MAX_CHARS_PER_TEXT) : s;
+    });
 
     const id = String(++this.seqId);
     return new Promise((resolve, reject) => {
-      const timeout = embedTimeoutMs(texts.length);
+      const timeout = embedTimeoutMs(safeTexts.length);
       const timer = setTimeout(() => {
         // Drop the pending entry so a late embed:result is silently ignored.
         if (this.pendingEmbeds.has(id)) {
           this.pendingEmbeds.delete(id);
           reject(
             new Error(
-              `embedding batch timed out after ${Math.round(timeout / 1000)}s (${texts.length} texts)`,
+              `embedding batch timed out after ${Math.round(timeout / 1000)}s (${safeTexts.length} texts)`,
             ),
           );
         }
@@ -140,7 +165,7 @@ export class EmbeddingWorkerClient {
           reject(e);
         },
       });
-      this.post({ type: "embed", id, texts });
+      this.post({ type: "embed", id, texts: safeTexts });
     });
   }
 

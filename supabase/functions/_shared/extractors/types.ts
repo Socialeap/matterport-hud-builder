@@ -4,10 +4,24 @@
 
 export type ExtractorId = "pdfjs_heuristic" | "donut";
 
+/** Mirrors `src/lib/rag/types.ts` — see that file for the canonical
+ *  comments. Edge-side duplication is intentional: Deno cannot import
+ *  TS from the client tree, and we want one source of truth on the wire. */
+export type ChunkKind = "raw_chunk" | "field_chunk";
+export type ChunkSource = "pdf" | "url" | "field";
+export type ChunkVisibility = "public" | "private";
+
 export interface PropertyChunk {
   id: string;
   section: string;
   content: string;
+  kind?: ChunkKind;
+  source?: ChunkSource;
+  pageStart?: number;
+  pageEnd?: number;
+  qualityScore?: number;
+  tokenEstimate?: number;
+  visibility?: ChunkVisibility;
 }
 
 export interface JsonSchemaField {

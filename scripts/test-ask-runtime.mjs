@@ -192,6 +192,114 @@ test("action resolver — booking path terminates with strict unknown when no UR
     "strict unknown must NOT leak room count");
 });
 
+test("Phase A — raw-chunk escalation bypasses synthesis on a strong raw_chunk hit", () => {
+  const brain = brainFromFixture();
+  // Strip canonical QAs so the canonical tier cannot win and we drop
+  // into the chunk-direct or synthesis tier deterministically.
+  brain.canonicalQAs = [];
+  const decision = decideAnswer({
+    brain,
+    query: "what's special about the lobby?",
+    queryVec: null,
+    intent: "unknown",
+    intentAllows,
+    chunkHits: [
+      {
+        id: "raw-1",
+        source: "overview",
+        section: "overview",
+        content: "The lobby features a 30-foot atrium with a sweeping marble staircase.",
+        score: 0.78, // well above RAW_CHUNK_DIRECT_FLOOR
+        kind: "raw_chunk",
+      },
+    ],
+    canSynthesize: true, // synthesis available; we expect chunk path to win
+  });
+  assert.equal(decision.path, "chunk",
+    `Strong raw_chunk hit should bypass synthesis; got ${decision.path}`);
+  assert.equal(decision.needsSynthesis, false);
+  assert.ok(decision.text.includes("atrium"),
+    `Chunk text should be returned verbatim; got ${decision.text}`);
+});
+
+test("Phase A — raw-chunk escalation does NOT fire on a field_chunk", () => {
+  const brain = brainFromFixture();
+  brain.canonicalQAs = [];
+  const decision = decideAnswer({
+    brain,
+    query: "what's special about the lobby?",
+    queryVec: null,
+    intent: "unknown",
+    intentAllows,
+    chunkHits: [
+      {
+        id: "field-1",
+        source: "overview",
+        section: "overview",
+        content: "amenities: pool, gym, spa",
+        score: 0.9,
+        kind: "field_chunk",
+      },
+    ],
+    canSynthesize: true,
+  });
+  // Field chunks must not satisfy the raw-chunk-direct tier; the
+  // ladder should fall through to synthesis or RRF.
+  assert.notEqual(decision.path, "chunk",
+    "field_chunk must not trigger the raw-chunk direct tier");
+});
+
+test("Phase A — action-intent guard still terminates before raw-chunk escalation", () => {
+  const brain = brainFromFixture();
+  // Booking action has data; the ladder should resolve via action and
+  // never inspect chunk-direct hits even with a high-scoring raw chunk.
+  const decision = decideAnswer({
+    brain,
+    query: "book me a room",
+    queryVec: null,
+    intent: "booking",
+    intentAllows,
+    chunkHits: [
+      {
+        id: "raw-1",
+        source: "overview",
+        section: "overview",
+        content: "Random unrelated paragraph mentioning rooms in passing.",
+        score: 0.95,
+        kind: "raw_chunk",
+      },
+    ],
+    canSynthesize: true,
+  });
+  assert.equal(decision.path, "action",
+    `Action intent must short-circuit the raw-chunk direct tier; got ${decision.path}`);
+});
+
+test("Phase A — legacy chunk hits without `kind` are treated as raw_chunk", () => {
+  const brain = brainFromFixture();
+  brain.canonicalQAs = [];
+  const decision = decideAnswer({
+    brain,
+    query: "describe the lobby",
+    queryVec: null,
+    intent: "unknown",
+    intentAllows,
+    chunkHits: [
+      {
+        id: "legacy-1",
+        source: "overview",
+        section: "overview",
+        content: "The lobby features a 30-foot atrium with a sweeping marble staircase.",
+        score: 0.78,
+        // no kind field — simulates rows persisted before Phase A
+      },
+    ],
+    canSynthesize: true,
+  });
+  assert.equal(decision.path, "chunk",
+    "Missing `kind` should default to raw_chunk and trigger direct escalation");
+});
+
 test("synthesis fallback — signals caller when no local answer found", () => {
   const brain = brainFromFixture();
   const decision = decideAnswer({

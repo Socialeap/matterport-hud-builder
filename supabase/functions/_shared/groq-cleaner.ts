@@ -14,6 +14,7 @@
 // caller transparently falls back to the heuristic result — no data loss.
 
 import type { JsonSchema, PropertyChunk } from "./extractors/types.ts";
+import { classifyChunkVisibility } from "./document-cleaning.ts";
 
 export interface GroqCandidate {
   key: string;
@@ -261,11 +262,18 @@ export async function groqClean(
       const chunks: PropertyChunk[] = Array.isArray(parsed.chunks)
         ? parsed.chunks
             .filter((c) => typeof c.content === "string" && c.content.trim())
-            .map((c, i) => ({
-              id: String(c.id ?? `${template.doc_kind}-groq-${i}`),
-              section: String(c.section ?? "Section"),
-              content: String(c.content).slice(0, 2_000).trim(),
-            }))
+            .map((c, i) => {
+              const content = String(c.content).slice(0, 2_000).trim();
+              return {
+                id: String(c.id ?? `${template.doc_kind}-groq-${i}`),
+                section: String(c.section ?? "Section"),
+                content,
+                kind: "raw_chunk" as const,
+                source: "pdf" as const,
+                tokenEstimate: Math.max(1, Math.ceil(content.length / 4)),
+                visibility: classifyChunkVisibility(content),
+              };
+            })
         : [];
 
       if (chunks.length === 0) {

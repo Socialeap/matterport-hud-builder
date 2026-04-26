@@ -5,6 +5,7 @@ export const TIER1_SOFT: number;
 export const TIER1_FLOOR: number;
 export const TIER1_FIELD_BOOST: number;
 export const TIER2_MIN: number;
+export const RAW_CHUNK_DIRECT_FLOOR: number;
 export const RRF_K: number;
 export const ACTION_MISS_COPY: Record<string, string>;
 export const STRICT_UNKNOWN_COPY: string;
@@ -34,6 +35,11 @@ export interface ChunkHit {
   content: string;
   templateLabel?: string;
   score: number;
+  /** Phase A — present when the chunk was emitted by an extractor that
+   *  participates in the metadata contract (pdfjs-heuristic, groq-
+   *  cleaner). Older rows leave it undefined; the runtime treats
+   *  missing as `raw_chunk`. */
+  kind?: "raw_chunk" | "field_chunk";
 }
 
 export interface Tier1Scored {
