@@ -325,6 +325,15 @@ async function loadExtractionsByProperty(
             section: String(c.section ?? ""),
             content: String(c.content ?? ""),
             embedding: normalizeEmbedding(c.embedding),
+            kind:
+              (c as { kind?: unknown }).kind === "raw_chunk" ||
+              (c as { kind?: unknown }).kind === "field_chunk"
+                ? ((c as { kind: "raw_chunk" | "field_chunk" }).kind)
+                : undefined,
+            source:
+              typeof (c as { source?: unknown }).source === "string"
+                ? String((c as { source: string }).source)
+                : undefined,
           })),
         canonical_qas: rawCanonicalQAs
           .filter(
@@ -396,6 +405,8 @@ interface PropertyExtractionForHud {
     section: string;
     content: string;
     embedding: number[] | null;
+    kind?: "raw_chunk" | "field_chunk";
+    source?: string;
   }>;
   canonical_qas: Array<{
     id: string;
@@ -2060,4 +2071,3 @@ export const declineInvitationByToken = createServerFn({ method: "POST" })
     }
     return { success: ok === true };
   });
-

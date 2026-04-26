@@ -359,6 +359,162 @@ const TEMPLATES: Record<string, Template> = {
     answerTemplate: "Amenities include: {value}.",
     format: "raw",
   },
+  property_size_acres: {
+    questions: [
+      "How large is the property?",
+      "How many acres is it?",
+      "What's the acreage?",
+      "How big is the ranch?",
+    ],
+    answerTemplate: "The property spans {value} acres.",
+    format: "number",
+  },
+  venue_max_capacity: {
+    questions: [
+      "What's the venue capacity?",
+      "How many guests can the venue hold?",
+      "What's the maximum capacity?",
+      "How many people can it hold?",
+    ],
+    answerTemplate: "The venue holds up to {value} guests.",
+    format: "number",
+  },
+  venue_minimum_guests: {
+    questions: [
+      "What's the minimum guest count?",
+      "What is the minimum capacity?",
+      "How many guests are required?",
+    ],
+    answerTemplate: "The venue minimum is {value} guests.",
+    format: "number",
+  },
+  ceremony_deck_capacity: {
+    questions: [
+      "How many people does the Ceremony Deck hold?",
+      "What's the Ceremony Deck capacity?",
+      "How many guests fit on the Ceremony Deck?",
+      "How many can the deck seat?",
+    ],
+    answerTemplate: "The Ceremony Deck seats up to {value} guests.",
+    format: "number",
+  },
+  reception_pavilion_capacity: {
+    questions: [
+      "What is the capacity of the pavilion?",
+      "How many people does the Reception Pavilion hold?",
+      "What's the pavilion capacity?",
+      "How many seated guests fit in the pavilion?",
+    ],
+    answerTemplate: "The Reception Pavilion accommodates up to {value} seated guests.",
+    format: "number",
+  },
+  reception_pavilion_square_feet: {
+    questions: [
+      "How large is the Reception Pavilion?",
+      "How many square feet is the pavilion?",
+      "What's the pavilion size?",
+      "How large is this space?",
+    ],
+    answerTemplate: "The Reception Pavilion is {value} square feet.",
+    format: "number",
+  },
+  lodging_capacity: {
+    questions: [
+      "How many guests can stay on-site?",
+      "What's the lodging capacity?",
+      "How many people can the accommodations sleep?",
+    ],
+    answerTemplate: "On-site lodging accommodates up to {value} guests.",
+    format: "number",
+  },
+  catering_cost_per_person: {
+    questions: [
+      "How much does catering cost?",
+      "What's the catering cost per person?",
+      "Is on-site catering available?",
+      "What does in-house catering start at?",
+    ],
+    answerTemplate: "In-house catering starts at {value} per person.",
+    format: "currency",
+  },
+  on_site_catering: {
+    questions: [
+      "Is on-site catering available?",
+      "Do they have in-house catering?",
+      "Tell me about catering.",
+      "Is catering mandatory?",
+    ],
+    answerTemplate: "{value}.",
+    format: "raw",
+  },
+  bar_service_cost_range: {
+    questions: [
+      "How much does bar service cost?",
+      "What's the bar service cost?",
+      "How much are bar packages?",
+      "What do bar packages cost per person?",
+    ],
+    answerTemplate: "Bar service ranges from {value}.",
+    format: "raw",
+  },
+  site_fee_starting: {
+    questions: [
+      "What's the site fee?",
+      "What's the starting site fee?",
+      "How much is the venue fee?",
+      "What's the price?",
+    ],
+    answerTemplate: "Site fees start at {value}.",
+    format: "currency",
+  },
+  saturday_site_fee: {
+    questions: [
+      "What is the Saturday site fee?",
+      "How much are Saturday site fees?",
+      "What's the Saturday venue fee?",
+    ],
+    answerTemplate: "Saturday site fees increase to {value}.",
+    format: "currency",
+  },
+  accommodation_buyout_starting: {
+    questions: [
+      "How much is the accommodation buyout?",
+      "What's the all-accommodation buyout price?",
+      "How much does lodging buyout start at?",
+    ],
+    answerTemplate: "The all-accommodation buyout starts around {value}.",
+    format: "currency",
+  },
+  dining_description: {
+    questions: [
+      "Is there dining on-site?",
+      "Is there a restaurant?",
+      "Tell me about dining.",
+      "What food is available?",
+    ],
+    answerTemplate: "{value}.",
+    format: "raw",
+  },
+  private_island_context: {
+    questions: [
+      "Is the ranch considered an island?",
+      "Why is it called an island?",
+      "Is it surrounded by public land?",
+      "Tell me about the island context.",
+    ],
+    answerTemplate: "{value}.",
+    format: "raw",
+  },
+  operating_season: {
+    questions: [
+      "When is it open?",
+      "What's the operating season?",
+      "When is the ranch open seasonally?",
+      "Is it seasonal?",
+    ],
+    answerTemplate: "The operating season is {value}.",
+    format: "raw",
+  },
 };
 
 // ── Value formatting ────────────────────────────────────────────────
@@ -702,15 +858,35 @@ const VOCAB_MAP: Record<string, string[]> = {
   capacity: ["What's the capacity?", "How many people can it hold?", "What's the max capacity?"],
   occupancy: ["What's the occupancy?", "How many guests can stay?", "What's the room occupancy?"],
   guest: ["How many guests?", "Tell me about guest accommodations.", "What's the guest experience?"],
+  guests: ["How many guests?", "How many guests can it hold?", "What's the guest capacity?"],
 
   // Spaces
   ballroom: ["Tell me about the ballrooms.", "What ballrooms are there?", "Any event space?"],
+  pavilion: ["What's the pavilion capacity?", "Tell me about the pavilion.", "How many people does the pavilion hold?"],
+  ceremony: ["How many people does the ceremony space hold?", "Tell me about the ceremony space."],
+  deck: ["How many people does the deck hold?", "What's the deck capacity?", "Tell me about the deck."],
+  reception: ["What's the reception capacity?", "Tell me about the reception space."],
   meeting: ["Any meeting space?", "What meeting rooms are available?", "Tell me about the meeting space."],
   event: ["What event space is there?", "Can I host an event?", "Tell me about event spaces."],
+  catering: ["Is on-site catering available?", "How much does catering cost?", "Tell me about catering."],
+  buffet: ["Is buffet catering available?", "How much does buffet catering cost?"],
+  service: ["What services are available?", "Tell me about service."],
   spa: ["Is there a spa?", "Tell me about the spa.", "What spa services?"],
   pool: ["Is there a pool?", "Tell me about the pool.", "Pool details?"],
   gym: ["Is there a gym?", "Tell me about the gym.", "Fitness facilities?"],
   fitness: ["Tell me about fitness facilities.", "Is there a fitness center?", "Gym details?"],
+
+  // Land / operating context
+  island: ["Is it considered an island?", "Why is it called an island?", "Is it surrounded by public land?"],
+  inholding: ["Is it an inholding?", "Tell me about the land ownership context."],
+  zoning: ["Tell me about zoning.", "Any land-use constraints?"],
+  owner: ["Who owns the land?", "Who is the owner?"],
+  operator: ["Who operates the property?", "Who runs the ranch?"],
+  season: ["When is it open?", "What's the operating season?", "Is it seasonal?"],
+  seasonal: ["When is it open seasonally?", "What's the seasonal access?"],
+  road: ["How is the road access?", "Tell me about the road.", "How long is the access road?"],
+  wifi: ["Is there Wi-Fi?", "Does it have Wi-Fi?"],
+  cell: ["Is there cell service?", "Does it have reliable cell service?"],
 
   // Sustainability
   sustainability: ["Is it sustainable?", "Tell me about sustainability.", "Any green credentials?"],

@@ -48,6 +48,26 @@ function moneyToNumber(amountStr: string, unit?: string): number | null {
   return base;
 }
 
+function wordOrNumberToNumber(s: string): number | null {
+  const direct = toNumber(s);
+  if (direct != null) return direct;
+  const words: Record<string, number> = {
+    one: 1,
+    two: 2,
+    three: 3,
+    four: 4,
+    five: 5,
+    six: 6,
+    seven: 7,
+    eight: 8,
+    nine: 9,
+    ten: 10,
+    eleven: 11,
+    twelve: 12,
+  };
+  return words[s.toLowerCase()] ?? null;
+}
+
 function snippetAround(text: string, idx: number, len: number, pad = 25): string {
   const start = Math.max(0, idx - pad);
   const end = Math.min(text.length, idx + len + pad);
@@ -60,6 +80,136 @@ function snippetAround(text: string, idx: number, len: number, pad = 25): string
 // per field across the entire document (first match wins).
 
 const PATTERNS: PatternSpec[] = [
+  // Venue / event property facts
+  {
+    field: "property_size_acres",
+    pattern: /\b(\d{1,5}(?:\.\d+)?)\s*[-\s]?acre(?:s)?\b/i,
+    transform: (m) => toNumber(m[1]),
+  },
+  {
+    field: "operating_season",
+    pattern: /\bopen seasonally from\s+(.{8,120}?)(?=\.|\s*\[)/i,
+    transform: (m) => m[1].trim().replace(/\s+/g, " "),
+  },
+  {
+    field: "property_address",
+    pattern: /\b(\d{1,6}\s+[A-Z][A-Za-z0-9 .'-]+?\s+[A-Z][A-Za-z .'-]+,\s*[A-Z]{2},?\s*\d{5})\b/,
+    transform: (m) => m[1].trim().replace(/\s+/g, " "),
+  },
+  {
+    field: "ceremony_deck_capacity",
+    pattern: /\bCeremony Deck:[^.]*?\b(?:up to|for)\s+(\d{2,5})\s+guests?\b/i,
+    transform: (m) => toNumber(m[1]),
+  },
+  {
+    field: "reception_pavilion_square_feet",
+    pattern: /\bReception Pavilion:\s*(?:A\s+)?([\d,]{3,9})\s*sq\.?\s*ft\.?/i,
+    transform: (m) => toNumber(m[1]),
+  },
+  {
+    field: "reception_pavilion_capacity",
+    pattern: /\bReception Pavilion:[^.]*?\baccommodat(?:ing|es?)\s+up\s+to\s+(\d{2,5})\s+(?:seated\s+)?guests?\b/i,
+    transform: (m) => toNumber(m[1]),
+  },
+  {
+    field: "venue_minimum_guests",
+    pattern: /\bminimum\s+of\s+(\d{1,5})\s+guests?\b/i,
+    transform: (m) => toNumber(m[1]),
+  },
+  {
+    field: "venue_max_capacity",
+    pattern: /\b(?:maximum\s+of|holds?\s+a\s+maximum\s+of)\s+(\d{2,5})\b/i,
+    transform: (m) => toNumber(m[1]),
+  },
+  {
+    field: "lodging_capacity",
+    pattern: /\baccommodations?\s+for\s+up\s+to\s+(\d{1,5})\s+guests?\b/i,
+    transform: (m) => toNumber(m[1]),
+  },
+  {
+    field: "cabin_count",
+    pattern: /\bCabins:\s*(\d{1,3}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+guest\s+cabins?\b/i,
+    transform: (m) => wordOrNumberToNumber(m[1]),
+  },
+  {
+    field: "glamping_tent_count",
+    pattern: /\bGlamping:\s*(\d{1,3}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+safari[-\s]+style\s+glamping\s+tents?\b/i,
+    transform: (m) => wordOrNumberToNumber(m[1]),
+  },
+  {
+    field: "dining_description",
+    pattern: /\bDining:\s*([^.]{20,220}\.)/i,
+    transform: (m) => m[1].trim().replace(/\s+/g, " "),
+  },
+  {
+    field: "on_site_catering",
+    pattern: /\bIn[-\s]?House Catering:\s*([^.]{20,220}\.)/i,
+    transform: (m) => m[1].trim().replace(/\s+/g, " "),
+  },
+  {
+    field: "catering_cost_per_person",
+    pattern: /\bCatering:[^.]*?\bstarts?\s+at\s+\$([\d,]+)\s+per\s+person\b/i,
+    transform: (m) => toNumber(m[1]),
+  },
+  {
+    field: "bar_service_cost_range",
+    pattern: /\bBar Service:[^.]*?\brange\s+from\s+approximately\s+\$([\d,]+)\s+to\s+\$([\d,]+)\s+per\s+person\b/i,
+    transform: (m) => `$${m[1]} to $${m[2]} per person`,
+  },
+  {
+    field: "site_fee_starting",
+    pattern: /\bsite fees?\s+start\s+at\s+\$([\d,]+)\b/i,
+    transform: (m) => moneyToNumber(m[1]),
+  },
+  {
+    field: "saturday_site_fee",
+    pattern: /\bincreasing\s+to\s+\$([\d,]+)\s+for\s+Saturdays\b/i,
+    transform: (m) => moneyToNumber(m[1]),
+  },
+  {
+    field: "accommodation_buyout_starting",
+    pattern: /\bAll[-\s]Accommodation Buyout:[^.]*?\bstarting\s+around\s+\$([\d,]+)\b/i,
+    transform: (m) => moneyToNumber(m[1]),
+  },
+  {
+    field: "access_road_distance_miles",
+    pattern: /\baccessed\s+via\s+a\s+(\d{1,3})[-\s]?mile\s+unpaved\s+road\b/i,
+    transform: (m) => toNumber(m[1]),
+  },
+  {
+    field: "drive_time_minutes",
+    pattern: /\bdrive\s+takes\s+roughly\s+(\d{1,3})\s+minutes\b/i,
+    transform: (m) => toNumber(m[1]),
+  },
+  {
+    field: "wifi_cell_service",
+    pattern: /\b(no\s+Wi[-\s]?Fi\s+or\s+reliable\s+cell\s+service[^.]*\.)/i,
+    transform: (m) => m[1].trim().replace(/\s+/g, " "),
+  },
+  {
+    field: "land_owner",
+    pattern: /\bLand Owner:[^.]*?\bowned\s+by\s+the\s+([^.;]+?)(?=\.|\s+Board\b)/i,
+    transform: (m) => {
+      const owner = m[1].trim().replace(/\s+/g, " ");
+      return /board$/i.test(owner) ? owner : `${owner} Board`;
+    },
+  },
+  {
+    field: "operator",
+    pattern: /\boperators?—currently\s+([^—.]+?)(?:—|\.)/i,
+    transform: (m) => m[1].trim().replace(/\s+/g, " "),
+  },
+  {
+    field: "private_island_context",
+    pattern: /\b(the ranch is a private "island"[^.]*\.)/i,
+    transform: (m) => m[1].trim().replace(/\s+/g, " "),
+  },
+  {
+    field: "off_grid_utilities",
+    pattern: /\b(The property operates completely off[-\s]grid[^.]*\.)/i,
+    transform: (m) => m[1].trim().replace(/\s+/g, " "),
+  },
+
   // Hospitality / commercial
   // Allow commas inside digits ("1,957 rooms"); require ≥3 digits to avoid
   // catching "5 rooms" in residential prose. Min 100 rooms = hotel-scale.
