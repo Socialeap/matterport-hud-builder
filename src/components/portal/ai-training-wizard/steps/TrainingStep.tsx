@@ -365,6 +365,13 @@ export function TrainingStep({
         </div>
       )}
 
+      {induceNotice && phase !== "error" && (
+        <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-300">
+          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+          <p className="leading-snug">{induceNotice}</p>
+        </div>
+      )}
+
       {phase === "ready" && (
         <div className="flex items-start gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/5 p-3 text-xs text-emerald-700 dark:text-emerald-300">
           <Sparkles className="mt-0.5 size-3.5 shrink-0" />
