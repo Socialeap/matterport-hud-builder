@@ -81,6 +81,19 @@ export function ReviewStep({ draft, onChange, disabled }: Props) {
   const isPrePopulated = draft.path === "library" || draft.path === "pdf";
   const [fieldsOpen, setFieldsOpen] = useState(isPrePopulated);
 
+  // If this draft was cloned from a Pre-Built starter, surface its name +
+  // promised field count so the MSP user can confirm at a glance that the
+  // full template made it through.
+  const starter =
+    draft.source?.kind === "starter"
+      ? STARTER_TEMPLATES.find((s) => s.id === draft.source!.ref) ?? null
+      : null;
+  const promisedCount = starter
+    ? Object.keys(starter.schema.properties).length
+    : null;
+  const fieldsMatchPromise =
+    promisedCount === null || parsed.fieldCount >= promisedCount;
+
   return (
     <div className="space-y-4">
       {/* "Ready to save" callout — only when schema is valid AND pre-populated */}
@@ -89,13 +102,22 @@ export function ReviewStep({ draft, onChange, disabled }: Props) {
           <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
           <div className="space-y-0.5">
             <p className="text-xs font-semibold text-foreground">
-              Ready to save — {parsed.fieldCount} field
-              {parsed.fieldCount === 1 ? "" : "s"} loaded
+              {starter
+                ? `${starter.name} loaded — all ${parsed.fieldCount} fields ready`
+                : `Ready to save — ${parsed.fieldCount} field${parsed.fieldCount === 1 ? "" : "s"} loaded`}
             </p>
             <p className="text-[11px] text-muted-foreground">
-              Your AI Chat will pull these facts from any document a client
-              uploads. Just give your map a name and click {draft.id ? "Save Changes" : "Create Map"}.
+              {starter
+                ? `Your AI Chat will pull these ${parsed.fieldCount} facts from any document a client uploads. Just name your map and click Save ${parsed.fieldCount}-Field Template.`
+                : `Your AI Chat will pull these facts from any document a client uploads. Just give your map a name and click ${draft.id ? "Save Changes" : "Create Map"}.`}
             </p>
+            {starter && !fieldsMatchPromise && (
+              <p className="text-[11px] font-medium text-destructive">
+                Heads up: only {parsed.fieldCount} of {promisedCount} fields
+                detected. We'll restore the full {promisedCount}-field
+                template on save.
+              </p>
+            )}
           </div>
         </div>
       )}
