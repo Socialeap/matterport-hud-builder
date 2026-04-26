@@ -176,7 +176,7 @@ function ModelRow({
     extractFromUrl,
     remove,
   } = usePropertyExtractions(model.id);
-  const { refresh: refreshDocs } = useAvailablePropertyDocs();
+  const { docs: vaultDocs, refresh: refreshDocs } = useAvailablePropertyDocs();
   const { isFrozen, freeze: freezeRow } = useLusFreeze(model.id);
 
   // Tracks vault_assets uploaded/registered in this session for this property.
@@ -234,7 +234,15 @@ function ModelRow({
   const [busyMessage, setBusyMessage] = useState<string>("");
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // "From vault…" picker — runs a curated template against an existing
+  // provider-published doc. This was the one feature only PropertyDocsPanel
+  // exposed; bringing it inline here closes that gap.
+  const [vaultPickerOpen, setVaultPickerOpen] = useState(false);
+  const [pickedVaultAssetId, setPickedVaultAssetId] = useState<string>("");
+  const [pickedTemplateId, setPickedTemplateId] = useState<string>("");
+
   const hasTemplates = templates.length > 0;
+  const hasVaultDocs = vaultDocs.length > 0;
   const displayName =
     model.propertyName?.trim() ||
     model.name?.trim() ||
