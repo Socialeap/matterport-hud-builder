@@ -666,8 +666,11 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      const safeName = (models[0]?.name || "presentation").replace(/[^a-zA-Z0-9_-]/g, "_");
-      a.download = `${safeName}.html`;
+      const first = models[0];
+      const rawName = (first?.propertyName || first?.name || "presentation").trim();
+      const safeName = rawName.replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "") || "presentation";
+      const today = new Date().toISOString().slice(0, 10);
+      a.download = `${safeName}_${today}.html`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
