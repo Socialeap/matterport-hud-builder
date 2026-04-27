@@ -1285,11 +1285,23 @@ if(muteBtn) muteBtn.addEventListener("click",toggleMute);
 function updateHud(i){
   var p=props[i];
   if(!p) return;
-  var elName=document.getElementById("hud-prop-name");
   var elLoc=document.getElementById("hud-prop-loc");
   var elAgent=document.getElementById("hud-agent-name");
-  if(elName) elName.textContent=p.propertyName||"";
-  if(elLoc) elLoc.textContent=(p.name||"")+(p.location?" \u2014 "+p.location:"");
+  if(elLoc){
+    // Compose "{property name} \u2014 {address} \u2014 {city/state}" but
+    // skip any segment that already duplicates the brand name shown above
+    // or repeats text already included in another segment.
+    var brand=((C&&C.brandName)||"").trim().toLowerCase();
+    var pname=(p.propertyName||"").trim();
+    var addr=(p.name||"").trim();
+    var loc=(p.location||"").trim();
+    var parts=[];
+    if(pname && pname.toLowerCase()!==brand) parts.push(pname);
+    if(addr && addr.toLowerCase()!==brand && addr.toLowerCase()!==pname.toLowerCase()) parts.push(addr);
+    if(loc && addr.toLowerCase().indexOf(loc.toLowerCase())===-1 && loc.toLowerCase()!==brand) parts.push(loc);
+    elLoc.textContent=parts.join(" \u2014 ");
+  }
+  if(elAgent) elAgent.textContent=(C.agent&&C.agent.name)?C.agent.name:"";
   if(elAgent) elAgent.textContent=(C.agent&&C.agent.name)?C.agent.name:"";
   var mapBtn=document.getElementById("hud-map-btn");
   if(mapBtn) mapBtn.style.display=(p.enableNeighborhoodMap&&p.location)?"":"none";
