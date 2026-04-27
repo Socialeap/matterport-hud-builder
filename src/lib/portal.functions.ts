@@ -1230,17 +1230,27 @@ function updateHud(i){
   else if(audioEl){audioEl.pause();audioEl.src="";updateMuteBtn();}
 }
 
-// \u2500\u2500 HUD toggle
+// \u2500\u2500 HUD toggle — delegate to the early-bootstrap global so the
+//    inline-style fallbacks and chevron toggling stay consistent even
+//    when this main IIFE re-runs after a hot reload.
 var hudHeader=document.getElementById("hud-header");
 var hudToggle=document.getElementById("hud-toggle");
 var chevUp=document.getElementById("hud-chevron-up");
 var chevDown=document.getElementById("hud-chevron-down");
 var hudVisible=false;
 function setHudVisible(v){
-  hudVisible=v;
-  if(hudHeader){hudHeader.classList.toggle("visible",v);}
-  if(chevUp) chevUp.style.display=v?"":"none";
-  if(chevDown) chevDown.style.display=v?"none":"";
+  hudVisible=!!v;
+  if(typeof window.__setHudVisible==="function"){
+    try { window.__setHudVisible(hudVisible); return; } catch(_e){}
+  }
+  if(hudHeader){
+    hudHeader.classList.toggle("visible",hudVisible);
+    hudHeader.style.transform=hudVisible?"translateY(0)":"translateY(-100%)";
+    hudHeader.style.opacity=hudVisible?"1":"0";
+    hudHeader.style.pointerEvents=hudVisible?"auto":"none";
+  }
+  if(chevUp) chevUp.style.display=hudVisible?"":"none";
+  if(chevDown) chevDown.style.display=hudVisible?"none":"";
 }
 if(hudToggle) hudToggle.addEventListener("click",function(){setHudVisible(!hudVisible);});
 
