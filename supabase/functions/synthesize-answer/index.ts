@@ -380,6 +380,84 @@ interface QuotaSnapshot {
   exhausted_email_sent_at: string | null;
 }
 
+/**
+ * Enqueue the ask-quota-exhausted notification email. Idempotent at
+ * two layers:
+ *   1. claim_ask_exhaustion_email already returned a row — that means
+ *      this is the first crossing.
+ *   2. The deterministic message_id makes email_send_log's UNIQUE
+ *      constraint reject duplicates if a retry slips through.
+ *
+ * We deliberately do not try to resolve the recipient email from
+ * here — handle-lead-capture's pgmq pattern handles recipient
+ * resolution at dequeue time via the same template payload shape.
+ */
+async function enqueueExhaustionEmail(
+  service: ReturnType<typeof createClient>,
+  args: {
+    saved_model_id: string;
+    property_uuid: string;
+    exhausted_at: string;
+  },
+): Promise<void> {
+  const { saved_model_id, property_uuid, exhausted_at } = args;
+  // Resolve provider email + agent display name + property name for
+  // the template payload. Best-effort; failures don't block the
+  // visitor's request (the synthesize call has already streamed).
+  const { data: model } = await service
+    .from("saved_models")
+    .select("name, properties, provider_id")
+    .eq("id", saved_model_id)
+    .maybeSingle();
+  if (!model) return;
+
+  const props = Array.isArray(model.properties) ? model.properties : [];
+  const propertyName =
+    (props.find(
+      (p: unknown) =>
+        p &&
+        typeof p === "object" &&
+        (p as { id?: string }).id === property_uuid,
+    ) as { name?: string } | undefined)?.name ?? "your property";
+  const presentationName = (model as { name?: string }).name ?? "your tour";
+
+  const { data: profile } = await service
+    .from("profiles")
+    .select("display_name, user_id")
+    .eq("user_id", model.provider_id)
+    .maybeSingle();
+  if (!profile) return;
+
+  const auth = await (service as unknown as {
+    auth: { admin: { getUserById: (id: string) => Promise<{ data: { user: { email?: string } | null } }> } };
+  }).auth.admin.getUserById(model.provider_id);
+  const recipient = auth?.data?.user?.email;
+  if (!recipient) return;
+
+  const messageId = `quota-exhausted:${saved_model_id}:${property_uuid}:${
+    Date.parse(exhausted_at) || Date.now()
+  }`;
+
+  await service.rpc("enqueue_email", {
+    queue_name: "transactional_emails",
+    payload: {
+      template_name: "ask-quota-exhausted",
+      recipient_email: recipient,
+      message_id: messageId,
+      data: {
+        agentName: profile.display_name ?? "Agent",
+        propertyName,
+        presentationName,
+        freeLimit: 20,
+        byokSetupUrl: `${
+          Deno.env.get("DASHBOARD_BASE_URL") ?? "https://app.example.com"
+        }/dashboard/account`,
+        exhaustedAt: exhausted_at,
+      },
+    },
+  });
+}
+
 function deriveQuotaState(
   q: QuotaSnapshot,
 ): {
@@ -842,6 +920,41 @@ serve(async (req) => {
                 },
               }),
             );
+
+            // If this call just crossed the free_limit boundary AND
+            // BYOK is not active, enqueue the one-shot exhaustion
+            // email. claim_ask_exhaustion_email returns a row only on
+            // the first crossing; replays / parallel races see zero.
+            if (
+              outcome === "counted" &&
+              !fresh.byok_active &&
+              fresh.free_used >= fresh.free_limit &&
+              !fresh.exhausted_email_sent_at
+            ) {
+              try {
+                const { data: claim } = await service.rpc(
+                  "claim_ask_exhaustion_email",
+                  {
+                    p_saved_model_id: tokenResult.saved_model_id,
+                    p_property_uuid: propertyUuid,
+                  },
+                );
+                if (Array.isArray(claim) && claim.length > 0) {
+                  await enqueueExhaustionEmail(service, {
+                    saved_model_id: tokenResult.saved_model_id,
+                    property_uuid: propertyUuid,
+                    exhausted_at:
+                      (claim[0] as { exhausted_email_sent_at: string })
+                        .exhausted_email_sent_at,
+                  });
+                }
+              } catch (err) {
+                console.warn(
+                  "[synthesize-answer] exhaustion email enqueue failed:",
+                  err,
+                );
+              }
+            }
           }
         } catch (err) {
           console.warn("[synthesize-answer] quota record failed:", err);

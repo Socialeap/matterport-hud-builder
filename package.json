@@ -15,7 +15,9 @@
     "test:limits": "node --test --experimental-strip-types tests/upload-limits-parity.test.mjs",
     "test:tokens": "node --test --experimental-strip-types tests/presentation-token-parity.test.mjs tests/presentation-token-roundtrip.test.mjs",
     "test:ratelimit": "node --test --experimental-strip-types tests/rate-limit.test.mjs",
-    "test:intelligence": "node --test --experimental-strip-types tests/**/*.test.mjs"
+    "test:quota": "node --test --experimental-strip-types tests/quota-lifecycle.test.mjs",
+    "test:intelligence": "node --test --experimental-strip-types tests/**/*.test.mjs",
+    "verify:no-secrets": "node scripts/verify-no-secrets.mjs"
   },
   "dependencies": {
     "@cloudflare/vite-plugin": "^1.25.5",
