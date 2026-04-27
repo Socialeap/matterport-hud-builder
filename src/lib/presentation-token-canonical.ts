@@ -48,6 +48,16 @@ function getSubtle(): SubtleCrypto {
   return SUBTLE;
 }
 
+// Lib DOM `BufferSource` requires `ArrayBuffer`-backed views (not the
+// generic `ArrayBufferLike` that may include `SharedArrayBuffer`).
+// `toBufferSource` copies into a fresh `ArrayBuffer`-backed view so
+// the WebCrypto signatures resolve cleanly under strict TS lib types.
+function toBufferSource(u8: Uint8Array): Uint8Array<ArrayBuffer> {
+  const copy = new Uint8Array(new ArrayBuffer(u8.byteLength));
+  copy.set(u8);
+  return copy as Uint8Array<ArrayBuffer>;
+}
+
 export async function hmacSha256(
   secret: string,
   data: Uint8Array,
@@ -55,16 +65,16 @@ export async function hmacSha256(
   const subtle = getSubtle();
   const key = await subtle.importKey(
     "raw",
-    enc.encode(secret),
+    toBufferSource(enc.encode(secret)),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"],
   );
-  const sig = await subtle.sign("HMAC", key, data);
+  const sig = await subtle.sign("HMAC", key, toBufferSource(data));
   return new Uint8Array(sig);
 }
 
 export async function sha256(data: Uint8Array): Promise<Uint8Array> {
-  const buf = await getSubtle().digest("SHA-256", data);
+  const buf = await getSubtle().digest("SHA-256", toBufferSource(data));
   return new Uint8Array(buf);
 }
