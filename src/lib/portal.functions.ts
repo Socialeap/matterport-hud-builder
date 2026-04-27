@@ -709,6 +709,27 @@ export const generatePresentation = createServerFn({ method: "POST" })
       ? `${_supabaseOrigin}/functions/v1/synthesize-answer`
       : "";
 
+    // Issue (rotate) a signed presentation token. The token value is
+    // embedded in the exported HTML and replayed by synthesize-answer
+    // verifier server-side. Only the token HASH is stored in the DB,
+    // so a DB read alone cannot replay tokens. Issuance is best-effort:
+    // if the env or table isn't ready (older deploys), we still build
+    // the HTML but with an empty token, and synthesize-answer will
+    // reject those requests with a 401 — no Ask AI fallback breaks.
+    let presentationToken = "";
+    try {
+      const { ensurePresentationToken } = await import(
+        "./presentation-token-server"
+      );
+      const issued = await ensurePresentationToken(model.id);
+      presentationToken = issued.value;
+    } catch (err) {
+      console.warn(
+        "[generatePresentation] token issuance skipped:",
+        err instanceof Error ? err.message : err,
+      );
+    }
+
     // Build social links HTML for the contact panel
     const socialDefs: Array<{ key: string; label: string }> = [
       { key: "linkedin", label: "LinkedIn" },
@@ -1003,6 +1024,7 @@ ${
 }
 ${hasQA ? `<script>window.__QA_DATABASE__=${safeJsonScriptLiteral(qaDatabase)};</script>` : ""}
 ${synthesisUrl ? `<script>window.__SYNTHESIS_URL__=${JSON.stringify(synthesisUrl)};</script>` : ""}
+${presentationToken ? `<script>window.__PRESENTATION_TOKEN__=${JSON.stringify(presentationToken)};window.__SAVED_MODEL_ID__=${JSON.stringify(model.id)};</script>` : ""}
 ${askAssets.moduleScript}
 <!-- ── Pre-bootstrap safety net ────────────────────────────────────────
      This tiny script runs BEFORE the main IIFE. If the main IIFE later
