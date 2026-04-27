@@ -28,7 +28,7 @@ import type { PropertyModel, AgentContact, TourBehavior } from "./types";
 import { DEFAULT_BEHAVIOR, DEFAULT_AGENT } from "./types";
 import type { Tables } from "@/integrations/supabase/types";
 import { supabase } from "@/integrations/supabase/client";
-import { savePresentationRequest, generatePresentation, getStudioAccessState } from "@/lib/portal.functions";
+import { savePresentationRequest, generatePresentation, getStudioAccessState, refreshPresentationConfig } from "@/lib/portal.functions";
 import { uploadBrandAsset } from "@/lib/storage";
 import { toast } from "sonner";
 import { calculatePresentationPrice } from "@/lib/portal/pricing";
