@@ -41,6 +41,8 @@ export interface BrainChunk {
   content: string;
   embedding: number[] | null;
   templateLabel: string;
+  kind?: "raw_chunk" | "field_chunk";
+  source?: string;
 }
 
 export interface BrainEntities {

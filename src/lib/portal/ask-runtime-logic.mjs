@@ -81,6 +81,7 @@ var ACTION_MISS_COPY = {
   contact_agent: "I don't have contact info for this property yet.",
   location: "I don't have an address on file for this property.",
   neighborhood: "I don't have neighborhood info for this property yet.",
+  property_name: "I don't have the property name on file yet.",
 };
 
 // Copy for the strict unknown fallback (semantic tiers all miss).
@@ -114,15 +115,6 @@ function _fieldMatchesTokens(field, tokens) {
     if (parts[i].length >= 4 && parts[i].slice(-1) === "s" && tokens[parts[i].slice(0, -1)]) return true;
   }
   return false;
-}
-
-function _intentMatchesChunkSection(section, intent, intentAllowsFn) {
-  if (!intentAllowsFn) return true;
-  if (!intent || intent === "unknown") return true;
-  // chunk `section` often carries a field name or a document label with
-  // a field suffix — run it through intentAllows as-is.
-  var s = String(section || "").toLowerCase().replace(/[^a-z0-9_]+/g, "_");
-  return intentAllowsFn(s, intent);
 }
 
 var _EVIDENCE_STOPWORDS = {
@@ -297,6 +289,19 @@ function resolveAction(brain, intent) {
     }
     return null;
   }
+  if (intent === "property_name") {
+    var name = brain.propertyName || brain.tourName;
+    if (name && String(name).trim() && String(name).trim().toLowerCase() !== "property") {
+      return {
+        path: "action",
+        intent: intent,
+        text: "This is " + String(name).trim() + ".",
+        href: null,
+        sourceLabel: "Property",
+      };
+    }
+    return null;
+  }
   if (intent === "location") {
     var addr = brain.address;
     if (addr) {
@@ -384,8 +389,10 @@ function tier1Rank(queryVec, query, canonicalQAs, intent, intentAllowsFn) {
 
 // Curated-QA filter that post-filters hits returned by an Orama-style
 // searcher. Applied when the search result's QA has a field or an
-// anchor-id that can be mapped to a field name. When no field is
-// available we keep the hit (curated answers are often intent-agnostic).
+// anchor-id that can be mapped to a field name. Unanchored curated hits
+// are only safe for broad summary/name flows; for classified fact
+// questions they caused address/agent answers to leak into size, price,
+// and age queries.
 function curatedFilter(hits, intent, intentAllowsFn) {
   if (!hits || !hits.length) return [];
   if (!intent || intent === "unknown" || !intentAllowsFn) return hits.slice();
@@ -393,7 +400,10 @@ function curatedFilter(hits, intent, intentAllowsFn) {
   for (var i = 0; i < hits.length; i++) {
     var h = hits[i];
     var key = (h.field || h.source_anchor_id || "").toString().toLowerCase();
-    if (!key) { out.push(h); continue; }
+    if (!key) {
+      if (intent === "summary" || intent === "property_name") out.push(h);
+      continue;
+    }
     // Normalize anchor ids like "property-address" to "property_address".
     var normalized = key.replace(/[^a-z0-9_]+/g, "_");
     if (intentAllowsFn(normalized, intent)) out.push(h);
@@ -401,29 +411,41 @@ function curatedFilter(hits, intent, intentAllowsFn) {
   return out;
 }
 
-// Intent-aware chunk rescoring. Boosts chunks whose section matches
-// the intent; penalizes (does NOT eliminate) chunks whose section is
-// explicitly excluded by the intent.
+function _normalizeEvidenceSection(section) {
+  var raw = String(section || "");
+  var parts = raw.split(/\s*(?:→|->)\s*/);
+  var tail = parts.length ? parts[parts.length - 1] : raw;
+  return String(tail || raw).toLowerCase().replace(/[^a-z0-9_]+/g, "_");
+}
+
+// Intent-aware chunk rescoring. Field chunks are strict because their
+// source is a specific structured field. Raw chunks are broad document
+// evidence; generic labels like "AI Profile -> coworking_brochure" must
+// stay eligible for Gemini even when they don't look like a field name.
 function rescoreChunksByIntent(chunks, intent, intentAllowsFn) {
   if (!chunks || !chunks.length) return [];
   if (!intent || intent === "unknown" || !intentAllowsFn) return chunks.slice();
   var out = [];
   for (var i = 0; i < chunks.length; i++) {
     var c = chunks[i];
-    var section = String(c.source || c.section || "").toLowerCase().replace(/[^a-z0-9_]+/g, "_");
-    if (!section) { out.push(c); continue; }
-    var allowed = intentAllowsFn(section, intent);
+    var hitKind = c.kind || "raw_chunk";
+    var section = _normalizeEvidenceSection(c.source || c.section || "");
+    var allowed = hitKind === "field_chunk" ? intentAllowsFn(section, intent) : true;
+    var sectionMatches = section ? intentAllowsFn(section, intent) : false;
     var newScore = Number(c.score || 0);
-    if (allowed) newScore += 0.05;
-    else newScore -= 0.10;
+    if (sectionMatches) newScore += 0.05;
+    else if (hitKind === "field_chunk" && !allowed) newScore -= 0.10;
     out.push({
       id: c.id,
+      parentId: c.parentId,
       source: c.source,
       section: c.section || c.source,
       content: c.content,
       templateLabel: c.templateLabel,
+      kind: c.kind,
       score: newScore,
       _intentAllowed: allowed,
+      _intentMatched: sectionMatches,
     });
   }
   out.sort(function (a, b) { return b.score - a.score; });
@@ -444,8 +466,9 @@ function assembleSynthChunks(tier3, tier1) {
   }
   for (var i = 0; i < tier3.length && out.length < 5; i++) {
     var t3 = tier3[i];
+    var t3Id = t3.parentId || t3.id;
     pushOne({
-      id: t3.id,
+      id: t3Id,
       section: t3.source || t3.section || "",
       content: t3.content || "",
       score: t3.score,
@@ -454,8 +477,9 @@ function assembleSynthChunks(tier3, tier1) {
   for (var j = 0; j < tier1.length && out.length < 5; j++) {
     var tqa = tier1[j].qa;
     if (!tqa) continue;
+    var qaId = tqa.source_anchor_id || (tqa.field ? ("field:" + tqa.field) : (tqa.id || ("t1-" + j)));
     pushOne({
-      id: tqa.id || tqa.field || ("t1-" + j),
+      id: qaId,
       section: tqa.source_anchor_id || tqa.field || "canonical",
       content: (tqa.question || "") + " " + (tqa.answer || ""),
       score: tier1[j].score,
@@ -499,7 +523,7 @@ function decideAnswer(inputs) {
   var canSynthesize = !!inputs.canSynthesize;
 
   // Step 1 — exact/action path (pre-embedding).
-  if (intent === "booking" || intent === "contact_agent" || intent === "location" || intent === "neighborhood") {
+  if (intent === "booking" || intent === "contact_agent" || intent === "location" || intent === "neighborhood" || intent === "property_name") {
     var action = resolveAction(brain, intent);
     if (action) {
       return {
@@ -529,13 +553,11 @@ function decideAnswer(inputs) {
   // Step 3 — Tier 1 canonical-QA with intent guard.
   var tier1 = tier1Rank(queryVec, query, (brain.canonicalQAs || []), intent, intentAllowsFn);
   var tier1Best = tier1.length ? tier1[0] : null;
-  // Soft-floor acceptance: for value-bearing intents we trust the
-  // intentAllows filter that tier1Rank already applied. Anything still
-  // in the list is a category-correct candidate, so accept above the
-  // hard floor (TIER1_FLOOR) instead of TIER1_SOFT. For everything
-  // else we keep the stricter SOFT threshold.
+  // Soft-floor acceptance is a deterministic fallback only. When the
+  // synthesis endpoint is present, tier-1 QAs become trusted evidence
+  // hints for Gemini instead of final visitor-facing copy.
   var t1Threshold = (VALUE_BEARING_INTENTS[intent] ? TIER1_FLOOR : TIER1_SOFT);
-  if (tier1Best && tier1Best.score >= t1Threshold) {
+  if (!canSynthesize && tier1Best && tier1Best.score >= t1Threshold) {
     return {
       path: "canonical",
       text: tier1Best.qa.answer || "",
@@ -552,12 +574,9 @@ function decideAnswer(inputs) {
   //   - a chunk classified as `raw_chunk` (or with kind unset, for
   //     legacy rows that pre-date Phase A) scored above the direct
   //     floor AND is intent-allowed.
-  // This deliberately runs BEFORE curated/synthesis so we get the
-  // cost-control win without breaking the curated tier when curated
-  // has a stronger semantic match. We bias toward synthesis whenever
-  // the chunk score is in the borderline band by setting the floor
-  // tighter than TIER1_SOFT.
-  if (chunkHits && chunkHits.length) {
+  // This deliberately runs only when synthesis is unavailable. When
+  // Gemini can answer, raw chunks are evidence, not final copy.
+  if (!canSynthesize && chunkHits && chunkHits.length) {
     var bestRaw = null;
     for (var rc = 0; rc < chunkHits.length; rc++) {
       var hit = chunkHits[rc];
@@ -593,7 +612,7 @@ function decideAnswer(inputs) {
     var ch = curatedFiltered[c];
     if (Number(ch.score || 0) >= TIER2_MIN) { tier2Best = ch; break; }
   }
-  if (tier2Best) {
+  if (!canSynthesize && tier2Best) {
     return {
       path: "curated",
       text: tier2Best.answer || "",
@@ -610,8 +629,17 @@ function decideAnswer(inputs) {
 
   var hasIntent = intent && intent !== "unknown";
   var allowedChunks = [];
+  var deterministicChunks = [];
   for (var k = 0; k < chunksRescored.length; k++) {
-    if (chunksRescored[k]._intentAllowed !== false) allowedChunks.push(chunksRescored[k]);
+    var rescored = chunksRescored[k];
+    if (rescored._intentAllowed !== false) allowedChunks.push(rescored);
+    if (!hasIntent) {
+      deterministicChunks.push(rescored);
+    } else if ((rescored.kind || "raw_chunk") === "field_chunk") {
+      if (rescored._intentAllowed !== false) deterministicChunks.push(rescored);
+    } else if (rescored._intentMatched === true) {
+      deterministicChunks.push(rescored);
+    }
   }
 
   // Category-wrong-adjacency guard: when we have a classified intent but
@@ -619,7 +647,9 @@ function decideAnswer(inputs) {
   // strict unknown over leaking a nearby chunk. This is the explicit
   // anti-pattern the spec calls out ("prefer 'I don't know' over wrong
   // adjacency").
-  if (hasIntent && allowedChunks.length === 0 && tier1.length === 0) {
+  var fallbackChunks = hasIntent ? deterministicChunks : chunksRescored;
+  var guardedChunks = canSynthesize ? allowedChunks : fallbackChunks;
+  if (hasIntent && guardedChunks.length === 0 && tier1.length === 0) {
     return {
       path: "strict_unknown",
       text: VALUE_INTENT_MISS_COPY[intent] || STRICT_UNKNOWN_COPY,
@@ -638,7 +668,7 @@ function decideAnswer(inputs) {
   //  - synthesis endpoint is available,
   //  - we have at least one intent-allowed chunk (or intent is unknown),
   //  - at least one chunk survived.
-  if (canSynthesize && synthSource.length > 0) {
+  if (canSynthesize && (synthSource.length > 0 || tier1.length > 0)) {
     var synthChunks = assembleSynthChunks(synthSource, tier1);
     if (synthChunks.length > 0) {
       return {
@@ -654,7 +684,7 @@ function decideAnswer(inputs) {
 
   // Step 7 — RRF fallback on intent-filtered tiers (or all tiers when
   // intent is unknown).
-  var fusionTier3 = hasIntent ? allowedChunks : chunksRescored;
+  var fusionTier3 = fallbackChunks;
   var fused = rrf(tier1, fusionTier3);
   if (fused.length > 0) {
     var top = fused[0];

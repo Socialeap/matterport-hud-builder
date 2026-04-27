@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "verify:html": "node scripts/verify-portal-html.mjs",
-    "test:ask": "node --test scripts/test-ask-runtime.mjs",
+    "test:ask": "node --test --experimental-strip-types scripts/test-ask-runtime.mjs tests/canonical-questions.test.mjs",
     "test:health": "node --test --experimental-strip-types tests/intelligence-health-rules.test.mjs tests/intelligence-health-parity.test.mjs tests/wizard-health-rules.test.mjs tests/hydrator-health-transitions.test.mjs",
     "test:limits": "node --test --experimental-strip-types tests/upload-limits-parity.test.mjs",
     "test:tokens": "node --test --experimental-strip-types tests/presentation-token-parity.test.mjs tests/presentation-token-roundtrip.test.mjs",

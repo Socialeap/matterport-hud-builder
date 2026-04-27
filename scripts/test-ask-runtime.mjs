@@ -199,7 +199,7 @@ function runPiney(query) {
       score: 0.8,
       kind: "raw_chunk",
     })),
-    canSynthesize: true,
+    canSynthesize: false,
   });
 }
 
@@ -323,7 +323,107 @@ function runCommercial(query) {
       score: 0.8,
       kind: "raw_chunk",
     })),
-    canSynthesize: true,
+    canSynthesize: false,
+  });
+}
+
+function chaskaBrain() {
+  return buildPropertyBrain({
+    propertyIndex: 0,
+    propertyUuid: "chaska-1",
+    configProperty: {
+      id: "chaska-1",
+      name: "210 N Chestnut St, Chaska, MN 55318, US",
+      propertyName: "Chaska Commons Coworking",
+      location: "Chaska, MN",
+    },
+    agent: { name: "Lisa Ritmore" },
+    brandName: "Transcendence Media",
+    extractionEntries: [
+      {
+        template_id: "coworking",
+        template_label: "AI Profile: Coworking / Flex",
+        fields: {
+          outdoor_space: "A patio overlooks the new Chaska Paseo and provides direct access to local walking and biking paths.",
+          interior_features: "High open ceilings (14 feet), restored hardwood and concrete floors, and large street-front windows.",
+          workspace_variety: "Private offices, coworking areas, phone rooms, conference rooms, and shared amenities.",
+        },
+        chunks: [
+          {
+            id: "coworking_brochure-0",
+            section: "coworking_brochure",
+            content: "Chaska Commons Coworking, located at 210 N Chestnut St, Chaska, MN 55318, is a modern shared office space that officially opened in September 2025. The space offers private offices, coworking areas, phone rooms, conference rooms, a podcast studio, and patio access to the Chaska Paseo. Membership pricing and total square footage are not listed in the provided document.",
+            embedding: null,
+            kind: "raw_chunk",
+          },
+        ],
+        canonical_qas: [
+          {
+            id: "field:outdoor_space:0",
+            field: "outdoor_space",
+            question: "What is the outdoor space?",
+            answer: "The outdoor space is a patio overlooking the new Chaska Paseo.",
+            source_anchor_id: "field:outdoor_space",
+            embedding: null,
+          },
+        ],
+        candidate_fields: {},
+        field_provenance: {},
+      },
+    ],
+    curatedQAs: [
+      {
+        id: "property-address",
+        question: "What is the address?",
+        answer: "The address is Chaska, MN.",
+        source_anchor_id: "",
+        embedding: [],
+      },
+      {
+        id: "agent-name",
+        question: "Who is the agent?",
+        answer: "Lisa Ritmore is representing this listing.",
+        source_anchor_id: "",
+        embedding: [],
+      },
+    ],
+    hasDocs: true,
+    hasQA: true,
+    tagIntents: tagQAIntents,
+  });
+}
+
+function runChaska(query, opts = {}) {
+  const brain = chaskaBrain();
+  const { intent } = classifyIntent(query);
+  return decideAnswer({
+    brain,
+    query,
+    queryVec: null,
+    intent,
+    intentAllows,
+    curatedHits: opts.curatedHits || [],
+    chunkHits: [
+      ...brain.chunks.map((c) => ({
+        id: `${c.templateLabel}#chunk#${c.id}#u#0`,
+        parentId: c.id,
+        source: `${c.templateLabel} -> ${c.section}`,
+        section: `${c.templateLabel} -> ${c.section}`,
+        content: c.content,
+        score: 0.72,
+        kind: "raw_chunk",
+      })),
+      ...Object.entries(brain.fields).map(([field, value]) => ({
+        id: `AI Profile: Coworking / Flex#field#${field}`,
+        parentId: `field:${field}`,
+        source: `AI Profile: Coworking / Flex -> ${field}`,
+        section: `AI Profile: Coworking / Flex -> ${field}`,
+        content: `${field}: ${value}`,
+        score: 0.6,
+        kind: "field_chunk",
+      })),
+    ],
+    canSynthesize: opts.canSynthesize !== false,
   });
 }
 
@@ -508,6 +608,80 @@ test("Ask AI generality — medium-confidence candidate fields can answer before
   assertMissing(decision.text, ["Lease Rate", "Clear Height"]);
 });
 
+test("Chaska coworking regressions — natural content questions route to synthesis", () => {
+  const cases = [
+    ["what is the size of this space?", "property_dimension"],
+    ["how big is this space?", "property_dimension"],
+    ["What is the square feet ?", "property_dimension"],
+    ["What is purpose of this property?", "summary"],
+    ["How old is this space?", "year_built"],
+    ["How much does it cost?", "pricing"],
+    ["What are some of the features?", "amenity_presence"],
+  ];
+
+  for (const [query, expectedIntent] of cases) {
+    const classification = classifyIntent(query);
+    assert.equal(classification.intent, expectedIntent, `Intent mismatch for ${query}`);
+    const decision = runChaska(query);
+    assert.equal(decision.path, "synthesis", `Expected synthesis for ${query}; got ${decision.path}`);
+    assert.equal(decision.needsSynthesis, true);
+    assert.ok(decision.synthChunks.length > 0);
+    assert.ok(
+      decision.synthChunks.some((c) => c.id === "coworking_brochure-0" || c.id.startsWith("field:")),
+      `Synthesis hints should use persisted ids, got ${JSON.stringify(decision.synthChunks)}`,
+    );
+  }
+});
+
+test("Chaska coworking regressions — exact name and address actions stay precise", () => {
+  let classification = classifyIntent("What is the name of this space?");
+  assert.equal(classification.intent, "property_name");
+  let decision = runChaska("What is the name of this space?");
+  assert.equal(decision.path, "action");
+  assert.ok(decision.text.includes("Chaska Commons Coworking"), decision.text);
+
+  classification = classifyIntent("where is this property located?");
+  assert.equal(classification.intent, "location");
+  decision = runChaska("where is this property located?");
+  assert.equal(decision.path, "action");
+  assert.ok(decision.text.includes("210 N Chestnut St"), decision.text);
+});
+
+test("Chaska coworking regressions — unanchored curated hits cannot leak into fact intents", () => {
+  const badCuratedHits = [
+    {
+      id: "address-leak",
+      question: "What is the address?",
+      answer: "The address is Chaska, MN.",
+      source_anchor_id: "",
+      field: "",
+      score: 0.99,
+    },
+    {
+      id: "agent-leak",
+      question: "Who is the agent?",
+      answer: "Lisa Ritmore is representing this listing.",
+      source_anchor_id: "",
+      field: "",
+      score: 0.98,
+    },
+  ];
+
+  const sizeDecision = runChaska("What is the square feet?", {
+    canSynthesize: false,
+    curatedHits: badCuratedHits,
+  });
+  assert.notEqual(sizeDecision.path, "curated");
+  assertMissing(sizeDecision.text, ["address is", "Lisa Ritmore"]);
+
+  const ageDecision = runChaska("How old is this space?", {
+    canSynthesize: false,
+    curatedHits: badCuratedHits,
+  });
+  assert.notEqual(ageDecision.path, "curated");
+  assertMissing(ageDecision.text, ["address is", "Lisa Ritmore"]);
+});
+
 test("property brain — actions and entities composed from fixture", () => {
   const brain = brainFromFixture();
   assert.equal(brain.propertyUuid, "11111111-1111-1111-1111-111111111111");
@@ -561,7 +735,7 @@ test("action resolver — booking path terminates with strict unknown when no UR
     "strict unknown must NOT leak room count");
 });
 
-test("Phase A — raw-chunk escalation bypasses synthesis on a strong raw_chunk hit", () => {
+test("synthesis primary — strong raw_chunk hits route to Gemini when available", () => {
   const brain = brainFromFixture();
   // Strip canonical QAs so the canonical tier cannot win and we drop
   // into the chunk-direct or synthesis tier deterministically.
@@ -582,13 +756,12 @@ test("Phase A — raw-chunk escalation bypasses synthesis on a strong raw_chunk 
         kind: "raw_chunk",
       },
     ],
-    canSynthesize: true, // synthesis available; we expect chunk path to win
+    canSynthesize: true,
   });
-  assert.equal(decision.path, "chunk",
-    `Strong raw_chunk hit should bypass synthesis; got ${decision.path}`);
-  assert.equal(decision.needsSynthesis, false);
-  assert.ok(decision.text.includes("atrium"),
-    `Chunk text should be returned verbatim; got ${decision.text}`);
+  assert.equal(decision.path, "synthesis",
+    `Strong raw_chunk hit should feed synthesis; got ${decision.path}`);
+  assert.equal(decision.needsSynthesis, true);
+  assert.equal(decision.synthChunks[0].id, "raw-1");
 });
 
 test("Phase A — raw-chunk escalation does NOT fire on a field_chunk", () => {
@@ -612,10 +785,9 @@ test("Phase A — raw-chunk escalation does NOT fire on a field_chunk", () => {
     ],
     canSynthesize: true,
   });
-  // Field chunks must not satisfy the raw-chunk-direct tier; the
-  // ladder should fall through to synthesis or RRF.
-  assert.notEqual(decision.path, "chunk",
-    "field_chunk must not trigger the raw-chunk direct tier");
+  // Field chunks must not satisfy the raw-chunk-direct tier.
+  assert.equal(decision.path, "synthesis",
+    `field_chunk should feed synthesis instead of raw direct; got ${decision.path}`);
 });
 
 test("Phase A — action-intent guard still terminates before raw-chunk escalation", () => {
@@ -638,7 +810,7 @@ test("Phase A — action-intent guard still terminates before raw-chunk escalati
         kind: "raw_chunk",
       },
     ],
-    canSynthesize: true,
+    canSynthesize: false,
   });
   assert.equal(decision.path, "action",
     `Action intent must short-circuit the raw-chunk direct tier; got ${decision.path}`);
@@ -663,7 +835,7 @@ test("Phase A — legacy chunk hits without `kind` are treated as raw_chunk", ()
         // no kind field — simulates rows persisted before Phase A
       },
     ],
-    canSynthesize: true,
+    canSynthesize: false,
   });
   assert.equal(decision.path, "chunk",
     "Missing `kind` should default to raw_chunk and trigger direct escalation");

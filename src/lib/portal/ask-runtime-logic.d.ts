@@ -30,6 +30,7 @@ export interface CuratedHit {
 
 export interface ChunkHit {
   id: string;
+  parentId?: string;
   source?: string;
   section?: string;
   content: string;
@@ -106,7 +107,7 @@ export function rescoreChunksByIntent(
   chunks: ChunkHit[],
   intent: IntentLabel | string,
   intentAllows: (field: string, intent: string) => boolean,
-): Array<ChunkHit & { _intentAllowed?: boolean }>;
+): Array<ChunkHit & { _intentAllowed?: boolean; _intentMatched?: boolean }>;
 
 export function assembleSynthChunks(
   tier3: ChunkHit[],
