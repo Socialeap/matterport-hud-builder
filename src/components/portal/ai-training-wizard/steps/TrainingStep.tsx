@@ -165,10 +165,16 @@ export function TrainingStep({
               }
             }
           } catch (err) {
-            if (err instanceof InduceSchemaError && err.kind === "empty_pdf_text") {
-              setInduceNotice(
-                "Your PDF appears to be image-only — extraction will use the standard profile fields.",
-              );
+            if (err instanceof InduceSchemaError) {
+              if (err.kind === "empty_pdf_text") {
+                setInduceNotice(
+                  "Your PDF appears to be image-only — extraction will use the standard profile fields.",
+                );
+              } else if (err.kind === "parse_failed") {
+                setInduceNotice(
+                  "Couldn't auto-detect extra fields from this PDF — extraction will use the standard profile fields.",
+                );
+              }
             }
             console.warn("[ai-wizard] induce-schema skipped:", err);
           }
