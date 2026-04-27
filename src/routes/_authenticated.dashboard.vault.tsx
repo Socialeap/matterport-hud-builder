@@ -312,6 +312,11 @@ function VaultPage() {
       return;
     }
 
+    if (!copyrightAck) {
+      toast.error("Please confirm copyright ownership before uploading");
+      return;
+    }
+
     setSaving(true);
 
     let asset_url = form.asset_url.trim();
