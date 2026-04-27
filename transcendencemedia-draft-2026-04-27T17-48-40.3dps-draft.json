@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "savedAt": "2026-04-27T17:48:40.282Z",
+  "data": {
+    "brandName": "Chaska Commons Coworking",
+    "accentColor": "#3B82F6",
+    "hudBgColor": "#1a1a2e",
+    "gateLabel": "Explore Chaska Commons Coworking",
+    "models": [
+      {
+        "id": "3d14cc71-b4ad-42b9-b47e-32b14e455047",
+        "name": "210 N Chestnut St, Chaska, MN 55318, US",
+        "propertyName": "Chaska Commons Coworking",
+        "location": "Chaska, MN",
+        "matterportId": "pqEVbXeU9se",
+        "musicUrl": "",
+        "cinematicVideoUrl": "",
+        "enableNeighborhoodMap": true
+      }
+    ],
+    "behaviors": {
+      "3d14cc71-b4ad-42b9-b47e-32b14e455047": {
+        "hideBranding": false,
+        "mlsModeEnabled": false,
+        "mlsModeValue": "1",
+        "hideTitle": false,
+        "autoPlay": true,
+        "quickstart": false,
+        "autoStartTour": false,
+        "autoStartTourDelay": "8",
+        "loopGuidedTour": false,
+        "hideDollhouse": false,
+        "hideHighlightReel": false,
+        "singleFloorFocus": false,
+        "hideMattertags": false,
+        "hideSearch": false,
+        "disableScrollWheelZoom": true,
+        "disableZoom": false,
+        "forceLanguage": false,
+        "languageCode": "en",
+        "hideGuidedPath": false,
+        "transitionEnabled": false,
+        "transitionValue": "2",
+        "customParams": ""
+      }
+    },
+    "agent": {
+      "name": "Lisa Ritmore",
+      "titleRole": "Property Manager",
+      "email": "info@chaskacommons.com",
+      "phone": "+1 (952) 215-8455",
+      "welcomeNote": "Welcome to Chaska Commons Coworking! Explore our modern shared office space in historic downtown Chaska. Choose from private offices, shared offices, dedicated desks, or flexible lounge passes, and enjoy gig-speed internet, conference rooms, a kitchen, patio, and coffee bar. We're open daily 6:00 AM – 8:00 PM.",
+      "linkedin": "https://www.linkedin.com/company/matterport",
+      "twitter": "https://x.com/matterport",
+      "instagram": "https://www.instagram.com/matterport/",
+      "facebook": "",
+      "tiktok": "",
+      "other": "https://discover.matterport.com/space/pqEVbXeU9se",
+      "website": "https://chaskacommons.com",
+      "gaTrackingId": "",
+      "avatarUrl": "https://cllvwdzjgqlkdquroauz.supabase.co/storage/v1/object/public/brand-assets/891e4f9e-7ff9-4e16-9c9a-20fa58a9219c/avatar-1777308884153.jpg"
+    },
+    "reviewApproved": false,
+    "enhancements": {}
+  }
+}
