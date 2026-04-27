@@ -820,16 +820,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 #viewer iframe{width:100%;height:100%;border:none}
 
 /* ── HUD header (top glassmorphism overlay) ──────────────────────── */
-#hud-header{position:fixed;top:0;left:0;right:0;z-index:500;transform:translateY(-100%);opacity:0;pointer-events:none;transition:transform 0.3s ease,opacity 0.3s ease}
+#hud-header{position:fixed;top:0;left:0;right:0;z-index:1200;transform:translateY(-100%);opacity:0;pointer-events:none;transition:transform 0.3s ease,opacity 0.3s ease;will-change:transform,opacity;isolation:isolate;-webkit-backface-visibility:hidden;backface-visibility:hidden}
 #hud-header.visible{transform:translateY(0);opacity:1;pointer-events:auto}
-#hud-inner{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:${escapeHtml(hudBgColor)}99;backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid rgba(255,255,255,0.08);box-shadow:0 4px 24px rgba(0,0,0,0.15),inset 0 1px 0 rgba(255,255,255,0.06)}
-#hud-left{display:flex;align-items:center;gap:10px;min-width:0}
+#hud-inner{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:${escapeHtml(hudBgColor)}99;backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid rgba(255,255,255,0.08);box-shadow:0 4px 24px rgba(0,0,0,0.15),inset 0 1px 0 rgba(255,255,255,0.06);flex-wrap:wrap;gap:8px}
+#hud-left{display:flex;align-items:center;gap:10px;min-width:0;flex:1 1 auto}
 #hud-logo{height:32px;object-fit:contain;flex-shrink:0}
 #hud-text{min-width:0}
 #hud-brand{font-size:13px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 3px rgba(0,0,0,0.4)}
 #hud-prop-name{font-size:11px;font-weight:500;color:rgba(255,255,255,0.9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #hud-prop-loc{font-size:11px;color:rgba(255,255,255,0.65);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#hud-right{display:flex;align-items:center;gap:6px;flex-shrink:0;margin-right:32px}
+#hud-right{display:flex;align-items:center;gap:6px;flex-shrink:0;margin-right:32px;flex-wrap:wrap;justify-content:flex-end}
 .hud-icon-btn{width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.12);border:none;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background 0.2s;flex-shrink:0;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
 .hud-icon-btn:hover{background:rgba(255,255,255,0.22)}
 .hud-icon-btn svg{width:14px;height:14px}
@@ -841,7 +841,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 #hud-mute-btn.visible{display:flex}
 
 /* ── HUD toggle chevron ───────────────────────────────────────────── */
-#hud-toggle{position:fixed;top:8px;right:8px;z-index:501;width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,0.18);border:none;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background 0.2s;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+#hud-toggle{position:fixed;top:8px;right:8px;z-index:1300;width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,0.18);border:none;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background 0.2s;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
 #hud-toggle:hover{background:rgba(255,255,255,0.28)}
 #hud-toggle svg{width:12px;height:12px}
 
