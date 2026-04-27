@@ -790,6 +790,14 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
         return;
       }
 
+      // Server signals Ask AI is in limited mode (token env not yet
+      // configured). Download still proceeds — the visitor experience
+      // degrades to local-Q&A answers instead of synthesis. Surface the
+      // notice non-blocking so the operator knows to follow up.
+      if (result.askAiWarning) {
+        toast.warning(result.askAiWarning);
+      }
+
       const blob = new Blob([result.html], { type: "text/html" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
