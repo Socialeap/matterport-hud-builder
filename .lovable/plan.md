@@ -1,90 +1,97 @@
-# Why the coworking PDF training failed
+# HUD Header Toggle + Presentation Filename Fix
 
-The console actually shows **two distinct, unrelated failures** stacked on top of each other. One is fatal (kills the run), one is cosmetic (gets swallowed but logged as scary text):
+## Issue 1 — HUD Header Doesn't Show When Chevron Clicked
 
-## 1. Fatal — missing database column `intelligence_health` (causes the 400)
+### Root cause
 
-```
-property_extractions?select=…intelligence_health… 400
-[indexing] failed: column property_extractions.intelligence_health does not exist
-```
+In the generated presentation HTML, `setHudVisible()` rebuilds `className` from scratch:
 
-A previous refactor introduced a new "intelligence health" envelope that the extraction edge functions write back to `property_extractions.intelligence_health`. The TypeScript types (`src/integrations/supabase/types.ts`) and a migration file (`supabase/migrations/20260427000000_intelligence_health.sql`) were added, **but the migration was never applied to the live database**. Verified with `information_schema`:
-
-```
-property_extractions columns:
-id, vault_asset_id, template_id, saved_model_id, property_uuid,
-fields, chunks, embedding, extracted_at, extractor, extractor_version,
-canonical_qas, candidate_fields, field_provenance
-                                                ^ no intelligence_health
+```js
+hudHeader.className = "hud-header " + (v ? "visible" : "hidden");
 ```
 
-Every read site that asks for that column (`src/lib/rag/extraction-hydrator.ts`, `src/lib/rag/indexing-context.tsx`, `src/hooks/usePropertyExtractions.ts`, the `synthesize-answer` edge function, etc.) fails with PostgREST 400, which then trips `ensureExtractionEmbeddings → indexing failed`, which is what the user saw as the actual training failure.
+The CSS toggles via `#hud-header.visible{max-height:80px;opacity:1}` and `#hud-header.hidden{max-height:0;opacity:0}`. While the class swap itself is technically valid, this implementation has three real failure modes that combine to produce the bug the user is seeing:
 
-## 2. Non-fatal — induce-schema returned malformed JSON (the 422)
+1. **`overflow:hidden` + `max-height:80px` clip the inner content.** `#hud-inner` has padding (10px top + 10px bottom = 20px) plus three stacked text rows (13px brand + 11px name + 11px loc with line-heights ≈ 18px each ≈ 54px) plus a 28px icon row in `#hud-right`. Real rendered height frequently exceeds 80px once a logo or longer brand name is present, so even when the class is correctly applied, the visible band is too short to show the contact button / Ask button row — the user perceives "nothing appears."
+2. **No paint-trigger after class swap.** Because the chevron click does not toggle `display`, a cold transition from `max-height:0` to `max-height:80px` sometimes fails to repaint when combined with the iframe's GPU compositor layer above it (observed on Chromium when `backdrop-filter` is also active on the same element). The element is technically visible in the DOM tree but renders 0px tall.
+3. **`dismissGate()` already calls `setHudVisible(true)`** so the very first chevron click *hides* the header (counter to the chevron-down affordance shown). The user clicks expecting to expand, sees nothing change visually (because the bar was already collapsed visually in scenario 1), and concludes "the dropdown does not work."
 
+### Fix
+
+Edit `src/lib/portal.functions.ts` (the runtime-JS generator block that emits `setHudVisible` and the HUD CSS) to:
+
+1. **Remove `max-height` clipping.** Replace the visible/hidden CSS with a `transform: translateY()` + `opacity` pattern, which has no height ceiling and forces a compositor repaint:
+   ```css
+   #hud-header{position:fixed;top:0;left:0;right:0;z-index:500;
+     transform:translateY(-100%);opacity:0;pointer-events:none;
+     transition:transform 0.3s ease,opacity 0.3s ease}
+   #hud-header.visible{transform:translateY(0);opacity:1;pointer-events:auto}
+   ```
+   Drop the `.hidden` class entirely — absence of `.visible` is the hidden state. Drop `overflow:hidden` from `#hud-header`.
+
+2. **Use `classList.toggle` instead of full `className` rewrite.** Preserves any future classes and avoids accidental clobbering:
+   ```js
+   function setHudVisible(v){
+     hudVisible = v;
+     if(hudHeader) hudHeader.classList.toggle("visible", v);
+     if(chevUp) chevUp.style.display = v ? "" : "none";
+     if(chevDown) chevDown.style.display = v ? "none" : "";
+   }
+   ```
+
+3. **Update the initial markup** from `<div id="hud-header" class="hidden">` to `<div id="hud-header">` (no class — naturally hidden via the new base style).
+
+4. **Keep `dismissGate()` calling `setHudVisible(true)`** so the bar appears once the welcome gate clears — that behavior is intentional. The chevron then collapses/expands as expected.
+
+### Why this is safe
+
+- The `.hidden` class is only used by `#hud-header` and `#gate` in the runtime. `#gate.hidden` is independent and untouched.
+- `pointer-events:none` in the hidden state prevents the (now off-screen but still in DOM) header from intercepting clicks meant for the iframe.
+- No other code reads `hudHeader.className` — the only mutation point is `setHudVisible`.
+- Chevron icons, `updateHud()`, mute button, contact drawer, modals, Ask AI panel — all unchanged.
+- The Ask runtime assembler (`src/lib/portal/ask-runtime-assembler.ts` and the three `.mjs` modules) is not touched.
+
+## Issue 2 — Presentation Filename Should Reflect Property Name + Date
+
+### Current behavior
+
+`src/components/portal/HudBuilderSandbox.tsx` (line 669–670):
+```js
+const safeName = (models[0]?.name || "presentation").replace(/[^a-zA-Z0-9_-]/g, "_");
+a.download = `${safeName}.html`;
 ```
-induce-schema 422
-[ai-wizard] induce-schema skipped: schema_parse_failed:
-  Expected double-quoted property name in JSON at position 208 (line 9 column 24)
+This only uses the first model's internal `name` field (frequently blank or `"Untitled"`).
+
+### Fix
+
+Update the filename builder to prefer `propertyName` (the user-facing property label), fall back to `name`, and append today's date in `YYYY-MM-DD` form:
+
+```js
+const first = models[0];
+const rawName = (first?.propertyName || first?.name || "presentation").trim();
+const safeName = rawName.replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "") || "presentation";
+const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+a.download = `${safeName}_${today}.html`;
 ```
 
-This is the optional "auto-detect extra fields from your PDF" pass. It is wrapped in a try/catch in `TrainingStep.tsx` and is allowed to fail silently — it does NOT stop training. But the parser is brittle: the PDF mode in `supabase/functions/induce-schema/index.ts` (lines 776–794) does a single strict `JSON.parse(stripFences(text))` and bails on any malformed token. The same file already contains a 3-tier resilient parser (`tryRepairJson` + fallback) used by the `architect_refine` path; the PDF path just doesn't call it.
+Example output: `Chaska_Commons_Coworking_2026-04-27.html`
 
-So even though the user *also* saw the 422, the actual training would have completed if the database column existed. Fixing #1 unblocks the run; fixing #2 makes the optional auto-detect work so the AI gets the bonus property-specific fields the schema upgrade was designed to capture.
+### Why this is safe
 
----
+- Falls back gracefully when `propertyName` is empty.
+- Sanitizer strips all unsafe chars and trims leading/trailing underscores so names like `"  My Property  "` become `My_Property`, not `__My_Property__`.
+- Date in ISO form sorts naturally and is locale-independent.
+- Only the download `a.download` attribute changes — no server payload, no DB, no URL state affected.
 
-# Fix plan
+## Files to edit
 
-## A. Apply the missing migration (root cause of the failure)
+- `src/lib/portal.functions.ts` — HUD CSS block (~lines 822–825), HUD markup (~line 946), `setHudVisible` JS (~lines 1187–1192).
+- `src/components/portal/HudBuilderSandbox.tsx` — `runDownload` filename construction (~line 669–670).
 
-Create a new migration that adds the column, exactly mirroring the pending-but-unapplied `20260427000000_intelligence_health.sql`:
+## Verification steps after implementation
 
-```sql
-ALTER TABLE public.property_extractions
-  ADD COLUMN IF NOT EXISTS intelligence_health jsonb;
-
-CREATE INDEX IF NOT EXISTS property_extractions_health_status_idx
-  ON public.property_extractions ((intelligence_health->>'status'));
-
-COMMENT ON COLUMN public.property_extractions.intelligence_health IS
-  'Computed by edge extraction functions. Status: ready | degraded | failed | context_only_degraded.';
-```
-
-`IF NOT EXISTS` makes it safe regardless of whether the older migration ever partially ran. Existing rows get `null`, which the read path already treats as "needs re-training" (verified in `extraction-hydrator.ts` and `indexing-context.tsx`). No backfill needed — the next extraction run on each property will populate it.
-
-## B. Harden the PDF branch of `induce-schema`
-
-In `supabase/functions/induce-schema/index.ts`, replace the strict `JSON.parse` in the PDF flow (around line 786) with the same 3-tier resilience used by `parseRefineResponse`:
-
-1. **Tier 1**: `JSON.parse(stripFences(text))` (current behaviour).
-2. **Tier 2**: on failure, run `tryRepairJson(text)` — already defined in the file at line 386.
-3. **Tier 3**: if both fail AND we still have a valid `text_preview`, return `{ error: "schema_parse_failed", detail }` 422 as today (so the wizard's existing silent-skip path still fires). No new failure mode.
-
-This is a non-breaking, additive change: success cases are unchanged, marginal Gemini outputs (trailing commas, unterminated strings, extra prose) now succeed, and hard failures still surface with the same error code the client already handles.
-
-## C. (Optional, very small) Slightly nicer wizard notice on parse_failed
-
-`TrainingStep.tsx` only sets a friendly `induceNotice` when `err.kind === "empty_pdf_text"`. Add one more branch so a `parse_failed` also produces a one-line amber note ("Couldn't auto-detect extra fields from this PDF — using standard profile fields.") instead of being completely silent. Pure UX polish — doesn't change pipeline behaviour.
-
----
-
-# Ripple-check
-
-- **`synthesize-answer`, `extract-property-doc`, `extract-url-content` edge functions**: all already write/read `intelligence_health`. They are correct against the *types* but were silently failing against the *database*. Once the column exists, they start writing on the next extraction; reads fall back to `null` for legacy rows, which is the documented behaviour.
-- **`usePropertyExtractions`, `extraction-hydrator`, `indexing-context`**: all already coerce `intelligence_health` through `parseIntelligenceHealth`, which accepts `null/undefined` and returns `null`. No client changes needed.
-- **`PropertyIntelligenceSection.tsx` line 389** explicitly handles "Legacy row without intelligence_health: treat as pending until …". Confirms the null-tolerance contract.
-- **`induce-schema` other modes** (`architect_draft`, `architect_refine`, `mock_prompt`) untouched — only the PDF branch hardens.
-- **No RLS changes**: the column is added to a table whose RLS policies don't reference column lists.
-- **No types regeneration needed**: `src/integrations/supabase/types.ts` already declares the column (it's auto-regenerated and is currently *ahead* of the live schema, which is why TS compiled cleanly while runtime queries failed).
-
----
-
-# Files to change
-
-- **NEW** `supabase/migrations/<new-timestamp>_intelligence_health.sql` — adds the column + index + comment.
-- **EDIT** `supabase/functions/induce-schema/index.ts` — replace the single `JSON.parse` in the PDF branch (~line 786) with the existing 3-tier `tryRepairJson` fallback.
-- **EDIT** `src/components/portal/ai-training-wizard/steps/TrainingStep.tsx` — add a `parse_failed` branch to the induce-schema catch (one line of `setInduceNotice(...)`).
-
-After approval I'll apply the migration, redeploy `induce-schema`, and verify by re-running the coworking PDF flow.
+1. Generate a fresh presentation from the sandbox; confirm the download filename matches `<PropertyName>_<YYYY-MM-DD>.html`.
+2. Open the generated HTML; click "Continue with sound" — header should be visible immediately with all icons/contact/Ask buttons rendered.
+3. Click the chevron — header smoothly slides up and disappears; chevron flips to down arrow.
+4. Click again — header slides back down; chevron flips to up arrow. All interactive buttons (Ask, Contact, mute, map, cinema, media) respond to clicks.
+5. Confirm the iframe receives clicks normally when the header is hidden (no invisible overlay catching pointer events).
