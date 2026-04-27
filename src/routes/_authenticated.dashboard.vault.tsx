@@ -182,6 +182,7 @@ function VaultPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<AssetFormState>(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [copyrightAck, setCopyrightAck] = useState(false);
   const [tier, setTier] = useState<"starter" | "pro" | null>(null);
 
   useEffect(() => {
@@ -236,6 +237,7 @@ function VaultPage() {
       ...emptyForm,
       mode: activeCategory.urlOnly ? "url" : "upload",
     });
+    setCopyrightAck(false);
     setEditorOpen(true);
   };
 
@@ -250,6 +252,7 @@ function VaultPage() {
       file: null,
     });
     setActiveTab(asset.category_type);
+    setCopyrightAck(false);
     setEditorOpen(true);
   };
 
