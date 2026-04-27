@@ -29,6 +29,7 @@ import {
 import type { Tables, TablesUpdate } from "@/integrations/supabase/types";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -181,6 +182,7 @@ function VaultPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<AssetFormState>(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [copyrightAck, setCopyrightAck] = useState(false);
   const [tier, setTier] = useState<"starter" | "pro" | null>(null);
 
   useEffect(() => {
@@ -235,6 +237,7 @@ function VaultPage() {
       ...emptyForm,
       mode: activeCategory.urlOnly ? "url" : "upload",
     });
+    setCopyrightAck(false);
     setEditorOpen(true);
   };
 
@@ -249,6 +252,7 @@ function VaultPage() {
       file: null,
     });
     setActiveTab(asset.category_type);
+    setCopyrightAck(false);
     setEditorOpen(true);
   };
 
@@ -305,6 +309,11 @@ function VaultPage() {
     }
     if (!isUrlMode && !form.file && !editingId) {
       toast.error("Please select a file to upload");
+      return;
+    }
+
+    if (!copyrightAck) {
+      toast.error("Please confirm copyright ownership before uploading");
       return;
     }
 
@@ -382,6 +391,7 @@ function VaultPage() {
     setEditorOpen(false);
     setForm(emptyForm);
     setEditingId(null);
+    setCopyrightAck(false);
     fetchAssets();
   };
 
@@ -530,6 +540,7 @@ function VaultPage() {
           if (!open) {
             setForm(emptyForm);
             setEditingId(null);
+            setCopyrightAck(false);
           }
         }}
         category={activeCategory}
@@ -537,6 +548,8 @@ function VaultPage() {
         setForm={setForm}
         editing={!!editingId}
         saving={saving}
+        copyrightAck={copyrightAck}
+        setCopyrightAck={setCopyrightAck}
         onSave={handleSave}
       />
     </div>
@@ -672,6 +685,8 @@ function AssetEditorDialog({
   setForm,
   editing,
   saving,
+  copyrightAck,
+  setCopyrightAck,
   onSave,
 }: {
   open: boolean;
@@ -681,6 +696,8 @@ function AssetEditorDialog({
   setForm: (next: AssetFormState) => void;
   editing: boolean;
   saving: boolean;
+  copyrightAck: boolean;
+  setCopyrightAck: (next: boolean) => void;
   onSave: () => void;
 }) {
   const urlOnly = !!category.urlOnly;
@@ -830,6 +847,32 @@ function AssetEditorDialog({
               onCheckedChange={(next) => setForm({ ...form, is_active: next })}
             />
           </div>
+
+          <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-3">
+            <Checkbox
+              id="vault-copyright-ack"
+              checked={copyrightAck}
+              onCheckedChange={(v) => setCopyrightAck(v === true)}
+              className="mt-0.5"
+            />
+            <Label
+              htmlFor="vault-copyright-ack"
+              className="cursor-pointer text-xs leading-snug text-foreground/90"
+            >
+              I confirm I own or have the licensed rights to use this media,
+              and it does not violate any copyrights, trademarks, or
+              third-party rights. I accept full liability per the{" "}
+              <Link
+                to="/terms"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-primary underline-offset-2 hover:underline"
+              >
+                Terms of Service
+              </Link>
+              .
+            </Label>
+          </div>
         </div>
 
         <DialogFooter>
@@ -840,7 +883,7 @@ function AssetEditorDialog({
           >
             Cancel
           </Button>
-          <Button onClick={onSave} disabled={saving}>
+          <Button onClick={onSave} disabled={saving || !copyrightAck}>
             {saving ? "Saving…" : editing ? "Save Changes" : "Add to Vault"}
           </Button>
         </DialogFooter>
