@@ -223,14 +223,27 @@ function _collectChunks(entries) {
 }
 
 function _resolveAddress(configPropertyEntry, fields) {
-  // Preference: user-entered property.location → extracted address fields.
+  var cp = configPropertyEntry || {};
+  var nameAsAddress = _looksLikeStreetAddress(cp.name) ? cp.name : null;
+  // Preference: explicit extracted/user address fields -> address-like
+  // property.name fallback -> broad location. Some builder flows store
+  // the full street address in `name` and only "City, ST" in location.
   return _firstNonEmpty(
-    configPropertyEntry && configPropertyEntry.location,
     fields.address,
     fields.property_address,
     fields.street_address,
+    cp.address,
+    cp.streetAddress,
+    nameAsAddress,
+    cp.location,
     fields.location
   );
+}
+
+function _looksLikeStreetAddress(v) {
+  if (typeof v !== "string") return false;
+  var s = v.trim();
+  return /\b\d{1,6}\s+[A-Za-z0-9]/.test(s) && /,\s*[A-Z]{2}\b|[A-Z]{2}\s+\d{5}\b/i.test(s);
 }
 
 function _directionsUrl(address) {

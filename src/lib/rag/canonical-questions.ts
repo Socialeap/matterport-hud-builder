@@ -1069,12 +1069,14 @@ const VOCAB_MAP: Record<string, string[]> = {
 function vocabularyPhrases(tokens: string[], fieldLower: string, label: string): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
-  // Match against tokens AND substring of the field name (so
+  // Match against tokens AND long substrings of the field name (so
   // "cocktail_program" hits "cocktail" via tokens, and `restaurantname`
-  // would still hit "restaurant" via substring).
+  // still hits "restaurant" via substring). Short concepts must be
+  // token-only: otherwise fields like `outdoor_space` produce false
+  // "spa" questions because "space" contains "spa".
   for (const [concept, phrases] of Object.entries(VOCAB_MAP)) {
     const tokenHit = tokens.includes(concept);
-    const subHit = !tokenHit && fieldLower.includes(concept);
+    const subHit = !tokenHit && concept.length >= 5 && fieldLower.includes(concept);
     if (!tokenHit && !subHit) continue;
     for (const p of phrases) {
       const key = p.toLowerCase();

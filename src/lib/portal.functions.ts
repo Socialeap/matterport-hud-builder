@@ -1471,6 +1471,14 @@ var __docsQa={
 // literals always evaluate \${...}, even inside // comments, which would
 // inline the entire 40 KB runtime a second time and corrupt the script.)
 
+function __dqaHumanSourceLabel(source){
+  var s=String(source||"").trim();
+  if(!s) return "";
+  var parts=s.split(/\\s*(?:→|->)\\s*/);
+  if(parts.length>1) s=parts[parts.length-1];
+  s=s.replace(/^field:/,"").replace(/[_-]+/g," ").replace(/\\s+/g," ").trim();
+  return s?s.charAt(0).toUpperCase()+s.slice(1):"";
+}
 function __dqaAppendMsg(text,role,source,anchorId){
   if(!__docsQa.messages) return;
   var div=document.createElement("div");
@@ -1491,7 +1499,7 @@ function __dqaAppendMsg(text,role,source,anchorId){
     // Docs hits — plain source label.
     var tag=document.createElement("div");
     tag.className="ask-src";
-    tag.textContent="from: "+source;
+    tag.textContent="Source: "+__dqaHumanSourceLabel(source);
     div.appendChild(tag);
   }
   __docsQa.messages.appendChild(div);
@@ -1648,10 +1656,12 @@ function __dqaCollectChunkDocs(entries){
       var ch=chunks[c];
       var hasEmb=Array.isArray(ch.embedding)&&ch.embedding.length>0;
       if(hasEmb) withEmb++;
+      var parentId=String(ch.id||("chunk-"+e+"-"+c));
       var units=__dqaEvidenceUnits(ch.content||"");
       for(var u=0;u<units.length;u++){
         docs.push({
-          id:label+"#chunk#"+(ch.id||c)+"#u#"+u,
+          id:label+"#chunk#"+parentId+"#u#"+u,
+          parentId:parentId,
           source:label+" \u2192 "+(ch.section||"section"),
           content:units[u],
           // Evidence units inherit the parent vector. BM25 ranks the
@@ -1672,6 +1682,7 @@ function __dqaCollectChunkDocs(entries){
       var text=(typeof val==="object")?JSON.stringify(val):String(val);
       docs.push({
         id:label+"#field#"+fkeys[k],
+        parentId:"field:"+fkeys[k],
         source:label+" \u2192 "+fkeys[k],
         content:fkeys[k]+": "+text,
         embedding:null,
@@ -1693,8 +1704,8 @@ async function __dqaRebuildIndex(i){
   var useHybrid=collected.hasEmbeddings&&!!__docsQa.embedPipeline;
   __docsQa.mode=useHybrid?"hybrid":"bm25";
   var schema=useHybrid
-    ? {id:"string",source:"string",content:"string",kind:"string",embedding:"vector[384]"}
-    : {id:"string",source:"string",content:"string",kind:"string"};
+    ? {id:"string",parentId:"string",source:"string",content:"string",kind:"string",embedding:"vector[384]"}
+    : {id:"string",parentId:"string",source:"string",content:"string",kind:"string"};
   __docsQa.db=await om.create({
     schema:schema,
     components:{tokenizer:{language:"english",stemming:true}}
@@ -1706,11 +1717,11 @@ async function __dqaRebuildIndex(i){
       // Synthesize a zero vector so they stay in the BM25 lane.
       var emb=doc.embedding||new Array(384).fill(0);
       await om.insert(__docsQa.db,{
-        id:doc.id,source:doc.source,content:doc.content,kind:doc.kind||"raw_chunk",embedding:emb
+        id:doc.id,parentId:doc.parentId||doc.id,source:doc.source,content:doc.content,kind:doc.kind||"raw_chunk",embedding:emb
       });
     }else{
       await om.insert(__docsQa.db,{
-        id:doc.id,source:doc.source,content:doc.content,kind:doc.kind||"raw_chunk"
+        id:doc.id,parentId:doc.parentId||doc.id,source:doc.source,content:doc.content,kind:doc.kind||"raw_chunk"
       });
     }
   }
@@ -1876,6 +1887,7 @@ async function __dqaInit(){
             var doc=hits[ch].document||{};
             chunkHits.push({
               id:doc.id,
+              parentId:doc.parentId||doc.id,
               source:doc.source||"",
               section:doc.source||"",
               content:String(doc.content||""),

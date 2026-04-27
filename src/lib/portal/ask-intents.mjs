@@ -59,6 +59,16 @@ var FIELD_COMPAT = {
       /^address.*/, /^.*_count$/, /^number_of_.*/, /^agent.*/,
     ],
   },
+  property_name: {
+    allow: [
+      /^(property_)?name$/, /^space_name$/, /^venue_name$/,
+      /^building_name$/, /^listing_title$/, /^title$/,
+    ],
+    exclude: [
+      /^agent.*/, /^broker.*/, /^contact.*/, /^address.*/,
+      /^.*_count$/, /^number_of_.*/, /^price.*/, /^.*_price$/,
+    ],
+  },
   amenity_presence: {
     allow: [
       /^has_.*/, /^amenit.*/, /^features(_list)?$/,
@@ -371,6 +381,11 @@ var INTENT_PATTERNS = [
     /\b(how\s+do\s+i\s+)?(reach|contact)\s+(you|the\s+agent|someone)\b/,
     /\bbroker\b/, /\blisting\s+agent\b/,
   ]},
+  { intent: "property_name", patterns: [
+    /\bwhat('s|\s+is)\s+the\s+(name|property\s+name)\b/,
+    /\bname\s+of\s+(this|the)\s+(space|property|place|tour|listing)\b/,
+    /\bwhat\s+is\s+this\s+(space|property|place|listing)\s+called\b/,
+  ]},
   { intent: "restaurant_location", patterns: [
     /\b(what|which)\s+floor\s+(is|are)\s+.*\b(restaurant|dining|bar|cafe)\b/,
     /\bwhere('s|\s+is)\s+the\s+(restaurant|bar|cafe|dining)\b/,
@@ -457,6 +472,8 @@ var INTENT_PATTERNS = [
     /\b(number\s+of|count\s+of)\s+amenities\b/,
   ]},
   { intent: "amenity_presence", patterns: [
+    /\bwhat\s+(are|features?|amenities?|facilities?)\b.*\b(features?|amenities?|facilities?)\b/,
+    /\b(what|which)\s+(features?|amenities?|facilities?)\b/,
     /\b(is|are)\s+there\s+(a|any)?\s*(spa|gym|theatre|theater|pool|fitness|business\s+center|concierge|lounge)\b/,
     /\bdo(es)?\s+(it|this|they|you)\s+have\s+(a|an|any)\s+\w+/,
     /\bhas\s+(a|an|any)\s+\w+/,
@@ -474,7 +491,7 @@ var INTENT_PATTERNS = [
   { intent: "year_built", patterns: [
     /\bwhen\s+(was|were)\s+.*(built|constructed)\b/,
     /\b(what\s+year|year\s+of)\s+.*built\b/,
-    /\bhow\s+old\s+is\s+(it|this)\b/,
+    /\bhow\s+old\s+is\s+(it|this|the\s+(space|property|building|place))\b/,
     /\byear\s+built\b/,
   ]},
   { intent: "designer_architect", patterns: [
@@ -495,6 +512,9 @@ var INTENT_PATTERNS = [
   ]},
   { intent: "property_dimension", patterns: [
     /\b(square\s+feet|sq\.?\s*ft\.?|sqft|rsf|rentable\s+(area|square\s+feet))\b/,
+    /\bwhat('s|\s+is)\s+the\s+(size|area)\b/,
+    /\bhow\s+big\s+(is|are)\s+(it|this|the\s+(property|space|building|place))\b/,
+    /\b(size|area)\s+of\s+(this|the)\s+(property|space|building|place)\b/,
     /\bbuilding\s+(size|area)\b/, /\blot\s+size\b/, /\bacreage\b/,
     /\b(clear|ceiling)\s+height\b/, /\bfrontage\b/, /\btraffic\s+count\b/,
   ]},
@@ -549,6 +569,9 @@ var INTENT_PATTERNS = [
   { intent: "summary", patterns: [
     /\btell\s+me\s+about\s+(this|it|the\s+property)\b/,
     /\bdescribe\s+(this|it|the\s+property)\b/,
+    /\b(purpose|use|intended\s+use)\b.*\b(property|space|place)\b/,
+    /\bwhat\s+(is|kind\s+of|type\s+of)\s+(this|the)\s+(property|space|place)\b/,
+    /\bwhat\s+does\s+this\s+(property|space|place)\s+do\b/,
     /\bwhat\s+is\s+this\s+place\b/,
     /\boverview\b/, /\bsummary\b/,
   ]},
@@ -635,6 +658,7 @@ var ACTION_INTENTS = {
   contact_agent: true,
   location: true,
   neighborhood: true,
+  property_name: true,
 };
 
 function isActionIntent(intent) {

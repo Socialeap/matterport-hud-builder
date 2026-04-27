@@ -12,8 +12,8 @@
 //   2. Cross-checks the body's saved_model_id and confirms the
 //      property_uuid is part of that presentation (no cross-tenant
 //      leakage).
-//   3. Reads `property_extractions` server-side and uses the
-//      embedded chunks as the *trusted* evidence — visitor-supplied
+//   3. Reads `property_extractions` server-side and uses persisted
+//      chunks + fields as the *trusted* evidence — visitor-supplied
 //      chunks are no longer accepted as authoritative content;
 //      `evidence_hints` may bias selection but cannot inject text.
 //   4. Honours intelligence_health: a property whose status is
@@ -508,25 +508,76 @@ interface ChunkRow {
   visibility?: string;
 }
 
+type ExtractionEvidenceRow = {
+  chunks: unknown;
+  fields?: unknown;
+};
+
+function humanizeFieldName(key: string): string {
+  return key
+    .replace(/^field:/, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (m) => m.toUpperCase());
+}
+
+function fieldValueText(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return "";
+  }
+}
+
 /**
  * Fetch and shape the trusted evidence for one property. Reads the
- * persisted chunks (post-hydrator), filters out private-visibility
- * chunks, and returns the highest-quality K chunks. Visitor-supplied
- * `evidence_hints.chunk_ids` are used to *bias* the ordering but
- * never to inject content the server didn't load.
+ * persisted chunks + fields (post-hydrator), filters out private-
+ * visibility chunks, and returns the highest-quality K evidence items.
+ * Visitor-supplied `evidence_hints.chunk_ids` are used to *bias* the
+ * ordering but never to inject content the server didn't load.
  */
 function pickTrustedChunks(
-  rows: Array<{ chunks: unknown }>,
+  rows: ExtractionEvidenceRow[],
   hints: EvidenceHints | undefined,
   k: number,
 ): SynthesisChunk[] {
-  const all: ChunkRow[] = [];
-  for (const r of rows) {
+  const all: Array<SynthesisChunk & { baseScore: number }> = [];
+  for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+    const r = rows[rowIdx];
     if (Array.isArray(r.chunks)) {
-      for (const c of r.chunks as ChunkRow[]) {
+      const chunks = r.chunks as ChunkRow[];
+      for (let chunkIdx = 0; chunkIdx < chunks.length; chunkIdx++) {
+        const c = chunks[chunkIdx];
         if (!c || typeof c !== "object") continue;
         if (c.visibility === "private") continue;
-        all.push(c);
+        const id = String(c.id ?? `chunk-${rowIdx}-${chunkIdx}`).slice(0, 100);
+        const content = String(c.content ?? "").trim();
+        if (!content) continue;
+        all.push({
+          id,
+          section: String(c.section ?? "Document").slice(0, 100),
+          content: content.slice(0, MAX_CHUNK_CONTENT),
+          score: 0,
+          baseScore: typeof c.qualityScore === "number" ? c.qualityScore : 0.5,
+        });
+      }
+    }
+    if (r.fields && typeof r.fields === "object" && !Array.isArray(r.fields)) {
+      for (const [key, value] of Object.entries(r.fields as Record<string, unknown>)) {
+        const text = fieldValueText(value);
+        if (!text) continue;
+        const label = humanizeFieldName(key);
+        all.push({
+          id: `field:${key}`.slice(0, 100),
+          section: label.slice(0, 100),
+          content: `${label}: ${text}`.slice(0, MAX_CHUNK_CONTENT),
+          score: 0,
+          baseScore: 0.58,
+        });
       }
     }
   }
@@ -537,15 +588,13 @@ function pickTrustedChunks(
   );
   const scored = all.map((c) => ({
     chunk: c,
-    score:
-      (typeof c.qualityScore === "number" ? c.qualityScore : 0.5) +
-      (c.id && hintIds.has(c.id) ? 0.5 : 0),
+    score: c.baseScore + (hintIds.has(c.id) ? 0.5 : 0),
   }));
   scored.sort((a, b) => b.score - a.score);
   return scored.slice(0, k).map(({ chunk, score }) => ({
-    id: String(chunk.id ?? "").slice(0, 100),
-    section: String(chunk.section ?? "").slice(0, 100),
-    content: String(chunk.content ?? "").slice(0, MAX_CHUNK_CONTENT),
+    id: chunk.id,
+    section: chunk.section,
+    content: chunk.content,
     score,
   }));
 }
@@ -686,7 +735,7 @@ serve(async (req) => {
   // Pull trusted evidence + intelligence_health from the DB.
   const { data: extractions, error: extractErr } = await service
     .from("property_extractions")
-    .select("id, chunks, intelligence_health")
+    .select("id, fields, chunks, intelligence_health")
     .eq("property_uuid", propertyUuid);
   if (extractErr || !extractions || extractions.length === 0) {
     return jsonError(404, { error: "no_evidence" });
