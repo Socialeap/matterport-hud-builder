@@ -364,10 +364,32 @@ function AssetStatusRow({
       ? extraction.chunks.length
       : 0;
 
-  let status: "ready" | "failed" | "pending";
-  if (extraction && chunkCount > 0) status = "ready";
-  else if (failure) status = "failed";
-  else status = "pending";
+  // Drive the row status from intelligence_health, NOT from chunkCount
+  // alone. A row with chunks but zero structured fields used to mark
+  // itself "Ready" — that is the visible bug we are eliminating.
+  const health = extraction?.intelligence_health ?? null;
+  type RowStatus =
+    | "ready"
+    | "failed"
+    | "pending"
+    | "context_only"
+    | "needs_review";
+  let status: RowStatus;
+  if (failure) {
+    status = "failed";
+  } else if (!extraction) {
+    status = "pending";
+  } else if (health) {
+    if (health.status === "ready") status = "ready";
+    else if (health.status === "context_only_degraded")
+      status = "context_only";
+    else if (health.status === "failed") status = "needs_review";
+    else status = "pending"; // degraded — indexing in flight
+  } else {
+    // Legacy row without intelligence_health: treat as pending until
+    // re-extraction populates the column.
+    status = "pending";
+  }
 
   return (
     <li className="flex items-center justify-between gap-2 rounded-md bg-background/60 px-2 py-1.5">
@@ -385,6 +407,29 @@ function AssetStatusRow({
           >
             <CheckCircle2 className="size-2.5" />
             Ready
+          </Badge>
+        )}
+        {status === "context_only" && (
+          <Badge
+            variant="outline"
+            className="h-5 shrink-0 gap-1 border-amber-500/40 bg-amber-500/10 px-1.5 text-[10px] text-amber-700 dark:text-amber-300"
+            title={`${chunkCount} chunk${chunkCount === 1 ? "" : "s"} indexed but no structured fields extracted`}
+          >
+            <AlertTriangle className="size-2.5" />
+            Context only
+          </Badge>
+        )}
+        {status === "needs_review" && (
+          <Badge
+            variant="outline"
+            className="h-5 shrink-0 gap-1 border-destructive/40 bg-destructive/10 px-1.5 text-[10px] text-destructive"
+            title={
+              health?.blocking_errors[0] ??
+              "Training did not produce usable intelligence"
+            }
+          >
+            <AlertTriangle className="size-2.5" />
+            Needs review
           </Badge>
         )}
         {status === "pending" && (
@@ -416,14 +461,16 @@ function AssetStatusRow({
       </div>
 
       <div className="flex shrink-0 items-center gap-1">
-        {status === "failed" && isUrl && (
+        {(status === "failed" ||
+          status === "needs_review" ||
+          status === "context_only") && (
           <Button
             size="sm"
             variant="ghost"
             className="h-6 w-6 p-0"
             onClick={onReindex}
             disabled={running}
-            title="Try training again"
+            title="Re-run training"
           >
             <RefreshCw className={`size-3 ${running ? "animate-spin" : ""}`} />
           </Button>

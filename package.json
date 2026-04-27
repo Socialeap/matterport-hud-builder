@@ -11,7 +11,7 @@
     "lint": "eslint .",
     "verify:html": "node scripts/verify-portal-html.mjs",
     "test:ask": "node --test scripts/test-ask-runtime.mjs",
-    "test:health": "node --test --experimental-strip-types tests/intelligence-health-rules.test.mjs tests/intelligence-health-parity.test.mjs",
+    "test:health": "node --test --experimental-strip-types tests/intelligence-health-rules.test.mjs tests/intelligence-health-parity.test.mjs tests/wizard-health-rules.test.mjs",
     "test:intelligence": "node --test --experimental-strip-types tests/**/*.test.mjs"
   },
   "dependencies": {

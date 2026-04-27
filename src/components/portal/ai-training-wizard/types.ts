@@ -7,6 +7,7 @@
  */
 
 import type { CategoryKey } from "./profiles";
+import type { IntelligenceHealth } from "@/lib/intelligence/health";
 
 export type WizardStep = 1 | 2 | 3 | 4;
 
@@ -33,6 +34,13 @@ export interface TrainingResult {
   fields: Record<string, unknown>;
   /** Number of indexed text chunks. */
   chunkCount: number;
+  /**
+   * Authoritative readiness signal from the edge function. The Verify
+   * step renders status-aware copy from this — it's no longer
+   * acceptable for the wizard to treat any non-error response as
+   * success.
+   */
+  intelligenceHealth: IntelligenceHealth | null;
 }
 
 export interface WizardState {

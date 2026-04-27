@@ -209,11 +209,27 @@ export function TrainingStep({
         }
 
         const fields = extractRes.fields ?? {};
+        const intelligenceHealth = extractRes.intelligence_health ?? null;
+
+        // Hard-stop if the edge function explicitly flagged a failure.
+        // Without this guard a hard failure (no fields AND no chunks)
+        // would still produce a TrainingResult and let the wizard advance
+        // to a misleading "training complete" view.
+        if (intelligenceHealth && intelligenceHealth.status === "failed") {
+          const detail =
+            intelligenceHealth.blocking_errors[0] ??
+            "Your source did not yield any usable property facts or text. Try a different document or URL.";
+          onPhaseChange("error", detail);
+          ranRef.current = false;
+          return;
+        }
+
         onComplete({
           vaultAssetId,
           templateId,
           fields,
           chunkCount: extractRes.chunks_indexed,
+          intelligenceHealth,
         });
         onPhaseChange("ready", null);
       } catch (err) {
@@ -277,20 +293,41 @@ export function TrainingStep({
     );
   }
 
-  // Working / done / error view
+  // Working / done / error view. The "ready" copy must reflect the
+  // actual intelligence_health status — saying "now familiar" when
+  // zero structured fields were extracted is the visible bug we are
+  // eliminating.
+  const readyHealth = state.result?.intelligenceHealth ?? null;
+  const readyHeading =
+    readyHealth?.status === "ready"
+      ? "Training complete"
+      : readyHealth?.status === "degraded"
+        ? "Training partially complete"
+        : readyHealth?.status === "context_only_degraded"
+          ? "Indexing complete — review your source"
+          : "Training complete";
+  const readyDetail =
+    readyHealth?.status === "ready"
+      ? "Your AI is now familiar with this property."
+      : readyHealth?.status === "degraded"
+        ? "Indexing is still finishing up — your AI will be ready momentarily."
+        : readyHealth?.status === "context_only_degraded"
+          ? "We indexed the text but couldn't extract structured facts. The AI will answer open questions but can't return specific values deterministically."
+          : "Your AI is now familiar with this property.";
+
   return (
     <div className="space-y-4">
       <header className="space-y-1">
         <h3 className="text-sm font-semibold text-foreground">
           {phase === "ready"
-            ? "Training complete"
+            ? readyHeading
             : phase === "error"
               ? "Training paused"
               : "Training your AI Chat Assistant…"}
         </h3>
         <p className="text-xs leading-snug text-muted-foreground">
           {phase === "ready"
-            ? "Your AI is now familiar with this property."
+            ? readyDetail
             : phase === "error"
               ? "Don't worry — nothing is lost. You can try again or pick a different document."
               : `Working on ${propertyName}.`}
@@ -372,14 +409,22 @@ export function TrainingStep({
         </div>
       )}
 
-      {phase === "ready" && (
-        <div className="flex items-start gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/5 p-3 text-xs text-emerald-700 dark:text-emerald-300">
-          <Sparkles className="mt-0.5 size-3.5 shrink-0" />
-          <p className="leading-snug">
-            Continuing to the verification step…
-          </p>
-        </div>
-      )}
+      {phase === "ready" &&
+        (readyHealth?.status === "context_only_degraded" ? (
+          <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-300">
+            <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+            <p className="leading-snug">
+              No structured facts were learned. Visitors will get
+              text-search answers but no deterministic field lookups.
+              Continuing to verification…
+            </p>
+          </div>
+        ) : (
+          <div className="flex items-start gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/5 p-3 text-xs text-emerald-700 dark:text-emerald-300">
+            <Sparkles className="mt-0.5 size-3.5 shrink-0" />
+            <p className="leading-snug">Continuing to the verification step…</p>
+          </div>
+        ))}
 
       <div className="flex items-center justify-between">
         <Button
