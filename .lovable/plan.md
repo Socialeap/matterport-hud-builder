@@ -1,136 +1,111 @@
-# Copyright CYA — Vault Upload Gate + ToS Indemnification
+## Problem analysis
 
-## 1. Trace (confirmed by code inspection)
+Looking at the screenshot + code in `src/lib/portal.functions.ts`:
 
-**Production Vault upload surface — single chokepoint:**
-- `src/routes/_authenticated.dashboard.vault.tsx` → `AssetEditorDialog` is the **only** UI in the app that calls `handleSave()` → `uploadVaultAsset()` / `INSERT vault_assets`. Every Vault category (Sound Library, Visual Filters, Interactive Widgets, Custom Iconography, Property Docs, External Links) flows through this one dialog regardless of upload-vs-URL mode.
-- The pickers `SoundLibraryPicker.tsx` and `VaultCatalogList.tsx` are **read-only browsers** of already-published vault assets — they do not upload, so no gate is required there.
+1. **Far-left collision** — `#hud-inner` starts at `padding:10px 16px`, so `#hud-left` (logo + brand) sits directly over the Matterport iframe's native showcase title and search icon (top-left of the iframe).
 
-**Existing guards on the save path (must not be weakened):**
-1. `if (!form.label.trim())` — label required
-2. `if (isUrlMode && !form.asset_url.trim())` — URL required in URL mode
-3. `if (!isUrlMode && !form.file && !editingId)` — file required for new uploads
-4. `setSaving(true)` lockout during async upload
-5. Tier gate (`isStarter` disables `Add Asset` button at the row level)
+2. **Duplicated property name** — The current draft has `brandName === propertyName === "Chaska Commons Coworking"`. The header renders:
+   - `#hud-brand` ← `brandName` ("Chaska Commons Coworking")
+   - `#hud-prop-name` ← `p.propertyName` ("Chaska Commons Coworking") ← duplicate
+   - `#hud-prop-loc` ← `p.name + " — " + p.location` ("210 N Chestnut St, Chaska, MN 55318, US — Chaska, MN") ← also has redundant city/state
 
-**Confirmation:** Adding the copyright checkbox as a new precondition in `handleSave()` and as a `disabled` contributor on the footer Save button is **additive**. It does not bypass, weaken, or orphan any existing guard. The `editingId` branch is unaffected because edits don't introduce new media authorship — but we still require re-affirmation when an edit replaces the file (treated like a new upload).
+3. **No left-clear zone or truncation budget** — right-side controls (mute/map/cinema/media/Ask/agent name/Contact) wrap into the text and crowd it.
 
-**Out-of-scope upload surfaces** (intentionally excluded — not Vault, not republished media): Branding logo/favicon, Agent avatar, Matterport `.mhtml` (parsed locally, not stored), AI training docs (private to provider), PDF schema sample (discarded after detection), JSON draft import (config only).
+4. **Filename** — already implemented (`{propertyName}_{YYYY-MM-DD}.html`, line 806–809 of `HudBuilderSandbox.tsx`). No change needed; will verify only.
 
-## 2. Blueprint
+## Solution (single, surgical)
 
-### A. Vault editor checkbox (`src/routes/_authenticated.dashboard.vault.tsx`)
+Restructure the HUD into a **3-column grid** so the center block is geometrically centered regardless of right-side button count, and reserve a left "safe zone" the iframe's chrome can occupy without overlap.
 
-**Component-level state in `VaultPage`:**
-```ts
-const [copyrightAck, setCopyrightAck] = useState(false);
-```
+### Changes — `src/lib/portal.functions.ts` only
 
-**Reset on dialog open/close:**
-- `openCreate()` → `setCopyrightAck(false)`
-- `openEdit()` → `setCopyrightAck(false)` (re-affirm on every edit session)
-- After successful save → `setCopyrightAck(false)`
+**A. CSS (`#hud-inner` block, ~lines 898–914)**
 
-**Pass to `AssetEditorDialog` via two new props:** `copyrightAck`, `setCopyrightAck`.
+Replace the flex layout with CSS Grid:
+- `#hud-inner`: `display:grid; grid-template-columns: 200px minmax(0,1fr) auto; align-items:center; padding:10px 16px 10px 220px;` — the **220px left padding** is the safe zone that keeps every header element clear of the Matterport showcase title + search icon on the far left.
+- `#hud-center`: new wrapper, `min-width:0; display:flex; flex-direction:column; align-items:center; text-align:center; gap:2px;` holds logo (inline above text or row-flex) + brand + address.
+- `#hud-logo`: stays `height:32px`, moved into the center column, `margin-bottom:2px`.
+- `#hud-brand`: keep size, add `max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;`.
+- `#hud-prop-loc`: same truncation rules; this is the **only** line that may shrink/ellipsize when space is tight.
+- Remove `#hud-prop-name` element entirely (it caused the duplicate).
+- `#hud-right`: keep, `justify-self:end; margin-right:32px;` (32px keeps clear of the chevron).
+- Add a responsive rule: `@media(max-width:720px){#hud-inner{grid-template-columns: 0 minmax(0,1fr) auto; padding-left:12px;}}` — on narrow viewports the iframe chrome auto-collapses, so the safe zone can shrink.
 
-**UI insertion** — inside the dialog body, immediately above the `DialogFooter` (after the "Available to Clients" switch, before the Cancel/Save row):
-```tsx
-<div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-3">
-  <Checkbox
-    id="vault-copyright-ack"
-    checked={copyrightAck}
-    onCheckedChange={(v) => setCopyrightAck(v === true)}
-    className="mt-0.5"
-  />
-  <Label htmlFor="vault-copyright-ack" className="cursor-pointer text-xs leading-snug text-foreground/90">
-    I confirm I own or have the licensed rights to use this media, and it does
-    not violate any copyrights, trademarks, or third-party rights. I accept full
-    liability per the{" "}
-    <Link to="/terms" target="_blank" rel="noopener noreferrer"
-      className="font-medium text-primary underline-offset-2 hover:underline">
-      Terms of Service
-    </Link>.
-  </Label>
+**B. HTML (`#hud-header` block, ~lines 1018–1027)**
+
+```html
+<div id="hud-header">
+  <div id="hud-inner">
+    <div id="hud-left-spacer" aria-hidden="true"></div>
+    <div id="hud-center">
+      {logoUrl ? <img id="hud-logo" …> : ""}
+      <div id="hud-brand">{brandName}</div>
+      <div id="hud-prop-loc"></div>
+    </div>
+    <div id="hud-right">… (unchanged) …</div>
+  </div>
 </div>
 ```
 
-**Save-button gate (additive):**
-```tsx
-<Button onClick={onSave} disabled={saving || !copyrightAck}>
-```
+Removes the `#hud-left` wrapper, `#hud-text` wrapper, and `#hud-prop-name` div. Net result: brand name appears **once**, in the center.
 
-**Server-side guard (defensive, in `handleSave()` before upload):**
-```ts
-if (!copyrightAck) {
-  toast.error("Please confirm copyright ownership before uploading");
-  return;
+**C. Runtime updater (`updateHud`, ~lines 1287–1304)**
+
+Replace the two text assignments with a single, dedupe-aware composer:
+
+```js
+if (elLoc) {
+  // Compose "{property name} — {location}" but skip either part if it
+  // duplicates the brand name already shown above, so we never repeat
+  // text in the header.
+  var brand = (C.brandName || "").trim().toLowerCase();
+  var pname = (p.propertyName || "").trim();
+  var addr  = (p.name || "").trim();         // street address
+  var loc   = (p.location || "").trim();     // city, state
+  var parts = [];
+  if (pname && pname.toLowerCase() !== brand) parts.push(pname);
+  if (addr  && addr.toLowerCase()  !== brand && addr.toLowerCase() !== pname.toLowerCase()) parts.push(addr);
+  if (loc   && addr.toLowerCase().indexOf(loc.toLowerCase()) === -1) parts.push(loc);
+  elLoc.textContent = parts.join(" \u2014 ");
 }
 ```
-This belt-and-suspenders prevents bypass if a user toggles the disabled attribute via devtools.
 
-**External Link category:** Still gated. Embedding a copyrighted YouTube/Vimeo URL in a client presentation carries the same liability profile as uploading a file. The same checkbox text covers "media… you upload or link."
+`elName` reference and the `if(elName)` block are deleted (element no longer exists). No other call sites reference `#hud-prop-name` (verified via grep — only the two lines above).
 
-### B. Terms of Service update (`src/routes/terms.tsx`)
+**D. Truncation budget**
 
-Insert a **new Section 6** titled "User-Uploaded Content & Media Indemnification" (renumber sections 6–14 → 7–15). Placing it adjacent to the existing IP/Acceptable Use language strengthens the legal posture vs. burying it at the end.
+`overflow:hidden; text-overflow:ellipsis; white-space:nowrap` on `#hud-brand` and `#hud-prop-loc` plus the grid's `minmax(0,1fr)` center column means: when the right-side button cluster grows, the **address line ellipsizes first** (per the user's requirement), and the brand never wraps under the controls.
 
-**New Section 6 copy (verbatim, ready to drop in):**
+### Files touched
 
-> **6. User-Uploaded Content & Media Indemnification**
->
-> The Service includes a "Production Vault" and related upload tools that let you (the MSP) ingest media — including audio tracks, images, video, icons, scripts, embed snippets, documents, and external links — for inclusion in presentations you generate and distribute to your own clients. Each time you upload or link such media, you must affirmatively confirm via an in-product checkbox that you own or hold a valid license to use that media for its intended commercial purpose.
->
-> **You assume sole and 100% liability** for any and all claims arising from media you upload, link, embed, or otherwise transmit through the Service, including but not limited to: copyright infringement, trademark infringement, right-of-publicity violations, DMCA takedown notices, royalty disputes, performance-rights claims (ASCAP, BMI, SESAC, SoundExchange, PRS, or any equivalent body), stock-media license violations (including watermarked or unlicensed Getty, Shutterstock, Adobe Stock, or similar imagery), and any related damages, fines, settlements, or attorneys' fees.
->
-> You agree to **defend, indemnify, and hold harmless** Transcendence Media, its officers, directors, employees, contractors, partners, affiliates, end-clients receiving generated HTML deliverables, and downstream viewers of those deliverables, from and against any and all such claims, regardless of whether the infringement is alleged, threatened, or proven, and regardless of whether the media remains hosted on Service infrastructure, has been embedded in an exported HTML deliverable, or has been further redistributed by your clients.
->
-> Transcendence Media does not pre-screen, license-clear, or audit user-uploaded media. We reserve the right (but assume no obligation) to remove any uploaded media at any time, suspend Vault uploads, or terminate accounts upon receipt of a credible infringement notice, without liability to you. Your in-product checkbox confirmation, together with these Terms, constitutes a binding representation that you have the necessary rights, and is admissible as evidence in any subsequent dispute.
->
-> Counter-notices and DMCA inquiries should be sent to legal@transcendencemedia.com.
+- `src/lib/portal.functions.ts` — three localized blocks (CSS ~898–914, HTML ~1018–1027, JS updateHud ~1287–1304). No changes to bootstrap script, gate, audio, modal, or Ask AI logic.
 
-Section 11 (Indemnification) remains as a general clause; this new Section 6 is the media-specific super-set.
+### Files NOT touched (regression safety)
 
-## 3. Verification Artifact (Section 28 enforcement)
+- `HudBuilderSandbox.tsx` — filename logic already correct.
+- Early-bootstrap HUD safety script (~lines 1163–1180) — only references `#hud-header` and `#hud-toggle`; doesn't touch `#hud-prop-name` or layout.
+- `HudPreview.tsx` — separate React preview component; only the generated .html ships to clients.
 
-After applying, run and report:
+## Trace of trigger paths (confirmed safe)
 
-**Grep checks:**
-```bash
-rg -n "copyrightAck" src/routes/_authenticated.dashboard.vault.tsx
-rg -n "User-Uploaded Content" src/routes/terms.tsx
-rg -n "uploadVaultAsset|vault_assets.*insert" src --type ts --type tsx
+1. **Property switch** (multi-property tour) → `updateHud(i)` runs → new composer produces a single, deduped line. Old `#hud-prop-name` removal is safe because no other code reads it (`rg "hud-prop-name"` → 2 hits, both inside `updateHud`).
+2. **HUD toggle (chevron)** → flips `.visible` class on `#hud-header`. Untouched. Grid layout doesn't affect transform/opacity.
+3. **Audio init** → `initAudio` triggered by `updateHud`'s `p.musicUrl` branch. Untouched.
+4. **Mute button visibility** → `#hud-mute-btn.visible` toggled in `updateMuteBtn`. Stays inside `#hud-right`. Untouched.
+5. **Contact drawer / Ask panel** — open via `window.__openContact` / Ask toggle button still inside `#hud-right`. Untouched.
+6. **Single vs multi-property** — `#tabs` overlay (top-left, z-600) is independent of header; the 220px safe zone also keeps the header clear of `#tabs` when present.
+
+## Visual result
+
 ```
-- The first must show: state declaration, both reset sites, prop pass, dialog render, save-button `disabled` clause, and `handleSave` guard (≥6 hits).
-- The second must show the new section heading.
-- The third must show **only** the existing call sites in `_authenticated.dashboard.vault.tsx` (no new bypass paths introduced).
-
-**TypeScript check:**
-```bash
-bunx tsc --noEmit -p tsconfig.json 2>&1 | rg "vault|terms" | head
+┌────────────────────────────────────────────────────────────────────────┐
+│ [iframe chrome:        │  [logo]                  │ 🔇 📍 🎬 🖼 💬  Lisa │
+│  Showcase title 🔍 ]   │  Chaska Commons Coworking│ Ritmore [Contact] ⌃│
+│                        │  210 N Chestnut St … MN  │                    │
+└────────────────────────────────────────────────────────────────────────┘
+   ↑ 220px safe zone        ↑ centered, deduped       ↑ right cluster
 ```
-Must be empty (no new type errors introduced).
 
-**Console-trace dry run** (manual, documented in the apply step's reply):
-1. Open `/dashboard/vault` as a Pro user → click **Add Asset** → confirm Save button is **disabled** with the checkbox unchecked.
-2. Tick the checkbox → Save button becomes **enabled**.
-3. Untick → Save returns to **disabled**.
-4. Close and reopen the dialog → checkbox **resets to unchecked** (no sticky state across sessions).
-5. Edit an existing asset → checkbox is again **unchecked** and Save is gated until re-confirmed.
+## Filename confirmation
 
-## 4. Files Touched
-
-| File | Change |
-|---|---|
-| `src/routes/_authenticated.dashboard.vault.tsx` | Add `copyrightAck` state, reset hooks, pass through to `AssetEditorDialog`, render checkbox UI, gate Save button + `handleSave` guard, import `Checkbox` and `Link` |
-| `src/routes/terms.tsx` | Insert new Section 6 ("User-Uploaded Content & Media Indemnification") and renumber subsequent sections 7–15 |
-
-No other files. No backend schema changes. No new migrations. No changes to `SoundLibraryPicker.tsx` or `VaultCatalogList.tsx` (read-only).
-
-## 5. Risk & Ripple Assessment
-
-- **No regressions to existing Vault flows:** The checkbox is purely additive to a single save path. Existing label/url/file validation and the `setSaving` lockout remain untouched and execute in their current order.
-- **No regressions to other upload surfaces:** Branding, Agent avatar, Matterport sync, AI training, PDF detection, and JSON import are not modified.
-- **No drift between client gate and ToS:** Both reference the same affirmative representation; the ToS explicitly cites "in-product checkbox" as the binding act, locking the legal narrative to the UI.
-- **Edit-mode coverage:** Re-affirmation is required on every edit session, even if the file isn't being replaced — protects against silently re-publishing previously infringing material after a label/description change.
-- **Devtools bypass:** Defended by the server-side-style guard inside `handleSave` (toast + early return) in addition to the disabled attribute.
-- **Section renumbering in ToS:** No internal cross-references in the existing ToS use section numbers (verified by reading the full file), so renumbering 6→7 through 14→15 is safe with no broken anchors.
+`HudBuilderSandbox.tsx` line 806–809 already produces `Chaska_Commons_Coworking_2026-04-27.html` from `propertyName + ISO date`. No change required; will verify with a grep after edit.
