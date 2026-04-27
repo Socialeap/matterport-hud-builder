@@ -166,7 +166,7 @@ export const refreshPresentationConfig = createServerFn({ method: "POST" })
     return { success: true };
   });
 
-
+export const checkFulfillmentStatus = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: { modelId: string }) => data)
   .handler(async ({ data, context }) => {
