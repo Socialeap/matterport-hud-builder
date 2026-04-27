@@ -1,95 +1,136 @@
-## Diagnosis
+# Copyright CYA — Vault Upload Gate + ToS Indemnification
 
-The uploaded `Marriott_Marquis_2026-04-27.html` shows two separate failures:
+## 1. Trace (confirmed by code inspection)
 
-1. **HUD wiring is too dependent on the main runtime finishing successfully.**
-   - The generated file embeds very large Property Intelligence payloads before the main presentation script.
-   - There is a safety bootstrap, but it only hides the welcome gate and sets the Matterport iframe source.
-   - It does **not** wire the HUD toggle, open the HUD, update chevrons, or initialize audio.
-   - If anything later in the large runtime path stalls or fails, the tour can load while the HUD appears non-functional.
+**Production Vault upload surface — single chokepoint:**
+- `src/routes/_authenticated.dashboard.vault.tsx` → `AssetEditorDialog` is the **only** UI in the app that calls `handleSave()` → `uploadVaultAsset()` / `INSERT vault_assets`. Every Vault category (Sound Library, Visual Filters, Interactive Widgets, Custom Iconography, Property Docs, External Links) flows through this one dialog regardless of upload-vs-URL mode.
+- The pickers `SoundLibraryPicker.tsx` and `VaultCatalogList.tsx` are **read-only browsers** of already-published vault assets — they do not upload, so no gate is required there.
 
-2. **The selected music was not actually embedded in this generated file.**
-   - The config inside the uploaded HTML contains `"musicUrl":""`.
-   - Because the generated presentation has no audio URL, the `Start with Sound` button has nothing to play and the mute button stays hidden.
-   - This likely happened because the persisted `saved_model` did not include the current enhancement/music selection at generation time, or the selected Sound Library asset could not be resolved and fell back to an empty manual `musicUrl`.
+**Existing guards on the save path (must not be weakened):**
+1. `if (!form.label.trim())` — label required
+2. `if (isUrlMode && !form.asset_url.trim())` — URL required in URL mode
+3. `if (!isUrlMode && !form.file && !editingId)` — file required for new uploads
+4. `setSaving(true)` lockout during async upload
+5. Tier gate (`isStarter` disables `Add Asset` button at the row level)
 
-There is also a UX issue: the current gate always says `Start with Sound`, even when the generated config has no playable sound URL, which makes this look like a playback failure when the real issue is missing audio data.
+**Confirmation:** Adding the copyright checkbox as a new precondition in `handleSave()` and as a `disabled` contributor on the footer Save button is **additive**. It does not bypass, weaken, or orphan any existing guard. The `editingId` branch is unaffected because edits don't introduce new media authorship — but we still require re-affirmation when an edit replaces the file (treated like a new upload).
 
-## Safe fix
+**Out-of-scope upload surfaces** (intentionally excluded — not Vault, not republished media): Branding logo/favicon, Agent avatar, Matterport `.mhtml` (parsed locally, not stored), AI training docs (private to provider), PDF schema sample (discarded after detection), JSON draft import (config only).
 
-### 1. Make the presentation shell independently reliable
-Update `src/lib/portal.functions.ts` so the pre-bootstrap safety script becomes a real shell bootstrap that:
+## 2. Blueprint
 
-- Parses the same config as the main script.
-- Sets the first Matterport iframe URL immediately.
-- Wires `#hud-toggle` immediately.
-- Implements `window.__setHudVisible` and `window.__presentationSetHudVisible` early.
-- Opens the HUD when the welcome gate is dismissed.
-- Toggles chevrons correctly.
-- Uses direct inline style fallbacks in addition to the `.visible` class:
-  - `transform: translateY(0)`
-  - `opacity: 1`
-  - `pointerEvents: auto`
-- Initializes the HUD text for the first property.
-- Keeps the existing main runtime behavior, but makes it reuse/override these same globals instead of relying on a separate local-only `setHudVisible`.
+### A. Vault editor checkbox (`src/routes/_authenticated.dashboard.vault.tsx`)
 
-This means even if Ask AI indexing, large embedded data, or a later script section has a problem, the user can still enter the tour, show/hide the HUD, and access visible header controls.
+**Component-level state in `VaultPage`:**
+```ts
+const [copyrightAck, setCopyrightAck] = useState(false);
+```
 
-### 2. Harden HUD layering and mobile layout
-Update the generated HUD CSS so it is less likely to be hidden behind iframe/compositor layers or pushed off-screen:
+**Reset on dialog open/close:**
+- `openCreate()` → `setCopyrightAck(false)`
+- `openEdit()` → `setCopyrightAck(false)` (re-affirm on every edit session)
+- After successful save → `setCopyrightAck(false)`
 
-- Raise the HUD/toggle z-index above tabs/footer/iframe.
-- Add compositor-safe properties such as `will-change`, `backface-visibility`, and `isolation` where appropriate.
-- Keep `overflow: visible` on the HUD header.
-- Add a mobile-safe wrapping rule for `#hud-inner` / `#hud-right` so the controls do not overflow at narrower viewport widths.
+**Pass to `AssetEditorDialog` via two new props:** `copyrightAck`, `setCopyrightAck`.
 
-### 3. Make audio initialization resilient and truthful
-Update the generated audio runtime in `src/lib/portal.functions.ts`:
+**UI insertion** — inside the dialog body, immediately above the `DialogFooter` (after the "Available to Clients" switch, before the Cancel/Save row):
+```tsx
+<div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-3">
+  <Checkbox
+    id="vault-copyright-ack"
+    checked={copyrightAck}
+    onCheckedChange={(v) => setCopyrightAck(v === true)}
+    className="mt-0.5"
+  />
+  <Label htmlFor="vault-copyright-ack" className="cursor-pointer text-xs leading-snug text-foreground/90">
+    I confirm I own or have the licensed rights to use this media, and it does
+    not violate any copyrights, trademarks, or third-party rights. I accept full
+    liability per the{" "}
+    <Link to="/terms" target="_blank" rel="noopener noreferrer"
+      className="font-medium text-primary underline-offset-2 hover:underline">
+      Terms of Service
+    </Link>.
+  </Label>
+</div>
+```
 
-- Add an early audio bootstrap in the safety script.
-- Normalize audio URLs before comparing/assigning `audio.src`.
-- Set `preload="auto"`, `playsInline`, `crossOrigin="anonymous"` where safe.
-- Track play promise failures and show a clear console warning instead of swallowing them silently.
-- Only show `Start with Sound` and the HUD mute button when at least one property has a resolved `musicUrl`.
-- If there is no resolved audio, change the gate CTA to a neutral label like `Enter Tour` instead of promising sound.
+**Save-button gate (additive):**
+```tsx
+<Button onClick={onSave} disabled={saving || !copyrightAck}>
+```
 
-### 4. Ensure the latest builder state is used when generating/re-generating
-Update `src/components/portal/HudBuilderSandbox.tsx` so generation cannot use stale saved data:
+**Server-side guard (defensive, in `handleSave()` before upload):**
+```ts
+if (!copyrightAck) {
+  toast.error("Please confirm copyright ownership before uploading");
+  return;
+}
+```
+This belt-and-suspenders prevents bypass if a user toggles the disabled attribute via devtools.
 
-- Before calling `generatePresentation`, re-save the current builder state when possible, including:
-  - `models`
-  - `agent`
-  - `brandingOverrides`
-  - `enhancements`
-- Add `enhancements`, branding fields, and any upload-derived URLs to the `runDownload` dependency path so re-generation sees the latest state.
-- Keep the current paid/released guard intact; the server will still enforce download permissions.
+**External Link category:** Still gated. Embedding a copyrighted YouTube/Vimeo URL in a client presentation carries the same liability profile as uploading a file. The same checkbox text covers "media… you upload or link."
 
-This directly addresses the uploaded file’s empty `musicUrl`: if the user selected a Sound Library track after the model was first saved, the regenerated HTML must persist that selection before the server builds the file.
+### B. Terms of Service update (`src/routes/terms.tsx`)
 
-### 5. Validate Sound Library resolution safely
-In `generatePresentation`, improve Sound Library handling:
+Insert a **new Section 6** titled "User-Uploaded Content & Media Indemnification" (renumber sections 6–14 → 7–15). Placing it adjacent to the existing IP/Acceptable Use language strengthens the legal posture vs. burying it at the end.
 
-- Keep the current safe fallback behavior.
-- Add non-sensitive console diagnostics when a selected `spatial_audio` asset ID does not resolve to an active audio URL.
-- Preserve manual `Music URL` fallback if no valid Sound Library asset is found.
-- Do not block HTML generation just because audio cannot be resolved.
+**New Section 6 copy (verbatim, ready to drop in):**
 
-### 6. Add regression checks
-Update or add tests/scripts to catch this class of issue:
+> **6. User-Uploaded Content & Media Indemnification**
+>
+> The Service includes a "Production Vault" and related upload tools that let you (the MSP) ingest media — including audio tracks, images, video, icons, scripts, embed snippets, documents, and external links — for inclusion in presentations you generate and distribute to your own clients. Each time you upload or link such media, you must affirmatively confirm via an in-product checkbox that you own or hold a valid license to use that media for its intended commercial purpose.
+>
+> **You assume sole and 100% liability** for any and all claims arising from media you upload, link, embed, or otherwise transmit through the Service, including but not limited to: copyright infringement, trademark infringement, right-of-publicity violations, DMCA takedown notices, royalty disputes, performance-rights claims (ASCAP, BMI, SESAC, SoundExchange, PRS, or any equivalent body), stock-media license violations (including watermarked or unlicensed Getty, Shutterstock, Adobe Stock, or similar imagery), and any related damages, fines, settlements, or attorneys' fees.
+>
+> You agree to **defend, indemnify, and hold harmless** Transcendence Media, its officers, directors, employees, contractors, partners, affiliates, end-clients receiving generated HTML deliverables, and downstream viewers of those deliverables, from and against any and all such claims, regardless of whether the infringement is alleged, threatened, or proven, and regardless of whether the media remains hosted on Service infrastructure, has been embedded in an exported HTML deliverable, or has been further redistributed by your clients.
+>
+> Transcendence Media does not pre-screen, license-clear, or audit user-uploaded media. We reserve the right (but assume no obligation) to remove any uploaded media at any time, suspend Vault uploads, or terminate accounts upon receipt of a credible infringement notice, without liability to you. Your in-product checkbox confirmation, together with these Terms, constitutes a binding representation that you have the necessary rights, and is admissible as evidence in any subsequent dispute.
+>
+> Counter-notices and DMCA inquiries should be sent to legal@transcendencemedia.com.
 
-- Extend `scripts/verify-portal-html.mjs` to assert generated HTML includes:
-  - early HUD bootstrap wiring,
-  - `setHudVisible(true)` on gate dismiss,
-  - audio gate conditional behavior,
-  - no unconditional `Start with Sound` when no `musicUrl` exists.
-- Run TypeScript/build checks after implementation.
+Section 11 (Indemnification) remains as a general clause; this new Section 6 is the media-specific super-set.
 
-## Expected result
+## 3. Verification Artifact (Section 28 enforcement)
 
-After this fix:
+After applying, run and report:
 
-- Clicking the dropdown chevron will show the HUD even if the later Ask/Property Intelligence runtime is slow or fails.
-- Dismissing the welcome gate will reliably open the HUD header.
-- The generated file will not advertise sound unless a valid audio URL is embedded.
-- When a Sound Library track or manual music URL is selected, the generated HTML will include it and the Start with Sound / mute controls will work as browser autoplay rules allow.
-- Re-generated files will reflect the latest property name/date naming convention and the latest saved builder state.
+**Grep checks:**
+```bash
+rg -n "copyrightAck" src/routes/_authenticated.dashboard.vault.tsx
+rg -n "User-Uploaded Content" src/routes/terms.tsx
+rg -n "uploadVaultAsset|vault_assets.*insert" src --type ts --type tsx
+```
+- The first must show: state declaration, both reset sites, prop pass, dialog render, save-button `disabled` clause, and `handleSave` guard (≥6 hits).
+- The second must show the new section heading.
+- The third must show **only** the existing call sites in `_authenticated.dashboard.vault.tsx` (no new bypass paths introduced).
+
+**TypeScript check:**
+```bash
+bunx tsc --noEmit -p tsconfig.json 2>&1 | rg "vault|terms" | head
+```
+Must be empty (no new type errors introduced).
+
+**Console-trace dry run** (manual, documented in the apply step's reply):
+1. Open `/dashboard/vault` as a Pro user → click **Add Asset** → confirm Save button is **disabled** with the checkbox unchecked.
+2. Tick the checkbox → Save button becomes **enabled**.
+3. Untick → Save returns to **disabled**.
+4. Close and reopen the dialog → checkbox **resets to unchecked** (no sticky state across sessions).
+5. Edit an existing asset → checkbox is again **unchecked** and Save is gated until re-confirmed.
+
+## 4. Files Touched
+
+| File | Change |
+|---|---|
+| `src/routes/_authenticated.dashboard.vault.tsx` | Add `copyrightAck` state, reset hooks, pass through to `AssetEditorDialog`, render checkbox UI, gate Save button + `handleSave` guard, import `Checkbox` and `Link` |
+| `src/routes/terms.tsx` | Insert new Section 6 ("User-Uploaded Content & Media Indemnification") and renumber subsequent sections 7–15 |
+
+No other files. No backend schema changes. No new migrations. No changes to `SoundLibraryPicker.tsx` or `VaultCatalogList.tsx` (read-only).
+
+## 5. Risk & Ripple Assessment
+
+- **No regressions to existing Vault flows:** The checkbox is purely additive to a single save path. Existing label/url/file validation and the `setSaving` lockout remain untouched and execute in their current order.
+- **No regressions to other upload surfaces:** Branding, Agent avatar, Matterport sync, AI training, PDF detection, and JSON import are not modified.
+- **No drift between client gate and ToS:** Both reference the same affirmative representation; the ToS explicitly cites "in-product checkbox" as the binding act, locking the legal narrative to the UI.
+- **Edit-mode coverage:** Re-affirmation is required on every edit session, even if the file isn't being replaced — protects against silently re-publishing previously infringing material after a label/description change.
+- **Devtools bypass:** Defended by the server-side-style guard inside `handleSave` (toast + early return) in addition to the disabled attribute.
+- **Section renumbering in ToS:** No internal cross-references in the existing ToS use section numbers (verified by reading the full file), so renumbering 6→7 through 14→15 is safe with no broken anchors.
