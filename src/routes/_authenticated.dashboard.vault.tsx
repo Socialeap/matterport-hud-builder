@@ -540,6 +540,7 @@ function VaultPage() {
           if (!open) {
             setForm(emptyForm);
             setEditingId(null);
+            setCopyrightAck(false);
           }
         }}
         category={activeCategory}
@@ -547,6 +548,8 @@ function VaultPage() {
         setForm={setForm}
         editing={!!editingId}
         saving={saving}
+        copyrightAck={copyrightAck}
+        setCopyrightAck={setCopyrightAck}
         onSave={handleSave}
       />
     </div>
