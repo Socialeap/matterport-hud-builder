@@ -571,7 +571,7 @@ function buildPropertyDocsPanel(
 export const generatePresentation = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: { modelId: string; qaDatabase?: QADatabaseEntry[] }) => data)
-  .handler(async ({ data, context }): Promise<{ success: boolean; html?: string; error?: string }> => {
+  .handler(async ({ data, context }): Promise<{ success: boolean; html?: string; error?: string; askAiWarning?: string }> => {
     const { supabase, userId } = context;
 
     // Verify fulfillment
@@ -775,42 +775,67 @@ export const generatePresentation = createServerFn({ method: "POST" })
       process.env.SUPABASE_URL ??
       ""
     ).replace(/\/$/, "");
-    const synthesisUrl = _supabaseOrigin
-      ? `${_supabaseOrigin}/functions/v1/synthesize-answer`
-      : "";
 
-    // Issue (rotate) a signed presentation token. The token value is
-    // embedded in the exported HTML and replayed by synthesize-answer
-    // verifier server-side. Only the token HASH is stored in the DB,
-    // so a DB read alone cannot replay tokens.
+    // Token-mint policy. Three states, and each ships a working HTML:
+    //   1. Token env not configured (no PRESENTATION_TOKEN_SECRET or no
+    //      service-role key) → skip mint, ship in deterministic-only
+    //      mode (no __SYNTHESIS_URL__, no __PRESENTATION_TOKEN__). The
+    //      visitor's Ask AI panel uses the local canonical/curated/chunk
+    //      ladder — same path the runtime used before the synthesis
+    //      bridge existed. Operator gets a non-blocking warning toast.
+    //   2. Token env configured + mint succeeds → full Ask AI with the
+    //      Gemini synthesis path.
+    //   3. Token env configured + mint throws (DB / network failure)
+    //      → throw with a friendly message. This is an operational bug
+    //      the operator needs to see, not a silent degradation.
     //
-    // Hard rule: if Ask AI is configured (i.e. a synthesis URL is
-    // available), token mint MUST succeed. A silent skip ships an HTML
-    // file whose Ask panel 401s on every visitor query — exactly the
-    // failure mode that produced the Chaska "I don't have that detail"
-    // / hallucinated-outdoor-space symptoms in 2026-04. Surface the
-    // error to the builder UI instead.
+    // The conditional injection of __SYNTHESIS_URL__ alongside the token
+    // (further below) keeps the runtime's `canSynthesize` flag in sync:
+    // synthesis is only attempted when both the URL and the token are
+    // present, so we never ship an HTML that 401-loops on every query.
+    const tokenSecret = (process.env.PRESENTATION_TOKEN_SECRET ?? "").trim();
+    const serviceRole = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").trim();
+    const tokenEnvReady = tokenSecret.length >= 32 && serviceRole.length > 0;
+
     let presentationToken = "";
-    try {
-      const { ensurePresentationToken } = await import(
-        "./presentation-token-server"
-      );
-      const issued = await ensurePresentationToken(model.id);
-      presentationToken = issued.value;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (synthesisUrl) {
-        // Ask AI is on but the token can't be minted — refuse the
-        // export. The builder UI surfaces this as a friendly toast.
+    let askAiWarning: string | null = null;
+    if (_supabaseOrigin && tokenEnvReady) {
+      try {
+        const { ensurePresentationToken } = await import(
+          "./presentation-token-server"
+        );
+        const issued = await ensurePresentationToken(model.id);
+        presentationToken = issued.value;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(
+          "[generatePresentation] token mint failed despite env being set:",
+          msg,
+        );
         throw new Error(
           "Ask AI couldn't be set up for this export. Please contact support and reference: token issuance failed.",
         );
       }
+    } else if (_supabaseOrigin) {
+      // Env missing — log once at the server, surface a soft warning to
+      // the builder UI. This is the path that lets exports keep flowing
+      // for operators who haven't yet configured Ask AI auth.
       console.warn(
-        "[generatePresentation] token issuance skipped (Ask AI not configured):",
-        msg,
+        "[generatePresentation] Ask AI token env not configured " +
+          "(PRESENTATION_TOKEN_SECRET / SUPABASE_SERVICE_ROLE_KEY missing). " +
+          "Shipping HTML in deterministic-ladder-only mode.",
       );
+      askAiWarning =
+        "Ask AI is in limited mode for this export — visitor questions will be answered from the local Q&A database only. Configure Ask AI in your environment to enable smart answers.";
     }
+
+    // Synthesis URL is gated on the token: when no token was minted,
+    // omit the URL too so the runtime's `canSynthesize` flag is false
+    // and the deterministic ladder runs end-to-end (instead of every
+    // query 401-looping through synthesize-answer).
+    const synthesisUrl = (_supabaseOrigin && presentationToken)
+      ? `${_supabaseOrigin}/functions/v1/synthesize-answer`
+      : "";
 
     // Build social links HTML for the contact panel
     const socialDefs: Array<{ key: string; label: string }> = [
@@ -2151,7 +2176,9 @@ if(frame){
 </body>
 </html>`;
 
-    return { success: true, html };
+    return askAiWarning
+      ? { success: true, html, askAiWarning }
+      : { success: true, html };
   });
 
 // ============================================================================
