@@ -287,6 +287,24 @@ function assertRequiredStartupTokens(src) {
   console.log(`[verify-html] ✅ All critical startup tokens present in template.`);
 }
 
+function assertHudGateStartsClosed(src) {
+  const required = [
+    "hideGate(false)",
+    "setHudVisible(false);",
+  ];
+  const missing = required.filter((t) => !src.includes(t));
+  if (missing.length) {
+    console.error("[verify-html] ❌ HUD gate dismissal must leave the HUD closed:");
+    for (const m of missing) console.error("    missing " + m);
+    process.exit(1);
+  }
+  if (src.includes("hideGate(true)")) {
+    console.error("[verify-html] ❌ Safety bootstrap still opens the HUD from the gate.");
+    process.exit(1);
+  }
+  console.log(`[verify-html] ✅ Gate dismissal leaves HUD closed until toggled.`);
+}
+
 function main() {
   verifyAskRuntimeModules();
   parseAskRuntime();
@@ -297,6 +315,7 @@ function main() {
   const commentOffenders = scanCommentInterpolations(src, start, end);
 
   assertRequiredStartupTokens(src);
+  assertHudGateStartsClosed(src);
 
   if (offenders.length === 0 && commentOffenders.length === 0) {
     console.log(
