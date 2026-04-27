@@ -783,8 +783,28 @@ serve(async (req) => {
       maxOutputTokens: 2000,
       temperature: 0.1,
     });
-    schema = sanitiseSchema(JSON.parse(stripFences(text)));
     console.log("[pdf_b64] usage", usage);
+    // Three-tier resilient parse — the same approach used by the
+    // architect_refine path. Gemini occasionally emits trailing prose,
+    // unterminated strings, or trailing commas; tryRepairJson handles
+    // those without falsely failing the whole induction step.
+    const cleaned = stripFences(text);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch (e1) {
+      const repaired = tryRepairJson(text);
+      if (repaired === null) {
+        const msg = e1 instanceof Error ? e1.message : String(e1);
+        return jsonResponse(
+          { error: "schema_parse_failed", detail: msg },
+          422,
+        );
+      }
+      parsed = repaired;
+      console.log("[pdf_b64] parsed via tryRepairJson fallback");
+    }
+    schema = sanitiseSchema(parsed);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return jsonResponse(
