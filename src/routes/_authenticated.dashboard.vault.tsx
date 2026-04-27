@@ -391,6 +391,7 @@ function VaultPage() {
     setEditorOpen(false);
     setForm(emptyForm);
     setEditingId(null);
+    setCopyrightAck(false);
     fetchAssets();
   };
 
