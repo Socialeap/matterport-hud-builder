@@ -1185,7 +1185,7 @@ var chevDown=document.getElementById("hud-chevron-down");
 var hudVisible=false;
 function setHudVisible(v){
   hudVisible=v;
-  if(hudHeader){hudHeader.className="hud-header "+(v?"visible":"hidden");}
+  if(hudHeader){hudHeader.classList.toggle("visible",v);}
   if(chevUp) chevUp.style.display=v?"":"none";
   if(chevDown) chevDown.style.display=v?"none":"";
 }
