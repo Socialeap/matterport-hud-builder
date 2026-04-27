@@ -775,6 +775,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
           question: entry.question,
           answer: entry.answer,
           source_anchor_id: entry.source_anchor_id,
+          field: entry.field,
           embedding: embeddings[i],
         }));
       }
@@ -806,7 +807,13 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
       toast.success("Presentation downloaded");
     } catch (err) {
       console.error("Download failed:", err);
-      toast.error("Download failed. Please try again.");
+      // Surface the server error message when it's our Ask AI guard or
+      // any other thrown Error with a non-empty message — those are
+      // pre-formatted as visitor-friendly copy. Fall back to the
+      // generic message for opaque failures (e.g. network errors).
+      const msg =
+        err instanceof Error && err.message ? err.message : "";
+      toast.error(msg || "Download failed. Please try again.");
     }
     setDownloading(false);
     setDownloadStep("");

@@ -38,6 +38,7 @@ import {
   ipFromRequest,
 } from "../_shared/rate-limit.ts";
 import { decryptKey } from "../_shared/byok-crypto.ts";
+import { intentAllows } from "../_shared/intent-compat.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -97,6 +98,14 @@ interface RequestBody {
   query?: string;
   /** Optional: client-side bias signals; never trusted as content. */
   evidence_hints?: EvidenceHints;
+  /**
+   * Optional: classified intent name (matches FIELD_COMPAT keys in
+   * `_shared/intent-compat.ts`). When supplied, `pickTrustedChunks`
+   * uses it to drop field cards whose key fails `intentAllows` — the
+   * same gating the client applies to canonical/curated hits. Missing
+   * or "unknown" preserves legacy behavior (all fields included).
+   */
+  intent?: string;
 }
 
 const MAX_TRUSTED_CHUNKS = 5;
@@ -534,18 +543,49 @@ function fieldValueText(value: unknown): string {
 }
 
 /**
- * Fetch and shape the trusted evidence for one property. Reads the
- * persisted chunks + fields (post-hydrator), filters out private-
- * visibility chunks, and returns the highest-quality K evidence items.
- * Visitor-supplied `evidence_hints.chunk_ids` are used to *bias* the
- * ordering but never to inject content the server didn't load.
+ * Fetch and shape the trusted evidence for one property.
+ *
+ * The Ask AI bug class that drove this rewrite: when a property's
+ * extractions yield N short field values + 1 long doc chunk, the
+ * previous picker scored every field at baseScore=0.58 and the chunk
+ * at 0.5 — so for a query like "what is the size of this space?",
+ * Gemini received `Outdoor Space: A patio…` as its top-ranked card
+ * instead of the brochure paragraph that contained the actual size
+ * detail. The model then echoed the field card and the visitor saw an
+ * answer about the patio.
+ *
+ * The new policy:
+ *   1. Document chunks always rank ABOVE field cards. Quality-score
+ *      ordering between chunks is preserved.
+ *   2. Field cards are excluded by default. They are admitted only when
+ *      either (a) `intentAllows(field_key, intent)` returns true — i.e.
+ *      the field is on the same intent's allow-list the client uses for
+ *      tier-1 canonical filtering — or (b) the client explicitly hinted
+ *      this field id via `evidence_hints.chunk_ids`.
+ *   3. `intent="unknown"` (or missing) preserves the legacy "all fields
+ *      included" behavior, so older clients that don't yet send intent
+ *      keep working without a degraded answer.
+ *
+ * Visitor-supplied hints can bias *ordering* but the server still loads
+ * the underlying text from `property_extractions`; client-supplied
+ * content is never trusted.
  */
 function pickTrustedChunks(
   rows: ExtractionEvidenceRow[],
   hints: EvidenceHints | undefined,
   k: number,
+  intent: string,
 ): SynthesisChunk[] {
-  const all: Array<SynthesisChunk & { baseScore: number }> = [];
+  const hintIds = new Set(
+    (hints?.chunk_ids ?? [])
+      .filter((x): x is string => typeof x === "string")
+      .slice(0, k * 4),
+  );
+
+  type Card = SynthesisChunk & { baseScore: number; kind: "chunk" | "field" };
+  const chunkCards: Card[] = [];
+  const fieldCards: Card[] = [];
+
   for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
     const r = rows[rowIdx];
     if (Array.isArray(r.chunks)) {
@@ -557,46 +597,70 @@ function pickTrustedChunks(
         const id = String(c.id ?? `chunk-${rowIdx}-${chunkIdx}`).slice(0, 100);
         const content = String(c.content ?? "").trim();
         if (!content) continue;
-        all.push({
+        // Chunks anchor in the [0.7, 1.0] band so even a low-quality
+        // chunk outranks the highest-scoring field card (≤ 0.55).
+        const quality = typeof c.qualityScore === "number" ? c.qualityScore : 0.7;
+        const clamped = Math.max(0.7, Math.min(1.0, quality));
+        chunkCards.push({
           id,
           section: String(c.section ?? "Document").slice(0, 100),
           content: content.slice(0, MAX_CHUNK_CONTENT),
           score: 0,
-          baseScore: typeof c.qualityScore === "number" ? c.qualityScore : 0.5,
+          kind: "chunk",
+          baseScore: clamped,
         });
       }
     }
     if (r.fields && typeof r.fields === "object" && !Array.isArray(r.fields)) {
+      const intentActive = intent && intent !== "unknown";
       for (const [key, value] of Object.entries(r.fields as Record<string, unknown>)) {
         const text = fieldValueText(value);
         if (!text) continue;
+        const fieldId = `field:${key}`.slice(0, 100);
+        const hinted = hintIds.has(fieldId);
+        // Drop field cards that aren't intent-relevant unless the
+        // client explicitly hinted them. Intent-allowed fields land
+        // at 0.55 (just below the chunk floor); hinted-but-not-
+        // intent-allowed fields land lower still so they never displace
+        // a real chunk but remain available as supporting context.
+        let baseScore: number;
+        if (intentActive) {
+          if (intentAllows(key, intent)) {
+            baseScore = 0.55;
+          } else if (hinted) {
+            baseScore = 0.45;
+          } else {
+            continue;
+          }
+        } else {
+          // Legacy path: keep all fields, slightly below chunk floor.
+          baseScore = 0.55;
+        }
         const label = humanizeFieldName(key);
-        all.push({
-          id: `field:${key}`.slice(0, 100),
+        fieldCards.push({
+          id: fieldId,
           section: label.slice(0, 100),
           content: `${label}: ${text}`.slice(0, MAX_CHUNK_CONTENT),
           score: 0,
-          baseScore: 0.58,
+          kind: "field",
+          baseScore,
         });
       }
     }
   }
-  const hintIds = new Set(
-    (hints?.chunk_ids ?? [])
-      .filter((x): x is string => typeof x === "string")
-      .slice(0, k * 4),
-  );
-  const scored = all.map((c) => ({
-    chunk: c,
-    score: c.baseScore + (hintIds.has(c.id) ? 0.5 : 0),
-  }));
-  scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, k).map(({ chunk, score }) => ({
-    id: chunk.id,
-    section: chunk.section,
-    content: chunk.content,
-    score,
-  }));
+
+  // Score within each band, then concatenate (chunks always first).
+  // Hinted IDs get a small +0.10 bias inside their band — enough to
+  // break ties between same-quality items but not enough to promote
+  // a field card over a chunk.
+  const scoreInBand = (cards: Card[]): SynthesisChunk[] =>
+    cards
+      .map((c) => ({ ...c, score: c.baseScore + (hintIds.has(c.id) ? 0.10 : 0) }))
+      .sort((a, b) => b.score - a.score)
+      .map(({ id, section, content, score }) => ({ id, section, content, score }));
+
+  const ordered = [...scoreInBand(chunkCards), ...scoreInBand(fieldCards)];
+  return ordered.slice(0, k);
 }
 
 serve(async (req) => {
@@ -650,6 +714,9 @@ serve(async (req) => {
   const claimedSavedModelId = body.saved_model_id ?? null;
   const propertyUuid = body.property_uuid ?? null;
   const query = String(body.query ?? "").slice(0, 500).trim();
+  // Cap intent length defensively — the value drives `intentAllows`
+  // regex selection, never the LLM prompt or DB lookups.
+  const intent = String(body.intent ?? "unknown").slice(0, 64).trim() || "unknown";
 
   if (!presentationToken || !claimedSavedModelId || !propertyUuid) {
     return jsonError(401, {
@@ -756,6 +823,7 @@ serve(async (req) => {
     extractions,
     body.evidence_hints,
     MAX_TRUSTED_CHUNKS,
+    intent,
   );
   if (trustedChunks.length === 0) {
     return jsonError(409, { error: "no_chunks_available" });

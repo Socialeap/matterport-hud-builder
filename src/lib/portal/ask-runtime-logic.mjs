@@ -107,12 +107,40 @@ function _queryTokens(q) {
   return out;
 }
 
+// Tokens that appear in nearly every property question and carry no
+// signal about which field is being asked about. Boosting `outdoor_space`
+// just because the visitor said "this space" is the worst kind of false
+// match — `space` and `listing` show up in dozens of unrelated phrasings.
+// Keep functional nouns like `parking`, `kitchen`, `pool`, `dining` off
+// this list — those genuinely identify the target field.
+var _FIELD_BOOST_STOPWORDS = {
+  area: true,
+  building: true,
+  here: true,
+  listing: true,
+  place: true,
+  property: true,
+  room: true,
+  rooms: true,
+  space: true,
+  spaces: true,
+  that: true,
+  there: true,
+  this: true,
+  type: true,
+};
+
 function _fieldMatchesTokens(field, tokens) {
   if (!field) return false;
   var parts = String(field).toLowerCase().split(/[_\s-]+/);
   for (var i = 0; i < parts.length; i++) {
-    if (parts[i].length >= 3 && tokens[parts[i]]) return true;
-    if (parts[i].length >= 4 && parts[i].slice(-1) === "s" && tokens[parts[i].slice(0, -1)]) return true;
+    var part = parts[i];
+    if (_FIELD_BOOST_STOPWORDS[part]) continue;
+    if (part.length >= 3 && tokens[part]) return true;
+    if (part.length >= 4 && part.slice(-1) === "s") {
+      var singular = part.slice(0, -1);
+      if (!_FIELD_BOOST_STOPWORDS[singular] && tokens[singular]) return true;
+    }
   }
   return false;
 }
