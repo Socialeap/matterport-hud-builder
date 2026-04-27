@@ -12,6 +12,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.103.0";
 import { mineFromChunks, type ProvenanceEntry } from "../_shared/prose-miner.ts";
+import {
+  computeIntelligenceHealth,
+  type IntelligenceHealth,
+} from "../_shared/intelligence-health.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -357,6 +361,15 @@ interface CandidateField {
   evidence?: string;
 }
 
+/**
+ * Call Gemini 2.5 Flash-Lite with the same two-bucket structuring
+ * prompt that previously ran through OpenAI gpt-4o-mini. Stack
+ * consistency over vendor mix per the design Q&A.
+ *
+ * llm_stage codes are kept stable (the wizard health-warning humaniser
+ * keys off them); the only new prefix is `gemini_<status>` replacing
+ * `openai_<status>` for HTTP error rejections.
+ */
 async function structureFields(
   text: string,
   apiKey: string,
@@ -366,35 +379,41 @@ async function structureFields(
   candidates: CandidateField[];
   llm_stage: string;
 }> {
-  const truncated = text.length > MAX_TEXT_CHARS ? text.slice(0, MAX_TEXT_CHARS) : text;
+  const truncated =
+    text.length > MAX_TEXT_CHARS ? text.slice(0, MAX_TEXT_CHARS) : text;
+  const modelName =
+    Deno.env.get("GEMINI_STRUCTURING_MODEL") ?? "gemini-2.5-flash-lite";
+  const url =
+    `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+  const prompt = `${SYSTEM_PROMPT}\n\n--- DOCUMENT ---\n${truncated}`;
   try {
-    const resp = await fetch("https://api.openai.com/v1/chat/completions", {
+    const resp = await fetch(url, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: truncated },
-        ],
-        max_tokens: 4000,
-        temperature: 0.1,
-        response_format: { type: "json_object" },
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 4000,
+          responseMimeType: "application/json",
+        },
       }),
     });
     if (!resp.ok) {
       const body = await resp.text().catch(() => "");
-      console.warn(`[extract-url-content] ${domain} openai_${resp.status}: ${body.slice(0, 200)}`);
-      return { fields: {}, candidates: [], llm_stage: `openai_${resp.status}` };
+      console.warn(
+        `[extract-url-content] ${domain} gemini_${resp.status}: ${body.slice(0, 200)}`,
+      );
+      return { fields: {}, candidates: [], llm_stage: `gemini_${resp.status}` };
     }
     const completion = (await resp.json()) as {
-      choices?: Array<{ message?: { content?: string }; finish_reason?: string }>;
+      candidates?: Array<{
+        content?: { parts?: Array<{ text?: string }> };
+        finishReason?: string;
+      }>;
     };
-    const raw = completion.choices?.[0]?.message?.content ?? "";
-    const finish = completion.choices?.[0]?.finish_reason ?? "stop";
+    const raw = completion.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+    const finish = completion.candidates?.[0]?.finishReason ?? "STOP";
     if (!raw.trim()) {
       return { fields: {}, candidates: [], llm_stage: "empty_response" };
     }
@@ -406,8 +425,6 @@ async function structureFields(
       return { fields: {}, candidates: [], llm_stage: `parse_failed_${finish}` };
     }
 
-    // Two-bucket parser with back-compat: if "fields"/"candidates" missing,
-    // treat the whole object as the legacy fields blob.
     const hasNewShape =
       ("fields" in parsed && typeof parsed.fields === "object") ||
       ("candidates" in parsed && Array.isArray(parsed.candidates));
@@ -415,9 +432,10 @@ async function structureFields(
     let fields: Record<string, unknown>;
     let rawCandidates: unknown[];
     if (hasNewShape) {
-      fields = (parsed.fields && typeof parsed.fields === "object" && !Array.isArray(parsed.fields))
-        ? parsed.fields as Record<string, unknown>
-        : {};
+      fields =
+        parsed.fields && typeof parsed.fields === "object" && !Array.isArray(parsed.fields)
+          ? (parsed.fields as Record<string, unknown>)
+          : {};
       rawCandidates = Array.isArray(parsed.candidates) ? parsed.candidates : [];
     } else {
       fields = parsed;
@@ -430,15 +448,30 @@ async function structureFields(
         key: String(c.key ?? "").trim(),
         value: c.value,
         confidence: typeof c.confidence === "number" ? c.confidence : 0,
-        evidence: typeof c.evidence === "string" ? c.evidence.slice(0, 240) : undefined,
+        evidence:
+          typeof c.evidence === "string" ? c.evidence.slice(0, 240) : undefined,
       }))
-      .filter((c) => c.key && /^[a-z][a-z0-9_]*$/.test(c.key) && c.value != null && c.value !== "");
+      .filter(
+        (c) =>
+          c.key &&
+          /^[a-z][a-z0-9_]*$/.test(c.key) &&
+          c.value != null &&
+          c.value !== "",
+      );
 
-    return { fields, candidates, llm_stage: finish === "length" ? "ok_truncated" : "ok" };
+    return {
+      fields,
+      candidates,
+      llm_stage: finish === "MAX_TOKENS" ? "ok_truncated" : "ok",
+    };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn(`[extract-url-content] ${domain} structuring exception: ${msg}`);
-    return { fields: {}, candidates: [], llm_stage: `exception:${msg.slice(0, 80)}` };
+    return {
+      fields: {},
+      candidates: [],
+      llm_stage: `exception:${msg.slice(0, 80)}`,
+    };
   }
 }
 
@@ -529,7 +562,11 @@ serve(async (req) => {
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
   const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
-  const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+  // Stack consistency: structuring runs on Gemini 2.5 Flash-Lite using
+  // the same TM-funded key that the public synthesis path uses. The
+  // legacy OPENAI_API_KEY env var is no longer consulted.
+  const GEMINI_API_KEY =
+    Deno.env.get("GEMINI_API_KEY") ?? Deno.env.get("GEMINI_PRIMARY_MODEL");
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY || !ANON_KEY) {
     return fail("auth", "supabase_env_missing", 500);
   }
@@ -654,8 +691,8 @@ serve(async (req) => {
   }
 
   // ── 7. Structure fields with the LLM (best-effort, two-bucket schema) ─
-  const llmResult = OPENAI_API_KEY
-    ? await structureFields(text, OPENAI_API_KEY, domain)
+  const llmResult = GEMINI_API_KEY
+    ? await structureFields(text, GEMINI_API_KEY, domain)
     : {
         fields: {} as Record<string, unknown>,
         candidates: [] as CandidateField[],
@@ -681,6 +718,45 @@ serve(async (req) => {
 
   const fieldKeys = Object.keys(fields);
 
+  // ── 7c. Compute intelligence_health envelope. canonical_qa_count and
+  // embedded_chunk_count stay 0 here; the IndexingProvider rewrites
+  // this row once embeddings + canonical QAs are generated.
+  const healthWarnings: string[] = [];
+  if (lowContent) healthWarnings.push("thin_content");
+  if (llmResult.llm_stage === "no_api_key") {
+    healthWarnings.push("structuring_skipped_no_llm_key");
+  } else if (
+    typeof llmResult.llm_stage === "string" &&
+    llmResult.llm_stage.startsWith("parse_failed")
+  ) {
+    healthWarnings.push("structuring_parse_failed");
+  } else if (
+    typeof llmResult.llm_stage === "string" &&
+    (llmResult.llm_stage.startsWith("gemini_") ||
+      llmResult.llm_stage.startsWith("openai_"))
+  ) {
+    healthWarnings.push("structuring_provider_error");
+  }
+  if (fieldKeys.length === 0 && chunks.length > 0) {
+    healthWarnings.push("zero_structured_fields_extracted");
+  }
+  if (fieldKeys.length > 0 && fieldKeys.length < 3) {
+    healthWarnings.push("low_field_count");
+  }
+  const intelligenceHealth: IntelligenceHealth = computeIntelligenceHealth({
+    field_count: fieldKeys.length,
+    canonical_qa_count: 0,
+    chunk_count: chunks.length,
+    embedded_chunk_count: 0,
+    candidate_field_count: candidateFields.length,
+    evidence_unit_count: provenance.length,
+    warnings: healthWarnings,
+    blocking_errors: [],
+    source_asset_id: body.vault_asset_id,
+    property_uuid: body.property_uuid,
+    saved_model_id: body.saved_model_id ?? null,
+  });
+
   // ── 8. Persist (candidate_fields/field_provenance written best-effort) ─
   const persistRow: Record<string, unknown> = {
     vault_asset_id: body.vault_asset_id,
@@ -693,6 +769,7 @@ serve(async (req) => {
     extractor_version: "2",
     candidate_fields: candidateFields.length > 0 ? candidateFields : null,
     field_provenance: provenance.length > 0 ? provenance : null,
+    intelligence_health: intelligenceHealth,
   };
 
   const { data: upserted, error: upErr } = await serviceClient
@@ -718,7 +795,7 @@ serve(async (req) => {
     .eq("id", body.vault_asset_id);
 
   console.info(
-    `[extract-url-content] ${domain} text_len=${text.length} fields=${fieldKeys.length} mined=${Object.keys(mined).length} candidates=${candidateFields.length} chunks=${chunks.length} llm=${llmResult.llm_stage} ok`,
+    `[extract-url-content] ${domain} text_len=${text.length} fields=${fieldKeys.length} mined=${Object.keys(mined).length} candidates=${candidateFields.length} chunks=${chunks.length} llm=${llmResult.llm_stage} health=${intelligenceHealth.status} ok`,
   );
 
   return jsonResponse({
@@ -727,6 +804,7 @@ serve(async (req) => {
     fields,
     chunks_indexed: chunks.length,
     embedding_status: "pending" as const,
+    intelligence_health: intelligenceHealth,
     diagnostics: {
       domain,
       text_length: text.length,

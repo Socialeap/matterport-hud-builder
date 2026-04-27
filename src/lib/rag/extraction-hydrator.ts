@@ -31,6 +31,11 @@ import {
   type EmbeddedCanonicalQA,
 } from "./canonical-questions";
 import { EMBEDDING_DIM, type ChunkKind, type ChunkSource, type ChunkVisibility } from "./types";
+import {
+  computeIntelligenceHealth,
+  parseIntelligenceHealth,
+  type IntelligenceHealth,
+} from "@/lib/intelligence/health";
 
 /** Internal batch size — well below MAX_TEXTS_PER_EMBED so a single
  *  long row never trips the worker's hard cap. Bigger batches reduce
@@ -45,6 +50,11 @@ interface RawExtractionRow {
   fields: Record<string, unknown>;
   chunks: unknown;
   canonical_qas: unknown;
+  intelligence_health: unknown;
+  field_provenance: unknown;
+  candidate_fields: unknown;
+  vault_asset_id: string;
+  saved_model_id: string | null;
 }
 
 interface RawChunk {
@@ -84,7 +94,27 @@ function rowAlreadyEnriched(row: RawExtractionRow): boolean {
     c.every(
       (x) => Array.isArray(x?.embedding) && x.embedding.length === EMBEDDING_DIM,
     );
-  return allChunksEmbedded && Array.isArray(row.canonical_qas);
+
+  // Health-driven primary check: a row is "done" when its persisted
+  // status is ready or context_only_degraded AND chunks are embedded.
+  // The old non-null check on canonical_qas treated `[]` as enriched —
+  // that is the contract gap we are closing.
+  const health = parseIntelligenceHealth(row.intelligence_health);
+  if (health) {
+    if (
+      (health.status === "ready" ||
+        health.status === "context_only_degraded") &&
+      allChunksEmbedded
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  // Legacy rows (no health column): require non-empty canonical_qas.
+  const hasCanonicalQas =
+    Array.isArray(row.canonical_qas) && row.canonical_qas.length > 0;
+  return allChunksEmbedded && hasCanonicalQas;
 }
 
 /**
@@ -116,7 +146,9 @@ export async function ensureExtractionEmbeddings(
 
   const { data: rows, error } = await supabase
     .from("property_extractions")
-    .select("id, property_uuid, fields, chunks, canonical_qas")
+    .select(
+      "id, property_uuid, fields, chunks, canonical_qas, intelligence_health, field_provenance, candidate_fields, vault_asset_id, saved_model_id",
+    )
     .in("property_uuid", propertyUuids);
 
   if (error) {
@@ -198,11 +230,45 @@ export async function ensureExtractionEmbeddings(
 
         onProgress(`Persisting row ${i} of ${rowsNeedingWork.length}…`);
 
+        // Recompute intelligence_health to reflect the new
+        // embedded_chunk_count + canonical_qa_count. Carry forward
+        // warnings/blocking_errors from the prior compute since the
+        // hydrator doesn't introduce new ones.
+        const priorHealth = parseIntelligenceHealth(row.intelligence_health);
+        const fieldCount = Object.keys(fields).length;
+        const embeddedChunkCount = enrichedChunks.filter(
+          (c) =>
+            Array.isArray(c.embedding) &&
+            c.embedding.length === EMBEDDING_DIM,
+        ).length;
+        const candidateFieldCount = Array.isArray(row.candidate_fields)
+          ? row.candidate_fields.length
+          : 0;
+        const evidenceUnitCount = Array.isArray(row.field_provenance)
+          ? row.field_provenance.length
+          : (priorHealth?.evidence_unit_count ?? 0);
+        const updatedHealth: IntelligenceHealth = computeIntelligenceHealth({
+          field_count: fieldCount,
+          canonical_qa_count: enrichedCanonicalQAs.length,
+          chunk_count: enrichedChunks.length,
+          embedded_chunk_count: embeddedChunkCount,
+          candidate_field_count: candidateFieldCount,
+          evidence_unit_count: evidenceUnitCount,
+          warnings: priorHealth?.warnings ?? [],
+          blocking_errors: priorHealth?.blocking_errors ?? [],
+          source_asset_id:
+            priorHealth?.source_asset_id ?? row.vault_asset_id ?? null,
+          property_uuid: priorHealth?.property_uuid ?? row.property_uuid,
+          saved_model_id:
+            priorHealth?.saved_model_id ?? row.saved_model_id ?? null,
+        });
+
         const { error: updateErr } = await supabase
           .from("property_extractions")
           .update({
             chunks: enrichedChunks as unknown as Json,
             canonical_qas: enrichedCanonicalQAs as unknown as Json,
+            intelligence_health: updatedHealth as unknown as Json,
           })
           .eq("id", row.id);
 

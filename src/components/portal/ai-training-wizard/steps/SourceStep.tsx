@@ -1,9 +1,15 @@
 import { useRef, useState } from "react";
 import { ChevronDown, FileText, Library, Link2, Upload } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAvailablePropertyDocs } from "@/hooks/useAvailablePropertyDocs";
+import {
+  checkUploadSize,
+  uploadKindForMime,
+  uploadLimitDescription,
+} from "@/lib/limits";
 
 import type { WizardSource } from "../types";
 
@@ -38,6 +44,20 @@ export function SourceStep({ source, onChange, onBack, onContinue }: Props) {
   const setFile = (file: File | null) => {
     if (!file) {
       onChange(null);
+      return;
+    }
+    // Map the dropped file to a known UploadKind so the limit applied
+    // here matches the one the edge function will enforce. Unknown
+    // MIME types fall back to the strictest applicable cap (PDF) so
+    // we never accept a file the server would reject.
+    const kind = uploadKindForMime(file.type) ?? "pdf_bytes";
+    const check = checkUploadSize(file.size, kind);
+    if (!check.ok) {
+      toast.error(check.message);
+      onChange(null);
+      // Clear the input so the same file can be re-picked after the
+      // user shrinks it.
+      if (inputRef.current) inputRef.current.value = "";
       return;
     }
     onChange({ kind: "file", file });
@@ -121,7 +141,7 @@ export function SourceStep({ source, onChange, onBack, onContinue }: Props) {
                 Drop a document here, or click to browse
               </p>
               <p className="text-[11px] text-muted-foreground">
-                PDF, DOCX, TXT or RTF · up to 20 MB
+                PDF, DOCX, TXT or RTF · {uploadLimitDescription("pdf_bytes")}
               </p>
             </div>
           </>

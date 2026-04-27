@@ -33,6 +33,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { ensureExtractionEmbeddings } from "./extraction-hydrator";
 import { EmbeddingWorkerClient } from "./embedding-worker-client";
 import { EMBEDDING_DIM } from "./types";
+import { parseIntelligenceHealth } from "@/lib/intelligence/health";
 
 export type IndexingPhase = "idle" | "indexing" | "ready" | "failed";
 
@@ -106,21 +107,36 @@ export function IndexingProvider({ children }: { children: ReactNode }) {
     workerRef.current = null;
   }, []);
 
-  /** Force-resolve fallback: re-read the row; if chunks are populated
-   *  AND embeddings are present AND canonical_qas is non-null, the work
-   *  is genuinely done — flip to ready regardless of whatever the worker
-   *  promise is doing. */
+  /** Force-resolve fallback: re-read the row and decide whether the
+   *  work is genuinely done. Health-driven: a row is "done" when its
+   *  intelligence_health.status is `ready` OR `context_only_degraded`
+   *  (the latter is a legitimate steady state — chunks indexed but no
+   *  structured fields, see the contract spec). For rows persisted
+   *  before C2 shipped (no intelligence_health column), fall back to
+   *  the old structural check tightened to require non-empty
+   *  canonical_qas — empty arrays no longer count as "done". */
   const forceResolveFromDb = useCallback(
     async (uuid: string): Promise<boolean> => {
       try {
         const { data } = await supabase
           .from("property_extractions")
-          .select("chunks, canonical_qas")
+          .select("chunks, canonical_qas, intelligence_health")
           .eq("property_uuid", uuid);
         if (!data || data.length === 0) return false;
         return data.every((row) => {
           const chunks = Array.isArray(row.chunks) ? row.chunks : [];
           if (chunks.length === 0) return true; // empty rows are "done"
+          const health = parseIntelligenceHealth(row.intelligence_health);
+          if (health) {
+            // Health is the source of truth. `degraded` means indexing
+            // hasn't finished yet — keep waiting. `failed` likewise
+            // shouldn't short-circuit to ready.
+            return (
+              health.status === "ready" ||
+              health.status === "context_only_degraded"
+            );
+          }
+          // Legacy fallback (no health column).
           const allEmbedded = chunks.every(
             (c) =>
               c &&
@@ -130,7 +146,12 @@ export function IndexingProvider({ children }: { children: ReactNode }) {
               ((c as { embedding: number[] }).embedding.length ===
                 EMBEDDING_DIM),
           );
-          return allEmbedded && row.canonical_qas !== null;
+          const canonicalQas = Array.isArray(row.canonical_qas)
+            ? row.canonical_qas
+            : null;
+          return (
+            allEmbedded && canonicalQas !== null && canonicalQas.length > 0
+          );
         });
       } catch (err) {
         log("force-resolve check failed:", err);

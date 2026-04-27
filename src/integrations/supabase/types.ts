@@ -370,6 +370,116 @@ export type Database = {
           },
         ]
       }
+      ask_quota_counters: {
+        Row: {
+          byok_active: boolean
+          exhausted_email_sent_at: string | null
+          free_limit: number
+          free_used: number
+          property_uuid: string
+          saved_model_id: string
+          updated_at: string
+        }
+        Insert: {
+          byok_active?: boolean
+          exhausted_email_sent_at?: string | null
+          free_limit?: number
+          free_used?: number
+          property_uuid: string
+          saved_model_id: string
+          updated_at?: string
+        }
+        Update: {
+          byok_active?: boolean
+          exhausted_email_sent_at?: string | null
+          free_limit?: number
+          free_used?: number
+          property_uuid?: string
+          saved_model_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ask_quota_counters_saved_model_id_fkey"
+            columns: ["saved_model_id"]
+            isOneToOne: false
+            referencedRelation: "saved_models"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ask_quota_events: {
+        Row: {
+          created_at: string
+          id: string
+          idempotency_key: string
+          outcome: string
+          property_uuid: string
+          reason: string | null
+          saved_model_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          idempotency_key: string
+          outcome: string
+          property_uuid: string
+          reason?: string | null
+          saved_model_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          idempotency_key?: string
+          outcome?: string
+          property_uuid?: string
+          reason?: string | null
+          saved_model_id?: string
+        }
+        Relationships: []
+      }
+      provider_byok_keys: {
+        Row: {
+          active: boolean
+          ciphertext: string
+          created_at: string
+          fingerprint: string
+          id: string
+          iv: string
+          provider_id: string
+          rotated_at: string | null
+          validated_at: string | null
+          validation_error: string | null
+          vendor: string
+        }
+        Insert: {
+          active?: boolean
+          ciphertext: string
+          created_at?: string
+          fingerprint: string
+          id?: string
+          iv: string
+          provider_id: string
+          rotated_at?: string | null
+          validated_at?: string | null
+          validation_error?: string | null
+          vendor: string
+        }
+        Update: {
+          active?: boolean
+          ciphertext?: string
+          created_at?: string
+          fingerprint?: string
+          id?: string
+          iv?: string
+          provider_id?: string
+          rotated_at?: string | null
+          validated_at?: string | null
+          validation_error?: string | null
+          vendor?: string
+        }
+        Relationships: []
+      }
       page_visits: {
         Row: {
           id: string
@@ -396,6 +506,47 @@ export type Database = {
           visited_at?: string
         }
         Relationships: []
+      }
+      presentation_tokens: {
+        Row: {
+          created_at: string
+          id: string
+          issued_at: string
+          payload: Json
+          revoked_at: string | null
+          rotated_from: string | null
+          saved_model_id: string
+          token_hash: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          issued_at?: string
+          payload: Json
+          revoked_at?: string | null
+          rotated_from?: string | null
+          saved_model_id: string
+          token_hash: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          issued_at?: string
+          payload?: Json
+          revoked_at?: string | null
+          rotated_from?: string | null
+          saved_model_id?: string
+          token_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "presentation_tokens_saved_model_id_fkey"
+            columns: ["saved_model_id"]
+            isOneToOne: false
+            referencedRelation: "saved_models"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -439,6 +590,7 @@ export type Database = {
           field_provenance: Json | null
           fields: Json
           id: string
+          intelligence_health: Json | null
           property_uuid: string
           saved_model_id: string | null
           template_id: string
@@ -455,6 +607,7 @@ export type Database = {
           field_provenance?: Json | null
           fields: Json
           id?: string
+          intelligence_health?: Json | null
           property_uuid: string
           saved_model_id?: string | null
           template_id: string
@@ -471,6 +624,7 @@ export type Database = {
           field_provenance?: Json | null
           fields?: Json
           id?: string
+          intelligence_health?: Json | null
           property_uuid?: string
           saved_model_id?: string | null
           template_id?: string

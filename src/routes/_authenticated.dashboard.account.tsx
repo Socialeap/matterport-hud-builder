@@ -27,6 +27,7 @@ import { ExternalLink, KeyRound, ShieldAlert, FileText, Loader2 } from "lucide-r
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { deleteOwnAccount } from "@/lib/portal.functions";
+import { AskAiByokSection } from "@/components/dashboard/AskAiByokSection";
 
 export const Route = createFileRoute("/_authenticated/dashboard/account")({
   component: AccountPage,
@@ -144,6 +145,9 @@ function AccountPage() {
           </form>
         </CardContent>
       </Card>
+
+      {/* Ask AI / BYOK */}
+      <AskAiByokSection />
 
       {/* Privacy & Terms */}
       <Card>

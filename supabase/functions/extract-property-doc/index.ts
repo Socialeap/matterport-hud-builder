@@ -15,6 +15,14 @@ import { getProvider } from "../_shared/extractors/index.ts";
 import type { VaultTemplate } from "../_shared/extractors/types.ts";
 import { mineFromChunks, type ProvenanceEntry } from "../_shared/prose-miner.ts";
 import type { GroqCandidate } from "../_shared/groq-cleaner.ts";
+import {
+  computeIntelligenceHealth,
+  type IntelligenceHealth,
+} from "../_shared/intelligence-health.ts";
+import {
+  checkUploadSize,
+  uploadKindForMime,
+} from "../_shared/upload-limits.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -37,7 +45,7 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 type Stage = "auth" | "input" | "freeze" | "asset" | "no_storage_path"
-  | "template" | "download" | "extraction" | "persist";
+  | "template" | "download" | "size_limit" | "extraction" | "persist";
 
 function fail(
   stage: Stage,
@@ -169,6 +177,24 @@ serve(async (req) => {
     });
   }
 
+  // 3b ─ Enforce upload size policy server-side. The browser dropzone
+  // already checks the same limits via @/lib/limits (parity-tested),
+  // but a bypassed client must not be able to push an oversized file
+  // through storage and into the extraction pipeline.
+  const uploadKind =
+    uploadKindForMime(asset.mime_type) ?? "pdf_bytes";
+  const sizeCheck = checkUploadSize(bytes.byteLength, uploadKind);
+  if (!sizeCheck.ok) {
+    console.warn(
+      `[extract-property-doc] stage=size_limit kind=${uploadKind} bytes=${bytes.byteLength}`,
+    );
+    return fail("size_limit", sizeCheck.message, 413, {
+      bytes: bytes.byteLength,
+      limit: sizeCheck.limit,
+      kind: uploadKind,
+    });
+  }
+
   // 4 ─ Run extractor
   const provider = getProvider(template.extractor);
   let fields: Record<string, unknown>;
@@ -246,6 +272,33 @@ serve(async (req) => {
     );
   }
 
+  // 4d ─ Compute intelligence_health from local counts. canonical_qa_count
+  // and embedded_chunk_count stay 0 here — the IndexingProvider rewrites
+  // this row after embeddings + canonical QAs land. Until that happens
+  // the status stays "degraded" (or "context_only_degraded" / "failed"
+  // when no fields were extracted), which is the correct truthful state.
+  const fieldCount = Object.keys(fields).length;
+  const warnings: string[] = [];
+  if (fieldCount === 0 && chunks.length > 0) {
+    warnings.push("zero_structured_fields_extracted");
+  }
+  if (fieldCount > 0 && fieldCount < 3) {
+    warnings.push("low_field_count");
+  }
+  const intelligenceHealth: IntelligenceHealth = computeIntelligenceHealth({
+    field_count: fieldCount,
+    canonical_qa_count: 0,
+    chunk_count: chunks.length,
+    embedded_chunk_count: 0,
+    candidate_field_count: candidateFields.length,
+    evidence_unit_count: provenance.length,
+    warnings,
+    blocking_errors: [],
+    source_asset_id: body.vault_asset_id,
+    property_uuid: body.property_uuid,
+    saved_model_id: body.saved_model_id ?? null,
+  });
+
   // 5 ─ Upsert property_extractions
   const { data: upserted, error: upErr } = await serviceClient
     .from("property_extractions")
@@ -261,6 +314,7 @@ serve(async (req) => {
         extractor_version: provider.version,
         candidate_fields: candidateFields.length > 0 ? candidateFields : null,
         field_provenance: provenance.length > 0 ? provenance : null,
+        intelligence_health: intelligenceHealth,
       },
       { onConflict: "vault_asset_id,template_id" },
     )
@@ -285,7 +339,7 @@ serve(async (req) => {
     .eq("id", body.vault_asset_id);
 
   console.info(
-    `[extract-property-doc] extractor=${provider.id} bucket=${bucketUsed} fields=${Object.keys(fields).length} mined=${Object.keys(mined).length} candidates=${candidateFields.length} chunks=${chunks.length} ok`,
+    `[extract-property-doc] extractor=${provider.id} bucket=${bucketUsed} fields=${fieldCount} mined=${Object.keys(mined).length} candidates=${candidateFields.length} chunks=${chunks.length} health=${intelligenceHealth.status} ok`,
   );
 
   return jsonResponse({
@@ -294,9 +348,10 @@ serve(async (req) => {
     fields,
     chunks_indexed: chunks.length,
     embedding_status: "pending" as const,
+    intelligence_health: intelligenceHealth,
     diagnostics: {
       extractor: provider.id,
-      field_keys: Object.keys(fields).length,
+      field_keys: fieldCount,
       bucket: bucketUsed,
     },
   });

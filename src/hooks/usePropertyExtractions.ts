@@ -9,6 +9,8 @@ import {
 } from "@/lib/extraction/client";
 import { useIndexing } from "@/lib/rag/indexing-context";
 import type { PropertyChunk } from "@/lib/rag/types";
+import type { IntelligenceHealth } from "@/lib/intelligence/health";
+import { parseIntelligenceHealth } from "@/lib/intelligence/health";
 
 export interface ExtractionFailure {
   stage: string;
@@ -28,11 +30,70 @@ export interface PropertyExtraction {
   extractor: string;
   extractor_version: string;
   extracted_at: string;
+  intelligence_health: IntelligenceHealth | null;
 }
 
 /** Legacy status enum kept for backwards-compatible callers. Mirrors the
  *  shared `IndexingPhase` from `IndexingProvider`. */
 export type BackfillStatus = "idle" | "running" | "ok" | "failed";
+
+/** Toast helper that reflects intelligence_health truthfully. Avoids
+ *  the old "Extracted N chunks" success copy when the run produced
+ *  zero structured fields — that's the visible bug we are eliminating. */
+function notifyExtractionOutcome(
+  res: {
+    fields: Record<string, unknown>;
+    chunks_indexed: number;
+    intelligence_health?: IntelligenceHealth;
+  },
+  source: "" | "URL" = "",
+) {
+  const health =
+    res.intelligence_health
+      ? parseIntelligenceHealth(res.intelligence_health)
+      : null;
+  const fieldCount = Object.keys(res.fields ?? {}).length;
+  const sourceTag = source ? ` from ${source}` : "";
+  if (!health) {
+    toast.success(`Extracted ${res.chunks_indexed} chunks${sourceTag}`);
+    return;
+  }
+  switch (health.status) {
+    case "ready":
+      toast.success(
+        `Trained on ${fieldCount} field${
+          fieldCount === 1 ? "" : "s"
+        } and ${res.chunks_indexed} chunk${
+          res.chunks_indexed === 1 ? "" : "s"
+        }${sourceTag}`,
+      );
+      return;
+    case "degraded":
+      toast.success(
+        `Extracted ${fieldCount} field${
+          fieldCount === 1 ? "" : "s"
+        } from ${res.chunks_indexed} chunk${
+          res.chunks_indexed === 1 ? "" : "s"
+        }${sourceTag} — finishing index...`,
+      );
+      return;
+    case "context_only_degraded":
+      toast.warning(
+        `Indexed ${res.chunks_indexed} chunk${
+          res.chunks_indexed === 1 ? "" : "s"
+        }${sourceTag} but no structured facts were extracted. Visitors can still ask open questions; specific facts may not be answered deterministically.`,
+        { duration: 8000 },
+      );
+      return;
+    case "failed":
+    default:
+      toast.error(
+        health.blocking_errors[0] ??
+          `Extraction did not produce any usable intelligence${sourceTag}.`,
+      );
+      return;
+  }
+}
 
 export function usePropertyExtractions(propertyUuid: string | null) {
   const [extractions, setExtractions] = useState<PropertyExtraction[]>([]);
@@ -93,7 +154,19 @@ export function usePropertyExtractions(propertyUuid: string | null) {
       toast.error("Failed to load extractions");
       return null;
     }
-    return (data as unknown as PropertyExtraction[]) ?? [];
+    // Coerce intelligence_health JSONB through the strict parser so a
+    // malformed row never poisons UI decisions. Missing/invalid -> null,
+    // and the consumer treats null as "not yet trained".
+    const rows = ((data as unknown as PropertyExtraction[]) ?? []).map(
+      (r) => ({
+        ...r,
+        intelligence_health: parseIntelligenceHealth(
+          (r as unknown as { intelligence_health?: unknown })
+            .intelligence_health,
+        ),
+      }),
+    );
+    return rows;
   }, []);
 
   const refresh = useCallback(async () => {
@@ -155,7 +228,7 @@ export function usePropertyExtractions(propertyUuid: string | null) {
           saved_model_id: input.saved_model_id ?? null,
         });
         clearFailure(input.vault_asset_id);
-        toast.success(`Extracted ${res.chunks_indexed} chunks`);
+        notifyExtractionOutcome(res);
         await refresh();
         // Force a re-index so the new row gets embeddings + canonical QAs.
         indexing.requestForce(propertyUuid).catch((err) => {
@@ -194,7 +267,7 @@ export function usePropertyExtractions(propertyUuid: string | null) {
           saved_model_id: input.saved_model_id ?? null,
         });
         clearFailure(input.vault_asset_id);
-        toast.success(`Extracted ${res.chunks_indexed} chunks from URL`);
+        notifyExtractionOutcome(res, "URL");
         await refresh();
         indexing.requestForce(propertyUuid).catch((err) => {
           console.warn("Post-extraction embedding enrichment failed:", err);
