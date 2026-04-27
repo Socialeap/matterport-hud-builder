@@ -130,7 +130,43 @@ export const savePresentationRequest = createServerFn({ method: "POST" })
     return { success: true, modelId: model.id };
   });
 
-export const checkFulfillmentStatus = createServerFn({ method: "POST" })
+/**
+ * Refresh the persisted config for an existing saved_model so the next
+ * `generatePresentation` call sees the latest builder state (properties,
+ * behaviors, agent, branding overrides, enhancements). Caller must own
+ * the row (RLS enforces this via client_id).
+ *
+ * This exists because clients sometimes change Sound Library / agent /
+ * branding selections AFTER first save and before re-generating their
+ * HTML — without this refresh, those changes never reach the generator.
+ */
+export const refreshPresentationConfig = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: SavePresentationInput & { modelId: string }) => data)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { error } = await supabase
+      .from("saved_models")
+      .update({
+        properties: data.properties as unknown as import("@/integrations/supabase/types").Json,
+        tour_config: {
+          behaviors: data.tourConfig,
+          agent: data.agent,
+          brandingOverrides: data.brandingOverrides,
+          enhancements: data.enhancements ?? {},
+        } as unknown as import("@/integrations/supabase/types").Json,
+        model_count: data.properties.filter((p) => p.matterportId.trim()).length,
+      })
+      .eq("id", data.modelId)
+      .eq("client_id", userId);
+    if (error) {
+      console.error("refreshPresentationConfig failed:", error);
+      return { success: false, error: "Could not refresh saved presentation" };
+    }
+    return { success: true };
+  });
+
+
   .middleware([requireSupabaseAuth])
   .inputValidator((data: { modelId: string }) => data)
   .handler(async ({ data, context }) => {
