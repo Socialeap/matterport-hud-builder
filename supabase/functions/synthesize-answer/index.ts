@@ -2,41 +2,37 @@
 // ─────────────────
 // Synthesis Bridge — secure LLM proxy for the visitor-facing Ask panel.
 //
-// The visitor's browser retrieves 3-5 relevant document chunks from its
-// local Orama index, then POSTs { query, chunks } here. This function
-// prompts an LLM to synthesise a conversational answer grounded *only* in
-// those chunks and streams the result back as Server-Sent Events.
+// The visitor's browser sends:
+//   { presentation_token, saved_model_id, property_uuid, query,
+//     evidence_hints? }
 //
-// Provider chain (cost-shield):
-//   1. Primary    — Gemini 1.5 Flash-8B (cheap, fast, sufficient for
-//                   short grounded answers).
-//   2. Fallback   — Gemini 1.5 Flash    (stronger escalation if 8B fails
-//                   before emitting any token).
-//   3. Emergency  — Groq Llama 3.3 70B  (only when ENABLE_GROQ_FALLBACK
-//                   === "true" AND GROQ_API_KEY is set).
+// This function:
+//   1. Verifies the presentation_token (HMAC over canonical payload)
+//      and confirms the linked saved_model is paid + is_released.
+//   2. Cross-checks the body's saved_model_id and confirms the
+//      property_uuid is part of that presentation (no cross-tenant
+//      leakage).
+//   3. Reads `property_extractions` server-side and uses the
+//      embedded chunks as the *trusted* evidence — visitor-supplied
+//      chunks are no longer accepted as authoritative content;
+//      `evidence_hints` may bias selection but cannot inject text.
+//   4. Honours intelligence_health: a property whose status is
+//      `failed` or null is rejected with `not_trained`.
+//   5. Streams the LLM response as SSE (Gemini primary →
+//      Gemini fallback → optional Groq emergency).
 //
-// Secrets:
-//   • GEMINI_PRIMARY_MODEL — Gemini API key. NOTE: despite the name, this
-//     secret stores the API key value, not a model identifier. Model
-//     names are hard-coded constants below.
-//   • GROQ_API_KEY         — optional, only consulted when Groq fallback
-//     is explicitly enabled.
-//
-// Security:
-//   • API keys never leave this function (verify_jwt = false; callers are
-//     anonymous tour visitors).
-//   • Strict input caps: 500-char query, 5 chunks, 2,000 chars/chunk,
-//     600 max output tokens.
-//
-// PR-2 (future, not in this PR):
-//   • Presentation public token, source_context_hash,
-//     normalized_question_hash, property_uuid in request body.
-//   • Answer cache lookup before model call.
-//   • Usage event emission.
-//   • Per-presentation / per-MSP budget caps.
-//   • BYOK (bring-your-own-key) routing.
+// Quotas, rate limits, BYOK routing, and the downgrade signal are
+// added in subsequent commits (C8, C12, C13). This commit closes
+// the trust hole: client-supplied chunks no longer pass through to
+// the model verbatim.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.103.0";
+import { verifyPresentationToken } from "../_shared/presentation-token.ts";
+import {
+  parseIntelligenceHealth,
+  hasAnyIntelligence,
+} from "../_shared/intelligence-health.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -71,10 +67,26 @@ interface SynthesisChunk {
   score: number;
 }
 
-interface RequestBody {
-  query: string;
-  chunks: SynthesisChunk[];
+interface EvidenceHints {
+  chunk_ids?: string[];
+  canonical_qa_ids?: string[];
 }
+
+interface RequestBody {
+  /** Required: signed token issued at export time. */
+  presentation_token?: string;
+  /** Required: saved_model the visitor is asking about. */
+  saved_model_id?: string;
+  /** Required: which property within that presentation. */
+  property_uuid?: string;
+  /** Required: visitor's question. */
+  query?: string;
+  /** Optional: client-side bias signals; never trusted as content. */
+  evidence_hints?: EvidenceHints;
+}
+
+const MAX_TRUSTED_CHUNKS = 5;
+const MAX_CHUNK_CONTENT = 2_000;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -274,78 +286,183 @@ async function streamGroq(
 
 // ── Main handler ─────────────────────────────────────────────────────────────
 
+function jsonError(
+  status: number,
+  body: Record<string, unknown>,
+): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+interface ChunkRow {
+  id?: string;
+  section?: string;
+  content?: string;
+  qualityScore?: number;
+  visibility?: string;
+}
+
+/**
+ * Fetch and shape the trusted evidence for one property. Reads the
+ * persisted chunks (post-hydrator), filters out private-visibility
+ * chunks, and returns the highest-quality K chunks. Visitor-supplied
+ * `evidence_hints.chunk_ids` are used to *bias* the ordering but
+ * never to inject content the server didn't load.
+ */
+function pickTrustedChunks(
+  rows: Array<{ chunks: unknown }>,
+  hints: EvidenceHints | undefined,
+  k: number,
+): SynthesisChunk[] {
+  const all: ChunkRow[] = [];
+  for (const r of rows) {
+    if (Array.isArray(r.chunks)) {
+      for (const c of r.chunks as ChunkRow[]) {
+        if (!c || typeof c !== "object") continue;
+        if (c.visibility === "private") continue;
+        all.push(c);
+      }
+    }
+  }
+  const hintIds = new Set(
+    (hints?.chunk_ids ?? [])
+      .filter((x): x is string => typeof x === "string")
+      .slice(0, k * 4),
+  );
+  const scored = all.map((c) => ({
+    chunk: c,
+    score:
+      (typeof c.qualityScore === "number" ? c.qualityScore : 0.5) +
+      (c.id && hintIds.has(c.id) ? 0.5 : 0),
+  }));
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, k).map(({ chunk, score }) => ({
+    id: String(chunk.id ?? "").slice(0, 100),
+    section: String(chunk.section ?? "").slice(0, 100),
+    content: String(chunk.content ?? "").slice(0, MAX_CHUNK_CONTENT),
+    score,
+  }));
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
   if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "method_not_allowed" }), {
-      status: 405,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonError(405, { error: "method_not_allowed" });
   }
 
-  // Resolve provider availability.
-  // GEMINI_PRIMARY_MODEL holds the Gemini API key value (despite the
-  // misleading secret name).
+  // Resolve provider availability. GEMINI_PRIMARY_MODEL holds the
+  // Gemini API key value (despite the misleading secret name) — see
+  // C9 for the env-var rename + model swap.
   const GEMINI_API_KEY = Deno.env.get("GEMINI_PRIMARY_MODEL");
   const GROQ_ENABLED = Deno.env.get("ENABLE_GROQ_FALLBACK") === "true";
   const GROQ_API_KEY = GROQ_ENABLED ? Deno.env.get("GROQ_API_KEY") : null;
 
   if (!GEMINI_API_KEY && !(GROQ_ENABLED && GROQ_API_KEY)) {
-    return new Response(
-      JSON.stringify({ error: "no_llm_keys_configured" }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
-    );
+    return jsonError(500, { error: "no_llm_keys_configured" });
   }
 
-  // ── Parse + validate ────────────────────────────────────────────────────────
-  // TODO(PR-2): per-IP / per-token rate limit hook here.
+  const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+  const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!SUPABASE_URL || !SERVICE_KEY) {
+    return jsonError(500, { error: "supabase_env_missing" });
+  }
+  const service = createClient(SUPABASE_URL, SERVICE_KEY);
 
   let body: RequestBody;
   try {
     body = (await req.json()) as RequestBody;
   } catch {
-    return new Response(JSON.stringify({ error: "invalid_json" }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonError(400, { error: "invalid_json" });
   }
 
-  const query = String(body?.query ?? "").slice(0, 500).trim();
+  const presentationToken = body.presentation_token ?? null;
+  const claimedSavedModelId = body.saved_model_id ?? null;
+  const propertyUuid = body.property_uuid ?? null;
+  const query = String(body.query ?? "").slice(0, 500).trim();
+
+  if (!presentationToken || !claimedSavedModelId || !propertyUuid) {
+    return jsonError(401, {
+      error: "token_required",
+      detail: "presentation_token, saved_model_id, property_uuid required",
+    });
+  }
   if (!query) {
-    return new Response(JSON.stringify({ error: "missing_query" }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    return jsonError(400, { error: "missing_query" });
+  }
+
+  // Verify the signed token AND require paid+released. The verifier
+  // also cross-checks expectedSavedModelId so a token issued for
+  // model A cannot be replayed against model B.
+  const tokenResult = await verifyPresentationToken(
+    presentationToken,
+    service,
+    {
+      expectedSavedModelId: claimedSavedModelId,
+      requireReleased: true,
+    },
+  );
+  if (!tokenResult.ok) {
+    console.warn(
+      `[synthesize-answer] token reject reason=${tokenResult.reason}`,
+    );
+    return jsonError(401, {
+      error: "token_invalid",
+      reason: tokenResult.reason,
     });
   }
 
-  if (!Array.isArray(body?.chunks)) {
-    return new Response(JSON.stringify({ error: "invalid_chunks" }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+  // Cross-check property_uuid is actually part of this presentation.
+  const { data: model } = await service
+    .from("saved_models")
+    .select("id, properties")
+    .eq("id", tokenResult.saved_model_id)
+    .maybeSingle();
+  if (!model) {
+    return jsonError(404, { error: "saved_model_missing" });
+  }
+  const props = Array.isArray(model.properties) ? model.properties : [];
+  const propertyInPresentation = props.some(
+    (p: unknown) =>
+      p && typeof p === "object" && (p as { id?: string }).id === propertyUuid,
+  );
+  if (!propertyInPresentation) {
+    return jsonError(403, { error: "property_not_in_presentation" });
   }
 
-  const rawChunks = body.chunks.slice(0, 5);
-  if (rawChunks.length === 0) {
-    return new Response(JSON.stringify({ error: "no_chunks" }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+  // Pull trusted evidence + intelligence_health from the DB.
+  const { data: extractions, error: extractErr } = await service
+    .from("property_extractions")
+    .select("id, chunks, intelligence_health")
+    .eq("property_uuid", propertyUuid);
+  if (extractErr || !extractions || extractions.length === 0) {
+    return jsonError(404, { error: "no_evidence" });
   }
 
-  const chunks: SynthesisChunk[] = rawChunks.map((c) => ({
-    id: String(c?.id ?? "").slice(0, 100),
-    section: String(c?.section ?? "").slice(0, 100),
-    content: String(c?.content ?? "").slice(0, 2_000),
-    score: Number(c?.score ?? 0),
-  }));
+  // Reject if every extraction's health is failed/null. A degraded or
+  // context_only_degraded property is still answerable (open-question
+  // answers from chunks even without structured fields).
+  const anyAnswerable = extractions.some((row) => {
+    const h = parseIntelligenceHealth(row.intelligence_health);
+    return hasAnyIntelligence(h);
+  });
+  if (!anyAnswerable) {
+    return jsonError(409, { error: "not_trained" });
+  }
 
-  const context = buildContext(chunks);
+  const trustedChunks = pickTrustedChunks(
+    extractions,
+    body.evidence_hints,
+    MAX_TRUSTED_CHUNKS,
+  );
+  if (trustedChunks.length === 0) {
+    return jsonError(409, { error: "no_chunks_available" });
+  }
+
+  const context = buildContext(trustedChunks);
 
   // ── Stream response ─────────────────────────────────────────────────────────
 
@@ -355,6 +472,24 @@ serve(async (req) => {
   (async () => {
     try {
       let success = false;
+      let provider: "gemini_primary" | "gemini_fallback" | "groq_emergency" | null = null;
+
+      // Emit a meta event up front so the client can record the
+      // saved_model_id / property_uuid binding and (later) read the
+      // quota_state and downgrade_required hints.
+      await writer.write(
+        sseChunk({
+          meta: {
+            saved_model_id: tokenResult.saved_model_id,
+            property_uuid: propertyUuid,
+            chunks_used: trustedChunks.length,
+            // Placeholders — quota and downgrade are wired in C8 / C13.
+            quota_remaining: -1,
+            quota_state: "ok",
+            downgrade_required: false,
+          },
+        }),
+      );
 
       // 1. Gemini Flash-8B (primary)
       if (GEMINI_API_KEY) {
@@ -370,6 +505,7 @@ serve(async (req) => {
           writer,
         );
         if (success) {
+          provider = "gemini_primary";
           console.info(
             `[synthesize-answer] gemini_primary ok model=${GEMINI_PRIMARY_MODEL_NAME} elapsed_ms=${Math.round(performance.now() - t0)}`,
           );
@@ -394,6 +530,7 @@ serve(async (req) => {
           writer,
         );
         if (success) {
+          provider = "gemini_fallback";
           console.info(
             `[synthesize-answer] gemini_fallback ok model=${GEMINI_FALLBACK_MODEL_NAME} elapsed_ms=${Math.round(performance.now() - t1)}`,
           );
@@ -413,6 +550,7 @@ serve(async (req) => {
           );
           success = await streamGroq(query, context, GROQ_API_KEY, writer);
           if (success) {
+            provider = "groq_emergency";
             console.info(
               `[synthesize-answer] groq_emergency ok model=${GROQ_FALLBACK_MODEL_NAME} elapsed_ms=${Math.round(performance.now() - t2)}`,
             );
@@ -424,6 +562,12 @@ serve(async (req) => {
         } else {
           console.info("[synthesize-answer] groq_emergency disabled");
         }
+      }
+
+      // Emit a final meta event with the resolved provider so the
+      // runtime can attribute usage to the right LLM.
+      if (provider) {
+        await writer.write(sseChunk({ meta: { provider } }));
       }
 
       if (!success) {

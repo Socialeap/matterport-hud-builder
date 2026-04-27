@@ -1687,9 +1687,12 @@ async function __dqaInit(){
       // Step 5 — render.
       if(decision.path==="synthesis"&&decision.needsSynthesis){
         // ── Synthesis Bridge ───────────────────────────────────────────
-        // PR-2 will augment this body with {presentation_token,
-        // source_context_hash, normalized_question_hash, property_uuid}.
-        // In PR-1 the shape remains {query, chunks} for back-compat.
+        // The runtime sends the new authenticated request shape:
+        //   { presentation_token, saved_model_id, property_uuid, query,
+        //     evidence_hints: { chunk_ids } }
+        // The backend ignores client-supplied chunk content (only ids
+        // bias selection), so this shape never lets a malicious
+        // visitor inject text into the model context.
         var loadDiv=document.createElement("div");
         loadDiv.className="ask-msg assistant loading";
         loadDiv.innerHTML='<span class="ask-loading-dots"><span style="--i:0">•</span><span style="--i:1">•</span><span style="--i:2">•</span></span>';
@@ -1700,10 +1703,24 @@ async function __dqaInit(){
           var sCtrl=new AbortController();
           if(__docsQa.abortCtrl) __docsQa.abortCtrl.abort();
           __docsQa.abortCtrl=sCtrl;
+          var hintIds=[];
+          if(decision.synthChunks&&decision.synthChunks.length){
+            for(var hi=0;hi<decision.synthChunks.length;hi++){
+              if(decision.synthChunks[hi]&&decision.synthChunks[hi].id){
+                hintIds.push(String(decision.synthChunks[hi].id));
+              }
+            }
+          }
           var sResp=await fetch(window.__SYNTHESIS_URL__,{
             method:"POST",
             headers:{"Content-Type":"application/json"},
-            body:JSON.stringify({query:q,chunks:decision.synthChunks}),
+            body:JSON.stringify({
+              presentation_token:window.__PRESENTATION_TOKEN__||"",
+              saved_model_id:window.__SAVED_MODEL_ID__||"",
+              property_uuid:uuidByIndex[current]||"",
+              query:q,
+              evidence_hints:{chunk_ids:hintIds}
+            }),
             signal:sCtrl.signal
           });
           if(sResp.ok&&sResp.body){
