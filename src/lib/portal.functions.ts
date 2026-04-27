@@ -1017,13 +1017,11 @@ ${askAssets.css}
 <!-- ── HUD top header ─────────────────────────────────────────────── -->
 <div id="hud-header">
   <div id="hud-inner">
-    <div id="hud-left">
+    <div id="hud-left-spacer" aria-hidden="true"></div>
+    <div id="hud-center">
       ${logoUrl ? `<img id="hud-logo" src="${escapeHtml(logoUrl)}" alt="Logo">` : ""}
-      <div id="hud-text">
-        <div id="hud-brand">${escapeHtml(brandName)}</div>
-        <div id="hud-prop-name"></div>
-        <div id="hud-prop-loc"></div>
-      </div>
+      <div id="hud-brand">${escapeHtml(brandName)}</div>
+      <div id="hud-prop-loc"></div>
     </div>
     <div id="hud-right">
       <button id="hud-mute-btn" class="hud-icon-btn" aria-label="Toggle sound" title="Toggle sound">
