@@ -32,3 +32,6 @@ verify_jwt = false
 
 [functions.synthesize-answer]
 verify_jwt = false
+
+[functions.validate-byok]
+verify_jwt = false
