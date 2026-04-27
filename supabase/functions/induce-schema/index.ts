@@ -584,7 +584,10 @@ serve(async (req) => {
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
   const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
   // Legacy secret name — actually holds the Gemini API key (AIza...).
-  const GEMINI_API_KEY = Deno.env.get("GEMINI_PRIMARY_MODEL");
+  // New canonical secret name is GEMINI_API_KEY; legacy
+  // GEMINI_PRIMARY_MODEL is accepted as a fallback for one release.
+  const GEMINI_API_KEY =
+    Deno.env.get("GEMINI_API_KEY") ?? Deno.env.get("GEMINI_PRIMARY_MODEL");
 
   if (!SUPABASE_URL || !ANON_KEY) {
     return jsonResponse({ error: "supabase_env_missing" }, 500);

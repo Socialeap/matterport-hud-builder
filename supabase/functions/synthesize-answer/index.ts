@@ -44,11 +44,20 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// ── Model identifiers (hard-coded; not derived from secret names) ───────────
+// ── Model identifiers ──────────────────────────────────────────────────────
+//
+// Primary public synthesis runs on Gemini 2.5 Flash-Lite. Both model
+// names are env-configurable so we can promote to gemini-2.5-flash
+// later without redeploying the function. Defaults match the design
+// Q&A: "approximately $0.10 per 1M input tokens" pricing class.
 
-const GEMINI_PRIMARY_MODEL_NAME = "gemini-1.5-flash-8b";
-const GEMINI_FALLBACK_MODEL_NAME = "gemini-1.5-flash";
-const GROQ_FALLBACK_MODEL_NAME = "llama-3.3-70b-versatile";
+const GEMINI_PRIMARY_MODEL_NAME =
+  Deno.env.get("GEMINI_PUBLIC_SYNTHESIS_MODEL") ?? "gemini-2.5-flash-lite";
+const GEMINI_FALLBACK_MODEL_NAME =
+  Deno.env.get("GEMINI_PUBLIC_SYNTHESIS_FALLBACK_MODEL") ??
+  "gemini-2.5-flash";
+const GROQ_FALLBACK_MODEL_NAME =
+  Deno.env.get("GROQ_FALLBACK_MODEL") ?? "llama-3.3-70b-versatile";
 
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 
@@ -451,10 +460,11 @@ serve(async (req) => {
     );
   }
 
-  // Resolve provider availability. GEMINI_PRIMARY_MODEL holds the
-  // Gemini API key value (despite the misleading secret name) — see
-  // C9 for the env-var rename + model swap.
-  const GEMINI_API_KEY = Deno.env.get("GEMINI_PRIMARY_MODEL");
+  // Resolve provider availability. New canonical secret name is
+  // GEMINI_API_KEY; the old GEMINI_PRIMARY_MODEL is accepted for one
+  // release as a fallback so deploys can rotate without downtime.
+  const GEMINI_API_KEY =
+    Deno.env.get("GEMINI_API_KEY") ?? Deno.env.get("GEMINI_PRIMARY_MODEL");
   const GROQ_ENABLED = Deno.env.get("ENABLE_GROQ_FALLBACK") === "true";
   const GROQ_API_KEY = GROQ_ENABLED ? Deno.env.get("GROQ_API_KEY") : null;
 
