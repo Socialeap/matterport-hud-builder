@@ -88,21 +88,27 @@ export async function issuePresentationToken(args: {
   const sigBytes = await hmacSha256(secret, canonicalisePayload(payload));
   const tokenHash = bytesToHex(await sha256(sigBytes));
 
+  // `presentation_tokens` lives outside the generated `Database` types
+  // (it is provisioned by a server-only migration). Use an untyped
+  // view of the client for these calls so the TS overloads resolve.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const untyped = service as unknown as any;
+
   // If rotating, revoke prior active token(s) atomically.
   if (args.rotate) {
-    await service
+    await untyped
       .from("presentation_tokens")
       .update({ revoked_at: issuedAt })
       .eq("saved_model_id", args.savedModelId)
       .is("revoked_at", null);
   }
 
-  const { data: inserted, error } = await service
+  const { data: inserted, error } = await untyped
     .from("presentation_tokens")
     .insert({
       saved_model_id: args.savedModelId,
       token_hash: tokenHash,
-      payload: payload as unknown as never,
+      payload,
     })
     .select("id")
     .single();
