@@ -33,6 +33,10 @@ import {
   parseIntelligenceHealth,
   hasAnyIntelligence,
 } from "../_shared/intelligence-health.ts";
+import {
+  checkRateLimit,
+  ipFromRequest,
+} from "../_shared/rate-limit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -289,11 +293,91 @@ async function streamGroq(
 function jsonError(
   status: number,
   body: Record<string, unknown>,
+  extraHeaders: Record<string, string> = {},
 ): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "application/json",
+      ...extraHeaders,
+    },
   });
+}
+
+const TEXT_ENC = new TextEncoder();
+
+function normaliseQuestion(q: string): string {
+  return q.toLowerCase().trim().replace(/\s+/g, " ");
+}
+
+async function sha256Hex(s: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", TEXT_ENC.encode(s));
+  const bytes = new Uint8Array(buf);
+  let out = "";
+  for (const b of bytes) out += b.toString(16).padStart(2, "0");
+  return out;
+}
+
+async function computeIdempotencyKey(args: {
+  token: string;
+  query: string;
+  chunk_ids: string[];
+}): Promise<string> {
+  const sortedIds = [...args.chunk_ids].sort();
+  const evidenceHash = await sha256Hex(JSON.stringify(sortedIds));
+  return await sha256Hex(
+    `${args.token}|${normaliseQuestion(args.query)}|${evidenceHash}`,
+  );
+}
+
+interface QuotaSnapshot {
+  free_used: number;
+  free_limit: number;
+  byok_active: boolean;
+  exhausted_email_sent_at: string | null;
+}
+
+function deriveQuotaState(
+  q: QuotaSnapshot,
+): {
+  quota_remaining: number;
+  quota_state:
+    | "ok"
+    | "exhausted_after_this_answer"
+    | "exhausted"
+    | "byok_unlimited";
+  downgrade_required: boolean;
+} {
+  if (q.byok_active) {
+    return {
+      quota_remaining: -1,
+      quota_state: "byok_unlimited",
+      downgrade_required: false,
+    };
+  }
+  const remaining = Math.max(0, q.free_limit - q.free_used);
+  if (remaining === 0) {
+    return {
+      quota_remaining: 0,
+      quota_state: "exhausted",
+      downgrade_required: true,
+    };
+  }
+  if (remaining === 1) {
+    // This will be the last paid answer — flag the runtime so it can
+    // pre-render the downgrade UI immediately on the next visit.
+    return {
+      quota_remaining: 1,
+      quota_state: "exhausted_after_this_answer",
+      downgrade_required: true,
+    };
+  }
+  return {
+    quota_remaining: remaining,
+    quota_state: "ok",
+    downgrade_required: false,
+  };
 }
 
 interface ChunkRow {
@@ -352,6 +436,19 @@ serve(async (req) => {
   }
   if (req.method !== "POST") {
     return jsonError(405, { error: "method_not_allowed" });
+  }
+
+  // Per-IP rate limit BEFORE any auth/DB work so a flood of bad
+  // requests can't burn the verifier or the model. Spec minimum is
+  // 5/min/IP.
+  const ip = ipFromRequest(req);
+  const rl = checkRateLimit(ip, { perMinute: 5 });
+  if (!rl.allowed) {
+    return jsonError(
+      429,
+      { error: "rate_limited", retry_after_seconds: rl.retryAfterSeconds },
+      { "Retry-After": String(rl.retryAfterSeconds) },
+    );
   }
 
   // Resolve provider availability. GEMINI_PRIMARY_MODEL holds the
@@ -464,6 +561,51 @@ serve(async (req) => {
 
   const context = buildContext(trustedChunks);
 
+  // ── Pre-flight quota check ─────────────────────────────────────────────
+  // Read the counter; if exhausted (and BYOK not active), refuse the
+  // model call and emit a downgrade hint. This is the runtime gate
+  // that drives the lead-capture form swap in C13.
+  let quota: QuotaSnapshot = {
+    free_used: 0,
+    free_limit: 20,
+    byok_active: false,
+    exhausted_email_sent_at: null,
+  };
+  try {
+    const { data: quotaRow } = await service.rpc("read_ask_quota_counter", {
+      p_saved_model_id: tokenResult.saved_model_id,
+      p_property_uuid: propertyUuid,
+    });
+    if (Array.isArray(quotaRow) && quotaRow.length > 0) {
+      const q = quotaRow[0] as QuotaSnapshot;
+      quota = {
+        free_used: q.free_used ?? 0,
+        free_limit: q.free_limit ?? 20,
+        byok_active: q.byok_active ?? false,
+        exhausted_email_sent_at: q.exhausted_email_sent_at ?? null,
+      };
+    }
+  } catch (err) {
+    console.warn("[synthesize-answer] quota read failed:", err);
+  }
+  const preState = deriveQuotaState(quota);
+  if (preState.quota_state === "exhausted") {
+    return jsonError(402, {
+      error: "quota_exhausted",
+      quota_remaining: 0,
+      quota_state: "exhausted",
+      downgrade_required: true,
+    });
+  }
+
+  // Compute the idempotency key BEFORE the model call so a duplicate
+  // submission (visitor mash) doesn't double-count.
+  const idempotencyKey = await computeIdempotencyKey({
+    token: presentationToken,
+    query,
+    chunk_ids: trustedChunks.map((c) => c.id),
+  });
+
   // ── Stream response ─────────────────────────────────────────────────────────
 
   const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
@@ -474,19 +616,16 @@ serve(async (req) => {
       let success = false;
       let provider: "gemini_primary" | "gemini_fallback" | "groq_emergency" | null = null;
 
-      // Emit a meta event up front so the client can record the
-      // saved_model_id / property_uuid binding and (later) read the
-      // quota_state and downgrade_required hints.
+      // Emit a meta event up front with the live quota snapshot.
       await writer.write(
         sseChunk({
           meta: {
             saved_model_id: tokenResult.saved_model_id,
             property_uuid: propertyUuid,
             chunks_used: trustedChunks.length,
-            // Placeholders — quota and downgrade are wired in C8 / C13.
-            quota_remaining: -1,
-            quota_state: "ok",
-            downgrade_required: false,
+            quota_remaining: preState.quota_remaining,
+            quota_state: preState.quota_state,
+            downgrade_required: preState.downgrade_required,
           },
         }),
       );
@@ -577,6 +716,46 @@ serve(async (req) => {
             error: "All providers are unavailable. Please try again later.",
           }),
         );
+      } else {
+        // Idempotent quota count. BYOK does not decrement TM quota;
+        // C12 will branch on byok_active here. For now every TM-
+        // funded provider success counts.
+        const outcome: "counted" | "byok" = quota.byok_active
+          ? "byok"
+          : "counted";
+        try {
+          const { data: post } = await service.rpc(
+            "record_ask_quota_event",
+            {
+              p_saved_model_id: tokenResult.saved_model_id,
+              p_property_uuid: propertyUuid,
+              p_idempotency_key: idempotencyKey,
+              p_outcome: outcome,
+              p_reason: provider ?? null,
+            },
+          );
+          if (Array.isArray(post) && post.length > 0) {
+            const fresh = post[0] as QuotaSnapshot & { was_new: boolean };
+            const after = deriveQuotaState({
+              free_used: fresh.free_used,
+              free_limit: fresh.free_limit,
+              byok_active: fresh.byok_active,
+              exhausted_email_sent_at: fresh.exhausted_email_sent_at,
+            });
+            await writer.write(
+              sseChunk({
+                meta: {
+                  quota_remaining: after.quota_remaining,
+                  quota_state: after.quota_state,
+                  downgrade_required: after.downgrade_required,
+                  was_new: fresh.was_new,
+                },
+              }),
+            );
+          }
+        } catch (err) {
+          console.warn("[synthesize-answer] quota record failed:", err);
+        }
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
