@@ -54,16 +54,22 @@ export function AskAiByokSection() {
 
   const refresh = async () => {
     setLoading(true);
-    const { data, error } = await supabase.rpc("read_byok_status", {
-      p_vendor: "gemini",
-    });
+    // `read_byok_status` is provisioned outside the generated Database
+    // types — cast the rpc name through `never` so the generic resolves
+    // to the loose row shape we expect.
+    const { data, error } = await (
+      supabase.rpc as unknown as (
+        name: string,
+        args: Record<string, unknown>,
+      ) => Promise<{ data: unknown; error: unknown }>
+    )("read_byok_status", { p_vendor: "gemini" });
     setLoading(false);
     if (error) {
       console.warn("[byok] read_byok_status failed:", error);
       return;
     }
     if (Array.isArray(data) && data.length > 0) {
-      const row = data[0] as ByokStatus;
+      const row = data[0] as Partial<ByokStatus>;
       setStatus({
         has_key: !!row.has_key,
         vendor: row.vendor ?? "gemini",
