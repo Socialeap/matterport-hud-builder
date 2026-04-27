@@ -895,14 +895,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 /* ── HUD header (top glassmorphism overlay) ──────────────────────── */
 #hud-header{position:fixed;top:0;left:0;right:0;z-index:1200;transform:translateY(-100%);opacity:0;pointer-events:none;transition:transform 0.3s ease,opacity 0.3s ease;will-change:transform,opacity;isolation:isolate;-webkit-backface-visibility:hidden;backface-visibility:hidden}
 #hud-header.visible{transform:translateY(0);opacity:1;pointer-events:auto}
-#hud-inner{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:${escapeHtml(hudBgColor)}99;backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid rgba(255,255,255,0.08);box-shadow:0 4px 24px rgba(0,0,0,0.15),inset 0 1px 0 rgba(255,255,255,0.06);flex-wrap:wrap;gap:8px}
-#hud-left{display:flex;align-items:center;gap:10px;min-width:0;flex:1 1 auto}
-#hud-logo{height:32px;object-fit:contain;flex-shrink:0}
-#hud-text{min-width:0}
-#hud-brand{font-size:13px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 3px rgba(0,0,0,0.4)}
-#hud-prop-name{font-size:11px;font-weight:500;color:rgba(255,255,255,0.9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#hud-prop-loc{font-size:11px;color:rgba(255,255,255,0.65);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#hud-right{display:flex;align-items:center;gap:6px;flex-shrink:0;margin-right:32px;flex-wrap:wrap;justify-content:flex-end}
+#hud-inner{display:grid;grid-template-columns:220px minmax(0,1fr) auto;align-items:center;gap:12px;padding:10px 16px;background:${escapeHtml(hudBgColor)}99;backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid rgba(255,255,255,0.08);box-shadow:0 4px 24px rgba(0,0,0,0.15),inset 0 1px 0 rgba(255,255,255,0.06)}
+#hud-left-spacer{min-width:0}
+#hud-center{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;min-width:0;gap:2px}
+#hud-logo{height:30px;max-width:160px;object-fit:contain;flex-shrink:0;margin-bottom:2px}
+#hud-brand{font-size:13px;font-weight:600;color:#fff;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 3px rgba(0,0,0,0.4)}
+#hud-prop-loc{font-size:11px;color:rgba(255,255,255,0.75);max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#hud-right{display:flex;align-items:center;gap:6px;flex-shrink:0;margin-right:32px;justify-self:end}
+@media(max-width:720px){#hud-inner{grid-template-columns:0 minmax(0,1fr) auto;gap:8px}#hud-left-spacer{display:none}#hud-logo{height:26px;max-width:120px}}
 .hud-icon-btn{width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.12);border:none;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background 0.2s;flex-shrink:0;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
 .hud-icon-btn:hover{background:rgba(255,255,255,0.22)}
 .hud-icon-btn svg{width:14px;height:14px}
@@ -1017,13 +1017,11 @@ ${askAssets.css}
 <!-- ── HUD top header ─────────────────────────────────────────────── -->
 <div id="hud-header">
   <div id="hud-inner">
-    <div id="hud-left">
+    <div id="hud-left-spacer" aria-hidden="true"></div>
+    <div id="hud-center">
       ${logoUrl ? `<img id="hud-logo" src="${escapeHtml(logoUrl)}" alt="Logo">` : ""}
-      <div id="hud-text">
-        <div id="hud-brand">${escapeHtml(brandName)}</div>
-        <div id="hud-prop-name"></div>
-        <div id="hud-prop-loc"></div>
-      </div>
+      <div id="hud-brand">${escapeHtml(brandName)}</div>
+      <div id="hud-prop-loc"></div>
     </div>
     <div id="hud-right">
       <button id="hud-mute-btn" class="hud-icon-btn" aria-label="Toggle sound" title="Toggle sound">
@@ -1287,11 +1285,23 @@ if(muteBtn) muteBtn.addEventListener("click",toggleMute);
 function updateHud(i){
   var p=props[i];
   if(!p) return;
-  var elName=document.getElementById("hud-prop-name");
   var elLoc=document.getElementById("hud-prop-loc");
   var elAgent=document.getElementById("hud-agent-name");
-  if(elName) elName.textContent=p.propertyName||"";
-  if(elLoc) elLoc.textContent=(p.name||"")+(p.location?" \u2014 "+p.location:"");
+  if(elLoc){
+    // Compose "{property name} \u2014 {address} \u2014 {city/state}" but
+    // skip any segment that already duplicates the brand name shown above
+    // or repeats text already included in another segment.
+    var brand=((C&&C.brandName)||"").trim().toLowerCase();
+    var pname=(p.propertyName||"").trim();
+    var addr=(p.name||"").trim();
+    var loc=(p.location||"").trim();
+    var parts=[];
+    if(pname && pname.toLowerCase()!==brand) parts.push(pname);
+    if(addr && addr.toLowerCase()!==brand && addr.toLowerCase()!==pname.toLowerCase()) parts.push(addr);
+    if(loc && addr.toLowerCase().indexOf(loc.toLowerCase())===-1 && loc.toLowerCase()!==brand) parts.push(loc);
+    elLoc.textContent=parts.join(" \u2014 ");
+  }
+  if(elAgent) elAgent.textContent=(C.agent&&C.agent.name)?C.agent.name:"";
   if(elAgent) elAgent.textContent=(C.agent&&C.agent.name)?C.agent.name:"";
   var mapBtn=document.getElementById("hud-map-btn");
   if(mapBtn) mapBtn.style.display=(p.enableNeighborhoodMap&&p.location)?"":"none";
