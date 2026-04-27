@@ -685,6 +685,8 @@ function AssetEditorDialog({
   setForm,
   editing,
   saving,
+  copyrightAck,
+  setCopyrightAck,
   onSave,
 }: {
   open: boolean;
@@ -694,6 +696,8 @@ function AssetEditorDialog({
   setForm: (next: AssetFormState) => void;
   editing: boolean;
   saving: boolean;
+  copyrightAck: boolean;
+  setCopyrightAck: (next: boolean) => void;
   onSave: () => void;
 }) {
   const urlOnly = !!category.urlOnly;
