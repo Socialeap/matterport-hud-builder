@@ -16,6 +16,7 @@ import type {
   JsonSchema,
   VaultTemplate,
 } from "../_shared/extractors/types.ts";
+import { checkUploadSize } from "../_shared/upload-limits.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -48,9 +49,9 @@ function decodeBase64(b64: string): Uint8Array {
   return out;
 }
 
-// Cap to avoid abusive payloads. 10 MB matches the extract-property-doc
-// upstream practice for sample docs (real estate PDFs rarely exceed this).
-const MAX_PDF_BYTES = 10 * 1024 * 1024;
+// Size policy is centralised in `_shared/upload-limits.ts` (parity-tested
+// against the browser-side module so the bytes the dropzone checked are
+// the same bytes this endpoint enforces).
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -107,9 +108,14 @@ serve(async (req) => {
   if (bytes.byteLength === 0) {
     return jsonResponse({ error: "empty_pdf" }, 400);
   }
-  if (bytes.byteLength > MAX_PDF_BYTES) {
+  const sizeCheck = checkUploadSize(bytes.byteLength, "pdf_bytes");
+  if (!sizeCheck.ok) {
     return jsonResponse(
-      { error: "pdf_too_large", max_bytes: MAX_PDF_BYTES },
+      {
+        error: "pdf_too_large",
+        max_bytes: sizeCheck.limit,
+        detail: sizeCheck.message,
+      },
       413,
     );
   }

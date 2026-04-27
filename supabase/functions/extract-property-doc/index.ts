@@ -19,6 +19,10 @@ import {
   computeIntelligenceHealth,
   type IntelligenceHealth,
 } from "../_shared/intelligence-health.ts";
+import {
+  checkUploadSize,
+  uploadKindForMime,
+} from "../_shared/upload-limits.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -41,7 +45,7 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 type Stage = "auth" | "input" | "freeze" | "asset" | "no_storage_path"
-  | "template" | "download" | "extraction" | "persist";
+  | "template" | "download" | "size_limit" | "extraction" | "persist";
 
 function fail(
   stage: Stage,
@@ -170,6 +174,24 @@ serve(async (req) => {
     );
     return fail("download", "download_failed", 502, {
       storage_path: asset.storage_path,
+    });
+  }
+
+  // 3b ─ Enforce upload size policy server-side. The browser dropzone
+  // already checks the same limits via @/lib/limits (parity-tested),
+  // but a bypassed client must not be able to push an oversized file
+  // through storage and into the extraction pipeline.
+  const uploadKind =
+    uploadKindForMime(asset.mime_type) ?? "pdf_bytes";
+  const sizeCheck = checkUploadSize(bytes.byteLength, uploadKind);
+  if (!sizeCheck.ok) {
+    console.warn(
+      `[extract-property-doc] stage=size_limit kind=${uploadKind} bytes=${bytes.byteLength}`,
+    );
+    return fail("size_limit", sizeCheck.message, 413, {
+      bytes: bytes.byteLength,
+      limit: sizeCheck.limit,
+      kind: uploadKind,
     });
   }
 

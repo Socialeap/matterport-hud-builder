@@ -19,6 +19,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.103.0";
+import { checkUploadSize } from "../_shared/upload-limits.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -138,7 +139,6 @@ Strict Output Constraints:
 * Output ONLY a valid JSON object that begins with { and ends with }.
 * Do NOT wrap in markdown code fences. Do NOT include any prose.`;
 
-const MAX_PDF_BYTES = 10 * 1024 * 1024;
 const MAX_TEXT_CHARS = 12_000;
 const GEMINI_MODEL = "gemini-2.5-flash-lite";
 
@@ -731,8 +731,16 @@ serve(async (req) => {
     return jsonResponse({ error: "invalid_pdf_b64", detail: msg }, 400);
   }
   if (bytes.byteLength === 0) return jsonResponse({ error: "empty_pdf" }, 400);
-  if (bytes.byteLength > MAX_PDF_BYTES) {
-    return jsonResponse({ error: "pdf_too_large", max_bytes: MAX_PDF_BYTES }, 413);
+  const sizeCheck = checkUploadSize(bytes.byteLength, "pdf_bytes");
+  if (!sizeCheck.ok) {
+    return jsonResponse(
+      {
+        error: "pdf_too_large",
+        max_bytes: sizeCheck.limit,
+        detail: sizeCheck.message,
+      },
+      413,
+    );
   }
 
   let fullText: string;
