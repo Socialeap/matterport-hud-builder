@@ -1074,14 +1074,67 @@ ${askAssets.moduleScript}
     var first=(cfg.properties&&cfg.properties[0])||null;
     var frame=document.getElementById("matterport-frame");
     if(frame&&first&&first.iframeUrl){ frame.src=first.iframeUrl; }
-    function hideGate(){
+    // Detect if any property has playable audio. Used to gate the
+    // "Start with Sound" CTA so we never advertise audio that isn't there.
+    var hasAnyAudio=false;
+    try {
+      var pp=(cfg&&cfg.properties)||[];
+      for(var i=0;i<pp.length;i++){
+        var u=String(pp[i]&&pp[i].musicUrl||"").trim();
+        if(u){ hasAnyAudio=true; break; }
+      }
+    } catch(_e){}
+
+    // Early HUD wiring — independent of the heavy main IIFE so the
+    // toggle and chevrons always work, even if Ask AI / extraction
+    // bundles fail to load. The main IIFE replaces these handlers
+    // additively (addEventListener stacks).
+    var hudHeader=document.getElementById("hud-header");
+    var hudToggle=document.getElementById("hud-toggle");
+    var chevUp=document.getElementById("hud-chevron-up");
+    var chevDown=document.getElementById("hud-chevron-down");
+    var hudVisible=false;
+    function setHudVisible(v){
+      hudVisible=!!v;
+      if(hudHeader){
+        hudHeader.classList.toggle("visible",hudVisible);
+        // Inline-style fallback in case the .visible class rule is
+        // overridden by an unexpected stylesheet ordering issue.
+        hudHeader.style.transform=hudVisible?"translateY(0)":"translateY(-100%)";
+        hudHeader.style.opacity=hudVisible?"1":"0";
+        hudHeader.style.pointerEvents=hudVisible?"auto":"none";
+      }
+      if(chevUp) chevUp.style.display=hudVisible?"":"none";
+      if(chevDown) chevDown.style.display=hudVisible?"none":"";
+    }
+    // Expose globally so the main IIFE can reuse it instead of shadowing.
+    window.__setHudVisible=setHudVisible;
+    window.__isHudVisible=function(){return hudVisible;};
+    if(hudToggle){
+      hudToggle.addEventListener("click",function(){ setHudVisible(!hudVisible); });
+    }
+
+    // If the project was generated with no audio at all, swap the
+    // "Start with Sound" CTA for a neutral "Enter Tour" label so we
+    // never imply a sound that isn't embedded.
+    if(!hasAnyAudio){
+      var soundBtn=document.getElementById("gate-sound-btn");
+      if(soundBtn){
+        soundBtn.innerHTML='Enter Tour';
+      }
+      var silentBtn=document.getElementById("gate-silent-btn");
+      if(silentBtn){ silentBtn.style.display="none"; }
+    }
+
+    function hideGate(openHud){
       var g=document.getElementById("gate");
       if(g){ g.classList.add("hidden"); setTimeout(function(){g.style.display="none";},500); }
+      if(openHud!==false) setHudVisible(true);
     }
     var s=document.getElementById("gate-sound-btn");
     var q=document.getElementById("gate-silent-btn");
-    if(s) s.addEventListener("click",hideGate);
-    if(q) q.addEventListener("click",hideGate);
+    if(s) s.addEventListener("click",function(){ hideGate(true); });
+    if(q) q.addEventListener("click",function(){ hideGate(true); });
   } catch(err){ console.error("[presentation] safety bootstrap failed",err); }
 })();
 </script>
