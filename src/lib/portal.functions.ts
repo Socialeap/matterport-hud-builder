@@ -486,6 +486,20 @@ function buildAskAssets(
 #ask-send:disabled{opacity:0.4;cursor:not-allowed}
 @keyframes ask-pulse{0%,100%{opacity:0.4}50%{opacity:1}}
 .ask-loading-dots span{animation:ask-pulse 1.4s infinite;animation-delay:calc(var(--i)*0.2s)}
+/* Lead-capture downgrade form (rendered when Gemini subsidy is exhausted) */
+.ask-inquiry-card{display:flex;flex-direction:column;gap:8px;background:#22223a;border:1px solid #444;padding:10px 12px;border-radius:10px;max-width:96%}
+.ask-inquiry-head strong{color:#fff;font-size:13px}
+.ask-inquiry-sub{color:#aaa;font-size:11px;margin-top:2px}
+.ask-inquiry-fields{display:flex;flex-direction:column;gap:6px}
+.ask-inquiry-input{background:#1e1e30;border:1px solid #444;border-radius:6px;padding:6px 10px;color:#fff;font-size:12px;outline:none}
+.ask-inquiry-input:focus{border-color:${escapeHtml(accentColor)}}
+.ask-inquiry-input:disabled{opacity:0.5}
+.ask-inquiry-textarea{resize:vertical;min-height:60px;font-family:inherit}
+.ask-inquiry-actions{display:flex;gap:8px;align-items:center}
+.ask-inquiry-send{background:${escapeHtml(accentColor)};border:none;color:#fff;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px;font-weight:600}
+.ask-inquiry-send:disabled{opacity:0.5;cursor:not-allowed}
+.ask-inquiry-sms{color:#bbb;text-decoration:underline;font-size:12px}
+.ask-inquiry-status{font-size:11px;color:#888;margin-top:2px}
 `;
 
   const toggleBtn = `<button id="ask-toggle" onclick="window.__openAsk&&window.__openAsk()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>Ask</button>`;
@@ -658,6 +672,25 @@ export const generatePresentation = createServerFn({ method: "POST" })
       .filter((p) => p.matterportId?.trim())
       .map((p) => p.id);
 
+    // Resolve the provider's studio_id so the runtime can call
+    // handle-lead-capture as the primary lead path on quota
+    // exhaustion. Public-grade identifier (already exposed in the
+    // contact-form flow); never a secret.
+    let studioId: string | null = null;
+    try {
+      const { data: licenseRow } = await supabase
+        .from("licenses")
+        .select("studio_id")
+        .eq("user_id", model.provider_id)
+        .maybeSingle();
+      studioId = licenseRow?.studio_id ?? null;
+    } catch (err) {
+      console.warn(
+        "[generatePresentation] studio_id lookup skipped:",
+        err instanceof Error ? err.message : err,
+      );
+    }
+
     // Base64-encode config for obfuscation
     const gaTrackingId = typeof agent.gaTrackingId === "string" ? agent.gaTrackingId.trim() : "";
     const agentAvatarUrl = typeof agent.avatarUrl === "string" ? agent.avatarUrl.trim() : "";
@@ -672,6 +705,7 @@ export const generatePresentation = createServerFn({ method: "POST" })
       propertyUuidByIndex,
       gaTrackingId,
       agentAvatarUrl,
+      studioId,
     };
     const configB64 = Buffer.from(JSON.stringify(configObj)).toString("base64");
 
@@ -1370,6 +1404,92 @@ function __dqaActiveEntries(i){
   var uuid=uuidByIndex[i];
   return uuid?(data[uuid]||[]):[];
 }
+function __dqaRenderInquiryForm(prefilledQuestion,_propertyUuid){
+  // Lead-capture downgrade: rendered when the per-property Gemini
+  // subsidy is exhausted. Form-only by design — never auto-sends.
+  // Submit prefers the backend lead path (handle-lead-capture, Pro
+  // tier only) and falls back to a client-side mailto: link otherwise.
+  var prop=(props&&props[current])||{};
+  var propertyName=prop.name||"this property";
+  var agentEmail=String((C.agent&&C.agent.email)||"").trim();
+  var agentPhone=String((C.agent&&C.agent.phone)||"").trim();
+  var card=document.createElement("div");
+  card.className="ask-msg assistant ask-inquiry-card";
+  card.innerHTML='<div class="ask-inquiry-head"><strong>Ask the agent directly</strong><div class="ask-inquiry-sub">Free Ask AI answers are exhausted for this property. Send your question to the listing agent.</div></div>'
+    +'<div class="ask-inquiry-fields">'
+    +'<input type="text" class="ask-inquiry-input" data-k="name" placeholder="Your name" autocomplete="name">'
+    +'<input type="email" class="ask-inquiry-input" data-k="email" placeholder="Your email" autocomplete="email" required>'
+    +'<input type="tel" class="ask-inquiry-input" data-k="phone" placeholder="Phone (optional)" autocomplete="tel">'
+    +'<textarea class="ask-inquiry-input ask-inquiry-textarea" data-k="message" rows="4" required>'+escapeText(String(prefilledQuestion||""))+'</textarea>'
+    +'</div>'
+    +'<div class="ask-inquiry-actions">'
+    +'<button class="ask-inquiry-send" type="button">Send to agent</button>'
+    +(agentPhone?'<a class="ask-inquiry-sms" href="sms:'+escapeText(agentPhone)+'?body='+encodeURIComponent("Question about "+propertyName+":\n\n"+(prefilledQuestion||""))+'">Text instead</a>':'')
+    +'</div>'
+    +'<div class="ask-inquiry-status" aria-live="polite"></div>';
+  __docsQa.messages.appendChild(card);
+  __docsQa.messages.scrollTop=__docsQa.messages.scrollHeight;
+  var inputs=card.querySelectorAll(".ask-inquiry-input");
+  var statusEl=card.querySelector(".ask-inquiry-status");
+  card.querySelector(".ask-inquiry-send").addEventListener("click",async function(){
+    var values={};
+    for(var i=0;i<inputs.length;i++){
+      values[inputs[i].getAttribute("data-k")]=inputs[i].value.trim();
+    }
+    if(!values.email||!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(values.email)){
+      statusEl.textContent="Please enter a valid email.";
+      statusEl.style.color="#b91c1c";
+      return;
+    }
+    if(!values.message){
+      statusEl.textContent="Please include a message.";
+      statusEl.style.color="#b91c1c";
+      return;
+    }
+    statusEl.textContent="Sending…";
+    statusEl.style.color="";
+    var sentVia=null;
+    // Primary: try handle-lead-capture (Pro-tier, server-routed).
+    var supabaseOrigin=window.__SYNTHESIS_URL__?String(window.__SYNTHESIS_URL__).replace(/\\/functions\\/v1\\/.*$/,""):"";
+    var studioId=String(C.studioId||"");
+    if(supabaseOrigin&&studioId){
+      try{
+        var lcResp=await fetch(supabaseOrigin+"/functions/v1/handle-lead-capture",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({studio_id:studioId,visitor_email:values.email,property_name:propertyName})
+        });
+        if(lcResp.ok) sentVia="backend";
+      }catch(_){}
+    }
+    if(!sentVia){
+      // Fallback: client-side mailto. The visitor's mail client
+      // composes the email; nothing is sent until they confirm.
+      if(!agentEmail){
+        statusEl.textContent="Sorry, no contact channel is configured for this listing.";
+        statusEl.style.color="#b91c1c";
+        return;
+      }
+      var subject="Question about "+propertyName;
+      var bodyLines=[
+        values.message,
+        "",
+        "— "+(values.name||"Visitor")+(values.phone?" ("+values.phone+")":"")
+      ];
+      var mailto="mailto:"+encodeURIComponent(agentEmail)
+        +"?subject="+encodeURIComponent(subject)
+        +"&body="+encodeURIComponent(bodyLines.join("\\n"));
+      window.location.href=mailto;
+      sentVia="mailto";
+    }
+    statusEl.textContent=sentVia==="backend"
+      ?"Thanks — your message was sent to the agent."
+      :"Your email composer should now be open. Send the email to complete your inquiry.";
+    statusEl.style.color="#047857";
+    for(var j=0;j<inputs.length;j++) inputs[j].disabled=true;
+    card.querySelector(".ask-inquiry-send").disabled=true;
+  });
+}
 function __dqaEvidenceUnits(content){
   var raw=String(content||"").trim();
   if(!raw) return [];
@@ -1711,6 +1831,18 @@ async function __dqaInit(){
               }
             }
           }
+          // Pre-flight: if a previous response already declared the
+          // quota exhausted for this property, skip the fetch entirely
+          // and render the inquiry form. Visitor never sees a wasted
+          // round-trip.
+          var __pq=__docsQa.quotaByProperty&&__docsQa.quotaByProperty[uuidByIndex[current]||""];
+          if(__pq&&__pq.downgrade_required){
+            if(loadDiv.parentNode) loadDiv.remove();
+            __dqaRenderInquiryForm(q,uuidByIndex[current]||"");
+            __docsQa.input.disabled=false;
+            __docsQa.send.disabled=false;
+            return;
+          }
           var sResp=await fetch(window.__SYNTHESIS_URL__,{
             method:"POST",
             headers:{"Content-Type":"application/json"},
@@ -1723,6 +1855,24 @@ async function __dqaInit(){
             }),
             signal:sCtrl.signal
           });
+          if(sResp.status===402){
+            // Server says: quota exhausted for this property. Cache
+            // the decision and render the lead-capture form instead.
+            try{
+              var qBody=await sResp.json();
+              if(!__docsQa.quotaByProperty) __docsQa.quotaByProperty={};
+              __docsQa.quotaByProperty[uuidByIndex[current]||""]={
+                quota_state:qBody.quota_state||"exhausted",
+                quota_remaining:0,
+                downgrade_required:true
+              };
+            }catch(_){}
+            if(loadDiv.parentNode) loadDiv.remove();
+            __dqaRenderInquiryForm(q,uuidByIndex[current]||"");
+            __docsQa.input.disabled=false;
+            __docsQa.send.disabled=false;
+            return;
+          }
           if(sResp.ok&&sResp.body){
             var sReader=sResp.body.getReader();
             var sDecoder=new TextDecoder();
@@ -1753,6 +1903,18 @@ async function __dqaInit(){
                     streamDone=true;
                   }else if(sEvt.error){
                     throw new Error(sEvt.error);
+                  }else if(sEvt.meta){
+                    // Track quota state per property so subsequent
+                    // sends short-circuit to the inquiry form when
+                    // the cap is hit.
+                    if(!__docsQa.quotaByProperty) __docsQa.quotaByProperty={};
+                    var pUuid=uuidByIndex[current]||"";
+                    var prev=__docsQa.quotaByProperty[pUuid]||{};
+                    __docsQa.quotaByProperty[pUuid]={
+                      quota_state:sEvt.meta.quota_state||prev.quota_state||"ok",
+                      quota_remaining:typeof sEvt.meta.quota_remaining==="number"?sEvt.meta.quota_remaining:prev.quota_remaining,
+                      downgrade_required:sEvt.meta.downgrade_required===true||prev.downgrade_required===true
+                    };
                   }
                 }catch(pe){if(!(pe instanceof SyntaxError)) throw pe;}
               }
