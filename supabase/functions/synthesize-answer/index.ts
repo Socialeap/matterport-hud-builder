@@ -37,6 +37,7 @@ import {
   checkRateLimit,
   ipFromRequest,
 } from "../_shared/rate-limit.ts";
+import { decryptKey } from "../_shared/byok-crypto.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -314,6 +315,38 @@ function jsonError(
   });
 }
 
+/**
+ * Normalize a bytea column from supabase-js into a Uint8Array. The
+ * REST adapter sometimes returns the value as a `\\x...` hex string
+ * (default Postgres bytea_output) and sometimes as a Uint8Array
+ * depending on column type inference. Handle both, plus base64 as a
+ * defensive third path.
+ */
+function bytesFromBytea(value: unknown): Uint8Array {
+  if (value instanceof Uint8Array) return value;
+  if (typeof value === "string") {
+    const s = value;
+    if (s.startsWith("\\x") || s.startsWith("\\\\x")) {
+      const hex = s.startsWith("\\\\x") ? s.slice(3) : s.slice(2);
+      const out = new Uint8Array(hex.length / 2);
+      for (let i = 0; i < out.length; i++) {
+        out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+      }
+      return out;
+    }
+    // base64
+    try {
+      const bin = atob(s);
+      const out = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+      return out;
+    } catch {
+      throw new Error(`bytesFromBytea: unrecognized string encoding`);
+    }
+  }
+  throw new Error(`bytesFromBytea: unsupported value type`);
+}
+
 const TEXT_ENC = new TextEncoder();
 
 function normaliseQuestion(q: string): string {
@@ -522,10 +555,11 @@ serve(async (req) => {
     });
   }
 
-  // Cross-check property_uuid is actually part of this presentation.
+  // Cross-check property_uuid is actually part of this presentation
+  // and capture the provider_id for BYOK lookup.
   const { data: model } = await service
     .from("saved_models")
-    .select("id, properties")
+    .select("id, properties, provider_id")
     .eq("id", tokenResult.saved_model_id)
     .maybeSingle();
   if (!model) {
@@ -538,6 +572,37 @@ serve(async (req) => {
   );
   if (!propertyInPresentation) {
     return jsonError(403, { error: "property_not_in_presentation" });
+  }
+
+  // Resolve BYOK: if the provider has an active Gemini key, decrypt
+  // it and route the model call through that key. The TM key is
+  // skipped entirely on this path; the quota event is recorded with
+  // outcome='byok' so the TM subsidy doesn't decrement.
+  let byokKey: string | null = null;
+  try {
+    const { data: byokRow } = await service
+      .from("provider_byok_keys")
+      .select("ciphertext, iv, active")
+      .eq("provider_id", model.provider_id)
+      .eq("vendor", "gemini")
+      .maybeSingle();
+    if (byokRow && byokRow.active) {
+      // ciphertext + iv are bytea columns. supabase-js returns them
+      // as either Uint8Array (in Deno) or hex strings. Normalize.
+      const cipherBytes = bytesFromBytea(byokRow.ciphertext);
+      const ivBytes = bytesFromBytea(byokRow.iv);
+      byokKey = await decryptKey(cipherBytes, ivBytes);
+    }
+  } catch (err) {
+    console.warn(
+      "[synthesize-answer] byok lookup/decrypt failed, falling back to TM:",
+      err,
+    );
+  }
+  const usingByok = !!byokKey;
+  const effectiveGeminiKey = byokKey ?? GEMINI_API_KEY;
+  if (!effectiveGeminiKey && !(GROQ_ENABLED && GROQ_API_KEY)) {
+    return jsonError(500, { error: "no_llm_keys_resolved" });
   }
 
   // Pull trusted evidence + intelligence_health from the DB.
@@ -598,7 +663,14 @@ serve(async (req) => {
   } catch (err) {
     console.warn("[synthesize-answer] quota read failed:", err);
   }
-  const preState = deriveQuotaState(quota);
+  // Treat usingByok as authoritative even if the counter row hasn't
+  // yet been seeded (e.g. a brand-new saved_model that didn't exist
+  // when validate-byok ran set_provider_byok_active). Avoids a race
+  // where BYOK is set up but a fresh property still hits the cap.
+  const preState = deriveQuotaState({
+    ...quota,
+    byok_active: quota.byok_active || usingByok,
+  });
   if (preState.quota_state === "exhausted") {
     return jsonError(402, {
       error: "quota_exhausted",
@@ -624,7 +696,12 @@ serve(async (req) => {
   (async () => {
     try {
       let success = false;
-      let provider: "gemini_primary" | "gemini_fallback" | "groq_emergency" | null = null;
+      let provider:
+        | "gemini_primary"
+        | "gemini_fallback"
+        | "groq_emergency"
+        | null = null;
+      const provenance: "byok" | "tm" = usingByok ? "byok" : "tm";
 
       // Emit a meta event up front with the live quota snapshot.
       await writer.write(
@@ -640,17 +717,17 @@ serve(async (req) => {
         }),
       );
 
-      // 1. Gemini Flash-8B (primary)
-      if (GEMINI_API_KEY) {
+      // 1. Gemini primary — uses BYOK key if present, TM key otherwise.
+      if (effectiveGeminiKey) {
         const t0 = performance.now();
         console.info(
-          `[synthesize-answer] gemini_primary attempt model=${GEMINI_PRIMARY_MODEL_NAME}`,
+          `[synthesize-answer] gemini_primary attempt model=${GEMINI_PRIMARY_MODEL_NAME} provenance=${provenance}`,
         );
         success = await streamGemini(
           GEMINI_PRIMARY_MODEL_NAME,
           query,
           context,
-          GEMINI_API_KEY,
+          effectiveGeminiKey,
           writer,
         );
         if (success) {
@@ -665,17 +742,17 @@ serve(async (req) => {
         }
       }
 
-      // 2. Gemini Flash (fallback)
-      if (!success && GEMINI_API_KEY) {
+      // 2. Gemini fallback — same BYOK/TM resolution.
+      if (!success && effectiveGeminiKey) {
         const t1 = performance.now();
         console.info(
-          `[synthesize-answer] gemini_fallback attempt model=${GEMINI_FALLBACK_MODEL_NAME}`,
+          `[synthesize-answer] gemini_fallback attempt model=${GEMINI_FALLBACK_MODEL_NAME} provenance=${provenance}`,
         );
         success = await streamGemini(
           GEMINI_FALLBACK_MODEL_NAME,
           query,
           context,
-          GEMINI_API_KEY,
+          effectiveGeminiKey,
           writer,
         );
         if (success) {
@@ -713,10 +790,13 @@ serve(async (req) => {
         }
       }
 
-      // Emit a final meta event with the resolved provider so the
-      // runtime can attribute usage to the right LLM.
+      // Emit a final meta event with the resolved provider + provenance
+      // so the runtime can attribute usage to the right LLM and the
+      // dashboard can distinguish BYOK answers from TM-funded ones.
       if (provider) {
-        await writer.write(sseChunk({ meta: { provider } }));
+        await writer.write(
+          sseChunk({ meta: { provider, provenance } }),
+        );
       }
 
       if (!success) {
@@ -727,12 +807,12 @@ serve(async (req) => {
           }),
         );
       } else {
-        // Idempotent quota count. BYOK does not decrement TM quota;
-        // C12 will branch on byok_active here. For now every TM-
-        // funded provider success counts.
-        const outcome: "counted" | "byok" = quota.byok_active
-          ? "byok"
-          : "counted";
+        // Idempotent quota event. BYOK provenance means the model
+        // call ran on the provider's own key — record the event for
+        // observability with outcome='byok' but do NOT decrement the
+        // TM subsidy. The DB function only increments free_used when
+        // outcome='counted'.
+        const outcome: "counted" | "byok" = usingByok ? "byok" : "counted";
         try {
           const { data: post } = await service.rpc(
             "record_ask_quota_event",
