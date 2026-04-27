@@ -942,7 +942,7 @@ ${askAssets.css}
 </button>
 
 <!-- ── HUD top header ─────────────────────────────────────────────── -->
-<div id="hud-header" class="hidden">
+<div id="hud-header">
   <div id="hud-inner">
     <div id="hud-left">
       ${logoUrl ? `<img id="hud-logo" src="${escapeHtml(logoUrl)}" alt="Logo">` : ""}
