@@ -130,6 +130,42 @@ export const savePresentationRequest = createServerFn({ method: "POST" })
     return { success: true, modelId: model.id };
   });
 
+/**
+ * Refresh the persisted config for an existing saved_model so the next
+ * `generatePresentation` call sees the latest builder state (properties,
+ * behaviors, agent, branding overrides, enhancements). Caller must own
+ * the row (RLS enforces this via client_id).
+ *
+ * This exists because clients sometimes change Sound Library / agent /
+ * branding selections AFTER first save and before re-generating their
+ * HTML — without this refresh, those changes never reach the generator.
+ */
+export const refreshPresentationConfig = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: SavePresentationInput & { modelId: string }) => data)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { error } = await supabase
+      .from("saved_models")
+      .update({
+        properties: data.properties as unknown as import("@/integrations/supabase/types").Json,
+        tour_config: {
+          behaviors: data.tourConfig,
+          agent: data.agent,
+          brandingOverrides: data.brandingOverrides,
+          enhancements: data.enhancements ?? {},
+        } as unknown as import("@/integrations/supabase/types").Json,
+        model_count: data.properties.filter((p) => p.matterportId.trim()).length,
+      })
+      .eq("id", data.modelId)
+      .eq("client_id", userId);
+    if (error) {
+      console.error("refreshPresentationConfig failed:", error);
+      return { success: false, error: "Could not refresh saved presentation" };
+    }
+    return { success: true };
+  });
+
 export const checkFulfillmentStatus = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: { modelId: string }) => data)
@@ -820,16 +856,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 #viewer iframe{width:100%;height:100%;border:none}
 
 /* ── HUD header (top glassmorphism overlay) ──────────────────────── */
-#hud-header{position:fixed;top:0;left:0;right:0;z-index:500;transform:translateY(-100%);opacity:0;pointer-events:none;transition:transform 0.3s ease,opacity 0.3s ease}
+#hud-header{position:fixed;top:0;left:0;right:0;z-index:1200;transform:translateY(-100%);opacity:0;pointer-events:none;transition:transform 0.3s ease,opacity 0.3s ease;will-change:transform,opacity;isolation:isolate;-webkit-backface-visibility:hidden;backface-visibility:hidden}
 #hud-header.visible{transform:translateY(0);opacity:1;pointer-events:auto}
-#hud-inner{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:${escapeHtml(hudBgColor)}99;backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid rgba(255,255,255,0.08);box-shadow:0 4px 24px rgba(0,0,0,0.15),inset 0 1px 0 rgba(255,255,255,0.06)}
-#hud-left{display:flex;align-items:center;gap:10px;min-width:0}
+#hud-inner{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:${escapeHtml(hudBgColor)}99;backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid rgba(255,255,255,0.08);box-shadow:0 4px 24px rgba(0,0,0,0.15),inset 0 1px 0 rgba(255,255,255,0.06);flex-wrap:wrap;gap:8px}
+#hud-left{display:flex;align-items:center;gap:10px;min-width:0;flex:1 1 auto}
 #hud-logo{height:32px;object-fit:contain;flex-shrink:0}
 #hud-text{min-width:0}
 #hud-brand{font-size:13px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 3px rgba(0,0,0,0.4)}
 #hud-prop-name{font-size:11px;font-weight:500;color:rgba(255,255,255,0.9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #hud-prop-loc{font-size:11px;color:rgba(255,255,255,0.65);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#hud-right{display:flex;align-items:center;gap:6px;flex-shrink:0;margin-right:32px}
+#hud-right{display:flex;align-items:center;gap:6px;flex-shrink:0;margin-right:32px;flex-wrap:wrap;justify-content:flex-end}
 .hud-icon-btn{width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.12);border:none;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background 0.2s;flex-shrink:0;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
 .hud-icon-btn:hover{background:rgba(255,255,255,0.22)}
 .hud-icon-btn svg{width:14px;height:14px}
@@ -841,7 +877,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 #hud-mute-btn.visible{display:flex}
 
 /* ── HUD toggle chevron ───────────────────────────────────────────── */
-#hud-toggle{position:fixed;top:8px;right:8px;z-index:501;width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,0.18);border:none;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background 0.2s;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+#hud-toggle{position:fixed;top:8px;right:8px;z-index:1300;width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,0.18);border:none;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background 0.2s;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
 #hud-toggle:hover{background:rgba(255,255,255,0.28)}
 #hud-toggle svg{width:12px;height:12px}
 
@@ -1074,14 +1110,67 @@ ${askAssets.moduleScript}
     var first=(cfg.properties&&cfg.properties[0])||null;
     var frame=document.getElementById("matterport-frame");
     if(frame&&first&&first.iframeUrl){ frame.src=first.iframeUrl; }
-    function hideGate(){
+    // Detect if any property has playable audio. Used to gate the
+    // "Start with Sound" CTA so we never advertise audio that isn't there.
+    var hasAnyAudio=false;
+    try {
+      var pp=(cfg&&cfg.properties)||[];
+      for(var i=0;i<pp.length;i++){
+        var u=String(pp[i]&&pp[i].musicUrl||"").trim();
+        if(u){ hasAnyAudio=true; break; }
+      }
+    } catch(_e){}
+
+    // Early HUD wiring — independent of the heavy main IIFE so the
+    // toggle and chevrons always work, even if Ask AI / extraction
+    // bundles fail to load. The main IIFE replaces these handlers
+    // additively (addEventListener stacks).
+    var hudHeader=document.getElementById("hud-header");
+    var hudToggle=document.getElementById("hud-toggle");
+    var chevUp=document.getElementById("hud-chevron-up");
+    var chevDown=document.getElementById("hud-chevron-down");
+    var hudVisible=false;
+    function setHudVisible(v){
+      hudVisible=!!v;
+      if(hudHeader){
+        hudHeader.classList.toggle("visible",hudVisible);
+        // Inline-style fallback in case the .visible class rule is
+        // overridden by an unexpected stylesheet ordering issue.
+        hudHeader.style.transform=hudVisible?"translateY(0)":"translateY(-100%)";
+        hudHeader.style.opacity=hudVisible?"1":"0";
+        hudHeader.style.pointerEvents=hudVisible?"auto":"none";
+      }
+      if(chevUp) chevUp.style.display=hudVisible?"":"none";
+      if(chevDown) chevDown.style.display=hudVisible?"none":"";
+    }
+    // Expose globally so the main IIFE can reuse it instead of shadowing.
+    window.__setHudVisible=setHudVisible;
+    window.__isHudVisible=function(){return hudVisible;};
+    if(hudToggle){
+      hudToggle.addEventListener("click",function(){ setHudVisible(!hudVisible); });
+    }
+
+    // If the project was generated with no audio at all, swap the
+    // "Start with Sound" CTA for a neutral "Enter Tour" label so we
+    // never imply a sound that isn't embedded.
+    if(!hasAnyAudio){
+      var soundBtn=document.getElementById("gate-sound-btn");
+      if(soundBtn){
+        soundBtn.innerHTML='Enter Tour';
+      }
+      var silentBtn=document.getElementById("gate-silent-btn");
+      if(silentBtn){ silentBtn.style.display="none"; }
+    }
+
+    function hideGate(openHud){
       var g=document.getElementById("gate");
       if(g){ g.classList.add("hidden"); setTimeout(function(){g.style.display="none";},500); }
+      if(openHud!==false) setHudVisible(true);
     }
     var s=document.getElementById("gate-sound-btn");
     var q=document.getElementById("gate-silent-btn");
-    if(s) s.addEventListener("click",hideGate);
-    if(q) q.addEventListener("click",hideGate);
+    if(s) s.addEventListener("click",function(){ hideGate(true); });
+    if(q) q.addEventListener("click",function(){ hideGate(true); });
   } catch(err){ console.error("[presentation] safety bootstrap failed",err); }
 })();
 </script>
@@ -1177,17 +1266,27 @@ function updateHud(i){
   else if(audioEl){audioEl.pause();audioEl.src="";updateMuteBtn();}
 }
 
-// \u2500\u2500 HUD toggle
+// \u2500\u2500 HUD toggle — delegate to the early-bootstrap global so the
+//    inline-style fallbacks and chevron toggling stay consistent even
+//    when this main IIFE re-runs after a hot reload.
 var hudHeader=document.getElementById("hud-header");
 var hudToggle=document.getElementById("hud-toggle");
 var chevUp=document.getElementById("hud-chevron-up");
 var chevDown=document.getElementById("hud-chevron-down");
 var hudVisible=false;
 function setHudVisible(v){
-  hudVisible=v;
-  if(hudHeader){hudHeader.classList.toggle("visible",v);}
-  if(chevUp) chevUp.style.display=v?"":"none";
-  if(chevDown) chevDown.style.display=v?"none":"";
+  hudVisible=!!v;
+  if(typeof window.__setHudVisible==="function"){
+    try { window.__setHudVisible(hudVisible); return; } catch(_e){}
+  }
+  if(hudHeader){
+    hudHeader.classList.toggle("visible",hudVisible);
+    hudHeader.style.transform=hudVisible?"translateY(0)":"translateY(-100%)";
+    hudHeader.style.opacity=hudVisible?"1":"0";
+    hudHeader.style.pointerEvents=hudVisible?"auto":"none";
+  }
+  if(chevUp) chevUp.style.display=hudVisible?"":"none";
+  if(chevDown) chevDown.style.display=hudVisible?"none":"";
 }
 if(hudToggle) hudToggle.addEventListener("click",function(){setHudVisible(!hudVisible);});
 

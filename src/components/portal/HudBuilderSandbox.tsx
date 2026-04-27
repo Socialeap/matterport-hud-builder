@@ -28,7 +28,7 @@ import type { PropertyModel, AgentContact, TourBehavior } from "./types";
 import { DEFAULT_BEHAVIOR, DEFAULT_AGENT } from "./types";
 import type { Tables } from "@/integrations/supabase/types";
 import { supabase } from "@/integrations/supabase/client";
-import { savePresentationRequest, generatePresentation, getStudioAccessState } from "@/lib/portal.functions";
+import { savePresentationRequest, generatePresentation, getStudioAccessState, refreshPresentationConfig } from "@/lib/portal.functions";
 import { uploadBrandAsset } from "@/lib/storage";
 import { toast } from "sonner";
 import { calculatePresentationPrice } from "@/lib/portal/pricing";
@@ -264,6 +264,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
   const [connectAccountId, setConnectAccountId] = useState<string | null>(null);
   const [checkoutClientSecret, setCheckoutClientSecret] = useState<string | null>(null);
   const generatePresentationFn = useServerFn(generatePresentation);
+  const refreshPresentationConfigFn = useServerFn(refreshPresentationConfig);
   const getStudioAccessStateFn = useServerFn(getStudioAccessState);
   const workerRef = useRef<EmbeddingWorkerClient | null>(null);
   const autoDownloadTriggeredRef = useRef(false);
@@ -628,8 +629,38 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
    */
   const runDownload = useCallback(async (modelId: string) => {
     setDownloading(true);
-    setDownloadStep("Generating Q&A dictionary…");
+    setDownloadStep("Refreshing saved configuration…");
     try {
+      // Step 0: Push the LATEST builder state into the saved row so the
+      // generator sees current Sound Library / agent / branding / behavior
+      // selections — not whatever was committed at first save. Best-effort:
+      // a refresh failure should not block download (server still has the
+      // last-good config).
+      try {
+        await refreshPresentationConfigFn({
+          data: {
+            modelId,
+            providerId: branding.provider_id,
+            name: models[0]?.name || "Untitled Presentation",
+            properties: models,
+            tourConfig: behaviors as unknown as Record<string, unknown>,
+            agent: agent as unknown as Record<string, string>,
+            brandingOverrides: {
+              brandName,
+              accentColor,
+              hudBgColor,
+              gateLabel,
+              logoUrl: logoStorageUrl ?? "",
+              faviconUrl: faviconStorageUrl ?? "",
+            },
+            enhancements,
+          },
+        });
+      } catch (refreshErr) {
+        console.warn("Config refresh skipped:", refreshErr);
+      }
+
+      setDownloadStep("Generating Q&A dictionary…");
       // Step 1: Build property Q&A pairs locally (deterministic, no LLM).
       const entries: QAEntry[] = buildPropertyQAEntries(models, agent);
 
@@ -683,7 +714,22 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     }
     setDownloading(false);
     setDownloadStep("");
-  }, [models, agent, generatePresentationFn, providerSlug]);
+  }, [
+    models,
+    agent,
+    behaviors,
+    enhancements,
+    brandName,
+    accentColor,
+    hudBgColor,
+    gateLabel,
+    logoStorageUrl,
+    faviconStorageUrl,
+    branding.provider_id,
+    generatePresentationFn,
+    refreshPresentationConfigFn,
+    providerSlug,
+  ]);
 
   /**
    * Single entry-point for the bottom "Download" / "Pay & Download"

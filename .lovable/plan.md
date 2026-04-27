@@ -1,97 +1,95 @@
-# HUD Header Toggle + Presentation Filename Fix
+## Diagnosis
 
-## Issue 1 — HUD Header Doesn't Show When Chevron Clicked
+The uploaded `Marriott_Marquis_2026-04-27.html` shows two separate failures:
 
-### Root cause
+1. **HUD wiring is too dependent on the main runtime finishing successfully.**
+   - The generated file embeds very large Property Intelligence payloads before the main presentation script.
+   - There is a safety bootstrap, but it only hides the welcome gate and sets the Matterport iframe source.
+   - It does **not** wire the HUD toggle, open the HUD, update chevrons, or initialize audio.
+   - If anything later in the large runtime path stalls or fails, the tour can load while the HUD appears non-functional.
 
-In the generated presentation HTML, `setHudVisible()` rebuilds `className` from scratch:
+2. **The selected music was not actually embedded in this generated file.**
+   - The config inside the uploaded HTML contains `"musicUrl":""`.
+   - Because the generated presentation has no audio URL, the `Start with Sound` button has nothing to play and the mute button stays hidden.
+   - This likely happened because the persisted `saved_model` did not include the current enhancement/music selection at generation time, or the selected Sound Library asset could not be resolved and fell back to an empty manual `musicUrl`.
 
-```js
-hudHeader.className = "hud-header " + (v ? "visible" : "hidden");
-```
+There is also a UX issue: the current gate always says `Start with Sound`, even when the generated config has no playable sound URL, which makes this look like a playback failure when the real issue is missing audio data.
 
-The CSS toggles via `#hud-header.visible{max-height:80px;opacity:1}` and `#hud-header.hidden{max-height:0;opacity:0}`. While the class swap itself is technically valid, this implementation has three real failure modes that combine to produce the bug the user is seeing:
+## Safe fix
 
-1. **`overflow:hidden` + `max-height:80px` clip the inner content.** `#hud-inner` has padding (10px top + 10px bottom = 20px) plus three stacked text rows (13px brand + 11px name + 11px loc with line-heights ≈ 18px each ≈ 54px) plus a 28px icon row in `#hud-right`. Real rendered height frequently exceeds 80px once a logo or longer brand name is present, so even when the class is correctly applied, the visible band is too short to show the contact button / Ask button row — the user perceives "nothing appears."
-2. **No paint-trigger after class swap.** Because the chevron click does not toggle `display`, a cold transition from `max-height:0` to `max-height:80px` sometimes fails to repaint when combined with the iframe's GPU compositor layer above it (observed on Chromium when `backdrop-filter` is also active on the same element). The element is technically visible in the DOM tree but renders 0px tall.
-3. **`dismissGate()` already calls `setHudVisible(true)`** so the very first chevron click *hides* the header (counter to the chevron-down affordance shown). The user clicks expecting to expand, sees nothing change visually (because the bar was already collapsed visually in scenario 1), and concludes "the dropdown does not work."
+### 1. Make the presentation shell independently reliable
+Update `src/lib/portal.functions.ts` so the pre-bootstrap safety script becomes a real shell bootstrap that:
 
-### Fix
+- Parses the same config as the main script.
+- Sets the first Matterport iframe URL immediately.
+- Wires `#hud-toggle` immediately.
+- Implements `window.__setHudVisible` and `window.__presentationSetHudVisible` early.
+- Opens the HUD when the welcome gate is dismissed.
+- Toggles chevrons correctly.
+- Uses direct inline style fallbacks in addition to the `.visible` class:
+  - `transform: translateY(0)`
+  - `opacity: 1`
+  - `pointerEvents: auto`
+- Initializes the HUD text for the first property.
+- Keeps the existing main runtime behavior, but makes it reuse/override these same globals instead of relying on a separate local-only `setHudVisible`.
 
-Edit `src/lib/portal.functions.ts` (the runtime-JS generator block that emits `setHudVisible` and the HUD CSS) to:
+This means even if Ask AI indexing, large embedded data, or a later script section has a problem, the user can still enter the tour, show/hide the HUD, and access visible header controls.
 
-1. **Remove `max-height` clipping.** Replace the visible/hidden CSS with a `transform: translateY()` + `opacity` pattern, which has no height ceiling and forces a compositor repaint:
-   ```css
-   #hud-header{position:fixed;top:0;left:0;right:0;z-index:500;
-     transform:translateY(-100%);opacity:0;pointer-events:none;
-     transition:transform 0.3s ease,opacity 0.3s ease}
-   #hud-header.visible{transform:translateY(0);opacity:1;pointer-events:auto}
-   ```
-   Drop the `.hidden` class entirely — absence of `.visible` is the hidden state. Drop `overflow:hidden` from `#hud-header`.
+### 2. Harden HUD layering and mobile layout
+Update the generated HUD CSS so it is less likely to be hidden behind iframe/compositor layers or pushed off-screen:
 
-2. **Use `classList.toggle` instead of full `className` rewrite.** Preserves any future classes and avoids accidental clobbering:
-   ```js
-   function setHudVisible(v){
-     hudVisible = v;
-     if(hudHeader) hudHeader.classList.toggle("visible", v);
-     if(chevUp) chevUp.style.display = v ? "" : "none";
-     if(chevDown) chevDown.style.display = v ? "none" : "";
-   }
-   ```
+- Raise the HUD/toggle z-index above tabs/footer/iframe.
+- Add compositor-safe properties such as `will-change`, `backface-visibility`, and `isolation` where appropriate.
+- Keep `overflow: visible` on the HUD header.
+- Add a mobile-safe wrapping rule for `#hud-inner` / `#hud-right` so the controls do not overflow at narrower viewport widths.
 
-3. **Update the initial markup** from `<div id="hud-header" class="hidden">` to `<div id="hud-header">` (no class — naturally hidden via the new base style).
+### 3. Make audio initialization resilient and truthful
+Update the generated audio runtime in `src/lib/portal.functions.ts`:
 
-4. **Keep `dismissGate()` calling `setHudVisible(true)`** so the bar appears once the welcome gate clears — that behavior is intentional. The chevron then collapses/expands as expected.
+- Add an early audio bootstrap in the safety script.
+- Normalize audio URLs before comparing/assigning `audio.src`.
+- Set `preload="auto"`, `playsInline`, `crossOrigin="anonymous"` where safe.
+- Track play promise failures and show a clear console warning instead of swallowing them silently.
+- Only show `Start with Sound` and the HUD mute button when at least one property has a resolved `musicUrl`.
+- If there is no resolved audio, change the gate CTA to a neutral label like `Enter Tour` instead of promising sound.
 
-### Why this is safe
+### 4. Ensure the latest builder state is used when generating/re-generating
+Update `src/components/portal/HudBuilderSandbox.tsx` so generation cannot use stale saved data:
 
-- The `.hidden` class is only used by `#hud-header` and `#gate` in the runtime. `#gate.hidden` is independent and untouched.
-- `pointer-events:none` in the hidden state prevents the (now off-screen but still in DOM) header from intercepting clicks meant for the iframe.
-- No other code reads `hudHeader.className` — the only mutation point is `setHudVisible`.
-- Chevron icons, `updateHud()`, mute button, contact drawer, modals, Ask AI panel — all unchanged.
-- The Ask runtime assembler (`src/lib/portal/ask-runtime-assembler.ts` and the three `.mjs` modules) is not touched.
+- Before calling `generatePresentation`, re-save the current builder state when possible, including:
+  - `models`
+  - `agent`
+  - `brandingOverrides`
+  - `enhancements`
+- Add `enhancements`, branding fields, and any upload-derived URLs to the `runDownload` dependency path so re-generation sees the latest state.
+- Keep the current paid/released guard intact; the server will still enforce download permissions.
 
-## Issue 2 — Presentation Filename Should Reflect Property Name + Date
+This directly addresses the uploaded file’s empty `musicUrl`: if the user selected a Sound Library track after the model was first saved, the regenerated HTML must persist that selection before the server builds the file.
 
-### Current behavior
+### 5. Validate Sound Library resolution safely
+In `generatePresentation`, improve Sound Library handling:
 
-`src/components/portal/HudBuilderSandbox.tsx` (line 669–670):
-```js
-const safeName = (models[0]?.name || "presentation").replace(/[^a-zA-Z0-9_-]/g, "_");
-a.download = `${safeName}.html`;
-```
-This only uses the first model's internal `name` field (frequently blank or `"Untitled"`).
+- Keep the current safe fallback behavior.
+- Add non-sensitive console diagnostics when a selected `spatial_audio` asset ID does not resolve to an active audio URL.
+- Preserve manual `Music URL` fallback if no valid Sound Library asset is found.
+- Do not block HTML generation just because audio cannot be resolved.
 
-### Fix
+### 6. Add regression checks
+Update or add tests/scripts to catch this class of issue:
 
-Update the filename builder to prefer `propertyName` (the user-facing property label), fall back to `name`, and append today's date in `YYYY-MM-DD` form:
+- Extend `scripts/verify-portal-html.mjs` to assert generated HTML includes:
+  - early HUD bootstrap wiring,
+  - `setHudVisible(true)` on gate dismiss,
+  - audio gate conditional behavior,
+  - no unconditional `Start with Sound` when no `musicUrl` exists.
+- Run TypeScript/build checks after implementation.
 
-```js
-const first = models[0];
-const rawName = (first?.propertyName || first?.name || "presentation").trim();
-const safeName = rawName.replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "") || "presentation";
-const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-a.download = `${safeName}_${today}.html`;
-```
+## Expected result
 
-Example output: `Chaska_Commons_Coworking_2026-04-27.html`
+After this fix:
 
-### Why this is safe
-
-- Falls back gracefully when `propertyName` is empty.
-- Sanitizer strips all unsafe chars and trims leading/trailing underscores so names like `"  My Property  "` become `My_Property`, not `__My_Property__`.
-- Date in ISO form sorts naturally and is locale-independent.
-- Only the download `a.download` attribute changes — no server payload, no DB, no URL state affected.
-
-## Files to edit
-
-- `src/lib/portal.functions.ts` — HUD CSS block (~lines 822–825), HUD markup (~line 946), `setHudVisible` JS (~lines 1187–1192).
-- `src/components/portal/HudBuilderSandbox.tsx` — `runDownload` filename construction (~line 669–670).
-
-## Verification steps after implementation
-
-1. Generate a fresh presentation from the sandbox; confirm the download filename matches `<PropertyName>_<YYYY-MM-DD>.html`.
-2. Open the generated HTML; click "Continue with sound" — header should be visible immediately with all icons/contact/Ask buttons rendered.
-3. Click the chevron — header smoothly slides up and disappears; chevron flips to down arrow.
-4. Click again — header slides back down; chevron flips to up arrow. All interactive buttons (Ask, Contact, mute, map, cinema, media) respond to clicks.
-5. Confirm the iframe receives clicks normally when the header is hidden (no invisible overlay catching pointer events).
+- Clicking the dropdown chevron will show the HUD even if the later Ask/Property Intelligence runtime is slow or fails.
+- Dismissing the welcome gate will reliably open the HUD header.
+- The generated file will not advertise sound unless a valid audio URL is embedded.
+- When a Sound Library track or manual music URL is selected, the generated HTML will include it and the Start with Sound / mute controls will work as browser autoplay rules allow.
+- Re-generated files will reflect the latest property name/date naming convention and the latest saved builder state.
