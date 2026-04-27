@@ -74,11 +74,19 @@ export interface SearchResult {
 
 // ── Pre-computed Q&A types ──────────────────────────────────────────────
 
-/** Raw Q&A entry produced by the rule-based property-qa-builder. */
+/** Raw Q&A entry produced by the rule-based property-qa-builder.
+ *
+ *  `field` is the canonical key the answer pertains to (e.g.
+ *  `agent_name`, `property_address`, `property_summary`). The runtime's
+ *  `curatedFilter` uses this to gate curated hits through the same
+ *  `intentAllows` matrix that protects extraction-derived QAs — so
+ *  agent-contact answers don't surface for size queries, address
+ *  answers don't surface for cost queries, etc. */
 export interface QAEntry {
   question: string;
   answer: string;
   source_anchor_id: string;
+  field: string;
 }
 
 /** Enriched Q&A entry with pre-computed embedding, ready for HTML injection. */
@@ -87,5 +95,6 @@ export interface QADatabaseEntry {
   question: string;
   answer: string;
   source_anchor_id: string;
+  field: string;
   embedding: number[];
 }

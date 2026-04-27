@@ -782,10 +782,14 @@ export const generatePresentation = createServerFn({ method: "POST" })
     // Issue (rotate) a signed presentation token. The token value is
     // embedded in the exported HTML and replayed by synthesize-answer
     // verifier server-side. Only the token HASH is stored in the DB,
-    // so a DB read alone cannot replay tokens. Issuance is best-effort:
-    // if the env or table isn't ready (older deploys), we still build
-    // the HTML but with an empty token, and synthesize-answer will
-    // reject those requests with a 401 — no Ask AI fallback breaks.
+    // so a DB read alone cannot replay tokens.
+    //
+    // Hard rule: if Ask AI is configured (i.e. a synthesis URL is
+    // available), token mint MUST succeed. A silent skip ships an HTML
+    // file whose Ask panel 401s on every visitor query — exactly the
+    // failure mode that produced the Chaska "I don't have that detail"
+    // / hallucinated-outdoor-space symptoms in 2026-04. Surface the
+    // error to the builder UI instead.
     let presentationToken = "";
     try {
       const { ensurePresentationToken } = await import(
@@ -794,9 +798,17 @@ export const generatePresentation = createServerFn({ method: "POST" })
       const issued = await ensurePresentationToken(model.id);
       presentationToken = issued.value;
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (synthesisUrl) {
+        // Ask AI is on but the token can't be minted — refuse the
+        // export. The builder UI surfaces this as a friendly toast.
+        throw new Error(
+          "Ask AI couldn't be set up for this export. Please contact support and reference: token issuance failed.",
+        );
+      }
       console.warn(
-        "[generatePresentation] token issuance skipped:",
-        err instanceof Error ? err.message : err,
+        "[generatePresentation] token issuance skipped (Ask AI not configured):",
+        msg,
       );
     }
 
@@ -1746,7 +1758,7 @@ async function __askBuildCuratedDb(){
   var data=window.__QA_DATABASE__||[];
   if(!data.length) return;
   __docsQa.qaDb=await om.create({
-    schema:{id:"string",question:"string",answer:"string",source_anchor_id:"string",embedding:"vector[384]"}
+    schema:{id:"string",question:"string",answer:"string",source_anchor_id:"string",field:"string",embedding:"vector[384]"}
   });
   for(var i=0;i<data.length;i++){
     var entry=data[i];
@@ -1755,6 +1767,7 @@ async function __askBuildCuratedDb(){
       question:entry.question,
       answer:entry.answer,
       source_anchor_id:entry.source_anchor_id,
+      field:entry.field||"",
       embedding:entry.embedding
     });
   }
@@ -1856,7 +1869,7 @@ async function __dqaInit(){
               question:d.question||"",
               answer:d.answer||"",
               source_anchor_id:d.source_anchor_id||"",
-              field:"",
+              field:d.field||"",
               score:qaHits[qh].score||0
             });
           }
@@ -1961,6 +1974,7 @@ async function __dqaInit(){
               saved_model_id:window.__SAVED_MODEL_ID__||"",
               property_uuid:uuidByIndex[current]||"",
               query:q,
+              intent:intent||"unknown",
               evidence_hints:{chunk_ids:hintIds}
             }),
             signal:sCtrl.signal

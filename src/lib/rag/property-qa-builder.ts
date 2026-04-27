@@ -14,10 +14,12 @@
  * top-of-funnel metadata questions a viewer is likely to ask:
  * property name, address, agent contact, agent note.
  *
- * Anchor IDs are left empty; the tour runtime renders a source chip
- * only when `source_anchor_id` matches a real DOM id, so empty strings
- * cleanly skip that affordance (same fallback path as misaligned IDs
- * under the old OpenAI pipeline).
+ * Every emitted entry is tagged with a canonical `field` key so the
+ * runtime's `curatedFilter` (in `ask-runtime-logic.mjs`) can gate hits
+ * through the same `FIELD_COMPAT` allow/exclude matrix that protects
+ * extraction-derived QAs. Without `field`, the runtime falls back to
+ * the empty-key path in `curatedFilter`, which leaks agent/contact
+ * answers into size, cost, and age queries.
  */
 
 import type { PropertyModel, AgentContact } from "@/components/portal/types";
@@ -51,17 +53,20 @@ export function buildPropertyQAEntries(
       {
         question: "How many properties are in this tour?",
         answer: `There are ${models.length} properties in this tour.`,
-        source_anchor_id: "",
+        source_anchor_id: "tour-property-count",
+        field: "tour_property_count",
       },
       {
         question: "What properties are available?",
         answer: `This tour includes: ${names}.`,
-        source_anchor_id: "",
+        source_anchor_id: "tour-property-list",
+        field: "tour_property_list",
       },
       {
         question: "What's in this tour?",
         answer: `This tour includes: ${names}.`,
-        source_anchor_id: "",
+        source_anchor_id: "tour-property-list",
+        field: "tour_property_list",
       },
     );
   }
@@ -74,14 +79,16 @@ export function buildPropertyQAEntries(
         {
           question: `What's the name of property ${i + 1}?`,
           answer: `Property ${i + 1} is ${model.name}.`,
-          source_anchor_id: "",
+          source_anchor_id: "property-name",
+          field: "property_name",
         },
         {
           question: `Tell me about ${model.name}.`,
           answer: nonEmpty(model.location)
             ? `${model.name} is located at ${model.location}.`
             : `${model.name} is one of the properties in this tour.`,
-          source_anchor_id: "",
+          source_anchor_id: "property-summary",
+          field: "property_summary",
         },
       );
     }
@@ -90,17 +97,20 @@ export function buildPropertyQAEntries(
         {
           question: `Where is ${label} located?`,
           answer: `${label} is located at ${model.location}.`,
-          source_anchor_id: "",
+          source_anchor_id: "property-address",
+          field: "property_address",
         },
         {
           question: `What's the address of ${label}?`,
           answer: `${label} is at ${model.location}.`,
-          source_anchor_id: "",
+          source_anchor_id: "property-address",
+          field: "property_address",
         },
         {
           question: `Where is ${label}?`,
           answer: `${label} is at ${model.location}.`,
-          source_anchor_id: "",
+          source_anchor_id: "property-address",
+          field: "property_address",
         },
       );
       // Plain-keyword phrasings so single-property tours answer
@@ -110,12 +120,14 @@ export function buildPropertyQAEntries(
           {
             question: "Where is it?",
             answer: `It's located at ${model.location}.`,
-            source_anchor_id: "",
+            source_anchor_id: "property-address",
+            field: "property_address",
           },
           {
             question: "What's the address?",
             answer: `The address is ${model.location}.`,
-            source_anchor_id: "",
+            source_anchor_id: "property-address",
+            field: "property_address",
           },
         );
       }
@@ -131,17 +143,20 @@ export function buildPropertyQAEntries(
       {
         question: "Who's the agent?",
         answer: `The agent is ${titled}.`,
-        source_anchor_id: "",
+        source_anchor_id: "agent-name",
+        field: "agent_name",
       },
       {
         question: "Who's representing this listing?",
         answer: `${agent.name} is representing this listing.`,
-        source_anchor_id: "",
+        source_anchor_id: "agent-name",
+        field: "agent_name",
       },
       {
         question: "Who do I talk to about this?",
         answer: `Reach out to ${titled}.`,
-        source_anchor_id: "",
+        source_anchor_id: "agent-name",
+        field: "agent_name",
       },
     );
   }
@@ -153,7 +168,8 @@ export function buildPropertyQAEntries(
     entries.push({
       question: "How do I contact the agent?",
       answer: `You can reach the agent by ${contactBits.join(" or ")}.`,
-      source_anchor_id: "",
+      source_anchor_id: "agent-contact",
+      field: "agent_contact",
     });
   }
 
@@ -162,12 +178,14 @@ export function buildPropertyQAEntries(
       {
         question: "What's the agent's email?",
         answer: `Email the agent at ${agent.email}.`,
-        source_anchor_id: "",
+        source_anchor_id: "agent-email",
+        field: "agent_email",
       },
       {
         question: "How do I email the agent?",
         answer: `Email the agent at ${agent.email}.`,
-        source_anchor_id: "",
+        source_anchor_id: "agent-email",
+        field: "agent_email",
       },
     );
   }
@@ -177,12 +195,14 @@ export function buildPropertyQAEntries(
       {
         question: "What's the agent's phone number?",
         answer: `Call the agent at ${agent.phone}.`,
-        source_anchor_id: "",
+        source_anchor_id: "agent-phone",
+        field: "agent_phone",
       },
       {
         question: "How do I call the agent?",
         answer: `Call the agent at ${agent.phone}.`,
-        source_anchor_id: "",
+        source_anchor_id: "agent-phone",
+        field: "agent_phone",
       },
     );
   }
@@ -192,12 +212,14 @@ export function buildPropertyQAEntries(
       {
         question: "What's the message from the agent?",
         answer: agent.welcomeNote,
-        source_anchor_id: "",
+        source_anchor_id: "agent-welcome-note",
+        field: "agent_welcome_note",
       },
       {
         question: "Any note from the agent?",
         answer: agent.welcomeNote,
-        source_anchor_id: "",
+        source_anchor_id: "agent-welcome-note",
+        field: "agent_welcome_note",
       },
     );
   }
@@ -206,7 +228,8 @@ export function buildPropertyQAEntries(
     entries.push({
       question: "Does the agent have a website?",
       answer: `The agent's website is ${agent.website}.`,
-      source_anchor_id: "",
+      source_anchor_id: "agent-website",
+      field: "agent_website",
     });
   }
 
