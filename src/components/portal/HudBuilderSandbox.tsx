@@ -268,6 +268,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
   const getStudioAccessStateFn = useServerFn(getStudioAccessState);
   const workerRef = useRef<EmbeddingWorkerClient | null>(null);
   const autoDownloadTriggeredRef = useRef(false);
+  const brandAssetsTouchedRef = useRef({ logo: false, favicon: false, avatar: false });
 
   // ── Draft autosave (client-side only, no backend) ─────────────────
   const providerSlug = branding.slug || branding.provider_id;
@@ -462,11 +463,13 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
 
   const handleFileChange = useCallback((field: "logo" | "favicon", file: File | null) => {
     if (field === "logo") {
+      brandAssetsTouchedRef.current.logo = true;
       setLogoFile(file);
       setLogoPreview(file ? URL.createObjectURL(file) : null);
       // Reset stored URL whenever the source file changes — re-upload on save.
       if (file) setLogoStorageUrl(null);
     } else {
+      brandAssetsTouchedRef.current.favicon = true;
       setFaviconFile(file);
       setFaviconPreview(file ? URL.createObjectURL(file) : null);
       if (file) setFaviconStorageUrl(null);
@@ -475,10 +478,12 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
 
   const handleRemoveBrandAsset = useCallback((field: "logo" | "favicon") => {
     if (field === "logo") {
+      brandAssetsTouchedRef.current.logo = true;
       setLogoFile(null);
       setLogoPreview(null);
       setLogoStorageUrl(null);
     } else {
+      brandAssetsTouchedRef.current.favicon = true;
       setFaviconFile(null);
       setFaviconPreview(null);
       setFaviconStorageUrl(null);
@@ -533,6 +538,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
 
   const handleAgentAvatarChange = useCallback(
     async (file: File | null) => {
+      brandAssetsTouchedRef.current.avatar = true;
       if (!file) {
         setAgentAvatarFile(null);
         setAgent((prev) => ({ ...prev, avatarUrl: "" }));
@@ -622,6 +628,30 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     };
   }, [userId, branding.provider_id, getStudioAccessStateFn, accessRetryNonce]);
 
+  const readSavedPresentationAssets = useCallback(async (modelId: string) => {
+    const empty = { logoUrl: "", faviconUrl: "", avatarUrl: "" };
+    const { data, error } = await supabase
+      .from("saved_models")
+      .select("tour_config")
+      .eq("id", modelId)
+      .maybeSingle();
+    if (error) {
+      console.warn("Saved presentation asset lookup skipped:", error);
+      return empty;
+    }
+    const tourConfig = (data?.tour_config || {}) as {
+      brandingOverrides?: Record<string, unknown>;
+      agent?: Record<string, unknown>;
+    };
+    const overrides = tourConfig.brandingOverrides || {};
+    const savedAgent = tourConfig.agent || {};
+    return {
+      logoUrl: typeof overrides.logoUrl === "string" ? overrides.logoUrl : "",
+      faviconUrl: typeof overrides.faviconUrl === "string" ? overrides.faviconUrl : "",
+      avatarUrl: typeof savedAgent.avatarUrl === "string" ? savedAgent.avatarUrl : "",
+    };
+  }, []);
+
   /**
    * Generate the .html and trigger a browser download for the given
    * saved_model. Pre-condition: the model is `paid` + `is_released`
@@ -631,6 +661,72 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     setDownloading(true);
     setDownloadStep("Refreshing saved configuration…");
     try {
+      let refreshAgent = agent;
+      let refreshLogoUrl = logoStorageUrl;
+      let refreshFaviconUrl = faviconStorageUrl;
+
+      if (userId && agentAvatarFile) {
+        try {
+          const url = await uploadBrandAsset(userId, agentAvatarFile, "avatar");
+          if (url) {
+            refreshAgent = { ...agent, avatarUrl: url };
+            setAgent(refreshAgent);
+            setAgentAvatarFile(null);
+          }
+        } catch (err) {
+          console.error("Avatar upload (download refresh) failed:", err);
+        }
+      }
+
+      if (userId && logoFile) {
+        try {
+          const url = await uploadBrandAsset(userId, logoFile, "logo");
+          if (url) {
+            refreshLogoUrl = url;
+            setLogoStorageUrl(url);
+            setLogoPreview(url);
+            setLogoFile(null);
+          }
+        } catch (err) {
+          console.error("Logo upload (download refresh) failed:", err);
+        }
+      }
+
+      if (userId && faviconFile) {
+        try {
+          const url = await uploadBrandAsset(userId, faviconFile, "favicon");
+          if (url) {
+            refreshFaviconUrl = url;
+            setFaviconStorageUrl(url);
+            setFaviconPreview(url);
+            setFaviconFile(null);
+          }
+        } catch (err) {
+          console.error("Favicon upload (download refresh) failed:", err);
+        }
+      }
+
+      const needsSavedAssets =
+        (!brandAssetsTouchedRef.current.logo && !refreshLogoUrl) ||
+        (!brandAssetsTouchedRef.current.favicon && !refreshFaviconUrl) ||
+        (!brandAssetsTouchedRef.current.avatar && !String(refreshAgent.avatarUrl || "").trim());
+      if (needsSavedAssets) {
+        const savedAssets = await readSavedPresentationAssets(modelId);
+        if (!brandAssetsTouchedRef.current.logo && !refreshLogoUrl) {
+          refreshLogoUrl = savedAssets.logoUrl || null;
+        }
+        if (!brandAssetsTouchedRef.current.favicon && !refreshFaviconUrl) {
+          refreshFaviconUrl = savedAssets.faviconUrl || null;
+        }
+        if (
+          !brandAssetsTouchedRef.current.avatar &&
+          !String(refreshAgent.avatarUrl || "").trim() &&
+          savedAssets.avatarUrl
+        ) {
+          refreshAgent = { ...refreshAgent, avatarUrl: savedAssets.avatarUrl };
+        }
+      }
+
       // Step 0: Push the LATEST builder state into the saved row so the
       // generator sees current Sound Library / agent / branding / behavior
       // selections — not whatever was committed at first save. Best-effort:
@@ -644,14 +740,14 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
             name: models[0]?.name || "Untitled Presentation",
             properties: models,
             tourConfig: behaviors as unknown as Record<string, unknown>,
-            agent: agent as unknown as Record<string, string>,
+            agent: refreshAgent as unknown as Record<string, string>,
             brandingOverrides: {
               brandName,
               accentColor,
               hudBgColor,
               gateLabel,
-              logoUrl: logoStorageUrl ?? "",
-              faviconUrl: faviconStorageUrl ?? "",
+              logoUrl: refreshLogoUrl ?? "",
+              faviconUrl: refreshFaviconUrl ?? "",
             },
             enhancements,
           },
@@ -723,9 +819,14 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     accentColor,
     hudBgColor,
     gateLabel,
+    userId,
+    agentAvatarFile,
+    logoFile,
+    faviconFile,
     logoStorageUrl,
     faviconStorageUrl,
     branding.provider_id,
+    readSavedPresentationAssets,
     generatePresentationFn,
     refreshPresentationConfigFn,
     providerSlug,

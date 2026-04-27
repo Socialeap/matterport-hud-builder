@@ -1169,8 +1169,8 @@ ${askAssets.moduleScript}
     }
     var s=document.getElementById("gate-sound-btn");
     var q=document.getElementById("gate-silent-btn");
-    if(s) s.addEventListener("click",function(){ hideGate(true); });
-    if(q) q.addEventListener("click",function(){ hideGate(true); });
+    if(s) s.addEventListener("click",function(){ hideGate(false); });
+    if(q) q.addEventListener("click",function(){ hideGate(false); });
   } catch(err){ console.error("[presentation] safety bootstrap failed",err); }
 })();
 </script>
@@ -1294,7 +1294,7 @@ if(hudToggle) hudToggle.addEventListener("click",function(){setHudVisible(!hudVi
 function dismissGate(){
   var gate=document.getElementById("gate");
   if(gate){gate.classList.add("hidden");setTimeout(function(){gate.style.display="none";},500);}
-  setHudVisible(true);
+  setHudVisible(false);
 }
 var soundBtn=document.getElementById("gate-sound-btn");
 var silentBtn=document.getElementById("gate-silent-btn");
@@ -1522,7 +1522,7 @@ function __dqaRenderInquiryForm(prefilledQuestion,_propertyUuid){
     +'</div>'
     +'<div class="ask-inquiry-actions">'
     +'<button class="ask-inquiry-send" type="button">Send to agent</button>'
-    +(agentPhone?'<a class="ask-inquiry-sms" href="sms:'+escapeText(agentPhone)+'?body='+encodeURIComponent("Question about "+propertyName+":\n\n"+(prefilledQuestion||""))+'">Text instead</a>':'')
+    +(agentPhone?'<a class="ask-inquiry-sms" href="sms:'+escapeText(agentPhone)+'?body='+encodeURIComponent("Question about "+propertyName+":\\n\\n"+(prefilledQuestion||""))+'">Text instead</a>':'')
     +'</div>'
     +'<div class="ask-inquiry-status" aria-live="polite"></div>';
   __docsQa.messages.appendChild(card);
