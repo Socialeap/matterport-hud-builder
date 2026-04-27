@@ -439,6 +439,7 @@ export type Database = {
           field_provenance: Json | null
           fields: Json
           id: string
+          intelligence_health: Json | null
           property_uuid: string
           saved_model_id: string | null
           template_id: string
@@ -455,6 +456,7 @@ export type Database = {
           field_provenance?: Json | null
           fields: Json
           id?: string
+          intelligence_health?: Json | null
           property_uuid: string
           saved_model_id?: string | null
           template_id: string
@@ -471,6 +473,7 @@ export type Database = {
           field_provenance?: Json | null
           fields?: Json
           id?: string
+          intelligence_health?: Json | null
           property_uuid?: string
           saved_model_id?: string | null
           template_id?: string

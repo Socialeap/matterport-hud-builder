@@ -4,6 +4,7 @@
  */
 
 import type { PropertyChunk } from "@/lib/rag/types";
+import type { IntelligenceHealth } from "@/lib/intelligence/health";
 
 export type ExtractorId = "pdfjs_heuristic" | "donut";
 
@@ -49,6 +50,16 @@ export interface ExtractionResponse {
   fields: Record<string, unknown>;
   chunks_indexed: number;
   embedding_status: "pending" | "running" | "ready" | "failed";
+  /**
+   * Authoritative readiness signal. The edge function computes this
+   * from the same numeric counts the UI would have to recompute, so
+   * the contract carries it across the trust boundary instead of
+   * asking each consumer to reinvent the rules.
+   *
+   * Optional for backward compatibility with old responses; new
+   * consumers should treat absence as "needs re-training".
+   */
+  intelligence_health?: IntelligenceHealth;
 }
 
 export interface ExtractionProvider {
