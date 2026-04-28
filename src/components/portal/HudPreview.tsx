@@ -407,37 +407,10 @@ export function HudPreview({
             this container so it never covers the Matterport iframe. */}
         {showBookmarkOverlay && bookmarkingActive && renderBookmarkToolbar("overlay")}
 
-        {/* Add Bookmark button — Builder-only. Sits left of the chevron so
-            they don't overlap. Hidden while the toolbar is active to keep
-            the iframe surface uncluttered. */}
-        {enableBookmarking && !bookmarkingActive && (
-          <button
-            onClick={() => {
-              setHeaderVisible(false);
-              setIsBookmarking(true);
-              setTimeout(() => bookmarkNameRef.current?.focus(), 0);
-            }}
-            disabled={!currentModel?.matterportId?.trim()}
-            className="absolute right-12 top-2 z-30 flex h-6 items-center gap-1 rounded-full bg-white/20 px-2.5 text-[11px] font-medium text-white backdrop-blur-md transition-colors hover:bg-white/30 disabled:cursor-not-allowed disabled:opacity-40"
-            aria-label="Add Live Tour bookmark"
-            title={
-              currentModel?.matterportId?.trim()
-                ? "Add a Live Tour bookmark for this property"
-                : "Add a Matterport Model ID first"
-            }
-            style={{ WebkitBackdropFilter: "blur(12px)", backdropFilter: "blur(12px)" }}
-          >
-            <Bookmark className="h-3 w-3" />
-            <span>Bookmark</span>
-            {stops.length > 0 && (
-              <span
-                className="ml-0.5 rounded-full bg-white/25 px-1.5 text-[10px] font-semibold leading-4"
-              >
-                {stops.length}
-              </span>
-            )}
-          </button>
-        )}
+        {/* Add Bookmark pill button — overlay placement only.
+            In "above" placement (Builder), this button is rendered outside
+            this container so it never sits on top of the Matterport iframe. */}
+        {showBookmarkOverlay && enableBookmarking && !bookmarkingActive && renderBookmarkButton("overlay")}
 
         {/* Toggle button — overlays the 3D model. Hidden while bookmarking
             so the agent has a clean surface to interact with the iframe. */}
