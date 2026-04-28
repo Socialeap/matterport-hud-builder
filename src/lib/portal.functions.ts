@@ -18,6 +18,13 @@ interface SavePresentationMediaAsset {
   embedUrl?: string;
 }
 
+interface SavePresentationLiveTourStop {
+  id: string;
+  name: string;
+  ss: string;
+  sr: string;
+}
+
 interface SavePresentationInput {
   providerId: string;
   name: string;
@@ -31,6 +38,7 @@ interface SavePresentationInput {
     cinematicVideoUrl?: string;
     enableNeighborhoodMap?: boolean;
     multimedia?: SavePresentationMediaAsset[];
+    liveTourStops?: SavePresentationLiveTourStop[];
   }>;
   tourConfig: Record<string, unknown>;
   agent: Record<string, string>;
@@ -212,6 +220,13 @@ interface PropertyMediaAsset {
   embedUrl?: string;
 }
 
+interface PropertyLiveTourStop {
+  id: string;
+  name: string;
+  ss: string;
+  sr: string;
+}
+
 interface PropertyData {
   id: string;
   name: string;
@@ -222,6 +237,7 @@ interface PropertyData {
   cinematicVideoUrl?: string;
   enableNeighborhoodMap?: boolean;
   multimedia?: PropertyMediaAsset[];
+  liveTourStops?: PropertyLiveTourStop[];
 }
 
 interface TourConfigData {
@@ -675,6 +691,21 @@ export const generatePresentation = createServerFn({ method: "POST" })
           enhAudioId && audioUrlById.has(enhAudioId) ? audioUrlById.get(enhAudioId)! : "";
         const resolvedMusicUrl = overrideMusicUrl || p.musicUrl || "";
 
+        // Sanitize Live Guided Tour bookmarks: keep only entries that have a
+        // non-empty `ss` (sweep id is required to teleport). Empty array is
+        // emitted as `[]` so the runtime can branch on `.length` cheaply.
+        const liveTourStops = (p.liveTourStops ?? [])
+          .filter(
+            (s): s is PropertyLiveTourStop =>
+              !!s && typeof s.ss === "string" && s.ss.trim().length > 0,
+          )
+          .map((s) => ({
+            id: String(s.id || ""),
+            name: String(s.name || "").trim() || "Untitled stop",
+            ss: String(s.ss).trim(),
+            sr: String(s.sr || "").trim(),
+          }));
+
         return {
           name: p.name || "Untitled",
           propertyName: p.propertyName || "",
@@ -684,6 +715,7 @@ export const generatePresentation = createServerFn({ method: "POST" })
           cinematicVideoUrl: p.cinematicVideoUrl || "",
           enableNeighborhoodMap: !!(p.enableNeighborhoodMap && (p.location || "").trim()),
           multimedia,
+          liveTourStops,
         };
       });
 
