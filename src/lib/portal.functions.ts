@@ -1401,6 +1401,120 @@ window.__closeContact=function(){
   if(d) d.classList.remove("open");
 };
 
+// ── Quick-message form inside contact drawer ─────────────────────
+(function initQuickMsg(){
+  var wrap=document.getElementById("drawer-quickmsg");
+  if(!wrap) return;
+  var chipsEl=document.getElementById("drawer-qchips");
+  var msgEl=document.getElementById("drawer-qmsg");
+  var emailEl=document.getElementById("drawer-qemail");
+  var emailBtn=document.getElementById("drawer-qsend-email");
+  var smsBtn=document.getElementById("drawer-qsend-sms");
+  var copyBtn=document.getElementById("drawer-qcopy");
+  var statusEl=document.getElementById("drawer-qstatus");
+  var agentEmail=${JSON.stringify(agent.email || "")};
+  var agentPhone=${JSON.stringify(agent.phone || "")};
+  var TEMPLATES=[
+    {label:"Pricing", subject:"Pricing question — {P}", body:"Hi, could you share the asking price and any recent price changes for {P}?"},
+    {label:"Availability", subject:"Availability — {P}", body:"Is {P} still available? When can I view it?"},
+    {label:"Schedule a tour", subject:"Tour request — {P}", body:"I'd like to schedule a tour of {P}. What times work this week?"},
+    {label:"HOA / fees", subject:"HOA & fees — {P}", body:"Could you share HOA dues and any other recurring fees for {P}?"},
+    {label:"Square footage", subject:"Square footage — {P}", body:"Could you confirm the total square footage and room dimensions for {P}?"},
+    {label:"Pet policy", subject:"Pet policy — {P}", body:"What's the pet policy for {P}?"},
+    {label:"Financing", subject:"Financing — {P}", body:"Are there preferred lenders or financing options for {P}?"},
+    {label:"Other", subject:"Inquiry — {P}", body:""}
+  ];
+  var activeIdx=-1;
+  function currentPropName(){
+    try{
+      var p=props[current]||{};
+      return ((p.propertyName||p.name||"this property")+"").trim()||"this property";
+    }catch(_e){ return "this property"; }
+  }
+  function fillFrom(idx){
+    activeIdx=idx;
+    var tpl=TEMPLATES[idx];
+    var pn=currentPropName();
+    if(tpl.body) msgEl.value=tpl.body.split("{P}").join(pn);
+    var chips=chipsEl.querySelectorAll(".drawer-qchip");
+    for(var i=0;i<chips.length;i++) chips[i].classList.toggle("active",i===idx);
+    refresh();
+    msgEl.focus();
+  }
+  for(var i=0;i<TEMPLATES.length;i++){
+    (function(idx){
+      var b=document.createElement("button");
+      b.type="button";
+      b.className="drawer-qchip";
+      b.textContent=TEMPLATES[idx].label;
+      b.addEventListener("click",function(){ fillFrom(idx); });
+      chipsEl.appendChild(b);
+    })(i);
+  }
+  function buildSubject(){
+    var pn=currentPropName();
+    if(activeIdx>=0) return TEMPLATES[activeIdx].subject.split("{P}").join(pn);
+    return "Inquiry — "+pn;
+  }
+  function buildBody(forSms){
+    var msg=(msgEl.value||"").trim();
+    var visitorEmail=(emailEl.value||"").trim();
+    var trailer="";
+    if(visitorEmail){
+      trailer=forSms ? ("\\nReply to: "+visitorEmail) : ("\\n\\n— Sent from "+visitorEmail);
+    }
+    return msg+trailer;
+  }
+  function refresh(){
+    var ok=(msgEl.value||"").trim().length>0;
+    if(emailBtn) emailBtn.setAttribute("aria-disabled", ok ? "false":"true");
+    if(smsBtn) smsBtn.setAttribute("aria-disabled", ok ? "false":"true");
+    if(copyBtn) copyBtn.setAttribute("aria-disabled", ok ? "false":"true");
+  }
+  msgEl.addEventListener("input",refresh);
+  if(emailBtn){
+    emailBtn.addEventListener("click",function(ev){
+      ev.preventDefault();
+      if(emailBtn.getAttribute("aria-disabled")==="true") return;
+      if(!agentEmail){ statusEl.textContent="No email address configured."; return; }
+      var url="mailto:"+encodeURIComponent(agentEmail)
+        +"?subject="+encodeURIComponent(buildSubject())
+        +"&body="+encodeURIComponent(buildBody(false));
+      if(url.length>1900){ url=url.slice(0,1900); }
+      window.location.href=url;
+      statusEl.textContent="Opening your email app…";
+    });
+  }
+  if(smsBtn){
+    smsBtn.addEventListener("click",function(ev){
+      ev.preventDefault();
+      if(smsBtn.getAttribute("aria-disabled")==="true") return;
+      if(!agentPhone){ statusEl.textContent="No phone number configured."; return; }
+      var url="sms:"+agentPhone+"?body="+encodeURIComponent(buildBody(true));
+      if(url.length>1900){ url=url.slice(0,1900); }
+      window.location.href=url;
+      statusEl.textContent="Opening your messaging app… If nothing happens, use Copy to paste it elsewhere.";
+    });
+  }
+  if(copyBtn){
+    copyBtn.addEventListener("click",async function(){
+      if(copyBtn.getAttribute("aria-disabled")==="true") return;
+      var text="Subject: "+buildSubject()+"\\n\\n"+buildBody(false);
+      try{
+        if(navigator.clipboard&&navigator.clipboard.writeText){
+          await navigator.clipboard.writeText(text);
+        }else{
+          var ta=document.createElement("textarea");
+          ta.value=text; document.body.appendChild(ta); ta.select();
+          document.execCommand("copy"); document.body.removeChild(ta);
+        }
+        statusEl.textContent="Copied to clipboard.";
+      }catch(_e){ statusEl.textContent="Couldn't copy — please select and copy manually."; }
+    });
+  }
+  refresh();
+})();
+
 // \u2500\u2500 Modal helpers
 window.__openModal=function(name,idx){
   var el=document.getElementById(name+"-modal");
