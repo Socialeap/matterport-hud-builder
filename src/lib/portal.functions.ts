@@ -2,6 +2,12 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { assembleAskRuntimeJS } from "./portal/ask-runtime-assembler";
 import { getLiveSessionRuntimeJS } from "./portal/live-session-source";
+import {
+  encryptConfigForExport,
+  PROTECTED_MIN_PASSWORD_LEN,
+  PROTECTED_PBKDF2_ITERATIONS,
+  type ProtectedConfigBlob,
+} from "./portal/protected-export";
 
 // Assembled Ask AI runtime JS — built once per process from the three
 // .mjs modules (intents, property-brain, logic). Injected verbatim into
@@ -75,6 +81,16 @@ interface SavePresentationInput {
       external_link?: string[];
     }
   >;
+  /**
+   * Optional password-gate metadata. The plaintext password itself is
+   * NEVER part of this payload — it travels exclusively on
+   * `generatePresentation` as a transient field and is never persisted
+   * (see `GeneratePresentationInput.password`).
+   */
+  access?: {
+    passwordProtected: boolean;
+    passwordHint: string;
+  };
 }
 
 export const savePresentationRequest = createServerFn({ method: "POST" })
@@ -116,6 +132,15 @@ export const savePresentationRequest = createServerFn({ method: "POST" })
           // Forward-compatible: keys for future categories ride along
           // even though only `spatial_audio` affects the runtime today.
           enhancements: data.enhancements ?? {},
+          // Password-gate metadata only — the plaintext password is NEVER
+          // included here. Hint text is shown on the gate before unlock,
+          // so it stays plaintext.
+          access: data.access
+            ? {
+                passwordProtected: !!data.access.passwordProtected,
+                passwordHint: String(data.access.passwordHint || "").slice(0, 120),
+              }
+            : { passwordProtected: false, passwordHint: "" },
         } as unknown as import("@/integrations/supabase/types").Json,
         status: "pending_payment" as const,
         is_released: false,
@@ -169,6 +194,12 @@ export const refreshPresentationConfig = createServerFn({ method: "POST" })
           agent: data.agent,
           brandingOverrides: data.brandingOverrides,
           enhancements: data.enhancements ?? {},
+          access: data.access
+            ? {
+                passwordProtected: !!data.access.passwordProtected,
+                passwordHint: String(data.access.passwordHint || "").slice(0, 120),
+              }
+            : { passwordProtected: false, passwordHint: "" },
         } as unknown as import("@/integrations/supabase/types").Json,
         model_count: data.properties.filter((p) => p.matterportId.trim()).length,
       })
@@ -267,6 +298,16 @@ interface TourConfigData {
       external_link?: string[];
     }
   >;
+  /**
+   * Password-gate metadata persisted in saved_models.tour_config.
+   * Plaintext password is NEVER stored here — only the on/off flag and
+   * the publicly-displayed hint string. The actual password is supplied
+   * fresh on each `generatePresentation` call by the Builder.
+   */
+  access?: {
+    passwordProtected?: boolean;
+    passwordHint?: string;
+  };
 }
 
 function buildMatterportUrlServer(modelId: string, behavior: Record<string, unknown>): string {
@@ -297,6 +338,12 @@ function buildMatterportUrlServer(modelId: string, behavior: Record<string, unkn
 function escapeHtml(str: string): string {
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
+
+// Encryption helpers + iteration count come from
+// ./portal/protected-export. Keeping them in their own module lets the
+// round-trip test exercise the AES-GCM/PBKDF2 plumbing without dragging
+// in TanStack Start server-fn imports.
+void PROTECTED_PBKDF2_ITERATIONS;
 
 /**
  * Narrowly typed facade over the Supabase client — only the three calls
@@ -593,7 +640,17 @@ function buildPropertyDocsPanel(
 
 export const generatePresentation = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data: { modelId: string; qaDatabase?: QADatabaseEntry[] }) => data)
+  .inputValidator(
+    (data: {
+      modelId: string;
+      qaDatabase?: QADatabaseEntry[];
+      // Transient password supplied per-request when the agent has armed
+      // the password gate. Never logged, never persisted, never echoed
+      // back to the client. Stays in memory only for the duration of
+      // this handler invocation.
+      password?: string;
+    }) => data,
+  )
   .handler(async ({ data, context }): Promise<{ success: boolean; html?: string; error?: string; askAiWarning?: string }> => {
     const { supabase, userId } = context;
 
@@ -766,23 +823,84 @@ export const generatePresentation = createServerFn({ method: "POST" })
       );
     }
 
+    // ── Password-gate state resolution ───────────────────────────────
+    // The toggle + hint travel via tour_config.access; the plaintext
+    // password is supplied per-request and is never persisted. Treat
+    // protection as ARMED only when both the toggle is on AND the
+    // request carried a long-enough password. Defense in depth: the
+    // Builder applies the same rule client-side, but we re-check here
+    // so a malformed request can never silently produce an unprotected
+    // file when the agent thought one was protected.
+    const accessConfig = (tourConfig.access || {}) as TourConfigData["access"];
+    const wantsProtection = !!accessConfig?.passwordProtected;
+    const passwordHint = String(accessConfig?.passwordHint || "").slice(0, 120);
+    const submittedPassword = typeof data.password === "string" ? data.password : "";
+    if (wantsProtection && submittedPassword.length < PROTECTED_MIN_PASSWORD_LEN) {
+      return {
+        success: false,
+        error: `Enter a password of at least ${PROTECTED_MIN_PASSWORD_LEN} characters to protect this download.`,
+      };
+    }
+    const protectionArmed = wantsProtection && submittedPassword.length >= PROTECTED_MIN_PASSWORD_LEN;
+
     // Base64-encode config for obfuscation
     const gaTrackingId = typeof agent.gaTrackingId === "string" ? agent.gaTrackingId.trim() : "";
     const agentAvatarUrl = typeof agent.avatarUrl === "string" ? agent.avatarUrl.trim() : "";
-    const configObj = {
-      properties: propertyEntries,
-      agent,
+
+    // Public preamble vs. secret config split. The preamble is what the
+    // visitor's browser sees BEFORE unlocking — strictly the brand chrome
+    // needed to render the gate. Everything else (property data, agent
+    // contact, multimedia URLs, propertyUuidByIndex, GA tracking ID,
+    // studioId) sits inside `secretConfig` and is encrypted when
+    // protection is armed. Unprotected exports merge both halves into a
+    // single base64 blob — byte-for-byte identical to the pre-feature
+    // shape, so existing tours stay binary-stable.
+    const publicPreamble = {
       brandName,
       accentColor,
       hudBgColor,
       gateLabel,
       logoUrl,
+    };
+    const secretConfig = {
+      properties: propertyEntries,
+      agent,
       propertyUuidByIndex,
       gaTrackingId,
       agentAvatarUrl,
       studioId,
     };
-    const configB64 = Buffer.from(JSON.stringify(configObj)).toString("base64");
+
+    let configB64 = "";
+    let protectedBlob: ProtectedConfigBlob | null = null;
+    if (protectionArmed) {
+      // Encrypted path: the runtime's __configReady gate consumes the
+      // blob alongside the public preamble at unlock time. configB64
+      // emits as the empty string so a view-source on the file shows
+      // only ciphertext + preamble — no leakage of property data.
+      try {
+        protectedBlob = await encryptConfigForExport(secretConfig, submittedPassword);
+      } catch (err) {
+        console.error(
+          "[generatePresentation] password encryption failed:",
+          err instanceof Error ? err.message : err,
+        );
+        return {
+          success: false,
+          error: "Could not encrypt this presentation. Please try again or contact support.",
+        };
+      }
+    } else {
+      // Unprotected path — historical shape: a single base64 blob with
+      // the merged public + secret config. The runtime decoder treats
+      // this as the canonical "C" object.
+      const configObj = { ...publicPreamble, ...secretConfig };
+      configB64 = Buffer.from(JSON.stringify(configObj)).toString("base64");
+    }
+    // Base64 of the public preamble — used in both branches by the
+    // pre-bootstrap script so the gate can render brand chrome before
+    // (or instead of) decryption.
+    const publicPreambleB64 = Buffer.from(JSON.stringify(publicPreamble)).toString("base64");
 
     const propertyDocsPanelHtml = buildPropertyDocsPanel(
       extractionsByProperty,
@@ -924,8 +1042,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .gate-actions{display:flex;flex-direction:column;gap:12px;width:100%}
 .gate-btn-primary{padding:13px 28px;font-size:15px;font-weight:600;border:none;border-radius:10px;cursor:pointer;background:${escapeHtml(accentColor)};color:#fff;transition:opacity 0.2s,transform 0.15s;display:flex;align-items:center;justify-content:center;gap:8px}
 .gate-btn-primary:hover{opacity:0.88;transform:translateY(-1px)}
+.gate-btn-primary:disabled{opacity:0.55;cursor:wait;transform:none}
 .gate-btn-secondary{padding:11px 28px;font-size:14px;font-weight:500;border:1px solid rgba(255,255,255,0.25);border-radius:10px;cursor:pointer;background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.8);transition:opacity 0.2s,background 0.2s}
 .gate-btn-secondary:hover{background:rgba(255,255,255,0.14)}
+/* ── Password gate (only rendered when the export was protected) ─ */
+#gate-password-form{display:flex;flex-direction:column;gap:10px;width:100%}
+#gate-password-input{width:100%;padding:12px 14px;font-size:15px;border-radius:10px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.08);color:#fff;outline:none;font-family:inherit}
+#gate-password-input:focus{border-color:${escapeHtml(accentColor)}}
+#gate-password-input::placeholder{color:rgba(255,255,255,0.4)}
+#gate-password-hint{font-size:12px;color:rgba(255,255,255,0.55);line-height:1.4;margin:-2px 2px 0;text-align:left;white-space:pre-wrap}
+#gate-password-error{font-size:12px;color:#ff8a8a;min-height:14px;text-align:left;margin:-2px 2px 0}
+#gate-password-spinner{font-size:12px;color:rgba(255,255,255,0.65);text-align:center;margin-top:4px}
+#gate-unsupported{font-size:13px;color:rgba(255,255,255,0.85);background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:14px 16px;line-height:1.5;text-align:left;margin-top:10px}
 
 /* ── Viewer (full-screen iframe) ──────────────────────────────────── */
 #viewer{position:fixed;inset:0;bottom:0}
@@ -1087,13 +1215,20 @@ ${askAssets.css}
     ${logoUrl ? `<img class="gate-logo" src="${escapeHtml(logoUrl)}" alt="Logo">` : ""}
     <h1>${escapeHtml(brandName)}</h1>
     <div class="gate-subtitle">${escapeHtml(model.name || "")}</div>
-    <div class="gate-actions">
+    ${protectionArmed ? `<form id="gate-password-form" autocomplete="off">
+      <input type="password" id="gate-password-input" name="presentation-access" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Password" aria-label="Presentation password" required>
+      ${passwordHint ? `<div id="gate-password-hint">${escapeHtml(passwordHint)}</div>` : ""}
+      <button type="submit" class="gate-btn-primary" id="gate-password-submit">${escapeHtml(gateLabel || "Unlock")}</button>
+      <div id="gate-password-error" role="alert" aria-live="polite"></div>
+      <div id="gate-password-spinner" hidden>Unlocking…</div>
+    </form>
+    <div id="gate-unsupported" hidden>This protected presentation requires a modern browser (Chrome, Firefox, Safari 11+, Edge).</div>` : `<div class="gate-actions">
       <button class="gate-btn-primary" id="gate-sound-btn">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
         Start with Sound
       </button>
       <button class="gate-btn-secondary" id="gate-silent-btn">${escapeHtml(gateLabel)} (No Sound)</button>
-    </div>
+    </div>`}
   </div>
 </div>
 
@@ -1269,6 +1404,7 @@ ${
 ${hasQA ? `<script>window.__QA_DATABASE__=${safeJsonScriptLiteral(qaDatabase)};</script>` : ""}
 ${synthesisUrl ? `<script>window.__SYNTHESIS_URL__=${JSON.stringify(synthesisUrl)};</script>` : ""}
 ${presentationToken ? `<script>window.__PRESENTATION_TOKEN__=${JSON.stringify(presentationToken)};window.__SAVED_MODEL_ID__=${JSON.stringify(model.id)};</script>` : ""}
+${protectionArmed ? `<script>window.__PROTECTED__=true;window.__PROTECTED_BLOB__=${safeJsonScriptLiteral(protectedBlob)};${passwordHint ? `window.__PROTECTED_HINT__=${JSON.stringify(passwordHint)};` : ""}</script>` : ""}
 ${askAssets.moduleScript}
 <!-- ── Pre-bootstrap safety net ────────────────────────────────────────
      This tiny script runs BEFORE the main IIFE. If the main IIFE later
@@ -1276,25 +1412,43 @@ ${askAssets.moduleScript}
      buttons still dismiss the overlay and the Matterport iframe still
      loads its first property, so the 3D tour is never dead-on-arrival.
      The main IIFE re-binds the same handlers; addEventListener stacks
-     them harmlessly. -->
+     them harmlessly.
+
+     When window.__PROTECTED__ is true, this bootstrap also defers
+     iframe loading until the visitor unlocks the gate with the correct
+     password. window.__configReady is the rendezvous: it resolves with
+     the merged config object the moment decryption succeeds, and the
+     main IIFE awaits it before touching any property data. -->
 <script>
 (function(){
   try {
-    var raw=${JSON.stringify(configB64)};
-    var cfg=JSON.parse(atob(raw));
-    var first=(cfg.properties&&cfg.properties[0])||null;
+    var preambleB64=${JSON.stringify(publicPreambleB64)};
+    var preamble=JSON.parse(atob(preambleB64));
+    var isProtected=!!window.__PROTECTED__;
+    var configResolve;
+    var configReject;
+    window.__configReady=new Promise(function(res,rej){configResolve=res;configReject=rej;});
+
     var frame=document.getElementById("matterport-frame");
-    if(frame&&first&&first.iframeUrl){ frame.src=first.iframeUrl; }
-    // Detect if any property has playable audio. Used to gate the
-    // "Start with Sound" CTA so we never advertise audio that isn't there.
+
+    var cfg=null;
     var hasAnyAudio=false;
-    try {
-      var pp=(cfg&&cfg.properties)||[];
-      for(var i=0;i<pp.length;i++){
-        var u=String(pp[i]&&pp[i].musicUrl||"").trim();
-        if(u){ hasAnyAudio=true; break; }
-      }
-    } catch(_e){}
+    if(!isProtected){
+      var raw=${JSON.stringify(configB64)};
+      cfg=JSON.parse(atob(raw));
+      var first=(cfg.properties&&cfg.properties[0])||null;
+      if(frame&&first&&first.iframeUrl){ frame.src=first.iframeUrl; }
+      try {
+        var pp=(cfg&&cfg.properties)||[];
+        for(var i=0;i<pp.length;i++){
+          var u=String(pp[i]&&pp[i].musicUrl||"").trim();
+          if(u){ hasAnyAudio=true; break; }
+        }
+      } catch(_e){}
+      // Resolve immediately so the main IIFE can run synchronously
+      // through its .then() callback (microtask).
+      configResolve(cfg);
+    }
 
     // Early HUD wiring — independent of the heavy main IIFE so the
     // toggle and chevrons always work, even if Ask AI / extraction
@@ -1325,34 +1479,135 @@ ${askAssets.moduleScript}
       hudToggle.addEventListener("click",function(){ setHudVisible(!hudVisible); });
     }
 
-    // If the project was generated with no audio at all, swap the
-    // "Start with Sound" CTA for a neutral "Enter Tour" label so we
-    // never imply a sound that isn't embedded.
-    if(!hasAnyAudio){
-      var soundBtn=document.getElementById("gate-sound-btn");
-      if(soundBtn){
-        soundBtn.innerHTML='Enter Tour';
-      }
-      var silentBtn=document.getElementById("gate-silent-btn");
-      if(silentBtn){ silentBtn.style.display="none"; }
-    }
-
     function hideGate(openHud){
       var g=document.getElementById("gate");
       if(g){ g.classList.add("hidden"); setTimeout(function(){g.style.display="none";},500); }
       if(openHud!==false) setHudVisible(true);
     }
-    var s=document.getElementById("gate-sound-btn");
-    var q=document.getElementById("gate-silent-btn");
-    if(s) s.addEventListener("click",function(){ hideGate(false); });
-    if(q) q.addEventListener("click",function(){ hideGate(false); });
+
+    if(isProtected){
+      // Password gate path. Defer all property data, iframe src, and
+      // audio bootstrap until the visitor's password successfully
+      // decrypts window.__PROTECTED_BLOB__. The main IIFE awaits
+      // window.__configReady before reading any of that.
+      var formEl=document.getElementById("gate-password-form");
+      var inputEl=document.getElementById("gate-password-input");
+      var submitEl=document.getElementById("gate-password-submit");
+      var errorEl=document.getElementById("gate-password-error");
+      var spinnerEl=document.getElementById("gate-password-spinner");
+      var unsupportedEl=document.getElementById("gate-unsupported");
+      var subtle=(window.crypto&&window.crypto.subtle)||null;
+      if(!subtle){
+        if(formEl) formEl.style.display="none";
+        if(unsupportedEl) unsupportedEl.hidden=false;
+        configReject(new Error("Web Crypto Subtle unavailable in this browser."));
+      } else if(formEl){
+        function b64ToBytes(b64){
+          var bin=atob(b64);
+          var out=new Uint8Array(bin.length);
+          for(var i=0;i<bin.length;i++) out[i]=bin.charCodeAt(i);
+          return out;
+        }
+        async function unlock(password){
+          var blob=window.__PROTECTED_BLOB__||{};
+          var enc=new TextEncoder();
+          var baseKey=await subtle.importKey(
+            "raw", enc.encode(password), {name:"PBKDF2"}, false, ["deriveKey"]
+          );
+          var aesKey=await subtle.deriveKey(
+            {name:"PBKDF2",salt:b64ToBytes(blob.salt||""),iterations:blob.iter|0||600000,hash:"SHA-256"},
+            baseKey,
+            {name:"AES-GCM",length:256},
+            false,
+            ["decrypt"]
+          );
+          var plaintext=await subtle.decrypt(
+            {name:"AES-GCM",iv:b64ToBytes(blob.iv||"")},
+            aesKey,
+            b64ToBytes(blob.ct||"")
+          );
+          var json=new TextDecoder().decode(plaintext);
+          var secret=JSON.parse(json);
+          var merged={};
+          for(var k1 in preamble){ if(Object.prototype.hasOwnProperty.call(preamble,k1)) merged[k1]=preamble[k1]; }
+          for(var k2 in secret){ if(Object.prototype.hasOwnProperty.call(secret,k2)) merged[k2]=secret[k2]; }
+          return merged;
+        }
+        formEl.addEventListener("submit",function(ev){
+          ev.preventDefault();
+          var password=String((inputEl&&inputEl.value)||"");
+          if(!password){
+            if(errorEl) errorEl.textContent="Enter the password to continue.";
+            return;
+          }
+          if(errorEl) errorEl.textContent="";
+          if(submitEl) submitEl.disabled=true;
+          if(inputEl) inputEl.disabled=true;
+          if(spinnerEl) spinnerEl.hidden=false;
+          unlock(password).then(function(C){
+            if(spinnerEl) spinnerEl.hidden=true;
+            // Wire iframe + audio AFTER decrypt: every protected-mode
+            // bootstrap path runs through here so the IIFE doesn't have
+            // to know it was gated.
+            try {
+              var first2=(C&&C.properties&&C.properties[0])||null;
+              if(frame&&first2&&first2.iframeUrl){ frame.src=first2.iframeUrl; }
+            } catch(_e){}
+            configResolve(C);
+            hideGate(false);
+          }).catch(function(err){
+            if(spinnerEl) spinnerEl.hidden=true;
+            if(submitEl) submitEl.disabled=false;
+            if(inputEl){ inputEl.disabled=false; inputEl.value=""; inputEl.focus(); }
+            if(errorEl){
+              // OperationError = GCM auth tag mismatch = wrong password.
+              // Anything else is shown as a generic failure with the
+              // raw message in the console for debugging.
+              errorEl.textContent=(err&&err.name==="OperationError")
+                ?"Incorrect password. Please try again."
+                :"Couldn't unlock this presentation. Try a different browser or contact support.";
+              if(!(err&&err.name==="OperationError")) console.error("[presentation] unlock failed",err);
+            }
+          });
+        });
+        if(inputEl){
+          // Clear inline error as the visitor types so the message
+          // doesn't linger from the previous wrong attempt.
+          inputEl.addEventListener("input",function(){ if(errorEl) errorEl.textContent=""; });
+          // Autofocus once the gate is visible.
+          setTimeout(function(){ try{ inputEl.focus(); }catch(_e){} },50);
+        }
+      }
+    } else {
+      // Unprotected path — same wiring shipped before the password
+      // feature: gate buttons + audio CTA labels.
+      if(!hasAnyAudio){
+        var soundBtn=document.getElementById("gate-sound-btn");
+        if(soundBtn){ soundBtn.innerHTML='Enter Tour'; }
+        var silentBtn=document.getElementById("gate-silent-btn");
+        if(silentBtn){ silentBtn.style.display="none"; }
+      }
+      var s=document.getElementById("gate-sound-btn");
+      var q=document.getElementById("gate-silent-btn");
+      if(s) s.addEventListener("click",function(){ hideGate(false); });
+      if(q) q.addEventListener("click",function(){ hideGate(false); });
+    }
   } catch(err){ console.error("[presentation] safety bootstrap failed",err); }
 })();
 </script>
 <script>
 (function(){
-var C=JSON.parse(atob("${configB64}"));
-var props=C.properties;
+// Wait for the safety bootstrap's __configReady promise to resolve. It
+// resolves immediately in unprotected mode and on successful unlock in
+// protected mode. Either way, the rest of this IIFE runs against a
+// fully-formed config object — never partial preamble data.
+var __ready=window.__configReady||Promise.resolve(null);
+__ready.then(function(C){
+if(!C){
+  console.error("[presentation] config unavailable — runtime aborted.");
+  return;
+}
+var props=C.properties||[];
 var uuidByIndex=C.propertyUuidByIndex||[];
 var frame=document.getElementById("matterport-frame");
 var tabsEl=document.getElementById("tabs");
@@ -2641,6 +2896,12 @@ if(frame){
     }
   });
 })();
+}).catch(function(err){
+  // __configReady rejected — protected mode with Subtle unavailable, or
+  // a bug in the unlock pipeline. The unsupported-browser banner is
+  // already shown by the safety bootstrap; nothing more to do here.
+  if(err) console.warn("[presentation] runtime gated:",err&&err.message?err.message:err);
+});
 })();
 </script>
 </body>

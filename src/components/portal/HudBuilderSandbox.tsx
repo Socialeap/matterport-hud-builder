@@ -16,11 +16,26 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { Palette, Home, UserCircle, Sparkles } from "lucide-react";
+import { Palette, Home, UserCircle, Sparkles, Lock, Eye, EyeOff } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { BrandingSection } from "./BrandingSection";
 import { PropertyModelsSection } from "./PropertyModelsSection";
 import { AgentContactSection } from "./AgentContactSection";
 import { EnhancementsSection, type EnhancementsByProperty } from "./EnhancementsSection";
+import {
+  PrivacyAccessSection,
+  isAccessArmed,
+  ACCESS_PASSWORD_MIN_LEN,
+} from "./PrivacyAccessSection";
 import { TourBehaviorModal } from "./TourBehaviorModal";
 import { HudPreview } from "./HudPreview";
 import { PortalSignupModal } from "./PortalSignupModal";
@@ -45,7 +60,14 @@ import {
   exportDraftFile,
   importDraftFile,
   type DraftState,
+  type DraftAccessState,
 } from "@/lib/portal/draft-storage";
+
+const DEFAULT_ACCESS: DraftAccessState = {
+  passwordProtected: false,
+  password: "",
+  passwordHint: "",
+};
 
 interface HudBuilderSandboxProps {
   branding: Tables<"branding_settings">;
@@ -208,6 +230,15 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
   // Per-property Vault asset selections (Enhancements panel).
   const [enhancements, setEnhancements] = useState<EnhancementsByProperty>({});
 
+  // Optional password-gate state (Privacy & Access panel). OFF by default —
+  // passwords only ever turn on through explicit toggle + non-empty password
+  // entry. Plaintext password is persisted to the localStorage draft for
+  // agent convenience; it is never sent to the server alongside save/refresh
+  // and only travels as a transient field on generatePresentation.
+  const [access, setAccess] = useState<DraftAccessState>(DEFAULT_ACCESS);
+  const [confirmDownloadOpen, setConfirmDownloadOpen] = useState(false);
+  const [confirmRevealPassword, setConfirmRevealPassword] = useState(false);
+
   // Behavior modal
   const [behaviorModalOpen, setBehaviorModalOpen] = useState(false);
   const [behaviorModelId, setBehaviorModelId] = useState<string | null>(null);
@@ -299,6 +330,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     setBehaviors(draft.behaviors || {});
     setAgent(draft.agent || { ...DEFAULT_AGENT });
     setEnhancements(draft.enhancements ?? {});
+    setAccess(draft.access ?? DEFAULT_ACCESS);
   }, []);
 
   const handleResumeDraft = useCallback(() => {
@@ -329,9 +361,10 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
       agent,
       reviewApproved: false,
       enhancements,
+      access,
     });
     toast.success("Draft exported");
-  }, [providerSlug, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent, enhancements]);
+  }, [providerSlug, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent, enhancements, access]);
 
   const handleImportDraft = useCallback(async (file: File) => {
     const draft = await importDraftFile(file);
@@ -360,10 +393,11 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
         agent,
         reviewApproved: false,
         enhancements,
+        access,
       });
     }, 500);
     return () => window.clearTimeout(handle);
-  }, [providerSlug, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent, enhancements]);
+  }, [providerSlug, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent, enhancements, access]);
 
   // Post-payment polling: detect return from Stripe checkout and
   // auto-trigger the download once the webhook flips status to "paid".
@@ -451,6 +485,14 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     (accessState.viewerRole === "provider" ||
       accessState.viewerRole === "admin" ||
       accessState.viewerMatchesProvider);
+  // Privacy & Access download states. `passwordIncomplete` covers the
+  // case where the agent flipped the toggle on but the password is
+  // missing or under the minimum length — the button stays disabled
+  // until they set a real password (so the toggle alone can never ship
+  // an unprotected file unintentionally).
+  const accessArmed = isAccessArmed(access);
+  const passwordIncomplete =
+    access.passwordProtected && access.password.length < ACCESS_PASSWORD_MIN_LEN;
 
   const handleBrandingChange = useCallback((field: string, value: string) => {
     switch (field) {
@@ -777,6 +819,13 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
               faviconUrl: refreshFaviconUrl ?? "",
             },
             enhancements,
+            // Persist only the toggle + hint. The plaintext password is
+            // sent fresh below on the generatePresentation call and never
+            // reaches saved_models.
+            access: {
+              passwordProtected: isAccessArmed(access),
+              passwordHint: access.passwordHint,
+            },
           },
         });
       } catch (refreshErr) {
@@ -809,8 +858,17 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
 
       // Step 3: Generate presentation HTML with Q&A baked in.
       setDownloadStep("Building presentation…");
+      const armed = isAccessArmed(access);
       const result = await generatePresentationFn({
-        data: { modelId, qaDatabase },
+        data: {
+          modelId,
+          qaDatabase,
+          // Transient: only sent when the agent has explicitly armed
+          // protection (toggle on AND password long enough). Server
+          // re-validates and rejects if these don't match the saved
+          // tour_config.access flag.
+          ...(armed ? { password: access.password } : {}),
+        },
       });
       if (!result.success || !result.html) {
         toast.error(result.error || "Failed to generate presentation");
@@ -872,6 +930,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     generatePresentationFn,
     refreshPresentationConfigFn,
     providerSlug,
+    access,
   ]);
 
   /**
@@ -882,6 +941,18 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     // 1) Anonymous → open signup modal; flow re-runs after auth.
     if (!userId) {
       setSignupOpen(true);
+      return;
+    }
+
+    // 1a) Password-gated download: explicit confirmation step before any
+    //     uploads / saves / checkout. The download itself only proceeds
+    //     once the agent acknowledges the password and clicks Confirm in
+    //     the modal (handled in handleConfirmDownload below). For
+    //     unprotected downloads this branch is skipped — the default
+    //     flow keeps zero extra friction.
+    if (isAccessArmed(access) && !confirmDownloadOpen) {
+      setConfirmRevealPassword(false);
+      setConfirmDownloadOpen(true);
       return;
     }
 
@@ -951,6 +1022,12 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
             faviconUrl: finalFaviconUrl ?? "",
           },
           enhancements,
+          // Same as the refresh path: only the toggle + hint travel to
+          // the server. Plaintext password stays in the browser.
+          access: {
+            passwordProtected: isAccessArmed(access),
+            passwordHint: access.passwordHint,
+          },
         },
       });
       if (!result.success || !result.modelId) {
@@ -1027,7 +1104,22 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     modelCount,
     runDownload,
     enhancements,
+    access,
+    confirmDownloadOpen,
   ]);
+
+  // Resumes handleDownload once the agent confirms in the password
+  // confirmation modal. Setting confirmDownloadOpen=false on the way out
+  // means the next handleDownload call sees the closed modal and runs
+  // through to save/upload/checkout instead of re-prompting.
+  const handleConfirmDownload = useCallback(() => {
+    setConfirmDownloadOpen(false);
+    setConfirmRevealPassword(false);
+    // Defer so the modal close has time to commit before we re-enter
+    // handleDownload, otherwise the dialog briefly flashes back on
+    // the screen while the password-armed branch resolves.
+    setTimeout(() => handleDownload(), 0);
+  }, [handleDownload]);
 
   const handleAuthenticated = useCallback((newUserId: string) => {
     setUserId(newUserId);
@@ -1349,6 +1441,30 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
               </AccordionItem>
 
               <AccordionItem
+                value="privacy"
+                className="rounded-lg border bg-card shadow-sm"
+              >
+                <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                  <span className="flex items-center gap-2 text-base font-semibold text-foreground">
+                    <Lock className="size-5 text-primary" />
+                    Privacy & Access
+                    {isAccessArmed(access) && (
+                      <span className="ml-2 rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">
+                        Password protected
+                      </span>
+                    )}
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent className="px-4 pb-4">
+                  <PrivacyAccessSection
+                    headless
+                    access={access}
+                    onChange={setAccess}
+                  />
+                </AccordionContent>
+              </AccordionItem>
+
+              <AccordionItem
                 value="agent"
                 className="rounded-lg border bg-card shadow-sm"
               >
@@ -1488,7 +1604,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
                   size="lg"
                   className="mt-4 w-full text-white"
                   style={{ backgroundColor: accentColor }}
-                  disabled={submitting || downloading || modelCount < 1 || licenseExpired}
+                  disabled={submitting || downloading || modelCount < 1 || licenseExpired || passwordIncomplete}
                   onClick={handleDownload}
                 >
                   {submitting
@@ -1497,7 +1613,11 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
                       ? (downloadStep || "Generating…")
                       : modelCount < 1
                         ? "Add a property to download"
-                        : "Download Presentation"}
+                        : passwordIncomplete
+                          ? "Set a password to enable protection"
+                          : accessArmed
+                            ? "Download Protected Presentation"
+                            : "Download Presentation"}
                 </Button>
               </div>
             ) : checkoutReady ? (
@@ -1530,14 +1650,18 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
                   size="lg"
                   className="mt-4 w-full text-white"
                   style={{ backgroundColor: accentColor }}
-                  disabled={submitting || downloading || modelCount < 1 || licenseExpired}
+                  disabled={submitting || downloading || modelCount < 1 || licenseExpired || passwordIncomplete}
                   onClick={handleDownload}
                 >
                   {submitting
                     ? "Preparing checkout…"
                     : modelCount < 1
                       ? "Add a property to continue"
-                      : `Pay $${(totalCents / 100).toFixed(2)} & Download`}
+                      : passwordIncomplete
+                        ? "Set a password to enable protection"
+                        : accessArmed
+                          ? `Pay $${(totalCents / 100).toFixed(2)} & Download Protected`
+                          : `Pay $${(totalCents / 100).toFixed(2)} & Download`}
                 </Button>
               </div>
             ) : pricingConfigured ? (
@@ -1636,6 +1760,72 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
         accentColor={accentColor}
         brandName={providerBrandName}
       />
+
+      {/* Password-protected download confirmation. The password gate ships
+          with the file, so we surface it one last time before generating
+          to make sure the agent has captured it. */}
+      <AlertDialog open={confirmDownloadOpen} onOpenChange={setConfirmDownloadOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Lock className="size-4 text-primary" />
+              Confirm Protected Download
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              <span className="block">
+                You're about to download a password-protected presentation.
+                Visitors will need this exact password to decrypt the tour
+                in their browser.
+              </span>
+              <span className="block rounded-md border bg-muted/40 p-3">
+                <span className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Password
+                </span>
+                <span className="mt-1 flex items-center gap-2">
+                  <code className="flex-1 break-all font-mono text-sm text-foreground">
+                    {confirmRevealPassword
+                      ? access.password
+                      : "•".repeat(Math.max(8, access.password.length))}
+                  </code>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 shrink-0"
+                    aria-label={confirmRevealPassword ? "Hide password" : "Show password"}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setConfirmRevealPassword((v) => !v);
+                    }}
+                  >
+                    {confirmRevealPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                  </Button>
+                </span>
+              </span>
+              <span className="block text-xs">
+                We can't recover this password for you. If you lose it,
+                simply re-download the presentation with a new password —
+                old downloads keep working with their original password.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setConfirmRevealPassword(false)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                handleConfirmDownload();
+              }}
+              style={{ backgroundColor: accentColor }}
+              className="text-white"
+            >
+              Confirm and download
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
