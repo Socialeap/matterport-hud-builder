@@ -948,6 +948,27 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .drawer-social-pills{display:flex;flex-wrap:wrap;gap:6px}
 .social-pill{display:inline-flex;align-items:center;border-radius:999px;background:rgba(255,255,255,0.1);padding:4px 10px;font-size:11px;font-weight:500;color:#fff;text-decoration:none;transition:background 0.2s}
 .social-pill:hover{background:rgba(255,255,255,0.18)}
+/* ── Quick-message (Ask a question) section in contact drawer ─── */
+.drawer-quickmsg{margin-top:14px;border-top:1px solid rgba(255,255,255,0.08);padding-top:12px;margin-bottom:14px}
+.drawer-quickmsg-label{font-size:10px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:rgba(255,255,255,0.4);margin-bottom:6px}
+.drawer-qchips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.drawer-qchip{border:none;cursor:pointer;border-radius:999px;background:rgba(255,255,255,0.1);color:#fff;padding:5px 10px;font-size:11px;font-weight:500;transition:background 0.2s,opacity 0.2s}
+.drawer-qchip:hover{background:rgba(255,255,255,0.18)}
+.drawer-qchip.active{background:${escapeHtml(accentColor)}}
+.drawer-qfield{width:100%;box-sizing:border-box;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#fff;padding:8px 10px;font-size:12px;margin-bottom:6px;font-family:inherit;outline:none}
+.drawer-qfield::placeholder{color:rgba(255,255,255,0.4)}
+.drawer-qfield:focus{border-color:${escapeHtml(accentColor)}}
+.drawer-qtextarea{min-height:72px;resize:vertical}
+.drawer-qsend-row{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.drawer-qsend{flex:1 1 auto;min-width:110px;border:none;border-radius:8px;padding:8px 10px;font-size:12px;font-weight:600;color:#fff;cursor:pointer;text-decoration:none;text-align:center;display:inline-flex;align-items:center;justify-content:center;gap:6px;transition:opacity 0.2s,background 0.2s}
+.drawer-qsend.primary{background:${escapeHtml(accentColor)}}
+.drawer-qsend.secondary{background:rgba(255,255,255,0.15)}
+.drawer-qsend.secondary:hover{background:rgba(255,255,255,0.25)}
+.drawer-qsend:hover{opacity:0.9}
+.drawer-qsend[aria-disabled="true"]{opacity:0.45;pointer-events:none}
+.drawer-qcopy{background:transparent;border:1px solid rgba(255,255,255,0.18);color:rgba(255,255,255,0.85);border-radius:8px;padding:7px 10px;font-size:11px;font-weight:500;cursor:pointer;transition:background 0.2s}
+.drawer-qcopy:hover{background:rgba(255,255,255,0.1)}
+.drawer-qstatus{font-size:11px;color:rgba(255,255,255,0.55);margin-top:6px;min-height:14px}
 
 /* ── Shared modal backdrop ────────────────────────────────────────── */
 .modal-backdrop{position:fixed;inset:0;z-index:2500;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.65);backdrop-filter:blur(14px) brightness(0.55);-webkit-backdrop-filter:blur(14px) brightness(0.55);padding:16px}
@@ -1067,6 +1088,18 @@ ${(agent.phone || agent.email || agent.name) ? `<div id="agent-drawer">
       ${agent.phone ? `<a href="sms:${escapeHtml(String(agent.phone))}" class="drawer-action-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Text ${escapeHtml(String(agent.phone))}</a>` : ""}
       ${agent.email ? `<a href="mailto:${escapeHtml(String(agent.email))}" class="drawer-action-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>${escapeHtml(String(agent.email))}</a>` : ""}
     </div>
+    ${(agent.email || agent.phone) ? `<div class="drawer-quickmsg" id="drawer-quickmsg">
+      <div class="drawer-quickmsg-label">Ask a quick question</div>
+      <div class="drawer-qchips" id="drawer-qchips" role="group" aria-label="Question templates"></div>
+      <textarea class="drawer-qfield drawer-qtextarea" id="drawer-qmsg" rows="4" placeholder="Type your question, or pick a topic above…" aria-label="Your message"></textarea>
+      <input type="email" class="drawer-qfield" id="drawer-qemail" placeholder="Your email (so we can reply)" autocomplete="email" aria-label="Your email">
+      <div class="drawer-qsend-row">
+        ${agent.email ? `<a id="drawer-qsend-email" class="drawer-qsend primary" href="#" aria-disabled="true" role="button">Email agent</a>` : ""}
+        ${agent.phone ? `<a id="drawer-qsend-sms" class="drawer-qsend secondary" href="#" aria-disabled="true" role="button">Text agent</a>` : ""}
+        <button type="button" id="drawer-qcopy" class="drawer-qcopy" aria-disabled="true">Copy</button>
+      </div>
+      <div class="drawer-qstatus" id="drawer-qstatus" aria-live="polite"></div>
+    </div>` : ""}
     ${socialLinksHtml ? `<div class="drawer-social-label">Social</div><div class="drawer-social-pills">${socialLinksHtml}</div>` : ""}
   </div>
 </div>` : ""}
@@ -1367,6 +1400,120 @@ window.__closeContact=function(){
   var d=document.getElementById("agent-drawer");
   if(d) d.classList.remove("open");
 };
+
+// ── Quick-message form inside contact drawer ─────────────────────
+(function initQuickMsg(){
+  var wrap=document.getElementById("drawer-quickmsg");
+  if(!wrap) return;
+  var chipsEl=document.getElementById("drawer-qchips");
+  var msgEl=document.getElementById("drawer-qmsg");
+  var emailEl=document.getElementById("drawer-qemail");
+  var emailBtn=document.getElementById("drawer-qsend-email");
+  var smsBtn=document.getElementById("drawer-qsend-sms");
+  var copyBtn=document.getElementById("drawer-qcopy");
+  var statusEl=document.getElementById("drawer-qstatus");
+  var agentEmail=${JSON.stringify(agent.email || "")};
+  var agentPhone=${JSON.stringify(agent.phone || "")};
+  var TEMPLATES=[
+    {label:"Pricing", subject:"Pricing question — {P}", body:"Hi, could you share the asking price and any recent price changes for {P}?"},
+    {label:"Availability", subject:"Availability — {P}", body:"Is {P} still available? When can I view it?"},
+    {label:"Schedule a tour", subject:"Tour request — {P}", body:"I'd like to schedule a tour of {P}. What times work this week?"},
+    {label:"HOA / fees", subject:"HOA & fees — {P}", body:"Could you share HOA dues and any other recurring fees for {P}?"},
+    {label:"Square footage", subject:"Square footage — {P}", body:"Could you confirm the total square footage and room dimensions for {P}?"},
+    {label:"Pet policy", subject:"Pet policy — {P}", body:"What's the pet policy for {P}?"},
+    {label:"Financing", subject:"Financing — {P}", body:"Are there preferred lenders or financing options for {P}?"},
+    {label:"Other", subject:"Inquiry — {P}", body:""}
+  ];
+  var activeIdx=-1;
+  function currentPropName(){
+    try{
+      var p=props[current]||{};
+      return ((p.propertyName||p.name||"this property")+"").trim()||"this property";
+    }catch(_e){ return "this property"; }
+  }
+  function fillFrom(idx){
+    activeIdx=idx;
+    var tpl=TEMPLATES[idx];
+    var pn=currentPropName();
+    if(tpl.body) msgEl.value=tpl.body.split("{P}").join(pn);
+    var chips=chipsEl.querySelectorAll(".drawer-qchip");
+    for(var i=0;i<chips.length;i++) chips[i].classList.toggle("active",i===idx);
+    refresh();
+    msgEl.focus();
+  }
+  for(var i=0;i<TEMPLATES.length;i++){
+    (function(idx){
+      var b=document.createElement("button");
+      b.type="button";
+      b.className="drawer-qchip";
+      b.textContent=TEMPLATES[idx].label;
+      b.addEventListener("click",function(){ fillFrom(idx); });
+      chipsEl.appendChild(b);
+    })(i);
+  }
+  function buildSubject(){
+    var pn=currentPropName();
+    if(activeIdx>=0) return TEMPLATES[activeIdx].subject.split("{P}").join(pn);
+    return "Inquiry — "+pn;
+  }
+  function buildBody(forSms){
+    var msg=(msgEl.value||"").trim();
+    var visitorEmail=(emailEl.value||"").trim();
+    var trailer="";
+    if(visitorEmail){
+      trailer=forSms ? ("\\nReply to: "+visitorEmail) : ("\\n\\n— Sent from "+visitorEmail);
+    }
+    return msg+trailer;
+  }
+  function refresh(){
+    var ok=(msgEl.value||"").trim().length>0;
+    if(emailBtn) emailBtn.setAttribute("aria-disabled", ok ? "false":"true");
+    if(smsBtn) smsBtn.setAttribute("aria-disabled", ok ? "false":"true");
+    if(copyBtn) copyBtn.setAttribute("aria-disabled", ok ? "false":"true");
+  }
+  msgEl.addEventListener("input",refresh);
+  if(emailBtn){
+    emailBtn.addEventListener("click",function(ev){
+      ev.preventDefault();
+      if(emailBtn.getAttribute("aria-disabled")==="true") return;
+      if(!agentEmail){ statusEl.textContent="No email address configured."; return; }
+      var url="mailto:"+encodeURIComponent(agentEmail)
+        +"?subject="+encodeURIComponent(buildSubject())
+        +"&body="+encodeURIComponent(buildBody(false));
+      if(url.length>1900){ url=url.slice(0,1900); }
+      window.location.href=url;
+      statusEl.textContent="Opening your email app…";
+    });
+  }
+  if(smsBtn){
+    smsBtn.addEventListener("click",function(ev){
+      ev.preventDefault();
+      if(smsBtn.getAttribute("aria-disabled")==="true") return;
+      if(!agentPhone){ statusEl.textContent="No phone number configured."; return; }
+      var url="sms:"+agentPhone+"?body="+encodeURIComponent(buildBody(true));
+      if(url.length>1900){ url=url.slice(0,1900); }
+      window.location.href=url;
+      statusEl.textContent="Opening your messaging app… If nothing happens, use Copy to paste it elsewhere.";
+    });
+  }
+  if(copyBtn){
+    copyBtn.addEventListener("click",async function(){
+      if(copyBtn.getAttribute("aria-disabled")==="true") return;
+      var text="Subject: "+buildSubject()+"\\n\\n"+buildBody(false);
+      try{
+        if(navigator.clipboard&&navigator.clipboard.writeText){
+          await navigator.clipboard.writeText(text);
+        }else{
+          var ta=document.createElement("textarea");
+          ta.value=text; document.body.appendChild(ta); ta.select();
+          document.execCommand("copy"); document.body.removeChild(ta);
+        }
+        statusEl.textContent="Copied to clipboard.";
+      }catch(_e){ statusEl.textContent="Couldn't copy — please select and copy manually."; }
+    });
+  }
+  refresh();
+})();
 
 // \u2500\u2500 Modal helpers
 window.__openModal=function(name,idx){

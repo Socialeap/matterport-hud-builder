@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { ChevronUp, ChevronDown, Phone, Mail, MessageSquare, Globe, X, MapPin, Film, Images } from "lucide-react";
+import { ChevronUp, ChevronDown, Phone, Mail, MessageSquare, Globe, X, MapPin, Film, Images, Copy } from "lucide-react";
 import type { PropertyModel, TourBehavior, AgentContact } from "./types";
 import { buildMatterportUrl } from "./types";
 import { NeighborhoodMapModal } from "./NeighborhoodMapModal";
@@ -41,6 +41,11 @@ export function HudPreview({
   const [mapOpen, setMapOpen] = useState(false);
   const [cinemaOpen, setCinemaOpen] = useState(false);
   const [carouselOpen, setCarouselOpen] = useState(false);
+  // Quick-message form state (mirrors the standalone end-product behavior)
+  const [qMessage, setQMessage] = useState("");
+  const [qEmail, setQEmail] = useState("");
+  const [qActive, setQActive] = useState<number>(-1);
+  const [qStatus, setQStatus] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
   const currentModel = models[selectedModelIndex];
   const behavior = currentModel ? behaviors[currentModel.id] : null;
@@ -300,6 +305,115 @@ export function HudPreview({
                 </a>
               )}
             </div>
+
+            {/* Quick-message form (matches the standalone end-product) */}
+            {(agent.email || agent.phone) && (() => {
+              const TEMPLATES = [
+                { label: "Pricing", subject: "Pricing question — {P}", body: "Hi, could you share the asking price and any recent price changes for {P}?" },
+                { label: "Availability", subject: "Availability — {P}", body: "Is {P} still available? When can I view it?" },
+                { label: "Schedule a tour", subject: "Tour request — {P}", body: "I'd like to schedule a tour of {P}. What times work this week?" },
+                { label: "HOA / fees", subject: "HOA & fees — {P}", body: "Could you share HOA dues and any other recurring fees for {P}?" },
+                { label: "Square footage", subject: "Square footage — {P}", body: "Could you confirm the total square footage and room dimensions for {P}?" },
+                { label: "Pet policy", subject: "Pet policy — {P}", body: "What's the pet policy for {P}?" },
+                { label: "Financing", subject: "Financing — {P}", body: "Are there preferred lenders or financing options for {P}?" },
+                { label: "Other", subject: "Inquiry — {P}", body: "" },
+              ];
+              const propName = (currentModel?.propertyName?.trim() || currentModel?.name?.trim() || "this property");
+              const fillFrom = (idx: number) => {
+                setQActive(idx);
+                const tpl = TEMPLATES[idx];
+                if (tpl.body) setQMessage(tpl.body.split("{P}").join(propName));
+                setQStatus("");
+              };
+              const subject = qActive >= 0
+                ? TEMPLATES[qActive].subject.split("{P}").join(propName)
+                : `Inquiry — ${propName}`;
+              const buildBody = (forSms: boolean) => {
+                const msg = qMessage.trim();
+                const ve = qEmail.trim();
+                const trailer = ve ? (forSms ? `\nReply to: ${ve}` : `\n\n— Sent from ${ve}`) : "";
+                return msg + trailer;
+              };
+              const ok = qMessage.trim().length > 0;
+              const mailHref = `mailto:${encodeURIComponent(agent.email || "")}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(buildBody(false))}`;
+              const smsHref = `sms:${agent.phone || ""}?body=${encodeURIComponent(buildBody(true))}`;
+              const onCopy = async () => {
+                if (!ok) return;
+                const text = `Subject: ${subject}\n\n${buildBody(false)}`;
+                try {
+                  if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
+                  setQStatus("Copied to clipboard.");
+                } catch {
+                  setQStatus("Couldn't copy — please select and copy manually.");
+                }
+              };
+              return (
+                <div className="mb-4 border-t border-white/10 pt-3">
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-white/50">Ask a quick question</p>
+                  <div className="mb-2 flex flex-wrap gap-1.5">
+                    {TEMPLATES.map((t, i) => (
+                      <button
+                        key={t.label}
+                        type="button"
+                        onClick={() => fillFrom(i)}
+                        className="rounded-full px-2.5 py-1 text-[10px] font-medium text-white transition-colors hover:bg-white/20"
+                        style={{ backgroundColor: i === qActive ? accentColor : "rgba(255,255,255,0.1)" }}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                  <textarea
+                    value={qMessage}
+                    onChange={(e) => setQMessage(e.target.value)}
+                    rows={4}
+                    placeholder="Type your question, or pick a topic above…"
+                    className="mb-1.5 w-full rounded-lg border border-white/10 bg-white/10 p-2 text-xs text-white placeholder:text-white/40 outline-none focus:border-white/30"
+                  />
+                  <input
+                    type="email"
+                    value={qEmail}
+                    onChange={(e) => setQEmail(e.target.value)}
+                    placeholder="Your email (so we can reply)"
+                    autoComplete="email"
+                    className="mb-2 w-full rounded-lg border border-white/10 bg-white/10 p-2 text-xs text-white placeholder:text-white/40 outline-none focus:border-white/30"
+                  />
+                  <div className="flex flex-wrap gap-1.5">
+                    {agent.email && (
+                      <a
+                        href={ok ? mailHref : undefined}
+                        onClick={(e) => { if (!ok) e.preventDefault(); else setQStatus("Opening your email app…"); }}
+                        aria-disabled={!ok}
+                        className="inline-flex flex-1 min-w-[110px] items-center justify-center gap-1 rounded-lg px-3 py-2 text-xs font-semibold text-white transition-opacity"
+                        style={{ backgroundColor: accentColor, opacity: ok ? 1 : 0.45, pointerEvents: ok ? "auto" : "none" }}
+                      >
+                        <Mail className="h-3 w-3" /> Email agent
+                      </a>
+                    )}
+                    {agent.phone && (
+                      <a
+                        href={ok ? smsHref : undefined}
+                        onClick={(e) => { if (!ok) e.preventDefault(); else setQStatus("Opening your messaging app…"); }}
+                        aria-disabled={!ok}
+                        className="inline-flex flex-1 min-w-[110px] items-center justify-center gap-1 rounded-lg bg-white/15 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-white/25"
+                        style={{ opacity: ok ? 1 : 0.45, pointerEvents: ok ? "auto" : "none" }}
+                      >
+                        <MessageSquare className="h-3 w-3" /> Text agent
+                      </a>
+                    )}
+                    <button
+                      type="button"
+                      onClick={onCopy}
+                      disabled={!ok}
+                      className="inline-flex items-center gap-1 rounded-lg border border-white/20 bg-transparent px-3 py-2 text-[11px] font-medium text-white/85 transition-colors hover:bg-white/10 disabled:opacity-45"
+                    >
+                      <Copy className="h-3 w-3" /> Copy
+                    </button>
+                  </div>
+                  {qStatus && <p className="mt-1.5 text-[11px] text-white/55">{qStatus}</p>}
+                </div>
+              );
+            })()}
 
             {/* Social links */}
             {socialLinks.length > 0 && (
