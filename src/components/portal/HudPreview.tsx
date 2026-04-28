@@ -775,5 +775,6 @@ export function HudPreview({
         />
       )}
     </div>
+    </>
   );
 }
