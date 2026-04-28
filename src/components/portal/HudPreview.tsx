@@ -1,6 +1,8 @@
 import { useState, useRef } from "react";
-import { ChevronUp, ChevronDown, Phone, Mail, MessageSquare, Globe, X, MapPin, Film, Images, Copy } from "lucide-react";
-import type { PropertyModel, TourBehavior, AgentContact } from "./types";
+import { ChevronUp, ChevronDown, Phone, Mail, MessageSquare, Globe, X, MapPin, Film, Images, Copy, Bookmark, Info, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import type { PropertyModel, TourBehavior, AgentContact, LiveTourStop } from "./types";
 import { buildMatterportUrl } from "./types";
 import { NeighborhoodMapModal } from "./NeighborhoodMapModal";
 import { CinemaModal } from "./CinemaModal";
@@ -20,6 +22,17 @@ interface HudPreviewProps {
   isPro: boolean;
   defaultHeaderVisible?: boolean;
   fullViewport?: boolean;
+  /**
+   * Builder-only affordance: shows the "Add Bookmark" button + Guided
+   * Paste toolbar. Visitor previews and the exported HTML runtime never
+   * pass this prop. Without `onAddBookmark`, the button is a no-op so we
+   * also gate on its presence.
+   */
+  enableBookmarking?: boolean;
+  /** Append a stop to the currently selected model's `liveTourStops`. */
+  onAddBookmark?: (modelId: string, stop: LiveTourStop) => void;
+  /** Remove a stop by id from the currently selected model. */
+  onRemoveBookmark?: (modelId: string, stopId: string) => void;
 }
 
 export function HudPreview({
@@ -35,6 +48,9 @@ export function HudPreview({
   isPro,
   defaultHeaderVisible = false,
   fullViewport = false,
+  enableBookmarking = false,
+  onAddBookmark,
+  onRemoveBookmark,
 }: HudPreviewProps) {
   const [headerVisible, setHeaderVisible] = useState(defaultHeaderVisible);
   const [contactOpen, setContactOpen] = useState(false);
@@ -46,8 +62,71 @@ export function HudPreview({
   const [qEmail, setQEmail] = useState("");
   const [qActive, setQActive] = useState<number>(-1);
   const [qStatus, setQStatus] = useState("");
+  // Bookmark / Guided-Paste state — Builder-only.
+  const [isBookmarking, setIsBookmarking] = useState(false);
+  const [bookmarkName, setBookmarkName] = useState("");
+  const [bookmarkLink, setBookmarkLink] = useState("");
+  const bookmarkNameRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const currentModel = models[selectedModelIndex];
+  const bookmarkingActive = enableBookmarking && isBookmarking && !!onAddBookmark;
+  const stops = currentModel?.liveTourStops ?? [];
+
+  /**
+   * Parse a Matterport "Press U to copy" deep link and append it as a new
+   * stop on the current model. Returns true if a stop was successfully
+   * captured. Keeps the toolbar open afterwards so the agent can rapidly
+   * capture several views in a row.
+   */
+  const captureBookmarkFromLink = (rawLink: string): boolean => {
+    if (!currentModel || !onAddBookmark) return false;
+    const trimmed = rawLink.trim();
+    if (!trimmed) return false;
+    let parsed: URL;
+    try {
+      parsed = new URL(trimmed);
+    } catch {
+      toast.error("That doesn't look like a Matterport link.");
+      return false;
+    }
+    const ss = parsed.searchParams.get("ss");
+    const sr = parsed.searchParams.get("sr");
+    if (!ss || !ss.trim()) {
+      toast.error(
+        "This link doesn't contain a sweep position. In the 3D tour, click inside, press U on your keyboard, then paste the link.",
+      );
+      return false;
+    }
+    const fallbackName = `Stop ${stops.length + 1}`;
+    const stopName = bookmarkName.trim() || fallbackName;
+    onAddBookmark(currentModel.id, {
+      id: crypto.randomUUID(),
+      name: stopName,
+      ss: ss.trim(),
+      sr: (sr ?? "").trim(),
+    });
+    setBookmarkName("");
+    setBookmarkLink("");
+    toast.success(`Saved "${stopName}"`);
+    // Refocus the name input so the agent can immediately label the next stop.
+    setTimeout(() => bookmarkNameRef.current?.focus(), 0);
+    return true;
+  };
+
+  const handleLinkPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const pasted = e.clipboardData.getData("text/plain");
+    if (!pasted) return;
+    // Allow the input value to update (visual feedback) before we read
+    // the pasted text. Using the clipboard payload directly keeps us
+    // immune to browsers that delay onChange.
+    captureBookmarkFromLink(pasted);
+  };
+
+  const exitBookmarkMode = () => {
+    setIsBookmarking(false);
+    setBookmarkName("");
+    setBookmarkLink("");
+  };
   const behavior = currentModel ? behaviors[currentModel.id] : null;
   const iframeUrl = currentModel && behavior
     ? buildMatterportUrl(currentModel.matterportId, behavior)
@@ -122,23 +201,200 @@ export function HudPreview({
           </div>
         )}
 
-        {/* Toggle button — overlays the 3D model */}
-        <button
-          onClick={() => setHeaderVisible((v) => !v)}
-          className="absolute right-2 top-2 z-30 flex h-6 w-6 items-center justify-center rounded-full bg-white/20 text-white backdrop-blur-md transition-colors hover:bg-white/30"
-          aria-label={headerVisible ? "Hide header" : "Show header"}
-          style={{ WebkitBackdropFilter: "blur(12px)", backdropFilter: "blur(12px)" }}
-        >
-          {headerVisible ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-        </button>
+        {/* Guided-Paste bookmark toolbar — anchored to the top of the iframe.
+            Sits at z-40 above the (currently hidden) HUD overlay so the agent
+            can paste deep links while interacting with the raw 3D tour. */}
+        {bookmarkingActive && (
+          <div
+            className="absolute inset-x-0 top-0 z-40 border-b border-white/10 px-3 py-2"
+            style={{
+              backgroundColor: `${hudBgColor}cc`,
+              backdropFilter: "blur(20px) saturate(180%)",
+              WebkitBackdropFilter: "blur(20px) saturate(180%)",
+              boxShadow: "0 4px 24px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.06)",
+            }}
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <Bookmark className="h-3.5 w-3.5 shrink-0 text-white/80" />
+              <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wider text-white/70">
+                Add Bookmark
+              </span>
 
-        {/* HUD Header — overlays the 3D model with glassmorphism */}
+              <input
+                ref={bookmarkNameRef}
+                type="text"
+                value={bookmarkName}
+                onChange={(e) => setBookmarkName(e.target.value)}
+                placeholder={`Stop name (e.g. Foyer)`}
+                className="min-w-[140px] flex-1 rounded-md border border-white/15 bg-white/10 px-2.5 py-1 text-xs text-white placeholder:text-white/40 outline-none focus:border-white/40"
+                aria-label="Stop name"
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") exitBookmarkMode();
+                }}
+              />
+
+              <input
+                type="text"
+                value={bookmarkLink}
+                onChange={(e) => setBookmarkLink(e.target.value)}
+                onPaste={handleLinkPaste}
+                placeholder="Paste deep link (Cmd/Ctrl+V)"
+                className="min-w-[180px] flex-[2] rounded-md border border-white/15 bg-white/10 px-2.5 py-1 text-xs text-white placeholder:text-white/40 outline-none focus:border-white/40"
+                aria-label="Paste Matterport deep link"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    captureBookmarkFromLink(bookmarkLink);
+                  } else if (e.key === "Escape") {
+                    exitBookmarkMode();
+                  }
+                }}
+              />
+
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25"
+                    aria-label="How to capture a Matterport view"
+                    title="How to capture a Matterport view"
+                  >
+                    <Info className="h-3.5 w-3.5" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent
+                  side="bottom"
+                  align="end"
+                  className="w-72 text-xs leading-relaxed"
+                >
+                  <p className="mb-2 font-semibold text-foreground">
+                    How to capture a view
+                  </p>
+                  <ol className="ml-4 list-decimal space-y-1 text-muted-foreground">
+                    <li>Click inside the 3D tour above.</li>
+                    <li>
+                      Press <kbd className="rounded border border-border bg-muted px-1 font-mono text-[10px]">U</kbd>{" "}
+                      on your keyboard. Matterport copies the exact view to your clipboard.
+                    </li>
+                    <li>
+                      Click into the &ldquo;Paste deep link&rdquo; field above and paste{" "}
+                      (<kbd className="rounded border border-border bg-muted px-1 font-mono text-[10px]">⌘V</kbd>{" "}
+                      / <kbd className="rounded border border-border bg-muted px-1 font-mono text-[10px]">Ctrl+V</kbd>).
+                    </li>
+                  </ol>
+                  <p className="mt-2 text-muted-foreground">
+                    The bookmark is saved automatically. Optionally name it
+                    first; otherwise we&rsquo;ll auto-label it.
+                  </p>
+                </PopoverContent>
+              </Popover>
+
+              <button
+                type="button"
+                onClick={exitBookmarkMode}
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/10 text-white/80 transition-colors hover:bg-white/20"
+                aria-label="Close bookmark toolbar"
+                title="Close (Esc)"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+
+            {/* Saved-stops chip list — only when there's something to show. */}
+            {stops.length > 0 && (
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-white/40">
+                  Saved
+                </span>
+                {stops.map((s) => (
+                  <span
+                    key={s.id}
+                    className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/10 py-0.5 pl-2.5 pr-1 text-[11px] font-medium text-white"
+                    title={`ss=${s.ss}${s.sr ? `  sr=${s.sr}` : ""}`}
+                  >
+                    <span className="max-w-[140px] truncate">{s.name}</span>
+                    {onRemoveBookmark && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (currentModel) onRemoveBookmark(currentModel.id, s.id);
+                        }}
+                        className="flex h-4 w-4 items-center justify-center rounded-full text-white/60 transition-colors hover:bg-white/20 hover:text-white"
+                        aria-label={`Remove "${s.name}"`}
+                        title={`Remove "${s.name}"`}
+                      >
+                        <Trash2 className="h-2.5 w-2.5" />
+                      </button>
+                    )}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Add Bookmark button — Builder-only. Sits left of the chevron so
+            they don't overlap. Hidden while the toolbar is active to keep
+            the iframe surface uncluttered. */}
+        {enableBookmarking && !bookmarkingActive && (
+          <button
+            onClick={() => {
+              setHeaderVisible(false);
+              setIsBookmarking(true);
+              setTimeout(() => bookmarkNameRef.current?.focus(), 0);
+            }}
+            disabled={!currentModel?.matterportId?.trim()}
+            className="absolute right-12 top-2 z-30 flex h-6 items-center gap-1 rounded-full bg-white/20 px-2.5 text-[11px] font-medium text-white backdrop-blur-md transition-colors hover:bg-white/30 disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label="Add Live Tour bookmark"
+            title={
+              currentModel?.matterportId?.trim()
+                ? "Add a Live Tour bookmark for this property"
+                : "Add a Matterport Model ID first"
+            }
+            style={{ WebkitBackdropFilter: "blur(12px)", backdropFilter: "blur(12px)" }}
+          >
+            <Bookmark className="h-3 w-3" />
+            <span>Bookmark</span>
+            {stops.length > 0 && (
+              <span
+                className="ml-0.5 rounded-full bg-white/25 px-1.5 text-[10px] font-semibold leading-4"
+              >
+                {stops.length}
+              </span>
+            )}
+          </button>
+        )}
+
+        {/* Toggle button — overlays the 3D model. Hidden while bookmarking
+            so the agent has a clean surface to interact with the iframe. */}
+        {!bookmarkingActive && (
+          <button
+            onClick={() => setHeaderVisible((v) => !v)}
+            className="absolute right-2 top-2 z-30 flex h-6 w-6 items-center justify-center rounded-full bg-white/20 text-white backdrop-blur-md transition-colors hover:bg-white/30"
+            aria-label={headerVisible ? "Hide header" : "Show header"}
+            style={{ WebkitBackdropFilter: "blur(12px)", backdropFilter: "blur(12px)" }}
+          >
+            {headerVisible ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+          </button>
+        )}
+
+        {/* HUD Header — overlays the 3D model with glassmorphism. While
+            bookmarking, force-hide via opacity-0 + pointer-events-none so
+            the agent can interact with the raw Matterport iframe. */}
         <div
-          className="absolute inset-x-0 top-0 z-20 transition-all duration-300 ease-in-out overflow-hidden"
-          style={{
-            maxHeight: headerVisible ? "120px" : "0px",
-            opacity: headerVisible ? 1 : 0,
-          }}
+          className={
+            bookmarkingActive
+              ? "pointer-events-none absolute inset-x-0 top-0 z-20 overflow-hidden opacity-0 transition-opacity duration-200"
+              : "absolute inset-x-0 top-0 z-20 transition-all duration-300 ease-in-out overflow-hidden"
+          }
+          style={
+            bookmarkingActive
+              ? { maxHeight: 0 }
+              : {
+                  maxHeight: headerVisible ? "120px" : "0px",
+                  opacity: headerVisible ? 1 : 0,
+                }
+          }
         >
           <div
             className="flex items-center justify-between px-4 py-4 border-b border-white/10"
