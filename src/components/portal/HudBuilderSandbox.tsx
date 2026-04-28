@@ -1607,6 +1607,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
               agent={agent}
               isPro={isPro}
               enableBookmarking
+              bookmarkBarPlacement="above"
               onAddBookmark={handleAddBookmark}
               onRemoveBookmark={handleRemoveBookmark}
             />
