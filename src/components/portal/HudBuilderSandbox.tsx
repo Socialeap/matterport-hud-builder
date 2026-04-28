@@ -24,7 +24,7 @@ import { EnhancementsSection, type EnhancementsByProperty } from "./Enhancements
 import { TourBehaviorModal } from "./TourBehaviorModal";
 import { HudPreview } from "./HudPreview";
 import { PortalSignupModal } from "./PortalSignupModal";
-import type { PropertyModel, AgentContact, TourBehavior } from "./types";
+import type { PropertyModel, AgentContact, TourBehavior, LiveTourStop } from "./types";
 import { DEFAULT_BEHAVIOR, DEFAULT_AGENT } from "./types";
 import type { Tables } from "@/integrations/supabase/types";
 import { supabase } from "@/integrations/supabase/client";
@@ -514,6 +514,33 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
 
   const handleMediaChange = useCallback((id: string, assets: import("./types").MediaAsset[]) => {
     setModels((prev) => prev.map((m) => (m.id === id ? { ...m, multimedia: assets } : m)));
+  }, []);
+
+  // Live Guided Tour: append a captured Spotlight bookmark to the model's
+  // `liveTourStops` array. Persistence is automatic — draft autosave runs
+  // on every state change and the saved_models row gets the latest array
+  // on the next savePresentationRequest / refreshPresentationConfig call.
+  const handleAddBookmark = useCallback((modelId: string, stop: LiveTourStop) => {
+    setModels((prev) =>
+      prev.map((m) =>
+        m.id === modelId
+          ? { ...m, liveTourStops: [...(m.liveTourStops ?? []), stop] }
+          : m,
+      ),
+    );
+  }, []);
+
+  const handleRemoveBookmark = useCallback((modelId: string, stopId: string) => {
+    setModels((prev) =>
+      prev.map((m) =>
+        m.id === modelId
+          ? {
+              ...m,
+              liveTourStops: (m.liveTourStops ?? []).filter((s) => s.id !== stopId),
+            }
+          : m,
+      ),
+    );
   }, []);
 
   const handleOpenBehavior = useCallback((id: string) => {
@@ -1579,6 +1606,9 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
               logoPreview={logoPreview}
               agent={agent}
               isPro={isPro}
+              enableBookmarking
+              onAddBookmark={handleAddBookmark}
+              onRemoveBookmark={handleRemoveBookmark}
             />
           </div>
         </div>

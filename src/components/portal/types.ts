@@ -24,6 +24,28 @@ export interface MediaAsset {
   embedUrl?: string;
 }
 
+/**
+ * A saved Matterport "Spotlight" view that an Agent can teleport a remote
+ * Visitor to during a Live Guided Tour session.
+ *
+ * Captured in the Builder via the "Guided Paste" workflow (agent presses
+ * `U` inside the Matterport tour to copy the current view to the
+ * clipboard, then pastes the deep link). We extract the `ss` (sweep id)
+ * and `sr` (rotation) query parameters; both are appended to the
+ * Matterport iframe URL alongside `&qs=1&play=1` to instantly snap the
+ * Visitor's iframe to that view, no SDK required.
+ */
+export interface LiveTourStop {
+  /** Stable client-side id (UUID) — used as React key and as the wire id. */
+  id: string;
+  /** Friendly label shown to the Agent on the live-session button list. */
+  name: string;
+  /** Matterport sweep id from the deep link's `ss` query parameter. */
+  ss: string;
+  /** Matterport rotation tuple from the deep link's `sr` query parameter. */
+  sr: string;
+}
+
 export interface PropertyModel {
   id: string;
   name: string;
@@ -34,6 +56,12 @@ export interface PropertyModel {
   cinematicVideoUrl?: string;
   enableNeighborhoodMap?: boolean;
   multimedia?: MediaAsset[];
+  /**
+   * Bookmarked views for the Live Guided Tour feature. Optional and
+   * absent on legacy presentations — the runtime treats `undefined` and
+   * `[]` identically (no Live Guide available for that property).
+   */
+  liveTourStops?: LiveTourStop[];
 }
 
 export function buildNeighborhoodMapUrl(location: string): string {

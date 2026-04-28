@@ -33,6 +33,7 @@ import { fileURLToPath } from "node:url";
 import {
   assembleFromSources,
   findForbiddenTokens,
+  stripExports,
 } from "../src/lib/portal/ask-runtime-transformer.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -43,6 +44,10 @@ const ASK_SOURCES = [
   path.join(ROOT, "src/lib/portal/property-brain.mjs"),
   path.join(ROOT, "src/lib/portal/ask-runtime-logic.mjs"),
 ];
+const LIVE_SESSION_SOURCE = path.join(
+  ROOT,
+  "src/lib/portal/live-session.mjs",
+);
 
 // Escapes that are legal/intentional in a TS template literal and that we
 // do NOT want to flag:
@@ -270,6 +275,39 @@ function parseAskRuntime() {
   }
 }
 
+/**
+ * Same anti-drift gate for the Live Guided Tour runtime. The .mjs
+ * follows the same browser-safety rules as the Ask modules (no
+ * imports, no TS syntax, no leftover exports beyond the trailing
+ * block stripped at injection time).
+ */
+function verifyLiveSessionRuntime() {
+  if (!fs.existsSync(LIVE_SESSION_SOURCE)) {
+    console.error(`[verify-html] Live session source not found: ${LIVE_SESSION_SOURCE}`);
+    process.exit(2);
+  }
+  const raw = fs.readFileSync(LIVE_SESSION_SOURCE, "utf8");
+  const stripped = stripExports(raw);
+  const offenders = findForbiddenTokens(stripped);
+  if (offenders.length > 0) {
+    console.error(
+      `[verify-html] ❌ live-session.mjs contains browser-incompatible syntax:`,
+    );
+    for (const o of offenders) console.error(`    ${o}`);
+    process.exit(1);
+  }
+  try {
+    // eslint-disable-next-line no-new-func
+    new Function(stripped);
+    console.log(
+      `[verify-html] ✅ Live session runtime is browser-safe and parses cleanly (${stripped.length} chars).`,
+    );
+  } catch (err) {
+    console.error(`[verify-html] ❌ live-session.mjs failed to parse: ${err.message}`);
+    process.exit(1);
+  }
+}
+
 function assertRequiredStartupTokens(src) {
   const required = [
     'id="gate-sound-btn"',
@@ -305,9 +343,97 @@ function assertHudGateStartsClosed(src) {
   console.log(`[verify-html] ✅ Gate dismissal leaves HUD closed until toggled.`);
 }
 
+/**
+ * Extract the inline runtime IIFE from the HTML template literal in
+ * portal.functions.ts and parse it as JavaScript. The IIFE itself is
+ * a `<script>(function(){ ... })();</script>` block; we strip the
+ * wrapping `<script>`/`</script>` tags and replace TS template
+ * interpolations (`${ASK_RUNTIME_JS}`, `${LIVE_SESSION_RUNTIME_JS}`,
+ * and ad-hoc expressions like `${escapeHtml(accentColor)}` or
+ * `${configB64}`) with safe placeholder values so the parser only
+ * complains about real syntax errors in the hand-written runtime
+ * code — the part most prone to regressions when phases extend it.
+ *
+ * This is the targeted coverage that catches mistakes in code we
+ * write inside the giant template literal (e.g. mismatched braces,
+ * unterminated regex, stray TS syntax) before they reach a browser.
+ */
+function parseRuntimeIIFE(src) {
+  // Anchor on the second runtime <script> tag — the first one is the
+  // pre-bootstrap safety net. The main IIFE is everything between
+  // `<script>` after the safety net's closing `</script>` and the
+  // outermost `})();</script>` that closes the body's runtime.
+  const safetyClose = src.indexOf(`} catch(err){ console.error("[presentation] safety bootstrap failed",err); }\n})();\n</script>`);
+  if (safetyClose === -1) {
+    console.error("[verify-html] Could not locate the safety-bootstrap closer.");
+    process.exit(2);
+  }
+  const mainStart = src.indexOf("<script>", safetyClose);
+  if (mainStart === -1) {
+    console.error("[verify-html] Could not locate the main runtime <script> tag.");
+    process.exit(2);
+  }
+  const bodyStart = mainStart + "<script>".length;
+  const closingScript = src.indexOf("</script>\n</body>", bodyStart);
+  if (closingScript === -1) {
+    console.error("[verify-html] Could not locate the closing </script></body>.");
+    process.exit(2);
+  }
+  let body = src.slice(bodyStart, closingScript);
+
+  // Replace all `${...}` template interpolations with safe placeholders
+  // so the parser sees concrete JS, not template-literal syntax. We
+  // can't simply blank them out because some are used as expressions
+  // (e.g. `var s=${JSON.stringify(x)};` becomes `var s=null;`).
+  // Walk forward, tracking nesting depth so we handle ${ JSON.stringify({}) }
+  // correctly. Anything inside a `${...}` becomes the literal string
+  // "null" — a valid JS expression in every position our template uses.
+  let out = "";
+  let i = 0;
+  while (i < body.length) {
+    if (body[i] === "$" && body[i + 1] === "{") {
+      let depth = 1;
+      i += 2;
+      while (i < body.length && depth > 0) {
+        if (body[i] === "{") depth += 1;
+        else if (body[i] === "}") depth -= 1;
+        if (depth === 0) break;
+        i += 1;
+      }
+      i += 1; // consume the closing }
+      out += "null";
+      continue;
+    }
+    // Unescape \${ → ${, \\ → \, \` → ` (these are TS-template escapes
+    // that end up as literal characters in the runtime).
+    if (body[i] === "\\" && (body[i + 1] === "$" || body[i + 1] === "`" || body[i + 1] === "\\")) {
+      out += body[i + 1];
+      i += 2;
+      continue;
+    }
+    out += body[i];
+    i += 1;
+  }
+
+  try {
+    new Function(out);
+    console.log(
+      `[verify-html] ✅ Inline runtime IIFE parses cleanly (${out.length} chars after interpolation).`,
+    );
+  } catch (err) {
+    console.error(
+      `[verify-html] ❌ Inline runtime IIFE failed to parse: ${err.message}`,
+    );
+    // Try to report a useful line number by re-running the parse with
+    // `new vm.Script` if available, otherwise fall back to the message.
+    process.exit(1);
+  }
+}
+
 function main() {
   verifyAskRuntimeModules();
   parseAskRuntime();
+  verifyLiveSessionRuntime();
 
   const src = readSource();
   const { start, end } = findTemplateLiteral(src);
@@ -316,6 +442,7 @@ function main() {
 
   assertRequiredStartupTokens(src);
   assertHudGateStartsClosed(src);
+  parseRuntimeIIFE(src);
 
   if (offenders.length === 0 && commentOffenders.length === 0) {
     console.log(
