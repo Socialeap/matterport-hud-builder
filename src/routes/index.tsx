@@ -438,7 +438,7 @@ function Index() {
               <img
                 src={tmLogo}
                 alt="Transcendence Media"
-                className="h-8 w-auto sm:h-9"
+                className="h-10 w-auto sm:h-11"
               />
             </a>
             <span className="hidden text-sm font-bold tracking-tight text-white sm:inline lg:text-base">
