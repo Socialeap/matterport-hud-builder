@@ -59,6 +59,7 @@ export function HudPreview({
   enableBookmarking = false,
   onAddBookmark,
   onRemoveBookmark,
+  bookmarkBarPlacement = "overlay",
 }: HudPreviewProps) {
   const [headerVisible, setHeaderVisible] = useState(defaultHeaderVisible);
   const [contactOpen, setContactOpen] = useState(false);
