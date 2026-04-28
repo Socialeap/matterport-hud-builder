@@ -41,6 +41,11 @@ export function HudPreview({
   const [mapOpen, setMapOpen] = useState(false);
   const [cinemaOpen, setCinemaOpen] = useState(false);
   const [carouselOpen, setCarouselOpen] = useState(false);
+  // Quick-message form state (mirrors the standalone end-product behavior)
+  const [qMessage, setQMessage] = useState("");
+  const [qEmail, setQEmail] = useState("");
+  const [qActive, setQActive] = useState<number>(-1);
+  const [qStatus, setQStatus] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
   const currentModel = models[selectedModelIndex];
   const behavior = currentModel ? behaviors[currentModel.id] : null;
