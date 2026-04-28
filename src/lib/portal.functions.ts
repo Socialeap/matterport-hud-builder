@@ -1,12 +1,19 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { assembleAskRuntimeJS } from "./portal/ask-runtime-assembler";
+import { getLiveSessionRuntimeJS } from "./portal/live-session-source";
 
 // Assembled Ask AI runtime JS — built once per process from the three
 // .mjs modules (intents, property-brain, logic). Injected verbatim into
 // the outer IIFE of the generated presentation, where all symbols
 // become locals. See src/lib/portal/ask-runtime-assembler.ts.
 const ASK_RUNTIME_JS = assembleAskRuntimeJS();
+
+// Live Guided Tour PeerJS controller, same injection pattern: read the
+// vanilla .mjs verbatim (?raw), strip the trailing export, scan for
+// browser-unsafe tokens, then interpolate inside the runtime IIFE so
+// `createLiveSession` becomes a local symbol.
+const LIVE_SESSION_RUNTIME_JS = getLiveSessionRuntimeJS();
 
 interface SavePresentationMediaAsset {
   id: string;
@@ -1002,6 +1009,30 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .drawer-qcopy:hover{background:rgba(255,255,255,0.1)}
 .drawer-qstatus{font-size:11px;color:rgba(255,255,255,0.55);margin-top:6px;min-height:14px}
 
+/* ── Live Guided Tour drawer section ──────────────────────────────── */
+.drawer-live-guide{margin-top:14px;border-top:1px solid rgba(255,255,255,0.08);padding-top:12px;margin-bottom:14px}
+.drawer-live-guide-label{font-size:10px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:rgba(255,255,255,0.4);margin-bottom:8px}
+.lg-row{display:flex;gap:6px;margin-bottom:6px}
+.lg-input{flex:1;border:1px solid rgba(255,255,255,0.15);border-radius:6px;background:rgba(255,255,255,0.08);color:#fff;padding:7px 10px;font-size:13px;outline:none;font-family:inherit;letter-spacing:0.18em;text-align:center;font-variant-numeric:tabular-nums}
+.lg-input:focus{border-color:${escapeHtml(accentColor)}}
+.lg-input::placeholder{color:rgba(255,255,255,0.4);letter-spacing:normal}
+.lg-btn{border:none;cursor:pointer;border-radius:6px;padding:7px 12px;font-size:12px;font-weight:600;color:#fff;transition:opacity 0.2s,background 0.2s;font-family:inherit;white-space:nowrap}
+.lg-btn.primary{background:${escapeHtml(accentColor)}}
+.lg-btn.primary:hover{opacity:0.85}
+.lg-btn:disabled{opacity:0.45;cursor:not-allowed}
+.lg-status{font-size:11px;color:rgba(255,255,255,0.6);margin:6px 0 8px;min-height:14px;line-height:1.4}
+.lg-link{background:transparent;border:none;color:rgba(255,255,255,0.55);font-size:11px;cursor:pointer;padding:4px 0;font-family:inherit;text-decoration:underline}
+.lg-link:hover{color:rgba(255,255,255,0.85)}
+.lg-pin-display{background:rgba(0,0,0,0.25);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:10px 12px;text-align:center;margin-bottom:8px}
+.lg-pin-label{font-size:10px;color:rgba(255,255,255,0.55);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px}
+.lg-pin-value{font-size:26px;font-weight:700;color:#fff;letter-spacing:0.2em;font-variant-numeric:tabular-nums}
+.lg-stops-label{font-size:10px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:rgba(255,255,255,0.4);margin:8px 0 6px}
+.lg-stops{display:flex;flex-direction:column;gap:4px}
+.lg-stop-btn{border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.06);color:#fff;border-radius:6px;padding:8px 10px;font-size:12px;font-weight:500;cursor:pointer;text-align:left;transition:background 0.2s;font-family:inherit}
+.lg-stop-btn:hover:not(:disabled){background:rgba(255,255,255,0.14)}
+.lg-stop-btn:disabled{opacity:0.45;cursor:not-allowed}
+.lg-stops-empty{font-size:11px;color:rgba(255,255,255,0.5);font-style:italic}
+
 /* ── Shared modal backdrop ────────────────────────────────────────── */
 .modal-backdrop{position:fixed;inset:0;z-index:2500;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.65);backdrop-filter:blur(14px) brightness(0.55);-webkit-backdrop-filter:blur(14px) brightness(0.55);padding:16px}
 .modal-backdrop.open{display:flex}
@@ -1039,6 +1070,14 @@ ${isPro ? "" : `/* Viewer above powered-by footer */
 
 ${askAssets.css}
 </style>
+<!-- PeerJS UMD bundle (loaded via CDN). Loaded with the defer
+     attribute so it is available before the main IIFE runs but does
+     not block initial HTML parsing. The exposed Peer global is
+     consumed by the Live Guided Tour controller interpolated below.
+     Failure to load (network, blocked CDN) is tolerated:
+     createLiveSession returns a friendly error state instead of
+     throwing, and the rest of the tour still works. -->
+<script src="https://unpkg.com/peerjs@1.5/dist/peerjs.min.js" crossorigin="anonymous" defer></script>
 </head>
 <body>
 
@@ -1132,9 +1171,45 @@ ${(agent.phone || agent.email || agent.name) ? `<div id="agent-drawer">
       </div>
       <div class="drawer-qstatus" id="drawer-qstatus" aria-live="polite"></div>
     </div>` : ""}
+    <!-- ── Live Guided Tour ───────────────────────────────────────
+         Visitor pane is the default. Agents click the "I'm the agent"
+         link to flip into the agent pane. Both panes share the same
+         underlying createLiveSession() controller — only one role can
+         be active at a time per device. -->
+    <div class="drawer-live-guide" id="drawer-live-guide">
+      <div class="drawer-live-guide-label">Live Guided Tour</div>
+      <div id="lg-visitor">
+        <div class="lg-row">
+          <input type="text" id="lg-pin-input" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="PIN" class="lg-input" aria-label="Live tour PIN" autocomplete="off">
+          <button type="button" id="lg-join-btn" class="lg-btn primary">Join Live Tour</button>
+        </div>
+        <div class="lg-status" id="lg-visitor-status" aria-live="polite"></div>
+        <button type="button" id="lg-toggle-agent" class="lg-link">I&rsquo;m the agent &rarr;</button>
+      </div>
+      <div id="lg-agent" hidden>
+        <div id="lg-agent-prejoin">
+          <button type="button" id="lg-start-btn" class="lg-btn primary" style="width:100%">Start as Agent</button>
+          <div class="lg-status">Generates a 4-digit PIN for your visitor.</div>
+          <button type="button" id="lg-toggle-visitor" class="lg-link">&larr; Back to visitor view</button>
+        </div>
+        <div id="lg-agent-active" hidden>
+          <div class="lg-pin-display">
+            <div class="lg-pin-label">Share this PIN with your visitor</div>
+            <div class="lg-pin-value" id="lg-pin-value">&mdash;&mdash;&mdash;&mdash;</div>
+          </div>
+          <div class="lg-status" id="lg-agent-status" aria-live="polite"></div>
+          <div class="lg-stops-label">Tour Stops</div>
+          <div class="lg-stops" id="lg-stops"></div>
+        </div>
+      </div>
+    </div>
     ${socialLinksHtml ? `<div class="drawer-social-label">Social</div><div class="drawer-social-pills">${socialLinksHtml}</div>` : ""}
   </div>
-</div>` : ""}
+</div>
+<!-- Hidden audio sink for the Live Guided Tour voice channel. Lives
+     outside the drawer so the offscreen translateX transform on the
+     drawer can never inadvertently mute playback in any browser. -->
+<audio id="lg-audio" autoplay style="display:none"></audio>` : ""}
 
 <!-- ── Neighborhood Map modal ─────────────────────────────────────── -->
 <div id="map-modal" class="modal-backdrop" onclick="if(event.target===this)window.__closeModal('map')">
@@ -1666,6 +1741,15 @@ function renderPropertyDocs(_i){
 //    ladder). Inlined verbatim from src/lib/portal/*.mjs via the
 //    assembler. All exports become locals in this IIFE scope.
 ${ASK_RUNTIME_JS}
+
+// ── Live Guided Tour PeerJS controller. Inlined verbatim from
+//    src/lib/portal/live-session.mjs — after this point
+//    createLiveSession is a local symbol. (Same caveat as above:
+//    do NOT write \${LIVE_SESSION_RUNTIME_JS} or use any backticks
+//    inside a comment here. Template literals evaluate \${...} and
+//    end on backticks even inside // comments, which would inline
+//    the whole module a second time and corrupt the script.)
+${LIVE_SESSION_RUNTIME_JS}
 
 // ── Unified Ask pipeline: fans out across the host-curated qaDatabase
 //    AND per-property doc extractions. Single panel, single button.
@@ -2312,6 +2396,7 @@ function load(i){
   } catch(_e){}
   try { renderPropertyDocs(i); } catch(_e){}
   try { updateHud(i); } catch(_e){}
+  try { if(typeof window.__lgOnPropertyChange==="function") window.__lgOnPropertyChange(i); } catch(_e){}
   // Reset carousel context for new property
   carouselMedia=(props[i]&&props[i].multimedia)||[];
   carouselIndex=0;
@@ -2360,6 +2445,202 @@ if(frame){
     }
   },{once:true});
 }
+
+// ── Live Guided Tour wiring ─────────────────────────────────────────
+//   Constructs the createLiveSession() controller (factory inlined
+//   above as LIVE_SESSION_RUNTIME_JS) and binds it to the DOM. Both
+//   the agent and the visitor open the same exported HTML; this IIFE
+//   renders the same Live-Guide drawer section for both, but the
+//   roles are mutually exclusive at runtime — whichever button is
+//   clicked first locks the role for that device.
+(function initLiveGuide(){
+  var section=document.getElementById("drawer-live-guide");
+  if(!section) return;
+  if(typeof createLiveSession!=="function") return;
+
+  var visitorPane=document.getElementById("lg-visitor");
+  var agentPane=document.getElementById("lg-agent");
+  var pinInput=document.getElementById("lg-pin-input");
+  var joinBtn=document.getElementById("lg-join-btn");
+  var visitorStatus=document.getElementById("lg-visitor-status");
+  var toggleAgentLink=document.getElementById("lg-toggle-agent");
+  var startBtn=document.getElementById("lg-start-btn");
+  var toggleVisitorLink=document.getElementById("lg-toggle-visitor");
+  var pinValue=document.getElementById("lg-pin-value");
+  var agentStatus=document.getElementById("lg-agent-status");
+  var stopsContainer=document.getElementById("lg-stops");
+  var preJoinBlock=document.getElementById("lg-agent-prejoin");
+  var activeBlock=document.getElementById("lg-agent-active");
+  var audioEl=document.getElementById("lg-audio");
+
+  var session=createLiveSession({});
+  var lastTeleportTs=0;
+
+  // Strip ss/sr/qs/play from a Matterport URL and re-append them with
+  // the supplied values. We always force qs=1 (Quick Start) and play=1
+  // so the visitor's iframe snaps to the new view without the fly-in
+  // animation, per the spec.
+  function rewriteIframeForTeleport(baseUrl,ss,sr){
+    if(!baseUrl) return baseUrl;
+    var stripped=baseUrl.replace(/[?&](ss|sr|qs|play)=[^&]*/g,function(m){
+      return m.charAt(0)==="?"?"?":"";
+    });
+    // The strip above can leave a trailing "?" or "?&" sequence —
+    // normalize to a clean separator.
+    stripped=stripped.replace(/\\?&/g,"?").replace(/[?&]$/,"");
+    var sep=stripped.indexOf("?")===-1?"?":"&";
+    var qs="ss="+encodeURIComponent(ss);
+    if(sr) qs+="&sr="+encodeURIComponent(sr);
+    qs+="&qs=1&play=1";
+    return stripped+sep+qs;
+  }
+
+  function applyTeleport(ss,sr){
+    if(!frame) return;
+    var p=props[current];
+    if(!p||!p.iframeUrl) return;
+    try { frame.src=rewriteIframeForTeleport(p.iframeUrl,ss,sr); } catch(_e){}
+  }
+
+  function renderStops(){
+    if(!stopsContainer) return;
+    stopsContainer.innerHTML="";
+    var p=props[current]||{};
+    var stops=p.liveTourStops||[];
+    if(stops.length===0){
+      var empty=document.createElement("div");
+      empty.className="lg-stops-empty";
+      empty.textContent="No bookmarks for this property.";
+      stopsContainer.appendChild(empty);
+      return;
+    }
+    var connected=session.getState().isConnected;
+    stops.forEach(function(stop){
+      var btn=document.createElement("button");
+      btn.type="button";
+      btn.className="lg-stop-btn";
+      btn.textContent=stop.name||"Stop";
+      btn.disabled=!connected;
+      btn.addEventListener("click",function(){
+        var sent=session.teleportVisitor(stop.ss,stop.sr||"");
+        // Whether or not the data channel send succeeds, the agent's
+        // own iframe should follow along — they're leading the tour.
+        if(sent) applyTeleport(stop.ss,stop.sr||"");
+      });
+      stopsContainer.appendChild(btn);
+    });
+  }
+
+  // Hook called by load(i) so stops re-render when the agent flips
+  // between properties mid-tour.
+  window.__lgOnPropertyChange=function(){
+    if(session.getState().role==="agent") renderStops();
+  };
+
+  if(toggleAgentLink){
+    toggleAgentLink.addEventListener("click",function(){
+      if(visitorPane) visitorPane.hidden=true;
+      if(agentPane) agentPane.hidden=false;
+    });
+  }
+  if(toggleVisitorLink){
+    toggleVisitorLink.addEventListener("click",function(){
+      if(visitorPane) visitorPane.hidden=false;
+      if(agentPane) agentPane.hidden=true;
+    });
+  }
+
+  if(joinBtn&&pinInput){
+    joinBtn.addEventListener("click",function(){
+      var pin=(pinInput.value||"").replace(/\\D/g,"").slice(0,4);
+      if(pin.length!==4){
+        if(visitorStatus) visitorStatus.textContent="Enter the 4-digit PIN from your agent.";
+        return;
+      }
+      joinBtn.disabled=true;
+      if(visitorStatus) visitorStatus.textContent="Connecting…";
+      session.joinAsVisitor(pin).catch(function(){
+        // error state surfaced via subscribe()
+      });
+    });
+    pinInput.addEventListener("keydown",function(e){
+      if(e.key==="Enter"){ e.preventDefault(); joinBtn.click(); }
+    });
+    pinInput.addEventListener("input",function(){
+      // Strip non-digits live so the input always shows a clean PIN.
+      pinInput.value=(pinInput.value||"").replace(/\\D/g,"").slice(0,4);
+    });
+  }
+
+  if(startBtn){
+    startBtn.addEventListener("click",function(){
+      startBtn.disabled=true;
+      if(agentStatus) agentStatus.textContent="Reserving session…";
+      session.initializeAsAgent().catch(function(){
+        // error surfaced via subscribe()
+      });
+    });
+  }
+
+  session.subscribe(function(state){
+    // PIN display.
+    if(pinValue && state.pin) pinValue.textContent=state.pin;
+
+    // Agent pane: swap pre-join/active visibility once we have a PIN.
+    if(state.role==="agent"){
+      var hasPin=!!state.pin;
+      if(preJoinBlock) preJoinBlock.hidden=hasPin;
+      if(activeBlock) activeBlock.hidden=!hasPin;
+      if(agentStatus){
+        if(state.status==="initializing") agentStatus.textContent="Reserving session…";
+        else if(state.status==="waiting") agentStatus.textContent="Share the PIN with your visitor.";
+        else if(state.status==="connected") agentStatus.textContent="Connected. Click a stop to teleport your visitor.";
+        else if(state.status==="ended") agentStatus.textContent="Session ended.";
+        else if(state.status==="error") agentStatus.textContent=state.error||"Something went wrong.";
+      }
+      if(state.status==="error"&&startBtn) startBtn.disabled=false;
+      // Refresh stop button enabled state — render once on transition,
+      // then update disabled flags on every state tick (cheap).
+      if(hasPin){
+        if(!stopsContainer.firstChild) renderStops();
+        var btns=stopsContainer.querySelectorAll(".lg-stop-btn");
+        for(var i=0;i<btns.length;i++) btns[i].disabled=!state.isConnected;
+      }
+    }
+
+    // Visitor pane status messaging.
+    if(state.role==="visitor"&&visitorStatus){
+      if(state.status==="connecting") visitorStatus.textContent="Connecting…";
+      else if(state.status==="connected") visitorStatus.textContent="Connected to your agent.";
+      else if(state.status==="ended") { visitorStatus.textContent="Session ended."; if(joinBtn) joinBtn.disabled=false; }
+      else if(state.status==="error") { visitorStatus.textContent=state.error||"Couldn't connect."; if(joinBtn) joinBtn.disabled=false; }
+    }
+
+    // Voice attach. srcObject is the modern API; legacy browsers fall
+    // back to URL.createObjectURL but every browser PeerJS supports
+    // also supports srcObject.
+    if(audioEl){
+      try {
+        if(state.remoteStream && audioEl.srcObject!==state.remoteStream){
+          audioEl.srcObject=state.remoteStream;
+          var pp=audioEl.play();
+          if(pp&&typeof pp.catch==="function") pp.catch(function(){});
+        } else if(!state.remoteStream && audioEl.srcObject){
+          audioEl.srcObject=null;
+        }
+      } catch(_e){}
+    }
+
+    // Visitor iframe sync. The controller patches incomingTeleportEvent
+    // with a fresh ts on every inbound packet; we de-dupe on ts so the
+    // same coords can be re-fired (re-teleport to the same stop) but
+    // an unchanged event doesn't keep replaying.
+    if(state.role==="visitor"&&state.incomingTeleportEvent&&state.incomingTeleportEvent.ts!==lastTeleportTs){
+      lastTeleportTs=state.incomingTeleportEvent.ts;
+      applyTeleport(state.incomingTeleportEvent.ss,state.incomingTeleportEvent.sr);
+    }
+  });
+})();
 })();
 </script>
 </body>
