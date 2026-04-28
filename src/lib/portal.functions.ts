@@ -948,6 +948,27 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .drawer-social-pills{display:flex;flex-wrap:wrap;gap:6px}
 .social-pill{display:inline-flex;align-items:center;border-radius:999px;background:rgba(255,255,255,0.1);padding:4px 10px;font-size:11px;font-weight:500;color:#fff;text-decoration:none;transition:background 0.2s}
 .social-pill:hover{background:rgba(255,255,255,0.18)}
+/* ── Quick-message (Ask a question) section in contact drawer ─── */
+.drawer-quickmsg{margin-top:14px;border-top:1px solid rgba(255,255,255,0.08);padding-top:12px;margin-bottom:14px}
+.drawer-quickmsg-label{font-size:10px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:rgba(255,255,255,0.4);margin-bottom:6px}
+.drawer-qchips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.drawer-qchip{border:none;cursor:pointer;border-radius:999px;background:rgba(255,255,255,0.1);color:#fff;padding:5px 10px;font-size:11px;font-weight:500;transition:background 0.2s,opacity 0.2s}
+.drawer-qchip:hover{background:rgba(255,255,255,0.18)}
+.drawer-qchip.active{background:${escapeHtml(accentColor)}}
+.drawer-qfield{width:100%;box-sizing:border-box;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#fff;padding:8px 10px;font-size:12px;margin-bottom:6px;font-family:inherit;outline:none}
+.drawer-qfield::placeholder{color:rgba(255,255,255,0.4)}
+.drawer-qfield:focus{border-color:${escapeHtml(accentColor)}}
+.drawer-qtextarea{min-height:72px;resize:vertical}
+.drawer-qsend-row{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.drawer-qsend{flex:1 1 auto;min-width:110px;border:none;border-radius:8px;padding:8px 10px;font-size:12px;font-weight:600;color:#fff;cursor:pointer;text-decoration:none;text-align:center;display:inline-flex;align-items:center;justify-content:center;gap:6px;transition:opacity 0.2s,background 0.2s}
+.drawer-qsend.primary{background:${escapeHtml(accentColor)}}
+.drawer-qsend.secondary{background:rgba(255,255,255,0.15)}
+.drawer-qsend.secondary:hover{background:rgba(255,255,255,0.25)}
+.drawer-qsend:hover{opacity:0.9}
+.drawer-qsend[aria-disabled="true"]{opacity:0.45;pointer-events:none}
+.drawer-qcopy{background:transparent;border:1px solid rgba(255,255,255,0.18);color:rgba(255,255,255,0.85);border-radius:8px;padding:7px 10px;font-size:11px;font-weight:500;cursor:pointer;transition:background 0.2s}
+.drawer-qcopy:hover{background:rgba(255,255,255,0.1)}
+.drawer-qstatus{font-size:11px;color:rgba(255,255,255,0.55);margin-top:6px;min-height:14px}
 
 /* ── Shared modal backdrop ────────────────────────────────────────── */
 .modal-backdrop{position:fixed;inset:0;z-index:2500;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.65);backdrop-filter:blur(14px) brightness(0.55);-webkit-backdrop-filter:blur(14px) brightness(0.55);padding:16px}
