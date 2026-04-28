@@ -1088,6 +1088,18 @@ ${(agent.phone || agent.email || agent.name) ? `<div id="agent-drawer">
       ${agent.phone ? `<a href="sms:${escapeHtml(String(agent.phone))}" class="drawer-action-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Text ${escapeHtml(String(agent.phone))}</a>` : ""}
       ${agent.email ? `<a href="mailto:${escapeHtml(String(agent.email))}" class="drawer-action-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>${escapeHtml(String(agent.email))}</a>` : ""}
     </div>
+    ${(agent.email || agent.phone) ? `<div class="drawer-quickmsg" id="drawer-quickmsg">
+      <div class="drawer-quickmsg-label">Ask a quick question</div>
+      <div class="drawer-qchips" id="drawer-qchips" role="group" aria-label="Question templates"></div>
+      <textarea class="drawer-qfield drawer-qtextarea" id="drawer-qmsg" rows="4" placeholder="Type your question, or pick a topic above…" aria-label="Your message"></textarea>
+      <input type="email" class="drawer-qfield" id="drawer-qemail" placeholder="Your email (so we can reply)" autocomplete="email" aria-label="Your email">
+      <div class="drawer-qsend-row">
+        ${agent.email ? `<a id="drawer-qsend-email" class="drawer-qsend primary" href="#" aria-disabled="true" role="button">Email agent</a>` : ""}
+        ${agent.phone ? `<a id="drawer-qsend-sms" class="drawer-qsend secondary" href="#" aria-disabled="true" role="button">Text agent</a>` : ""}
+        <button type="button" id="drawer-qcopy" class="drawer-qcopy" aria-disabled="true">Copy</button>
+      </div>
+      <div class="drawer-qstatus" id="drawer-qstatus" aria-live="polite"></div>
+    </div>` : ""}
     ${socialLinksHtml ? `<div class="drawer-social-label">Social</div><div class="drawer-social-pills">${socialLinksHtml}</div>` : ""}
   </div>
 </div>` : ""}
