@@ -33,6 +33,14 @@ interface HudPreviewProps {
   onAddBookmark?: (modelId: string, stop: LiveTourStop) => void;
   /** Remove a stop by id from the currently selected model. */
   onRemoveBookmark?: (modelId: string, stopId: string) => void;
+  /**
+   * Where to render the Bookmark button + Guided-Paste toolbar.
+   * - "overlay" (default): floats over the iframe — used by the standalone
+   *   end-product preview and `fullViewport` mode.
+   * - "above": renders as a normal-flow card stacked directly above the
+   *   iframe — used by the Builder so it never covers Matterport's controls.
+   */
+  bookmarkBarPlacement?: "overlay" | "above";
 }
 
 export function HudPreview({
