@@ -1,81 +1,55 @@
-## Goal
 
-Brand the main landing page with the Transcendence Media identity:
+## 1. P2P + Live Tour Stops audit — verdict
 
-1. Show the **Transcendence Media landscape logo** on the left side of the header (to the left of  "3D Presentation Studio" text wordmark) — clickable, links to `https://transcendencemedia.com`.
-2. Set the **round TM logo** as the browser tab favicon.
-3. Use the **3D Presentation Studio image** as the OpenGraph / Twitter social-share preview image.
+After reading the actual integration (the earlier "not present" reply was a bad search on my part — apologies), the system is correctly wired with no gaps to fix. Summary of what was verified:
 
-## Asset plan
+- **PeerJS loader**: CDN script tag (`peerjs@1.5/peerjs.min.js`) is injected with `defer` in the generated HTML head, and the inlined controller polls `window.Peer` before constructing a peer, so the load-order race is already handled.
+- **Controller (`src/lib/portal/live-session.mjs`)**: Full lifecycle is covered — `open / error / disconnected / close` on the Peer; `open / data / close / error` on the DataChannel; `stream / close / error` on the MediaConnection. A `disposed` flag short-circuits re-entry, and `dispose()` tears down the media call, data conn, mic tracks, and peer in order.
+- **Source assembly (`live-session-source.ts`)**: Reads the `.mjs` via `?raw`, strips the trailing `export {…}` block, and runs `findForbiddenTokens` so any TS leak / stray import is caught at build time rather than at runtime in the visitor's browser.
+- **Generation (`portal.functions.ts`)**: Sanitizes `liveTourStops` (drops entries without a non-empty `ss`), embeds them per-property, renders the agent's stop list via `renderStops()`, re-renders on `load(i)` so flipping properties refreshes the buttons, and routes clicks through `session.teleportVisitor(ss, sr)`.
+- **Builder wiring (`HudBuilderSandbox.tsx` + `HudPreview.tsx`)**: `handleAddBookmark` / `handleRemoveBookmark` mutate the model's `liveTourStops`, draft autosave persists them, and the Guided-Paste toolbar parses Matterport "Press U" links, validates `ss`, and appends with a UUID.
+- **End-product self-containment**: Generated HTML still phones home to nothing of ours — only to the public PeerJS CDN and the public PeerServer broker, which is the documented serverless P2P model. No backend dependency was introduced.
 
-Copy the three uploaded images into the project:
+No code changes are needed for the P2P layer.
 
+## 2. Bookmark UI overlap — fix
 
-| Upload                            | Destination                            | Used for                                            |
-| --------------------------------- | -------------------------------------- | --------------------------------------------------- |
-| `TM_LOGO_Landscape_Trnsp.png`     | `src/assets/tm-logo-landscape.png`     | Header logo (imported as ES module)                 |
-| `TM-Logo-Round-Trnsp-FAVICON.png` | `public/favicon.png`                   | Browser tab favicon (referenced by URL)             |
-| `3D_Presentation_Studio.png`      | `public/og-3d-presentation-studio.png` | OG/Twitter share image (referenced by absolute URL) |
+**Problem.** The "Bookmark" pill button and the expanded "Add Bookmark" toolbar are rendered *inside* the iframe wrapper in `HudPreview.tsx` (positioned `absolute … top-2` / `absolute inset-x-0 top-0`). In the Builder, that means they sit on top of the Matterport surface and cover the controls the client needs to read sweep coordinates from. They need to live **above** the preview frame, not inside it.
 
+**Approach.** Add an opt-in prop `bookmarkBarPlacement?: "overlay" | "above"` (default `"overlay"` to preserve the standalone / fullViewport behavior). When `"above"`, render the Bookmark button and the expanded toolbar in a new wrapper *outside* the iframe container, stacked directly above it. The Builder mounts `HudPreview` with `bookmarkBarPlacement="above"`; the standalone end-product never sets it (the bar is Builder-only anyway, gated by `enableBookmarking`).
 
-Rationale: components/HMR-friendly assets go under `src/assets`; static URL-referenced assets (favicon, OG image consumed by external scrapers) go under `public/` so they live at predictable absolute paths.
+### Files changed
 
-## Code changes
+**`src/components/portal/HudPreview.tsx`**
+- Add `bookmarkBarPlacement?: "overlay" | "above"` to `HudPreviewProps`, default `"overlay"`.
+- Wrap the existing `return (<div ref={containerRef} …>` in a new outer fragment / flex column.
+- When `bookmarkBarPlacement === "above"`:
+  - Move the "Bookmark" pill button (lines ~339–366) and the Guided-Paste toolbar block (lines ~207–333, including the saved-stops chip list) out of the iframe `<div>` and into a sibling block rendered *before* the preview container.
+  - Use a normal-flow (non-absolute) layout: a rounded card matching the preview's border, with an internal expand/collapse for the toolbar. The button sits on the right of a small header row labeled "Live Tour Bookmarks" so the client immediately understands what it's for; the count badge is preserved.
+  - Drop the `absolute right-12 top-2` / `absolute inset-x-0 top-0` positioning for these elements; keep all other styling (glass background uses `hudBgColor`, accent colors, focus behavior, paste handler, name/link inputs, saved-chip list with delete).
+  - Keep the existing `headerVisible` force-collapse behavior so toggling bookmark mode still tucks the HUD header away — it just no longer matters for overlap, only for visual focus.
+- When `bookmarkBarPlacement === "overlay"` (default), render exactly as today — zero behavior change for the standalone preview.
+- The "Show/Hide header" chevron stays inside the iframe overlay in both modes (it belongs to the HUD, not the bookmark feature).
 
-### 1. `src/routes/__root.tsx` — favicon
+**`src/components/portal/HudBuilderSandbox.tsx`** (line 1598 mount)
+- Pass `bookmarkBarPlacement="above"` to the `<HudPreview>` instance in the Builder's right column.
 
-Add a `links` entry in the root route's `head()`:
+### Layout result
 
-```ts
-links: [
-  { rel: "stylesheet", href: appCss },
-  { rel: "icon", type: "image/png", href: "/favicon.png" },
-  { rel: "apple-touch-icon", href: "/favicon.png" },
-],
+```text
+┌────────────────────────────────────────────┐
+│ Live Tour Bookmarks            [+ Bookmark]│  ← new, above the frame
+│  (toolbar + saved chips appear here when   │
+│   bookmarking is active — never covers 3D) │
+├────────────────────────────────────────────┤
+│                                            │
+│         Matterport iframe (clean)          │
+│                                            │
+│                            [chevron]       │
+└────────────────────────────────────────────┘
 ```
 
-(Per TanStack SSR head guidance: root sets defaults; child route metadata still overrides title/description.)
-
-### 2. `src/routes/index.tsx` — header logo + OG image
-
-- Add import: `import tmLogo from "@/assets/tm-logo-landscape.png";`
-- Replace the `OG_IMAGE` constant:
-  ```ts
-  const OG_IMAGE = `${SITE_URL}/og-3d-presentation-studio.png`;
-  ```
-  (The existing `og:image:width`/`height` of 1200×630 stays — the uploaded image is wide-aspect and will display correctly; social platforms will letterbox if needed. No dimension change required.)
-- Replace the header brand text (lines ~429–431):
-  ```tsx
-  <a
-    href="https://transcendencemedia.com"
-    target="_blank"
-    rel="noopener noreferrer"
-    className="flex items-center"
-    aria-label="Transcendence Media — visit main site"
-  >
-    <img
-      src={tmLogo}
-      alt="Transcendence Media"
-      className="h-8 w-auto sm:h-9"
-    />
-  </a>
-  ```
-  Sizing rationale: the landscape logo has a wide aspect ratio (~2.5:1). At `h-8` (32px) it occupies ~80px wide, comfortably fitting the existing 56px-tall header without crowding the nav links or pushing the mobile menu button. `w-auto` preserves aspect ratio; no layout shift since the header already uses `flex items-center justify-between`.
-
-### 3. JSON-LD structured data
-
-The existing `image: OG_IMAGE` line in the SoftwareApplication JSON-LD automatically picks up the new OG image URL since it references the same constant. No additional change needed.
-
-## Verification path
-
-After edits, the auto-build will:
-
-- bundle `tm-logo-landscape.png` with a hashed URL via Vite asset pipeline.
-- serve `/favicon.png` and `/og-3d-presentation-studio.png` directly from `public/`.
-- inject the new `<link rel="icon">` and updated `<meta property="og:image">` during SSR so social scrapers (Facebook/LinkedIn/Twitter/Slack) and browser tabs see them on first load.
-
-## Out of scope
-
-- No change to the published-domain favicon route, footer, or other pages — only the root layout (favicon) and `/` route (header + OG) change.
-- "Powered by Transcendence Media" co-branding in Starter-tier output is unaffected.
-- The header text "3D Presentation Studio" is removed in favor of the logo; if you'd prefer to keep both (logo + small wordmark beside it), say the word and I'll add it.
+### Out of scope
+- No changes to `live-session.mjs`, `live-session-source.ts`, `portal.functions.ts`, the agent-side HTML rendered for the visitor, the data model (`LiveTourStop`), or autosave.
+- No changes to the standalone end-product UI.
+- Mobile preview / `fullViewport` mode keeps the existing overlay behavior so it still works as a tour surface.
