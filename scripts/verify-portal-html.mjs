@@ -315,6 +315,16 @@ function assertRequiredStartupTokens(src) {
     'id="matterport-frame"',
     "frame.src=props[0].iframeUrl",
     "[presentation] safety bootstrap failed",
+    // Password-gate markers — protected exports rely on every one of
+    // these. Their literal presence in the template source guarantees
+    // the conditional `${protectionArmed ? ... : ...}` branches haven't
+    // accidentally been deleted.
+    'id="gate-password-form"',
+    'id="gate-password-input"',
+    "window.__PROTECTED_BLOB__",
+    "window.__configReady",
+    "subtle.deriveKey",
+    "PBKDF2",
   ];
   const missing = required.filter((t) => !src.includes(t));
   if (missing.length) {

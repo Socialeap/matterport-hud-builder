@@ -13,6 +13,18 @@ import type { EnhancementsByProperty } from "@/components/portal/EnhancementsSec
 const DRAFT_VERSION = 1;
 const KEY_PREFIX = "3dps:draft:";
 
+export interface DraftAccessState {
+  passwordProtected: boolean;
+  /**
+   * Plaintext password persisted to localStorage for agent convenience.
+   * NEVER sent to the server or persisted in saved_models.tour_config.
+   * The Builder UI surfaces a warning that anyone with browser access
+   * can read this value.
+   */
+  password: string;
+  passwordHint: string;
+}
+
 export interface DraftState {
   brandName: string;
   accentColor: string;
@@ -27,6 +39,12 @@ export interface DraftState {
    * with drafts saved before the Enhancements panel shipped.
    */
   enhancements?: EnhancementsByProperty;
+  /**
+   * Optional password-gate config. Optional for backwards compatibility with
+   * drafts saved before the Privacy & Access panel shipped — when missing,
+   * the presentation is unprotected.
+   */
+  access?: DraftAccessState;
 }
 
 interface DraftEnvelope {
