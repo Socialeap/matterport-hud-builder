@@ -43,13 +43,14 @@ import {
   MapPin,
 } from "lucide-react";
 import heroHudBanner from "@/assets/hero-hud-showcase.png";
+import tmLogo from "@/assets/tm-logo-landscape.png";
 import { toast } from "sonner";
 
 const SITE_URL = "https://matterport-hud-builder.lovable.app";
 const OG_TITLE = "3D Presentation Studio — Branded Matterport Tour Presentations";
 const OG_DESC =
   "Launch your own white-label studio where clients customize and download self-contained Matterport 3D tour presentations. One-time purchase — no subscriptions, no per-tour fees.";
-const OG_IMAGE = `${SITE_URL}/hero-hud-showcase-og.png`;
+const OG_IMAGE = `${SITE_URL}/og-3d-presentation-studio.png`;
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -426,9 +427,24 @@ function Index() {
       {/* ---- Header with glassmorphism ---- */}
       <header className={`fixed inset-x-0 top-0 z-50 border-b ${headerBorder} ${headerBg} backdrop-blur-xl`}>
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
-          <span className="text-lg font-bold tracking-tight text-white">
-            3D Presentation Studio
-          </span>
+          <div className="flex items-center gap-3">
+            <a
+              href="https://transcendencemedia.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center"
+              aria-label="Transcendence Media — visit main site"
+            >
+              <img
+                src={tmLogo}
+                alt="Transcendence Media"
+                className="h-8 w-auto sm:h-9"
+              />
+            </a>
+            <span className="hidden text-sm font-bold tracking-tight text-white sm:inline lg:text-base">
+              3D Presentation Studio
+            </span>
+          </div>
 
           {/* Desktop nav */}
           <nav className="hidden items-center gap-6 sm:flex">
