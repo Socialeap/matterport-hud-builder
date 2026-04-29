@@ -750,10 +750,12 @@ serve(async (req) => {
   }
 
   // Cross-check property_uuid is actually part of this presentation
-  // and capture the provider_id for BYOK lookup.
+  // and capture the client_id (the presentation owner) for BYOK lookup.
+  // Note: BYOK is a CLIENT feature, not an MSP feature. The client owns
+  // the saved_model and pays for overflow Gemini usage with their key.
   const { data: model } = await service
     .from("saved_models")
-    .select("id, properties, provider_id")
+    .select("id, properties, provider_id, client_id, name")
     .eq("id", tokenResult.saved_model_id)
     .maybeSingle();
   if (!model) {
@@ -768,30 +770,30 @@ serve(async (req) => {
     return jsonError(403, { error: "property_not_in_presentation" });
   }
 
-  // Resolve BYOK: if the provider has an active Gemini key, decrypt
-  // it and route the model call through that key. The TM key is
-  // skipped entirely on this path; the quota event is recorded with
-  // outcome='byok' so the TM subsidy doesn't decrement.
+  // Resolve BYOK: if the CLIENT (presentation owner) has an active
+  // Gemini key, decrypt it and route the model call through that key.
+  // The TM key is skipped on this path; the quota event is recorded
+  // with outcome='byok' so the TM subsidy doesn't decrement.
   let byokKey: string | null = null;
-  try {
-    const { data: byokRow } = await service
-      .from("provider_byok_keys")
-      .select("ciphertext, iv, active")
-      .eq("provider_id", model.provider_id)
-      .eq("vendor", "gemini")
-      .maybeSingle();
-    if (byokRow && byokRow.active) {
-      // ciphertext + iv are bytea columns. supabase-js returns them
-      // as either Uint8Array (in Deno) or hex strings. Normalize.
-      const cipherBytes = bytesFromBytea(byokRow.ciphertext);
-      const ivBytes = bytesFromBytea(byokRow.iv);
-      byokKey = await decryptKey(cipherBytes, ivBytes);
+  if (model.client_id) {
+    try {
+      const { data: byokRow } = await service
+        .from("client_byok_keys")
+        .select("ciphertext, iv, active")
+        .eq("client_id", model.client_id)
+        .eq("vendor", "gemini")
+        .maybeSingle();
+      if (byokRow && byokRow.active) {
+        const cipherBytes = bytesFromBytea(byokRow.ciphertext);
+        const ivBytes = bytesFromBytea(byokRow.iv);
+        byokKey = await decryptKey(cipherBytes, ivBytes);
+      }
+    } catch (err) {
+      console.warn(
+        "[synthesize-answer] client byok lookup/decrypt failed, falling back to TM:",
+        err,
+      );
     }
-  } catch (err) {
-    console.warn(
-      "[synthesize-answer] byok lookup/decrypt failed, falling back to TM:",
-      err,
-    );
   }
   const usingByok = !!byokKey;
   const effectiveGeminiKey = byokKey ?? GEMINI_API_KEY;
