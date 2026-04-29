@@ -62,6 +62,11 @@ import {
   type DraftState,
   type DraftAccessState,
 } from "@/lib/portal/draft-storage";
+import {
+  optimizeBrandImage,
+  describeOptimization,
+  BRAND_ASSET_LIMITS,
+} from "@/lib/portal/image-optimizer";
 
 const DEFAULT_ACCESS: DraftAccessState = {
   passwordProtected: false,
