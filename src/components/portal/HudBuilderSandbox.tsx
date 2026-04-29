@@ -988,6 +988,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
         },
       });
       if (!result.success || !result.html) {
+        setDownloadStep("");
         toast.error(result.error || "Failed to generate presentation");
         return;
       }
