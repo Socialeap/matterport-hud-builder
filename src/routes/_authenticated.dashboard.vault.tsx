@@ -126,7 +126,7 @@ const CATEGORIES: CategoryMeta[] = [
   },
   {
     value: "property_doc",
-    label: "Property Docs",
+    label: "Property Mapper",
     utility: "Info Delivery",
     purpose: "Downloadable data (Floorplans)",
     format: ".pdf or .jpg",
@@ -432,8 +432,8 @@ function VaultPage() {
                 <p className="text-xs text-muted-foreground">
                   Browse the categories below to see what you can curate — sound
                   libraries, Portal filters, interactive widgets, custom icons,
-                  property docs, and external links. Upgrade to Pro to start
-                  adding assets.
+                  the Property Mapper, and external links. Upgrade to Pro to
+                  start adding assets.
                 </p>
               </div>
             </div>
@@ -722,7 +722,7 @@ function AssetEditorDialog({
                 to="/dashboard/vault/templates"
                 className="font-medium not-italic text-primary hover:underline"
               >
-                Vault → Property Docs → Property Mapper
+                Vault → Property Mapper
               </Link>
               .
             </p>

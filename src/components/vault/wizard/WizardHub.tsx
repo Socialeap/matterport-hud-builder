@@ -1,12 +1,11 @@
 /**
- * Decision Hub — 4 result-oriented entry cards for creating a Property Map.
+ * Decision Hub — 3 result-oriented entry cards for creating a Property Map.
  * Renders inline on the Templates dashboard (both as primary CTA and as the
  * empty-state).
  */
 
 import {
   Wand2,
-  FileSearch,
   Library,
   Code2,
   Lock,
@@ -34,14 +33,6 @@ const CARDS: PathCard[] = [
       "Describe what you sell — AI suggests the facts worth pulling, you tick what matters.",
     badge: "AI-assisted",
     recommended: true,
-  },
-  {
-    path: "pdf",
-    icon: FileSearch,
-    title: "Auto-Extract from PDF",
-    blurb:
-      "Drop a sample document — we'll detect every field worth pulling automatically.",
-    badge: "AI-assisted",
   },
   {
     path: "library",
@@ -73,8 +64,8 @@ export function WizardHub({ onPick, disabled, compact }: Props) {
     <div
       className={
         compact
-          ? "grid gap-2 sm:grid-cols-2 lg:grid-cols-4"
-          : "grid gap-3 sm:grid-cols-2"
+          ? "grid gap-2 sm:grid-cols-3"
+          : "grid gap-3 sm:grid-cols-3"
       }
     >
       {CARDS.map((card) => (

@@ -30,7 +30,6 @@ import {
   type WizardPath,
 } from "./types";
 import { SmartAIPath } from "./paths/SmartAIPath";
-import { PdfPath } from "./paths/PdfPath";
 import { LibraryPath } from "./paths/LibraryPath";
 import { ManualPath } from "./paths/ManualPath";
 
@@ -154,9 +153,6 @@ export function WizardModal({ draft, setDraft, saving, onSave }: Props) {
       // these steps because the user advances by finishing inside Architect.
       return true;
     }
-    // PDF path: step 0 advances only via "Detect fields" inside the path,
-    // step 1 lets the user click Next to continue to review.
-    if (draft.path === "pdf" && draft.step === 0) return true;
     // Library path: step 0 advances by picking a card.
     if (draft.path === "library" && draft.step === 0) return true;
     return false;
@@ -197,7 +193,7 @@ export function WizardModal({ draft, setDraft, saving, onSave }: Props) {
           <DialogDescription>
             {draft.id
               ? "Refine your existing map. Changes apply the next time a client uses it."
-              : "A reusable blueprint your clients' AI Chat uses to pull facts from their uploaded property docs."}
+              : "A reusable blueprint your clients' AI Chat uses to pull facts from their uploaded property documents."}
           </DialogDescription>
         </DialogHeader>
 
@@ -215,18 +211,6 @@ export function WizardModal({ draft, setDraft, saving, onSave }: Props) {
               draft={draft}
               onChange={update}
               onSchemaApplied={() => advanceTo(2)}
-              disabled={saving}
-            />
-          )}
-          {draft.path === "pdf" && (
-            <PdfPath
-              draft={draft}
-              onChange={update}
-              onAdvance={() =>
-                setDraft((prev) =>
-                  prev ? { ...prev, step: Math.max(prev.step + 1, 1) } : prev,
-                )
-              }
               disabled={saving}
             />
           )}

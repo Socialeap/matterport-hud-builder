@@ -146,7 +146,7 @@ export function TemplateArchitect({ docKind, disabled, onApply }: Props) {
           <p className="mt-0.5 text-[11px] text-muted-foreground">
             Describe a class or category of property → pick the facts that
             matter → we build the reusable mapper your clients' AI Chat will
-            use on their uploaded property docs.
+            use on their uploaded property documents.
           </p>
         </div>
         {phase !== "describe" && (
