@@ -2732,9 +2732,61 @@ if(frame){
   var preJoinBlock=document.getElementById("lg-agent-prejoin");
   var activeBlock=document.getElementById("lg-agent-active");
   var audioEl=document.getElementById("lg-audio");
+  var leaveBtn=document.getElementById("hud-leave-btn");
 
   var session=createLiveSession({});
   var lastTeleportTs=0;
+  var wasConnected=false;
+
+  // Hide the HUD header + close the contact drawer. Used after a live
+  // session reaches "connected" so the 3D tour fills the screen.
+  function hideOverlaysForLiveTour(){
+    try { if(window.__closeContact) window.__closeContact(); } catch(_e){}
+    try {
+      if(typeof setHudVisible==="function") setHudVisible(false);
+      else if(window.__setHudVisible) window.__setHudVisible(false);
+      else {
+        var hh=document.getElementById("hud-header");
+        if(hh){ hh.classList.remove("visible"); hh.style.transform="translateY(-100%)"; hh.style.opacity="0"; hh.style.pointerEvents="none"; }
+      }
+    } catch(_e){}
+  }
+
+  // Reset the Live-Guide UI back to the idle (visitor-default) state.
+  // Called after dispose() so the user can start a new session without
+  // a page reload.
+  function resetUiToIdle(){
+    if(visitorPane) visitorPane.hidden=false;
+    if(agentPane) agentPane.hidden=true;
+    if(preJoinBlock) preJoinBlock.hidden=false;
+    if(activeBlock) activeBlock.hidden=true;
+    if(joinBtn) joinBtn.disabled=false;
+    if(startBtn) startBtn.disabled=false;
+    if(pinInput) pinInput.value="";
+    if(pinValue) pinValue.innerHTML="&mdash;&mdash;&mdash;&mdash;";
+    if(visitorStatus) visitorStatus.textContent="";
+    if(agentStatus) agentStatus.textContent="";
+    if(stopsContainer) stopsContainer.innerHTML="";
+    if(audioEl){ try { audioEl.srcObject=null; } catch(_e){} }
+  }
+
+  function teardownSession(){
+    try { session.dispose(); } catch(_e){}
+    if(leaveBtn) leaveBtn.hidden=true;
+    wasConnected=false;
+    resetUiToIdle();
+    // Re-create the controller so a fresh session can be started
+    // without reloading the page. Re-attach the same subscriber.
+    session=createLiveSession({});
+    session.subscribe(onState);
+  }
+
+  if(leaveBtn){
+    leaveBtn.addEventListener("click",function(){
+      teardownSession();
+    });
+  }
+
 
   // Strip ss/sr/qs/play from a Matterport URL and re-append them with
   // the supplied values. We always force qs=1 (Quick Start) and play=1
