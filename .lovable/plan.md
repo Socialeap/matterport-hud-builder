@@ -1,55 +1,59 @@
+## Scope
 
-## 1. P2P + Live Tour Stops audit — verdict
+The features live in the generated end-product HTML, not the Builder preview. All edits target **`src/lib/portal.functions.ts`** (the inline IIFE rendered into the exported tour). The PeerJS controller (`src/lib/portal/live-session.mjs`) already exposes `dispose()` — no changes needed there.
 
-After reading the actual integration (the earlier "not present" reply was a bad search on my part — apologies), the system is correctly wired with no gaps to fix. Summary of what was verified:
+## Goals
 
-- **PeerJS loader**: CDN script tag (`peerjs@1.5/peerjs.min.js`) is injected with `defer` in the generated HTML head, and the inlined controller polls `window.Peer` before constructing a peer, so the load-order race is already handled.
-- **Controller (`src/lib/portal/live-session.mjs`)**: Full lifecycle is covered — `open / error / disconnected / close` on the Peer; `open / data / close / error` on the DataChannel; `stream / close / error` on the MediaConnection. A `disposed` flag short-circuits re-entry, and `dispose()` tears down the media call, data conn, mic tracks, and peer in order.
-- **Source assembly (`live-session-source.ts`)**: Reads the `.mjs` via `?raw`, strips the trailing `export {…}` block, and runs `findForbiddenTokens` so any TS leak / stray import is caught at build time rather than at runtime in the visitor's browser.
-- **Generation (`portal.functions.ts`)**: Sanitizes `liveTourStops` (drops entries without a non-empty `ss`), embeds them per-property, renders the agent's stop list via `renderStops()`, re-renders on `load(i)` so flipping properties refreshes the buttons, and routes clicks through `session.teleportVisitor(ss, sr)`.
-- **Builder wiring (`HudBuilderSandbox.tsx` + `HudPreview.tsx`)**: `handleAddBookmark` / `handleRemoveBookmark` mutate the model's `liveTourStops`, draft autosave persists them, and the Guided-Paste toolbar parses Matterport "Press U" links, validates `ss`, and appends with a UUID.
-- **End-product self-containment**: Generated HTML still phones home to nothing of ours — only to the public PeerJS CDN and the public PeerServer broker, which is the documented serverless P2P model. No backend dependency was introduced.
+1. Add a **Leave** button next to the existing HUD chevron (`#hud-toggle`) that appears for both agent and visitor while a Live Guided Tour session is active, and tears the session down cleanly on click.
+2. The moment a visitor's PIN is accepted and a full P2P connection is established (`status === "connected"` for both roles), automatically close the **Get in Touch** drawer and the **HUD header** so the 3D tour fills the screen.
 
-No code changes are needed for the P2P layer.
+## Changes — `src/lib/portal.functions.ts`
 
-## 2. Bookmark UI overlap — fix
+### 1. Markup: add Leave button next to chevron toggle (around line 1239)
 
-**Problem.** The "Bookmark" pill button and the expanded "Add Bookmark" toolbar are rendered *inside* the iframe wrapper in `HudPreview.tsx` (positioned `absolute … top-2` / `absolute inset-x-0 top-0`). In the Builder, that means they sit on top of the Matterport surface and cover the controls the client needs to read sweep coordinates from. They need to live **above** the preview frame, not inside it.
+Insert a sibling `<button id="hud-leave-btn" hidden>` right next to `#hud-toggle`. Hidden by default; revealed only when a live session reaches `connected`.
 
-**Approach.** Add an opt-in prop `bookmarkBarPlacement?: "overlay" | "above"` (default `"overlay"` to preserve the standalone / fullViewport behavior). When `"above"`, render the Bookmark button and the expanded toolbar in a new wrapper *outside* the iframe container, stacked directly above it. The Builder mounts `HudPreview` with `bookmarkBarPlacement="above"`; the standalone end-product never sets it (the bar is Builder-only anyway, gated by `enableBookmarking`).
-
-### Files changed
-
-**`src/components/portal/HudPreview.tsx`**
-- Add `bookmarkBarPlacement?: "overlay" | "above"` to `HudPreviewProps`, default `"overlay"`.
-- Wrap the existing `return (<div ref={containerRef} …>` in a new outer fragment / flex column.
-- When `bookmarkBarPlacement === "above"`:
-  - Move the "Bookmark" pill button (lines ~339–366) and the Guided-Paste toolbar block (lines ~207–333, including the saved-stops chip list) out of the iframe `<div>` and into a sibling block rendered *before* the preview container.
-  - Use a normal-flow (non-absolute) layout: a rounded card matching the preview's border, with an internal expand/collapse for the toolbar. The button sits on the right of a small header row labeled "Live Tour Bookmarks" so the client immediately understands what it's for; the count badge is preserved.
-  - Drop the `absolute right-12 top-2` / `absolute inset-x-0 top-0` positioning for these elements; keep all other styling (glass background uses `hudBgColor`, accent colors, focus behavior, paste handler, name/link inputs, saved-chip list with delete).
-  - Keep the existing `headerVisible` force-collapse behavior so toggling bookmark mode still tucks the HUD header away — it just no longer matters for overlap, only for visual focus.
-- When `bookmarkBarPlacement === "overlay"` (default), render exactly as today — zero behavior change for the standalone preview.
-- The "Show/Hide header" chevron stays inside the iframe overlay in both modes (it belongs to the HUD, not the bookmark feature).
-
-**`src/components/portal/HudBuilderSandbox.tsx`** (line 1598 mount)
-- Pass `bookmarkBarPlacement="above"` to the `<HudPreview>` instance in the Builder's right column.
-
-### Layout result
-
-```text
-┌────────────────────────────────────────────┐
-│ Live Tour Bookmarks            [+ Bookmark]│  ← new, above the frame
-│  (toolbar + saved chips appear here when   │
-│   bookmarking is active — never covers 3D) │
-├────────────────────────────────────────────┤
-│                                            │
-│         Matterport iframe (clean)          │
-│                                            │
-│                            [chevron]       │
-└────────────────────────────────────────────┘
+```html
+<button id="hud-leave-btn" hidden aria-label="Leave live tour" title="Leave Live Tour">Leave</button>
+<button id="hud-toggle" aria-label="Toggle header"> ... existing chevrons ... </button>
 ```
 
-### Out of scope
-- No changes to `live-session.mjs`, `live-session-source.ts`, `portal.functions.ts`, the agent-side HTML rendered for the visitor, the data model (`LiveTourStop`), or autosave.
-- No changes to the standalone end-product UI.
-- Mobile preview / `fullViewport` mode keeps the existing overlay behavior so it still works as a tour surface.
+### 2. CSS: pill styled to match the chevron (around line 1084)
+
+Add a rule positioned to the left of `#hud-toggle` (top:8px; right:40px; z-index:1300) using the same glass background, with a subtle red tint on hover to signal a destructive action. Keep it `display:none` while `[hidden]` and switch to `inline-flex` when revealed.
+
+### 3. Live-guide IIFE wiring (around lines 2711–2898)
+
+- Cache `var leaveBtn = document.getElementById("hud-leave-btn");` near the other element lookups.
+- Add helper `function teardownSession(){ try { session.dispose(); } catch(_){} ; if(leaveBtn) leaveBtn.hidden = true; resetUiToIdle(); }` where `resetUiToIdle()`:
+  - Re-enables `joinBtn` and `startBtn`, clears `pinInput.value`, clears status text.
+  - Restores the visitor pane as default (`visitorPane.hidden=false; agentPane.hidden=true`) and resets the agent active/pre-join blocks.
+  - Detaches `audioEl.srcObject`.
+  - Re-creates the controller: `session = createLiveSession({});` and re-runs the same `subscribe(...)` callback (extract the existing subscribe handler into a named `function onState(state){...}` so it can be reattached after a fresh controller is created — avoids reload, preserves all other page state like current property, mute, modals).
+- Wire `leaveBtn.addEventListener("click", teardownSession)`.
+- Inside the existing `session.subscribe(...)` callback, on the **first** transition to `state.status === "connected"` for either role:
+  - Reveal Leave: `leaveBtn.hidden = false;`
+  - Auto-close Get in Touch: `if (window.__closeContact) window.__closeContact();`
+  - Auto-hide HUD header: `setHudVisible(false);` (the early-bootstrap `window.__setHudVisible` is already global, but the IIFE's local `setHudVisible` wrapper is in scope here — verify by referencing it; if the IIFE scope doesn't reach `setHudVisible`, fall back to `if(window.__setHudVisible)window.__setHudVisible(false);` plus directly toggling the `#hud-header` class as a safety net).
+  - Use a `wasConnected` flag captured in the IIFE closure so we only fire the auto-close once per connection (re-arm on `dispose`).
+- On `state.status === "ended"` or `"error"` after having been connected, hide Leave and run `teardownSession()` so the visitor is returned to the joinable state cleanly. Guard against re-entry (the dispose path itself emits no further state — safe).
+
+### 4. Subscribe handler scoping
+
+The current subscribe callback is an inline anonymous function. Extracting it to a named `onState` function inside `initLiveGuide` keeps behavior identical while allowing the leave/teardown flow to re-attach it to a freshly created controller. No public API surface changes.
+
+## Safety / Regression Audit
+
+- **Controller lifecycle**: `dispose()` already stops mic tracks, closes data + media connections, destroys the PeerJS peer, and clears state — exactly what "Leave" should do. Recreating with `createLiveSession({})` is supported (factory has no shared module state). The PeerJS broker registration uses fresh random IDs each time, so re-init is safe.
+- **One-time auto-close**: The `wasConnected` latch prevents the HUD/drawer from being forced closed every state tick (the user can still re-open the HUD with the chevron after auto-close).
+- **No effect on Builder preview**: `HudPreview.tsx` and `HudBuilderSandbox.tsx` are untouched. Bookmark paste/save flow from the previous task is preserved.
+- **No effect on non-live flows**: When `agent`/`phone`/`email` are all empty, `#agent-drawer` and the entire `#drawer-live-guide` block are not rendered — the new Leave button stays `hidden` because `initLiveGuide()` early-returns when `#drawer-live-guide` is missing. Chevron toggle continues to work via the early-bootstrap script.
+- **Z-index**: Leave button shares `z-index:1300` with the chevron, sits below the contact drawer (`z-index:2000`) — no overlap with open drawer.
+- **Mobile viewport**: 88vw drawer + small Leave pill at top-right do not collide; positioned at `right:40px` keeps it clear of the 24px chevron at `right:8px`.
+- **Dispose during error**: Wrapped in `try/catch`; idempotent flag in `dispose()` prevents double-teardown.
+
+## Out of Scope
+
+- No DB / Cloud / edge function changes.
+- No `live-session.mjs` or `live-session-source.ts` changes (the runtime source is consumed verbatim).
+- Builder UI is untouched.

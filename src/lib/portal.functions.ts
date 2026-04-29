@@ -1084,6 +1084,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 #hud-toggle{position:fixed;top:8px;right:8px;z-index:1300;width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,0.18);border:none;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background 0.2s;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
 #hud-toggle:hover{background:rgba(255,255,255,0.28)}
 #hud-toggle svg{width:12px;height:12px}
+/* ── Leave-session pill (live tour only; hidden until connected) ─── */
+#hud-leave-btn{position:fixed;top:8px;right:40px;z-index:1300;height:24px;padding:0 10px;border-radius:999px;background:rgba(255,255,255,0.18);border:none;color:#fff;font:600 11px/1 system-ui,-apple-system,sans-serif;letter-spacing:0.02em;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:background 0.2s,color 0.2s;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+#hud-leave-btn:hover{background:rgba(220,38,38,0.85);color:#fff}
+#hud-leave-btn[hidden]{display:none}
 
 /* ── Property tabs (top-left overlay) ────────────────────────────── */
 #tabs{position:fixed;top:8px;left:8px;z-index:600;display:none;gap:4px;background:rgba(0,0,0,0.35);padding:4px 6px;border-radius:999px;border:1px solid rgba(255,255,255,0.08);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
@@ -1236,6 +1240,7 @@ ${askAssets.css}
 <div id="viewer"><iframe id="matterport-frame" allowfullscreen allow="xr-spatial-tracking; fullscreen"></iframe></div>
 
 <!-- ── HUD toggle button ─────────────────────────────────────────── -->
+<button id="hud-leave-btn" hidden aria-label="Leave live tour" title="Leave Live Tour">Leave</button>
 <button id="hud-toggle" aria-label="Toggle header">
   <svg id="hud-chevron-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="display:none"><polyline points="18 15 12 9 6 15"/></svg>
   <svg id="hud-chevron-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
