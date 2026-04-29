@@ -705,7 +705,8 @@ export function HudPreview({
                 return msg + trailer;
               };
               const ok = qMessage.trim().length > 0;
-              const mailHref = `mailto:${encodeURIComponent(agent.email || "")}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(buildBody(false))}`;
+              const mailHref = `mailto:${agent.email || ""}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(buildBody(false))}`;
+              const agentFirstName = (agent.name || "").trim().split(/\s+/)[0] || "agent";
               const smsHref = `sms:${agent.phone || ""}?body=${encodeURIComponent(buildBody(true))}`;
               const onCopy = async () => {
                 if (!ok) return;

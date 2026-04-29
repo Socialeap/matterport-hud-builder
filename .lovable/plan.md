@@ -1,70 +1,106 @@
-# Add Event Space Pre-Built Template
+# Fix Email CTA Stalls + Personalize Button Label
 
-## Goal
-Add a 6th pre-built Property Map called **Event Space** to the "Use a Pre-Built Template" picker, covering reception halls, wedding venues, party/event venues. Mirrors the structure of the existing 5 starters (Residential, Hospitality, Commercial Office, Multi-Family, Coworking) so it shows up automatically in:
-- Vault Templates wizard → "Pre-Built Templates" grid (`LibraryPath`)
-- AI Training Wizard → "Property Profile" picker (`ProfileStep`)
+## Root cause analysis
 
-No schema migrations, no backend changes — pure additive static data plus one new icon binding.
+There are **three** mailto code paths involved (two ship in the generated end-product `.html`, one is the live in-app preview). All share the same two defects:
 
-## Files to change
+### Bug 1 — Malformed `mailto:` recipient (the real reason it stalls)
+Every site does this:
+```js
+"mailto:" + encodeURIComponent(agentEmail) + "?subject=..."
+```
+`encodeURIComponent` turns `agent@example.com` into `agent%40example.com`. Per RFC 6068, the `to` portion of a `mailto:` URI must be a valid `addr-spec` — the `@` must be literal. Chrome, Edge, and Outlook's protocol handler silently refuse to launch when the recipient is percent-encoded; nothing opens, no console error fires, and the status text "Opening your email app…" is left stranded. **This is why both buttons stall.**
 
-### 1. `src/lib/vault/starter-templates.ts`
-Append a new `StarterTemplate` entry to the `STARTER_TEMPLATES` array:
-- `id: "starter-event-space"`
-- `name: "Event Space / Reception Venue"`
-- `tagline: "Wedding venues, reception halls, party & event spaces"`
-- `description`: short blurb about foundational venue facts + differentiating amenities used by the AI to answer planner questions and convince visitors to book.
-- `icon: "Building2"` (already supported by the icon union — no type change needed; matches the other "venue-like" starters)
-- `defaultLabel: "Event Space Map"`
-- `doc_kind: "event_space_factsheet"`
-- `extractor: "pdfjs_heuristic"`
-- `schema`: JSON Schema with all fields below, grouped by section comments matching the pattern of existing starters. Field types: capacities/dimensions = `number`, dates/times/free-text lists = `string`, yes/no features = `boolean`. Each field gets a one-line `description` so the LLM extractor can find it in uploaded PDFs.
+The recipient must be passed raw (it's already a validated email). Only `subject` and `body` need `encodeURIComponent`.
 
-**Schema fields (grouped):**
+### Bug 2 — User-gesture loss (the lead-capture downgrade form)
+`__dqaRenderInquiryForm` (`portal.functions.ts:2110`) does:
+```js
+async function() {
+  ...
+  await fetch(supabaseOrigin + "/functions/v1/handle-lead-capture", ...)  // gesture lost here
+  if (!sentVia) { window.location.href = mailto; }                         // browser blocks
+}
+```
+After an `await`, the click is no longer a "user activation" and Chromium-based browsers refuse to launch external protocol handlers. The fallback mailto never fires.
 
-Capacity & Space — `max_total_capacity`, `banquet_capacity`, `cocktail_capacity`, `theater_capacity`, `classroom_capacity`, `total_sqft`, `ceiling_height_ft`, `breakout_rooms_count`
+### Bug 3 (cosmetic) — Generic label
+Both buttons read "Email agent". Many reps are property managers, marketers, or owners — the label should reflect the configured contact.
 
-Location & Access — `venue_address`, `neighborhood`, `onsite_parking_spaces`, `valet_parking_available` (bool), `transit_distance_min`, `loading_dock_access` (string — describes dock + vendor entry)
+## Fix plan
 
-Operations & Rules — `loadin_loadout_windows`, `event_duration_limit`, `noise_curfew`, `exclusive_catering_required` (bool), `outside_vendor_policy`, `liquor_license_status`, `bar_rules`, `host_insurance_required` (bool), `booking_deposit_terms`, `cancellation_policy`
+### File 1 — `src/lib/portal.functions.ts` (generated end-product)
 
-Accessibility — `ada_compliant` (bool), `elevator_access` (bool), `ramp_locations`, `accessible_restrooms` (bool), `wheelchair_seating_areas`
+**A. Quick-question drawer button (around line 1843)**
+- Build the URL with the **raw** email: `"mailto:" + agentEmail + "?subject=" + encodeURIComponent(...) + "&body=" + encodeURIComponent(...)`.
+- Set `statusEl.textContent` **before** `window.location.href = url` so DOM update is queued, but the navigation itself remains the synchronous tail of the click handler (no awaits introduced).
+- Trim body if URL > 1900 chars by re-encoding a shortened body (current code slices the encoded URL, which can leave a dangling `%` triplet — minor hardening).
 
-Wedding & Party Specifics — `bridal_suite` (bool), `groom_ready_room` (bool), `indoor_ceremony_space` (bool), `outdoor_ceremony_space` (bool), `grand_staircase` (bool), `scenic_views` (string), `photography_locations` (string)
+**B. Drawer button label (line 1308)**
+Replace the static `Email agent` label with `Email ${escapeHtml(firstName(agent.name)) || "agent"}` where `firstName` returns the first whitespace-delimited token (or "agent" if name is empty). Keeps the button compact while personalizing.
 
-Audio / Visual / Tech — `builtin_sound_system` (bool), `wireless_microphones_count`, `projection_or_led_walls` (string), `custom_lighting` (string), `guest_wifi` (bool), `livestream_hybrid_support` (bool), `band_dj_power_drops` (bool)
+**C. Lead-capture downgrade form (around line 2110)**
+Restructure so the mailto fallback runs in the **same synchronous tick** as the click:
+```js
+card.querySelector(".ask-inquiry-send").addEventListener("click", function() {
+  // 1. Validate (sync)
+  // 2. Build mailto URL with raw recipient
+  // 3. Open mail client IMMEDIATELY: window.location.href = mailto
+  // 4. THEN fire-and-forget the handle-lead-capture POST (no await blocking the navigation)
+  fetch(...).catch(() => {});
+  statusEl.textContent = "Your email composer should now be open…";
+});
+```
+This preserves the backend logging (it still runs) but never blocks the protocol handoff. The Pro-tier "backend-only" path is preserved by checking the response **after** navigation has been requested — the fetch still completes in the background, and we only show the "sent via backend" copy if the user comes back to the tab.
 
-Dining & Hospitality — `onsite_commercial_kitchen` (bool), `event_coordination_services` (string), `menu_tasting_room` (bool), `premium_bar_packages` (string), `specialty_cocktail_options` (string), `late_night_food_setup` (string), `dessert_station_available` (bool)
+A simpler, safer variant: always open `mailto:` first (it's the user's intent), and run the lead-capture POST in parallel for analytics. Recommended.
 
-Vibe & Atmosphere — `dance_floor` (string — permanent / portable / size), `stage_dimensions`, `coat_check_staffed` (bool), `outdoor_fire_pits_heaters` (bool), `cigar_or_cocktail_lounge` (bool), `rooftop_or_terrace_access` (bool)
+**D. Personalize this form's send button label too** — `Send to agent` → `Email ${firstName(agent.name) || "agent"}`.
 
-`required: ["venue_address", "max_total_capacity", "total_sqft"]`
+### File 2 — `src/components/portal/HudPreview.tsx` (live builder preview)
 
-### 2. `src/components/portal/ai-training-wizard/profiles.ts`
-Add the matching Property Profile so the AI Training Wizard surfaces the same option (resolution is by `docKind`, so this hooks into the new starter automatically):
-- Extend `CategoryKey` union with `"event_space"`.
-- Append to `PROFILE_CATEGORIES`:
-  ```ts
-  {
-    key: "event_space",
-    label: "Event Space",
-    tagline: "Wedding/reception hall, party venue",
-    icon: Building2,            // already imported
-    starterId: "starter-event-space",
-    docKind: "event_space_factsheet",
-  }
-  ```
+**A. Drawer email link (line 670)** — already correct (raw email, no encode). Leave as is.
 
-No other call sites need changes — `LibraryPath`, `ProfileStep`, `resolveProfileTemplate`, and the wizard hub all iterate the arrays generically.
+**B. Quick-question email button (line 708)**
+Change:
+```ts
+const mailHref = `mailto:${encodeURIComponent(agent.email || "")}?...`;
+```
+to:
+```ts
+const mailHref = `mailto:${agent.email || ""}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(buildBody(false))}`;
+```
 
-## Verification
-- Pre-Built Templates grid renders 6 cards (was 5); Event Space card shows the field count badge automatically.
-- Selecting it pre-fills the wizard's Name & Save step with `Event Space Map` / `event_space_factsheet` and the full schema.
-- AI Training Wizard's Profile step shows Event Space as a 6th option; choosing it on first use clones the new starter into `vault_templates` via the existing `resolveProfileTemplate` flow (no new code path).
-- TypeScript: `icon: "Building2"` is already in the icon union; `CategoryKey` union extension is the only type surface that changes, and it's only consumed inside the wizard.
+**C. Button label (line 760)**
+Replace `Email agent` with `Email {firstName(agent.name) || "agent"}` using a small inline helper.
 
-## Out of scope
-- No DB migration (templates are cloned per-provider on first use, same as today).
-- No changes to extract-property-doc or RAG indexing — they read schema generically.
-- No copy changes to the wizard chrome.
+### File 3 — Helper
+
+Add a tiny `firstName(full)` helper in both files (they don't share runtime — `portal.functions.ts` is serialized into the generated HTML as a string template; `HudPreview.tsx` runs in React). Two ~3-line copies, no shared module needed.
+
+## Why this is safe
+
+- **No new dependencies, no schema changes, no API changes.**
+- Drawer phone/SMS links are unchanged.
+- The avatar contact card direct `mailto:` link in `HudPreview.tsx:670` already passes the raw address — it works today, which independently confirms the encode-the-recipient theory.
+- The `handle-lead-capture` POST still runs (fire-and-forget) so Pro-tier lead logging is preserved.
+- Existing `aria-disabled` gating, char-limit clamp, and copy-to-clipboard fallback are untouched.
+- Status messages are rewritten *after* `window.location.href` is set so the DOM update doesn't interrupt the navigation request, but it remains synchronous within the click handler (browsers consider the gesture intact).
+- Label change is purely string-level; downstream selectors use IDs (`#drawer-qsend-email`, `.ask-inquiry-send`), not text content, so nothing breaks.
+
+## Files to edit
+
+```
+src/lib/portal.functions.ts        — fixes A, B, C, D + firstName helper
+src/components/portal/HudPreview.tsx — fixes B, C + firstName helper
+```
+
+## QA checklist after edit
+
+1. Build a fresh presentation, open the generated `.html`, type a question, click **Email [Name]** → mail client opens with prefilled subject/body.
+2. Same flow on the lead-capture downgrade form (simulate by exhausting Ask quota or temporarily forcing render) → mail client opens, network tab shows `handle-lead-capture` POST fired in background.
+3. Live builder preview drawer shows `Email [FirstName]`, click opens compose window in browser default mailer.
+4. With agent name empty, label gracefully falls back to `Email agent`.
+5. Long messages (>1500 chars) still produce a launchable URL (clamp re-encodes safely).
+
+Approve and I'll implement all five edits in one pass.
