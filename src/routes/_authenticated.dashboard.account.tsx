@@ -34,9 +34,10 @@ export const Route = createFileRoute("/_authenticated/dashboard/account")({
 });
 
 function AccountPage() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, roles } = useAuth();
   const navigate = useNavigate();
   const deleteAccount = useServerFn(deleteOwnAccount);
+  const isClient = roles.includes("client") && !roles.includes("provider") && !roles.includes("admin");
 
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -146,8 +147,10 @@ function AccountPage() {
         </CardContent>
       </Card>
 
-      {/* Ask AI / BYOK */}
-      <AskAiByokSection />
+      {/* Ask AI / BYOK — MSP/provider only. The 20 free Ask AI answers per
+          published presentation are funded by the platform; overflow uses
+          the provider's own Gemini key. Clients never see this section. */}
+      {!isClient && <AskAiByokSection />}
 
       {/* Privacy & Terms */}
       <Card>
@@ -195,8 +198,9 @@ function AccountPage() {
               <AlertDialogHeader>
                 <AlertDialogTitle>Delete your account?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This will permanently delete your account, your Studio
-                  settings, saved presentations, and all associated data.
+                  {isClient
+                    ? "This will permanently delete your account and all associated data. "
+                    : "This will permanently delete your account, your Studio settings, saved presentations, and all associated data. "}
                   Type <span className="font-mono font-semibold">{user?.email}</span> below
                   to confirm.
                 </AlertDialogDescription>
