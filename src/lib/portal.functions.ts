@@ -1305,8 +1305,8 @@ ${(agent.phone || agent.email || agent.name) ? `<div id="agent-drawer">
       <textarea class="drawer-qfield drawer-qtextarea" id="drawer-qmsg" rows="4" placeholder="Type your question, or pick a topic above…" aria-label="Your message"></textarea>
       <input type="email" class="drawer-qfield" id="drawer-qemail" placeholder="Your email (so we can reply)" autocomplete="email" aria-label="Your email">
       <div class="drawer-qsend-row">
-        ${agent.email ? `<a id="drawer-qsend-email" class="drawer-qsend primary" href="#" aria-disabled="true" role="button">Email agent</a>` : ""}
-        ${agent.phone ? `<a id="drawer-qsend-sms" class="drawer-qsend secondary" href="#" aria-disabled="true" role="button">Text agent</a>` : ""}
+        ${agent.email ? `<a id="drawer-qsend-email" class="drawer-qsend primary" href="#" aria-disabled="true" role="button">Email ${escapeHtml((String(agent.name || "").trim().split(/\s+/)[0]) || "agent")}</a>` : ""}
+        ${agent.phone ? `<a id="drawer-qsend-sms" class="drawer-qsend secondary" href="#" aria-disabled="true" role="button">Text ${escapeHtml((String(agent.name || "").trim().split(/\s+/)[0]) || "agent")}</a>` : ""}
         <button type="button" id="drawer-qcopy" class="drawer-qcopy" aria-disabled="true">Copy</button>
       </div>
       <div class="drawer-qstatus" id="drawer-qstatus" aria-live="polite"></div>
