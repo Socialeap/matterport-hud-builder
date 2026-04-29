@@ -1056,10 +1056,53 @@ serve(async (req) => {
               }),
             );
 
-            // If this call just crossed the free_limit boundary AND
-            // BYOK is not active, enqueue the one-shot exhaustion
-            // email. claim_ask_exhaustion_email returns a row only on
-            // the first crossing; replays / parallel races see zero.
+            // Early-warning email: when only a few free answers remain
+            // and BYOK is not active, send a one-shot heads-up so the
+            // client has time to add their Gemini key before exhaustion.
+            if (
+              outcome === "counted" &&
+              !fresh.byok_active &&
+              fresh.free_used >= Math.max(fresh.free_limit - 3, 0) &&
+              fresh.free_used < fresh.free_limit &&
+              !fresh.warning_email_sent_at
+            ) {
+              try {
+                const { data: wclaim } = await service.rpc(
+                  "claim_ask_warning_email",
+                  {
+                    p_saved_model_id: tokenResult.saved_model_id,
+                    p_property_uuid: propertyUuid,
+                    p_threshold: 3,
+                  },
+                );
+                if (Array.isArray(wclaim) && wclaim.length > 0) {
+                  const w = wclaim[0] as {
+                    warning_email_sent_at: string;
+                    free_used: number;
+                    free_limit: number;
+                  };
+                  await enqueueQuotaEmail(service, {
+                    template_name: "ask-quota-warning",
+                    saved_model_id: tokenResult.saved_model_id,
+                    property_uuid: propertyUuid,
+                    timestamp: w.warning_email_sent_at,
+                    free_used: w.free_used,
+                    free_limit: w.free_limit,
+                  });
+                }
+              } catch (err) {
+                console.warn(
+                  "[synthesize-answer] warning email enqueue failed:",
+                  err,
+                );
+              }
+            }
+
+            // Exhaustion email: when the counter just crossed
+            // free_limit AND BYOK is not active, enqueue the one-shot
+            // exhaustion email. claim_ask_exhaustion_email returns a
+            // row only on the first crossing; replays / parallel races
+            // see zero rows.
             if (
               outcome === "counted" &&
               !fresh.byok_active &&
@@ -1075,12 +1118,15 @@ serve(async (req) => {
                   },
                 );
                 if (Array.isArray(claim) && claim.length > 0) {
-                  await enqueueExhaustionEmail(service, {
+                  await enqueueQuotaEmail(service, {
+                    template_name: "ask-quota-exhausted",
                     saved_model_id: tokenResult.saved_model_id,
                     property_uuid: propertyUuid,
-                    exhausted_at:
+                    timestamp:
                       (claim[0] as { exhausted_email_sent_at: string })
                         .exhausted_email_sent_at,
+                    free_used: fresh.free_used,
+                    free_limit: fresh.free_limit,
                   });
                 }
               } catch (err) {
