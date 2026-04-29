@@ -1844,12 +1844,18 @@ window.__closeContact=function(){
       ev.preventDefault();
       if(emailBtn.getAttribute("aria-disabled")==="true") return;
       if(!agentEmail){ statusEl.textContent="No email address configured."; return; }
-      var url="mailto:"+encodeURIComponent(agentEmail)
-        +"?subject="+encodeURIComponent(buildSubject())
-        +"&body="+encodeURIComponent(buildBody(false));
-      if(url.length>1900){ url=url.slice(0,1900); }
+      var subj=buildSubject();
+      var body=buildBody(false);
+      // RFC 6068: recipient must be a literal addr-spec — do NOT percent-encode the email or '@' becomes %40 and Chrome/Edge silently refuse to launch the mail client.
+      var url="mailto:"+agentEmail+"?subject="+encodeURIComponent(subj)+"&body="+encodeURIComponent(body);
+      // If too long, shorten the body itself (re-encode) instead of slicing the encoded URL, which can leave a dangling % triplet.
+      while(url.length>1900 && body.length>50){
+        body=body.slice(0,Math.max(50,body.length-200));
+        url="mailto:"+agentEmail+"?subject="+encodeURIComponent(subj)+"&body="+encodeURIComponent(body);
+      }
+      statusEl.textContent="Opening your email app… If nothing happens, use Copy.";
+      // Navigation must be the synchronous tail of the click handler — no awaits above.
       window.location.href=url;
-      statusEl.textContent="Opening your email app…";
     });
   }
   if(smsBtn){
