@@ -387,6 +387,7 @@ interface QuotaSnapshot {
   free_limit: number;
   byok_active: boolean;
   exhausted_email_sent_at: string | null;
+  warning_email_sent_at: string | null;
 }
 
 /**
