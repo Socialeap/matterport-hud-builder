@@ -300,47 +300,100 @@ export function HudPreview({
     </div>
   );
 
+  // Reusable info popover content describing the Guided-Paste flow.
+  // Surfaced both in the toolbar AND alongside the Bookmark pill so the
+  // agent can read the instructions BEFORE activating the toolbar.
+  const renderBookmarkInfoPopover = (variant: "light" | "dark") => (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className={
+            variant === "light"
+              ? "flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/20 text-white backdrop-blur-md transition-colors hover:bg-white/30"
+              : "flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
+          }
+          aria-label="How Live Tour bookmarks work"
+          title="How Live Tour bookmarks work"
+        >
+          <Info className="h-3.5 w-3.5" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent side="bottom" align="end" className="w-72 text-xs leading-relaxed">
+        <p className="mb-2 font-semibold text-foreground">How to capture a view</p>
+        <ol className="ml-4 list-decimal space-y-1 text-muted-foreground">
+          <li>Open the 3D tour and navigate to the view you want to save.</li>
+          <li>
+            Press <kbd className="rounded border border-border bg-muted px-1 font-mono text-[10px]">U</kbd> on
+            your keyboard. Matterport copies the exact view to your clipboard.
+          </li>
+          <li>
+            Click <span className="font-semibold text-foreground">Bookmark</span>, then paste into the
+            &ldquo;Paste deep link&rdquo; field (
+            <kbd className="rounded border border-border bg-muted px-1 font-mono text-[10px]">⌘V</kbd> /{" "}
+            <kbd className="rounded border border-border bg-muted px-1 font-mono text-[10px]">Ctrl+V</kbd>).
+          </li>
+        </ol>
+        <p className="mt-2 text-muted-foreground">
+          The bookmark saves automatically on paste. Optionally name it first; otherwise we&rsquo;ll
+          auto-label it.
+        </p>
+      </PopoverContent>
+    </Popover>
+  );
+
   // Shared JSX for the "Bookmark" pill button. In overlay mode it floats
   // top-right of the iframe; in "above" mode it sits inside a header row.
+  // Wrapped in a flex container so the always-visible Info popover sits
+  // immediately next to the pill in both placements.
   const renderBookmarkButton = (placement: "overlay" | "above") => (
-    <button
-      onClick={() => {
-        setHeaderVisible(false);
-        setIsBookmarking(true);
-        setTimeout(() => bookmarkNameRef.current?.focus(), 0);
-      }}
-      disabled={!currentModel?.matterportId?.trim()}
+    <div
       className={
         placement === "overlay"
-          ? "absolute right-12 top-2 z-30 flex h-6 items-center gap-1 rounded-full bg-white/20 px-2.5 text-[11px] font-medium text-white backdrop-blur-md transition-colors hover:bg-white/30 disabled:cursor-not-allowed disabled:opacity-40"
-          : "flex h-7 items-center gap-1.5 rounded-full bg-foreground/90 px-3 text-[11px] font-medium text-background transition-colors hover:bg-foreground disabled:cursor-not-allowed disabled:opacity-40"
-      }
-      aria-label="Add Live Tour bookmark"
-      title={
-        currentModel?.matterportId?.trim()
-          ? "Add a Live Tour bookmark for this property"
-          : "Add a Matterport Model ID first"
-      }
-      style={
-        placement === "overlay"
-          ? { WebkitBackdropFilter: "blur(12px)", backdropFilter: "blur(12px)" }
-          : undefined
+          ? "absolute right-12 top-2 z-30 flex items-center gap-1.5"
+          : "flex items-center gap-1.5"
       }
     >
-      <Bookmark className="h-3 w-3" />
-      <span>Bookmark</span>
-      {stops.length > 0 && (
-        <span
-          className={
-            placement === "overlay"
-              ? "ml-0.5 rounded-full bg-white/25 px-1.5 text-[10px] font-semibold leading-4"
-              : "ml-0.5 rounded-full bg-background/25 px-1.5 text-[10px] font-semibold leading-4"
-          }
-        >
-          {stops.length}
-        </span>
-      )}
-    </button>
+      <button
+        onClick={() => {
+          setHeaderVisible(false);
+          setIsBookmarking(true);
+          setTimeout(() => bookmarkNameRef.current?.focus(), 0);
+        }}
+        disabled={!currentModel?.matterportId?.trim()}
+        className={
+          placement === "overlay"
+            ? "flex h-6 items-center gap-1 rounded-full bg-white/20 px-2.5 text-[11px] font-medium text-white backdrop-blur-md transition-colors hover:bg-white/30 disabled:cursor-not-allowed disabled:opacity-40"
+            : "flex h-7 items-center gap-1.5 rounded-full bg-foreground/90 px-3 text-[11px] font-medium text-background transition-colors hover:bg-foreground disabled:cursor-not-allowed disabled:opacity-40"
+        }
+        aria-label="Add Live Tour bookmark"
+        title={
+          currentModel?.matterportId?.trim()
+            ? "Add a Live Tour bookmark for this property"
+            : "Add a Matterport Model ID first"
+        }
+        style={
+          placement === "overlay"
+            ? { WebkitBackdropFilter: "blur(12px)", backdropFilter: "blur(12px)" }
+            : undefined
+        }
+      >
+        <Bookmark className="h-3 w-3" />
+        <span>Bookmark</span>
+        {stops.length > 0 && (
+          <span
+            className={
+              placement === "overlay"
+                ? "ml-0.5 rounded-full bg-white/25 px-1.5 text-[10px] font-semibold leading-4"
+                : "ml-0.5 rounded-full bg-background/25 px-1.5 text-[10px] font-semibold leading-4"
+            }
+          >
+            {stops.length}
+          </span>
+        )}
+      </button>
+      {renderBookmarkInfoPopover(placement === "overlay" ? "light" : "dark")}
+    </div>
   );
 
   // The Builder-mode header that sits above the iframe and hosts the
