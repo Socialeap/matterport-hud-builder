@@ -25,9 +25,16 @@ export interface ProtectedConfigBlob {
 /** Min password length the gate accepts. Mirrored on the Builder UI
  *  and on the generator's request validator. */
 export const PROTECTED_MIN_PASSWORD_LEN = 4;
-/** PBKDF2 iteration count. Single source of truth for both the
- *  server-side encryption and the runtime decoder. */
-export const PROTECTED_PBKDF2_ITERATIONS = 600_000;
+/** PBKDF2 iteration count for new exports.
+ *
+ *  Capped at 100,000 because Cloudflare Workers' WebCrypto
+ *  implementation rejects PBKDF2 above that threshold with
+ *  "iteration counts above 100000 are not supported". The visitor's
+ *  browser (full WebCrypto, no cap) re-derives the key using the
+ *  `iter` value embedded in the blob, so older exports built at
+ *  600_000 still decrypt fine — only the encryption side has to
+ *  respect the Worker limit. */
+export const PROTECTED_PBKDF2_ITERATIONS = 100_000;
 
 function bufToBase64(buf: ArrayBuffer | Uint8Array): string {
   const view = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
