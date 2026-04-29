@@ -125,10 +125,13 @@ export function HudPreview({
   const handleLinkPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
     const pasted = e.clipboardData.getData("text/plain");
     if (!pasted) return;
-    // Allow the input value to update (visual feedback) before we read
-    // the pasted text. Using the clipboard payload directly keeps us
-    // immune to browsers that delay onChange.
-    captureBookmarkFromLink(pasted);
+    const captured = captureBookmarkFromLink(pasted);
+    if (captured) {
+      // Suppress the browser's default paste so the trailing onChange
+      // can't re-populate the input with the just-saved coordinates.
+      e.preventDefault();
+      setBookmarkLink("");
+    }
   };
 
   const exitBookmarkMode = () => {
