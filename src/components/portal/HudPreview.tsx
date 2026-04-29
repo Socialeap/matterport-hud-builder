@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { ChevronUp, ChevronDown, Phone, Mail, MessageSquare, Globe, X, MapPin, Film, Images, Copy, Bookmark, Info, Trash2, Plus } from "lucide-react";
+import { ChevronUp, ChevronDown, Phone, Mail, MessageSquare, Globe, X, MapPin, Film, Images, Copy, Bookmark, Info, Trash2, Plus, Linkedin, Twitter, Instagram, Facebook, Music2, Link as LinkIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { PropertyModel, TourBehavior, AgentContact, LiveTourStop } from "./types";
@@ -151,13 +151,13 @@ export function HudPreview({
   const hasMedia = visibleMedia.length > 0;
 
   const socialLinks = [
-    { url: agent.linkedin, icon: Globe, label: "LinkedIn" },
-    { url: agent.twitter, icon: Globe, label: "Twitter" },
-    { url: agent.instagram, icon: Globe, label: "Instagram" },
-    { url: agent.facebook, icon: Globe, label: "Facebook" },
-    { url: agent.tiktok, icon: Globe, label: "TikTok" },
+    { url: agent.linkedin, icon: Linkedin, label: "LinkedIn" },
+    { url: agent.twitter, icon: Twitter, label: "X (Twitter)" },
+    { url: agent.instagram, icon: Instagram, label: "Instagram" },
+    { url: agent.facebook, icon: Facebook, label: "Facebook" },
+    { url: agent.tiktok, icon: Music2, label: "TikTok" },
     { url: agent.website, icon: Globe, label: "Website" },
-    { url: agent.other, icon: Globe, label: "Other" },
+    { url: agent.other, icon: LinkIcon, label: "Other" },
   ].filter((s) => s.url);
 
   // Render the bookmark UI either as an overlay over the iframe (default,
@@ -795,10 +795,11 @@ export function HudPreview({
                       href={s.url.startsWith("http") ? s.url : `https://${s.url}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-medium text-white transition-colors hover:bg-white/20"
+                      aria-label={s.label}
+                      title={s.label}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
                     >
-                      <s.icon className="h-3 w-3" />
-                      {s.label}
+                      <s.icon className="h-4 w-4" />
                     </a>
                   ))}
                 </div>
