@@ -1088,27 +1088,31 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     // permanent storage URLs (not blob: URLs that vanish on reload).
     let finalLogoUrl = logoStorageUrl;
     let finalFaviconUrl = faviconStorageUrl;
-    if (logoFile) {
+    const pendingLogoSave = logoFile ?? (logoDataUrl && !logoStorageUrl ? await fileFromDataUrl(logoDataUrl, "logo") : null);
+    if (pendingLogoSave) {
       try {
-        const url = await uploadBrandAsset(userId, logoFile, "logo");
+        const url = await uploadBrandAsset(userId, pendingLogoSave, "logo");
         if (url) {
           finalLogoUrl = url;
           setLogoStorageUrl(url);
           setLogoPreview(url);
           setLogoFile(null);
+          setLogoDataUrl(null);
         }
       } catch (err) {
         console.error("Logo upload failed:", err);
       }
     }
-    if (faviconFile) {
+    const pendingFaviconSave = faviconFile ?? (faviconDataUrl && !faviconStorageUrl ? await fileFromDataUrl(faviconDataUrl, "favicon") : null);
+    if (pendingFaviconSave) {
       try {
-        const url = await uploadBrandAsset(userId, faviconFile, "favicon");
+        const url = await uploadBrandAsset(userId, pendingFaviconSave, "favicon");
         if (url) {
           finalFaviconUrl = url;
           setFaviconStorageUrl(url);
           setFaviconPreview(url);
           setFaviconFile(null);
+          setFaviconDataUrl(null);
         }
       } catch (err) {
         console.error("Favicon upload failed:", err);
