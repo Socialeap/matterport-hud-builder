@@ -45,6 +45,17 @@ export interface DraftState {
    * the presentation is unprotected.
    */
   access?: DraftAccessState;
+  /**
+   * Brand asset persistence (optional, backwards-compatible). Data URLs let
+   * the preview survive a reload without forcing the user to re-upload.
+   * Storage URLs (when present) point to the permanent brand-assets bucket
+   * copy and take precedence over the data URL for both display and
+   * generation. Both are scrubbed when the asset is removed.
+   */
+  logoDataUrl?: string | null;
+  faviconDataUrl?: string | null;
+  logoStorageUrl?: string | null;
+  faviconStorageUrl?: string | null;
 }
 
 interface DraftEnvelope {
