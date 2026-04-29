@@ -118,6 +118,12 @@ export function DashboardSidebar() {
                       ? location.pathname === "/dashboard"
                       : location.pathname.startsWith(item.to);
 
+                  // Client-friendly label override
+                  const label =
+                    isClient && item.to === "/dashboard/orders"
+                      ? "My Orders"
+                      : item.label;
+
                   // Lock Vault for Starter MSPs
                   const isLocked = item.requiresPro && !isPro && !isClient;
 
@@ -132,7 +138,7 @@ export function DashboardSidebar() {
                               onClick={(e) => e.preventDefault()}
                             >
                               <item.icon className="size-4" />
-                              <span>{item.label}</span>
+                              <span>{label}</span>
                               <Lock className="ml-auto size-3" />
                             </SidebarMenuButton>
                           </TooltipTrigger>
@@ -149,7 +155,7 @@ export function DashboardSidebar() {
                       <SidebarMenuButton asChild isActive={isActive}>
                         <Link to={item.to}>
                           <item.icon className="size-4" />
-                          <span>{item.label}</span>
+                          <span>{label}</span>
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
