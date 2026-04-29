@@ -86,6 +86,7 @@ export const PROFILE_CATEGORIES: ProfileCategory[] = [
     icon: Users,
     starterId: "starter-coworking",
     docKind: "coworking_brochure",
+  },
   {
     key: "event_space",
     label: "Event Space",
