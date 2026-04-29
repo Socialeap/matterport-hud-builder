@@ -1,75 +1,70 @@
-## Problem
+# Add Event Space Pre-Built Template
 
-When signed in as a **client** at `/dashboard/account` (and adjacent dashboard pages), the UI mixes provider/MSP-only content with client-appropriate content:
+## Goal
+Add a 6th pre-built Property Map called **Event Space** to the "Use a Pre-Built Template" picker, covering reception halls, wedding venues, party/event venues. Mirrors the structure of the existing 5 starters (Residential, Hospitality, Commercial Office, Multi-Family, Coworking) so it shows up automatically in:
+- Vault Templates wizard → "Pre-Built Templates" grid (`LibraryPath`)
+- AI Training Wizard → "Property Profile" picker (`ProfileStep`)
 
-- **Orders** page reads "Manage client presentation requests and fulfillment" and queries `order_notifications` by `provider_id = user.id`. That's an MSP fulfillment view; a client signed in just sees an empty MSP dashboard rather than *their own* purchases.
-- **Overview** page (`/dashboard`) is MSP "Quick Start — 6 steps to launch" onboarding (Brand Studio, Set Pricing, Stripe Connect, Invite clients…). None of that applies to a client.
-- **Account** page exposes the **Ask AI · Bring Your Own Gemini Key (BYOK)** section to clients. Per your correction, BYOK is an **MSP-only** feature — the 20 free Ask AI answers per published presentation are funded by the platform (your Gemini key, `gemini-2.5-flash-lite`), and overflow is funded by the **MSP's** BYOK key, not the end client's. Clients should never see BYOK.
+No schema migrations, no backend changes — pure additive static data plus one new icon binding.
 
-The sidebar already filters nav items by role (clients only see Overview, Orders, Account), but the *pages themselves* still render MSP content.
+## Files to change
 
-## Audit — what belongs to whom
+### 1. `src/lib/vault/starter-templates.ts`
+Append a new `StarterTemplate` entry to the `STARTER_TEMPLATES` array:
+- `id: "starter-event-space"`
+- `name: "Event Space / Reception Venue"`
+- `tagline: "Wedding venues, reception halls, party & event spaces"`
+- `description`: short blurb about foundational venue facts + differentiating amenities used by the AI to answer planner questions and convince visitors to book.
+- `icon: "Building2"` (already supported by the icon union — no type change needed; matches the other "venue-like" starters)
+- `defaultLabel: "Event Space Map"`
+- `doc_kind: "event_space_factsheet"`
+- `extractor: "pdfjs_heuristic"`
+- `schema`: JSON Schema with all fields below, grouped by section comments matching the pattern of existing starters. Field types: capacities/dimensions = `number`, dates/times/free-text lists = `string`, yes/no features = `boolean`. Each field gets a one-line `description` so the LLM extractor can find it in uploaded PDFs.
 
-**Account page (`/dashboard/account`) sections:**
+**Schema fields (grouped):**
 
-| Section | MSP / Provider | Client | Notes |
-|---|---|---|---|
-| Change Password | yes | yes | Universal Supabase auth |
-| Ask AI · BYOK Gemini Key (`AskAiByokSection`) | **yes** | **no** | MSP-only — funds overflow Ask AI usage on their clients' published presentations once the platform-funded 20 free answers per property are exhausted |
-| Privacy & Terms links | yes | yes | Universal |
-| Delete Account (danger zone) | yes | yes | Universal |
+Capacity & Space — `max_total_capacity`, `banquet_capacity`, `cocktail_capacity`, `theater_capacity`, `classroom_capacity`, `total_sqft`, `ceiling_height_ft`, `breakout_rooms_count`
 
-**Overview page (`/dashboard`):** Currently 100% MSP onboarding. Clients should see something different — a simple landing pointing them at their Orders, their account, and (if applicable) their published presentation links.
+Location & Access — `venue_address`, `neighborhood`, `onsite_parking_spaces`, `valet_parking_available` (bool), `transit_distance_min`, `loading_dock_access` (string — describes dock + vendor entry)
 
-**Orders page (`/dashboard/orders`):** Currently 100% MSP fulfillment view. Clients should see *their own purchases* (`order_notifications` rows where `client_id = auth.uid()`), read-only.
+Operations & Rules — `loadin_loadout_windows`, `event_duration_limit`, `noise_curfew`, `exclusive_catering_required` (bool), `outside_vendor_policy`, `liquor_license_status`, `bar_rules`, `host_insurance_required` (bool), `booking_deposit_terms`, `cancellation_policy`
 
-## Plan
+Accessibility — `ada_compliant` (bool), `elevator_access` (bool), `ramp_locations`, `accessible_restrooms` (bool), `wheelchair_seating_areas`
 
-### 1. Hide BYOK from clients on the Account page (`src/routes/_authenticated.dashboard.account.tsx`)
+Wedding & Party Specifics — `bridal_suite` (bool), `groom_ready_room` (bool), `indoor_ceremony_space` (bool), `outdoor_ceremony_space` (bool), `grand_staircase` (bool), `scenic_views` (string), `photography_locations` (string)
 
-- Read `roles` from `useAuth()`; compute `const isClient = roles.includes("client") && !roles.includes("provider");`.
-- Render `<AskAiByokSection />` only when **not** a client (i.e., providers/MSPs and admins).
-- Soften the delete-account dialog copy when `isClient` so it doesn't reference "Studio settings": e.g. "your account and all associated data."
-- Leave Change Password, Privacy & Terms, and Delete Account intact for both roles.
+Audio / Visual / Tech — `builtin_sound_system` (bool), `wireless_microphones_count`, `projection_or_led_walls` (string), `custom_lighting` (string), `guest_wifi` (bool), `livestream_hybrid_support` (bool), `band_dj_power_drops` (bool)
 
-### 2. Role-aware Overview page (`src/routes/_authenticated.dashboard.index.tsx`)
+Dining & Hospitality — `onsite_commercial_kitchen` (bool), `event_coordination_services` (string), `menu_tasting_room` (bool), `premium_bar_packages` (string), `specialty_cocktail_options` (string), `late_night_food_setup` (string), `dessert_station_available` (bool)
 
-At the top of `DashboardOverview`, branch on `roles.includes("client")`:
+Vibe & Atmosphere — `dance_floor` (string — permanent / portable / size), `stage_dimensions`, `coat_check_staffed` (bool), `outdoor_fire_pits_heaters` (bool), `cigar_or_cocktail_lounge` (bool), `rooftop_or_terrace_access` (bool)
 
-- **Client branch** → render a new lightweight `ClientOverview` block:
-  - Welcome line using their display name / email
-  - Card: "My Orders" → `/dashboard/orders` with their purchase count
-  - Card: "Account & Privacy" → `/dashboard/account`
-  - Optional: a small "Your provider" panel that shows the MSP brand (`branding_settings.brand_name`) of the provider who invited them (resolved from `client_invitations` or whichever table holds the relationship — confirmed at implementation time).
-  - **No** BYOK card, **no** Stripe / pricing / branding cards.
-- **Provider branch** → keep the existing 6-step Quick Start unchanged.
+`required: ["venue_address", "max_total_capacity", "total_sqft"]`
 
-### 3. Role-aware Orders page (`src/routes/_authenticated.dashboard.orders.tsx`)
+### 2. `src/components/portal/ai-training-wizard/profiles.ts`
+Add the matching Property Profile so the AI Training Wizard surfaces the same option (resolution is by `docKind`, so this hooks into the new starter automatically):
+- Extend `CategoryKey` union with `"event_space"`.
+- Append to `PROFILE_CATEGORIES`:
+  ```ts
+  {
+    key: "event_space",
+    label: "Event Space",
+    tagline: "Wedding/reception hall, party venue",
+    icon: Building2,            // already imported
+    starterId: "starter-event-space",
+    docKind: "event_space_factsheet",
+  }
+  ```
 
-Branch the data fetch and table on role:
+No other call sites need changes — `LibraryPath`, `ProfileStep`, `resolveProfileTemplate`, and the wizard hub all iterate the arrays generically.
 
-- **Provider** (existing, unchanged): query `order_notifications` by `provider_id = user.id`; show fulfillment columns (Mark Paid, Release File, Mark Read); header copy "Orders — Manage client presentation requests and fulfillment."
-- **Client** (new): query `order_notifications` by `client_id = user.id`; resolve provider display names instead of client display names; show read-only columns (Presentation, Date, Models, Amount, Payment status, Released? + download link if released). No mutating buttons. Header copy "My Orders — Your purchased presentations."
-
-Empty-state copy also forks (provider: "When clients request presentations…"; client: "When you purchase a presentation, it will appear here.").
-
-### 4. Sidebar label tweak (`src/components/dashboard/DashboardSidebar.tsx`)
-
-For clients, render the Orders nav item label as **"My Orders"** instead of "Orders" so the nav matches the page header. Same route. One-line change inside `navItems.map`.
-
-### 5. RLS verification (no schema changes expected)
-
-`order_notifications` already carries both `provider_id` and `client_id`. At implementation time I'll confirm that the existing select policy permits `client_id = auth.uid()` to read their own rows; if it doesn't, I'll add a single additive `select` policy via a migration. No other backend or schema work.
+## Verification
+- Pre-Built Templates grid renders 6 cards (was 5); Event Space card shows the field count badge automatically.
+- Selecting it pre-fills the wizard's Name & Save step with `Event Space Map` / `event_space_factsheet` and the full schema.
+- AI Training Wizard's Profile step shows Event Space as a 6th option; choosing it on first use clones the new starter into `vault_templates` via the existing `resolveProfileTemplate` flow (no new code path).
+- TypeScript: `icon: "Building2"` is already in the icon union; `CategoryKey` union extension is the only type surface that changes, and it's only consumed inside the wizard.
 
 ## Out of scope
-
-- Splitting `/dashboard/...` into a separate `/client/...` route tree — the shared tree with role-aware rendering is simpler and matches the sidebar filter that already exists.
-- Hard server-side route guards for the MSP-only pages clients can't reach via nav (`Branding`, `Pricing`, `Vault`, `Payouts`, `Clients`, `Demo`, `Stats`). Already hidden from clients in `DashboardSidebar`. Can revisit as a follow-up if you want belt-and-suspenders protection.
-- Any change to how the 20 free Ask AI answers per property are funded or counted — that platform-funded flow stays exactly as it is.
-
-## Risk & verification
-
-- All edits are additive role branches; provider flows are unchanged.
-- Manual QA after the change:
-  1. **Client login** → `/dashboard` shows client overview; `/dashboard/orders` shows "My Orders" with their own purchases; `/dashboard/account` shows Change Password, Privacy & Terms, Delete Account only — **no BYOK section**.
-  2. **Provider login** → all three pages render exactly as today, BYOK still visible on Account.
+- No DB migration (templates are cloned per-provider on first use, same as today).
+- No changes to extract-property-doc or RAG indexing — they read schema generically.
+- No copy changes to the wizard chrome.
