@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
-import { ChevronUp, ChevronDown, Phone, Mail, MessageSquare, Globe, X, MapPin, Film, Images, Copy, Bookmark, Info, Trash2, Plus, Linkedin, Twitter, Instagram, Facebook, Music2, Link as LinkIcon } from "lucide-react";
+import { ChevronUp, ChevronDown, Phone, Mail, MessageSquare, Globe, X, MapPin, Film, Images, Copy, Bookmark, Info, Trash2, Plus, Link as LinkIcon } from "lucide-react";
+import { FaLinkedinIn, FaXTwitter, FaInstagram, FaFacebookF, FaTiktok } from "react-icons/fa6";
 import { toast } from "sonner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { PropertyModel, TourBehavior, AgentContact, LiveTourStop } from "./types";
@@ -151,11 +152,11 @@ export function HudPreview({
   const hasMedia = visibleMedia.length > 0;
 
   const socialLinks = [
-    { url: agent.linkedin, icon: Linkedin, label: "LinkedIn" },
-    { url: agent.twitter, icon: Twitter, label: "X (Twitter)" },
-    { url: agent.instagram, icon: Instagram, label: "Instagram" },
-    { url: agent.facebook, icon: Facebook, label: "Facebook" },
-    { url: agent.tiktok, icon: Music2, label: "TikTok" },
+    { url: agent.linkedin, icon: FaLinkedinIn, label: "LinkedIn" },
+    { url: agent.twitter, icon: FaXTwitter, label: "X (Twitter)" },
+    { url: agent.instagram, icon: FaInstagram, label: "Instagram" },
+    { url: agent.facebook, icon: FaFacebookF, label: "Facebook" },
+    { url: agent.tiktok, icon: FaTiktok, label: "TikTok" },
     { url: agent.website, icon: Globe, label: "Website" },
     { url: agent.other, icon: LinkIcon, label: "Other" },
   ].filter((s) => s.url);
