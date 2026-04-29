@@ -1084,6 +1084,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 #hud-toggle{position:fixed;top:8px;right:8px;z-index:1300;width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,0.18);border:none;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background 0.2s;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
 #hud-toggle:hover{background:rgba(255,255,255,0.28)}
 #hud-toggle svg{width:12px;height:12px}
+/* ── Leave-session pill (live tour only; hidden until connected) ─── */
+#hud-leave-btn{position:fixed;top:8px;right:40px;z-index:1300;height:24px;padding:0 10px;border-radius:999px;background:rgba(255,255,255,0.18);border:none;color:#fff;font:600 11px/1 system-ui,-apple-system,sans-serif;letter-spacing:0.02em;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:background 0.2s,color 0.2s;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+#hud-leave-btn:hover{background:rgba(220,38,38,0.85);color:#fff}
+#hud-leave-btn[hidden]{display:none}
 
 /* ── Property tabs (top-left overlay) ────────────────────────────── */
 #tabs{position:fixed;top:8px;left:8px;z-index:600;display:none;gap:4px;background:rgba(0,0,0,0.35);padding:4px 6px;border-radius:999px;border:1px solid rgba(255,255,255,0.08);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
@@ -1236,6 +1240,7 @@ ${askAssets.css}
 <div id="viewer"><iframe id="matterport-frame" allowfullscreen allow="xr-spatial-tracking; fullscreen"></iframe></div>
 
 <!-- ── HUD toggle button ─────────────────────────────────────────── -->
+<button id="hud-leave-btn" hidden aria-label="Leave live tour" title="Leave Live Tour">Leave</button>
 <button id="hud-toggle" aria-label="Toggle header">
   <svg id="hud-chevron-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="display:none"><polyline points="18 15 12 9 6 15"/></svg>
   <svg id="hud-chevron-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
@@ -2727,9 +2732,61 @@ if(frame){
   var preJoinBlock=document.getElementById("lg-agent-prejoin");
   var activeBlock=document.getElementById("lg-agent-active");
   var audioEl=document.getElementById("lg-audio");
+  var leaveBtn=document.getElementById("hud-leave-btn");
 
   var session=createLiveSession({});
   var lastTeleportTs=0;
+  var wasConnected=false;
+
+  // Hide the HUD header + close the contact drawer. Used after a live
+  // session reaches "connected" so the 3D tour fills the screen.
+  function hideOverlaysForLiveTour(){
+    try { if(window.__closeContact) window.__closeContact(); } catch(_e){}
+    try {
+      if(typeof setHudVisible==="function") setHudVisible(false);
+      else if(window.__setHudVisible) window.__setHudVisible(false);
+      else {
+        var hh=document.getElementById("hud-header");
+        if(hh){ hh.classList.remove("visible"); hh.style.transform="translateY(-100%)"; hh.style.opacity="0"; hh.style.pointerEvents="none"; }
+      }
+    } catch(_e){}
+  }
+
+  // Reset the Live-Guide UI back to the idle (visitor-default) state.
+  // Called after dispose() so the user can start a new session without
+  // a page reload.
+  function resetUiToIdle(){
+    if(visitorPane) visitorPane.hidden=false;
+    if(agentPane) agentPane.hidden=true;
+    if(preJoinBlock) preJoinBlock.hidden=false;
+    if(activeBlock) activeBlock.hidden=true;
+    if(joinBtn) joinBtn.disabled=false;
+    if(startBtn) startBtn.disabled=false;
+    if(pinInput) pinInput.value="";
+    if(pinValue) pinValue.innerHTML="&mdash;&mdash;&mdash;&mdash;";
+    if(visitorStatus) visitorStatus.textContent="";
+    if(agentStatus) agentStatus.textContent="";
+    if(stopsContainer) stopsContainer.innerHTML="";
+    if(audioEl){ try { audioEl.srcObject=null; } catch(_e){} }
+  }
+
+  function teardownSession(){
+    try { session.dispose(); } catch(_e){}
+    if(leaveBtn) leaveBtn.hidden=true;
+    wasConnected=false;
+    resetUiToIdle();
+    // Re-create the controller so a fresh session can be started
+    // without reloading the page. Re-attach the same subscriber.
+    session=createLiveSession({});
+    session.subscribe(onState);
+  }
+
+  if(leaveBtn){
+    leaveBtn.addEventListener("click",function(){
+      teardownSession();
+    });
+  }
+
 
   // Strip ss/sr/qs/play from a Matterport URL and re-append them with
   // the supplied values. We always force qs=1 (Quick Start) and play=1
@@ -2837,7 +2894,7 @@ if(frame){
     });
   }
 
-  session.subscribe(function(state){
+  function onState(state){
     // PIN display.
     if(pinValue && state.pin) pinValue.textContent=state.pin;
 
@@ -2857,9 +2914,11 @@ if(frame){
       // Refresh stop button enabled state — render once on transition,
       // then update disabled flags on every state tick (cheap).
       if(hasPin){
-        if(!stopsContainer.firstChild) renderStops();
-        var btns=stopsContainer.querySelectorAll(".lg-stop-btn");
-        for(var i=0;i<btns.length;i++) btns[i].disabled=!state.isConnected;
+        if(stopsContainer && !stopsContainer.firstChild) renderStops();
+        if(stopsContainer){
+          var btns=stopsContainer.querySelectorAll(".lg-stop-btn");
+          for(var i=0;i<btns.length;i++) btns[i].disabled=!state.isConnected;
+        }
       }
     }
 
@@ -2869,6 +2928,23 @@ if(frame){
       else if(state.status==="connected") visitorStatus.textContent="Connected to your agent.";
       else if(state.status==="ended") { visitorStatus.textContent="Session ended."; if(joinBtn) joinBtn.disabled=false; }
       else if(state.status==="error") { visitorStatus.textContent=state.error||"Couldn't connect."; if(joinBtn) joinBtn.disabled=false; }
+    }
+
+    // First transition into "connected" — reveal Leave button and
+    // auto-close the contact drawer + HUD header so the 3D tour gets
+    // the full screen. Latched so we only fire once per session.
+    if(!wasConnected && state.isConnected && state.status==="connected"){
+      wasConnected=true;
+      if(leaveBtn) leaveBtn.hidden=false;
+      hideOverlaysForLiveTour();
+    }
+
+    // If the session ends/errors after having been connected, return
+    // both sides to a clean idle state automatically.
+    if(wasConnected && (state.status==="ended"||state.status==="error")){
+      // Defer to break out of the current subscriber tick before we
+      // dispose + re-create the controller.
+      setTimeout(teardownSession,0);
     }
 
     // Voice attach. srcObject is the modern API; legacy browsers fall
@@ -2894,7 +2970,9 @@ if(frame){
       lastTeleportTs=state.incomingTeleportEvent.ts;
       applyTeleport(state.incomingTeleportEvent.ss,state.incomingTeleportEvent.sr);
     }
-  });
+  }
+
+  session.subscribe(onState);
 })();
 }).catch(function(err){
   // __configReady rejected — protected mode with Subtle unavailable, or
