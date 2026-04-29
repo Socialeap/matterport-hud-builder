@@ -401,24 +401,28 @@ interface QuotaSnapshot {
  * here — handle-lead-capture's pgmq pattern handles recipient
  * resolution at dequeue time via the same template payload shape.
  */
-async function enqueueExhaustionEmail(
+async function enqueueQuotaEmail(
   service: ReturnType<typeof createClient>,
   args: {
+    template_name: "ask-quota-exhausted" | "ask-quota-warning";
     saved_model_id: string;
     property_uuid: string;
-    exhausted_at: string;
+    timestamp: string;
+    free_used?: number;
+    free_limit?: number;
   },
 ): Promise<void> {
-  const { saved_model_id, property_uuid, exhausted_at } = args;
-  // Resolve provider email + agent display name + property name for
-  // the template payload. Best-effort; failures don't block the
-  // visitor's request (the synthesize call has already streamed).
+  const { template_name, saved_model_id, property_uuid, timestamp } = args;
+  // Resolve the CLIENT (presentation owner) email + display name +
+  // property/presentation name + provider slug for the deep-link to
+  // the builder. BYOK is owned by the client, so the email goes to
+  // the client, NOT the MSP.
   const { data: model } = await service
     .from("saved_models")
-    .select("name, properties, provider_id")
+    .select("name, properties, provider_id, client_id")
     .eq("id", saved_model_id)
     .maybeSingle();
-  if (!model) return;
+  if (!model || !model.client_id) return;
 
   const props = Array.isArray(model.properties) ? model.properties : [];
   const propertyName =
@@ -432,36 +436,48 @@ async function enqueueExhaustionEmail(
 
   const { data: profile } = await service
     .from("profiles")
-    .select("display_name, user_id")
-    .eq("user_id", model.provider_id)
+    .select("display_name")
+    .eq("user_id", model.client_id)
     .maybeSingle();
-  if (!profile) return;
 
   const auth = await (service as unknown as {
     auth: { admin: { getUserById: (id: string) => Promise<{ data: { user: { email?: string } | null } }> } };
-  }).auth.admin.getUserById(model.provider_id);
+  }).auth.admin.getUserById(model.client_id);
   const recipient = auth?.data?.user?.email;
   if (!recipient) return;
 
-  const messageId = `quota-exhausted:${saved_model_id}:${property_uuid}:${
-    Date.parse(exhausted_at) || Date.now()
+  // Look up the provider slug so the BYOK CTA deep-links to the
+  // client's builder for this presentation.
+  const { data: branding } = await service
+    .from("branding_settings")
+    .select("slug")
+    .eq("provider_id", model.provider_id)
+    .maybeSingle();
+  const slug = branding?.slug ?? "";
+  const baseUrl =
+    Deno.env.get("DASHBOARD_BASE_URL") ?? "https://3dps.transcendencemedia.com";
+  const byokSetupUrl = slug
+    ? `${baseUrl}/p/${slug}/builder#ask-ai-byok`
+    : `${baseUrl}/login`;
+
+  const messageId = `${template_name}:${saved_model_id}:${property_uuid}:${
+    Date.parse(timestamp) || Date.now()
   }`;
 
   await service.rpc("enqueue_email", {
     queue_name: "transactional_emails",
     payload: {
-      template_name: "ask-quota-exhausted",
+      template_name,
       recipient_email: recipient,
       message_id: messageId,
       data: {
-        agentName: profile.display_name ?? "Agent",
+        clientName: profile?.display_name ?? "there",
         propertyName,
         presentationName,
-        freeLimit: 20,
-        byokSetupUrl: `${
-          Deno.env.get("DASHBOARD_BASE_URL") ?? "https://app.example.com"
-        }/dashboard/account`,
-        exhaustedAt: exhausted_at,
+        freeLimit: args.free_limit ?? 20,
+        freeUsed: args.free_used ?? 0,
+        byokSetupUrl,
+        timestamp,
       },
     },
   });
