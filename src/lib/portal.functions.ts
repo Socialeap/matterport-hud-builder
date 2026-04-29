@@ -2105,7 +2105,7 @@ function __dqaRenderInquiryForm(prefilledQuestion,_propertyUuid){
     +'<textarea class="ask-inquiry-input ask-inquiry-textarea" data-k="message" rows="4" required>'+escapeText(String(prefilledQuestion||""))+'</textarea>'
     +'</div>'
     +'<div class="ask-inquiry-actions">'
-    +'<button class="ask-inquiry-send" type="button">Email '+escapeText((String((C.agent&&C.agent.name)||"").trim().split(/\s+/)[0])||"agent")+'</button>'
+    +'<button class="ask-inquiry-send" type="button">Email '+escapeText((String((C.agent&&C.agent.name)||"").trim().split(/\\s+/)[0])||"agent")+'</button>'
     +(agentPhone?'<a class="ask-inquiry-sms" href="sms:'+escapeText(agentPhone)+'?body='+encodeURIComponent("Question about "+propertyName+":\\n\\n"+(prefilledQuestion||""))+'">Text instead</a>':'')
     +'</div>'
     +'<div class="ask-inquiry-status" aria-live="polite"></div>';
