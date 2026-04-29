@@ -44,6 +44,77 @@ export type Database = {
         }
         Relationships: []
       }
+      ask_quota_counters: {
+        Row: {
+          byok_active: boolean
+          exhausted_email_sent_at: string | null
+          free_limit: number
+          free_used: number
+          property_uuid: string
+          saved_model_id: string
+          updated_at: string
+          warning_email_sent_at: string | null
+        }
+        Insert: {
+          byok_active?: boolean
+          exhausted_email_sent_at?: string | null
+          free_limit?: number
+          free_used?: number
+          property_uuid: string
+          saved_model_id: string
+          updated_at?: string
+          warning_email_sent_at?: string | null
+        }
+        Update: {
+          byok_active?: boolean
+          exhausted_email_sent_at?: string | null
+          free_limit?: number
+          free_used?: number
+          property_uuid?: string
+          saved_model_id?: string
+          updated_at?: string
+          warning_email_sent_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ask_quota_counters_saved_model_id_fkey"
+            columns: ["saved_model_id"]
+            isOneToOne: false
+            referencedRelation: "saved_models"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ask_quota_events: {
+        Row: {
+          created_at: string
+          id: string
+          idempotency_key: string
+          outcome: string
+          property_uuid: string
+          reason: string | null
+          saved_model_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          idempotency_key: string
+          outcome: string
+          property_uuid: string
+          reason?: string | null
+          saved_model_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          idempotency_key?: string
+          outcome?: string
+          property_uuid?: string
+          reason?: string | null
+          saved_model_id?: string
+        }
+        Relationships: []
+      }
       branding_settings: {
         Row: {
           accent_color: string
@@ -125,6 +196,48 @@ export type Database = {
           tier3_price_cents?: number | null
           updated_at?: string
           use_flat_pricing?: boolean
+        }
+        Relationships: []
+      }
+      client_byok_keys: {
+        Row: {
+          active: boolean
+          ciphertext: string
+          client_id: string
+          created_at: string
+          fingerprint: string
+          id: string
+          iv: string
+          rotated_at: string | null
+          validated_at: string | null
+          validation_error: string | null
+          vendor: string
+        }
+        Insert: {
+          active?: boolean
+          ciphertext: string
+          client_id: string
+          created_at?: string
+          fingerprint: string
+          id?: string
+          iv: string
+          rotated_at?: string | null
+          validated_at?: string | null
+          validation_error?: string | null
+          vendor: string
+        }
+        Update: {
+          active?: boolean
+          ciphertext?: string
+          client_id?: string
+          created_at?: string
+          fingerprint?: string
+          id?: string
+          iv?: string
+          rotated_at?: string | null
+          validated_at?: string | null
+          validation_error?: string | null
+          vendor?: string
         }
         Relationships: []
       }
@@ -772,6 +885,33 @@ export type Database = {
           provider_id: string
         }[]
       }
+      claim_ask_exhaustion_email: {
+        Args: { p_property_uuid: string; p_saved_model_id: string }
+        Returns: {
+          byok_active: boolean
+          exhausted_email_sent_at: string
+          free_limit: number
+          free_used: number
+          property_uuid: string
+          saved_model_id: string
+          warning_email_sent_at: string
+        }[]
+      }
+      claim_ask_warning_email: {
+        Args: {
+          p_property_uuid: string
+          p_saved_model_id: string
+          p_threshold?: number
+        }
+        Returns: {
+          byok_active: boolean
+          free_limit: number
+          free_used: number
+          property_uuid: string
+          saved_model_id: string
+          warning_email_sent_at: string
+        }[]
+      }
       decline_invitation: { Args: { _token: string }; Returns: boolean }
       delete_email: {
         Args: { message_id: number; queue_name: string }
@@ -838,12 +978,51 @@ export type Database = {
         }
         Returns: number
       }
+      read_ask_quota_counter: {
+        Args: { p_property_uuid: string; p_saved_model_id: string }
+        Returns: {
+          byok_active: boolean
+          exhausted_email_sent_at: string
+          free_limit: number
+          free_used: number
+          warning_email_sent_at: string
+        }[]
+      }
+      read_byok_status: {
+        Args: { p_vendor?: string }
+        Returns: {
+          active: boolean
+          created_at: string
+          fingerprint: string
+          has_key: boolean
+          validated_at: string
+          validation_error: string
+          vendor: string
+        }[]
+      }
       read_email_batch: {
         Args: { batch_size: number; queue_name: string; vt: number }
         Returns: {
           message: Json
           msg_id: number
           read_ct: number
+        }[]
+      }
+      record_ask_quota_event: {
+        Args: {
+          p_idempotency_key: string
+          p_outcome: string
+          p_property_uuid: string
+          p_reason?: string
+          p_saved_model_id: string
+        }
+        Returns: {
+          byok_active: boolean
+          exhausted_email_sent_at: string
+          free_limit: number
+          free_used: number
+          warning_email_sent_at: string
+          was_new: boolean
         }[]
       }
       resolve_studio_access: {
@@ -858,6 +1037,10 @@ export type Database = {
           viewer_matches_provider: boolean
           viewer_role: string
         }[]
+      }
+      set_client_byok_active: {
+        Args: { p_active: boolean; p_client_id: string }
+        Returns: number
       }
     }
     Enums: {

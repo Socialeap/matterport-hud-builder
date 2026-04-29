@@ -387,6 +387,7 @@ interface QuotaSnapshot {
   free_limit: number;
   byok_active: boolean;
   exhausted_email_sent_at: string | null;
+  warning_email_sent_at: string | null;
 }
 
 /**
@@ -401,24 +402,28 @@ interface QuotaSnapshot {
  * here — handle-lead-capture's pgmq pattern handles recipient
  * resolution at dequeue time via the same template payload shape.
  */
-async function enqueueExhaustionEmail(
+async function enqueueQuotaEmail(
   service: ReturnType<typeof createClient>,
   args: {
+    template_name: "ask-quota-exhausted" | "ask-quota-warning";
     saved_model_id: string;
     property_uuid: string;
-    exhausted_at: string;
+    timestamp: string;
+    free_used?: number;
+    free_limit?: number;
   },
 ): Promise<void> {
-  const { saved_model_id, property_uuid, exhausted_at } = args;
-  // Resolve provider email + agent display name + property name for
-  // the template payload. Best-effort; failures don't block the
-  // visitor's request (the synthesize call has already streamed).
+  const { template_name, saved_model_id, property_uuid, timestamp } = args;
+  // Resolve the CLIENT (presentation owner) email + display name +
+  // property/presentation name + provider slug for the deep-link to
+  // the builder. BYOK is owned by the client, so the email goes to
+  // the client, NOT the MSP.
   const { data: model } = await service
     .from("saved_models")
-    .select("name, properties, provider_id")
+    .select("name, properties, provider_id, client_id")
     .eq("id", saved_model_id)
     .maybeSingle();
-  if (!model) return;
+  if (!model || !model.client_id) return;
 
   const props = Array.isArray(model.properties) ? model.properties : [];
   const propertyName =
@@ -432,36 +437,48 @@ async function enqueueExhaustionEmail(
 
   const { data: profile } = await service
     .from("profiles")
-    .select("display_name, user_id")
-    .eq("user_id", model.provider_id)
+    .select("display_name")
+    .eq("user_id", model.client_id)
     .maybeSingle();
-  if (!profile) return;
 
   const auth = await (service as unknown as {
     auth: { admin: { getUserById: (id: string) => Promise<{ data: { user: { email?: string } | null } }> } };
-  }).auth.admin.getUserById(model.provider_id);
+  }).auth.admin.getUserById(model.client_id);
   const recipient = auth?.data?.user?.email;
   if (!recipient) return;
 
-  const messageId = `quota-exhausted:${saved_model_id}:${property_uuid}:${
-    Date.parse(exhausted_at) || Date.now()
+  // Look up the provider slug so the BYOK CTA deep-links to the
+  // client's builder for this presentation.
+  const { data: branding } = await service
+    .from("branding_settings")
+    .select("slug")
+    .eq("provider_id", model.provider_id)
+    .maybeSingle();
+  const slug = branding?.slug ?? "";
+  const baseUrl =
+    Deno.env.get("DASHBOARD_BASE_URL") ?? "https://3dps.transcendencemedia.com";
+  const byokSetupUrl = slug
+    ? `${baseUrl}/p/${slug}/builder#ask-ai-byok`
+    : `${baseUrl}/login`;
+
+  const messageId = `${template_name}:${saved_model_id}:${property_uuid}:${
+    Date.parse(timestamp) || Date.now()
   }`;
 
   await service.rpc("enqueue_email", {
     queue_name: "transactional_emails",
     payload: {
-      template_name: "ask-quota-exhausted",
+      template_name,
       recipient_email: recipient,
       message_id: messageId,
       data: {
-        agentName: profile.display_name ?? "Agent",
+        clientName: profile?.display_name ?? "there",
         propertyName,
         presentationName,
-        freeLimit: 20,
-        byokSetupUrl: `${
-          Deno.env.get("DASHBOARD_BASE_URL") ?? "https://app.example.com"
-        }/dashboard/account`,
-        exhaustedAt: exhausted_at,
+        freeLimit: args.free_limit ?? 20,
+        freeUsed: args.free_used ?? 0,
+        byokSetupUrl,
+        timestamp,
       },
     },
   });
@@ -750,10 +767,12 @@ serve(async (req) => {
   }
 
   // Cross-check property_uuid is actually part of this presentation
-  // and capture the provider_id for BYOK lookup.
+  // and capture the client_id (the presentation owner) for BYOK lookup.
+  // Note: BYOK is a CLIENT feature, not an MSP feature. The client owns
+  // the saved_model and pays for overflow Gemini usage with their key.
   const { data: model } = await service
     .from("saved_models")
-    .select("id, properties, provider_id")
+    .select("id, properties, provider_id, client_id, name")
     .eq("id", tokenResult.saved_model_id)
     .maybeSingle();
   if (!model) {
@@ -768,30 +787,30 @@ serve(async (req) => {
     return jsonError(403, { error: "property_not_in_presentation" });
   }
 
-  // Resolve BYOK: if the provider has an active Gemini key, decrypt
-  // it and route the model call through that key. The TM key is
-  // skipped entirely on this path; the quota event is recorded with
-  // outcome='byok' so the TM subsidy doesn't decrement.
+  // Resolve BYOK: if the CLIENT (presentation owner) has an active
+  // Gemini key, decrypt it and route the model call through that key.
+  // The TM key is skipped on this path; the quota event is recorded
+  // with outcome='byok' so the TM subsidy doesn't decrement.
   let byokKey: string | null = null;
-  try {
-    const { data: byokRow } = await service
-      .from("provider_byok_keys")
-      .select("ciphertext, iv, active")
-      .eq("provider_id", model.provider_id)
-      .eq("vendor", "gemini")
-      .maybeSingle();
-    if (byokRow && byokRow.active) {
-      // ciphertext + iv are bytea columns. supabase-js returns them
-      // as either Uint8Array (in Deno) or hex strings. Normalize.
-      const cipherBytes = bytesFromBytea(byokRow.ciphertext);
-      const ivBytes = bytesFromBytea(byokRow.iv);
-      byokKey = await decryptKey(cipherBytes, ivBytes);
+  if (model.client_id) {
+    try {
+      const { data: byokRow } = await service
+        .from("client_byok_keys")
+        .select("ciphertext, iv, active")
+        .eq("client_id", model.client_id)
+        .eq("vendor", "gemini")
+        .maybeSingle();
+      if (byokRow && byokRow.active) {
+        const cipherBytes = bytesFromBytea(byokRow.ciphertext);
+        const ivBytes = bytesFromBytea(byokRow.iv);
+        byokKey = await decryptKey(cipherBytes, ivBytes);
+      }
+    } catch (err) {
+      console.warn(
+        "[synthesize-answer] client byok lookup/decrypt failed, falling back to TM:",
+        err,
+      );
     }
-  } catch (err) {
-    console.warn(
-      "[synthesize-answer] byok lookup/decrypt failed, falling back to TM:",
-      err,
-    );
   }
   const usingByok = !!byokKey;
   const effectiveGeminiKey = byokKey ?? GEMINI_API_KEY;
@@ -1038,10 +1057,53 @@ serve(async (req) => {
               }),
             );
 
-            // If this call just crossed the free_limit boundary AND
-            // BYOK is not active, enqueue the one-shot exhaustion
-            // email. claim_ask_exhaustion_email returns a row only on
-            // the first crossing; replays / parallel races see zero.
+            // Early-warning email: when only a few free answers remain
+            // and BYOK is not active, send a one-shot heads-up so the
+            // client has time to add their Gemini key before exhaustion.
+            if (
+              outcome === "counted" &&
+              !fresh.byok_active &&
+              fresh.free_used >= Math.max(fresh.free_limit - 3, 0) &&
+              fresh.free_used < fresh.free_limit &&
+              !fresh.warning_email_sent_at
+            ) {
+              try {
+                const { data: wclaim } = await service.rpc(
+                  "claim_ask_warning_email",
+                  {
+                    p_saved_model_id: tokenResult.saved_model_id,
+                    p_property_uuid: propertyUuid,
+                    p_threshold: 3,
+                  },
+                );
+                if (Array.isArray(wclaim) && wclaim.length > 0) {
+                  const w = wclaim[0] as {
+                    warning_email_sent_at: string;
+                    free_used: number;
+                    free_limit: number;
+                  };
+                  await enqueueQuotaEmail(service, {
+                    template_name: "ask-quota-warning",
+                    saved_model_id: tokenResult.saved_model_id,
+                    property_uuid: propertyUuid,
+                    timestamp: w.warning_email_sent_at,
+                    free_used: w.free_used,
+                    free_limit: w.free_limit,
+                  });
+                }
+              } catch (err) {
+                console.warn(
+                  "[synthesize-answer] warning email enqueue failed:",
+                  err,
+                );
+              }
+            }
+
+            // Exhaustion email: when the counter just crossed
+            // free_limit AND BYOK is not active, enqueue the one-shot
+            // exhaustion email. claim_ask_exhaustion_email returns a
+            // row only on the first crossing; replays / parallel races
+            // see zero rows.
             if (
               outcome === "counted" &&
               !fresh.byok_active &&
@@ -1057,12 +1119,15 @@ serve(async (req) => {
                   },
                 );
                 if (Array.isArray(claim) && claim.length > 0) {
-                  await enqueueExhaustionEmail(service, {
+                  await enqueueQuotaEmail(service, {
+                    template_name: "ask-quota-exhausted",
                     saved_model_id: tokenResult.saved_model_id,
                     property_uuid: propertyUuid,
-                    exhausted_at:
+                    timestamp:
                       (claim[0] as { exhausted_email_sent_at: string })
                         .exhausted_email_sent_at,
+                    free_used: fresh.free_used,
+                    free_limit: fresh.free_limit,
                   });
                 }
               } catch (err) {

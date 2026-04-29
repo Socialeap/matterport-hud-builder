@@ -79,15 +79,16 @@ serve(async (req) => {
   const service = createClient(SUPABASE_URL, SERVICE_KEY);
 
   // DELETE removes the BYOK key and reverts byok_active to false on
-  // every quota counter row for the provider.
+  // every quota counter row owned by this client (the saved_models
+  // table joins on client_id, not provider_id).
   if (req.method === "DELETE") {
     await service
-      .from("provider_byok_keys")
+      .from("client_byok_keys")
       .delete()
-      .eq("provider_id", userId)
+      .eq("client_id", userId)
       .eq("vendor", "gemini");
-    await service.rpc("set_provider_byok_active", {
-      p_provider_id: userId,
+    await service.rpc("set_client_byok_active", {
+      p_client_id: userId,
       p_active: false,
     });
     return jsonResponse({ ok: true, deleted: true });
@@ -113,12 +114,12 @@ serve(async (req) => {
   // Probe the key against Gemini.
   const probe = await probeGeminiKey(apiKey);
   if (!probe.ok) {
-    // Persist the failure reason so the dashboard can surface it.
+    // Persist the failure reason so the builder UI can surface it.
     await service
-      .from("provider_byok_keys")
+      .from("client_byok_keys")
       .upsert(
         {
-          provider_id: userId,
+          client_id: userId,
           vendor: "gemini",
           ciphertext: bytesToHex(new Uint8Array(0)) as unknown as never,
           iv: bytesToHex(crypto.getRandomValues(new Uint8Array(12))) as unknown as never,
@@ -127,7 +128,7 @@ serve(async (req) => {
           validated_at: null,
           validation_error: probe.reason,
         },
-        { onConflict: "provider_id,vendor" },
+        { onConflict: "client_id,vendor" },
       );
     return jsonResponse(
       { ok: false, valid: false, reason: probe.reason },
@@ -146,10 +147,10 @@ serve(async (req) => {
   }
 
   const { error: upErr } = await service
-    .from("provider_byok_keys")
+    .from("client_byok_keys")
     .upsert(
       {
-        provider_id: userId,
+        client_id: userId,
         vendor: "gemini",
         ciphertext: bytesToHex(encrypted.ciphertext) as unknown as never,
         iv: bytesToHex(encrypted.iv) as unknown as never,
@@ -159,22 +160,22 @@ serve(async (req) => {
         validation_error: null,
         rotated_at: new Date().toISOString(),
       },
-      { onConflict: "provider_id,vendor" },
+      { onConflict: "client_id,vendor" },
     );
   if (upErr) {
     console.error("[validate-byok] upsert failed:", upErr);
     return jsonResponse({ error: "persist_failed", detail: upErr.message }, 500);
   }
 
-  // Flip byok_active for every (saved_model, property) under this
-  // provider so synthesize-answer immediately stops decrementing the
-  // TM subsidy. Per Q7: no re-export needed.
-  const { error: rpcErr } = await service.rpc("set_provider_byok_active", {
-    p_provider_id: userId,
+  // Flip byok_active for every (saved_model, property) owned by this
+  // client so synthesize-answer immediately stops decrementing the
+  // TM-funded subsidy. No re-export of the .html is needed.
+  const { error: rpcErr } = await service.rpc("set_client_byok_active", {
+    p_client_id: userId,
     p_active: true,
   });
   if (rpcErr) {
-    console.warn("[validate-byok] set_provider_byok_active warned:", rpcErr);
+    console.warn("[validate-byok] set_client_byok_active warned:", rpcErr);
   }
 
   return jsonResponse({
