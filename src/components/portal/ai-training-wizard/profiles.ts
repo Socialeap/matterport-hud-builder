@@ -86,6 +86,13 @@ export const PROFILE_CATEGORIES: ProfileCategory[] = [
     icon: Users,
     starterId: "starter-coworking",
     docKind: "coworking_brochure",
+  {
+    key: "event_space",
+    label: "Event Space",
+    tagline: "Wedding/reception hall, party venue",
+    icon: Building2,
+    starterId: "starter-event-space",
+    docKind: "event_space_factsheet",
   },
 ];
 
