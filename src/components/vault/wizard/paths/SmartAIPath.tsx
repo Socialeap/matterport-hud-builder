@@ -34,7 +34,7 @@ export function SmartAIPath({
         <p className="text-xs text-muted-foreground">
           Describe a class or category of property. We'll suggest the facts
           worth pulling — you tick what matters, and we build the reusable map
-          your clients' AI Chat will use on their uploaded property docs.
+          your clients' AI Chat will use on their uploaded property documents.
         </p>
         <TemplateArchitect
           docKind={draft.doc_kind || "hospitality"}

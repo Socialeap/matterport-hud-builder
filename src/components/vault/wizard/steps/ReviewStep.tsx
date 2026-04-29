@@ -76,9 +76,9 @@ function parseSchema(text: string): ParsedSchema {
 export function ReviewStep({ draft, onChange, disabled }: Props) {
   const parsed = useMemo(() => parseSchema(draft.schema_text), [draft.schema_text]);
 
-  // For library/pdf paths the schema is pre-loaded — open the field list by
+  // For library path the schema is pre-loaded — open the field list by
   // default so the user sees the value without having to click anything.
-  const isPrePopulated = draft.path === "library" || draft.path === "pdf";
+  const isPrePopulated = draft.path === "library";
   const [fieldsOpen, setFieldsOpen] = useState(isPrePopulated);
 
   // If this draft was cloned from a Pre-Built starter, surface its name +
