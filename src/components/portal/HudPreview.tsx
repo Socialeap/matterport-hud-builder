@@ -705,7 +705,8 @@ export function HudPreview({
                 return msg + trailer;
               };
               const ok = qMessage.trim().length > 0;
-              const mailHref = `mailto:${encodeURIComponent(agent.email || "")}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(buildBody(false))}`;
+              const mailHref = `mailto:${agent.email || ""}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(buildBody(false))}`;
+              const agentFirstName = (agent.name || "").trim().split(/\s+/)[0] || "agent";
               const smsHref = `sms:${agent.phone || ""}?body=${encodeURIComponent(buildBody(true))}`;
               const onCopy = async () => {
                 if (!ok) return;
@@ -757,7 +758,7 @@ export function HudPreview({
                         className="inline-flex flex-1 min-w-[110px] items-center justify-center gap-1 rounded-lg px-3 py-2 text-xs font-semibold text-white transition-opacity"
                         style={{ backgroundColor: accentColor, opacity: ok ? 1 : 0.45, pointerEvents: ok ? "auto" : "none" }}
                       >
-                        <Mail className="h-3 w-3" /> Email agent
+                        <Mail className="h-3 w-3" /> Email {agentFirstName}
                       </a>
                     )}
                     {agent.phone && (

@@ -1305,8 +1305,8 @@ ${(agent.phone || agent.email || agent.name) ? `<div id="agent-drawer">
       <textarea class="drawer-qfield drawer-qtextarea" id="drawer-qmsg" rows="4" placeholder="Type your question, or pick a topic above…" aria-label="Your message"></textarea>
       <input type="email" class="drawer-qfield" id="drawer-qemail" placeholder="Your email (so we can reply)" autocomplete="email" aria-label="Your email">
       <div class="drawer-qsend-row">
-        ${agent.email ? `<a id="drawer-qsend-email" class="drawer-qsend primary" href="#" aria-disabled="true" role="button">Email agent</a>` : ""}
-        ${agent.phone ? `<a id="drawer-qsend-sms" class="drawer-qsend secondary" href="#" aria-disabled="true" role="button">Text agent</a>` : ""}
+        ${agent.email ? `<a id="drawer-qsend-email" class="drawer-qsend primary" href="#" aria-disabled="true" role="button">Email ${escapeHtml((String(agent.name || "").trim().split(/\s+/)[0]) || "agent")}</a>` : ""}
+        ${agent.phone ? `<a id="drawer-qsend-sms" class="drawer-qsend secondary" href="#" aria-disabled="true" role="button">Text ${escapeHtml((String(agent.name || "").trim().split(/\s+/)[0]) || "agent")}</a>` : ""}
         <button type="button" id="drawer-qcopy" class="drawer-qcopy" aria-disabled="true">Copy</button>
       </div>
       <div class="drawer-qstatus" id="drawer-qstatus" aria-live="polite"></div>
@@ -1844,12 +1844,18 @@ window.__closeContact=function(){
       ev.preventDefault();
       if(emailBtn.getAttribute("aria-disabled")==="true") return;
       if(!agentEmail){ statusEl.textContent="No email address configured."; return; }
-      var url="mailto:"+encodeURIComponent(agentEmail)
-        +"?subject="+encodeURIComponent(buildSubject())
-        +"&body="+encodeURIComponent(buildBody(false));
-      if(url.length>1900){ url=url.slice(0,1900); }
+      var subj=buildSubject();
+      var body=buildBody(false);
+      // RFC 6068: recipient must be a literal addr-spec — do NOT percent-encode the email or '@' becomes %40 and Chrome/Edge silently refuse to launch the mail client.
+      var url="mailto:"+agentEmail+"?subject="+encodeURIComponent(subj)+"&body="+encodeURIComponent(body);
+      // If too long, shorten the body itself (re-encode) instead of slicing the encoded URL, which can leave a dangling % triplet.
+      while(url.length>1900 && body.length>50){
+        body=body.slice(0,Math.max(50,body.length-200));
+        url="mailto:"+agentEmail+"?subject="+encodeURIComponent(subj)+"&body="+encodeURIComponent(body);
+      }
+      statusEl.textContent="Opening your email app… If nothing happens, use Copy.";
+      // Navigation must be the synchronous tail of the click handler — no awaits above.
       window.location.href=url;
-      statusEl.textContent="Opening your email app…";
     });
   }
   if(smsBtn){
@@ -2099,7 +2105,7 @@ function __dqaRenderInquiryForm(prefilledQuestion,_propertyUuid){
     +'<textarea class="ask-inquiry-input ask-inquiry-textarea" data-k="message" rows="4" required>'+escapeText(String(prefilledQuestion||""))+'</textarea>'
     +'</div>'
     +'<div class="ask-inquiry-actions">'
-    +'<button class="ask-inquiry-send" type="button">Send to agent</button>'
+    +'<button class="ask-inquiry-send" type="button">Email '+escapeText((String((C.agent&&C.agent.name)||"").trim().split(/\\s+/)[0])||"agent")+'</button>'
     +(agentPhone?'<a class="ask-inquiry-sms" href="sms:'+escapeText(agentPhone)+'?body='+encodeURIComponent("Question about "+propertyName+":\\n\\n"+(prefilledQuestion||""))+'">Text instead</a>':'')
     +'</div>'
     +'<div class="ask-inquiry-status" aria-live="polite"></div>';
@@ -2107,7 +2113,7 @@ function __dqaRenderInquiryForm(prefilledQuestion,_propertyUuid){
   __docsQa.messages.scrollTop=__docsQa.messages.scrollHeight;
   var inputs=card.querySelectorAll(".ask-inquiry-input");
   var statusEl=card.querySelector(".ask-inquiry-status");
-  card.querySelector(".ask-inquiry-send").addEventListener("click",async function(){
+  card.querySelector(".ask-inquiry-send").addEventListener("click",function(){
     var values={};
     for(var i=0;i<inputs.length;i++){
       values[inputs[i].getAttribute("data-k")]=inputs[i].value.trim();
@@ -2122,46 +2128,41 @@ function __dqaRenderInquiryForm(prefilledQuestion,_propertyUuid){
       statusEl.style.color="#b91c1c";
       return;
     }
-    statusEl.textContent="Sending…";
-    statusEl.style.color="";
-    var sentVia=null;
-    // Primary: try handle-lead-capture (Pro-tier, server-routed).
+    if(!agentEmail){
+      statusEl.textContent="Sorry, no contact channel is configured for this listing.";
+      statusEl.style.color="#b91c1c";
+      return;
+    }
+    // Build mailto SYNCHRONOUSLY so the browser keeps the user-gesture and launches the mail client.
+    // RFC 6068: recipient is a literal addr-spec — never percent-encode the email itself.
+    var subject="Question about "+propertyName;
+    var body=[
+      values.message,
+      "",
+      "— "+(values.name||"Visitor")+(values.phone?" ("+values.phone+")":"")+(values.email?" <"+values.email+">":"")
+    ].join("\\n");
+    var mailto="mailto:"+agentEmail+"?subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(body);
+    while(mailto.length>1900 && body.length>50){
+      body=body.slice(0,Math.max(50,body.length-200));
+      mailto="mailto:"+agentEmail+"?subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(body);
+    }
+    statusEl.textContent="Opening your email app… Send the message to complete your inquiry.";
+    statusEl.style.color="#047857";
+    // Fire-and-forget lead-capture (Pro tier). We do NOT await — awaiting here would
+    // void the user-gesture and Chromium-based browsers would block the mailto handoff.
     var supabaseOrigin=window.__SYNTHESIS_URL__?String(window.__SYNTHESIS_URL__).replace(/\\/functions\\/v1\\/.*$/,""):"";
     var studioId=String(C.studioId||"");
     if(supabaseOrigin&&studioId){
       try{
-        var lcResp=await fetch(supabaseOrigin+"/functions/v1/handle-lead-capture",{
+        fetch(supabaseOrigin+"/functions/v1/handle-lead-capture",{
           method:"POST",
           headers:{"Content-Type":"application/json"},
           body:JSON.stringify({studio_id:studioId,visitor_email:values.email,property_name:propertyName})
-        });
-        if(lcResp.ok) sentVia="backend";
+        }).catch(function(){});
       }catch(_){}
     }
-    if(!sentVia){
-      // Fallback: client-side mailto. The visitor's mail client
-      // composes the email; nothing is sent until they confirm.
-      if(!agentEmail){
-        statusEl.textContent="Sorry, no contact channel is configured for this listing.";
-        statusEl.style.color="#b91c1c";
-        return;
-      }
-      var subject="Question about "+propertyName;
-      var bodyLines=[
-        values.message,
-        "",
-        "— "+(values.name||"Visitor")+(values.phone?" ("+values.phone+")":"")
-      ];
-      var mailto="mailto:"+encodeURIComponent(agentEmail)
-        +"?subject="+encodeURIComponent(subject)
-        +"&body="+encodeURIComponent(bodyLines.join("\\n"));
-      window.location.href=mailto;
-      sentVia="mailto";
-    }
-    statusEl.textContent=sentVia==="backend"
-      ?"Thanks — your message was sent to the agent."
-      :"Your email composer should now be open. Send the email to complete your inquiry.";
-    statusEl.style.color="#047857";
+    // Trigger the mail client as the synchronous tail of the click handler.
+    window.location.href=mailto;
     for(var j=0;j<inputs.length;j++) inputs[j].disabled=true;
     card.querySelector(".ask-inquiry-send").disabled=true;
   });
