@@ -2140,7 +2140,7 @@ function __dqaRenderInquiryForm(prefilledQuestion,_propertyUuid){
       values.message,
       "",
       "— "+(values.name||"Visitor")+(values.phone?" ("+values.phone+")":"")+(values.email?" <"+values.email+">":"")
-    ].join("\n");
+    ].join("\\n");
     var mailto="mailto:"+agentEmail+"?subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(body);
     while(mailto.length>1900 && body.length>50){
       body=body.slice(0,Math.max(50,body.length-200));
