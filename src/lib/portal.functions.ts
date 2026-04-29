@@ -2894,7 +2894,7 @@ if(frame){
     });
   }
 
-  session.subscribe(function(state){
+  function onState(state){
     // PIN display.
     if(pinValue && state.pin) pinValue.textContent=state.pin;
 
@@ -2914,9 +2914,11 @@ if(frame){
       // Refresh stop button enabled state — render once on transition,
       // then update disabled flags on every state tick (cheap).
       if(hasPin){
-        if(!stopsContainer.firstChild) renderStops();
-        var btns=stopsContainer.querySelectorAll(".lg-stop-btn");
-        for(var i=0;i<btns.length;i++) btns[i].disabled=!state.isConnected;
+        if(stopsContainer && !stopsContainer.firstChild) renderStops();
+        if(stopsContainer){
+          var btns=stopsContainer.querySelectorAll(".lg-stop-btn");
+          for(var i=0;i<btns.length;i++) btns[i].disabled=!state.isConnected;
+        }
       }
     }
 
@@ -2926,6 +2928,23 @@ if(frame){
       else if(state.status==="connected") visitorStatus.textContent="Connected to your agent.";
       else if(state.status==="ended") { visitorStatus.textContent="Session ended."; if(joinBtn) joinBtn.disabled=false; }
       else if(state.status==="error") { visitorStatus.textContent=state.error||"Couldn't connect."; if(joinBtn) joinBtn.disabled=false; }
+    }
+
+    // First transition into "connected" — reveal Leave button and
+    // auto-close the contact drawer + HUD header so the 3D tour gets
+    // the full screen. Latched so we only fire once per session.
+    if(!wasConnected && state.isConnected && state.status==="connected"){
+      wasConnected=true;
+      if(leaveBtn) leaveBtn.hidden=false;
+      hideOverlaysForLiveTour();
+    }
+
+    // If the session ends/errors after having been connected, return
+    // both sides to a clean idle state automatically.
+    if(wasConnected && (state.status==="ended"||state.status==="error")){
+      // Defer to break out of the current subscriber tick before we
+      // dispose + re-create the controller.
+      setTimeout(teardownSession,0);
     }
 
     // Voice attach. srcObject is the modern API; legacy browsers fall
@@ -2951,7 +2970,9 @@ if(frame){
       lastTeleportTs=state.incomingTeleportEvent.ts;
       applyTeleport(state.incomingTeleportEvent.ss,state.incomingTeleportEvent.sr);
     }
-  });
+  }
+
+  session.subscribe(onState);
 })();
 }).catch(function(err){
   // __configReady rejected — protected mode with Subtle unavailable, or
