@@ -44,7 +44,16 @@ const INITIAL: ByokStatus = {
   created_at: null,
 };
 
-export function AskAiByokSection() {
+/**
+ * Client-facing BYOK panel — mounted inside the Builder's Property Intelligence
+ * section. The first 20 visitor questions per property are funded by
+ * Transcendence Media; this panel lets the property owner add their own
+ * Gemini API key to keep Ask AI running past that subsidy.
+ *
+ * Server-side this writes to `client_byok_keys` keyed on auth.uid() (the
+ * builder owner). MSPs/admins are filtered out at the parent level.
+ */
+export function AskAiClientByokSection() {
   const [status, setStatus] = useState<ByokStatus>(INITIAL);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -54,9 +63,6 @@ export function AskAiByokSection() {
 
   const refresh = async () => {
     setLoading(true);
-    // `read_byok_status` is provisioned outside the generated Database
-    // types — cast the rpc name through `never` so the generic resolves
-    // to the loose row shape we expect.
     const { data, error } = await (
       supabase.rpc as unknown as (
         name: string,
@@ -127,7 +133,7 @@ export function AskAiByokSection() {
     if (!status.has_key) return;
     if (
       !confirm(
-        "Remove your Gemini API key? After removal, Ask AI falls back to the TM-funded subsidy until it's exhausted, then visitors see the inquiry form.",
+        "Remove your Gemini API key? Visitor questions will fall back to the 20 free Transcendence-Media-funded answers per property until that subsidy is exhausted, then visitors will see the Get-In-Touch form.",
       )
     ) {
       return;
@@ -149,16 +155,19 @@ export function AskAiByokSection() {
   };
 
   return (
-    <Card>
+    <Card id="ask-ai-byok" className="border-primary/30">
       <CardHeader>
         <div className="flex items-center gap-2">
           <Key className="size-4 text-primary" />
-          <CardTitle>Ask AI · Bring Your Own Gemini Key</CardTitle>
+          <CardTitle className="text-base">
+            Ask AI · Your Gemini API key (optional)
+          </CardTitle>
         </div>
         <CardDescription>
-          Your published presentations include 20 free Ask AI answers per
-          property funded by Transcendence Media. Add your own Gemini key to
-          remove that cap and serve unlimited visitor answers from your account.
+          Each published property includes <strong>20 free visitor answers</strong>{" "}
+          funded by Transcendence Media. Add your own Gemini API key here to
+          keep Ask AI running for visitors after that subsidy. Your key stays
+          encrypted and is only used to answer questions about your properties.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -192,18 +201,18 @@ export function AskAiByokSection() {
               Your last key didn't validate
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Reason: {status.validation_error}. Ask AI is using the TM
-              subsidy until you replace it.
+              Reason: {status.validation_error}. Ask AI is using the
+              Transcendence-Media-funded subsidy until you replace it.
             </p>
           </div>
         ) : (
           <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
             <p className="font-medium text-foreground">
-              Using the TM-funded subsidy
+              Using the free Transcendence-Media subsidy
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
               Each property gets 20 free Ask AI answers. After that, visitors
-              see the Get In Touch form until you add your own Gemini key.
+              see the Get-In-Touch form until you add your own Gemini key.
             </p>
           </div>
         )}
@@ -227,7 +236,7 @@ export function AskAiByokSection() {
               onClick={() => setShowInput(true)}
               disabled={busy}
             >
-              {status.has_key ? "Replace key" : "Add Gemini key"}
+              {status.has_key ? "Replace key" : "Add my Gemini key"}
             </Button>
             {status.has_key && (
               <Button
@@ -245,12 +254,12 @@ export function AskAiByokSection() {
         ) : (
           <div className="space-y-3">
             <div className="space-y-1.5">
-              <Label htmlFor="byok-input" className="text-xs">
+              <Label htmlFor="client-byok-input" className="text-xs">
                 Gemini API key
               </Label>
               <div className="flex items-center gap-2">
                 <Input
-                  id="byok-input"
+                  id="client-byok-input"
                   type={reveal ? "text" : "password"}
                   autoComplete="off"
                   spellCheck={false}

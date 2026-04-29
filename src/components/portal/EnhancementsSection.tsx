@@ -23,6 +23,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PropertyIntelligenceSection } from "./PropertyIntelligenceSection";
 import { SoundLibraryPicker } from "./enhancements/SoundLibraryPicker";
 import { VaultCatalogList } from "./enhancements/VaultCatalogList";
+import { AskAiClientByokSection } from "./AskAiClientByokSection";
 import type { PropertyModel } from "./types";
 
 /**
@@ -49,6 +50,8 @@ interface Props {
   enhancements: EnhancementsByProperty;
   onEnhancementsChange: (next: EnhancementsByProperty) => void;
   onExtractionSuccess: () => void;
+  /** Builder viewer role — only `client` sees the BYOK panel. */
+  viewerRole?: "client" | "provider" | "admin" | "unknown";
 }
 
 /**
@@ -62,6 +65,7 @@ export function EnhancementsSection({
   enhancements,
   onEnhancementsChange,
   onExtractionSuccess,
+  viewerRole = "unknown",
 }: Props) {
   // Active property tab. Defaults to the first model and self-corrects if the
   // user removes the property currently selected.
@@ -169,12 +173,13 @@ export function EnhancementsSection({
                 </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="ask" className="mt-0 space-y-2">
+              <TabsContent value="ask" className="mt-0 space-y-3">
                 <PropertyIntelligenceSection
                   models={models}
                   savedModelId={savedModelId}
                   onExtractionSuccess={onExtractionSuccess}
                 />
+                {viewerRole === "client" && <AskAiClientByokSection />}
               </TabsContent>
 
               <TabsContent value="catalog" className="mt-0 space-y-2">
