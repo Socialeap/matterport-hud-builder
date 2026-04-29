@@ -57,7 +57,17 @@ type Status = {
 };
 
 function DashboardOverview() {
-  const { user } = useAuth();
+  const { user, roles } = useAuth();
+  const isClient = roles.includes("client") && !roles.includes("provider") && !roles.includes("admin");
+
+  if (isClient) {
+    return <ClientOverview />;
+  }
+
+  return <ProviderOverview user={user} />;
+}
+
+function ProviderOverview({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
   const [status, setStatus] = useState<Status>({
     branding: null,
     invitedCount: 0,
