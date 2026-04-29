@@ -851,28 +851,35 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
         }
       }
 
-      if (userId && logoFile) {
+      // Upload pending logo / favicon — prefer the live File, but fall back
+      // to a data URL restored from a draft so Resume / Import doesn't lose
+      // the asset.
+      const pendingLogo = logoFile ?? (logoDataUrl && !logoStorageUrl ? await fileFromDataUrl(logoDataUrl, "logo") : null);
+      if (userId && pendingLogo) {
         try {
-          const url = await uploadBrandAsset(userId, logoFile, "logo");
+          const url = await uploadBrandAsset(userId, pendingLogo, "logo");
           if (url) {
             refreshLogoUrl = url;
             setLogoStorageUrl(url);
             setLogoPreview(url);
             setLogoFile(null);
+            setLogoDataUrl(null);
           }
         } catch (err) {
           console.error("Logo upload (download refresh) failed:", err);
         }
       }
 
-      if (userId && faviconFile) {
+      const pendingFavicon = faviconFile ?? (faviconDataUrl && !faviconStorageUrl ? await fileFromDataUrl(faviconDataUrl, "favicon") : null);
+      if (userId && pendingFavicon) {
         try {
-          const url = await uploadBrandAsset(userId, faviconFile, "favicon");
+          const url = await uploadBrandAsset(userId, pendingFavicon, "favicon");
           if (url) {
             refreshFaviconUrl = url;
             setFaviconStorageUrl(url);
             setFaviconPreview(url);
             setFaviconFile(null);
+            setFaviconDataUrl(null);
           }
         } catch (err) {
           console.error("Favicon upload (download refresh) failed:", err);
