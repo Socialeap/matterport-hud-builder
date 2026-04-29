@@ -536,18 +536,70 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     }
   }, []);
 
-  const handleFileChange = useCallback((field: "logo" | "favicon", file: File | null) => {
+  const handleFileChange = useCallback(async (field: "logo" | "favicon", file: File | null) => {
+    if (!file) {
+      // Treat a null selection like a remove (matches prior semantics).
+      if (field === "logo") {
+        brandAssetsTouchedRef.current.logo = true;
+        setLogoFile(null);
+        setLogoPreview(null);
+        setLogoDataUrl(null);
+        setLogoStorageUrl(null);
+      } else {
+        brandAssetsTouchedRef.current.favicon = true;
+        setFaviconFile(null);
+        setFaviconPreview(null);
+        setFaviconDataUrl(null);
+        setFaviconStorageUrl(null);
+      }
+      return;
+    }
+
+    const limits = field === "logo" ? BRAND_ASSET_LIMITS.logo : BRAND_ASSET_LIMITS.favicon;
+    let processed: File;
+    let savingsMsg = "";
+    try {
+      const result = await optimizeBrandImage(file, { ...limits, kind: field });
+      processed = result.file;
+      savingsMsg = describeOptimization(result);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Image optimization failed.";
+      toast.error(msg);
+      return;
+    }
+
+    // Read the optimized file as a data URL so the preview survives a reload
+    // / Import without forcing a re-upload.
+    let dataUrl: string;
+    try {
+      dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error("Could not read optimized image."));
+        reader.readAsDataURL(processed);
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not read optimized image.");
+      return;
+    }
+
     if (field === "logo") {
       brandAssetsTouchedRef.current.logo = true;
-      setLogoFile(file);
-      setLogoPreview(file ? URL.createObjectURL(file) : null);
-      // Reset stored URL whenever the source file changes — re-upload on save.
-      if (file) setLogoStorageUrl(null);
+      setLogoFile(processed);
+      setLogoDataUrl(dataUrl);
+      setLogoPreview(dataUrl);
+      // Source changed → previously-uploaded permanent URL is now stale.
+      setLogoStorageUrl(null);
     } else {
       brandAssetsTouchedRef.current.favicon = true;
-      setFaviconFile(file);
-      setFaviconPreview(file ? URL.createObjectURL(file) : null);
-      if (file) setFaviconStorageUrl(null);
+      setFaviconFile(processed);
+      setFaviconDataUrl(dataUrl);
+      setFaviconPreview(dataUrl);
+      setFaviconStorageUrl(null);
+    }
+
+    if (savingsMsg) {
+      toast.success(`${field === "logo" ? "Logo" : "Favicon"} optimized to WebP (${savingsMsg})`);
     }
   }, []);
 
@@ -556,11 +608,13 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
       brandAssetsTouchedRef.current.logo = true;
       setLogoFile(null);
       setLogoPreview(null);
+      setLogoDataUrl(null);
       setLogoStorageUrl(null);
     } else {
       brandAssetsTouchedRef.current.favicon = true;
       setFaviconFile(null);
       setFaviconPreview(null);
+      setFaviconDataUrl(null);
       setFaviconStorageUrl(null);
     }
   }, []);
