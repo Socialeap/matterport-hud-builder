@@ -1,106 +1,73 @@
-# Fix Email CTA Stalls + Personalize Button Label
+# Why the download stalls
 
-## Root cause analysis
+Worker logs from the published site show the smoking gun, repeated on every download attempt:
 
-There are **three** mailto code paths involved (two ship in the generated end-product `.html`, one is the live in-app preview). All share the same two defects:
-
-### Bug 1 — Malformed `mailto:` recipient (the real reason it stalls)
-Every site does this:
-```js
-"mailto:" + encodeURIComponent(agentEmail) + "?subject=..."
 ```
-`encodeURIComponent` turns `agent@example.com` into `agent%40example.com`. Per RFC 6068, the `to` portion of a `mailto:` URI must be a valid `addr-spec` — the `@` must be literal. Chrome, Edge, and Outlook's protocol handler silently refuse to launch when the recipient is percent-encoded; nothing opens, no console error fires, and the status text "Opening your email app…" is left stranded. **This is why both buttons stall.**
+[generatePresentation] password encryption failed:
+  Pbkdf2 failed: iteration counts above 100000 are not supported (requested 600000).
+```
 
-The recipient must be passed raw (it's already a validated email). Only `subject` and `body` need `encodeURIComponent`.
+The Builder is now using the new **password-gated export** path. When the client arms password protection, `generatePresentation` calls `encryptConfigForExport(...)` which runs:
 
-### Bug 2 — User-gesture loss (the lead-capture downgrade form)
-`__dqaRenderInquiryForm` (`portal.functions.ts:2110`) does:
-```js
-async function() {
+```ts
+// src/lib/portal/protected-export.ts
+export const PROTECTED_PBKDF2_ITERATIONS = 600_000;
+...
+await subtle.deriveKey(
+  { name: "PBKDF2", salt, iterations: 600_000, hash: "SHA-256" },
   ...
-  await fetch(supabaseOrigin + "/functions/v1/handle-lead-capture", ...)  // gesture lost here
-  if (!sentVia) { window.location.href = mailto; }                         // browser blocks
-}
-```
-After an `await`, the click is no longer a "user activation" and Chromium-based browsers refuse to launch external protocol handlers. The fallback mailto never fires.
-
-### Bug 3 (cosmetic) — Generic label
-Both buttons read "Email agent". Many reps are property managers, marketers, or owners — the label should reflect the configured contact.
-
-## Fix plan
-
-### File 1 — `src/lib/portal.functions.ts` (generated end-product)
-
-**A. Quick-question drawer button (around line 1843)**
-- Build the URL with the **raw** email: `"mailto:" + agentEmail + "?subject=" + encodeURIComponent(...) + "&body=" + encodeURIComponent(...)`.
-- Set `statusEl.textContent` **before** `window.location.href = url` so DOM update is queued, but the navigation itself remains the synchronous tail of the click handler (no awaits introduced).
-- Trim body if URL > 1900 chars by re-encoding a shortened body (current code slices the encoded URL, which can leave a dangling `%` triplet — minor hardening).
-
-**B. Drawer button label (line 1308)**
-Replace the static `Email agent` label with `Email ${escapeHtml(firstName(agent.name)) || "agent"}` where `firstName` returns the first whitespace-delimited token (or "agent" if name is empty). Keeps the button compact while personalizing.
-
-**C. Lead-capture downgrade form (around line 2110)**
-Restructure so the mailto fallback runs in the **same synchronous tick** as the click:
-```js
-card.querySelector(".ask-inquiry-send").addEventListener("click", function() {
-  // 1. Validate (sync)
-  // 2. Build mailto URL with raw recipient
-  // 3. Open mail client IMMEDIATELY: window.location.href = mailto
-  // 4. THEN fire-and-forget the handle-lead-capture POST (no await blocking the navigation)
-  fetch(...).catch(() => {});
-  statusEl.textContent = "Your email composer should now be open…";
-});
-```
-This preserves the backend logging (it still runs) but never blocks the protocol handoff. The Pro-tier "backend-only" path is preserved by checking the response **after** navigation has been requested — the fetch still completes in the background, and we only show the "sent via backend" copy if the user comes back to the tab.
-
-A simpler, safer variant: always open `mailto:` first (it's the user's intent), and run the lead-capture POST in parallel for analytics. Recommended.
-
-**D. Personalize this form's send button label too** — `Send to agent` → `Email ${firstName(agent.name) || "agent"}`.
-
-### File 2 — `src/components/portal/HudPreview.tsx` (live builder preview)
-
-**A. Drawer email link (line 670)** — already correct (raw email, no encode). Leave as is.
-
-**B. Quick-question email button (line 708)**
-Change:
-```ts
-const mailHref = `mailto:${encodeURIComponent(agent.email || "")}?...`;
-```
-to:
-```ts
-const mailHref = `mailto:${agent.email || ""}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(buildBody(false))}`;
+);
 ```
 
-**C. Button label (line 760)**
-Replace `Email agent` with `Email {firstName(agent.name) || "agent"}` using a small inline helper.
+Cloudflare Workers' WebCrypto implementation hard-caps PBKDF2 at **100,000 iterations** and throws `OperationError` above that. The `try/catch` in `generatePresentation` catches it and returns `{success:false, error:"Could not encrypt..."}`, which the Builder toasts — but every protected download now fails 100% of the time.
 
-### File 3 — Helper
+The user's screenshot ("Building presentation…" spinner) corresponds to the moment the Worker is invoking `subtle.deriveKey` and throwing. The toast does fire, but with the spinner card right above it, the visual signal is "stuck downloading."
 
-Add a tiny `firstName(full)` helper in both files (they don't share runtime — `portal.functions.ts` is serialized into the generated HTML as a string template; `HudPreview.tsx` runs in React). Two ~3-line copies, no shared module needed.
+# The fix
 
-## Why this is safe
+## 1. Lower server-side PBKDF2 iterations to a Worker-safe value
 
-- **No new dependencies, no schema changes, no API changes.**
-- Drawer phone/SMS links are unchanged.
-- The avatar contact card direct `mailto:` link in `HudPreview.tsx:670` already passes the raw address — it works today, which independently confirms the encode-the-recipient theory.
-- The `handle-lead-capture` POST still runs (fire-and-forget) so Pro-tier lead logging is preserved.
-- Existing `aria-disabled` gating, char-limit clamp, and copy-to-clipboard fallback are untouched.
-- Status messages are rewritten *after* `window.location.href` is set so the DOM update doesn't interrupt the navigation request, but it remains synchronous within the click handler (browsers consider the gesture intact).
-- Label change is purely string-level; downstream selectors use IDs (`#drawer-qsend-email`, `.ask-inquiry-send`), not text content, so nothing breaks.
+Set `PROTECTED_PBKDF2_ITERATIONS = 100_000` in `src/lib/portal/protected-export.ts`.
 
-## Files to edit
+Why this is safe:
+- The encrypted blob carries its own `iter` field (`ProtectedConfigBlob.iter`).
+- The visitor's runtime decoder reads `blob.iter` directly when re-deriving the key (`src/lib/portal.functions.ts:1523`), so older protected exports built at 600k continue to decrypt — only **new** exports use 100k.
+- 100k iterations is still within accepted modern guidance for AES-GCM-256 + a high-entropy KDF input; it remains the maximum the Worker runtime supports.
+- The runtime fallback for missing `iter` stays at `600000`, but every blob we mint always includes `iter`, so the fallback is only theoretical.
 
-```
-src/lib/portal.functions.ts        — fixes A, B, C, D + firstName helper
-src/components/portal/HudPreview.tsx — fixes B, C + firstName helper
-```
+## 2. Keep the parity test honest
 
-## QA checklist after edit
+`tests/protected-export.test.mjs` asserts `blob.iter === PROTECTED_PBKDF2_ITERATIONS`. Because the test imports the constant, lowering it keeps the test passing without code changes — the round-trip (encrypt → decrypt) will run with whatever value the constant holds.
 
-1. Build a fresh presentation, open the generated `.html`, type a question, click **Email [Name]** → mail client opens with prefilled subject/body.
-2. Same flow on the lead-capture downgrade form (simulate by exhausting Ask quota or temporarily forcing render) → mail client opens, network tab shows `handle-lead-capture` POST fired in background.
-3. Live builder preview drawer shows `Email [FirstName]`, click opens compose window in browser default mailer.
-4. With agent name empty, label gracefully falls back to `Email agent`.
-5. Long messages (>1500 chars) still produce a launchable URL (clamp re-encodes safely).
+## 3. Surface the error more visibly when encryption *does* fail
 
-Approve and I'll implement all five edits in one pass.
+When `encryptConfigForExport` throws, the Builder currently toasts but the "Preparing Your Download…" card stays visible for the moment between the throw returning to the client and the toast appearing. That's a UX papercut, not the root bug, but worth tightening:
+
+- In `runDownload` (`src/components/portal/HudBuilderSandbox.tsx`), when `result.success === false`, also clear `setDownloadStep("")` immediately before the early `return` so the spinner card transitions to the error state in the same frame as the toast.
+
+# Files to edit
+
+| File | Change |
+|---|---|
+| `src/lib/portal/protected-export.ts` | `PROTECTED_PBKDF2_ITERATIONS` 600_000 → 100_000; comment why (Cloudflare Worker WebCrypto cap). |
+| `src/components/portal/HudBuilderSandbox.tsx` | In `runDownload`'s `!result.success` branch, also call `setDownloadStep("")` before return. |
+
+# What we are deliberately NOT changing
+
+- `src/lib/portal.functions.ts:1523` runtime decoder — already reads `blob.iter`, no edit needed.
+- The Builder's password-gate UI / arming logic — unaffected.
+- The unprotected (no-password) download path — already works; logs show no errors there.
+- Stripe / `create-connect-checkout` flow — the screenshot shows it returning 200 cleanly; not the bug.
+- Embedding Web Worker — the spinner had already advanced past "Embedding Q&A pairs…" to "Building presentation…", confirming the embedder is healthy.
+
+# Trace of the new execution path
+
+1. Client clicks Download with password armed.
+2. `runDownload` → embeddings → `generatePresentationFn({ password })`.
+3. Worker `generatePresentation` → `encryptConfigForExport(secretConfig, password)`.
+4. `subtle.deriveKey({ iterations: 100_000, ... })` ✅ succeeds inside Cloudflare Workers.
+5. AES-GCM ciphertext + `iter: 100_000` returned in `ProtectedConfigBlob`.
+6. HTML emitted with the blob inlined; Builder triggers the browser download.
+7. At unlock time, the visitor's browser (full WebCrypto, no cap) re-derives the key using `blob.iter` (100_000) and decrypts.
+
+No regressions for already-downloaded protected files (their blobs still carry `iter: 600_000` and the visitor's browser handles that fine).
