@@ -2113,12 +2113,12 @@ function __dqaRenderInquiryForm(prefilledQuestion,_propertyUuid){
   __docsQa.messages.scrollTop=__docsQa.messages.scrollHeight;
   var inputs=card.querySelectorAll(".ask-inquiry-input");
   var statusEl=card.querySelector(".ask-inquiry-status");
-  card.querySelector(".ask-inquiry-send").addEventListener("click",async function(){
+  card.querySelector(".ask-inquiry-send").addEventListener("click",function(){
     var values={};
     for(var i=0;i<inputs.length;i++){
       values[inputs[i].getAttribute("data-k")]=inputs[i].value.trim();
     }
-    if(!values.email||!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(values.email)){
+    if(!values.email||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email)){
       statusEl.textContent="Please enter a valid email.";
       statusEl.style.color="#b91c1c";
       return;
@@ -2128,46 +2128,41 @@ function __dqaRenderInquiryForm(prefilledQuestion,_propertyUuid){
       statusEl.style.color="#b91c1c";
       return;
     }
-    statusEl.textContent="Sending…";
-    statusEl.style.color="";
-    var sentVia=null;
-    // Primary: try handle-lead-capture (Pro-tier, server-routed).
-    var supabaseOrigin=window.__SYNTHESIS_URL__?String(window.__SYNTHESIS_URL__).replace(/\\/functions\\/v1\\/.*$/,""):"";
+    if(!agentEmail){
+      statusEl.textContent="Sorry, no contact channel is configured for this listing.";
+      statusEl.style.color="#b91c1c";
+      return;
+    }
+    // Build mailto SYNCHRONOUSLY so the browser keeps the user-gesture and launches the mail client.
+    // RFC 6068: recipient is a literal addr-spec — never percent-encode the email itself.
+    var subject="Question about "+propertyName;
+    var body=[
+      values.message,
+      "",
+      "— "+(values.name||"Visitor")+(values.phone?" ("+values.phone+")":"")+(values.email?" <"+values.email+">":"")
+    ].join("\n");
+    var mailto="mailto:"+agentEmail+"?subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(body);
+    while(mailto.length>1900 && body.length>50){
+      body=body.slice(0,Math.max(50,body.length-200));
+      mailto="mailto:"+agentEmail+"?subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(body);
+    }
+    statusEl.textContent="Opening your email app… Send the message to complete your inquiry.";
+    statusEl.style.color="#047857";
+    // Fire-and-forget lead-capture (Pro tier). We do NOT await — awaiting here would
+    // void the user-gesture and Chromium-based browsers would block the mailto handoff.
+    var supabaseOrigin=window.__SYNTHESIS_URL__?String(window.__SYNTHESIS_URL__).replace(/\/functions\/v1\/.*$/,""):"";
     var studioId=String(C.studioId||"");
     if(supabaseOrigin&&studioId){
       try{
-        var lcResp=await fetch(supabaseOrigin+"/functions/v1/handle-lead-capture",{
+        fetch(supabaseOrigin+"/functions/v1/handle-lead-capture",{
           method:"POST",
           headers:{"Content-Type":"application/json"},
           body:JSON.stringify({studio_id:studioId,visitor_email:values.email,property_name:propertyName})
-        });
-        if(lcResp.ok) sentVia="backend";
+        }).catch(function(){});
       }catch(_){}
     }
-    if(!sentVia){
-      // Fallback: client-side mailto. The visitor's mail client
-      // composes the email; nothing is sent until they confirm.
-      if(!agentEmail){
-        statusEl.textContent="Sorry, no contact channel is configured for this listing.";
-        statusEl.style.color="#b91c1c";
-        return;
-      }
-      var subject="Question about "+propertyName;
-      var bodyLines=[
-        values.message,
-        "",
-        "— "+(values.name||"Visitor")+(values.phone?" ("+values.phone+")":"")
-      ];
-      var mailto="mailto:"+encodeURIComponent(agentEmail)
-        +"?subject="+encodeURIComponent(subject)
-        +"&body="+encodeURIComponent(bodyLines.join("\\n"));
-      window.location.href=mailto;
-      sentVia="mailto";
-    }
-    statusEl.textContent=sentVia==="backend"
-      ?"Thanks — your message was sent to the agent."
-      :"Your email composer should now be open. Send the email to complete your inquiry.";
-    statusEl.style.color="#047857";
+    // Trigger the mail client as the synchronous tail of the click handler.
+    window.location.href=mailto;
     for(var j=0;j<inputs.length;j++) inputs[j].disabled=true;
     card.querySelector(".ask-inquiry-send").disabled=true;
   });
