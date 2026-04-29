@@ -34,18 +34,22 @@ interface OrderRow {
 }
 
 function OrdersPage() {
-  const { user } = useAuth();
+  const { user, roles } = useAuth();
+  const isClient = roles.includes("client") && !roles.includes("provider") && !roles.includes("admin");
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [clientNames, setClientNames] = useState<Map<string, string>>(new Map());
+  // For providers: client display names. For clients: provider brand names.
+  const [counterpartyNames, setCounterpartyNames] = useState<Map<string, string>>(new Map());
 
   const fetchOrders = useCallback(async () => {
     if (!user) return;
-    const { data: notifications } = await supabase
+    const query = supabase
       .from("order_notifications")
       .select("*")
-      .eq("provider_id", user.id)
       .order("created_at", { ascending: false });
+    const { data: notifications } = isClient
+      ? await query.eq("client_id", user.id)
+      : await query.eq("provider_id", user.id);
 
     if (!notifications || notifications.length === 0) {
       setOrders([]);
@@ -53,7 +57,6 @@ function OrdersPage() {
       return;
     }
 
-    // Fetch associated models
     const modelIds = notifications.map((n) => n.model_id);
     const { data: models } = await supabase
       .from("saved_models")
@@ -62,18 +65,28 @@ function OrdersPage() {
 
     const modelMap = new Map(models?.map((m) => [m.id, m]) || []);
 
-    // Fetch client display names
-    const clientIds = [...new Set(notifications.map((n) => n.client_id))];
-    const { data: profiles } = await supabase
-      .from("profiles")
-      .select("user_id, display_name")
-      .in("user_id", clientIds);
-
     const nameMap = new Map<string, string>();
-    profiles?.forEach((p) => {
-      if (p.display_name) nameMap.set(p.user_id, p.display_name);
-    });
-    setClientNames(nameMap);
+    if (isClient) {
+      // Resolve provider brand names
+      const providerIds = [...new Set(notifications.map((n) => n.provider_id))];
+      const { data: brands } = await supabase
+        .from("branding_settings")
+        .select("provider_id, brand_name")
+        .in("provider_id", providerIds);
+      brands?.forEach((b) => {
+        if (b.brand_name) nameMap.set(b.provider_id, b.brand_name);
+      });
+    } else {
+      const clientIds = [...new Set(notifications.map((n) => n.client_id))];
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("user_id, display_name")
+        .in("user_id", clientIds);
+      profiles?.forEach((p) => {
+        if (p.display_name) nameMap.set(p.user_id, p.display_name);
+      });
+    }
+    setCounterpartyNames(nameMap);
 
     const rows: OrderRow[] = notifications.map((n) => {
       const model = modelMap.get(n.model_id);
@@ -93,7 +106,7 @@ function OrdersPage() {
 
     setOrders(rows);
     setLoading(false);
-  }, [user]);
+  }, [user, isClient]);
 
   useEffect(() => {
     fetchOrders();
