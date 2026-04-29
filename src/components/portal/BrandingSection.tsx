@@ -103,6 +103,9 @@ export function BrandingSection({
               disabled={logoUploading}
               onChange={(e) => onFileChange("logo", e.target.files?.[0] || null)}
             />
+            <p className="text-xs text-muted-foreground">
+              Auto-optimized to WebP — most images work.
+            </p>
             {logoPreview && (
               <div className="mt-2 flex items-center gap-2">
                 <img src={logoPreview} alt="Logo preview" className="h-12 rounded object-contain" />
@@ -131,6 +134,9 @@ export function BrandingSection({
               disabled={faviconUploading}
               onChange={(e) => onFileChange("favicon", e.target.files?.[0] || null)}
             />
+            <p className="text-xs text-muted-foreground">
+              Auto-optimized to WebP — most images work.
+            </p>
             {faviconPreview && (
               <div className="mt-2 flex items-center gap-2">
                 <img src={faviconPreview} alt="Favicon preview" className="h-8 rounded object-contain" />

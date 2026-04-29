@@ -11,6 +11,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Accordion,
   AccordionContent,
   AccordionItem,
@@ -62,6 +68,11 @@ import {
   type DraftState,
   type DraftAccessState,
 } from "@/lib/portal/draft-storage";
+import {
+  optimizeBrandImage,
+  describeOptimization,
+  BRAND_ASSET_LIMITS,
+} from "@/lib/portal/image-optimizer";
 
 const DEFAULT_ACCESS: DraftAccessState = {
   passwordProtected: false,
@@ -205,6 +216,11 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
   // Permanent storage URLs — populated after upload to brand-assets bucket.
   const [logoStorageUrl, setLogoStorageUrl] = useState<string | null>(null);
   const [faviconStorageUrl, setFaviconStorageUrl] = useState<string | null>(null);
+  // Persisted-in-draft data URLs — let the preview survive a reload / Import
+  // without forcing the user to re-upload. Cleared once a permanent storage
+  // URL exists (to keep the draft small).
+  const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null);
+  const [faviconDataUrl, setFaviconDataUrl] = useState<string | null>(null);
 
   // Models
   const [models, setModels] = useState<PropertyModel[]>(() => {
@@ -331,6 +347,21 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     setAgent(draft.agent || { ...DEFAULT_AGENT });
     setEnhancements(draft.enhancements ?? {});
     setAccess(draft.access ?? DEFAULT_ACCESS);
+    // Brand assets — prefer permanent storage URL over the data-URL fallback.
+    const logoStorage = draft.logoStorageUrl ?? null;
+    const logoData = draft.logoDataUrl ?? null;
+    const favStorage = draft.faviconStorageUrl ?? null;
+    const favData = draft.faviconDataUrl ?? null;
+    setLogoStorageUrl(logoStorage);
+    setLogoDataUrl(logoData);
+    setLogoPreview(logoStorage || logoData);
+    setFaviconStorageUrl(favStorage);
+    setFaviconDataUrl(favData);
+    setFaviconPreview(favStorage || favData);
+    // Files were not persisted — they'll be recreated from the data URL at
+    // upload time if no storage URL exists yet (see Save / Download paths).
+    setLogoFile(null);
+    setFaviconFile(null);
   }, []);
 
   const handleResumeDraft = useCallback(() => {
@@ -362,9 +393,13 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
       reviewApproved: false,
       enhancements,
       access,
+      logoDataUrl,
+      faviconDataUrl,
+      logoStorageUrl,
+      faviconStorageUrl,
     });
     toast.success("Draft exported");
-  }, [providerSlug, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent, enhancements, access]);
+  }, [providerSlug, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent, enhancements, access, logoDataUrl, faviconDataUrl, logoStorageUrl, faviconStorageUrl]);
 
   const handleImportDraft = useCallback(async (file: File) => {
     const draft = await importDraftFile(file);
@@ -394,10 +429,14 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
         reviewApproved: false,
         enhancements,
         access,
+        logoDataUrl,
+        faviconDataUrl,
+        logoStorageUrl,
+        faviconStorageUrl,
       });
     }, 500);
     return () => window.clearTimeout(handle);
-  }, [providerSlug, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent, enhancements, access]);
+  }, [providerSlug, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent, enhancements, access, logoDataUrl, faviconDataUrl, logoStorageUrl, faviconStorageUrl]);
 
   // Post-payment polling: detect return from Stripe checkout and
   // auto-trigger the download once the webhook flips status to "paid".
@@ -503,18 +542,87 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     }
   }, []);
 
-  const handleFileChange = useCallback((field: "logo" | "favicon", file: File | null) => {
+  /**
+   * Reconstitute a `File` from a previously-saved data URL. Used when a
+   * draft was restored (no live `File` object) and we need to upload the
+   * brand asset on Save / Download.
+   */
+  const fileFromDataUrl = useCallback(async (dataUrl: string, kind: "logo" | "favicon"): Promise<File | null> => {
+    try {
+      const res = await fetch(dataUrl);
+      const blob = await res.blob();
+      const ext = (blob.type.split("/")[1] || "webp").split("+")[0];
+      return new File([blob], `${kind}.${ext}`, { type: blob.type || "image/webp" });
+    } catch (err) {
+      console.error("Could not rehydrate brand asset from data URL:", err);
+      return null;
+    }
+  }, []);
+
+  const handleFileChange = useCallback(async (field: "logo" | "favicon", file: File | null) => {
+    if (!file) {
+      // Treat a null selection like a remove (matches prior semantics).
+      if (field === "logo") {
+        brandAssetsTouchedRef.current.logo = true;
+        setLogoFile(null);
+        setLogoPreview(null);
+        setLogoDataUrl(null);
+        setLogoStorageUrl(null);
+      } else {
+        brandAssetsTouchedRef.current.favicon = true;
+        setFaviconFile(null);
+        setFaviconPreview(null);
+        setFaviconDataUrl(null);
+        setFaviconStorageUrl(null);
+      }
+      return;
+    }
+
+    const limits = field === "logo" ? BRAND_ASSET_LIMITS.logo : BRAND_ASSET_LIMITS.favicon;
+    let processed: File;
+    let savingsMsg = "";
+    try {
+      const result = await optimizeBrandImage(file, { ...limits, kind: field });
+      processed = result.file;
+      savingsMsg = describeOptimization(result);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Image optimization failed.";
+      toast.error(msg);
+      return;
+    }
+
+    // Read the optimized file as a data URL so the preview survives a reload
+    // / Import without forcing a re-upload.
+    let dataUrl: string;
+    try {
+      dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error("Could not read optimized image."));
+        reader.readAsDataURL(processed);
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not read optimized image.");
+      return;
+    }
+
     if (field === "logo") {
       brandAssetsTouchedRef.current.logo = true;
-      setLogoFile(file);
-      setLogoPreview(file ? URL.createObjectURL(file) : null);
-      // Reset stored URL whenever the source file changes — re-upload on save.
-      if (file) setLogoStorageUrl(null);
+      setLogoFile(processed);
+      setLogoDataUrl(dataUrl);
+      setLogoPreview(dataUrl);
+      // Source changed → previously-uploaded permanent URL is now stale.
+      setLogoStorageUrl(null);
     } else {
       brandAssetsTouchedRef.current.favicon = true;
-      setFaviconFile(file);
-      setFaviconPreview(file ? URL.createObjectURL(file) : null);
-      if (file) setFaviconStorageUrl(null);
+      setFaviconFile(processed);
+      setFaviconDataUrl(dataUrl);
+      setFaviconPreview(dataUrl);
+      setFaviconStorageUrl(null);
+    }
+
+    if (savingsMsg) {
+      toast.success(`${field === "logo" ? "Logo" : "Favicon"} optimized to WebP (${savingsMsg})`);
     }
   }, []);
 
@@ -523,11 +631,13 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
       brandAssetsTouchedRef.current.logo = true;
       setLogoFile(null);
       setLogoPreview(null);
+      setLogoDataUrl(null);
       setLogoStorageUrl(null);
     } else {
       brandAssetsTouchedRef.current.favicon = true;
       setFaviconFile(null);
       setFaviconPreview(null);
+      setFaviconDataUrl(null);
       setFaviconStorageUrl(null);
     }
   }, []);
@@ -747,28 +857,35 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
         }
       }
 
-      if (userId && logoFile) {
+      // Upload pending logo / favicon — prefer the live File, but fall back
+      // to a data URL restored from a draft so Resume / Import doesn't lose
+      // the asset.
+      const pendingLogo = logoFile ?? (logoDataUrl && !logoStorageUrl ? await fileFromDataUrl(logoDataUrl, "logo") : null);
+      if (userId && pendingLogo) {
         try {
-          const url = await uploadBrandAsset(userId, logoFile, "logo");
+          const url = await uploadBrandAsset(userId, pendingLogo, "logo");
           if (url) {
             refreshLogoUrl = url;
             setLogoStorageUrl(url);
             setLogoPreview(url);
             setLogoFile(null);
+            setLogoDataUrl(null);
           }
         } catch (err) {
           console.error("Logo upload (download refresh) failed:", err);
         }
       }
 
-      if (userId && faviconFile) {
+      const pendingFavicon = faviconFile ?? (faviconDataUrl && !faviconStorageUrl ? await fileFromDataUrl(faviconDataUrl, "favicon") : null);
+      if (userId && pendingFavicon) {
         try {
-          const url = await uploadBrandAsset(userId, faviconFile, "favicon");
+          const url = await uploadBrandAsset(userId, pendingFavicon, "favicon");
           if (url) {
             refreshFaviconUrl = url;
             setFaviconStorageUrl(url);
             setFaviconPreview(url);
             setFaviconFile(null);
+            setFaviconDataUrl(null);
           }
         } catch (err) {
           console.error("Favicon upload (download refresh) failed:", err);
@@ -925,6 +1042,9 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     faviconFile,
     logoStorageUrl,
     faviconStorageUrl,
+    logoDataUrl,
+    faviconDataUrl,
+    fileFromDataUrl,
     branding.provider_id,
     readSavedPresentationAssets,
     generatePresentationFn,
@@ -977,27 +1097,31 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     // permanent storage URLs (not blob: URLs that vanish on reload).
     let finalLogoUrl = logoStorageUrl;
     let finalFaviconUrl = faviconStorageUrl;
-    if (logoFile) {
+    const pendingLogoSave = logoFile ?? (logoDataUrl && !logoStorageUrl ? await fileFromDataUrl(logoDataUrl, "logo") : null);
+    if (pendingLogoSave) {
       try {
-        const url = await uploadBrandAsset(userId, logoFile, "logo");
+        const url = await uploadBrandAsset(userId, pendingLogoSave, "logo");
         if (url) {
           finalLogoUrl = url;
           setLogoStorageUrl(url);
           setLogoPreview(url);
           setLogoFile(null);
+          setLogoDataUrl(null);
         }
       } catch (err) {
         console.error("Logo upload failed:", err);
       }
     }
-    if (faviconFile) {
+    const pendingFaviconSave = faviconFile ?? (faviconDataUrl && !faviconStorageUrl ? await fileFromDataUrl(faviconDataUrl, "favicon") : null);
+    if (pendingFaviconSave) {
       try {
-        const url = await uploadBrandAsset(userId, faviconFile, "favicon");
+        const url = await uploadBrandAsset(userId, pendingFaviconSave, "favicon");
         if (url) {
           finalFaviconUrl = url;
           setFaviconStorageUrl(url);
           setFaviconPreview(url);
           setFaviconFile(null);
+          setFaviconDataUrl(null);
         }
       } catch (err) {
         console.error("Favicon upload failed:", err);
@@ -1101,6 +1225,9 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     faviconFile,
     logoStorageUrl,
     faviconStorageUrl,
+    logoDataUrl,
+    faviconDataUrl,
+    fileFromDataUrl,
     modelCount,
     runDownload,
     enhancements,
@@ -1176,35 +1303,51 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
           </div>
 
           {/* Import + Export buttons */}
-          <div className="flex items-center gap-2">
-            <input
-              ref={importInputRef}
-              type="file"
-              accept=".json,application/json"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) handleImportDraft(f);
-                e.target.value = "";
-              }}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => importInputRef.current?.click()}
-            >
-              Import
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleExportDraft}
-            >
-              Export
-            </Button>
-          </div>
+          <TooltipProvider delayDuration={150}>
+            <div className="flex items-center gap-2">
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".json,application/json"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleImportDraft(f);
+                  e.target.value = "";
+                }}
+              />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => importInputRef.current?.click()}
+                  >
+                    Import
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-xs text-center">
+                  Load a previously exported <code>.3dps-draft.json</code> to restore your in-progress presentation (branding, properties, agent, logo &amp; favicon).
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleExportDraft}
+                  >
+                    Export
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-xs text-center">
+                  Download your current draft as a <code>.3dps-draft.json</code> file for backup or to continue on another device. Uploaded logo and favicon images are included.
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          </TooltipProvider>
 
           {/* Far right: signed-in identity (logo/name removed — already shown in builder body & preview) */}
           <div className="ml-auto flex items-center gap-3 min-w-0">
