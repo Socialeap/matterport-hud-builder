@@ -173,12 +173,13 @@ export function EnhancementsSection({
                 </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="ask" className="mt-0 space-y-2">
+              <TabsContent value="ask" className="mt-0 space-y-3">
                 <PropertyIntelligenceSection
                   models={models}
                   savedModelId={savedModelId}
                   onExtractionSuccess={onExtractionSuccess}
                 />
+                {viewerRole === "client" && <AskAiClientByokSection />}
               </TabsContent>
 
               <TabsContent value="catalog" className="mt-0 space-y-2">

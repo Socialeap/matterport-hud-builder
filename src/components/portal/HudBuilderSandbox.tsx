@@ -1580,6 +1580,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
                       setExtractionDirty(true);
                       setExtractionDirtyDismissed(false);
                     }}
+                    viewerRole={accessState.viewerRole}
                   />
                 </AccordionContent>
               </AccordionItem>
