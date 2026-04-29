@@ -387,9 +387,13 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
       reviewApproved: false,
       enhancements,
       access,
+      logoDataUrl,
+      faviconDataUrl,
+      logoStorageUrl,
+      faviconStorageUrl,
     });
     toast.success("Draft exported");
-  }, [providerSlug, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent, enhancements, access]);
+  }, [providerSlug, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent, enhancements, access, logoDataUrl, faviconDataUrl, logoStorageUrl, faviconStorageUrl]);
 
   const handleImportDraft = useCallback(async (file: File) => {
     const draft = await importDraftFile(file);
@@ -419,10 +423,14 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
         reviewApproved: false,
         enhancements,
         access,
+        logoDataUrl,
+        faviconDataUrl,
+        logoStorageUrl,
+        faviconStorageUrl,
       });
     }, 500);
     return () => window.clearTimeout(handle);
-  }, [providerSlug, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent, enhancements, access]);
+  }, [providerSlug, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent, enhancements, access, logoDataUrl, faviconDataUrl, logoStorageUrl, faviconStorageUrl]);
 
   // Post-payment polling: detect return from Stripe checkout and
   // auto-trigger the download once the webhook flips status to "paid".
