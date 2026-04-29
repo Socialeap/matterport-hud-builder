@@ -536,7 +536,22 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     }
   }, []);
 
-  const handleFileChange = useCallback(async (field: "logo" | "favicon", file: File | null) => {
+  /**
+   * Reconstitute a `File` from a previously-saved data URL. Used when a
+   * draft was restored (no live `File` object) and we need to upload the
+   * brand asset on Save / Download.
+   */
+  const fileFromDataUrl = useCallback(async (dataUrl: string, kind: "logo" | "favicon"): Promise<File | null> => {
+    try {
+      const res = await fetch(dataUrl);
+      const blob = await res.blob();
+      const ext = (blob.type.split("/")[1] || "webp").split("+")[0];
+      return new File([blob], `${kind}.${ext}`, { type: blob.type || "image/webp" });
+    } catch (err) {
+      console.error("Could not rehydrate brand asset from data URL:", err);
+      return null;
+    }
+  }, []);
     if (!file) {
       // Treat a null selection like a remove (matches prior semantics).
       if (field === "logo") {
