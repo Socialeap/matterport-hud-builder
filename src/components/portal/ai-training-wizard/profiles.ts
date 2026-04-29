@@ -28,7 +28,8 @@ export type CategoryKey =
   | "hospitality"
   | "commercial_office"
   | "multifamily"
-  | "coworking";
+  | "coworking"
+  | "event_space";
 
 export interface ProfileCategory {
   key: CategoryKey;
