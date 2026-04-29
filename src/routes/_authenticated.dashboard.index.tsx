@@ -653,3 +653,106 @@ function FaqItem({
     </AccordionItem>
   );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Client overview — shown to users with the `client` role only.
+// Lightweight landing that points to My Orders, Account, and (when known)
+// the MSP/provider that invited them. No MSP onboarding, no BYOK, no Stripe.
+// ─────────────────────────────────────────────────────────────────────────────
+function ClientOverview() {
+  const { user } = useAuth();
+  const [orderCount, setOrderCount] = useState(0);
+  const [providerBrand, setProviderBrand] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      const [ord, link] = await Promise.all([
+        supabase
+          .from("order_notifications")
+          .select("id", { count: "exact", head: true })
+          .eq("client_id", user.id),
+        supabase
+          .from("client_providers")
+          .select("provider_id")
+          .eq("client_id", user.id)
+          .maybeSingle(),
+      ]);
+      if (cancelled) return;
+      setOrderCount(ord.count ?? 0);
+      const providerId = link.data?.provider_id;
+      if (providerId) {
+        const { data: brand } = await supabase
+          .from("branding_settings")
+          .select("brand_name")
+          .eq("provider_id", providerId)
+          .maybeSingle();
+        if (!cancelled) setProviderBrand(brand?.brand_name ?? null);
+      }
+      setLoaded(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  const displayName =
+    (user?.user_metadata?.full_name as string | undefined) || user?.email || "there";
+
+  return (
+    <div className="mx-auto max-w-3xl space-y-8">
+      <header>
+        <h1 className="text-3xl font-bold tracking-tight text-foreground">
+          Welcome, <span className="text-primary">{displayName}</span>
+        </h1>
+        <p className="mt-1 text-muted-foreground">
+          {providerBrand
+            ? `Your account with ${providerBrand}.`
+            : "Your client account."}
+        </p>
+      </header>
+
+      <section className="grid gap-4 sm:grid-cols-2">
+        <Link to="/dashboard/orders" className="group">
+          <Card className="h-full transition-shadow hover:shadow-md">
+            <CardContent className="flex items-start gap-4 p-5">
+              <div className="rounded-lg bg-primary/10 p-3 text-primary">
+                <ShoppingCart className="size-5" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-foreground">My Orders</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {loaded
+                    ? orderCount > 0
+                      ? `${orderCount} ${orderCount === 1 ? "purchase" : "purchases"} on file.`
+                      : "You haven't purchased any presentations yet."
+                    : "Loading…"}
+                </p>
+              </div>
+              <ArrowRight className="size-4 self-center text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link to="/dashboard/account" className="group">
+          <Card className="h-full transition-shadow hover:shadow-md">
+            <CardContent className="flex items-start gap-4 p-5">
+              <div className="rounded-lg bg-primary/10 p-3 text-primary">
+                <HelpCircle className="size-5" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-foreground">Account & Privacy</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Change your password, review policies, or delete your account.
+                </p>
+              </div>
+              <ArrowRight className="size-4 self-center text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+            </CardContent>
+          </Card>
+        </Link>
+      </section>
+    </div>
+  );
+}
