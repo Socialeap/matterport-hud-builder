@@ -219,6 +219,16 @@ export function HudPreview({
             }
           }}
         />
+        <button
+          type="button"
+          onClick={() => captureBookmarkFromLink(bookmarkLink)}
+          disabled={!bookmarkLink.trim()}
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-500/80 text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+          aria-label="Save bookmark"
+          title="Save bookmark"
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </button>
         <Popover>
           <PopoverTrigger asChild>
             <button
