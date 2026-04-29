@@ -2788,13 +2788,17 @@ if(frame){
   }
 
 
-  // Strip ss/sr/qs/play from a Matterport URL and re-append them with
-  // the supplied values. We always force qs=1 (Quick Start) and play=1
-  // so the visitor's iframe snaps to the new view without the fly-in
-  // animation, per the spec.
+  // Strip ss/sr/qs/play/title/brand from a Matterport URL and re-append
+  // them with the supplied values. We always force qs=1 (Quick Start)
+  // and play=1 so the visitor's iframe snaps to the new view without
+  // the fly-in animation, and we always force title=0 & brand=0 so the
+  // teleport never re-shows Matterport's centered title card or brand
+  // watermark mid-tour. This override is scoped to live-tour bookmark
+  // teleports only — normal viewing still respects the agent's
+  // TourBehavior hideTitle / hideBranding toggles.
   function rewriteIframeForTeleport(baseUrl,ss,sr){
     if(!baseUrl) return baseUrl;
-    var stripped=baseUrl.replace(/[?&](ss|sr|qs|play)=[^&]*/g,function(m){
+    var stripped=baseUrl.replace(/[?&](ss|sr|qs|play|title|brand)=[^&]*/g,function(m){
       return m.charAt(0)==="?"?"?":"";
     });
     // The strip above can leave a trailing "?" or "?&" sequence —
@@ -2803,7 +2807,7 @@ if(frame){
     var sep=stripped.indexOf("?")===-1?"?":"&";
     var qs="ss="+encodeURIComponent(ss);
     if(sr) qs+="&sr="+encodeURIComponent(sr);
-    qs+="&qs=1&play=1";
+    qs+="&qs=1&play=1&title=0&brand=0";
     return stripped+sep+qs;
   }
 
