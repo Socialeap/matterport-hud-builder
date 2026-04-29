@@ -552,6 +552,8 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
       return null;
     }
   }, []);
+
+  const handleFileChange = useCallback(async (field: "logo" | "favicon", file: File | null) => {
     if (!file) {
       // Treat a null selection like a remove (matches prior semantics).
       if (field === "logo") {
