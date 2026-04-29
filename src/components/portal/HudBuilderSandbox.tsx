@@ -205,6 +205,11 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
   // Permanent storage URLs — populated after upload to brand-assets bucket.
   const [logoStorageUrl, setLogoStorageUrl] = useState<string | null>(null);
   const [faviconStorageUrl, setFaviconStorageUrl] = useState<string | null>(null);
+  // Persisted-in-draft data URLs — let the preview survive a reload / Import
+  // without forcing the user to re-upload. Cleared once a permanent storage
+  // URL exists (to keep the draft small).
+  const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null);
+  const [faviconDataUrl, setFaviconDataUrl] = useState<string | null>(null);
 
   // Models
   const [models, setModels] = useState<PropertyModel[]>(() => {
