@@ -24,6 +24,7 @@ interface OrderRow {
   id: string;
   model_id: string;
   client_id: string;
+  provider_id: string;
   status: string;
   created_at: string;
   model_name: string;
