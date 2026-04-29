@@ -2118,7 +2118,7 @@ function __dqaRenderInquiryForm(prefilledQuestion,_propertyUuid){
     for(var i=0;i<inputs.length;i++){
       values[inputs[i].getAttribute("data-k")]=inputs[i].value.trim();
     }
-    if(!values.email||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email)){
+    if(!values.email||!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(values.email)){
       statusEl.textContent="Please enter a valid email.";
       statusEl.style.color="#b91c1c";
       return;
