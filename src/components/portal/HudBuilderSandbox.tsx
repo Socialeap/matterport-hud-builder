@@ -1297,35 +1297,51 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
           </div>
 
           {/* Import + Export buttons */}
-          <div className="flex items-center gap-2">
-            <input
-              ref={importInputRef}
-              type="file"
-              accept=".json,application/json"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) handleImportDraft(f);
-                e.target.value = "";
-              }}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => importInputRef.current?.click()}
-            >
-              Import
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleExportDraft}
-            >
-              Export
-            </Button>
-          </div>
+          <TooltipProvider delayDuration={150}>
+            <div className="flex items-center gap-2">
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".json,application/json"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleImportDraft(f);
+                  e.target.value = "";
+                }}
+              />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => importInputRef.current?.click()}
+                  >
+                    Import
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-xs text-center">
+                  Load a previously exported <code>.3dps-draft.json</code> to restore your in-progress presentation (branding, properties, agent, logo &amp; favicon).
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleExportDraft}
+                  >
+                    Export
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-xs text-center">
+                  Download your current draft as a <code>.3dps-draft.json</code> file for backup or to continue on another device. Uploaded logo and favicon images are included.
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          </TooltipProvider>
 
           {/* Far right: signed-in identity (logo/name removed — already shown in builder body & preview) */}
           <div className="ml-auto flex items-center gap-3 min-w-0">
