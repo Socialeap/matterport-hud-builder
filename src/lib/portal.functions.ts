@@ -2150,7 +2150,7 @@ function __dqaRenderInquiryForm(prefilledQuestion,_propertyUuid){
     statusEl.style.color="#047857";
     // Fire-and-forget lead-capture (Pro tier). We do NOT await — awaiting here would
     // void the user-gesture and Chromium-based browsers would block the mailto handoff.
-    var supabaseOrigin=window.__SYNTHESIS_URL__?String(window.__SYNTHESIS_URL__).replace(/\/functions\/v1\/.*$/,""):"";
+    var supabaseOrigin=window.__SYNTHESIS_URL__?String(window.__SYNTHESIS_URL__).replace(/\\/functions\\/v1\\/.*$/,""):"";
     var studioId=String(C.studioId||"");
     if(supabaseOrigin&&studioId){
       try{
