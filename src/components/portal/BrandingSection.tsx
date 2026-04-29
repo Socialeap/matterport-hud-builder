@@ -134,6 +134,9 @@ export function BrandingSection({
               disabled={faviconUploading}
               onChange={(e) => onFileChange("favicon", e.target.files?.[0] || null)}
             />
+            <p className="text-xs text-muted-foreground">
+              Auto-optimized to WebP — most images work.
+            </p>
             {faviconPreview && (
               <div className="mt-2 flex items-center gap-2">
                 <img src={faviconPreview} alt="Favicon preview" className="h-8 rounded object-contain" />
