@@ -341,6 +341,21 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     setAgent(draft.agent || { ...DEFAULT_AGENT });
     setEnhancements(draft.enhancements ?? {});
     setAccess(draft.access ?? DEFAULT_ACCESS);
+    // Brand assets — prefer permanent storage URL over the data-URL fallback.
+    const logoStorage = draft.logoStorageUrl ?? null;
+    const logoData = draft.logoDataUrl ?? null;
+    const favStorage = draft.faviconStorageUrl ?? null;
+    const favData = draft.faviconDataUrl ?? null;
+    setLogoStorageUrl(logoStorage);
+    setLogoDataUrl(logoData);
+    setLogoPreview(logoStorage || logoData);
+    setFaviconStorageUrl(favStorage);
+    setFaviconDataUrl(favData);
+    setFaviconPreview(favStorage || favData);
+    // Files were not persisted — they'll be recreated from the data URL at
+    // upload time if no storage URL exists yet (see Save / Download paths).
+    setLogoFile(null);
+    setFaviconFile(null);
   }, []);
 
   const handleResumeDraft = useCallback(() => {
