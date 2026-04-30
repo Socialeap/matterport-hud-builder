@@ -507,6 +507,19 @@ function BrandingPage() {
         </CardContent>
       </Card>
 
+      <StudioPreviewPanel
+        slug={savedSnapshot.slug}
+        tier={savedSnapshot.tier}
+        customDomain={savedSnapshot.custom_domain}
+        hasUnsavedChanges={
+          JSON.stringify(branding) !== JSON.stringify(savedSnapshot) ||
+          !!logoFile ||
+          !!faviconFile ||
+          !!heroFile
+        }
+        refreshKey={previewVersion}
+      />
+
       <div className="flex justify-end">
         <Button onClick={handleSave} disabled={saving}>
           {saving ? "Saving…" : "Save Changes"}
