@@ -98,6 +98,31 @@ export const Route = createFileRoute("/p/$slug/")({
 function PortalPage() {
   const { branding, demoPublished, lusActive, vaultAssetCount, providerActive } = Route.useLoaderData();
   const { slug } = Route.useParams();
+
+  // Compute preview/embed mode synchronously from URL search params. These
+  // dictate whether we need to do any auth work at all on this route.
+  const { isPreviewRequest, isEmbedPreview } = (() => {
+    if (typeof window === "undefined") {
+      return { isPreviewRequest: false, isEmbedPreview: false };
+    }
+    const params = new URLSearchParams(window.location.search);
+    return {
+      isPreviewRequest: params.get("preview") === "studio",
+      isEmbedPreview: params.get("embed") === "studio-preview",
+    };
+  })();
+
+  // Auth is ONLY required to validate the owner/admin bypass for the
+  // top-level ?preview=studio link. For paid users (providerActive=true),
+  // public visitors of unpaid pages, and the dashboard iframe embed, we
+  // never touch supabase.auth here — that prevents competing for the
+  // shared auth-token storage lock and the resulting re-render loop.
+  const needsAuthCheck = !providerActive && isPreviewRequest && !isEmbedPreview;
+
+  type AuthStatus = "idle" | "checking" | "authorized" | "unauthorized";
+  const [authStatus, setAuthStatus] = useState<AuthStatus>(
+    needsAuthCheck ? "checking" : "idle",
+  );
   const [viewer, setViewer] = useState<{
     avatarUrl: string | null;
     displayName: string | null;
@@ -105,53 +130,69 @@ function PortalPage() {
     userId: string | null;
     isAdmin: boolean;
   } | null>(null);
-  const [authChecked, setAuthChecked] = useState(false);
   const [signupOpen, setSignupOpen] = useState(false);
 
-  // Resolve the signed-in user (if any) and their profile, for the header avatar.
+  // Resolve the signed-in user (if any). For paid Studios we still want the
+  // header avatar to reflect the viewer, so we do a single best-effort
+  // session read — but we never re-run on auth state changes, and we fail
+  // closed (viewer=null) if anything goes wrong (e.g. auth-token lock).
   useEffect(() => {
     let cancelled = false;
-    const load = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (cancelled) return;
-      if (!session?.user) {
-        setViewer(null);
-        setAuthChecked(true);
-        return;
-      }
-      const [profileRes, rolesRes] = await Promise.all([
-        supabase
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (cancelled) return;
+        if (!session?.user) {
+          if (needsAuthCheck) setAuthStatus("unauthorized");
+          return;
+        }
+        // Owner / admin bypass check — only fetch roles if we actually need them.
+        let isAdmin = false;
+        if (needsAuthCheck) {
+          const { data: rolesData } = await supabase
+            .from("user_roles")
+            .select("role")
+            .eq("user_id", session.user.id);
+          if (cancelled) return;
+          isAdmin = (rolesData ?? []).some((r) => r.role === "admin");
+        }
+        // Lightweight profile read for the header avatar (best-effort).
+        const { data: profile } = await supabase
           .from("profiles")
           .select("avatar_url, display_name")
           .eq("user_id", session.user.id)
-          .maybeSingle(),
-        supabase
-          .from("user_roles")
-          .select("role")
-          .eq("user_id", session.user.id),
-      ]);
-      if (cancelled) return;
-      const profile = profileRes.data;
-      const isAdmin = (rolesRes.data ?? []).some((r) => r.role === "admin");
-      setViewer({
-        avatarUrl: profile?.avatar_url ?? (session.user.user_metadata?.avatar_url as string | null) ?? null,
-        displayName:
-          profile?.display_name ??
-          (session.user.user_metadata?.full_name as string | null) ??
-          null,
-        email: session.user.email ?? null,
-        userId: session.user.id,
-        isAdmin,
-      });
-      setAuthChecked(true);
-    };
-    load();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => load());
+          .maybeSingle();
+        if (cancelled) return;
+        const v = {
+          avatarUrl:
+            profile?.avatar_url ??
+            (session.user.user_metadata?.avatar_url as string | null) ??
+            null,
+          displayName:
+            profile?.display_name ??
+            (session.user.user_metadata?.full_name as string | null) ??
+            null,
+          email: session.user.email ?? null,
+          userId: session.user.id,
+          isAdmin,
+        };
+        setViewer(v);
+        if (needsAuthCheck) {
+          const isOwner = v.userId === branding?.provider_id;
+          setAuthStatus(isOwner || v.isAdmin ? "authorized" : "unauthorized");
+        }
+      } catch {
+        if (!cancelled && needsAuthCheck) setAuthStatus("unauthorized");
+      }
+    })();
     return () => {
       cancelled = true;
-      subscription.unsubscribe();
     };
-  }, []);
+    // We intentionally do NOT subscribe to onAuthStateChange here. Doing so
+    // re-fires this effect on every auto-refresh tick and competes with the
+    // dashboard's AuthProvider for the auth-token storage lock.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [branding?.provider_id]);
 
   const handleSignOut = useCallback(async () => {
     await supabase.auth.signOut();
@@ -161,7 +202,6 @@ function PortalPage() {
 
   const handleAuthenticated = useCallback(() => {
     setSignupOpen(false);
-    // onAuthStateChange will refresh viewer.
   }, []);
 
   useEffect(() => {
@@ -207,45 +247,51 @@ function PortalPage() {
     );
   }
 
-  // Gate the public Studio behind paid status. The provider themselves and
-  // admins can still preview their own page, but ONLY when the URL carries
-  // the explicit `?preview=studio` flag (used by the in-dashboard preview).
-  // This prevents an unpaid owner from sharing their bare /p/<slug> URL
-  // publicly before activating a plan.
-  const previewParam =
-    typeof window !== "undefined"
-      ? new URLSearchParams(window.location.search).get("preview")
-      : null;
-  const isPreviewRequest = previewParam === "studio";
-  const viewerIsOwner =
-    !!viewer?.userId && viewer.userId === branding.provider_id;
-  const viewerIsAdmin = !!viewer?.isAdmin;
-  const canBypassPaywall = isPreviewRequest && (viewerIsOwner || viewerIsAdmin);
-
-  if (!providerActive && authChecked && !canBypassPaywall) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background px-6">
-        <div className="max-w-md text-center">
-          <h1 className="text-4xl font-bold text-foreground">Studio Coming Soon</h1>
-          <p className="mt-3 text-muted-foreground">
-            This Studio isn't published yet. Please check back soon, or contact the
-            owner directly if you were expecting access.
-          </p>
+  // ============ Public paywall gating ============
+  // Unpaid Studios are gated. Bypasses:
+  //  • ?embed=studio-preview — dashboard iframe visual preview (no auth check,
+  //    intentionally permissive because it's only loaded inside the owner's
+  //    dashboard and the bare URL is still gated).
+  //  • ?preview=studio — top-level owner/admin preview tab (auth-checked).
+  if (!providerActive) {
+    if (!isPreviewRequest && !isEmbedPreview) {
+      return (
+        <div className="flex min-h-screen items-center justify-center bg-background px-6">
+          <div className="max-w-md text-center">
+            <h1 className="text-4xl font-bold text-foreground">Studio Coming Soon</h1>
+            <p className="mt-3 text-muted-foreground">
+              This Studio isn't published yet. Please check back soon, or contact the
+              owner directly if you were expecting access.
+            </p>
+          </div>
         </div>
-      </div>
-    );
+      );
+    }
+
+    if (isPreviewRequest && !isEmbedPreview) {
+      if (authStatus === "checking") {
+        return (
+          <div className="flex min-h-screen items-center justify-center bg-background">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+          </div>
+        );
+      }
+      if (authStatus !== "authorized") {
+        return (
+          <div className="flex min-h-screen items-center justify-center bg-background px-6">
+            <div className="max-w-md text-center">
+              <h1 className="text-4xl font-bold text-foreground">Studio Coming Soon</h1>
+              <p className="mt-3 text-muted-foreground">
+                This Studio isn't published yet.
+              </p>
+            </div>
+          </div>
+        );
+      }
+    }
   }
 
-  // While we're still resolving the viewer's session, render a neutral
-  // loading state instead of flashing either the gated message or the full
-  // page (which would leak content to non-owners for a few hundred ms).
-  if (!providerActive && !authChecked) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-      </div>
-    );
-  }
+  const showPreviewBanner = !providerActive && (isEmbedPreview || isPreviewRequest);
 
   const accent = branding.accent_color || "#3B82F6";
   const isPro = branding.tier === "pro";
