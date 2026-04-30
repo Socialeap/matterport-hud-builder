@@ -181,7 +181,7 @@ function BrandingPage() {
           gate_label: branding.gate_label,
           logo_url: logoUrl,
           favicon_url: faviconUrl,
-          custom_domain: isPro ? branding.custom_domain : null,
+          custom_domain: customDomainUnlocked ? branding.custom_domain : null,
           slug: branding.slug,
           base_price_cents: branding.base_price_cents,
           model_threshold: branding.model_threshold,
