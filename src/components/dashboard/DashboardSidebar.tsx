@@ -54,6 +54,7 @@ interface NavItem {
   icon: typeof LayoutDashboard;
   roles: readonly ("provider" | "client")[];
   requiresPro?: boolean;
+  requiresPaid?: boolean;
 }
 
 const allNavItems: readonly NavItem[] = [
