@@ -17,6 +17,7 @@ import { getStripeEnvironment } from "@/lib/stripe";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { buildStudioUrl } from "@/lib/public-url";
 import { useMspAccess } from "@/hooks/use-msp-access";
+import { StudioPreviewPanel } from "@/components/dashboard/StudioPreviewPanel";
 
 export const Route = createFileRoute("/_authenticated/dashboard/branding")({
   component: BrandingPage,
@@ -69,6 +70,8 @@ function BrandingPage() {
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [faviconFile, setFaviconFile] = useState<File | null>(null);
   const [heroFile, setHeroFile] = useState<File | null>(null);
+  const [savedSnapshot, setSavedSnapshot] = useState<BrandingData>(defaultBranding);
+  const [previewVersion, setPreviewVersion] = useState(0);
 
   const isPro = branding.tier === "pro";
   const customDomainUnlocked = isPro && hasPaid;
@@ -92,7 +95,7 @@ function BrandingPage() {
       .maybeSingle();
 
     if (data) {
-      setBranding({
+      const next: BrandingData = {
         brand_name: data.brand_name,
         accent_color: data.accent_color,
         hud_bg_color: data.hud_bg_color,
@@ -109,7 +112,9 @@ function BrandingPage() {
         additional_model_fee_cents: data.additional_model_fee_cents,
         hero_bg_url: (data as any).hero_bg_url ?? null,
         hero_bg_opacity: (data as any).hero_bg_opacity ?? 0.45,
-      });
+      };
+      setBranding(next);
+      setSavedSnapshot(next);
     }
     setLoading(false);
   }, [user]);
@@ -196,15 +201,18 @@ function BrandingPage() {
     if (error) {
       toast.error("Failed to save branding settings");
     } else {
-      setBranding((prev) => ({
-        ...prev,
+      const updated: BrandingData = {
+        ...branding,
         logo_url: logoUrl,
         favicon_url: faviconUrl,
         hero_bg_url: heroUrl,
-      }));
+      };
+      setBranding(updated);
+      setSavedSnapshot(updated);
       setLogoFile(null);
       setFaviconFile(null);
       setHeroFile(null);
+      setPreviewVersion((n) => n + 1);
       toast.success("Branding settings saved");
     }
   };
@@ -498,6 +506,19 @@ function BrandingPage() {
           )}
         </CardContent>
       </Card>
+
+      <StudioPreviewPanel
+        slug={savedSnapshot.slug}
+        tier={savedSnapshot.tier}
+        customDomain={savedSnapshot.custom_domain}
+        hasUnsavedChanges={
+          JSON.stringify(branding) !== JSON.stringify(savedSnapshot) ||
+          !!logoFile ||
+          !!faviconFile ||
+          !!heroFile
+        }
+        refreshKey={previewVersion}
+      />
 
       <div className="flex justify-end">
         <Button onClick={handleSave} disabled={saving}>

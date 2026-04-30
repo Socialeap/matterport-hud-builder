@@ -1,79 +1,78 @@
 ## Goal
 
-Stop redirecting unpaid MSPs to `/dashboard/upgrade`. Let them explore and brand their Studio freely, but lock four "Special Components" plus Publish behind a Starter or Pro purchase.
-
-## Locked-when-unpaid (Special Components)
-
-1. Clients (`/dashboard/clients`)
-2. Custom Domain (Branding page section)
-3. Stripe Payouts (`/dashboard/payouts`)
-4. Production Vault (`/dashboard/vault`)
-5. Publish  Studio (the "Publish & Distribute" section + Download buttons in `HudBuilderSandbox`)
-
-Everything else (Branding basics, Pricing config UI, Demo, Stats, Account, Overview, Orders, Builder editing) stays fully usable.
+Let any MSP (paid or unpaid) preview their unpublished Studio page directly from `/dashboard/branding` so they can visually assess branding before purchasing or publishing. The Studio page being previewed is the same `/p/$slug` route end-clients see — we just render it inside the dashboard.
 
 ## Approach
 
-Introduce a single source of truth for "has the MSP paid?" and reuse it everywhere instead of redirecting.
+The Studio at `/p/$slug` already reads everything from `branding_settings` (logo, accent, hero, slug, tier, etc.). The Branding page already saves there on "Save Changes". So a preview just needs to load that same route inside an iframe, scoped to the MSP's slug.
 
-### 1. New hook: `src/hooks/use-msp-access.tsx`
+Two preview modes, both available to paid and unpaid MSPs:
 
-Returns `{ loading, hasPaid, tier, isClient }`. Internally runs the same `licenses` + `purchases` (sandbox completed) query the dashboard layout already does, cached per session via React state in a tiny context provider (mounted inside `_authenticated.dashboard.tsx`). Avoids duplicate Supabase round-trips across pages.
+1. **Inline iframe** — embedded at the bottom of the Branding page, with desktop/tablet/mobile width toggles and a Refresh button.
+2. **Open in new tab** — convenience link (full-screen review).
 
-### 2. `src/routes/_authenticated.dashboard.tsx`
+No changes to the public Studio route. No data flow changes. No paywall changes.
 
-- Remove the `if (!hasAccess && !isUpgradePage) navigate({ to: "/dashboard/upgrade" })` redirect.
-- Keep computing `hasPaid` and expose it through the new context provider.
-- Show a persistent (dismissible-per-session) top banner when `!hasPaid`: "You're in trial mode. Purchase Starter or Pro to unlock Clients, Custom Domain, Payouts, Vault, and Publishing." with a "Choose a plan" button → `/dashboard/upgrade`.
+## What gets built
 
-### 3. `src/components/dashboard/DashboardSidebar.tsx`
+### 1. New component: `src/components/dashboard/StudioPreviewPanel.tsx`
 
-Currently only Vault uses `requiresPro`. Extend the same pattern:
+Props:
+- `slug: string | null`
+- `tier: "starter" | "pro"`
+- `customDomain: string | null`
+- `hasUnsavedChanges: boolean`
 
-- Add a `requiresPaid` flag to `Clients`, `Payouts`, `Vault` nav items.
-- When `!hasPaid && !isClient`, render those entries with the existing locked tooltip ("Purchase a plan to unlock") and prevent navigation. Reuse the existing `Lock` icon + tooltip code path.
-- Vault's existing Pro-only treatment is preserved (locked for Starter), now extended to also lock for unpaid.
+Renders a `Card` titled "Studio Preview" containing:
+- An info row showing the URL being previewed (built via existing `buildStudioUrl`).
+- A device-width toggle (Desktop 100%, Tablet 768px, Mobile 390px).
+- A Refresh button that bumps a `key` on the iframe to force reload (so the MSP sees their latest saved branding).
+- An "Open in new tab" link.
+- An `<iframe>` pointing at the in-app preview path. The iframe is sandboxed (`sandbox="allow-scripts allow-same-origin allow-popups allow-forms"`) and sized to a fixed height (e.g. `h-[700px]`) with a horizontal-centered inner frame for tablet/mobile widths.
 
-### 4. Route-level guards (defense in depth)
+Empty / edge states:
+- If `slug` is empty/null → render a friendly placeholder: "Set your Studio URL slug above and save to see a live preview." (no iframe).
+- If `hasUnsavedChanges` → show a small amber notice "You have unsaved changes. Save to update the preview." above the iframe (the iframe still shows the last-saved version, which is honest — preview = "what visitors would see right now").
 
-For `/dashboard/clients`, `/dashboard/payouts`, `/dashboard/vault`: at the top of each page component, if `!hasPaid && !isClient`, render a friendly "Locked — purchase to unlock" card with a CTA to `/dashboard/upgrade` instead of the page body. Prevents URL-typing bypass while keeping the page reachable.
+### 2. Wire it into `src/routes/_authenticated.dashboard.branding.tsx`
 
-### 5. `/dashboard/branding` — Custom Domain section
+- Track an `initialBranding` snapshot after `fetchBranding` so we can compute `hasUnsavedChanges` (shallow compare of editable fields + presence of `logoFile`/`faviconFile`/`heroFile`).
+- After `handleSave` success, refresh the snapshot so the unsaved indicator clears and the iframe reloads (bump a local `previewVersion` integer state and pass it to the panel).
+- Render `<StudioPreviewPanel ... />` just above the final "Save Changes" button so the preview is the natural last step before saving/publishing.
+- Available regardless of `hasPaid` — no gating.
 
-The Custom Domain card (around line 453) is already visually locked when `!isPro`. Extend the lock condition to `!isPro || !hasPaid` and update the inline message to "Purchase a plan to enable a custom domain." The rest of branding (logo, colors, name, hero, gate label, slug) stays fully editable for unpaid MSPs.
+### 3. Preview URL strategy
 
-### 6. Builder Publish & Download (`HudBuilderSandbox.tsx`)
+Use the **same-origin** preview path so it works in both dev and production with no CORS or cookie issues, and renders the most-recently-saved branding:
 
-- Pass `hasPaid` into `HudBuilderSandbox` (read via the new hook; the builder is already auth-aware via `userId`).
-- In the `canDownload` expression at line 1668, add `&& hasPaid`.
-- Add `downloadDisabledReason: "Purchase Starter or Pro to publish and download your Studio."` when `!hasPaid`.
-- Same gate on the two extra `onClick={handleDownload}` buttons (lines 1817, 1863) — disable + tooltip.
-- In `handleDownload` (line 1070), after the `!userId` signup branch, add `if (!hasPaid) { toast.info(...); navigate("/dashboard/upgrade"); return; }` as a server-of-truth fallback.
-- Inside `PublishDistributeSection`: add an `unpaidLockMessage?: string` prop; when set, render an overlay/lock card on the Netlify publish controls so the entire publish workflow is visibly gated, not just the download button.
+- URL: `` `/p/${slug}` `` (same site, same `branding_settings` row).
 
-### 7. `/dashboard/upgrade` stays accessible
+Why not `buildStudioUrl(...)`?
+- `buildStudioUrl` may return a custom domain (Pro) which can't be embedded reliably and isn't yet provisioned for unpaid MSPs.
+- The same-origin `/p/$slug` always renders the current saved branding for that provider.
 
-Remains the destination for every "Purchase to unlock" CTA. No code change needed beyond verifying it still mounts when `!hasPaid` (it does — we removed the forced redirect, not the route).
+We'll still **display** `buildStudioUrl(...)` as the human-readable "Public URL" text and use it for the "Open in new tab" link only when the MSP has a slug set; the embedded iframe always uses the relative same-origin path.
+
+### 4. No backend, no schema, no security changes
+
+- No new tables, RLS, or env vars.
+- The `/p/$slug` route is already public (it's the end-client landing). Embedding it in the dashboard introduces no new exposure.
+- Existing publish gating (`lusActive`) is unchanged — unpaid MSPs can preview but their Studio still won't show paid-only sections (AI features, vault add-ons, etc.) because `/p/$slug` already reads those flags from licenses.
 
 ## Execution-path sanity checks
 
-- **Clients (`assign_client_role_on_link`)**: unaffected — this only fires when an MSP's invitee accepts. Unpaid MSPs cannot reach the invite-sending UI, so no client links can be created.
-- **Stripe webhook (`assign_provider_role_on_purchase`)**: still grants `provider` role on purchase; once paid, `hasPaid` flips true on next dashboard load and all locks open automatically.
-- **Generated `.html` self-containment**: untouched — we only block triggering generation, not its logic.
-- **Existing Pro-vs-Starter restrictions** (Vault Pro-only, Custom Domain Pro-only, whitelabel): preserved and now stack cleanly with the new "must be paid at all" gate.
-- **Clients (role=client) experience**: `isClient` short-circuits `hasPaid` to true (their provider owns the license), so no regression for invited end-clients.
-- **Admin grants**: `admin_grants` already count as paid via `licenses` (granted licenses are inserted there). If a grant is purely a `branding_settings.tier` set without a license row, we should also treat any non-revoked unexpired `admin_grants` row as paid — I'll include that in the `hasPaid` computation to match current behavior.
+- **Unpaid MSP**: `hasPaid=false` → no gating on the panel. The iframe renders `/p/$slug` which reads the same `branding_settings` row. Locked features (Vault, AI) simply don't appear in the public Studio body — exactly what the MSP needs to see.
+- **No slug saved yet**: panel shows the friendly empty state instead of attempting to load `/p/`.
+- **Unsaved edits in form**: the iframe shows the *saved* state (truth). Banner tells the MSP to save to refresh — avoids the false impression that unsaved color changes are "live".
+- **After Save**: `previewVersion` bump remounts the iframe → MSP sees fresh content immediately.
+- **Custom domain (Pro)**: even if set, embed uses same-origin `/p/$slug`. The "Open in new tab" link uses `buildStudioUrl` so the MSP can also test the real custom domain.
+- **Logo / hero re-uploads**: those are stored in Supabase storage on Save and the public route reads the URLs from `branding_settings` — no special handling needed beyond the post-save refresh.
+- **Tier toggling / `hasPaid` flips after purchase**: no impact; the panel is always visible. The embedded Studio updates automatically next time the MSP refreshes.
+- **Iframe of same TanStack route**: TanStack Start serves `/p/$slug` as a normal SSR page; embedding same-origin is supported. Default headers don't set `X-Frame-Options: DENY`, so same-origin embedding works. (If a future hardening adds frame-ancestors, the dashboard origin would still match same-origin and continue to work.)
 
-## Files to edit / create
+## Files to create / edit
 
-- create `src/hooks/use-msp-access.tsx`
-- edit `src/routes/_authenticated.dashboard.tsx` (remove redirect, mount provider, add trial banner)
-- edit `src/components/dashboard/DashboardSidebar.tsx` (lock Clients / Payouts / Vault when unpaid)
-- edit `src/routes/_authenticated.dashboard.clients.tsx` (locked-state render)
-- edit `src/routes/_authenticated.dashboard.payouts.tsx` (locked-state render)
-- edit `src/routes/_authenticated.dashboard.vault.tsx` (extend isStarter lock to also cover unpaid)
-- edit `src/routes/_authenticated.dashboard.branding.tsx` (extend Custom Domain lock)
-- edit `src/components/portal/HudBuilderSandbox.tsx` (gate download + publish)
-- edit `src/components/portal/PublishDistributeSection.tsx` (new `unpaidLockMessage` prop + overlay)
+- create `src/components/dashboard/StudioPreviewPanel.tsx`
+- edit `src/routes/_authenticated.dashboard.branding.tsx` (snapshot for dirty-tracking, mount preview panel, bump version on save)
 
-No DB migrations, no new env vars, no auth/role changes.
+No DB migrations, no edge functions, no auth/role changes, no changes to `/p/$slug` or generated `.html` output.
