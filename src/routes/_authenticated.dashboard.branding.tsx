@@ -529,12 +529,7 @@ function BrandingPage() {
         slug={savedSnapshot.slug}
         tier={savedSnapshot.tier}
         customDomain={savedSnapshot.custom_domain}
-        hasUnsavedChanges={
-          JSON.stringify(branding) !== JSON.stringify(savedSnapshot) ||
-          !!logoFile ||
-          !!faviconFile ||
-          !!heroFile
-        }
+        hasUnsavedChanges={hasUnsavedChanges}
         refreshKey={previewVersion}
       />
 
