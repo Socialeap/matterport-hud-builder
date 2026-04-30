@@ -565,7 +565,7 @@ function Index() {
           {/* Headline */}
           <h1 className="mx-auto max-w-4xl text-4xl font-bold leading-[1.1] tracking-tight text-white lg:text-6xl sm:text-4xl">
             Imagine a Turn-Key Studio where <em className="italic">Your</em> Clients Customize <em className="italic">Their</em>{" "}
-            <span className="text-slate-50 text-4xl">3D Tour Presentations 🤔</span>
+            <span className="text-slate-50">3D Tour Presentations 🤔</span>
           </h1>
 
           {/* Subheadline */}
