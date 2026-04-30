@@ -151,6 +151,15 @@ function ClientsPage() {
     }
   };
 
+  if (!accessLoading && !hasPaid && !isClient) {
+    return (
+      <LockedFeatureCard
+        featureName="Clients"
+        description="Invite, manage, and bill your clients once you've activated your Studio with Starter or Pro."
+      />
+    );
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
