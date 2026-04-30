@@ -653,7 +653,17 @@ function Index() {
 
             <Card className={`border-red-500/20 ${cardBg} backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-red-500/60 hover:shadow-lg hover:shadow-red-500/10`}>
               <CardContent className="pt-6 text-left">
-...
+                <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
+                  <Lock className="size-5 text-amber-300" />
+                </div>
+                <h3 className={`mt-4 font-semibold text-white`}>A Bottleneck You Don&#39;t Own</h3>
+                <p className={`mt-2 text-sm text-white/60`}>
+                  You aren&#39;t just paying for software — you&#39;re paying for the privilege of being an unpaid administrator for a company you don&#39;t own. It drains your time and limits your growth.
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className={`border-red-500/20 ${cardBg} backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-red-500/60 hover:shadow-lg hover:shadow-red-500/10`}>
               <CardContent className="pt-6 text-left">
                 <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
                   <PackageX className="size-5 text-amber-300" />
