@@ -15,6 +15,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useMspAccess } from "@/hooks/use-msp-access";
+import { LockedFeatureCard } from "@/components/dashboard/LockedFeatureCard";
 
 export const Route = createFileRoute("/_authenticated/dashboard/payouts")({
   component: PayoutsPage,
@@ -22,6 +24,7 @@ export const Route = createFileRoute("/_authenticated/dashboard/payouts")({
 
 function PayoutsPage() {
   const { user } = useAuth();
+  const { hasPaid, isClient, loading: accessLoading } = useMspAccess();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [onboardingComplete, setOnboardingComplete] = useState(false);
