@@ -41,6 +41,13 @@ import {
   Archive,
   Film,
   MapPin,
+  Video,
+  Infinity as InfinityIcon,
+  BarChart3,
+  GraduationCap,
+  KeyRound,
+  Inbox,
+  ShieldCheck,
 } from "lucide-react";
 import heroHudBanner from "@/assets/hero-hud-showcase.png";
 import tmLogo from "@/assets/tm-logo-landscape.png";
