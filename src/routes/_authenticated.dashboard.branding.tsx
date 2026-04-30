@@ -226,6 +226,7 @@ function BrandingPage() {
       };
       setBranding(updated);
       setSavedSnapshot(updated);
+      savedSnapshotRef.current = updated;
       setLogoFile(null);
       setFaviconFile(null);
       setHeroFile(null);
