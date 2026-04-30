@@ -640,7 +640,7 @@ function Index() {
             </Card>
 
             <Card className={`border-red-500/20 ${cardBg} backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-red-500/60 hover:shadow-lg hover:shadow-red-500/10`}>
-              <CardContent className="pt-6">
+              <CardContent className="pt-6 text-left">
                 <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
                   <Clock className="size-5 text-amber-300" />
                 </div>
