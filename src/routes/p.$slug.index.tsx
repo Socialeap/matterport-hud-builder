@@ -227,6 +227,39 @@ function PortalPage() {
     );
   }
 
+  // Gate the public Studio behind paid status. The provider themselves and
+  // admins can still preview their own page (so the in-dashboard Studio
+  // Preview iframe and "Open in new tab" continue to work pre-purchase).
+  const viewerIsOwner =
+    !!viewer?.userId && viewer.userId === branding.provider_id;
+  const viewerIsAdmin = !!viewer?.isAdmin;
+  const canBypassPaywall = viewerIsOwner || viewerIsAdmin;
+
+  if (!providerActive && authChecked && !canBypassPaywall) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-6">
+        <div className="max-w-md text-center">
+          <h1 className="text-4xl font-bold text-foreground">Studio Coming Soon</h1>
+          <p className="mt-3 text-muted-foreground">
+            This Studio isn't published yet. Please check back soon, or contact the
+            owner directly if you were expecting access.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // While we're still resolving the viewer's session, render a neutral
+  // loading state instead of flashing either the gated message or the full
+  // page (which would leak content to non-owners for a few hundred ms).
+  if (!providerActive && !authChecked) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
   const accent = branding.accent_color || "#3B82F6";
   const isPro = branding.tier === "pro";
   const heroBgUrl =
