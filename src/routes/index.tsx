@@ -498,6 +498,7 @@ function Index() {
             <a href="#features" className="text-sm text-white/70 transition-colors hover:text-white">Features</a>
             <a href="#pricing" className="text-sm text-white/70 transition-colors hover:text-white">Pricing</a>
             <a href="#how-it-works" className="text-sm text-white/70 transition-colors hover:text-white">How It Works</a>
+            <Link to="/agents" className="text-sm text-white/70 transition-colors hover:text-white">For Agents →</Link>
 
             {/* Theme toggle */}
             <button
@@ -545,6 +546,7 @@ function Index() {
               <a href="#features" className="rounded-lg px-3 py-2 text-sm text-white/70 hover:bg-white/5 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Features</a>
               <a href="#pricing" className="rounded-lg px-3 py-2 text-sm text-white/70 hover:bg-white/5 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Pricing</a>
               <a href="#how-it-works" className="rounded-lg px-3 py-2 text-sm text-white/70 hover:bg-white/5 hover:text-white" onClick={() => setMobileMenuOpen(false)}>How It Works</a>
+              <Link to="/agents" className="rounded-lg px-3 py-2 text-sm text-white/70 hover:bg-white/5 hover:text-white" onClick={() => setMobileMenuOpen(false)}>For Agents →</Link>
               {isAuthenticated ? (
                 <Button size="sm" className="mt-2" onClick={() => navigate({ to: "/dashboard" })}>Dashboard</Button>
               ) : (
