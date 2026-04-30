@@ -10,6 +10,7 @@ interface StudioPreviewPanelProps {
   slug: string | null;
   tier: "starter" | "pro";
   customDomain: string | null;
+  hasPaid: boolean;
   hasUnsavedChanges: boolean;
   /** Bumped after a successful save to force the iframe to reload. */
   refreshKey: number;
@@ -25,6 +26,7 @@ export function StudioPreviewPanel({
   slug,
   tier,
   customDomain,
+  hasPaid,
   hasUnsavedChanges,
   refreshKey,
 }: StudioPreviewPanelProps) {
@@ -35,9 +37,11 @@ export function StudioPreviewPanel({
   const publicUrl = trimmedSlug
     ? buildStudioUrl(trimmedSlug, { tier, customDomain })
     : null;
-  // Always embed the same-origin route so it works in dev/prod regardless of
-  // custom-domain provisioning, and cookies/auth match the dashboard.
-  const embedUrl = trimmedSlug ? `/p/${trimmedSlug}` : null;
+  // Preview mode is intentionally a dashboard-only bypass. The plain public
+  // URL remains gated until the MSP activates a paid plan.
+  const previewUrl = trimmedSlug ? `/p/${trimmedSlug}?preview=studio` : null;
+  const embedUrl = previewUrl;
+  const externalUrl = hasPaid ? publicUrl : previewUrl;
 
   const innerWidth = DEVICE_WIDTHS[device];
   const innerStyle: React.CSSProperties = innerWidth
@@ -57,7 +61,7 @@ export function StudioPreviewPanel({
               See exactly what visitors will see at your Studio URL — even before publishing. Your URL only goes live to the public after you activate a plan.
             </CardDescription>
           </div>
-          {publicUrl && (
+          {externalUrl && (
             <div className="flex items-center gap-2">
               <Button
                 type="button"
@@ -70,9 +74,9 @@ export function StudioPreviewPanel({
                 Refresh
               </Button>
               <Button type="button" size="sm" variant="outline" asChild>
-                <a href={publicUrl} target="_blank" rel="noopener noreferrer">
+                <a href={externalUrl} target="_blank" rel="noopener noreferrer">
                   <ExternalLink className="size-3.5" />
-                  Open in new tab
+                  {hasPaid ? "Open live Studio" : "Open preview"}
                 </a>
               </Button>
             </div>

@@ -529,6 +529,7 @@ function BrandingPage() {
         slug={savedSnapshot.slug}
         tier={savedSnapshot.tier}
         customDomain={savedSnapshot.custom_domain}
+        hasPaid={hasPaid}
         hasUnsavedChanges={hasUnsavedChanges}
         refreshKey={previewVersion}
       />
