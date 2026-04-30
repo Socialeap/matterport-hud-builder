@@ -22,6 +22,8 @@ import { toast } from "sonner";
 
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
+import { useMspAccess } from "@/hooks/use-msp-access";
+import { LockedFeatureCard } from "@/components/dashboard/LockedFeatureCard";
 import {
   uploadVaultAsset,
   deleteVaultAssetFile,
@@ -174,7 +176,8 @@ const emptyForm: AssetFormState = {
 function VaultPage() {
   const { user } = useAuth();
   const location = useLocation();
-  
+  const { hasPaid, isClient, loading: accessLoading } = useMspAccess();
+
   const [assets, setAssets] = useState<VaultAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<VaultCategory>("spatial_audio");
@@ -404,6 +407,14 @@ function VaultPage() {
     return <Outlet />;
   }
 
+  if (!accessLoading && !hasPaid && !isClient) {
+    return (
+      <LockedFeatureCard
+        featureName="Production Vault"
+        description="Curate sound libraries, widgets, icons and more after you activate your Studio. Pro plan unlocks the full Vault."
+      />
+    );
+  }
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
