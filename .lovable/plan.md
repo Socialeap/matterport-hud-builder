@@ -1,72 +1,65 @@
-## Goal
+# Restructure "How It Works" Section
 
-Restructure the landing page Self-Serve Work Flow section into 3 thematic subgroups, and remove the now-redundant Visitor Experience section.
+## 1. Move section above Pricing
 
-## Changes (all in `src/routes/index.tsx`)
+In `src/routes/index.tsx`, cut the `{/* ---- How it works ---- */}` block (lines 859–900) and paste it directly **before** the `{/* ---- Pricing comparison ---- */}` block (currently line 740). The pricing section then immediately follows it.
 
-### 1. Replace flat `clientFeatures` array with 3 grouped arrays
+## 2. Update copy
 
-Replace the single `clientFeatures` array (lines ~141–226) with three named arrays (preserving existing icons + descriptions verbatim):
+Replace the four step objects with the new copy:
 
-**`presentationFeatures` — "Stunning Interactive Presentations"**
-1. Multi-Model Presentation Portal (`Layers`)
-2. 15+ Tour Behaviors (`Zap`)
-3. Matterport Media Sync & Cinema Mode (`Film`)
-4. Google-Powered Neighborhood Map (`MapPin`)
-5. Production Vault Add-Ons (`Archive`)
+1. **Claim Your Studio** — "Choose your tier and launch your branded dashboard in seconds."
+2. **Brand & Set Pricing** — "Upload your logo and connect your Stripe account. You define the profit margins for every presentation sold."
+3. **Invite Your Clients** — "Share your studio link. Clients and agents build, customize, and preview their tour presentations in real-time."
+4. **Automated Sales & Delivery** — "Clients pay via Stripe to unlock their downloads. Payments go directly to your Connect account, and the file is delivered instantly."
 
-**`salesFeatures` — "24/7 Smart Sales & Chat"**
-1. The AI Concierge (`Bot`)
-2. Teach Your AI in Minutes (`GraduationCap`)
-3. Unlimited AI Answers (`InfinityIcon`)
-4. Instant Lead Alerts (`MailCheck`)
-5. Host Live Guided Tours (`Video`)
+## 3. Layout: 4-column grid with connecting flow line
 
-**`ownershipFeatures` — "Privacy, Stats & Ownership"**
-1. Brand + SEO/GEO Sovereignty (`Globe`)
-2. Built-In Traffic Analytics (`BarChart3`)
-3. Secure, VIP Access Gates (`Lock`)
-4. Try Before You Buy Presentations (`Wand2`)
+Replace the vertical `space-y-8` list with a responsive grid:
 
-### 2. Update Self-Serve section JSX (lines ~719–743)
+- Mobile: single column (stacked)
+- `sm`: 2 columns
+- `lg`: 4 columns (horizontal flow)
 
-Keep the outer `<section>`, main `<h2>` ("Clients will Love your Studio's Self-Serve Work Flow"), and lead-in paragraph. Replace the single grid with three subgroup blocks:
+Widen the container from `max-w-3xl` to `max-w-6xl` to accommodate four cards.
 
-```tsx
-{[
-  { heading: "Stunning Interactive Presentations", items: presentationFeatures },
-  { heading: "24/7 Smart Sales & Chat", items: salesFeatures },
-  { heading: "Privacy, Stats & Ownership", items: ownershipFeatures },
-].map((group) => (
-  <div key={group.heading} className="mt-14 first:mt-12">
-    <h3 className="text-center text-xl font-semibold text-amber-300/90 sm:text-2xl">
-      {group.heading}
-    </h3>
-    <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-      {group.items.map((f) => (
-        <Card key={f.title} className={`${cardBg} backdrop-blur transition-all ...`}>
-          {/* identical card markup as today */}
-        </Card>
-      ))}
-    </div>
-  </div>
-))}
-```
+Each step becomes a Card-styled tile (matching existing `bg-white/5 backdrop-blur border border-white/10 rounded-xl` aesthetic) with the numbered circle centered at the top, title, and description below.
 
-Card markup, `cardBg`, hover treatment, icon tint — all unchanged.
+## 4. Dashed connector line (desktop only)
 
-### 3. Delete Visitor Experience section + dead code
+Render a horizontal dashed line behind the row of number circles, only visible at `lg`. Implementation:
 
-- Remove the entire `{/* ---- Visitor experience section ---- */}` block (lines ~745–769).
-- Remove the `visitorFeatures` array (lines ~228–247).
-- Remove unused icon imports: `KeyRound`, `Inbox`, `ShieldCheck` (only used by the deleted section — will verify with `rg` before removing).
+- Wrap the grid in a `relative` container.
+- Add an absolutely-positioned dashed line element: `absolute top-[*] left-[12.5%] right-[12.5%] h-px border-t border-dashed border-white/15 hidden lg:block` aligned vertically with the center of the number circles.
+- The line sits behind the cards (`-z-10` on the line, or higher z-index on circles via solid background to mask).
 
-### 4. Untouched
+## 5. Progressive hover-glow effect
 
-- All other arrays (`whyFeatures`, `starterFeatures`, `proFeatures`), pricing, hero, problem, footer.
-- Section background tints (`sectionTint`), borders, typography, color tokens.
-- All card styling and hover behavior.
+Track `hoveredStep` state (0 = none, 1–4) using `useState<number>(0)`.
 
-## Result
+- On each card: `onMouseEnter={() => setHoveredStep(item.step)}` and `onMouseLeave={() => setHoveredStep(0)}`.
+- Each card receives conditional classes: when `item.step <= hoveredStep`, apply a glowing border + shadow (e.g. `border-amber-300/70 shadow-lg shadow-amber-300/20`); otherwise the default subtle border. Wrap with `transition-all duration-300`.
+- The number circle gets a brighter ring when active (`ring-2 ring-amber-300/60`).
+- The dashed connector segments between glowing cards also light up: split the single line into 3 segments (between cards 1–2, 2–3, 3–4), each rendered as its own absolutely-positioned div. Segment N glows (e.g. `border-amber-300/60`) when `hoveredStep > N`. Use `transition-colors duration-300`.
 
-One main section with the existing heading, three clearly labeled subgroups (5 / 5 / 4 cards) using the same card component, and the redundant visitor section removed.
+## 6. Card hover polish
+
+Beyond the progressive glow, add a base hover lift on every card: `hover:-translate-y-1 transition-transform duration-300` so individual interaction feels responsive.
+
+## 7. Highlight Step 4's "hands-off" nature
+
+Give the Step 4 card a subtle distinguishing accent to underscore automation:
+
+- Add a small badge above the title: `<Badge>Fully Automated</Badge>` (using existing shadcn Badge) with primary/amber styling.
+- Optionally swap a small icon (e.g. `Zap` from lucide-react, already likely imported elsewhere) into the number circle area, or keep "4" but add a faint pulsing ring (`animate-pulse` on a ring overlay) to suggest activity.
+
+## Technical notes
+
+- All state, hover handlers, and the connector line live inside the existing route component — no new files needed.
+- Use existing Tailwind theme tokens (`amber-300`, `white/10`, `white/60`) for visual consistency with the rest of the page.
+- The 4 step objects move from inline array to a `const steps = [...]` declared just above the JSX for readability.
+- No new dependencies required.
+
+## Files changed
+
+- `src/routes/index.tsx` (single file edit)
