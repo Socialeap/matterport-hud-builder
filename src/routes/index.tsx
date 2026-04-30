@@ -723,7 +723,7 @@ function Index() {
             Clients will Love your Studio's  Self-Serve Work Flow
           </h2>
           <p className={`mx-auto mt-3 max-w-2xl text-center text-white/60`}>
-            Hand your clients a self closing tool — not a service ticket. Your Studio makes 3D tour Presentations easily configurable and finalizes them into a permanent self-contained files.
+            Hand clients a self-serve studio — not a service ticket. They configure, brand, and walk away with a permanent, self-contained presentation file.
           </p>
 
           <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
