@@ -324,6 +324,11 @@ function PortalPage() {
       </div>
 
       <div className="relative z-10">
+        {!providerActive && canBypassPaywall && (
+          <div className="border-b border-amber-500/40 bg-amber-500/15 px-4 py-2 text-center text-xs font-medium text-amber-900 dark:text-amber-200">
+            Preview mode — your Studio isn't published yet. Activate a plan to make this URL public.
+          </div>
+        )}
         {/* Sticky glassmorphism header */}
         <PortalHeader
           branding={branding}
