@@ -856,49 +856,6 @@ function Index() {
         </div>
       </section>
 
-      {/* ---- How it works ---- */}
-      <section id="how-it-works" className="relative z-10 px-4 py-16 sm:py-24">
-        <div className="mx-auto max-w-3xl">
-          <h2 className={`text-center text-2xl font-bold tracking-tight text-white sm:text-3xl`}>
-            How It Works
-          </h2>
-          <div className="mt-12 space-y-8">
-            {[
-              {
-                step: "1",
-                title: "Choose Your Studio Tier",
-                desc: "Create your account and pick Starter or Pro. One-time payment, lifetime access.",
-              },
-              {
-                step: "2",
-                title: "Configure Your Brand & Pricing",
-                desc: "Upload your logo, set accent colors, and customize your Presentation Portal's header. Set a Studio URL slug and (optional) pricing for your client-facing page.",
-              },
-              {
-                step: "3",
-                title: "Share Your Studio Link",
-                desc: "Send agents and property managers to your branded studio. They add Matterport models, configure tour behaviors, and preview in real-time.",
-              },
-              {
-                step: "4",
-                title: "Fulfill & Deliver",
-                desc: "When a client confirms, you receive a notification. Mark as paid, generate the self-contained HTML file, and release it to your client.",
-              },
-            ].map((item) => (
-              <div key={item.step} className="flex gap-4">
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
-                  {item.step}
-                </div>
-                <div>
-                  <h3 className={`font-semibold text-white`}>{item.title}</h3>
-                  <p className={`mt-1 text-sm text-white/60`}>{item.desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* ---- Footer ---- */}
       <footer className={`relative z-10 border-t ${borderFooter} ${footerBg} backdrop-blur-lg px-4 py-10 transition-colors duration-500`}>
         <div className="mx-auto max-w-6xl">
