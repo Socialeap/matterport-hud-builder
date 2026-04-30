@@ -95,7 +95,7 @@ function BrandingPage() {
       .maybeSingle();
 
     if (data) {
-      setBranding({
+      const next: BrandingData = {
         brand_name: data.brand_name,
         accent_color: data.accent_color,
         hud_bg_color: data.hud_bg_color,
@@ -112,7 +112,9 @@ function BrandingPage() {
         additional_model_fee_cents: data.additional_model_fee_cents,
         hero_bg_url: (data as any).hero_bg_url ?? null,
         hero_bg_opacity: (data as any).hero_bg_opacity ?? 0.45,
-      });
+      };
+      setBranding(next);
+      setSavedSnapshot(next);
     }
     setLoading(false);
   }, [user]);
@@ -199,15 +201,18 @@ function BrandingPage() {
     if (error) {
       toast.error("Failed to save branding settings");
     } else {
-      setBranding((prev) => ({
-        ...prev,
+      const updated: BrandingData = {
+        ...branding,
         logo_url: logoUrl,
         favicon_url: faviconUrl,
         hero_bg_url: heroUrl,
-      }));
+      };
+      setBranding(updated);
+      setSavedSnapshot(updated);
       setLogoFile(null);
       setFaviconFile(null);
       setHeroFile(null);
+      setPreviewVersion((n) => n + 1);
       toast.success("Branding settings saved");
     }
   };
