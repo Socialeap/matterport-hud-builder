@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useMspAccess } from "@/hooks/use-msp-access";
 
 type NavRoute =
   | "/dashboard"
@@ -73,6 +74,7 @@ const allNavItems: readonly NavItem[] = [
 export function DashboardSidebar() {
   const { user, roles, signOut } = useAuth();
   const location = useLocation();
+  const { hasPaid } = useMspAccess();
   const [tier, setTier] = useState<"starter" | "pro" | null>(null);
 
   const isClient = roles.includes("client");
@@ -125,8 +127,16 @@ export function DashboardSidebar() {
                       ? "My Orders"
                       : item.label;
 
-                  // Lock Vault for Starter MSPs
-                  const isLocked = item.requiresPro && !isPro && !isClient;
+                  // Lock conditions:
+                  // - Vault stays Pro-only for paid MSPs (existing rule).
+                  // - Special Components (Vault/Payouts/Clients) lock for any
+                  //   unpaid MSP until purchase.
+                  const lockedForPro = item.requiresPro && !isPro && !isClient;
+                  const lockedForUnpaid = item.requiresPaid && !hasPaid && !isClient;
+                  const isLocked = lockedForPro || lockedForUnpaid;
+                  const lockTooltip = lockedForUnpaid
+                    ? `Purchase a plan to unlock ${item.label}`
+                    : "Upgrade to Pro to unlock the Production Vault";
 
                   if (isLocked) {
                     return (
@@ -144,7 +154,7 @@ export function DashboardSidebar() {
                             </SidebarMenuButton>
                           </TooltipTrigger>
                           <TooltipContent side="right">
-                            Upgrade to Pro to unlock the Production Vault
+                            {lockTooltip}
                           </TooltipContent>
                         </Tooltip>
                       </SidebarMenuItem>
