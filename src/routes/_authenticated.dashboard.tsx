@@ -1,11 +1,12 @@
-import { createFileRoute, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { DashboardSidebar } from "@/components/dashboard/DashboardSidebar";
 import { useAuth } from "@/hooks/use-auth";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertTriangle, LogOut, User as UserIcon } from "lucide-react";
+import { AlertTriangle, LogOut, Sparkles, User as UserIcon, X } from "lucide-react";
+import { MspAccessProvider, useMspAccess } from "@/hooks/use-msp-access";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
