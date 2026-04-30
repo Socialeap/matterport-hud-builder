@@ -423,6 +423,7 @@ function Index() {
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isDark, setIsDark] = useState(true);
+  const [hoveredStep, setHoveredStep] = useState(0);
 
   /* No loading gate — all static content renders on the server for SEO.
      Auth-dependent buttons simply hide during the brief loading window. */
@@ -737,7 +738,100 @@ function Index() {
         </div>
       </section>
 
+      {/* ---- How it works ---- */}
+      <section id="how-it-works" className="relative z-10 px-4 py-16 sm:py-24">
+        <div className="mx-auto max-w-6xl">
+          <h2 className="text-center text-2xl font-bold tracking-tight text-white sm:text-3xl">
+            How It Works
+          </h2>
+          <p className="mx-auto mt-3 max-w-xl text-center text-white/60">
+            From signup to automated payouts in four steps.
+          </p>
+
+          {(() => {
+            const steps = [
+              {
+                step: 1,
+                title: "Claim Your Studio",
+                desc: "Choose your tier and launch your branded dashboard in seconds.",
+              },
+              {
+                step: 2,
+                title: "Brand & Set Pricing",
+                desc: "Upload your logo and connect your Stripe account. You define the profit margins for every presentation sold.",
+              },
+              {
+                step: 3,
+                title: "Invite Your Clients",
+                desc: "Share your studio link. Clients and agents build, customize, and preview their tour presentations in real-time.",
+              },
+              {
+                step: 4,
+                title: "Automated Sales & Delivery",
+                desc: "Clients pay via Stripe to unlock their downloads. Payments go directly to your Connect account, and the file is delivered instantly.",
+                automated: true,
+              },
+            ];
+            return (
+              <div className="relative mt-14">
+                {/* Dashed connector segments (desktop only) — positioned behind the number circles */}
+                <div className="pointer-events-none absolute inset-x-0 top-[92px] hidden lg:flex justify-between px-[12.5%]">
+                  {[1, 2, 3].map((i) => (
+                    <div
+                      key={i}
+                      style={{ width: "calc((100% - 0px) / 3)" }}
+                      className={`mx-2 border-t border-dashed transition-colors duration-300 ${
+                        hoveredStep > i ? "border-amber-300/70" : "border-white/15"
+                      }`}
+                    />
+                  ))}
+                </div>
+
+                <div className="relative grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+                  {steps.map((item) => {
+                    const isActive = hoveredStep >= item.step;
+                    return (
+                      <div
+                        key={item.step}
+                        onMouseEnter={() => setHoveredStep(item.step)}
+                        onMouseLeave={() => setHoveredStep(0)}
+                        className={`group relative flex flex-col items-center rounded-xl border bg-white/5 p-6 text-center backdrop-blur transition-all duration-300 hover:-translate-y-1 ${
+                          isActive
+                            ? "border-amber-300/70 shadow-lg shadow-amber-300/20"
+                            : "border-white/10"
+                        }`}
+                      >
+                        <div
+                          className={`relative z-10 flex size-14 items-center justify-center rounded-full bg-primary text-lg font-bold text-primary-foreground transition-all duration-300 ${
+                            isActive ? "ring-4 ring-amber-300/40" : ""
+                          }`}
+                        >
+                          {item.automated ? <Zap className="size-6" /> : item.step}
+                          {item.automated && (
+                            <span className="pointer-events-none absolute inset-0 rounded-full ring-2 ring-amber-300/40 animate-pulse" />
+                          )}
+                        </div>
+                        {item.automated && (
+                          <Badge className="mt-3 bg-amber-300/20 text-amber-200 hover:bg-amber-300/20">
+                            Fully Automated
+                          </Badge>
+                        )}
+                        <h3 className="mt-4 font-semibold text-white">
+                          <span className="text-amber-300/80">Step {item.step}:</span> {item.title}
+                        </h3>
+                        <p className="mt-2 text-sm text-white/60">{item.desc}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      </section>
+
       {/* ---- Pricing comparison ---- */}
+
       <section id="pricing" className="relative z-10 px-4 py-16 sm:py-24">
         <div className="mx-auto max-w-4xl">
           <h2 className={`text-center text-2xl font-bold tracking-tight text-white sm:text-3xl`}>
@@ -853,49 +947,6 @@ function Index() {
           <p className={`mx-auto mt-4 max-w-2xl text-center text-xs text-white/50`}>
             <strong>Activate a test tier instantly</strong> — no Stripe purchase required. Explore the full dashboard, branding settings, client portal, and orders workflow. Demo purchases are recorded in sandbox mode. You can switch Demo tiers any time by returning here.
           </p>
-        </div>
-      </section>
-
-      {/* ---- How it works ---- */}
-      <section id="how-it-works" className="relative z-10 px-4 py-16 sm:py-24">
-        <div className="mx-auto max-w-3xl">
-          <h2 className={`text-center text-2xl font-bold tracking-tight text-white sm:text-3xl`}>
-            How It Works
-          </h2>
-          <div className="mt-12 space-y-8">
-            {[
-              {
-                step: "1",
-                title: "Choose Your Studio Tier",
-                desc: "Create your account and pick Starter or Pro. One-time payment, lifetime access.",
-              },
-              {
-                step: "2",
-                title: "Configure Your Brand & Pricing",
-                desc: "Upload your logo, set accent colors, and customize your Presentation Portal's header. Set a Studio URL slug and (optional) pricing for your client-facing page.",
-              },
-              {
-                step: "3",
-                title: "Share Your Studio Link",
-                desc: "Send agents and property managers to your branded studio. They add Matterport models, configure tour behaviors, and preview in real-time.",
-              },
-              {
-                step: "4",
-                title: "Fulfill & Deliver",
-                desc: "When a client confirms, you receive a notification. Mark as paid, generate the self-contained HTML file, and release it to your client.",
-              },
-            ].map((item) => (
-              <div key={item.step} className="flex gap-4">
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
-                  {item.step}
-                </div>
-                <div>
-                  <h3 className={`font-semibold text-white`}>{item.title}</h3>
-                  <p className={`mt-1 text-sm text-white/60`}>{item.desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
         </div>
       </section>
 
