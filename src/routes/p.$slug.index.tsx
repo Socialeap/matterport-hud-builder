@@ -29,10 +29,10 @@ const fetchBrandingBySlug = createServerFn({ method: "GET" })
       .maybeSingle();
 
     if (error || !branding) {
-      return { branding: null, demoPublished: false, lusActive: false, vaultAssetCount: 0 };
+      return { branding: null, demoPublished: false, lusActive: false, vaultAssetCount: 0, providerActive: false };
     }
 
-    const [demoCheck, licenseRes, vaultRes] = await Promise.all([
+    const [demoCheck, licenseRes, vaultRes, paidRes] = await Promise.all([
       checkDemoPublished({ data: { providerId: branding.provider_id } }),
       supabase.rpc("get_license_info", { user_uuid: branding.provider_id }),
       supabase
@@ -40,6 +40,7 @@ const fetchBrandingBySlug = createServerFn({ method: "GET" })
         .select("id", { count: "exact", head: true })
         .eq("provider_id", branding.provider_id)
         .eq("is_active", true),
+      supabase.rpc("provider_has_paid_access", { _provider_id: branding.provider_id }),
     ]);
 
     let lusActive = false;
@@ -50,11 +51,14 @@ const fetchBrandingBySlug = createServerFn({ method: "GET" })
       }
     }
 
+    const providerActive = paidRes.data === true;
+
     return {
       branding,
       demoPublished: demoCheck.published,
       lusActive,
       vaultAssetCount: vaultRes.count ?? 0,
+      providerActive,
     };
   });
 
@@ -92,12 +96,14 @@ export const Route = createFileRoute("/p/$slug/")({
 });
 
 function PortalPage() {
-  const { branding, demoPublished, lusActive, vaultAssetCount } = Route.useLoaderData();
+  const { branding, demoPublished, lusActive, vaultAssetCount, providerActive } = Route.useLoaderData();
   const { slug } = Route.useParams();
   const [viewer, setViewer] = useState<{
     avatarUrl: string | null;
     displayName: string | null;
     email: string | null;
+    userId: string | null;
+    isAdmin: boolean;
   } | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [signupOpen, setSignupOpen] = useState(false);
@@ -113,12 +119,20 @@ function PortalPage() {
         setAuthChecked(true);
         return;
       }
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("avatar_url, display_name")
-        .eq("user_id", session.user.id)
-        .maybeSingle();
+      const [profileRes, rolesRes] = await Promise.all([
+        supabase
+          .from("profiles")
+          .select("avatar_url, display_name")
+          .eq("user_id", session.user.id)
+          .maybeSingle(),
+        supabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", session.user.id),
+      ]);
       if (cancelled) return;
+      const profile = profileRes.data;
+      const isAdmin = (rolesRes.data ?? []).some((r) => r.role === "admin");
       setViewer({
         avatarUrl: profile?.avatar_url ?? (session.user.user_metadata?.avatar_url as string | null) ?? null,
         displayName:
@@ -126,6 +140,8 @@ function PortalPage() {
           (session.user.user_metadata?.full_name as string | null) ??
           null,
         email: session.user.email ?? null,
+        userId: session.user.id,
+        isAdmin,
       });
       setAuthChecked(true);
     };
@@ -187,6 +203,39 @@ function PortalPage() {
             This provider's Studio does not exist or hasn't been configured yet.
           </p>
         </div>
+      </div>
+    );
+  }
+
+  // Gate the public Studio behind paid status. The provider themselves and
+  // admins can still preview their own page (so the in-dashboard Studio
+  // Preview iframe and "Open in new tab" continue to work pre-purchase).
+  const viewerIsOwner =
+    !!viewer?.userId && viewer.userId === branding.provider_id;
+  const viewerIsAdmin = !!viewer?.isAdmin;
+  const canBypassPaywall = viewerIsOwner || viewerIsAdmin;
+
+  if (!providerActive && authChecked && !canBypassPaywall) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-6">
+        <div className="max-w-md text-center">
+          <h1 className="text-4xl font-bold text-foreground">Studio Coming Soon</h1>
+          <p className="mt-3 text-muted-foreground">
+            This Studio isn't published yet. Please check back soon, or contact the
+            owner directly if you were expecting access.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // While we're still resolving the viewer's session, render a neutral
+  // loading state instead of flashing either the gated message or the full
+  // page (which would leak content to non-owners for a few hundred ms).
+  if (!providerActive && !authChecked) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
       </div>
     );
   }
@@ -255,6 +304,11 @@ function PortalPage() {
       </div>
 
       <div className="relative z-10">
+        {!providerActive && canBypassPaywall && (
+          <div className="border-b border-amber-500/40 bg-amber-500/15 px-4 py-2 text-center text-xs font-medium text-amber-900 dark:text-amber-200">
+            Preview mode — your Studio isn't published yet. Activate a plan to make this URL public.
+          </div>
+        )}
         {/* Sticky glassmorphism header */}
         <PortalHeader
           branding={branding}

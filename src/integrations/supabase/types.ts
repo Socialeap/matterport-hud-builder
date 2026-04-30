@@ -978,6 +978,10 @@ export type Database = {
         }
         Returns: number
       }
+      provider_has_paid_access: {
+        Args: { _provider_id: string }
+        Returns: boolean
+      }
       read_ask_quota_counter: {
         Args: { p_property_uuid: string; p_saved_model_id: string }
         Returns: {
