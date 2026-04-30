@@ -123,8 +123,15 @@ function BrandingPage() {
         hero_bg_url: (data as any).hero_bg_url ?? null,
         hero_bg_opacity: (data as any).hero_bg_opacity ?? 0.45,
       };
-      setBranding(next);
-      setSavedSnapshot(next);
+      // Only update state if the fetched payload actually differs from
+      // what we already have — prevents needless re-renders that would
+      // remount the preview iframe in a loop when auth/session events
+      // re-fire this effect.
+      if (JSON.stringify(next) !== JSON.stringify(savedSnapshotRef.current)) {
+        savedSnapshotRef.current = next;
+        setBranding(next);
+        setSavedSnapshot(next);
+      }
     }
     setLoading(false);
   }, [user]);
