@@ -193,6 +193,57 @@ const clientFeatures = [
     description:
       "Each listed property gets an embedded interactive map of its surroundings — schools, dining, transit — accessible directly from the Portal without leaving the tour.",
   },
+  {
+    icon: Video,
+    title: "Host Live Guided Tours",
+    description:
+      "Don't just send a link — walk them through it. Hop into a live, two-way audio session right inside the 3D presentation. You can even \u201Cteleport\u201D your client so they see exactly what you're looking at, all in real time.",
+  },
+  {
+    icon: InfinityIcon,
+    title: "Unlimited AI Answers",
+    description:
+      "We give you 20 free AI answers per property. Want more? Plug in your own Google Gemini API key to remove the cap and let your AI Concierge run 24/7 on your own terms.",
+  },
+  {
+    icon: BarChart3,
+    title: "Built-In Traffic Analytics",
+    description:
+      "Know exactly how many eyeballs are on your properties. Check your built-in dashboard for weekly and monthly visit stats, or easily plug in your Google Analytics ID for deeper audience tracking.",
+  },
+  {
+    icon: Lock,
+    title: "Secure, VIP Access Gates",
+    description:
+      "Have an off-market or exclusive listing? Lock your presentation behind a secure password. Visitors can't view the tour, documents, or your contact info until they enter the correct code.",
+  },
+  {
+    icon: GraduationCap,
+    title: "Teach Your AI in Minutes",
+    description:
+      "You don't need to be a prompt engineer. Our simple 4-step training wizard lets you upload property docs and instantly teaches your AI Concierge exactly how to answer questions about the home.",
+  },
+];
+
+const visitorFeatures = [
+  {
+    icon: KeyRound,
+    title: "Seamless Live-Tour Access",
+    description:
+      "Joining a live guided tour is as easy as typing a 4-digit PIN. No software to download, no accounts to create — visitors just enter the code and instantly connect with their agent.",
+  },
+  {
+    icon: Inbox,
+    title: "Never Miss a Lead",
+    description:
+      "If your property gets a massive spike in traffic and exhausts your AI's free answer limit, the chat gracefully switches to a standard contact form. Your visitors are always taken care of.",
+  },
+  {
+    icon: ShieldCheck,
+    title: "VIP Privacy",
+    description:
+      "For password-protected properties, the entire experience stays fully encrypted in the browser until the correct password is provided, keeping sensitive listing details safe from prying eyes.",
+  },
 ];
 
 
