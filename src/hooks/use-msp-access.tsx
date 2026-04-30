@@ -44,31 +44,16 @@ export function MspAccessProvider({ children }: { children: ReactNode }) {
     setLoading(true);
 
     (async () => {
-      const [licenseRes, purchaseRes, grantRes] = await Promise.all([
-        supabase.from("licenses").select("id").eq("user_id", user.id).limit(1),
-        supabase
-          .from("purchases")
-          .select("id")
-          .eq("user_id", user.id)
-          .eq("status", "completed")
-          .limit(1),
-        supabase
-          .from("admin_grants")
-          .select("id")
-          .eq("provider_id", user.id)
-          .is("revoked_at", null)
-          .gt("expires_at", new Date().toISOString())
-          .limit(1),
-      ]);
+      // Use the same SECURITY DEFINER RPC the public Studio route uses, so
+      // the dashboard's "hasPaid" flag never disagrees with the public
+      // paywall (which would let an unpaid MSP think they have a live URL).
+      const { data, error } = await supabase.rpc("provider_has_paid_access", {
+        _provider_id: user.id,
+      });
 
       if (cancelled) return;
 
-      const paid =
-        (licenseRes.data?.length ?? 0) > 0 ||
-        (purchaseRes.data?.length ?? 0) > 0 ||
-        (grantRes.data?.length ?? 0) > 0;
-
-      setHasPaid(paid);
+      setHasPaid(error ? false : data === true);
       setLoading(false);
     })();
 

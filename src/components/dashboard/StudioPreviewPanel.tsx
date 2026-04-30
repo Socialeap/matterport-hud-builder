@@ -37,10 +37,12 @@ export function StudioPreviewPanel({
   const publicUrl = trimmedSlug
     ? buildStudioUrl(trimmedSlug, { tier, customDomain })
     : null;
-  // Preview mode is intentionally a dashboard-only bypass. The plain public
-  // URL remains gated until the MSP activates a paid plan.
+  // The dashboard iframe uses an isolated, no-auth visual preview mode so it
+  // does NOT share the parent page's auth-token storage lock (which caused
+  // a re-render loop). The owner-only top-level "Open preview" link still
+  // uses ?preview=studio, which performs an owner/admin check in a fresh tab.
+  const embedUrl = trimmedSlug ? `/p/${trimmedSlug}?embed=studio-preview` : null;
   const previewUrl = trimmedSlug ? `/p/${trimmedSlug}?preview=studio` : null;
-  const embedUrl = previewUrl;
   const externalUrl = hasPaid ? publicUrl : previewUrl;
 
   const innerWidth = DEVICE_WIDTHS[device];
@@ -122,7 +124,7 @@ export function StudioPreviewPanel({
                   src={embedUrl}
                   title="Studio preview"
                   className="block h-[700px] w-full bg-background"
-                  sandbox="allow-scripts allow-popups allow-forms allow-same-origin"
+                  sandbox="allow-scripts allow-popups allow-forms"
                   loading="lazy"
                 />
               </div>
