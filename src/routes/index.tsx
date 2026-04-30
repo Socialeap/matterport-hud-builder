@@ -45,9 +45,6 @@ import {
   Infinity as InfinityIcon,
   BarChart3,
   GraduationCap,
-  KeyRound,
-  Inbox,
-  ShieldCheck,
 } from "lucide-react";
 import heroHudBanner from "@/assets/hero-hud-showcase.png";
 import tmLogo from "@/assets/tm-logo-landscape.png";
@@ -138,13 +135,7 @@ const features = [
   },
 ];
 
-const clientFeatures = [
-  {
-    icon: Wand2,
-    title: "Try Before You Buy Presentations",
-    description:
-      "Clients can design, configure, and tweak their presentations for their preferred look and behavior. Once satisfied, they make a payment to unlock the download.",
-  },
+const presentationFeatures = [
   {
     icon: Layers,
     title: "Multi-Model Presentation Portal",
@@ -156,30 +147,6 @@ const clientFeatures = [
     title: "15+ Tour Behaviors",
     description:
       "Clients can easily configure each model, setting MLS mode, auto-play, scroll-wheel lock, guided tours, language forcing, custom transitions, and more.",
-  },
-  {
-    icon: Bot,
-    title: "The AI Concierge",
-    description:
-      "A 24/7 Q&A assistant trained on your client's property data — answers viewer questions while proactively capturing emails from high-intent visitors.",
-  },
-  {
-    icon: MailCheck,
-    title: "Instant Lead Alerts",
-    description:
-      "No dashboards to babysit. High-intent leads land directly in your client's inbox the moment a viewer raises their hand.",
-  },
-  {
-    icon: Globe,
-    title: "Brand + SEO/GEO Sovereignty",
-    description:
-      "Clients brand, download, and own the self-contained presentation file, optimized for human & AI search. Host on a variety of platforms,  including cost-free like Netlify or Github.",
-  },
-  {
-    icon: Archive,
-    title: "Production Vault Add-Ons",
-    description:
-      "Pro studios curate a proprietary library of sound, Portal filters, widgets, custom icons, and property docs — surfaced inside every client's builder as plug-and-play upgrades.",
   },
   {
     icon: Film,
@@ -194,16 +161,52 @@ const clientFeatures = [
       "Each listed property gets an embedded interactive map of its surroundings — schools, dining, transit — accessible directly from the Portal without leaving the tour.",
   },
   {
-    icon: Video,
-    title: "Host Live Guided Tours",
+    icon: Archive,
+    title: "Production Vault Add-Ons",
     description:
-      "Don't just send a link — walk them through it. Hop into a live, two-way audio session right inside the 3D presentation. You can even \u201Cteleport\u201D your client so they see exactly what you're looking at, all in real time.",
+      "Pro studios curate a proprietary library of sound, Portal filters, widgets, custom icons, and property docs — surfaced inside every client's builder as plug-and-play upgrades.",
+  },
+];
+
+const salesFeatures = [
+  {
+    icon: Bot,
+    title: "The AI Concierge",
+    description:
+      "A 24/7 Q&A assistant trained on your client's property data — answers viewer questions while proactively capturing emails from high-intent visitors.",
+  },
+  {
+    icon: GraduationCap,
+    title: "Teach Your AI in Minutes",
+    description:
+      "You don't need to be a prompt engineer. Our simple 4-step training wizard lets you upload property docs and instantly teaches your AI Concierge exactly how to answer questions about the home.",
   },
   {
     icon: InfinityIcon,
     title: "Unlimited AI Answers",
     description:
       "We give you 20 free AI answers per property. Want more? Plug in your own Google Gemini API key to remove the cap and let your AI Concierge run 24/7 on your own terms.",
+  },
+  {
+    icon: MailCheck,
+    title: "Instant Lead Alerts",
+    description:
+      "No dashboards to babysit. High-intent leads land directly in your client's inbox the moment a viewer raises their hand.",
+  },
+  {
+    icon: Video,
+    title: "Host Live Guided Tours",
+    description:
+      "Don't just send a link — walk them through it. Hop into a live, two-way audio session right inside the 3D presentation. You can even \u201Cteleport\u201D your client so they see exactly what you're looking at, all in real time.",
+  },
+];
+
+const ownershipFeatures = [
+  {
+    icon: Globe,
+    title: "Brand + SEO/GEO Sovereignty",
+    description:
+      "Clients brand, download, and own the self-contained presentation file, optimized for human & AI search. Host on a variety of platforms,  including cost-free like Netlify or Github.",
   },
   {
     icon: BarChart3,
@@ -218,32 +221,17 @@ const clientFeatures = [
       "Have an off-market or exclusive listing? Lock your presentation behind a secure password. Visitors can't view the tour, documents, or your contact info until they enter the correct code.",
   },
   {
-    icon: GraduationCap,
-    title: "Teach Your AI in Minutes",
+    icon: Wand2,
+    title: "Try Before You Buy Presentations",
     description:
-      "You don't need to be a prompt engineer. Our simple 4-step training wizard lets you upload property docs and instantly teaches your AI Concierge exactly how to answer questions about the home.",
+      "Clients can design, configure, and tweak their presentations for their preferred look and behavior. Once satisfied, they make a payment to unlock the download.",
   },
 ];
 
-const visitorFeatures = [
-  {
-    icon: KeyRound,
-    title: "Seamless Live-Tour Access",
-    description:
-      "Joining a live guided tour is as easy as typing a 4-digit PIN. No software to download, no accounts to create — visitors just enter the code and instantly connect with their agent.",
-  },
-  {
-    icon: Inbox,
-    title: "Never Miss a Lead",
-    description:
-      "If your property gets a massive spike in traffic and exhausts your AI's free answer limit, the chat gracefully switches to a standard contact form. Your visitors are always taken care of.",
-  },
-  {
-    icon: ShieldCheck,
-    title: "VIP Privacy",
-    description:
-      "For password-protected properties, the entire experience stays fully encrypted in the browser until the correct password is provided, keeping sensitive listing details safe from prying eyes.",
-  },
+const featureGroups = [
+  { heading: "Stunning Interactive Presentations", items: presentationFeatures },
+  { heading: "24/7 Smart Sales & Chat", items: salesFeatures },
+  { heading: "Privacy, Stats & Ownership", items: ownershipFeatures },
 ];
 
 
@@ -726,45 +714,26 @@ function Index() {
             Hand clients a self-serve features — not a service ticket. They configure, brand, and walk away with a permanent, self-contained presentation file.
           </p>
 
-          <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {clientFeatures.map((f) => (
-              <Card key={f.title} className={`${cardBg} backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-amber-300/60 hover:shadow-lg hover:shadow-amber-300/10`}>
-                <CardContent className="pt-6">
-                  <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
-                    <f.icon className="size-5 text-amber-300" />
-                  </div>
-                  <h3 className={`mt-4 font-semibold text-white`}>{f.title}</h3>
-                  <p className={`mt-1 text-sm text-white/60`}>{f.description}</p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ---- Visitor experience section ---- */}
-      <section className={`relative z-10 border-t ${borderLight} px-4 py-16 sm:py-24`} style={{ backgroundColor: sectionTint2 }}>
-        <div className="mx-auto max-w-5xl">
-          <h2 className={`text-center text-2xl font-bold tracking-tight text-white sm:text-3xl`}>
-            What Visitors Get the Moment They Open the Tour
-          </h2>
-          <p className={`mx-auto mt-3 max-w-2xl text-center text-white/60`}>
-            Your presentations are built to convert — frictionless to enter, always-on for leads, and private when it matters.
-          </p>
-
-          <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {visitorFeatures.map((f) => (
-              <Card key={f.title} className={`${cardBg} backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-amber-300/60 hover:shadow-lg hover:shadow-amber-300/10`}>
-                <CardContent className="pt-6">
-                  <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
-                    <f.icon className="size-5 text-amber-300" />
-                  </div>
-                  <h3 className={`mt-4 font-semibold text-white`}>{f.title}</h3>
-                  <p className={`mt-1 text-sm text-white/60`}>{f.description}</p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          {featureGroups.map((group) => (
+            <div key={group.heading} className="mt-14 first:mt-12">
+              <h3 className="text-center text-xl font-semibold text-amber-300/90 sm:text-2xl">
+                {group.heading}
+              </h3>
+              <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {group.items.map((f) => (
+                  <Card key={f.title} className={`${cardBg} backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-amber-300/60 hover:shadow-lg hover:shadow-amber-300/10`}>
+                    <CardContent className="pt-6">
+                      <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
+                        <f.icon className="size-5 text-amber-300" />
+                      </div>
+                      <h3 className={`mt-4 font-semibold text-white`}>{f.title}</h3>
+                      <p className={`mt-1 text-sm text-white/60`}>{f.description}</p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       </section>
 
