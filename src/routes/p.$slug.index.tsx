@@ -116,12 +116,14 @@ export const Route = createFileRoute("/p/$slug/")({
 });
 
 function PortalPage() {
-  const { branding, demoPublished, lusActive, vaultAssetCount } = Route.useLoaderData();
+  const { branding, demoPublished, lusActive, vaultAssetCount, providerActive } = Route.useLoaderData();
   const { slug } = Route.useParams();
   const [viewer, setViewer] = useState<{
     avatarUrl: string | null;
     displayName: string | null;
     email: string | null;
+    userId: string | null;
+    isAdmin: boolean;
   } | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [signupOpen, setSignupOpen] = useState(false);
