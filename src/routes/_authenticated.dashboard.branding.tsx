@@ -17,6 +17,7 @@ import { getStripeEnvironment } from "@/lib/stripe";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { buildStudioUrl } from "@/lib/public-url";
 import { useMspAccess } from "@/hooks/use-msp-access";
+import { StudioPreviewPanel } from "@/components/dashboard/StudioPreviewPanel";
 
 export const Route = createFileRoute("/_authenticated/dashboard/branding")({
   component: BrandingPage,
@@ -69,6 +70,8 @@ function BrandingPage() {
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [faviconFile, setFaviconFile] = useState<File | null>(null);
   const [heroFile, setHeroFile] = useState<File | null>(null);
+  const [savedSnapshot, setSavedSnapshot] = useState<BrandingData>(defaultBranding);
+  const [previewVersion, setPreviewVersion] = useState(0);
 
   const isPro = branding.tier === "pro";
   const customDomainUnlocked = isPro && hasPaid;
