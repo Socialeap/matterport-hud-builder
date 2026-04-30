@@ -32,7 +32,7 @@ const fetchBrandingBySlug = createServerFn({ method: "GET" })
       return { branding: null, demoPublished: false, lusActive: false, vaultAssetCount: 0, providerActive: false };
     }
 
-    const [demoCheck, licenseRes, vaultRes, paidLicenseRes, paidPurchaseRes, grantRes] = await Promise.all([
+    const [demoCheck, licenseRes, vaultRes, paidRes] = await Promise.all([
       checkDemoPublished({ data: { providerId: branding.provider_id } }),
       supabase.rpc("get_license_info", { user_uuid: branding.provider_id }),
       supabase
@@ -40,24 +40,7 @@ const fetchBrandingBySlug = createServerFn({ method: "GET" })
         .select("id", { count: "exact", head: true })
         .eq("provider_id", branding.provider_id)
         .eq("is_active", true),
-      supabase
-        .from("licenses")
-        .select("id")
-        .eq("user_id", branding.provider_id)
-        .limit(1),
-      supabase
-        .from("purchases")
-        .select("id")
-        .eq("user_id", branding.provider_id)
-        .eq("status", "completed")
-        .limit(1),
-      supabase
-        .from("admin_grants")
-        .select("id")
-        .eq("provider_id", branding.provider_id)
-        .is("revoked_at", null)
-        .gt("expires_at", new Date().toISOString())
-        .limit(1),
+      supabase.rpc("provider_has_paid_access", { _provider_id: branding.provider_id }),
     ]);
 
     let lusActive = false;
@@ -68,10 +51,7 @@ const fetchBrandingBySlug = createServerFn({ method: "GET" })
       }
     }
 
-    const providerActive =
-      (paidLicenseRes.data?.length ?? 0) > 0 ||
-      (paidPurchaseRes.data?.length ?? 0) > 0 ||
-      (grantRes.data?.length ?? 0) > 0;
+    const providerActive = paidRes.data === true;
 
     return {
       branding,
