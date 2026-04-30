@@ -208,12 +208,19 @@ function PortalPage() {
   }
 
   // Gate the public Studio behind paid status. The provider themselves and
-  // admins can still preview their own page (so the in-dashboard Studio
-  // Preview iframe and "Open in new tab" continue to work pre-purchase).
+  // admins can still preview their own page, but ONLY when the URL carries
+  // the explicit `?preview=studio` flag (used by the in-dashboard preview).
+  // This prevents an unpaid owner from sharing their bare /p/<slug> URL
+  // publicly before activating a plan.
+  const previewParam =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("preview")
+      : null;
+  const isPreviewRequest = previewParam === "studio";
   const viewerIsOwner =
     !!viewer?.userId && viewer.userId === branding.provider_id;
   const viewerIsAdmin = !!viewer?.isAdmin;
-  const canBypassPaywall = viewerIsOwner || viewerIsAdmin;
+  const canBypassPaywall = isPreviewRequest && (viewerIsOwner || viewerIsAdmin);
 
   if (!providerActive && authChecked && !canBypassPaywall) {
     return (

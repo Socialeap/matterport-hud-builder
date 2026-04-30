@@ -122,7 +122,7 @@ export function StudioPreviewPanel({
                   src={embedUrl}
                   title="Studio preview"
                   className="block h-[700px] w-full bg-background"
-                  sandbox="allow-scripts allow-popups allow-forms"
+                  sandbox="allow-scripts allow-popups allow-forms allow-same-origin"
                   loading="lazy"
                 />
               </div>
