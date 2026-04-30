@@ -139,12 +139,20 @@ function PortalPage() {
         setAuthChecked(true);
         return;
       }
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("avatar_url, display_name")
-        .eq("user_id", session.user.id)
-        .maybeSingle();
+      const [profileRes, rolesRes] = await Promise.all([
+        supabase
+          .from("profiles")
+          .select("avatar_url, display_name")
+          .eq("user_id", session.user.id)
+          .maybeSingle(),
+        supabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", session.user.id),
+      ]);
       if (cancelled) return;
+      const profile = profileRes.data;
+      const isAdmin = (rolesRes.data ?? []).some((r) => r.role === "admin");
       setViewer({
         avatarUrl: profile?.avatar_url ?? (session.user.user_metadata?.avatar_url as string | null) ?? null,
         displayName:
@@ -152,6 +160,8 @@ function PortalPage() {
           (session.user.user_metadata?.full_name as string | null) ??
           null,
         email: session.user.email ?? null,
+        userId: session.user.id,
+        isAdmin,
       });
       setAuthChecked(true);
     };
