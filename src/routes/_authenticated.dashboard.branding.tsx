@@ -71,7 +71,17 @@ function BrandingPage() {
   const [faviconFile, setFaviconFile] = useState<File | null>(null);
   const [heroFile, setHeroFile] = useState<File | null>(null);
   const [savedSnapshot, setSavedSnapshot] = useState<BrandingData>(defaultBranding);
+  const savedSnapshotRef = useRef<BrandingData>(defaultBranding);
   const [previewVersion, setPreviewVersion] = useState(0);
+
+  const hasUnsavedChanges = useMemo(
+    () =>
+      JSON.stringify(branding) !== JSON.stringify(savedSnapshot) ||
+      !!logoFile ||
+      !!faviconFile ||
+      !!heroFile,
+    [branding, savedSnapshot, logoFile, faviconFile, heroFile],
+  );
 
   const isPro = branding.tier === "pro";
   const customDomainUnlocked = isPro && hasPaid;
