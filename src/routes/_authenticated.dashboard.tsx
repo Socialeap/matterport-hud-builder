@@ -39,40 +39,24 @@ interface ExpiryAlert {
 }
 
 function DashboardLayout() {
-  const { user, roles, signOut } = useAuth();
+  const { user, signOut } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const [tierChecked, setTierChecked] = useState(false);
-  const [hasTier, setHasTier] = useState(false);
+  const { loading: accessLoading, hasPaid, isClient } = useMspAccess();
   const [expiryAlert, setExpiryAlert] = useState<ExpiryAlert | null>(null);
+  const [trialBannerDismissed, setTrialBannerDismissed] = useState(false);
 
   const isUpgradePage = location.pathname === "/dashboard/upgrade";
-  const isClient = roles.includes("client");
+  const showTrialBanner = !accessLoading && !hasPaid && !isClient && !isUpgradePage && !trialBannerDismissed;
 
+  // Expiry-warning alert (admin grants nearing expiration). Independent
+  // of the trial gate — runs only for users who already have access.
   useEffect(() => {
-    if (!user) return;
+    if (!user || isClient) return;
 
-    // Clients skip the purchase gate — their provider owns the license
-    if (isClient) {
-      setHasTier(true);
-      setTierChecked(true);
-      return;
-    }
-
-    const checkAccess = async () => {
-      const [licenseRes, purchaseRes, grantRes, brandingRes] = await Promise.all([
-        supabase
-          .from("licenses")
-          .select("id")
-          .eq("user_id", user.id)
-          .limit(1),
-        supabase
-          .from("purchases")
-          .select("id")
-          .eq("user_id", user.id)
-          .eq("environment", "sandbox")
-          .eq("status", "completed")
-          .limit(1),
+    let cancelled = false;
+    (async () => {
+      const [grantRes, brandingRes] = await Promise.all([
         supabase
           .from("admin_grants")
           .select("tier, expires_at")
@@ -84,68 +68,62 @@ function DashboardLayout() {
           .maybeSingle(),
         supabase
           .from("branding_settings")
-          .select("slug, tier, brand_name")
+          .select("slug, brand_name")
           .eq("provider_id", user.id)
           .maybeSingle(),
       ]);
 
-      const hasAccess =
-        (licenseRes.data?.length ?? 0) > 0 ||
-        (purchaseRes.data?.length ?? 0) > 0;
-      setHasTier(hasAccess);
-      setTierChecked(true);
-      if (!hasAccess && !isUpgradePage) {
-        navigate({ to: "/dashboard/upgrade" });
-      }
+      if (cancelled) return;
 
-      // Expiry alert: active grant expiring within 14 days
       const grant = grantRes.data;
-      if (grant?.expires_at) {
-        const msLeft = new Date(grant.expires_at).getTime() - Date.now();
-        const daysLeft = Math.ceil(msLeft / (1000 * 60 * 60 * 24));
-        if (daysLeft <= 14 && daysLeft > 0) {
-          const slug = brandingRes.data?.slug ?? "";
-          const pricingUrl = slug
-            ? buildStudioUrl(slug) + "#pricing"
-            : window.location.origin + "#pricing";
-          const expiryDate = new Date(grant.expires_at).toLocaleDateString("en-US", {
-            year: "numeric",
-            month: "long",
-            day: "numeric",
-          });
-          setExpiryAlert({ daysLeft, expiryDate, pricingUrl });
+      if (!grant?.expires_at) return;
 
-          // Fire-and-forget: send warning email once per 7-day window
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session?.user.email) {
-            try {
-              const { shouldSend } = await checkGrantExpiryEmailNeeded({
-                data: { recipientEmail: session.user.email },
-              });
-              if (shouldSend) {
-                await sendTransactionalEmail({
-                  templateName: "grant-expiry-warning",
-                  recipientEmail: session.user.email,
-                  idempotencyKey: `grant-expiry-${user.id}-${grant.expires_at}`,
-                  templateData: {
-                    brandName: brandingRes.data?.brand_name ?? "Your Studio",
-                    daysLeft,
-                    expiryDate,
-                    pricingUrl,
-                  },
-                });
-              }
-            } catch {
-              // Non-critical: banner still shows even if email fails
-            }
+      const msLeft = new Date(grant.expires_at).getTime() - Date.now();
+      const daysLeft = Math.ceil(msLeft / (1000 * 60 * 60 * 24));
+      if (daysLeft > 14 || daysLeft <= 0) return;
+
+      const slug = brandingRes.data?.slug ?? "";
+      const pricingUrl = slug
+        ? buildStudioUrl(slug) + "#pricing"
+        : window.location.origin + "#pricing";
+      const expiryDate = new Date(grant.expires_at).toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+      setExpiryAlert({ daysLeft, expiryDate, pricingUrl });
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user.email) {
+        try {
+          const { shouldSend } = await checkGrantExpiryEmailNeeded({
+            data: { recipientEmail: session.user.email },
+          });
+          if (shouldSend) {
+            await sendTransactionalEmail({
+              templateName: "grant-expiry-warning",
+              recipientEmail: session.user.email,
+              idempotencyKey: `grant-expiry-${user.id}-${grant.expires_at}`,
+              templateData: {
+                brandName: brandingRes.data?.brand_name ?? "Your Studio",
+                daysLeft,
+                expiryDate,
+                pricingUrl,
+              },
+            });
           }
+        } catch {
+          // Non-critical: banner still shows even if email fails
         }
       }
-    };
-    checkAccess();
-  }, [user, isUpgradePage, navigate, isClient]);
+    })();
 
-  if (!tierChecked) {
+    return () => {
+      cancelled = true;
+    };
+  }, [user, isClient]);
+
+  if (accessLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
