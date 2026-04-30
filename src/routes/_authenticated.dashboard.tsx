@@ -179,6 +179,33 @@ function DashboardLayout() {
               </DropdownMenu>
             </div>
           </div>
+          {showTrialBanner && (
+            <div className="px-6 pt-4">
+              <Alert className="border-primary/40 bg-primary/5 text-foreground">
+                <Sparkles className="size-4 text-primary" />
+                <AlertTitle className="flex items-center justify-between gap-4 text-foreground">
+                  <span>You're in trial mode — explore and brand your Studio for free.</span>
+                  <button
+                    type="button"
+                    onClick={() => setTrialBannerDismissed(true)}
+                    className="text-muted-foreground hover:text-foreground"
+                    aria-label="Dismiss trial banner"
+                  >
+                    <X className="size-4" />
+                  </button>
+                </AlertTitle>
+                <AlertDescription className="text-muted-foreground">
+                  Purchase Starter or Pro to unlock Clients, Custom Domain, Payouts, Production Vault, and publishing your Studio.{" "}
+                  <Link
+                    to="/dashboard/upgrade"
+                    className="font-medium text-primary underline underline-offset-2"
+                  >
+                    Choose a plan →
+                  </Link>
+                </AlertDescription>
+              </Alert>
+            </div>
+          )}
           {expiryAlert && (
             <div className="px-6 pt-4">
               <Alert className="border-amber-400 bg-amber-50 text-amber-900">
