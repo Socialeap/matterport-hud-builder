@@ -114,11 +114,11 @@ export function StudioPreviewPanel({
             <div className="flex justify-center rounded-lg border border-border bg-muted/30 p-2">
               <div style={innerStyle} className="overflow-hidden rounded-md border border-border bg-background shadow-sm">
                 <iframe
-                  key={`${refreshKey}-${manualBump}-${device}`}
+                  key={`${refreshKey}-${manualBump}`}
                   src={embedUrl}
                   title="Studio preview"
                   className="block h-[700px] w-full bg-background"
-                  sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+                  sandbox="allow-scripts allow-popups allow-forms"
                   loading="lazy"
                 />
               </div>
