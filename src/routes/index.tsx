@@ -41,6 +41,13 @@ import {
   Archive,
   Film,
   MapPin,
+  Video,
+  Infinity as InfinityIcon,
+  BarChart3,
+  GraduationCap,
+  KeyRound,
+  Inbox,
+  ShieldCheck,
 } from "lucide-react";
 import heroHudBanner from "@/assets/hero-hud-showcase.png";
 import tmLogo from "@/assets/tm-logo-landscape.png";
@@ -185,6 +192,57 @@ const clientFeatures = [
     title: "Google-Powered Neighborhood Map",
     description:
       "Each listed property gets an embedded interactive map of its surroundings — schools, dining, transit — accessible directly from the Portal without leaving the tour.",
+  },
+  {
+    icon: Video,
+    title: "Host Live Guided Tours",
+    description:
+      "Don't just send a link — walk them through it. Hop into a live, two-way audio session right inside the 3D presentation. You can even \u201Cteleport\u201D your client so they see exactly what you're looking at, all in real time.",
+  },
+  {
+    icon: InfinityIcon,
+    title: "Unlimited AI Answers",
+    description:
+      "We give you 20 free AI answers per property. Want more? Plug in your own Google Gemini API key to remove the cap and let your AI Concierge run 24/7 on your own terms.",
+  },
+  {
+    icon: BarChart3,
+    title: "Built-In Traffic Analytics",
+    description:
+      "Know exactly how many eyeballs are on your properties. Check your built-in dashboard for weekly and monthly visit stats, or easily plug in your Google Analytics ID for deeper audience tracking.",
+  },
+  {
+    icon: Lock,
+    title: "Secure, VIP Access Gates",
+    description:
+      "Have an off-market or exclusive listing? Lock your presentation behind a secure password. Visitors can't view the tour, documents, or your contact info until they enter the correct code.",
+  },
+  {
+    icon: GraduationCap,
+    title: "Teach Your AI in Minutes",
+    description:
+      "You don't need to be a prompt engineer. Our simple 4-step training wizard lets you upload property docs and instantly teaches your AI Concierge exactly how to answer questions about the home.",
+  },
+];
+
+const visitorFeatures = [
+  {
+    icon: KeyRound,
+    title: "Seamless Live-Tour Access",
+    description:
+      "Joining a live guided tour is as easy as typing a 4-digit PIN. No software to download, no accounts to create — visitors just enter the code and instantly connect with their agent.",
+  },
+  {
+    icon: Inbox,
+    title: "Never Miss a Lead",
+    description:
+      "If your property gets a massive spike in traffic and exhausts your AI's free answer limit, the chat gracefully switches to a standard contact form. Your visitors are always taken care of.",
+  },
+  {
+    icon: ShieldCheck,
+    title: "VIP Privacy",
+    description:
+      "For password-protected properties, the entire experience stays fully encrypted in the browser until the correct password is provided, keeping sensitive listing details safe from prying eyes.",
   },
 ];
 
@@ -665,11 +723,37 @@ function Index() {
             Clients will Love your Studio's  Self-Serve Work Flow
           </h2>
           <p className={`mx-auto mt-3 max-w-2xl text-center text-white/60`}>
-            Hand your clients a self closing tool — not a service ticket. Your Studio makes 3D tour Presentations easily configurable and finalizes them into a permanent self-contained files.
+            Hand clients a self-serve studio — not a service ticket. They configure, brand, and walk away with a permanent, self-contained presentation file.
           </p>
 
           <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {clientFeatures.map((f) => (
+              <Card key={f.title} className={`${cardBg} backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-amber-300/60 hover:shadow-lg hover:shadow-amber-300/10`}>
+                <CardContent className="pt-6">
+                  <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
+                    <f.icon className="size-5 text-amber-300" />
+                  </div>
+                  <h3 className={`mt-4 font-semibold text-white`}>{f.title}</h3>
+                  <p className={`mt-1 text-sm text-white/60`}>{f.description}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ---- Visitor experience section ---- */}
+      <section className={`relative z-10 border-t ${borderLight} px-4 py-16 sm:py-24`} style={{ backgroundColor: sectionTint2 }}>
+        <div className="mx-auto max-w-5xl">
+          <h2 className={`text-center text-2xl font-bold tracking-tight text-white sm:text-3xl`}>
+            What Visitors Get the Moment They Open the Tour
+          </h2>
+          <p className={`mx-auto mt-3 max-w-2xl text-center text-white/60`}>
+            Your presentations are built to convert — frictionless to enter, always-on for leads, and private when it matters.
+          </p>
+
+          <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {visitorFeatures.map((f) => (
               <Card key={f.title} className={`${cardBg} backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-amber-300/60 hover:shadow-lg hover:shadow-amber-300/10`}>
                 <CardContent className="pt-6">
                   <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
