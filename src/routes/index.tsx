@@ -738,7 +738,101 @@ function Index() {
         </div>
       </section>
 
+      {/* ---- How it works ---- */}
+      <section id="how-it-works" className="relative z-10 px-4 py-16 sm:py-24">
+        <div className="mx-auto max-w-6xl">
+          <h2 className="text-center text-2xl font-bold tracking-tight text-white sm:text-3xl">
+            How It Works
+          </h2>
+          <p className="mx-auto mt-3 max-w-xl text-center text-white/60">
+            From signup to automated payouts in four steps.
+          </p>
+
+          {(() => {
+            const steps = [
+              {
+                step: 1,
+                title: "Claim Your Studio",
+                desc: "Choose your tier and launch your branded dashboard in seconds.",
+              },
+              {
+                step: 2,
+                title: "Brand & Set Pricing",
+                desc: "Upload your logo and connect your Stripe account. You define the profit margins for every presentation sold.",
+              },
+              {
+                step: 3,
+                title: "Invite Your Clients",
+                desc: "Share your studio link. Clients and agents build, customize, and preview their tour presentations in real-time.",
+              },
+              {
+                step: 4,
+                title: "Automated Sales & Delivery",
+                desc: "Clients pay via Stripe to unlock their downloads. Payments go directly to your Connect account, and the file is delivered instantly.",
+                automated: true,
+              },
+            ];
+            return (
+              <div className="relative mt-14">
+                {/* Dashed connector segments (desktop only) */}
+                <div className="pointer-events-none absolute left-0 right-0 top-[68px] hidden lg:block">
+                  <div className="relative mx-auto grid max-w-6xl grid-cols-4 px-6">
+                    {[0, 1, 2].map((i) => (
+                      <div
+                        key={i}
+                        className={`col-start-${i + 1} col-span-2 mx-[12.5%] border-t border-dashed transition-colors duration-300 ${
+                          hoveredStep > i + 1 ? "border-amber-300/70" : "border-white/15"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                <div className="relative grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+                  {steps.map((item) => {
+                    const isActive = hoveredStep >= item.step;
+                    return (
+                      <div
+                        key={item.step}
+                        onMouseEnter={() => setHoveredStep(item.step)}
+                        onMouseLeave={() => setHoveredStep(0)}
+                        className={`group relative flex flex-col items-center rounded-xl border bg-white/5 p-6 text-center backdrop-blur transition-all duration-300 hover:-translate-y-1 ${
+                          isActive
+                            ? "border-amber-300/70 shadow-lg shadow-amber-300/20"
+                            : "border-white/10"
+                        }`}
+                      >
+                        <div
+                          className={`relative z-10 flex size-14 items-center justify-center rounded-full bg-primary text-lg font-bold text-primary-foreground transition-all duration-300 ${
+                            isActive ? "ring-4 ring-amber-300/40" : ""
+                          }`}
+                        >
+                          {item.automated ? <Zap className="size-6" /> : item.step}
+                          {item.automated && (
+                            <span className="pointer-events-none absolute inset-0 rounded-full ring-2 ring-amber-300/40 animate-pulse" />
+                          )}
+                        </div>
+                        {item.automated && (
+                          <Badge className="mt-3 bg-amber-300/20 text-amber-200 hover:bg-amber-300/20">
+                            Fully Automated
+                          </Badge>
+                        )}
+                        <h3 className="mt-4 font-semibold text-white">
+                          <span className="text-amber-300/80">Step {item.step}:</span> {item.title}
+                        </h3>
+                        <p className="mt-2 text-sm text-white/60">{item.desc}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      </section>
+
       {/* ---- Pricing comparison ---- */}
+
       <section id="pricing" className="relative z-10 px-4 py-16 sm:py-24">
         <div className="mx-auto max-w-4xl">
           <h2 className={`text-center text-2xl font-bold tracking-tight text-white sm:text-3xl`}>
