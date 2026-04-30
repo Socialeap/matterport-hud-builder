@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useMspAccess } from "@/hooks/use-msp-access";
 
 type NavRoute =
   | "/dashboard"
@@ -54,16 +55,17 @@ interface NavItem {
   icon: typeof LayoutDashboard;
   roles: readonly ("provider" | "client")[];
   requiresPro?: boolean;
+  requiresPaid?: boolean;
 }
 
 const allNavItems: readonly NavItem[] = [
   { label: "Overview", to: "/dashboard", icon: LayoutDashboard, roles: ["provider", "client"] },
   { label: "Branding", to: "/dashboard/branding", icon: Palette, roles: ["provider"] },
-  { label: "Production Vault", to: "/dashboard/vault", icon: Archive, roles: ["provider"] },
+  { label: "Production Vault", to: "/dashboard/vault", icon: Archive, roles: ["provider"], requiresPaid: true },
   { label: "Pricing", to: "/dashboard/pricing", icon: DollarSign, roles: ["provider"] },
   { label: "Orders", to: "/dashboard/orders", icon: ShoppingCart, roles: ["provider", "client"] },
-  { label: "Payouts", to: "/dashboard/payouts", icon: Banknote, roles: ["provider"] },
-  { label: "Clients", to: "/dashboard/clients", icon: Users, roles: ["provider"] },
+  { label: "Payouts", to: "/dashboard/payouts", icon: Banknote, roles: ["provider"], requiresPaid: true },
+  { label: "Clients", to: "/dashboard/clients", icon: Users, roles: ["provider"], requiresPaid: true },
   { label: "Demo", to: "/dashboard/demo", icon: Play, roles: ["provider"] },
   { label: "Stats", to: "/dashboard/stats", icon: BarChart2, roles: ["provider"] },
   { label: "Account", to: "/dashboard/account", icon: UserCog, roles: ["provider", "client"] },
@@ -72,6 +74,7 @@ const allNavItems: readonly NavItem[] = [
 export function DashboardSidebar() {
   const { user, roles, signOut } = useAuth();
   const location = useLocation();
+  const { hasPaid } = useMspAccess();
   const [tier, setTier] = useState<"starter" | "pro" | null>(null);
 
   const isClient = roles.includes("client");
@@ -124,8 +127,16 @@ export function DashboardSidebar() {
                       ? "My Orders"
                       : item.label;
 
-                  // Lock Vault for Starter MSPs
-                  const isLocked = item.requiresPro && !isPro && !isClient;
+                  // Lock conditions:
+                  // - Vault stays Pro-only for paid MSPs (existing rule).
+                  // - Special Components (Vault/Payouts/Clients) lock for any
+                  //   unpaid MSP until purchase.
+                  const lockedForPro = item.requiresPro && !isPro && !isClient;
+                  const lockedForUnpaid = item.requiresPaid && !hasPaid && !isClient;
+                  const isLocked = lockedForPro || lockedForUnpaid;
+                  const lockTooltip = lockedForUnpaid
+                    ? `Purchase a plan to unlock ${item.label}`
+                    : "Upgrade to Pro to unlock the Production Vault";
 
                   if (isLocked) {
                     return (
@@ -143,7 +154,7 @@ export function DashboardSidebar() {
                             </SidebarMenuButton>
                           </TooltipTrigger>
                           <TooltipContent side="right">
-                            Upgrade to Pro to unlock the Production Vault
+                            {lockTooltip}
                           </TooltipContent>
                         </Tooltip>
                       </SidebarMenuItem>

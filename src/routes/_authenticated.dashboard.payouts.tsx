@@ -15,6 +15,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useMspAccess } from "@/hooks/use-msp-access";
+import { LockedFeatureCard } from "@/components/dashboard/LockedFeatureCard";
 
 export const Route = createFileRoute("/_authenticated/dashboard/payouts")({
   component: PayoutsPage,
@@ -22,6 +24,7 @@ export const Route = createFileRoute("/_authenticated/dashboard/payouts")({
 
 function PayoutsPage() {
   const { user } = useAuth();
+  const { hasPaid, isClient, loading: accessLoading } = useMspAccess();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [onboardingComplete, setOnboardingComplete] = useState(false);
@@ -123,9 +126,16 @@ function PayoutsPage() {
 
   useEffect(() => {
     if (!user || initRef.current) return;
+    // Skip Stripe Connect bootstrap entirely for unpaid MSPs — the page
+    // renders the locked state instead.
+    if (!accessLoading && !hasPaid && !isClient) {
+      setLoading(false);
+      return;
+    }
+    if (accessLoading) return;
     initRef.current = true;
     loadStatus();
-  }, [user, loadStatus]);
+  }, [user, loadStatus, accessLoading, hasPaid, isClient]);
 
   // Handle return from Stripe Connect onboarding
   useEffect(() => {
@@ -171,6 +181,15 @@ function PayoutsPage() {
       setConnecting(false);
     }
   };
+
+  if (!accessLoading && !hasPaid && !isClient) {
+    return (
+      <LockedFeatureCard
+        featureName="Payouts"
+        description="Connect Stripe and manage payouts after activating your Studio with Starter or Pro."
+      />
+    );
+  }
 
   if (loading) {
     return (

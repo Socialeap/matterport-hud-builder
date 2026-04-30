@@ -1,11 +1,12 @@
-import { createFileRoute, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { DashboardSidebar } from "@/components/dashboard/DashboardSidebar";
 import { useAuth } from "@/hooks/use-auth";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertTriangle, LogOut, User as UserIcon } from "lucide-react";
+import { AlertTriangle, LogOut, Sparkles, User as UserIcon, X } from "lucide-react";
+import { MspAccessProvider, useMspAccess } from "@/hooks/use-msp-access";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -20,8 +21,16 @@ import { checkGrantExpiryEmailNeeded } from "@/lib/grant-expiry.functions";
 import { buildStudioUrl } from "@/lib/public-url";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
-  component: DashboardLayout,
+  component: DashboardLayoutWrapper,
 });
+
+function DashboardLayoutWrapper() {
+  return (
+    <MspAccessProvider>
+      <DashboardLayout />
+    </MspAccessProvider>
+  );
+}
 
 interface ExpiryAlert {
   daysLeft: number;
@@ -30,40 +39,24 @@ interface ExpiryAlert {
 }
 
 function DashboardLayout() {
-  const { user, roles, signOut } = useAuth();
+  const { user, signOut } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const [tierChecked, setTierChecked] = useState(false);
-  const [hasTier, setHasTier] = useState(false);
+  const { loading: accessLoading, hasPaid, isClient } = useMspAccess();
   const [expiryAlert, setExpiryAlert] = useState<ExpiryAlert | null>(null);
+  const [trialBannerDismissed, setTrialBannerDismissed] = useState(false);
 
   const isUpgradePage = location.pathname === "/dashboard/upgrade";
-  const isClient = roles.includes("client");
+  const showTrialBanner = !accessLoading && !hasPaid && !isClient && !isUpgradePage && !trialBannerDismissed;
 
+  // Expiry-warning alert (admin grants nearing expiration). Independent
+  // of the trial gate — runs only for users who already have access.
   useEffect(() => {
-    if (!user) return;
+    if (!user || isClient) return;
 
-    // Clients skip the purchase gate — their provider owns the license
-    if (isClient) {
-      setHasTier(true);
-      setTierChecked(true);
-      return;
-    }
-
-    const checkAccess = async () => {
-      const [licenseRes, purchaseRes, grantRes, brandingRes] = await Promise.all([
-        supabase
-          .from("licenses")
-          .select("id")
-          .eq("user_id", user.id)
-          .limit(1),
-        supabase
-          .from("purchases")
-          .select("id")
-          .eq("user_id", user.id)
-          .eq("environment", "sandbox")
-          .eq("status", "completed")
-          .limit(1),
+    let cancelled = false;
+    (async () => {
+      const [grantRes, brandingRes] = await Promise.all([
         supabase
           .from("admin_grants")
           .select("tier, expires_at")
@@ -75,68 +68,62 @@ function DashboardLayout() {
           .maybeSingle(),
         supabase
           .from("branding_settings")
-          .select("slug, tier, brand_name")
+          .select("slug, brand_name")
           .eq("provider_id", user.id)
           .maybeSingle(),
       ]);
 
-      const hasAccess =
-        (licenseRes.data?.length ?? 0) > 0 ||
-        (purchaseRes.data?.length ?? 0) > 0;
-      setHasTier(hasAccess);
-      setTierChecked(true);
-      if (!hasAccess && !isUpgradePage) {
-        navigate({ to: "/dashboard/upgrade" });
-      }
+      if (cancelled) return;
 
-      // Expiry alert: active grant expiring within 14 days
       const grant = grantRes.data;
-      if (grant?.expires_at) {
-        const msLeft = new Date(grant.expires_at).getTime() - Date.now();
-        const daysLeft = Math.ceil(msLeft / (1000 * 60 * 60 * 24));
-        if (daysLeft <= 14 && daysLeft > 0) {
-          const slug = brandingRes.data?.slug ?? "";
-          const pricingUrl = slug
-            ? buildStudioUrl(slug) + "#pricing"
-            : window.location.origin + "#pricing";
-          const expiryDate = new Date(grant.expires_at).toLocaleDateString("en-US", {
-            year: "numeric",
-            month: "long",
-            day: "numeric",
-          });
-          setExpiryAlert({ daysLeft, expiryDate, pricingUrl });
+      if (!grant?.expires_at) return;
 
-          // Fire-and-forget: send warning email once per 7-day window
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session?.user.email) {
-            try {
-              const { shouldSend } = await checkGrantExpiryEmailNeeded({
-                data: { recipientEmail: session.user.email },
-              });
-              if (shouldSend) {
-                await sendTransactionalEmail({
-                  templateName: "grant-expiry-warning",
-                  recipientEmail: session.user.email,
-                  idempotencyKey: `grant-expiry-${user.id}-${grant.expires_at}`,
-                  templateData: {
-                    brandName: brandingRes.data?.brand_name ?? "Your Studio",
-                    daysLeft,
-                    expiryDate,
-                    pricingUrl,
-                  },
-                });
-              }
-            } catch {
-              // Non-critical: banner still shows even if email fails
-            }
+      const msLeft = new Date(grant.expires_at).getTime() - Date.now();
+      const daysLeft = Math.ceil(msLeft / (1000 * 60 * 60 * 24));
+      if (daysLeft > 14 || daysLeft <= 0) return;
+
+      const slug = brandingRes.data?.slug ?? "";
+      const pricingUrl = slug
+        ? buildStudioUrl(slug) + "#pricing"
+        : window.location.origin + "#pricing";
+      const expiryDate = new Date(grant.expires_at).toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+      setExpiryAlert({ daysLeft, expiryDate, pricingUrl });
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user.email) {
+        try {
+          const { shouldSend } = await checkGrantExpiryEmailNeeded({
+            data: { recipientEmail: session.user.email },
+          });
+          if (shouldSend) {
+            await sendTransactionalEmail({
+              templateName: "grant-expiry-warning",
+              recipientEmail: session.user.email,
+              idempotencyKey: `grant-expiry-${user.id}-${grant.expires_at}`,
+              templateData: {
+                brandName: brandingRes.data?.brand_name ?? "Your Studio",
+                daysLeft,
+                expiryDate,
+                pricingUrl,
+              },
+            });
           }
+        } catch {
+          // Non-critical: banner still shows even if email fails
         }
       }
-    };
-    checkAccess();
-  }, [user, isUpgradePage, navigate, isClient]);
+    })();
 
-  if (!tierChecked) {
+    return () => {
+      cancelled = true;
+    };
+  }, [user, isClient]);
+
+  if (accessLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
@@ -151,9 +138,9 @@ function DashboardLayout() {
         <main className="flex-1">
           <div className="flex items-center gap-2 border-b border-border px-6 py-3">
             <SidebarTrigger />
-            {!hasTier && isUpgradePage && (
+            {!hasPaid && !isClient && isUpgradePage && (
               <span className="text-sm text-amber-600 font-medium">
-                Purchase a plan to access the full dashboard.
+                Purchase a plan to unlock Clients, Custom Domain, Payouts, Vault, and Publishing.
               </span>
             )}
             <div className="ml-auto flex items-center">
@@ -192,6 +179,33 @@ function DashboardLayout() {
               </DropdownMenu>
             </div>
           </div>
+          {showTrialBanner && (
+            <div className="px-6 pt-4">
+              <Alert className="border-primary/40 bg-primary/5 text-foreground">
+                <Sparkles className="size-4 text-primary" />
+                <AlertTitle className="flex items-center justify-between gap-4 text-foreground">
+                  <span>You're in trial mode — explore and brand your Studio for free.</span>
+                  <button
+                    type="button"
+                    onClick={() => setTrialBannerDismissed(true)}
+                    className="text-muted-foreground hover:text-foreground"
+                    aria-label="Dismiss trial banner"
+                  >
+                    <X className="size-4" />
+                  </button>
+                </AlertTitle>
+                <AlertDescription className="text-muted-foreground">
+                  Purchase Starter or Pro to unlock Clients, Custom Domain, Payouts, Production Vault, and publishing your Studio.{" "}
+                  <Link
+                    to="/dashboard/upgrade"
+                    className="font-medium text-primary underline underline-offset-2"
+                  >
+                    Choose a plan →
+                  </Link>
+                </AlertDescription>
+              </Alert>
+            </div>
+          )}
           {expiryAlert && (
             <div className="px-6 pt-4">
               <Alert className="border-amber-400 bg-amber-50 text-amber-900">

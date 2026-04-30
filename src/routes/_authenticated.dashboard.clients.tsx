@@ -27,6 +27,8 @@ import {
 import { toast } from "sonner";
 import { buildPlatformUrl, buildInvitationUrl } from "@/lib/public-url";
 import { QRCodeSVG } from "qrcode.react";
+import { useMspAccess } from "@/hooks/use-msp-access";
+import { LockedFeatureCard } from "@/components/dashboard/LockedFeatureCard";
 
 export const Route = createFileRoute("/_authenticated/dashboard/clients")({
   component: ClientsPage,
@@ -44,6 +46,7 @@ interface Invitation {
 
 function ClientsPage() {
   const { user } = useAuth();
+  const { hasPaid, isClient, loading: accessLoading } = useMspAccess();
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [email, setEmail] = useState("");
   const [inviteFree, setInviteFree] = useState(false);
@@ -147,6 +150,15 @@ function ClientsPage() {
       default: return <Mail className="size-4 text-muted-foreground" />;
     }
   };
+
+  if (!accessLoading && !hasPaid && !isClient) {
+    return (
+      <LockedFeatureCard
+        featureName="Clients"
+        description="Invite, manage, and bill your clients once you've activated your Studio with Starter or Pro."
+      />
+    );
+  }
 
   if (loading) {
     return (

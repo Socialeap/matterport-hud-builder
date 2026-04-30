@@ -16,6 +16,7 @@ import { useStripeCheckout } from "@/hooks/useStripeCheckout";
 import { getStripeEnvironment } from "@/lib/stripe";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { buildStudioUrl } from "@/lib/public-url";
+import { useMspAccess } from "@/hooks/use-msp-access";
 
 export const Route = createFileRoute("/_authenticated/dashboard/branding")({
   component: BrandingPage,
@@ -61,6 +62,7 @@ const defaultBranding: BrandingData = {
 
 function BrandingPage() {
   const { user } = useAuth();
+  const { hasPaid } = useMspAccess();
   const [branding, setBranding] = useState<BrandingData>(defaultBranding);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -69,6 +71,7 @@ function BrandingPage() {
   const [heroFile, setHeroFile] = useState<File | null>(null);
 
   const isPro = branding.tier === "pro";
+  const customDomainUnlocked = isPro && hasPaid;
   const { openCheckout, closeCheckout, isOpen, CheckoutForm } = useStripeCheckout();
 
   const handleUpgrade = useCallback(() => {
@@ -178,7 +181,7 @@ function BrandingPage() {
           gate_label: branding.gate_label,
           logo_url: logoUrl,
           favicon_url: faviconUrl,
-          custom_domain: isPro ? branding.custom_domain : null,
+          custom_domain: customDomainUnlocked ? branding.custom_domain : null,
           slug: branding.slug,
           base_price_cents: branding.base_price_cents,
           model_threshold: branding.model_threshold,
@@ -450,16 +453,18 @@ function BrandingPage() {
       </Card>
 
       {/* Pro-only section */}
-      <Card className={!isPro ? "opacity-75" : ""}>
+      <Card className={!customDomainUnlocked ? "opacity-75" : ""}>
         <CardHeader>
           <div className="flex items-center gap-2">
             <CardTitle>Whitelabel Settings</CardTitle>
-            {!isPro && <Lock className="size-4 text-muted-foreground" />}
+            {!customDomainUnlocked && <Lock className="size-4 text-muted-foreground" />}
           </div>
           <CardDescription>
-            {isPro
+            {customDomainUnlocked
               ? "Full whitelabel — all Transcendence Media branding removed."
-              : "Upgrade to Pro ($199) to unlock full whitelabel capabilities."}
+              : !hasPaid
+                ? "Purchase a plan to enable a custom domain and full whitelabel."
+                : "Upgrade to Pro ($199) to unlock full whitelabel capabilities."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -470,20 +475,24 @@ function BrandingPage() {
               value={branding.custom_domain ?? ""}
               onChange={(e) => setBranding({ ...branding, custom_domain: e.target.value })}
               placeholder="tours.yourcompany.com"
-              disabled={!isPro}
+              disabled={!customDomainUnlocked}
             />
           </div>
 
-          {!isPro && (
+          {!customDomainUnlocked && (
             <div className="rounded-lg border border-dashed border-primary/30 bg-primary/5 p-4 text-center">
               <p className="text-sm font-medium text-foreground">
-                Remove all co-branding and unlock custom domains
+                {!hasPaid
+                  ? "Activate your Studio to unlock custom domains"
+                  : "Remove all co-branding and unlock custom domains"}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Starter tier includes "Powered by Transcendence Media" on all output.
+                {!hasPaid
+                  ? "Custom domains are available on Pro plans after purchase."
+                  : "Starter tier includes \"Powered by Transcendence Media\" on all output."}
               </p>
               <Button size="sm" className="mt-3" onClick={() => handleUpgrade()}>
-                Upgrade to Pro — $199
+                {!hasPaid ? "Choose a plan" : "Upgrade to Pro — $199"}
               </Button>
             </div>
           )}
