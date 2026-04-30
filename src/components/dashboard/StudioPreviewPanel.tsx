@@ -54,7 +54,7 @@ export function StudioPreviewPanel({
               Studio Preview
             </CardTitle>
             <CardDescription>
-              See exactly what visitors will see at your Studio URL — even before publishing.
+              See exactly what visitors will see at your Studio URL — even before publishing. Your URL only goes live to the public after you activate a plan.
             </CardDescription>
           </div>
           {publicUrl && (
