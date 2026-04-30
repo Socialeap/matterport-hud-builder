@@ -111,9 +111,9 @@ export function LoginForm() {
       </CardContent>
       <CardFooter className="justify-center">
         <p className="text-sm text-muted-foreground">
-          Have an invitation?{" "}
+          New here?{" "}
           <Link to="/signup" search={{ token: "", email: "" }} className="text-primary hover:underline">
-            Sign up
+            Create your MSP account
           </Link>
         </p>
       </CardFooter>

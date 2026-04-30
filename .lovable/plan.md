@@ -1,65 +1,123 @@
-# Restructure "How It Works" Section
+## Goals
 
-## 1. Move section above Pricing
+1. **Fix the broken MSP signup flow.** The landing page sends MSPs to `/signup?token=&email=`, but `SignupForm` treats every visitor as an invited client — when the token is empty, it shows "An invitation token is required" and blocks account creation.
+2. **Create `/agents`** — a public landing page targeted at agents / property managers / marketers, in the same dark visual style as `/`, including an interactive "MSP Directory (Coming Soon)" shell with a working geo + feature filter UI driven by hardcoded sample MSP cards.
 
-In `src/routes/index.tsx`, cut the `{/* ---- How it works ---- */}` block (lines 859–900) and paste it directly **before** the `{/* ---- Pricing comparison ---- */}` block (currently line 740). The pricing section then immediately follows it.
+---
 
-## 2. Update copy
+## Part 1 — MSP Signup Fix
 
-Replace the four step objects with the new copy:
+### Diagnosis
 
-1. **Claim Your Studio** — "Choose your tier and launch your branded dashboard in seconds."
-2. **Brand & Set Pricing** — "Upload your logo and connect your Stripe account. You define the profit margins for every presentation sold."
-3. **Invite Your Clients** — "Share your studio link. Clients and agents build, customize, and preview their tour presentations in real-time."
-4. **Automated Sales & Delivery** — "Clients pay via Stripe to unlock their downloads. Payments go directly to your Connect account, and the file is delivered instantly."
+- `src/components/auth/SignupForm.tsx` requires `inviteToken` and renders the dead-end "contact your MSP" panel without it. That logic is correct **for the `/invite/$token` flow** but is wrong as the only entry point.
+- The DB trigger `handle_new_user` (migration `20260421044823…`) already handles the no-token case gracefully: it creates a profile and stops. The provider role is granted later by `assign_provider_role_on_purchase` (migration `20260415163913…`) and the Stripe webhook. So opening signup to MSPs requires **no DB changes** — the data path is already safe.
 
-## 3. Layout: 4-column grid with connecting flow line
+### Changes
 
-Replace the vertical `space-y-8` list with a responsive grid:
+**`src/components/auth/SignupForm.tsx`**
+- Add a `mode` prop: `"invite"` (current behavior) or `"open"` (new — for MSPs).
+- In `"open"` mode:
+  - Remove the invite-token gate. Show Google OAuth + email/password form unconditionally.
+  - Headline: "Create your MSP account" / sub: "Launch your branded 3D Presentation Studio in minutes."
+  - `signUp({ email, password, options: { emailRedirectTo: window.location.origin + '/dashboard', data: { full_name } } })` — no `invite_token` in metadata.
+  - Google OAuth: `redirect_uri: window.location.origin + '/dashboard'`, no `invite_token` extraParam.
+- Keep the existing invite-mode codepath untouched so `/invite/$token` → `/signup?token=…` still works for clients.
 
-- Mobile: single column (stacked)
-- `sm`: 2 columns
-- `lg`: 4 columns (horizontal flow)
+**`src/routes/signup.tsx`**
+- Decide mode from the search param: if `token` is present → `mode="invite"`, otherwise → `mode="open"`.
+- Render `<SignupForm mode={…} inviteToken={token || undefined} inviteEmail={email || undefined} />`.
 
-Widen the container from `max-w-3xl` to `max-w-6xl` to accommodate four cards.
+**`src/components/auth/LoginForm.tsx`**
+- Update the footer link from "Have an invitation? Sign up" to "New here? **Create your MSP account**" (still links to `/signup`).
 
-Each step becomes a Card-styled tile (matching existing `bg-white/5 backdrop-blur border border-white/10 rounded-xl` aesthetic) with the numbered circle centered at the top, title, and description below.
+**Landing page CTAs (`src/routes/index.tsx`)**
+- The existing `navigate({ to: "/signup", search: { token: "", email: "" } })` calls already work — the new mode resolution will treat empty token as "open MSP signup". No change required, but I'll double-check each Get Started button still routes correctly.
 
-## 4. Dashed connector line (desktop only)
+### Why this is safe
+- No SQL migrations. The `handle_new_user` trigger already ignores missing/invalid tokens.
+- The invite-acceptance flow (`/invite/$token` → `/signup?token=<uuid>&email=…`) still passes a real token, so clients keep being linked to their MSP exactly as before.
+- New MSP accounts land on `/dashboard`. Provider role isn't granted until purchase (existing trigger), which matches the current architecture — until then, the dashboard already shows "choose a tier" prompts (the `DemoButton` flow on the landing page also continues to work for MSPs to test before paying).
 
-Render a horizontal dashed line behind the row of number circles, only visible at `lg`. Implementation:
+---
 
-- Wrap the grid in a `relative` container.
-- Add an absolutely-positioned dashed line element: `absolute top-[*] left-[12.5%] right-[12.5%] h-px border-t border-dashed border-white/15 hidden lg:block` aligned vertically with the center of the number circles.
-- The line sits behind the cards (`-z-10` on the line, or higher z-index on circles via solid background to mask).
+## Part 2 — `/agents` Landing Page
 
-## 5. Progressive hover-glow effect
+### New file: `src/routes/agents.tsx`
 
-Track `hoveredStep` state (0 = none, 1–4) using `useState<number>(0)`.
+Same dark color palette, grid overlay, blurred orbs, header/footer pattern as `src/routes/index.tsx`. Reuses the same Tailwind classes and Lucide icons so visual consistency is automatic.
 
-- On each card: `onMouseEnter={() => setHoveredStep(item.step)}` and `onMouseLeave={() => setHoveredStep(0)}`.
-- Each card receives conditional classes: when `item.step <= hoveredStep`, apply a glowing border + shadow (e.g. `border-amber-300/70 shadow-lg shadow-amber-300/20`); otherwise the default subtle border. Wrap with `transition-all duration-300`.
-- The number circle gets a brighter ring when active (`ring-2 ring-amber-300/60`).
-- The dashed connector segments between glowing cards also light up: split the single line into 3 segments (between cards 1–2, 2–3, 3–4), each rendered as its own absolutely-positioned div. Segment N glows (e.g. `border-amber-300/60`) when `hoveredStep > N`. Use `transition-colors duration-300`.
+#### Sections (top to bottom)
 
-## 6. Card hover polish
+1. **Header** — same shell as `/`. Links: Home (`/`), For Agents (current), Sign In dropdown.
+2. **Hero**
+   - H1: "Find a 3D Presentation Studio for Your Listings"
+   - Sub: "Hire a Matterport Service Provider who can deliver beautifully branded, interactive 3D tour presentations for the properties you market."
+   - Two CTAs: "Browse the MSP Directory" (scroll to directory) + "Learn How It Works" (scroll).
+   - Same hero HUD banner image as `/`.
+3. **What you get** (4-card grid) — agent-facing benefits only:
+   - Branded property presentations (your listing, your story)
+   - 24/7 AI Concierge that answers buyer questions
+   - Live guided tours with co-presence
+   - Lead capture straight to your inbox
+   *(Reuses the existing icon set: Sparkles, Bot, Video, MailCheck.)*
+4. **How It Works** — 3-step horizontal flow (mirrors the index page's progressive-glow pattern, but with the agent journey):
+   - 1. Find your MSP in the directory
+   - 2. Provide your Matterport links
+   - 3. Receive a branded, interactive 3D presentation
+5. **MSP Directory (Coming Soon)** — the centerpiece. See spec below.
+6. **FAQ / Trust band** — short reassurance: "MSPs in this directory use the 3D Presentation Studio platform. You work directly with the MSP — we don't take a cut of your engagement."
+7. **Footer** — same as `/`.
 
-Beyond the progressive glow, add a base hover lift on every card: `hover:-translate-y-1 transition-transform duration-300` so individual interaction feels responsive.
+#### MSP Directory shell (interactive, no backend)
 
-## 7. Highlight Step 4's "hands-off" nature
+A `<Card>` block titled **"MSP Directory"** with a `Coming Soon` badge.
 
-Give the Step 4 card a subtle distinguishing accent to underscore automation:
+**Filter rail (left on desktop, top on mobile):**
+- **Location search** — `<Input>` with a `MapPin` icon, placeholder "City, state, or ZIP". Filters the placeholder list by case-insensitive substring against `city/state`.
+- **Service filters** — checkbox grid of icon-tagged feature chips (multi-select). Initial set:
+  - `Palette` Custom branding
+  - `Bot` AI Concierge
+  - `Video` Live guided tours
+  - `Film` Cinematic intros
+  - `MapPin` Neighborhood maps
+  - `Lock` Private/VIP listings
+  - `BarChart3` Traffic analytics
+  - `Globe` Custom domain hosting
+- **Reset filters** button.
 
-- Add a small badge above the title: `<Badge>Fully Automated</Badge>` (using existing shadcn Badge) with primary/amber styling.
-- Optionally swap a small icon (e.g. `Zap` from lucide-react, already likely imported elsewhere) into the number circle area, or keep "4" but add a faint pulsing ring (`animate-pulse` on a ring overlay) to suggest activity.
+**Results grid (right):**
+- 6–8 hardcoded sample MSP cards (e.g. "Transcendence Media — Los Angeles, CA", "Skyline Tours — Austin, TX", etc.). Each card shows: logo placeholder, name, city/state, short tagline, list of feature icons, and a disabled `Request a Quote` button with tooltip "Coming soon".
+- A subtle banner at the top of the grid: "Directory launching soon — these listings are previews. **Get notified when we go live →**" with an inline email-capture input + "Notify Me" button (purely cosmetic; submit toasts "Thanks — we'll email you when the directory is live" and clears the field).
+- Empty state when filters return no matches: "No matches yet — adjust filters or check back soon."
 
-## Technical notes
+**Logic:** Pure client-side `useState` for `query` and `selectedFeatures: Set<string>`. `useMemo` filters the static array. No server calls, no DB schema changes.
 
-- All state, hover handlers, and the connector line live inside the existing route component — no new files needed.
-- Use existing Tailwind theme tokens (`amber-300`, `white/10`, `white/60`) for visual consistency with the rest of the page.
-- The 4 step objects move from inline array to a `const steps = [...]` declared just above the JSX for readability.
-- No new dependencies required.
+#### Route registration
 
-## Files changed
+`createFileRoute("/agents")` with proper `head()` metadata (title, description, og:title, og:description, og:image — distinct from `/`) per project route-architecture rules.
 
-- `src/routes/index.tsx` (single file edit)
+#### Cross-linking
+
+- Add a "For Agents →" link in the header of `src/routes/index.tsx` (next to other nav items).
+- Add a reciprocal "I'm an MSP →" link in the header of `/agents` pointing back to `/`.
+
+---
+
+## Files Touched
+
+```text
+EDIT  src/components/auth/SignupForm.tsx     — add mode prop, open-signup branch
+EDIT  src/routes/signup.tsx                  — derive mode from token presence
+EDIT  src/components/auth/LoginForm.tsx      — relabel footer link
+EDIT  src/routes/index.tsx                   — add "For Agents" header link
+NEW   src/routes/agents.tsx                  — agent landing + interactive directory shell
+```
+
+No DB migrations. No edge function changes. No changes to `/invite/$token` or the client-acceptance flow.
+
+---
+
+## Out of Scope (flag for later)
+
+- Real MSP directory backend (table schema, geo indexing, MSP profile editor inside `/dashboard/branding`, public MSP profile pages). When ready, the static cards on `/agents` will be swapped for a server-fn-backed query — the filter UI is designed to map cleanly onto that future schema.
+- Waitlist email persistence (currently a toast-only stub). Wiring it to a `directory_waitlist` table can come with the directory backend.
