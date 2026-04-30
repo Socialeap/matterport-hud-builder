@@ -985,8 +985,15 @@ function Index() {
               </ul>
             </div>
           </div>
-          <div className={`mt-8 border-t ${borderFooter} pt-6 text-center text-xs text-white/40`}>
-            © {new Date().getFullYear()} Transcendence Media. All rights reserved.
+          <div className={`mt-8 border-t ${borderFooter} pt-6 text-center text-xs text-white/50 space-y-2`}>
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+              <a href="mailto:info@transcendencemedia.com" className="hover:text-white transition-colors">info@transcendencemedia.com</a>
+              <span className="text-white/20">·</span>
+              <a href="https://transcendencemedia.com" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">transcendencemedia.com</a>
+              <span className="text-white/20">·</span>
+              <a href="https://www.facebook.com/transcendNY/" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Facebook</a>
+            </div>
+            <div className="text-white/40">© {new Date().getFullYear()} Transcendence Media. All rights reserved.</div>
           </div>
         </div>
       </footer>

@@ -421,6 +421,13 @@ function AgentsPage() {
               ← Back to MSP landing
             </Link>
           </p>
+          <div className="mb-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-white/60">
+            <a href="mailto:info@transcendencemedia.com" className="hover:text-white transition-colors">info@transcendencemedia.com</a>
+            <span className="text-white/20">·</span>
+            <a href="https://transcendencemedia.com" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">transcendencemedia.com</a>
+            <span className="text-white/20">·</span>
+            <a href="https://www.facebook.com/transcendNY/" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Facebook</a>
+          </div>
           <p>
             © {new Date().getFullYear()} Transcendence Media · 3D Presentation Studio · For Agents
           </p>
