@@ -714,45 +714,26 @@ function Index() {
             Hand clients a self-serve features — not a service ticket. They configure, brand, and walk away with a permanent, self-contained presentation file.
           </p>
 
-          <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {clientFeatures.map((f) => (
-              <Card key={f.title} className={`${cardBg} backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-amber-300/60 hover:shadow-lg hover:shadow-amber-300/10`}>
-                <CardContent className="pt-6">
-                  <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
-                    <f.icon className="size-5 text-amber-300" />
-                  </div>
-                  <h3 className={`mt-4 font-semibold text-white`}>{f.title}</h3>
-                  <p className={`mt-1 text-sm text-white/60`}>{f.description}</p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ---- Visitor experience section ---- */}
-      <section className={`relative z-10 border-t ${borderLight} px-4 py-16 sm:py-24`} style={{ backgroundColor: sectionTint2 }}>
-        <div className="mx-auto max-w-5xl">
-          <h2 className={`text-center text-2xl font-bold tracking-tight text-white sm:text-3xl`}>
-            What Visitors Get the Moment They Open the Tour
-          </h2>
-          <p className={`mx-auto mt-3 max-w-2xl text-center text-white/60`}>
-            Your presentations are built to convert — frictionless to enter, always-on for leads, and private when it matters.
-          </p>
-
-          <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {visitorFeatures.map((f) => (
-              <Card key={f.title} className={`${cardBg} backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-amber-300/60 hover:shadow-lg hover:shadow-amber-300/10`}>
-                <CardContent className="pt-6">
-                  <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
-                    <f.icon className="size-5 text-amber-300" />
-                  </div>
-                  <h3 className={`mt-4 font-semibold text-white`}>{f.title}</h3>
-                  <p className={`mt-1 text-sm text-white/60`}>{f.description}</p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          {featureGroups.map((group) => (
+            <div key={group.heading} className="mt-14 first:mt-12">
+              <h3 className="text-center text-xl font-semibold text-amber-300/90 sm:text-2xl">
+                {group.heading}
+              </h3>
+              <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {group.items.map((f) => (
+                  <Card key={f.title} className={`${cardBg} backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-amber-300/60 hover:shadow-lg hover:shadow-amber-300/10`}>
+                    <CardContent className="pt-6">
+                      <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
+                        <f.icon className="size-5 text-amber-300" />
+                      </div>
+                      <h3 className={`mt-4 font-semibold text-white`}>{f.title}</h3>
+                      <p className={`mt-1 text-sm text-white/60`}>{f.description}</p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       </section>
 
