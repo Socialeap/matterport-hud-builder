@@ -628,7 +628,7 @@ function Index() {
 
           <div className="mt-12 grid gap-6 sm:grid-cols-2">
             <Card className={`border-red-500/20 ${cardBg} backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-red-500/60 hover:shadow-lg hover:shadow-red-500/10`}>
-              <CardContent className="pt-6">
+              <CardContent className="pt-6 text-left">
                 <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
                   <DollarSign className="size-5 text-amber-300" />
                 </div>
@@ -640,7 +640,7 @@ function Index() {
             </Card>
 
             <Card className={`border-red-500/20 ${cardBg} backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-red-500/60 hover:shadow-lg hover:shadow-red-500/10`}>
-              <CardContent className="pt-6">
+              <CardContent className="pt-6 text-left">
                 <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
                   <Clock className="size-5 text-amber-300" />
                 </div>
@@ -652,7 +652,7 @@ function Index() {
             </Card>
 
             <Card className={`border-red-500/20 ${cardBg} backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-red-500/60 hover:shadow-lg hover:shadow-red-500/10`}>
-              <CardContent className="pt-6">
+              <CardContent className="pt-6 text-left">
                 <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
                   <Lock className="size-5 text-amber-300" />
                 </div>
@@ -664,7 +664,7 @@ function Index() {
             </Card>
 
             <Card className={`border-red-500/20 ${cardBg} backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-red-500/60 hover:shadow-lg hover:shadow-red-500/10`}>
-              <CardContent className="pt-6">
+              <CardContent className="pt-6 text-left">
                 <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10">
                   <PackageX className="size-5 text-amber-300" />
                 </div>
@@ -691,7 +691,7 @@ function Index() {
           <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {features.map((f) => (
               <Card key={f.title} className={`${cardBg} backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-amber-300/60 hover:shadow-lg hover:shadow-amber-300/10`}>
-                <CardContent className="pt-6">
+                <CardContent className="pt-6 text-left">
                   <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
                     <f.icon className="size-5 text-amber-300" />
                   </div>
@@ -711,7 +711,7 @@ function Index() {
             Clients will Love your Studio's  Self-Serve Work Flow
           </h2>
           <p className={`mx-auto mt-3 max-w-2xl text-center text-white/60`}>
-            Hand clients a self-serve features — not a service ticket. They configure, brand, and walk away with a permanent, self-contained presentation file.
+            Hand clients self-serve features — not a service ticket. They configure, brand, and walk away with a permanent, self-contained presentation file.
           </p>
 
           {featureGroups.map((group) => (
@@ -722,7 +722,7 @@ function Index() {
               <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
                 {group.items.map((f) => (
                   <Card key={f.title} className={`${cardBg} backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-amber-300/60 hover:shadow-lg hover:shadow-amber-300/10`}>
-                    <CardContent className="pt-6">
+                    <CardContent className="pt-6 text-left">
                       <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
                         <f.icon className="size-5 text-amber-300" />
                       </div>
