@@ -423,6 +423,7 @@ function Index() {
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isDark, setIsDark] = useState(true);
+  const [hoveredStep, setHoveredStep] = useState(0);
 
   /* No loading gate — all static content renders on the server for SEO.
      Auth-dependent buttons simply hide during the brief loading window. */
