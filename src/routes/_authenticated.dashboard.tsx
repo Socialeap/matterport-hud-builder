@@ -138,9 +138,9 @@ function DashboardLayout() {
         <main className="flex-1">
           <div className="flex items-center gap-2 border-b border-border px-6 py-3">
             <SidebarTrigger />
-            {!hasTier && isUpgradePage && (
+            {!hasPaid && !isClient && isUpgradePage && (
               <span className="text-sm text-amber-600 font-medium">
-                Purchase a plan to access the full dashboard.
+                Purchase a plan to unlock Clients, Custom Domain, Payouts, Vault, and Publishing.
               </span>
             )}
             <div className="ml-auto flex items-center">
