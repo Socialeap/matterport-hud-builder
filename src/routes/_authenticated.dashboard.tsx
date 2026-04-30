@@ -21,8 +21,16 @@ import { checkGrantExpiryEmailNeeded } from "@/lib/grant-expiry.functions";
 import { buildStudioUrl } from "@/lib/public-url";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
-  component: DashboardLayout,
+  component: DashboardLayoutWrapper,
 });
+
+function DashboardLayoutWrapper() {
+  return (
+    <MspAccessProvider>
+      <DashboardLayout />
+    </MspAccessProvider>
+  );
+}
 
 interface ExpiryAlert {
   daysLeft: number;
