@@ -29,7 +29,7 @@ const fetchBrandingBySlug = createServerFn({ method: "GET" })
       .maybeSingle();
 
     if (error || !branding) {
-      return { branding: null, demoPublished: false, lusActive: false, vaultAssetCount: 0 };
+      return { branding: null, demoPublished: false, lusActive: false, vaultAssetCount: 0, providerActive: false };
     }
 
     const [demoCheck, licenseRes, vaultRes, paidLicenseRes, paidPurchaseRes, grantRes] = await Promise.all([
