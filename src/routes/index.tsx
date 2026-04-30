@@ -906,7 +906,7 @@ function Index() {
             <div>
               <span className={`text-lg font-bold ${textColor}`}>3D Presentation Studio</span>
               <p className={`mt-2 text-sm ${textSubtle}`}>
-                Professional, white-labeled 3D property tour presentations. One-time purchase. Host anywhere.
+                Professional, white-labeled 3D property tour presentations. Your clients/agents customize & pay to download and host anywhere.
               </p>
             </div>
             <div>
