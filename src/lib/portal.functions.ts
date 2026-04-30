@@ -2133,14 +2133,24 @@ function __dqaRenderInquiryForm(prefilledQuestion,_propertyUuid){
       statusEl.style.color="#b91c1c";
       return;
     }
+    // Capture the Listing Launch Kit src=… tag from the URL so the agent
+    // sees which marketplace/channel the visitor came from. Sanitized
+    // tightly (kebab-style only, ≤32 chars) and skipped silently if the
+    // URL has no src parameter — additive, never breaks the mailto body.
+    var leadSrc="";
+    try{
+      var rawSrc=new URLSearchParams(window.location.search).get("src")||"";
+      if(/^[a-z0-9-]{1,32}$/i.test(rawSrc)) leadSrc=rawSrc.toLowerCase();
+    }catch(_e){}
     // Build mailto SYNCHRONOUSLY so the browser keeps the user-gesture and launches the mail client.
     // RFC 6068: recipient is a literal addr-spec — never percent-encode the email itself.
     var subject="Question about "+propertyName;
     var body=[
       values.message,
       "",
-      "— "+(values.name||"Visitor")+(values.phone?" ("+values.phone+")":"")+(values.email?" <"+values.email+">":"")
-    ].join("\\n");
+      "— "+(values.name||"Visitor")+(values.phone?" ("+values.phone+")":"")+(values.email?" <"+values.email+">":""),
+      leadSrc?"Source: "+leadSrc:""
+    ].filter(Boolean).join("\\n");
     var mailto="mailto:"+agentEmail+"?subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(body);
     while(mailto.length>1900 && body.length>50){
       body=body.slice(0,Math.max(50,body.length-200));

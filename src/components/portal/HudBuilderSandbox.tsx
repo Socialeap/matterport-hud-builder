@@ -22,7 +22,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { Palette, Home, UserCircle, Sparkles, Lock, Eye, EyeOff } from "lucide-react";
+import { Palette, Home, UserCircle, Sparkles, Lock, Eye, EyeOff, Rocket } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,6 +42,7 @@ import {
   isAccessArmed,
   ACCESS_PASSWORD_MIN_LEN,
 } from "./PrivacyAccessSection";
+import { PublishDistributeSection } from "./PublishDistributeSection";
 import { TourBehaviorModal } from "./TourBehaviorModal";
 import { HudPreview } from "./HudPreview";
 import { PortalSignupModal } from "./PortalSignupModal";
@@ -1007,9 +1008,17 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
       a.href = url;
       const first = models[0];
       const rawName = (first?.propertyName || first?.name || "presentation").trim();
-      const safeName = rawName.replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "") || "presentation";
+      // Static-host-friendly: lowercase + dashes, e.g. `123-main-st-3dps-2026-04-30.html`.
+      // Static hosts (Netlify Drop, S3, brokerage CDNs) prefer kebab-case;
+      // some don't preserve underscores in path segments.
+      const safeName = rawName
+        .normalize("NFKD")
+        .toLowerCase()
+        .replace(/[^a-z0-9-]+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-+|-+$/g, "") || "presentation";
       const today = new Date().toISOString().slice(0, 10);
-      a.download = `${safeName}_${today}.html`;
+      a.download = `${safeName}-3dps-${today}.html`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -1625,6 +1634,61 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
                     agent={agent}
                     onChange={handleAgentChange}
                     onAvatarFileChange={handleAgentAvatarChange}
+                  />
+                </AccordionContent>
+              </AccordionItem>
+
+              {/* Final step — guides the agent through publishing the
+                  exported file on a static host (Netlify Drop) and turning
+                  the live URL into a Listing Launch Kit. 3DPS does not
+                  host: this is a guided external publishing workflow. */}
+              <AccordionItem
+                value="publish"
+                className="rounded-lg border bg-card shadow-sm"
+              >
+                <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                  <span className="flex items-center gap-2 text-base font-semibold text-foreground">
+                    <Rocket className="size-5 text-primary" />
+                    Publish &amp; Distribute
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent className="px-4 pb-4">
+                  <p className="mb-4 text-xs text-muted-foreground">
+                    Download your 3DPS presentation, publish it on your
+                    preferred host, then turn the live URL into
+                    marketplace-ready links and QR codes.
+                  </p>
+                  <PublishDistributeSection
+                    propertyName={
+                      models[0]?.propertyName?.trim() ||
+                      models[0]?.name?.trim() ||
+                      ""
+                    }
+                    accentColor={accentColor}
+                    canDownload={
+                      !submitting &&
+                      modelCount >= 1 &&
+                      !licenseExpired &&
+                      !passwordIncomplete
+                    }
+                    downloading={submitting || downloading}
+                    downloadingLabel={
+                      submitting
+                        ? "Preparing…"
+                        : downloading
+                          ? (downloadStep || "Generating…")
+                          : undefined
+                    }
+                    downloadDisabledReason={
+                      modelCount < 1
+                        ? "Add at least one property to enable download."
+                        : licenseExpired
+                          ? "Renew your operating license to enable download."
+                          : passwordIncomplete
+                            ? "Set a password (or turn protection off) to enable download."
+                            : null
+                    }
+                    onDownload={handleDownload}
                   />
                 </AccordionContent>
               </AccordionItem>
