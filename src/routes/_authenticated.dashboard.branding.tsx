@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useAuth } from "@/hooks/use-auth";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,7 +71,17 @@ function BrandingPage() {
   const [faviconFile, setFaviconFile] = useState<File | null>(null);
   const [heroFile, setHeroFile] = useState<File | null>(null);
   const [savedSnapshot, setSavedSnapshot] = useState<BrandingData>(defaultBranding);
+  const savedSnapshotRef = useRef<BrandingData>(defaultBranding);
   const [previewVersion, setPreviewVersion] = useState(0);
+
+  const hasUnsavedChanges = useMemo(
+    () =>
+      JSON.stringify(branding) !== JSON.stringify(savedSnapshot) ||
+      !!logoFile ||
+      !!faviconFile ||
+      !!heroFile,
+    [branding, savedSnapshot, logoFile, faviconFile, heroFile],
+  );
 
   const isPro = branding.tier === "pro";
   const customDomainUnlocked = isPro && hasPaid;
@@ -113,8 +123,15 @@ function BrandingPage() {
         hero_bg_url: (data as any).hero_bg_url ?? null,
         hero_bg_opacity: (data as any).hero_bg_opacity ?? 0.45,
       };
-      setBranding(next);
-      setSavedSnapshot(next);
+      // Only update state if the fetched payload actually differs from
+      // what we already have — prevents needless re-renders that would
+      // remount the preview iframe in a loop when auth/session events
+      // re-fire this effect.
+      if (JSON.stringify(next) !== JSON.stringify(savedSnapshotRef.current)) {
+        savedSnapshotRef.current = next;
+        setBranding(next);
+        setSavedSnapshot(next);
+      }
     }
     setLoading(false);
   }, [user]);
@@ -209,6 +226,7 @@ function BrandingPage() {
       };
       setBranding(updated);
       setSavedSnapshot(updated);
+      savedSnapshotRef.current = updated;
       setLogoFile(null);
       setFaviconFile(null);
       setHeroFile(null);
@@ -511,12 +529,7 @@ function BrandingPage() {
         slug={savedSnapshot.slug}
         tier={savedSnapshot.tier}
         customDomain={savedSnapshot.custom_domain}
-        hasUnsavedChanges={
-          JSON.stringify(branding) !== JSON.stringify(savedSnapshot) ||
-          !!logoFile ||
-          !!faviconFile ||
-          !!heroFile
-        }
+        hasUnsavedChanges={hasUnsavedChanges}
         refreshKey={previewVersion}
       />
 
