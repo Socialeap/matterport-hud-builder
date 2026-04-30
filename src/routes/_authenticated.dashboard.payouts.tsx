@@ -126,9 +126,16 @@ function PayoutsPage() {
 
   useEffect(() => {
     if (!user || initRef.current) return;
+    // Skip Stripe Connect bootstrap entirely for unpaid MSPs — the page
+    // renders the locked state instead.
+    if (!accessLoading && !hasPaid && !isClient) {
+      setLoading(false);
+      return;
+    }
+    if (accessLoading) return;
     initRef.current = true;
     loadStatus();
-  }, [user, loadStatus]);
+  }, [user, loadStatus, accessLoading, hasPaid, isClient]);
 
   // Handle return from Stripe Connect onboarding
   useEffect(() => {
@@ -174,6 +181,15 @@ function PayoutsPage() {
       setConnecting(false);
     }
   };
+
+  if (!accessLoading && !hasPaid && !isClient) {
+    return (
+      <LockedFeatureCard
+        featureName="Payouts"
+        description="Connect Stripe and manage payouts after activating your Studio with Starter or Pro."
+      />
+    );
+  }
 
   if (loading) {
     return (
