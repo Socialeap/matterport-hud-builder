@@ -774,18 +774,17 @@ function Index() {
             ];
             return (
               <div className="relative mt-14">
-                {/* Dashed connector segments (desktop only) */}
-                <div className="pointer-events-none absolute left-0 right-0 top-[68px] hidden lg:block">
-                  <div className="relative mx-auto grid max-w-6xl grid-cols-4 px-6">
-                    {[0, 1, 2].map((i) => (
-                      <div
-                        key={i}
-                        className={`col-start-${i + 1} col-span-2 mx-[12.5%] border-t border-dashed transition-colors duration-300 ${
-                          hoveredStep > i + 1 ? "border-amber-300/70" : "border-white/15"
-                        }`}
-                      />
-                    ))}
-                  </div>
+                {/* Dashed connector segments (desktop only) — positioned behind the number circles */}
+                <div className="pointer-events-none absolute inset-x-0 top-[92px] hidden lg:flex justify-between px-[12.5%]">
+                  {[1, 2, 3].map((i) => (
+                    <div
+                      key={i}
+                      style={{ width: "calc((100% - 0px) / 3)" }}
+                      className={`mx-2 border-t border-dashed transition-colors duration-300 ${
+                        hoveredStep > i ? "border-amber-300/70" : "border-white/15"
+                      }`}
+                    />
+                  ))}
                 </div>
 
                 <div className="relative grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
