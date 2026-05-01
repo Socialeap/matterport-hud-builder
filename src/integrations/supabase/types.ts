@@ -742,6 +742,30 @@ export type Database = {
         }
         Relationships: []
       }
+      studio_preview_tokens: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          provider_id: string
+          slug: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at: string
+          id?: string
+          provider_id: string
+          slug: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          provider_id?: string
+          slug?: string
+        }
+        Relationships: []
+      }
       suppressed_emails: {
         Row: {
           created_at: string
@@ -969,6 +993,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      issue_studio_preview_token: { Args: { _slug: string }; Returns: string }
       move_to_dlq: {
         Args: {
           dlq_name: string
@@ -1045,6 +1070,10 @@ export type Database = {
       set_client_byok_active: {
         Args: { p_active: boolean; p_client_id: string }
         Returns: number
+      }
+      verify_studio_preview_token: {
+        Args: { _slug: string; _token: string }
+        Returns: boolean
       }
     }
     Enums: {
