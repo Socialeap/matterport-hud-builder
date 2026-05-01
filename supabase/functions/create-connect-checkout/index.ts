@@ -79,7 +79,7 @@ serve(async (req) => {
     // Prevents arbitrary users creating checkouts for unrelated models.
     const { data: ownedModel, error: ownedError } = await supabaseAdmin
       .from("saved_models")
-      .select("id, client_id, provider_id")
+      .select("id, client_id, provider_id, status, is_released, amount_cents")
       .eq("id", modelId)
       .maybeSingle();
 
@@ -94,6 +94,26 @@ serve(async (req) => {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // ── MSP-approved one-time free download ────────────────────────────
+    // Providers can mark an individual order free from /dashboard/orders.
+    // That flips this exact saved_model to paid + released + $0, so checkout
+    // should bypass Stripe even if the client is not globally marked free.
+    if (
+      ownedModel.status === "paid" &&
+      ownedModel.is_released === true &&
+      ownedModel.amount_cents === 0
+    ) {
+      await supabaseAdmin
+        .from("saved_models")
+        .update({ model_count: modelCount })
+        .eq("id", modelId);
+
+      return new Response(
+        JSON.stringify({ free: true, oneTimeFree: true, modelId }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     // ── Free-client bypass ──────────────────────────────────────────────
@@ -185,10 +205,18 @@ serve(async (req) => {
           stripeAccount: branding.stripe_connect_id,
         }
       );
-    } catch (stripeErr: any) {
-      const code = stripeErr?.code || stripeErr?.raw?.code;
-      const type = stripeErr?.type || stripeErr?.rawType;
-      const status = stripeErr?.statusCode;
+    } catch (stripeErr: unknown) {
+      const stripeError = stripeErr as {
+        code?: string;
+        raw?: { code?: string };
+        rawType?: string;
+        type?: string;
+        statusCode?: number;
+        message?: string;
+      };
+      const code = stripeError.code || stripeError.raw?.code;
+      const type = stripeError.type || stripeError.rawType;
+      const status = stripeError.statusCode;
       console.error("Stripe checkout.sessions.create failed:", {
         env,
         connectId: branding.stripe_connect_id,
@@ -201,8 +229,8 @@ serve(async (req) => {
       if (
         code === "platform_account_required" ||
         type === "StripePermissionError" ||
-        (typeof stripeErr?.message === "string" &&
-          stripeErr.message.includes("Only Stripe Connect platforms"))
+        (typeof stripeError.message === "string" &&
+          stripeError.message.includes("Only Stripe Connect platforms"))
       ) {
         return new Response(
           JSON.stringify({

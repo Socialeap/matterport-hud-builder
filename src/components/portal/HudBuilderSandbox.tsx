@@ -50,7 +50,13 @@ import type { PropertyModel, AgentContact, TourBehavior, LiveTourStop } from "./
 import { DEFAULT_BEHAVIOR, DEFAULT_AGENT } from "./types";
 import type { Tables } from "@/integrations/supabase/types";
 import { supabase } from "@/integrations/supabase/client";
-import { savePresentationRequest, generatePresentation, getStudioAccessState, refreshPresentationConfig } from "@/lib/portal.functions";
+import {
+  savePresentationRequest,
+  generatePresentation,
+  getStudioAccessState,
+  refreshPresentationConfig,
+  getApprovedFreePresentationDownload,
+} from "@/lib/portal.functions";
 import { uploadBrandAsset } from "@/lib/storage";
 import { toast } from "sonner";
 import { calculatePresentationPrice } from "@/lib/portal/pricing";
@@ -349,6 +355,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
   const generatePresentationFn = useServerFn(generatePresentation);
   const refreshPresentationConfigFn = useServerFn(refreshPresentationConfig);
   const getStudioAccessStateFn = useServerFn(getStudioAccessState);
+  const getApprovedFreeDownloadFn = useServerFn(getApprovedFreePresentationDownload);
   const workerRef = useRef<EmbeddingWorkerClient | null>(null);
   const autoDownloadTriggeredRef = useRef(false);
   const brandAssetsTouchedRef = useRef({ logo: false, favicon: false, avatar: false });
@@ -370,7 +377,6 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
       // Nothing to restore → mark hydrated so autosave can engage.
       draftHydratedRef.current = true;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [providerSlug]);
 
   const applyDraft = useCallback((draft: DraftState) => {
@@ -858,7 +864,48 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     return () => {
       cancelled = true;
     };
-  }, [userId, branding.provider_id, getStudioAccessStateFn, accessRetryNonce]);
+  }, [userId, branding, getStudioAccessStateFn, accessRetryNonce]);
+
+  useEffect(() => {
+    if (!userId || !accessState.loaded || accessState.error) return;
+    if (
+      accessState.viewerMatchesProvider ||
+      accessState.viewerRole === "provider" ||
+      accessState.viewerRole === "admin"
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    getApprovedFreeDownloadFn({ data: { providerId: branding.provider_id } })
+      .then((result) => {
+        if (cancelled || !result.modelId) return;
+        if (savedModelId && savedModelId !== result.modelId) return;
+
+        setSavedModelId(result.modelId);
+        setIsReleased(true);
+        setShowCheckout(false);
+        setConnectAccountId(null);
+        setCheckoutClientSecret(null);
+      })
+      .catch((err) => {
+        console.warn("Approved free download lookup skipped:", err);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    accessRetryNonce,
+    accessState.error,
+    accessState.loaded,
+    accessState.viewerMatchesProvider,
+    accessState.viewerRole,
+    branding.provider_id,
+    getApprovedFreeDownloadFn,
+    savedModelId,
+    userId,
+  ]);
 
   const readSavedPresentationAssets = useCallback(async (modelId: string) => {
     const empty = { logoUrl: "", faviconUrl: "", avatarUrl: "" };
@@ -1146,6 +1193,11 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
       return;
     }
 
+    if (savedModelId && isReleased) {
+      await runDownload(savedModelId);
+      return;
+    }
+
     // 2) Save / upsert the saved_model row first (and re-run logo/favicon/avatar
     //    upload if local files are still pending from pre-auth).
     setSubmitting(true);
@@ -1200,37 +1252,53 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
 
     let modelId = savedModelId;
     try {
-      const result = await savePresentationRequest({
-        data: {
-          providerId: branding.provider_id,
-          name: models[0]?.name || "Untitled Presentation",
-          properties: models,
-          tourConfig: behaviors as unknown as Record<string, unknown>,
-          agent: finalAgent as unknown as Record<string, string>,
-          brandingOverrides: {
-            brandName,
-            accentColor,
-            hudBgColor,
-            gateLabel,
-            logoUrl: finalLogoUrl ?? "",
-            faviconUrl: finalFaviconUrl ?? "",
-          },
-          enhancements,
-          // Same as the refresh path: only the toggle + hint travel to
-          // the server. Plaintext password stays in the browser.
-          access: {
-            passwordProtected: isAccessArmed(access),
-            passwordHint: access.passwordHint,
-          },
+      const presentationPayload = {
+        providerId: branding.provider_id,
+        name: models[0]?.name || "Untitled Presentation",
+        properties: models,
+        tourConfig: behaviors as unknown as Record<string, unknown>,
+        agent: finalAgent as unknown as Record<string, string>,
+        brandingOverrides: {
+          brandName,
+          accentColor,
+          hudBgColor,
+          gateLabel,
+          logoUrl: finalLogoUrl ?? "",
+          faviconUrl: finalFaviconUrl ?? "",
         },
-      });
-      if (!result.success || !result.modelId) {
-        toast.error(result.error || "Failed to save presentation");
-        setSubmitting(false);
-        return;
+        enhancements,
+        // Same as the refresh path: only the toggle + hint travel to
+        // the server. Plaintext password stays in the browser.
+        access: {
+          passwordProtected: isAccessArmed(access),
+          passwordHint: access.passwordHint,
+        },
+      };
+
+      if (modelId) {
+        const result = await refreshPresentationConfigFn({
+          data: {
+            ...presentationPayload,
+            modelId,
+          },
+        });
+        if (!result.success) {
+          toast.error(result.error || "Failed to update presentation");
+          setSubmitting(false);
+          return;
+        }
+      } else {
+        const result = await savePresentationRequest({
+          data: presentationPayload,
+        });
+        if (!result.success || !result.modelId) {
+          toast.error(result.error || "Failed to save presentation");
+          setSubmitting(false);
+          return;
+        }
+        modelId = result.modelId;
+        setSavedModelId(modelId);
       }
-      modelId = result.modelId;
-      setSavedModelId(modelId);
     } catch (err) {
       console.error(err);
       toast.error("An error occurred. Please try again.");
@@ -1283,6 +1351,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
       // Free client → backend already marked paid + released.
       if (checkoutData?.free === true) {
         setIsReleased(true);
+        setSavedModelId(modelId);
         setSubmitting(false);
         await runDownload(modelId);
         return;
@@ -1309,6 +1378,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     agent,
     agentAvatarFile,
     savedModelId,
+    isReleased,
     branding.provider_id,
     models,
     behaviors,
@@ -1325,6 +1395,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     fileFromDataUrl,
     modelCount,
     runDownload,
+    refreshPresentationConfigFn,
     enhancements,
     access,
   ]);

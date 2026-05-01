@@ -272,6 +272,31 @@ export const checkFulfillmentStatus = createServerFn({ method: "POST" })
     };
   });
 
+export const getApprovedFreePresentationDownload = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: { providerId: string }) => data)
+  .handler(async ({ data, context }): Promise<{ modelId: string | null; error: string | null }> => {
+    const { supabase, userId } = context;
+
+    const { data: model, error } = await supabase
+      .from("saved_models")
+      .select("id")
+      .eq("client_id", userId)
+      .eq("provider_id", data.providerId)
+      .eq("status", "paid")
+      .eq("is_released", true)
+      .eq("amount_cents", 0)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      return { modelId: null, error: error.message };
+    }
+
+    return { modelId: model?.id ?? null, error: null };
+  });
+
 interface PropertyMediaAsset {
   id: string;
   kind: "video" | "photo" | "gif";
