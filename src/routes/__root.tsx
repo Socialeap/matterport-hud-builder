@@ -1,5 +1,6 @@
 import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
 import { AuthProvider } from "@/hooks/use-auth";
+import { Toaster } from "@/components/ui/sonner";
 import appCss from "../styles.css?url";
 
 function NotFoundComponent() {
@@ -64,6 +65,13 @@ function RootComponent() {
   return (
     <AuthProvider>
       <Outlet />
+      {/* Mount Sonner Toaster at the root so toast.error / toast.success
+          / toast.warning calls anywhere in the app surface visible UI.
+          Without this, every toast in the codebase is silently swallowed
+          — the symptom is "the action ran but no feedback appeared",
+          which is exactly what users hit on the Pay & Download flow when
+          create-connect-checkout returned a validation error. */}
+      <Toaster richColors position="top-center" />
     </AuthProvider>
   );
 }

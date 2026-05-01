@@ -99,6 +99,41 @@ function createEmptyModel(): PropertyModel {
   };
 }
 
+/**
+ * Pull the human-readable error message off a supabase-js
+ * `functions.invoke` error. supabase-js wraps non-2xx HTTP responses in
+ * FunctionsHttpError, attaching the raw Response at `error.context`. Our
+ * edge functions reply with `{ error: "..." }` on validation failures,
+ * so cloning + JSON-parsing recovers the specific reason ("Provider has
+ * not connected Stripe", "Invalid modelCount", etc.) instead of falling
+ * back to a generic "Failed to create checkout session" that masks the
+ * actual cause.
+ *
+ * Defensive: any parse failure (text body, network-level error) returns
+ * an empty string, letting the caller pick its own fallback copy.
+ */
+async function readFunctionErrorMessage(err: unknown): Promise<string> {
+  const ctx = (err as { context?: Response } | null)?.context;
+  if (ctx && typeof (ctx as Response).clone === "function") {
+    try {
+      const body = await (ctx as Response).clone().json();
+      if (body && typeof body === "object" && typeof (body as { error?: unknown }).error === "string") {
+        return (body as { error: string }).error;
+      }
+    } catch {
+      // Fall through to text / message fallbacks.
+    }
+    try {
+      const text = await (ctx as Response).clone().text();
+      if (text) return text;
+    } catch {
+      // Ignore — final fallback below.
+    }
+  }
+  if (err instanceof Error && err.message) return err.message;
+  return "";
+}
+
 export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
   const backSlug = slug ?? branding.slug ?? "";
   // Auth state
@@ -1216,7 +1251,15 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
         });
 
       if (checkoutError) {
-        toast.error("Failed to create checkout session");
+        // supabase-js wraps non-2xx responses in FunctionsHttpError. The
+        // raw Response is at error.context — clone-then-json so we can
+        // surface the server's specific message ("Provider has not
+        // connected Stripe", "Invalid modelCount", etc.) instead of a
+        // generic "Failed to create checkout session" that hides the
+        // actual failure mode.
+        console.error("create-connect-checkout failed:", checkoutError);
+        const serverMessage = await readFunctionErrorMessage(checkoutError);
+        toast.error(serverMessage || "Failed to create checkout session");
         setSubmitting(false);
         return;
       }
@@ -1238,6 +1281,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
         return;
       }
 
+      console.error("create-connect-checkout: unexpected response shape", checkoutData);
       toast.error(checkoutData?.error || "Failed to create checkout session");
     } catch (err) {
       console.error(err);
