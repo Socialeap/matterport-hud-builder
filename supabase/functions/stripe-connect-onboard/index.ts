@@ -69,13 +69,20 @@ serve(async (req) => {
           metadata: { provider_id: user.id },
         });
         accountId = account.id;
-      } catch (stripeErr) {
+      } catch (stripeErr: any) {
         const msg = stripeErr instanceof Error ? stripeErr.message : String(stripeErr);
-        if (msg.includes("managing losses") || msg.includes("platform-profile")) {
+        const code = stripeErr?.code || stripeErr?.raw?.code;
+        if (
+          msg.includes("managing losses") ||
+          msg.includes("platform-profile") ||
+          msg.includes("Only Stripe Connect platforms") ||
+          code === "platform_account_required"
+        ) {
           return new Response(
             JSON.stringify({
               error:
                 "Stripe Connect is not yet activated on the platform. The platform owner must complete the Stripe Platform Profile (Loss Liability acknowledgement, set to 'Platform is responsible for losses') before MSPs can connect. Please contact support.",
+              code: "platform_not_activated",
             }),
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
