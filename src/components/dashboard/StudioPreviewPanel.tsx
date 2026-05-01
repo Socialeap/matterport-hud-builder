@@ -45,6 +45,7 @@ export function StudioPreviewPanel({
   // sandboxing without `allow-same-origin`.
   const [previewToken, setPreviewToken] = useState<string | null>(null);
   const [tokenError, setTokenError] = useState<string | null>(null);
+  const [tokenAttempt, setTokenAttempt] = useState(0);
   const tokenSlugRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -57,13 +58,14 @@ export function StudioPreviewPanel({
     }
     // If we already have a token for this exact slug, reuse it. Bumping
     // refreshKey/manualBump remounts the iframe but does NOT need a new
-    // token — the existing one is still valid for an hour.
-    if (tokenSlugRef.current === trimmedSlug) {
+    // token — the existing one is still valid for an hour. The retry
+    // button bumps tokenAttempt, which forces a fresh issuance regardless.
+    if (tokenSlugRef.current === trimmedSlug && previewToken) {
       return;
     }
 
-    // Slug changed (or first load): invalidate any stale token so the iframe
-    // never tries to verify a token signed for a different slug.
+    // Slug changed (or first load / retry): invalidate any stale token so
+    // the iframe never tries to verify a token signed for a different slug.
     setPreviewToken(null);
     setTokenError(null);
 
@@ -88,7 +90,13 @@ export function StudioPreviewPanel({
     return () => {
       cancelled = true;
     };
-  }, [trimmedSlug, hasPaid]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trimmedSlug, hasPaid, tokenAttempt]);
+
+  const retryTokenIssue = () => {
+    tokenSlugRef.current = null;
+    setTokenAttempt((n) => n + 1);
+  };
 
   const embedUrl = !trimmedSlug
     ? null
@@ -156,6 +164,16 @@ export function StudioPreviewPanel({
               Couldn't load the preview.
             </p>
             <p className="mt-1 text-xs text-muted-foreground">{tokenError}</p>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="mt-3"
+              onClick={retryTokenIssue}
+            >
+              <RefreshCw className="size-3.5" />
+              Try again
+            </Button>
           </div>
         ) : !embedUrl ? (
           <div className="rounded-lg border border-dashed border-border bg-muted/30 p-8 text-center">

@@ -3316,8 +3316,38 @@ export const issueStudioPreviewToken = createServerFn({ method: "POST" })
     );
 
     if (error) {
+      // Surface the underlying error to the dashboard UI so the operator
+      // can act on it directly. PostgREST/Postgres errors don't contain
+      // user-sensitive data — they reveal function/column names that are
+      // already part of the public codebase.
       console.error("issue_studio_preview_token rpc failed:", error);
-      throw new Error("Failed to authorize Studio preview");
+      const e = error as {
+        message?: string;
+        code?: string;
+        details?: string;
+        hint?: string;
+      };
+      const detail = e.message ?? "unknown error";
+
+      // PGRST202 = "Could not find the function ... in the schema cache".
+      // 42883   = Postgres "function does not exist".
+      // 42P01   = Postgres "relation does not exist" (the underlying table).
+      // All three mean: the studio_preview_tokens migration hasn't been
+      // applied yet. Surface a clear, actionable message instead of the
+      // raw Postgres text.
+      if (
+        e.code === "PGRST202" ||
+        e.code === "42883" ||
+        e.code === "42P01" ||
+        /Could not find the function|does not exist/i.test(detail)
+      ) {
+        throw new Error(
+          "Studio preview isn't provisioned on the database yet. " +
+            "Apply the latest Supabase migrations " +
+            "(20260501000000_studio_preview_tokens.sql) and reload this page.",
+        );
+      }
+      throw new Error(`Studio preview authorization failed: ${detail}`);
     }
     if (!tokenId || typeof tokenId !== "string") {
       // RPC returns NULL when the caller is not the slug's owner / admin
