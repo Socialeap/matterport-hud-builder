@@ -115,26 +115,32 @@ function PortalPage() {
     const params = new URLSearchParams(window.location.search);
     const isPreviewRequest = params.get("preview") === "studio";
     const embedRequested = params.get("embed") === "studio-preview";
-    // Only treat as a real embed if we are actually framed by this same app.
-    // This lets the dashboard Branding tab iframe render the unpaid preview,
-    // while direct public visits and third-party iframes fall through to the
-    // public "Coming Soon" gate.
+    // Only treat as a real embed if we are actually framed by the Branding
+    // dashboard. The iframe is intentionally sandboxed without
+    // allow-same-origin, so reading window.top.location is not reliable;
+    // document.referrer is the stable signal for the same-site parent route.
     let isFramed = false;
-    let isSameOriginParent = false;
     try {
-      const topWindow = window.top;
-      isFramed = !!topWindow && window.self !== topWindow;
-      isSameOriginParent =
-        topWindow !== null && isFramed && topWindow.location.origin === window.location.origin;
+      isFramed = window.self !== window.top;
     } catch {
-      // Cross-origin or sandboxed parent access is not an authorized dashboard
-      // preview context. Deny the embed bypass rather than guessing.
+      // Cross-origin access throws — that itself means we ARE framed.
       isFramed = true;
-      isSameOriginParent = false;
     }
+
+    let isBrandingDashboardReferrer = false;
+    try {
+      const referrer = document.referrer ? new URL(document.referrer) : null;
+      isBrandingDashboardReferrer =
+        !!referrer &&
+        referrer.origin === window.location.origin &&
+        referrer.pathname === "/dashboard/branding";
+    } catch {
+      isBrandingDashboardReferrer = false;
+    }
+
     return {
       isPreviewRequest,
-      isEmbedPreview: embedRequested && isFramed && isSameOriginParent,
+      isEmbedPreview: embedRequested && isFramed && isBrandingDashboardReferrer,
     };
   })();
 
