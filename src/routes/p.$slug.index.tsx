@@ -130,9 +130,11 @@ function PortalPage() {
     let isBrandingDashboardReferrer = false;
     try {
       const referrer = document.referrer ? new URL(document.referrer) : null;
+      const currentUrl = new URL(window.location.href);
       isBrandingDashboardReferrer =
         !!referrer &&
-        referrer.origin === window.location.origin &&
+        referrer.protocol === currentUrl.protocol &&
+        referrer.host === currentUrl.host &&
         referrer.pathname === "/dashboard/branding";
     } catch {
       isBrandingDashboardReferrer = false;
