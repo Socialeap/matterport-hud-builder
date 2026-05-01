@@ -1,104 +1,106 @@
+# Remove the "must be linked to this MSP" restriction in the Studio Builder
+
 ## Problem
 
-Visiting `https://3dps.transcendencemedia.com/p/fbiib/builder` (or any MSP's builder URL) **without being signed in** shows:
+A signed-in client/agent visiting `/p/{slug}/builder` for any MSP is blocked from saving and paying with:
 
-> "Pricing Unavailable — We couldn't load pricing for this Studio right now."
+> "You are not linked to this provider. Please use your invitation link to access this Studio."
 
-…even though the same MSP's pricing renders fine on the landing page (`/p/fbiib`). The builder is supposed to compute the price from the formula × the number of Property Models the visitor adds.
+This contradicts the intended product behavior: **anyone signed in should be able to build, pay, and download** a presentation from any MSP whose Studio has Pricing + Stripe Connect configured. The invitation flow is only required for **free** access (the MSP marks an invitee `is_free = true`).
 
-## Root Cause
+## Root Cause (single location)
 
-In `src/components/portal/HudBuilderSandbox.tsx`, the access resolver effect at lines 759–772 runs on mount:
+In `src/lib/portal.functions.ts`, the `savePresentationRequest` server function (lines ~102–118) hard-blocks any caller whose `client_providers` row is missing for the target MSP:
 
-```js
-if (!userId) {
-  setAccessState({
-    linked: false,
-    isFree: false,
-    pricingConfigured: false,   // ← wrong for anon visitors
-    payoutsReady: false,
-    ...
-    loaded: true,                // ← marks "verified"
-    error: null,
-  });
-  return;
+```ts
+const access = Array.isArray(accessRows) ? accessRows[0] : null;
+if (!access?.linked) {
+  return {
+    success: false,
+    error: "You are not linked to this provider. Please use your invitation link to access this Studio.",
+  };
 }
 ```
 
-Then at lines 513–522:
+This guard is overzealous. It treats "linked" (an entitlement signal for **free** access) as a precondition for **any** access, including paid checkouts. No other layer requires the link:
 
-```js
-const accessVerified = accessState.loaded && !accessState.error;   // true
-const pricingConfigured = accessVerified
-  ? accessState.pricingConfigured                                  // false
-  : pricing.configured;                                            // (skipped)
-const checkoutReady = accessVerified && pricingConfigured && payoutsReady;
+- **DB / RLS**: `saved_models` INSERT only requires `client_id = auth.uid()`. No FK to `client_providers`.
+- **Builder UI**: doesn't gate on `accessState.linked` anywhere — the flag is read but never used to disable the flow.
+- **Anonymous viewers**: already see the priced checkout card (recent fix). They just hit the signup/login modal at "Pay & Download" — and once signed in, they hit this wall.
+- **Edge function `create-connect-checkout`**: correctly uses `resolve_studio_access` only to detect the **free** path (`isFree === true`); paid path doesn't require linkage.
+- **Free-invite flow stays intact**: `accept_invitation_self` and `handle_new_user` still create the `client_providers` row with `is_free` propagated, so `resolve_studio_access` continues to return `is_free: true` for invited free clients, and `create-connect-checkout` still bypasses charging for them.
+
+## Fix (one server function, one block)
+
+Edit `src/lib/portal.functions.ts` in `savePresentationRequest` (lines ~102–118):
+
+1. **Remove** the `if (!access?.linked) { return error }` guard entirely.
+2. **Keep** the `resolve_studio_access` RPC call, because we still want to surface a clean "Studio not configured for payments" error before inserting a `saved_models` row. Replace the link check with two honest preconditions derived from the same RPC result:
+
+```ts
+const access = Array.isArray(accessRows) ? accessRows[0] : null;
+
+// Block self-checkout: an MSP (or admin viewing as MSP) must not buy
+// their own presentation through the client checkout.
+if (access?.viewer_matches_provider) {
+  return {
+    success: false,
+    error: "You are signed in as the Studio owner. Sign in with a client account to purchase.",
+  };
+}
+
+// Free clients skip pricing/payouts checks (charge is bypassed downstream).
+const isFree = access?.is_free === true;
+if (!isFree) {
+  if (!access?.pricing_configured) {
+    return {
+      success: false,
+      error: "This Studio has not finished setting up pricing yet. Please contact the provider.",
+    };
+  }
+  if (!access?.payouts_ready) {
+    return {
+      success: false,
+      error: "This Studio has not finished setting up payments yet. Please contact the provider.",
+    };
+  }
+}
 ```
 
-So the JSX falls through `isFreeClient` → `checkoutReady` → `pricingConfigured ?` and lands on the final "Pricing Unavailable" branch (line 1912–1923).
-
-This is wrong because:
-
-1. The `branding_settings` row — which already contains `use_flat_pricing`, `flat_price_per_model_cents`, `base_price_cents`, `tier3_price_cents`, `additional_model_fee_cents`, `stripe_connect_id`, and `stripe_onboarding_complete` — is **publicly readable** (RLS policy "Anyone can view branding by slug"), and the route loader already fetches the full row into `branding`.
-2. The `resolve_studio_access` Postgres function early-returns all-false when `auth.uid() IS NULL`, never reading branding. That's correct (it's an entitlement resolver), but the client must not interpret "no user" as "pricing not configured".
-3. The price formula is the same as the landing page (`calculatePresentationPrice` from `src/lib/portal/pricing.ts`), already computed in the component (`pricing`, `totalCents`) from the loader-supplied `branding` — it works regardless of auth.
-
-The pricing block on the public landing page works precisely because it doesn't gate on `accessState`; the builder block does, incorrectly.
-
-## Fix (single file change: `src/components/portal/HudBuilderSandbox.tsx`)
-
-Make the anonymous-visitor branch of the resolver effect set the access state from the **publicly available branding row** instead of hard-coding all-false. Specifically:
-
-1. In the `if (!userId)` branch of the effect (~lines 760–772), compute `pricingConfigured` and `payoutsReady` from the already-loaded `branding` prop using the same rules the SQL function uses:
-
-   ```js
-   const flat = Boolean((branding as any).use_flat_pricing);
-   const flatCents = (branding as any).flat_price_per_model_cents ?? 0;
-   const baseCents = branding.base_price_cents ?? 0;
-   const pricingConfigured = flat ? flatCents > 0 : baseCents > 0;
-   const payoutsReady =
-     Boolean(branding.stripe_onboarding_complete) &&
-     !!branding.stripe_connect_id;
-   ```
-
-   Then set:
-   ```js
-   setAccessState({
-     linked: false,
-     isFree: false,
-     pricingConfigured,
-     payoutsReady,
-     providerBrandName: branding.brand_name ?? "",
-     viewerRole: "unknown",
-     viewerMatchesProvider: false,
-     loaded: true,
-     error: null,
-   });
-   ```
-
-2. **No JSX changes required.** With `pricingConfigured=true` and `payoutsReady=true`, `checkoutReady` becomes true for the anonymous viewer and the existing **"Download Your Presentation"** card with the priced "Pay $X.XX & Download" button renders. The price already updates live as the visitor adds Property Models because `modelCount` flows into `calculatePresentationPrice` on every render.
-
-3. If the MSP truly has no pricing configured, `pricingConfigured` will still be `false` and the existing "Pricing Unavailable" copy will correctly render — preserving the honest case.
-
-4. If `stripe_onboarding_complete = false`, `payoutsReady` will be `false` and the existing "Payment Temporarily Unavailable" branch (which still shows the price breakdown) renders — also correct.
-
-5. Authenticated flows (logged-in clients, MSPs, admins) are **untouched**: the `else` branch still calls `getStudioAccessStateFn(...)` exactly as before, so entitlement (free vs paid, link status, wrong-account, etc.) keeps working through the server resolver.
+3. No other changes. The rest of the handler (insert `saved_models`, create `order_notifications`, etc.) is untouched.
 
 ## Why this is safe
 
-- **No schema changes.** No migration. No RPC change.
-- **No new server endpoint.** No new public surface area.
-- **No data exposed that isn't already public.** Every field the anon branch now reads (`use_flat_pricing`, `*_cents`, `stripe_connect_id` presence, `stripe_onboarding_complete`, `brand_name`) is already returned by the public `branding_settings` SELECT policy and is already in the `branding` prop the loader passed in.
-- **Pricing math unchanged.** Same `calculatePresentationPrice` shared with the edge function (`supabase/functions/_shared/pricing.ts`), so checkout charges remain server-validated.
-- **Authenticated path unchanged.** `getStudioAccessState` server function and `resolve_studio_access` SQL stay exactly as they are; only the no-userId branch of the React effect changes.
-- **Honest fallbacks preserved.** Genuine "no pricing" and "payouts not onboarded" cases still render their accurate messages.
-- **Checkout safety preserved.** Clicking "Pay & Download" while unauthenticated already triggers the existing signup/login modal flow before charging — that gate is unchanged.
+- **DB schema/RLS unchanged.** `saved_models` already permits any authenticated user to insert their own rows; no migration needed.
+- **Free-invite path preserved.** `is_free` still flows from `invitations → client_providers → resolve_studio_access → create-connect-checkout`. Free invitees continue to bypass payment.
+- **Paid path now works for any signed-in user.** They save → `create-connect-checkout` computes the price server-side from `branding_settings` → Stripe Connect collects payment → webhook releases the model. Identical to the existing paid-client experience, just without the prior arbitrary link requirement.
+- **No accidental free access.** Removing the link guard cannot grant free access — `is_free` requires a `client_providers` row with `is_free = true`, which only the MSP can create via `invitations`.
+- **Self-checkout protection added.** Prevents the MSP from accidentally creating a checkout against their own Stripe Connect account.
+- **Honest pre-flight errors.** If the MSP hasn't configured pricing or hasn't completed Stripe onboarding, we still fail fast with a clear message — same conditions the edge function would reject on, just surfaced earlier.
+- **UI unchanged.** The builder already shows the priced "Pay $X.XX & Download" card to anonymous and signed-in non-linked users. Today the click flow is: signed-in user clicks Pay → `savePresentationRequest` returns the link error → toast. After the fix: same click flow proceeds to Stripe Embedded Checkout.
 
-## Verification after change
+## Verification
 
-1. Open `https://3dps.transcendencemedia.com/p/fbiib/builder` in a private window (anonymous).
-2. Add 1, then 2, then 3, then 4 Property Models.
-3. Confirm the price card updates live: $79 → $158 → $150 → $209 → matches the landing-page table.
-4. Sign in as a linked free client → confirm "Download Your Presentation (Included)" still appears.
-5. Sign in as the MSP themselves → confirm "Wrong Account Signed In" still appears.
-6. Temporarily blank `base_price_cents` for a test slug → confirm "Pricing Unavailable" still appears (honest case).
+1. **Anonymous → sign up → pay flow** (the bug case):
+   - Open `/p/fbiib/builder` in a private window.
+   - Add Property Models; confirm the price card shows live totals.
+   - Click "Pay & Download" → sign up with a brand-new email (no invitation).
+   - Confirm Stripe Embedded Checkout opens (no "not linked" error).
+   - Complete a sandbox payment; confirm the model is released and downloaded.
+
+2. **Free-invite flow** (regression check):
+   - Have an MSP send an invitation with `is_free = true`.
+   - Accept it, build a presentation, click Download.
+   - Confirm the free bypass still kicks in (no Stripe checkout, immediate download).
+
+3. **Self-checkout guard** (new):
+   - Sign in as the MSP themselves, open their own `/p/{slug}/builder`, click Pay.
+   - Confirm the "signed in as the Studio owner" message appears.
+
+4. **Unconfigured MSP** (negative case):
+   - Pick (or temporarily simulate) an MSP with `base_price_cents IS NULL` or `stripe_onboarding_complete = false`.
+   - Confirm the matching pre-flight error renders instead of an opaque Stripe failure.
+
+## Files to change
+
+- `src/lib/portal.functions.ts` — `savePresentationRequest` handler only. No other files, no migrations, no edge function changes.

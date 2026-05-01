@@ -110,11 +110,34 @@ export const savePresentationRequest = createServerFn({ method: "POST" })
       return { success: false, error: "Could not verify Studio access" };
     }
     const access = Array.isArray(accessRows) ? accessRows[0] : null;
-    if (!access?.linked) {
+
+    // Block self-checkout: an MSP (or admin viewing as the provider) must
+    // not purchase their own presentation through the client checkout.
+    if (access?.viewer_matches_provider) {
       return {
         success: false,
-        error: "You are not linked to this provider. Please use your invitation link to access this Studio.",
+        error: "You are signed in as the Studio owner. Sign in with a client account to purchase.",
       };
+    }
+
+    // Free invitees (linked with is_free=true) skip pricing/payouts checks
+    // because the charge is bypassed downstream in create-connect-checkout.
+    // Everyone else (any signed-in client/agent) is welcome to build & pay,
+    // but only if the MSP has finished pricing + Stripe Connect onboarding.
+    const isFree = access?.is_free === true;
+    if (!isFree) {
+      if (!access?.pricing_configured) {
+        return {
+          success: false,
+          error: "This Studio has not finished setting up pricing yet. Please contact the provider.",
+        };
+      }
+      if (!access?.payouts_ready) {
+        return {
+          success: false,
+          error: "This Studio has not finished setting up payments yet. Please contact the provider.",
+        };
+      }
     }
 
     const { data: model, error: modelError } = await supabase
