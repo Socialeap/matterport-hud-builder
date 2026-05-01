@@ -101,14 +101,35 @@ function PortalPage() {
 
   // Compute preview/embed mode synchronously from URL search params. These
   // dictate whether we need to do any auth work at all on this route.
+  //
+  // SECURITY: ?embed=studio-preview is ONLY honored when the page is loaded
+  // inside an iframe (i.e. the dashboard's StudioPreviewPanel). A public
+  // visitor pasting that URL into a top-level browser tab fails the frame
+  // check and falls through to the "Coming Soon" gate. This closes the
+  // public leak where anyone who guessed the URL could view an unpaid
+  // Studio.
   const { isPreviewRequest, isEmbedPreview } = (() => {
     if (typeof window === "undefined") {
       return { isPreviewRequest: false, isEmbedPreview: false };
     }
     const params = new URLSearchParams(window.location.search);
+    const isPreviewRequest = params.get("preview") === "studio";
+    const embedRequested = params.get("embed") === "studio-preview";
+    // Only treat as a real embed if we are actually framed. The iframe
+    // sandbox excludes allow-same-origin, so we cannot read window.top
+    // properties — but window.self !== window.top is enough to confirm
+    // we are inside *some* parent frame, which is the only legitimate
+    // caller of this mode (the dashboard preview panel).
+    let isFramed = false;
+    try {
+      isFramed = window.self !== window.top;
+    } catch {
+      // Cross-origin access throws — that itself means we ARE framed.
+      isFramed = true;
+    }
     return {
-      isPreviewRequest: params.get("preview") === "studio",
-      isEmbedPreview: params.get("embed") === "studio-preview",
+      isPreviewRequest,
+      isEmbedPreview: embedRequested && isFramed,
     };
   })();
 
