@@ -3,6 +3,10 @@ import { createServerFn } from "@tanstack/react-start";
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { checkDemoPublished } from "@/lib/sandbox-demo.functions";
+import {
+  getStudioPreviewSecret,
+  verifyStudioPreviewToken,
+} from "@/lib/studio-preview-token";
 import { Check, X, Link2, Palette, Download, Sparkles, Menu, LogIn, LogOut } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -20,7 +24,9 @@ import { toast } from "sonner";
 
 
 const fetchBrandingBySlug = createServerFn({ method: "GET" })
-  .inputValidator((data: { slug: string }) => data)
+  .inputValidator(
+    (data: { slug: string; previewToken?: string | null }) => data,
+  )
   .handler(async ({ data }) => {
     const { data: branding, error } = await supabase
       .from("branding_settings")
@@ -29,7 +35,14 @@ const fetchBrandingBySlug = createServerFn({ method: "GET" })
       .maybeSingle();
 
     if (error || !branding) {
-      return { branding: null, demoPublished: false, lusActive: false, vaultAssetCount: 0, providerActive: false };
+      return {
+        branding: null,
+        demoPublished: false,
+        lusActive: false,
+        vaultAssetCount: 0,
+        providerActive: false,
+        embedPreviewValid: false,
+      };
     }
 
     const [demoCheck, licenseRes, vaultRes, paidRes] = await Promise.all([
@@ -53,12 +66,29 @@ const fetchBrandingBySlug = createServerFn({ method: "GET" })
 
     const providerActive = paidRes.data === true;
 
+    // Server-side verification of the dashboard's iframe preview token.
+    // This is the single source of truth for whether the embed bypass is
+    // allowed — no referrer/window.top/iframe-detection heuristics.
+    let embedPreviewValid = false;
+    if (data.previewToken) {
+      const secret = getStudioPreviewSecret();
+      if (secret) {
+        const result = await verifyStudioPreviewToken(
+          secret,
+          data.previewToken,
+          data.slug,
+        );
+        embedPreviewValid = result.valid;
+      }
+    }
+
     return {
       branding,
       demoPublished: demoCheck.published,
       lusActive,
       vaultAssetCount: vaultRes.count ?? 0,
       providerActive,
+      embedPreviewValid,
     };
   });
 
@@ -73,6 +103,12 @@ const recordPageVisit = createServerFn({ method: "POST" })
     });
   });
 
+interface PortalSearch {
+  preview?: "studio";
+  embed?: "studio-preview";
+  previewToken?: string;
+}
+
 export const Route = createFileRoute("/p/$slug/")({
   head: () => ({
     meta: [
@@ -80,8 +116,30 @@ export const Route = createFileRoute("/p/$slug/")({
       { name: "description", content: "Create stunning 3D property tour presentations" },
     ],
   }),
-  loader: async ({ params }) => {
-    const result = await fetchBrandingBySlug({ data: { slug: params.slug } });
+  validateSearch: (raw: Record<string, unknown>): PortalSearch => {
+    const out: PortalSearch = {};
+    if (raw.preview === "studio") out.preview = "studio";
+    if (raw.embed === "studio-preview") out.embed = "studio-preview";
+    if (typeof raw.previewToken === "string" && raw.previewToken.length > 0) {
+      out.previewToken = raw.previewToken;
+    }
+    return out;
+  },
+  loaderDeps: ({ search }) => ({
+    embed: search.embed,
+    previewToken: search.previewToken,
+  }),
+  loader: async ({ params, deps }) => {
+    // Only forward the token to the server fn when the request actually
+    // claims to be the embed preview. This keeps the validation surface
+    // tight and avoids surprising token use on top-level loads.
+    const previewToken =
+      deps.embed === "studio-preview" && deps.previewToken
+        ? deps.previewToken
+        : null;
+    const result = await fetchBrandingBySlug({
+      data: { slug: params.slug, previewToken },
+    });
     return result;
   },
   component: PortalPage,
@@ -96,55 +154,25 @@ export const Route = createFileRoute("/p/$slug/")({
 });
 
 function PortalPage() {
-  const { branding, demoPublished, lusActive, vaultAssetCount, providerActive } = Route.useLoaderData();
+  const {
+    branding,
+    demoPublished,
+    lusActive,
+    vaultAssetCount,
+    providerActive,
+    embedPreviewValid,
+  } = Route.useLoaderData();
   const { slug } = Route.useParams();
+  const search = Route.useSearch();
 
-  // Compute preview/embed mode synchronously from URL search params. These
-  // dictate whether we need to do any auth work at all on this route.
-  //
-  // SECURITY: ?embed=studio-preview is ONLY honored when the page is loaded
-  // inside an iframe (i.e. the dashboard's StudioPreviewPanel). A public
-  // visitor pasting that URL into a top-level browser tab fails the frame
-  // check and falls through to the "Coming Soon" gate. This closes the
-  // public leak where anyone who guessed the URL could view an unpaid
-  // Studio.
-  const { isPreviewRequest, isEmbedPreview } = (() => {
-    if (typeof window === "undefined") {
-      return { isPreviewRequest: false, isEmbedPreview: false };
-    }
-    const params = new URLSearchParams(window.location.search);
-    const isPreviewRequest = params.get("preview") === "studio";
-    const embedRequested = params.get("embed") === "studio-preview";
-    // Only treat as a real embed if we are actually framed by the Branding
-    // dashboard. The iframe is intentionally sandboxed without
-    // allow-same-origin, so reading window.top.location is not reliable;
-    // document.referrer is the stable signal for the same-site parent route.
-    let isFramed = false;
-    try {
-      isFramed = window.self !== window.top;
-    } catch {
-      // Cross-origin access throws — that itself means we ARE framed.
-      isFramed = true;
-    }
-
-    let isBrandingDashboardReferrer = false;
-    try {
-      const referrer = document.referrer ? new URL(document.referrer) : null;
-      const currentUrl = new URL(window.location.href);
-      isBrandingDashboardReferrer =
-        !!referrer &&
-        referrer.protocol === currentUrl.protocol &&
-        referrer.host === currentUrl.host &&
-        referrer.pathname === "/dashboard/branding";
-    } catch {
-      isBrandingDashboardReferrer = false;
-    }
-
-    return {
-      isPreviewRequest,
-      isEmbedPreview: embedRequested && isFramed && isBrandingDashboardReferrer,
-    };
-  })();
+  // The embed bypass is decided server-side by validating the HMAC-signed
+  // preview token issued by the dashboard. The component just consumes the
+  // result — no referrer/window.top/iframe heuristics are involved. A
+  // public visitor pasting `?embed=studio-preview` into a top-level tab
+  // either omits the token (rejected) or carries one minted for a different
+  // slug / past expiration (rejected). Either way, the gate holds.
+  const isEmbedPreview = embedPreviewValid === true;
+  const isPreviewRequest = search.preview === "studio";
 
   // Auth is ONLY required to validate the owner/admin bypass for the
   // top-level ?preview=studio link. For paid users (providerActive=true),

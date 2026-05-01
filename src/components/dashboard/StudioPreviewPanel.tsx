@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Eye, ExternalLink, RefreshCw, Monitor, Tablet, Smartphone, AlertTriangle } from "lucide-react";
 import { buildStudioUrl } from "@/lib/public-url";
+import { issueStudioPreviewToken } from "@/lib/portal.functions";
 
 type Device = "desktop" | "tablet" | "mobile";
 
@@ -37,11 +38,65 @@ export function StudioPreviewPanel({
   const publicUrl = trimmedSlug
     ? buildStudioUrl(trimmedSlug, { tier, customDomain })
     : null;
-  // The dashboard iframe uses an isolated, no-auth visual preview mode so it
-  // does NOT share the parent page's auth-token storage lock (which caused
-  // a re-render loop). The owner-only top-level "Open preview" link still
-  // uses ?preview=studio, which performs an owner/admin check in a fresh tab.
-  const embedUrl = trimmedSlug ? `/p/${trimmedSlug}?embed=studio-preview` : null;
+  // Paid Studios are publicly visible — the iframe just loads the public URL.
+  // Unpaid Studios need a short-lived, server-issued preview token so the
+  // public route can verify (server-side) that the iframe is authorized,
+  // without relying on referrer/origin/iframe heuristics that don't survive
+  // sandboxing without `allow-same-origin`.
+  const [previewToken, setPreviewToken] = useState<string | null>(null);
+  const [tokenError, setTokenError] = useState<string | null>(null);
+  const tokenSlugRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    // No token needed for paid Studios — the public route renders openly.
+    if (!trimmedSlug || hasPaid) {
+      setPreviewToken(null);
+      setTokenError(null);
+      tokenSlugRef.current = null;
+      return;
+    }
+    // If we already have a token for this exact slug, reuse it. Bumping
+    // refreshKey/manualBump remounts the iframe but does NOT need a new
+    // token — the existing one is still valid for an hour.
+    if (tokenSlugRef.current === trimmedSlug) {
+      return;
+    }
+
+    // Slug changed (or first load): invalidate any stale token so the iframe
+    // never tries to verify a token signed for a different slug.
+    setPreviewToken(null);
+    setTokenError(null);
+
+    let cancelled = false;
+    issueStudioPreviewToken({ data: { slug: trimmedSlug } })
+      .then((res) => {
+        if (cancelled) return;
+        tokenSlugRef.current = trimmedSlug;
+        setPreviewToken(res.token);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error("Failed to issue Studio preview token:", err);
+        tokenSlugRef.current = null;
+        setTokenError(
+          err instanceof Error
+            ? err.message
+            : "Could not authorize the preview. Try refreshing the page.",
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [trimmedSlug, hasPaid]);
+
+  const embedUrl = !trimmedSlug
+    ? null
+    : hasPaid
+      ? `/p/${trimmedSlug}`
+      : previewToken
+        ? `/p/${trimmedSlug}?embed=studio-preview&previewToken=${encodeURIComponent(previewToken)}`
+        : null;
   const previewUrl = trimmedSlug ? `/p/${trimmedSlug}?preview=studio` : null;
   const externalUrl = hasPaid ? publicUrl : previewUrl;
 
@@ -86,13 +141,27 @@ export function StudioPreviewPanel({
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        {!embedUrl ? (
+        {!trimmedSlug ? (
           <div className="rounded-lg border border-dashed border-border bg-muted/30 p-8 text-center">
             <p className="text-sm font-medium text-foreground">
               Set your Studio URL slug above and save to see a live preview.
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
               Your preview loads directly from your saved branding settings.
+            </p>
+          </div>
+        ) : tokenError ? (
+          <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-6 text-center">
+            <p className="text-sm font-medium text-foreground">
+              Couldn't load the preview.
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">{tokenError}</p>
+          </div>
+        ) : !embedUrl ? (
+          <div className="rounded-lg border border-dashed border-border bg-muted/30 p-8 text-center">
+            <p className="text-sm font-medium text-foreground">Loading preview…</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Authorizing your dashboard preview.
             </p>
           </div>
         ) : (
