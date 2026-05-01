@@ -290,20 +290,18 @@ function PortalPage() {
     }
 
     if (isPreviewRequest && !isEmbedPreview) {
-      if (authStatus === "checking") {
-        return (
-          <div className="flex min-h-screen items-center justify-center bg-background">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-          </div>
-        );
-      }
+      // Fail-closed UX: until we've positively confirmed the viewer is the
+      // owner or an admin, render the same gate the public sees. This
+      // prevents any flash of Studio content during the auth check and
+      // ensures wrong-user / unauthenticated visitors never see the page.
       if (authStatus !== "authorized") {
         return (
           <div className="flex min-h-screen items-center justify-center bg-background px-6">
             <div className="max-w-md text-center">
               <h1 className="text-4xl font-bold text-foreground">Studio Coming Soon</h1>
               <p className="mt-3 text-muted-foreground">
-                This Studio isn't published yet.
+                This Studio isn't published yet. Please check back soon, or contact the
+                owner directly if you were expecting access.
               </p>
             </div>
           </div>
