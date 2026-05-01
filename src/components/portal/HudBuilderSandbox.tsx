@@ -1083,8 +1083,16 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
   /**
    * Single entry-point for the bottom "Download" / "Pay & Download"
    * button. Branches on auth + is_free + pricing.
+   *
+   * The optional first argument is a sentinel: pass `true` from
+   * handleConfirmDownload to bypass the password gate after the agent
+   * has acknowledged it. Click handlers pass a SyntheticEvent (an
+   * object), which strictly !== true, so the password branch still
+   * fires for normal clicks.
    */
-  const handleDownload = useCallback(async () => {
+  const handleDownload = useCallback(async (skipPasswordConfirm?: unknown) => {
+    const passwordConfirmed = skipPasswordConfirm === true;
+
     // 1) Anonymous → open signup modal; flow re-runs after auth.
     if (!userId) {
       setSignupOpen(true);
@@ -1094,10 +1102,10 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     // 1a) Password-gated download: explicit confirmation step before any
     //     uploads / saves / checkout. The download itself only proceeds
     //     once the agent acknowledges the password and clicks Confirm in
-    //     the modal (handled in handleConfirmDownload below). For
-    //     unprotected downloads this branch is skipped — the default
+    //     the modal (handleConfirmDownload re-enters with the sentinel).
+    //     For unprotected downloads this branch is skipped — the default
     //     flow keeps zero extra friction.
-    if (isAccessArmed(access) && !confirmDownloadOpen) {
+    if (!passwordConfirmed && isAccessArmed(access)) {
       setConfirmRevealPassword(false);
       setConfirmDownloadOpen(true);
       return;
@@ -1259,20 +1267,17 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     runDownload,
     enhancements,
     access,
-    confirmDownloadOpen,
   ]);
 
   // Resumes handleDownload once the agent confirms in the password
-  // confirmation modal. Setting confirmDownloadOpen=false on the way out
-  // means the next handleDownload call sees the closed modal and runs
-  // through to save/upload/checkout instead of re-prompting.
+  // confirmation modal. The `true` sentinel tells handleDownload to skip
+  // the access-armed guard — that's how we re-enter the save/upload/
+  // checkout flow without re-prompting and without leaning on stale
+  // closure state.
   const handleConfirmDownload = useCallback(() => {
     setConfirmDownloadOpen(false);
     setConfirmRevealPassword(false);
-    // Defer so the modal close has time to commit before we re-enter
-    // handleDownload, otherwise the dialog briefly flashes back on
-    // the screen while the password-armed branch resolves.
-    setTimeout(() => handleDownload(), 0);
+    void handleDownload(true);
   }, [handleDownload]);
 
   const handleAuthenticated = useCallback((newUserId: string) => {
