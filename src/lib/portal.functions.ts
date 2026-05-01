@@ -3075,6 +3075,133 @@ export const deleteOwnAccount = createServerFn({ method: "POST" })
 // Free/Pay client attribute management
 // ============================================================================
 
+export interface ProviderOrderRow {
+  id: string;
+  modelId: string;
+  clientId: string;
+  clientEmail: string | null;
+  clientName: string | null;
+  notificationStatus: string;
+  createdAt: string;
+  modelName: string;
+  modelStatus: "preview" | "pending_payment" | "paid";
+  isReleased: boolean;
+  amountCents: number | null;
+  modelCount: number | null;
+}
+
+export const getProviderOrders = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<{ orders: ProviderOrderRow[]; error: string | null }> => {
+    const { userId } = context;
+
+    const { data: notifications, error: notificationError } = await supabaseAdmin
+      .from("order_notifications")
+      .select("id, provider_id, client_id, model_id, status, created_at")
+      .eq("provider_id", userId)
+      .order("created_at", { ascending: false });
+
+    if (notificationError) {
+      return { orders: [], error: notificationError.message };
+    }
+    if (!notifications || notifications.length === 0) {
+      return { orders: [], error: null };
+    }
+
+    const modelIds = notifications.map((notification) => notification.model_id);
+    const clientIds = Array.from(new Set(notifications.map((notification) => notification.client_id)));
+
+    const [{ data: models, error: modelsError }, { data: profiles }] = await Promise.all([
+      supabaseAdmin
+        .from("saved_models")
+        .select("id, provider_id, name, status, is_released, amount_cents, model_count")
+        .eq("provider_id", userId)
+        .in("id", modelIds),
+      supabaseAdmin
+        .from("profiles")
+        .select("user_id, display_name")
+        .in("user_id", clientIds),
+    ]);
+
+    if (modelsError) {
+      return { orders: [], error: modelsError.message };
+    }
+
+    const modelMap = new Map((models ?? []).map((model) => [model.id, model]));
+    const profileMap = new Map((profiles ?? []).map((profile) => [profile.user_id, profile]));
+    const clientEmailEntries = await Promise.all(
+      clientIds.map(async (clientId): Promise<[string, string | null]> => {
+        const { data } = await supabaseAdmin.auth.admin.getUserById(clientId);
+        return [clientId, data.user?.email ?? null];
+      }),
+    );
+    const clientEmailMap = new Map(clientEmailEntries);
+
+    const orders = notifications.map((notification): ProviderOrderRow => {
+      const model = modelMap.get(notification.model_id);
+      const profile = profileMap.get(notification.client_id);
+      return {
+        id: notification.id,
+        modelId: notification.model_id,
+        clientId: notification.client_id,
+        clientEmail: clientEmailMap.get(notification.client_id) ?? null,
+        clientName: profile?.display_name ?? null,
+        notificationStatus: notification.status,
+        createdAt: notification.created_at,
+        modelName: model?.name || "Unknown presentation",
+        modelStatus: model?.status ?? "preview",
+        isReleased: model?.is_released ?? false,
+        amountCents: model?.amount_cents ?? null,
+        modelCount: model?.model_count ?? null,
+      };
+    });
+
+    return { orders, error: null };
+  });
+
+export const grantFreePresentationDownload = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: { modelId: string }) => data)
+  .handler(async ({ data, context }) => {
+    const { userId } = context;
+
+    const { data: model, error: modelError } = await supabaseAdmin
+      .from("saved_models")
+      .select("id, provider_id, status")
+      .eq("id", data.modelId)
+      .eq("provider_id", userId)
+      .maybeSingle();
+
+    if (modelError || !model) {
+      throw new Error(modelError?.message || "Presentation order not found");
+    }
+    if (model.status === "paid") {
+      return { success: true, alreadyPaid: true };
+    }
+
+    const { error: updateError } = await supabaseAdmin
+      .from("saved_models")
+      .update({
+        amount_cents: 0,
+        status: "paid",
+        is_released: true,
+      })
+      .eq("id", data.modelId)
+      .eq("provider_id", userId);
+
+    if (updateError) {
+      throw new Error(updateError.message);
+    }
+
+    await supabaseAdmin
+      .from("order_notifications")
+      .update({ status: "paid" })
+      .eq("model_id", data.modelId)
+      .eq("provider_id", userId);
+
+    return { success: true, alreadyPaid: false };
+  });
+
 /**
  * Update the `is_free` attribute on an invitation. If the invitation has
  * already been accepted (i.e. there's a matching client_providers link
