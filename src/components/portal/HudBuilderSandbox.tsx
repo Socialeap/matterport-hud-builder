@@ -55,7 +55,7 @@ import { uploadBrandAsset } from "@/lib/storage";
 import { toast } from "sonner";
 import { calculatePresentationPrice } from "@/lib/portal/pricing";
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe-js";
-import { getStripeForConnect } from "@/lib/stripe";
+import { getStripeForConnect, getStripeEnvironment } from "@/lib/stripe";
 import { useServerFn } from "@tanstack/react-start";
 import { EmbeddingWorkerClient } from "@/lib/rag/embedding-worker-client";
 import { buildPropertyQAEntries } from "@/lib/rag/property-qa-builder";
@@ -1247,19 +1247,35 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
             modelId,
             modelCount,
             returnUrl: `${window.location.origin}${window.location.pathname}?checkout_model_id=${modelId}&session_id={CHECKOUT_SESSION_ID}`,
+            environment: getStripeEnvironment(),
           },
         });
 
       if (checkoutError) {
         // supabase-js wraps non-2xx responses in FunctionsHttpError. The
         // raw Response is at error.context — clone-then-json so we can
-        // surface the server's specific message ("Provider has not
-        // connected Stripe", "Invalid modelCount", etc.) instead of a
-        // generic "Failed to create checkout session" that hides the
-        // actual failure mode.
+        // surface the server's specific message and structured `code`.
         console.error("create-connect-checkout failed:", checkoutError);
+        const ctx = (checkoutError as { context?: Response } | null)?.context;
+        let serverCode: string | undefined;
+        if (ctx && typeof (ctx as Response).clone === "function") {
+          try {
+            const body = await (ctx as Response).clone().json();
+            if (body && typeof body === "object" && typeof (body as { code?: unknown }).code === "string") {
+              serverCode = (body as { code: string }).code;
+            }
+          } catch {
+            // ignore — fall back to message
+          }
+        }
         const serverMessage = await readFunctionErrorMessage(checkoutError);
-        toast.error(serverMessage || "Failed to create checkout session");
+        if (serverCode === "platform_not_activated") {
+          toast.error("Payments are temporarily unavailable for this Studio. Please contact support.");
+        } else if (serverCode === "stripe_account_env_mismatch") {
+          toast.error("The Studio owner needs to reconnect their payout account before checkout will work.");
+        } else {
+          toast.error(serverMessage || "Failed to create checkout session");
+        }
         setSubmitting(false);
         return;
       }
