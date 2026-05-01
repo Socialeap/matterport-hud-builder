@@ -115,21 +115,25 @@ function PortalPage() {
     const params = new URLSearchParams(window.location.search);
     const isPreviewRequest = params.get("preview") === "studio";
     const embedRequested = params.get("embed") === "studio-preview";
-    // Only treat as a real embed if we are actually framed. The iframe
-    // sandbox excludes allow-same-origin, so we cannot read window.top
-    // properties — but window.self !== window.top is enough to confirm
-    // we are inside *some* parent frame, which is the only legitimate
-    // caller of this mode (the dashboard preview panel).
+    // Only treat as a real embed if we are actually framed by this same app.
+    // This lets the dashboard Branding tab iframe render the unpaid preview,
+    // while direct public visits and third-party iframes fall through to the
+    // public "Coming Soon" gate.
     let isFramed = false;
+    let isSameOriginParent = false;
     try {
       isFramed = window.self !== window.top;
+      isSameOriginParent =
+        isFramed && window.top.location.origin === window.location.origin;
     } catch {
-      // Cross-origin access throws — that itself means we ARE framed.
+      // Cross-origin or sandboxed parent access is not an authorized dashboard
+      // preview context. Deny the embed bypass rather than guessing.
       isFramed = true;
+      isSameOriginParent = false;
     }
     return {
       isPreviewRequest,
-      isEmbedPreview: embedRequested && isFramed,
+      isEmbedPreview: embedRequested && isFramed && isSameOriginParent,
     };
   })();
 
@@ -158,6 +162,15 @@ function PortalPage() {
   // session read — but we never re-run on auth state changes, and we fail
   // closed (viewer=null) if anything goes wrong (e.g. auth-token lock).
   useEffect(() => {
+    if (isEmbedPreview) {
+      // Dashboard iframe previews are visual-only and intentionally do not
+      // touch auth/session storage; this avoids competing with the parent
+      // dashboard AuthProvider while still allowing the route to render.
+      setViewer(null);
+      setAuthStatus("idle");
+      return;
+    }
+
     let cancelled = false;
     (async () => {
       try {
@@ -213,7 +226,7 @@ function PortalPage() {
     // re-fires this effect on every auto-refresh tick and competes with the
     // dashboard's AuthProvider for the auth-token storage lock.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [branding?.provider_id]);
+  }, [branding?.provider_id, isEmbedPreview, needsAuthCheck]);
 
   const handleSignOut = useCallback(async () => {
     await supabase.auth.signOut();
