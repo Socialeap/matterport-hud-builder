@@ -3,10 +3,12 @@ import { createServerFn } from "@tanstack/react-start";
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { checkDemoPublished } from "@/lib/sandbox-demo.functions";
-import {
-  getStudioPreviewSecret,
-  verifyStudioPreviewToken,
-} from "@/lib/studio-preview-token";
+
+// UUID v4 (the format gen_random_uuid() emits) — pre-validated before the
+// RPC call so a malformed `?previewToken=` value fails fast and never
+// triggers a Postgres "invalid input syntax for type uuid" error.
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 import { Check, X, Link2, Palette, Download, Sparkles, Menu, LogIn, LogOut } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -66,19 +68,25 @@ const fetchBrandingBySlug = createServerFn({ method: "GET" })
 
     const providerActive = paidRes.data === true;
 
-    // Server-side verification of the dashboard's iframe preview token.
-    // This is the single source of truth for whether the embed bypass is
-    // allowed — no referrer/window.top/iframe-detection heuristics.
+    // Server-side verification of the dashboard's iframe preview token via
+    // the `verify_studio_preview_token` SECURITY DEFINER RPC. This is the
+    // single source of truth for whether the embed bypass is allowed — no
+    // referrer/window.top/iframe-detection heuristics. The RPC checks that
+    // the token row exists, hasn't expired, and is bound to this slug AND
+    // its current owner (so a token issued for a slug that was later
+    // reassigned to a different provider is rejected).
     let embedPreviewValid = false;
-    if (data.previewToken) {
-      const secret = getStudioPreviewSecret();
-      if (secret) {
-        const result = await verifyStudioPreviewToken(
-          secret,
-          data.previewToken,
-          data.slug,
-        );
-        embedPreviewValid = result.valid;
+    if (data.previewToken && UUID_RE.test(data.previewToken)) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const untyped = supabase as unknown as any;
+      const { data: ok, error: verifyErr } = await untyped.rpc(
+        "verify_studio_preview_token",
+        { _token: data.previewToken, _slug: data.slug },
+      );
+      if (verifyErr) {
+        console.error("verify_studio_preview_token rpc failed:", verifyErr);
+      } else {
+        embedPreviewValid = ok === true;
       }
     }
 

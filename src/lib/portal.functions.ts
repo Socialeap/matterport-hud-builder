@@ -3279,73 +3279,55 @@ export const acceptInvitationForUser = createServerFn({ method: "POST" })
   });
 
 // ============================================================================
-// Studio preview token — short-lived, HMAC-signed, slug-bound authorization
+// Studio preview token — short-lived, DB-backed, slug-bound authorization
 // for the dashboard's Branding > Studio Preview iframe. The iframe is
 // sandboxed without `allow-same-origin`, so the public Studio route loaded
 // inside it cannot read parent auth/session storage. The dashboard (which
-// IS authenticated) requests this token, which the public route then
-// verifies server-side to grant the embed render. See
-// `src/lib/studio-preview-token.ts` for token format details.
+// IS authenticated) requests this token via the `issue_studio_preview_token`
+// RPC; the public route then verifies it via `verify_studio_preview_token`.
+// Both RPCs are SECURITY DEFINER and live in
+// `supabase/migrations/20260501000000_studio_preview_tokens.sql`.
+//
+// We use a DB row id (UUID v4) as the token rather than an HMAC because
+// this deployment doesn't ship a server-only HMAC secret env var, and we
+// don't want the feature to fail closed in environments that haven't
+// configured one. Token entropy is ~122 bits — unguessable in practice.
 // ============================================================================
-
-import {
-  STUDIO_PREVIEW_TOKEN_TTL_MS,
-  getStudioPreviewSecret,
-  signStudioPreviewToken,
-} from "./studio-preview-token";
 
 export const issueStudioPreviewToken = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: { slug: string }) => d)
-  .handler(async ({ data, context }): Promise<{ token: string; expiresAt: number }> => {
+  .handler(async ({ data, context }): Promise<{ token: string }> => {
     const slug = (data.slug ?? "").trim().toLowerCase();
     if (!slug) {
       throw new Error("issueStudioPreviewToken: missing slug");
     }
 
-    const { supabase, userId } = context;
+    const { supabase } = context;
 
-    // Resolve the slug → provider_id. RLS on branding_settings allows the
-    // owner (and admins via the existing policies) to read their own row;
-    // anything else returns null and we refuse to sign.
-    const { data: brand, error: brandErr } = await supabase
-      .from("branding_settings")
-      .select("provider_id")
-      .eq("slug", slug)
-      .maybeSingle();
-    if (brandErr || !brand) {
-      throw new Error("issueStudioPreviewToken: slug not found or access denied");
-    }
+    // The RPCs are provisioned by a server-only migration and are not in
+    // the generated `Database` types yet. Use an untyped view so the TS
+    // overloads resolve.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const untyped = supabase as unknown as any;
+    const { data: tokenId, error } = await untyped.rpc(
+      "issue_studio_preview_token",
+      { _slug: slug },
+    );
 
-    const isOwner = brand.provider_id === userId;
-    let isAdmin = false;
-    if (!isOwner) {
-      const { data: rolesData } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", userId);
-      isAdmin = (rolesData ?? []).some((r) => r.role === "admin");
+    if (error) {
+      console.error("issue_studio_preview_token rpc failed:", error);
+      throw new Error("Failed to authorize Studio preview");
     }
-    if (!isOwner && !isAdmin) {
-      throw new Error("issueStudioPreviewToken: only the owner or an admin may preview this Studio");
-    }
-
-    const secret = getStudioPreviewSecret();
-    if (!secret) {
-      // Fail closed — without the secret we cannot mint a verifiable token,
-      // and the public route would reject it anyway.
+    if (!tokenId || typeof tokenId !== "string") {
+      // RPC returns NULL when the caller is not the slug's owner / admin
+      // or the slug doesn't exist — surface as a clear permission error.
       throw new Error(
-        "issueStudioPreviewToken: PRESENTATION_TOKEN_SECRET is not configured on the server",
+        "Not authorized to preview this Studio. Sign in as the Studio owner.",
       );
     }
 
-    const exp = Date.now() + STUDIO_PREVIEW_TOKEN_TTL_MS;
-    const token = await signStudioPreviewToken(secret, {
-      slug,
-      exp,
-      scope: "studio_preview_v1",
-    });
-    return { token, expiresAt: exp };
+    return { token: tokenId };
   });
 
 /**
