@@ -122,9 +122,10 @@ function PortalPage() {
     let isFramed = false;
     let isSameOriginParent = false;
     try {
-      isFramed = window.self !== window.top;
+      const topWindow = window.top;
+      isFramed = !!topWindow && window.self !== topWindow;
       isSameOriginParent =
-        isFramed && window.top.location.origin === window.location.origin;
+        isFramed && topWindow.location.origin === window.location.origin;
     } catch {
       // Cross-origin or sandboxed parent access is not an authorized dashboard
       // preview context. Deny the embed bypass rather than guessing.
