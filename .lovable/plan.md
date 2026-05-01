@@ -1,106 +1,76 @@
-# Remove the "must be linked to this MSP" restriction in the Studio Builder
+## Diagnosis
 
-## Problem
+The edge function logs show Stripe returning `platform_account_required`:
 
-A signed-in client/agent visiting `/p/{slug}/builder` for any MSP is blocked from saving and paying with:
+> "Only Stripe Connect platforms can work with other accounts."
 
-> "You are not linked to this provider. Please use your invitation link to access this Studio."
+This is rejected at `stripe.checkout.sessions.create(..., { stripeAccount })` in `supabase/functions/create-connect-checkout/index.ts`. The MSP's Express account being fully onboarded (per screenshot) is not the problem — Stripe is refusing the call on the **platform** side.
 
-This contradicts the intended product behavior: **anyone signed in should be able to build, pay, and download** a presentation from any MSP whose Studio has Pricing + Stripe Connect configured. The invitation flow is only required for **free** access (the MSP marks an invitee `is_free = true`).
+There are two distinct issues:
 
-## Root Cause (single location)
+### Issue A — Platform Profile not activated (root cause, manual fix)
+Our app's Stripe **platform** account (the one behind the gateway-routed `STRIPE_SANDBOX_API_KEY`) must be a fully activated Connect platform: Connect enabled, Platform Profile completed (Loss Liability set to "Platform is responsible for losses"), branding/business details filled in. Until that's done in the Stripe Dashboard, every `stripeAccount`-scoped call will fail with this exact error. Code cannot fix this — it's a one-time dashboard task by whoever owns the Stripe platform account.
 
-In `src/lib/portal.functions.ts`, the `savePresentationRequest` server function (lines ~102–118) hard-blocks any caller whose `client_providers` row is missing for the target MSP:
+The existing `stripe-connect-onboard` already documents this (lines 72–84) for `accounts.create`. The same prerequisite governs `checkout.sessions.create` with `stripeAccount`.
 
+### Issue B — Hardcoded `env = "sandbox"` in create-connect-checkout (code bug)
+Line 152 of `create-connect-checkout/index.ts`:
 ```ts
-const access = Array.isArray(accessRows) ? accessRows[0] : null;
-if (!access?.linked) {
-  return {
-    success: false,
-    error: "You are not linked to this provider. Please use your invitation link to access this Studio.",
-  };
-}
+const env: StripeEnv = "sandbox";
+```
+Every other Connect function (`stripe-connect-status`, `stripe-connect-account-session`, `stripe-connect-onboard`) accepts `environment` from the request body. This function ignores it. Consequences:
+- Even after the platform is activated in **live**, paid checkout will still hit sandbox.
+- If the MSP's `stripe_connect_id` was created in live but we call sandbox, the Connect ID doesn't exist there, which is another path to a similar error.
+- Sandbox/live drift is silent — no way to tell from the UI which environment a failure came from.
+
+## Changes
+
+### 1. `supabase/functions/create-connect-checkout/index.ts`
+- Accept `environment` from the request body (mirror `stripe-connect-status` pattern). Default to `sandbox` when omitted, but no longer hardcode it.
+- Wrap the `stripe.checkout.sessions.create(...)` call in a try/catch. When Stripe returns `platform_account_required` or `StripePermissionError`, return a **400** with a friendly message:
+  > "Payments are temporarily unavailable for this Studio. The platform's Stripe Connect setup is incomplete. Please contact support."
+  Include `code: "platform_not_activated"` in the JSON so the client can render a clean state instead of the raw Stripe error.
+- When Stripe returns `resource_missing` for the connected account (Connect ID exists in DB but not in this Stripe environment), return 400 with `code: "stripe_account_env_mismatch"` and a message asking the MSP to reconnect Stripe — same pattern already used in `stripe-connect-account-session` lines 86–100.
+- Log `env`, `connectId`, and Stripe error code at the start of the catch so future failures are diagnosable from edge function logs without leaking PII.
+
+### 2. `src/components/portal/HudBuilderSandbox.tsx` (checkout invocation, ~line 1244)
+- Pass `environment: getStripeEnvironment()` in the `supabase.functions.invoke("create-connect-checkout", { body: { ... } })` call so the server uses the same environment the client's Stripe.js was loaded with.
+- When the response contains `code: "platform_not_activated"`, show a clear toast: "Payments are temporarily unavailable. We've been notified." (instead of the current generic error path on line 1260).
+- When `code: "stripe_account_env_mismatch"`, surface a message telling the user the Studio owner needs to reconnect their payout account.
+
+### 3. `supabase/functions/stripe-connect-onboard/index.ts` (small consistency fix)
+- Extend the existing `platform-profile` catch (lines 72–84) to also match `platform_account_required` so onboarding fails gracefully with the same friendly message instead of a raw 500.
+
+### 4. Documentation note (no file change required, but called out here)
+The actual remedy for **Issue A** is manual and lives outside the codebase:
+
+1. The Stripe **platform** account owner logs in to the Stripe Dashboard.
+2. Switch to the same environment our gateway uses (sandbox first, then live).
+3. Go to Connect → Settings → Platform Profile.
+4. Complete every required section, especially **Loss Liability** ("Platform is responsible for losses").
+5. Confirm Connect is enabled (Connect → Overview should show "Active", not "Get started").
+
+Once that one-time activation is done in **sandbox**, paid checkout for the MSP shown in the screenshot will work immediately — no further code change needed beyond the fixes above. The same activation must be repeated in **live** before production checkouts.
+
+## Technical details
+
+```text
+Client (HudBuilderSandbox)
+    └─ invokes "create-connect-checkout" { providerId, modelId, modelCount, returnUrl, environment }
+            ↓
+Edge function (create-connect-checkout)
+    ├─ resolves access via resolve_studio_access (free vs paid)         ✓ working
+    ├─ validates ownership of saved_models row                          ✓ working
+    ├─ calculates price via shared pricing.ts                           ✓ working
+    └─ stripe.checkout.sessions.create(..., { stripeAccount })          ✗ FAILS HERE
+            └─ Stripe → 403 platform_account_required
+                (platform profile not completed in sandbox)
 ```
 
-This guard is overzealous. It treats "linked" (an entitlement signal for **free** access) as a precondition for **any** access, including paid checkouts. No other layer requires the link:
+Acceptance:
+- Anonymous and authenticated paid checkouts no longer surface the raw Stripe permission error string.
+- Edge function logs include `env` and `code` for any future Stripe failure.
+- After the platform owner completes the Stripe Platform Profile in sandbox, `create-connect-checkout` returns a `clientSecret` and the embedded checkout mounts.
+- `environment` is passed end-to-end so live mode will work without further code changes once live platform profile is also completed.
 
-- **DB / RLS**: `saved_models` INSERT only requires `client_id = auth.uid()`. No FK to `client_providers`.
-- **Builder UI**: doesn't gate on `accessState.linked` anywhere — the flag is read but never used to disable the flow.
-- **Anonymous viewers**: already see the priced checkout card (recent fix). They just hit the signup/login modal at "Pay & Download" — and once signed in, they hit this wall.
-- **Edge function `create-connect-checkout`**: correctly uses `resolve_studio_access` only to detect the **free** path (`isFree === true`); paid path doesn't require linkage.
-- **Free-invite flow stays intact**: `accept_invitation_self` and `handle_new_user` still create the `client_providers` row with `is_free` propagated, so `resolve_studio_access` continues to return `is_free: true` for invited free clients, and `create-connect-checkout` still bypasses charging for them.
-
-## Fix (one server function, one block)
-
-Edit `src/lib/portal.functions.ts` in `savePresentationRequest` (lines ~102–118):
-
-1. **Remove** the `if (!access?.linked) { return error }` guard entirely.
-2. **Keep** the `resolve_studio_access` RPC call, because we still want to surface a clean "Studio not configured for payments" error before inserting a `saved_models` row. Replace the link check with two honest preconditions derived from the same RPC result:
-
-```ts
-const access = Array.isArray(accessRows) ? accessRows[0] : null;
-
-// Block self-checkout: an MSP (or admin viewing as MSP) must not buy
-// their own presentation through the client checkout.
-if (access?.viewer_matches_provider) {
-  return {
-    success: false,
-    error: "You are signed in as the Studio owner. Sign in with a client account to purchase.",
-  };
-}
-
-// Free clients skip pricing/payouts checks (charge is bypassed downstream).
-const isFree = access?.is_free === true;
-if (!isFree) {
-  if (!access?.pricing_configured) {
-    return {
-      success: false,
-      error: "This Studio has not finished setting up pricing yet. Please contact the provider.",
-    };
-  }
-  if (!access?.payouts_ready) {
-    return {
-      success: false,
-      error: "This Studio has not finished setting up payments yet. Please contact the provider.",
-    };
-  }
-}
-```
-
-3. No other changes. The rest of the handler (insert `saved_models`, create `order_notifications`, etc.) is untouched.
-
-## Why this is safe
-
-- **DB schema/RLS unchanged.** `saved_models` already permits any authenticated user to insert their own rows; no migration needed.
-- **Free-invite path preserved.** `is_free` still flows from `invitations → client_providers → resolve_studio_access → create-connect-checkout`. Free invitees continue to bypass payment.
-- **Paid path now works for any signed-in user.** They save → `create-connect-checkout` computes the price server-side from `branding_settings` → Stripe Connect collects payment → webhook releases the model. Identical to the existing paid-client experience, just without the prior arbitrary link requirement.
-- **No accidental free access.** Removing the link guard cannot grant free access — `is_free` requires a `client_providers` row with `is_free = true`, which only the MSP can create via `invitations`.
-- **Self-checkout protection added.** Prevents the MSP from accidentally creating a checkout against their own Stripe Connect account.
-- **Honest pre-flight errors.** If the MSP hasn't configured pricing or hasn't completed Stripe onboarding, we still fail fast with a clear message — same conditions the edge function would reject on, just surfaced earlier.
-- **UI unchanged.** The builder already shows the priced "Pay $X.XX & Download" card to anonymous and signed-in non-linked users. Today the click flow is: signed-in user clicks Pay → `savePresentationRequest` returns the link error → toast. After the fix: same click flow proceeds to Stripe Embedded Checkout.
-
-## Verification
-
-1. **Anonymous → sign up → pay flow** (the bug case):
-   - Open `/p/fbiib/builder` in a private window.
-   - Add Property Models; confirm the price card shows live totals.
-   - Click "Pay & Download" → sign up with a brand-new email (no invitation).
-   - Confirm Stripe Embedded Checkout opens (no "not linked" error).
-   - Complete a sandbox payment; confirm the model is released and downloaded.
-
-2. **Free-invite flow** (regression check):
-   - Have an MSP send an invitation with `is_free = true`.
-   - Accept it, build a presentation, click Download.
-   - Confirm the free bypass still kicks in (no Stripe checkout, immediate download).
-
-3. **Self-checkout guard** (new):
-   - Sign in as the MSP themselves, open their own `/p/{slug}/builder`, click Pay.
-   - Confirm the "signed in as the Studio owner" message appears.
-
-4. **Unconfigured MSP** (negative case):
-   - Pick (or temporarily simulate) an MSP with `base_price_cents IS NULL` or `stripe_onboarding_complete = false`.
-   - Confirm the matching pre-flight error renders instead of an opaque Stripe failure.
-
-## Files to change
-
-- `src/lib/portal.functions.ts` — `savePresentationRequest` handler only. No other files, no migrations, no edge function changes.
+No DB migration. No new dependencies. No changes to pricing logic, free-flow, or `savePresentationRequest`.
