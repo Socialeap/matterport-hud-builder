@@ -3278,6 +3278,76 @@ export const acceptInvitationForUser = createServerFn({ method: "POST" })
     return { success: true, providerId, slug };
   });
 
+// ============================================================================
+// Studio preview token — short-lived, HMAC-signed, slug-bound authorization
+// for the dashboard's Branding > Studio Preview iframe. The iframe is
+// sandboxed without `allow-same-origin`, so the public Studio route loaded
+// inside it cannot read parent auth/session storage. The dashboard (which
+// IS authenticated) requests this token, which the public route then
+// verifies server-side to grant the embed render. See
+// `src/lib/studio-preview-token.ts` for token format details.
+// ============================================================================
+
+import {
+  STUDIO_PREVIEW_TOKEN_TTL_MS,
+  getStudioPreviewSecret,
+  signStudioPreviewToken,
+} from "./studio-preview-token";
+
+export const issueStudioPreviewToken = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { slug: string }) => d)
+  .handler(async ({ data, context }): Promise<{ token: string; expiresAt: number }> => {
+    const slug = (data.slug ?? "").trim().toLowerCase();
+    if (!slug) {
+      throw new Error("issueStudioPreviewToken: missing slug");
+    }
+
+    const { supabase, userId } = context;
+
+    // Resolve the slug → provider_id. RLS on branding_settings allows the
+    // owner (and admins via the existing policies) to read their own row;
+    // anything else returns null and we refuse to sign.
+    const { data: brand, error: brandErr } = await supabase
+      .from("branding_settings")
+      .select("provider_id")
+      .eq("slug", slug)
+      .maybeSingle();
+    if (brandErr || !brand) {
+      throw new Error("issueStudioPreviewToken: slug not found or access denied");
+    }
+
+    const isOwner = brand.provider_id === userId;
+    let isAdmin = false;
+    if (!isOwner) {
+      const { data: rolesData } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", userId);
+      isAdmin = (rolesData ?? []).some((r) => r.role === "admin");
+    }
+    if (!isOwner && !isAdmin) {
+      throw new Error("issueStudioPreviewToken: only the owner or an admin may preview this Studio");
+    }
+
+    const secret = getStudioPreviewSecret();
+    if (!secret) {
+      // Fail closed — without the secret we cannot mint a verifiable token,
+      // and the public route would reject it anyway.
+      throw new Error(
+        "issueStudioPreviewToken: PRESENTATION_TOKEN_SECRET is not configured on the server",
+      );
+    }
+
+    const exp = Date.now() + STUDIO_PREVIEW_TOKEN_TTL_MS;
+    const token = await signStudioPreviewToken(secret, {
+      slug,
+      exp,
+      scope: "studio_preview_v1",
+    });
+    return { token, expiresAt: exp };
+  });
+
 /**
  * Decline invitation. Public — invitee may not have an account.
  */
