@@ -37,7 +37,8 @@ serve(async (req) => {
       });
     }
 
-    const { providerId, modelId, modelCount, returnUrl } = await req.json();
+    const { providerId, modelId, modelCount, returnUrl, environment } = await req.json();
+    const env: StripeEnv = environment === "live" ? "live" : "sandbox";
 
     if (!providerId || typeof providerId !== "string") {
       return new Response(JSON.stringify({ error: "Invalid providerId" }), {
@@ -149,40 +150,84 @@ serve(async (req) => {
 
     const totalCents = pricing.totalCents;
 
-    const env: StripeEnv = "sandbox";
     const stripe = createStripeClient(env);
 
     // Create checkout session on behalf of the connected account
-    const session = await stripe.checkout.sessions.create(
-      {
-        line_items: [
-          {
-            price_data: {
-              currency: "usd",
-              product_data: {
-                name: `${branding.brand_name || "3D Tour"} Presentation`,
-                description: `${modelCount} model${modelCount > 1 ? "s" : ""} included`,
+    let session;
+    try {
+      session = await stripe.checkout.sessions.create(
+        {
+          line_items: [
+            {
+              price_data: {
+                currency: "usd",
+                product_data: {
+                  name: `${branding.brand_name || "3D Tour"} Presentation`,
+                  description: `${modelCount} model${modelCount > 1 ? "s" : ""} included`,
+                },
+                unit_amount: totalCents,
               },
-              unit_amount: totalCents,
+              quantity: 1,
             },
-            quantity: 1,
+          ],
+          mode: "payment",
+          ui_mode: "embedded",
+          return_url: returnUrl || `${req.headers.get("origin")}/p/return?session_id={CHECKOUT_SESSION_ID}`,
+          customer_email: user.email ?? undefined,
+          metadata: {
+            modelId,
+            providerId,
+            clientId: user.id,
+            modelCount: String(modelCount),
           },
-        ],
-        mode: "payment",
-        ui_mode: "embedded",
-        return_url: returnUrl || `${req.headers.get("origin")}/p/return?session_id={CHECKOUT_SESSION_ID}`,
-        customer_email: user.email ?? undefined,
-        metadata: {
-          modelId,
-          providerId,
-          clientId: user.id,
-          modelCount: String(modelCount),
         },
-      },
-      {
-        stripeAccount: branding.stripe_connect_id,
+        {
+          stripeAccount: branding.stripe_connect_id,
+        }
+      );
+    } catch (stripeErr: any) {
+      const code = stripeErr?.code || stripeErr?.raw?.code;
+      const type = stripeErr?.type || stripeErr?.rawType;
+      const status = stripeErr?.statusCode;
+      console.error("Stripe checkout.sessions.create failed:", {
+        env,
+        connectId: branding.stripe_connect_id,
+        code,
+        type,
+        status,
+      });
+
+      // Platform not activated for Stripe Connect (Platform Profile incomplete)
+      if (
+        code === "platform_account_required" ||
+        type === "StripePermissionError" ||
+        (typeof stripeErr?.message === "string" &&
+          stripeErr.message.includes("Only Stripe Connect platforms"))
+      ) {
+        return new Response(
+          JSON.stringify({
+            error:
+              "Payments are temporarily unavailable for this Studio. The platform's Stripe Connect setup is incomplete. Please contact support.",
+            code: "platform_not_activated",
+          }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       }
-    );
+
+      // Connected account exists in DB but not in this Stripe environment.
+      if (code === "resource_missing" || code === "account_invalid") {
+        return new Response(
+          JSON.stringify({
+            error:
+              "This Studio's payout account is not accessible in the current payment environment. The Studio owner needs to reconnect their Stripe account.",
+            code: "stripe_account_env_mismatch",
+          }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      throw stripeErr;
+    }
 
     // Update saved_models with the amount and model count
     await supabaseAdmin
