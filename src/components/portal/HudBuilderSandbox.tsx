@@ -758,12 +758,29 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
   // Auto-heals stale `client_providers` rows from accepted invitations.
   useEffect(() => {
     if (!userId) {
+      // Anonymous visitor on the public Studio Builder. The MSP's pricing
+      // and Stripe-onboarding state live on `branding_settings`, which is
+      // publicly readable by slug — derive them directly so the priced
+      // checkout card renders (matching the public landing page) instead
+      // of falsely showing "Pricing Unavailable". The signup/login modal
+      // still gates the actual purchase before any charge is made.
+      const flatPricing = Boolean(
+        (branding as { use_flat_pricing?: boolean | null }).use_flat_pricing
+      );
+      const flatCents =
+        (branding as { flat_price_per_model_cents?: number | null })
+          .flat_price_per_model_cents ?? 0;
+      const baseCents = branding.base_price_cents ?? 0;
+      const anonPricingConfigured = flatPricing ? flatCents > 0 : baseCents > 0;
+      const anonPayoutsReady =
+        Boolean(branding.stripe_onboarding_complete) &&
+        !!branding.stripe_connect_id;
       setAccessState({
         linked: false,
         isFree: false,
-        pricingConfigured: false,
-        payoutsReady: false,
-        providerBrandName: "",
+        pricingConfigured: anonPricingConfigured,
+        payoutsReady: anonPayoutsReady,
+        providerBrandName: branding.brand_name ?? "",
         viewerRole: "unknown",
         viewerMatchesProvider: false,
         loaded: true,
