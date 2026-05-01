@@ -17,17 +17,19 @@ import {
   MailCheck,
   Sparkles,
   MapPin,
-  Palette,
-  Film,
-  Lock,
-  BarChart3,
-  Globe,
   Search,
   ChevronRight,
   Building2,
   Users,
   CheckCircle2,
   ArrowRight,
+  Music2,
+  Wand2,
+  Puzzle,
+  Shapes,
+  MapPinned,
+  Magnet,
+  DollarSign,
 } from "lucide-react";
 import heroHudBanner from "@/assets/hero-hud-showcase.png";
 import tmLogo from "@/assets/tm-logo-landscape.png";
@@ -123,18 +125,39 @@ const journeySteps = [
 /*  MSP Directory data + filters                                       */
 /* ------------------------------------------------------------------ */
 
+// Differentiating services an MSP studio may or may not offer.
+// (Common platform features like custom branding, AI Concierge, live tours,
+// analytics, and custom domain hosting are available to every MSP, so they're
+// covered in the Benefits section above — not used for differentiation here.)
 const FEATURE_FILTERS = [
-  { id: "branding", icon: Palette, label: "Custom branding" },
-  { id: "ai", icon: Bot, label: "AI Concierge" },
-  { id: "live", icon: Video, label: "Live guided tours" },
-  { id: "cinema", icon: Film, label: "Cinematic intros" },
-  { id: "map", icon: MapPin, label: "Neighborhood maps" },
-  { id: "vip", icon: Lock, label: "Private/VIP listings" },
-  { id: "analytics", icon: BarChart3, label: "Traffic analytics" },
-  { id: "domain", icon: Globe, label: "Custom domain hosting" },
+  { id: "sound", icon: Music2, label: "Sound Library", note: "12+ tracks" },
+  { id: "filters", icon: Wand2, label: "Visual Portal Filters", note: "3+" },
+  { id: "widgets", icon: Puzzle, label: "Interactive Widgets", note: "2+" },
+  { id: "icons", icon: Shapes, label: "Custom Iconography", note: "1+ set" },
+  { id: "mapper", icon: MapPinned, label: "Property Mapper", note: "5+ maps" },
+  { id: "leadgen", icon: Magnet, label: "AI Lead Generation" },
 ] as const;
 
 type FeatureId = typeof FEATURE_FILTERS[number]["id"];
+
+type PricingTier = "$" | "$$" | "$$$";
+
+/**
+ * Maps an MSP's published per-model and per-bundle base prices to a
+ * 3-tier rating that's displayed on the directory card.
+ *
+ *   $   — below $80 / model OR below $451 / bundle
+ *   $$  — $81–$119 / model OR $451–$599 / bundle
+ *   $$$ — over $119 / model OR over $599 / bundle
+ *
+ * If the two sources disagree, the higher tier wins.
+ */
+function calculatePricingTier(perModel: number, perBundle: number): PricingTier {
+  const modelTier = perModel > 119 ? 3 : perModel > 80 ? 2 : 1;
+  const bundleTier = perBundle > 599 ? 3 : perBundle > 451 ? 2 : 1;
+  const tier = Math.max(modelTier, bundleTier);
+  return (["$", "$$", "$$$"] as const)[tier - 1];
+}
 
 interface SampleMSP {
   id: string;
@@ -143,6 +166,7 @@ interface SampleMSP {
   state: string;
   tagline: string;
   features: FeatureId[];
+  pricing: { perModel: number; perBundle: number };
 }
 
 const SAMPLE_MSPS: SampleMSP[] = [
@@ -151,8 +175,9 @@ const SAMPLE_MSPS: SampleMSP[] = [
     name: "Transcendence Media",
     city: "Los Angeles",
     state: "CA",
-    tagline: "Cinematic 3D presentations for luxury and commercial listings.",
-    features: ["branding", "ai", "live", "cinema", "map", "vip", "analytics", "domain"],
+    tagline: "Cinematic 3D presentations with full vault assets and AI lead capture.",
+    features: ["sound", "filters", "widgets", "icons", "mapper", "leadgen"],
+    pricing: { perModel: 149, perBundle: 699 },
   },
   {
     id: "skyline-tours",
@@ -160,55 +185,62 @@ const SAMPLE_MSPS: SampleMSP[] = [
     city: "Austin",
     state: "TX",
     tagline: "Fast-turnaround Matterport for residential agents.",
-    features: ["branding", "ai", "map", "analytics"],
+    features: ["mapper", "leadgen"],
+    pricing: { perModel: 75, perBundle: 399 },
   },
   {
     id: "harbor-spaces",
     name: "Harbor Spaces",
     city: "Boston",
     state: "MA",
-    tagline: "Coastal property specialists with VIP access controls.",
-    features: ["branding", "vip", "live", "map", "domain"],
+    tagline: "Coastal property specialists with custom iconography and property maps.",
+    features: ["sound", "icons", "mapper"],
+    pricing: { perModel: 99, perBundle: 549 },
   },
   {
     id: "midwest-3d",
     name: "Midwest 3D",
     city: "Chicago",
     state: "IL",
-    tagline: "High-volume residential MSP with neighborhood maps included.",
-    features: ["branding", "map", "analytics", "ai"],
+    tagline: "High-volume residential MSP with property mapper bundles.",
+    features: ["sound", "filters", "mapper", "leadgen"],
+    pricing: { perModel: 89, perBundle: 499 },
   },
   {
     id: "desert-vista-tours",
     name: "Desert Vista Tours",
     city: "Phoenix",
     state: "AZ",
-    tagline: "Luxury & resort Matterport with cinematic intros.",
-    features: ["branding", "cinema", "live", "vip", "domain"],
+    tagline: "Luxury & resort Matterport with curated sound library and portal filters.",
+    features: ["sound", "filters", "widgets"],
+    pricing: { perModel: 129, perBundle: 649 },
   },
   {
     id: "pacific-render",
     name: "Pacific Render",
     city: "Seattle",
     state: "WA",
-    tagline: "Tech-forward studio with full AI and analytics stack.",
-    features: ["branding", "ai", "analytics", "cinema", "domain"],
+    tagline: "Tech-forward studio with AI lead generation built in.",
+    features: ["filters", "widgets", "icons", "leadgen"],
+    pricing: { perModel: 109, perBundle: 579 },
   },
   {
     id: "magnolia-immersive",
     name: "Magnolia Immersive",
     city: "Atlanta",
     state: "GA",
-    tagline: "Boutique southern MSP focused on storytelling and live tours.",
-    features: ["branding", "live", "ai", "map"],
+    tagline: "Boutique southern MSP focused on storytelling and interactive widgets.",
+    features: ["sound", "widgets", "icons"],
+    pricing: { perModel: 79, perBundle: 429 },
   },
   {
     id: "rocky-mtn-spaces",
     name: "Rocky Mountain Spaces",
     city: "Denver",
     state: "CO",
-    tagline: "Mountain real estate specialists with private listing gates.",
-    features: ["branding", "vip", "map", "cinema", "domain"],
+    tagline: "Mountain real estate specialists with cinematic portal filters.",
+    features: ["filters", "icons", "mapper"],
+    pricing: { perModel: 115, perBundle: 589 },
   },
 ];
 
@@ -521,6 +553,7 @@ function DirectorySection() {
                   {FEATURE_FILTERS.map((f) => {
                     const Icon = f.icon;
                     const checked = selected.has(f.id);
+                    const note = "note" in f ? f.note : undefined;
                     return (
                       <label
                         key={f.id}
@@ -536,7 +569,12 @@ function DirectorySection() {
                           className="border-white/30 data-[state=checked]:bg-cyan-400 data-[state=checked]:text-[#0a0e27]"
                         />
                         <Icon className="size-4 shrink-0 opacity-80" />
-                        <span>{f.label}</span>
+                        <span className="flex-1 truncate">{f.label}</span>
+                        {note && (
+                          <span className="shrink-0 text-[10px] uppercase tracking-wider text-white/40">
+                            {note}
+                          </span>
+                        )}
                       </label>
                     );
                   })}
@@ -607,6 +645,14 @@ function DirectorySection() {
 }
 
 function MSPCard({ msp }: { msp: SampleMSP }) {
+  const tier = calculatePricingTier(msp.pricing.perModel, msp.pricing.perBundle);
+  const tierLabel =
+    tier === "$"
+      ? "Budget-friendly"
+      : tier === "$$"
+        ? "Mid-range"
+        : "Premium";
+
   return (
     <Card className="flex h-full flex-col border-white/10 bg-white/5 transition-all hover:-translate-y-0.5 hover:border-cyan-300/30">
       <CardContent className="flex flex-1 flex-col gap-3 p-5">
@@ -615,7 +661,26 @@ function MSPCard({ msp }: { msp: SampleMSP }) {
             <Building2 className="size-5" />
           </div>
           <div className="min-w-0 flex-1">
-            <h3 className="truncate text-base font-semibold text-white">{msp.name}</h3>
+            <div className="flex items-start justify-between gap-2">
+              <h3 className="truncate text-base font-semibold text-white">{msp.name}</h3>
+              <TooltipProvider delayDuration={150}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex shrink-0 items-center gap-0.5 rounded-md bg-emerald-300/10 px-1.5 py-0.5 font-mono text-xs font-bold text-emerald-300 ring-1 ring-emerald-300/20">
+                      <DollarSign className="size-3" />
+                      {tier === "$$" ? <DollarSign className="-ml-1.5 size-3" /> : null}
+                      {tier === "$$$" ? (
+                        <>
+                          <DollarSign className="-ml-1.5 size-3" />
+                          <DollarSign className="-ml-1.5 size-3" />
+                        </>
+                      ) : null}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>Base Pricing: {tierLabel}</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
             <p className="flex items-center gap-1 text-xs text-white/50">
               <MapPin className="size-3" />
               {msp.city}, {msp.state}
