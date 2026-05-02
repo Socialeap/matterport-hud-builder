@@ -1418,16 +1418,19 @@ ${hasAgentContact ? `<div id="agent-drawer">
       </div>
       <div class="drawer-qstatus" id="drawer-qstatus" aria-live="polite"></div>
     </div>` : ""}
-    <!-- ── Live Guided Tour ───────────────────────────────────────
-         Visitor pane is the default. Agents click the "I'm the agent"
-         link to flip into the agent pane. Both panes share the same
-         underlying createLiveSession() controller — only one role can
-         be active at a time per device. -->
+    ${socialLinksHtml ? `<div class="drawer-social-label">Social</div><div class="drawer-social-pills">${socialLinksHtml}</div>` : ""}
+  </div>
+</div>
+<!-- ── Live Tour drawer (separated from Get in Touch) ─────────────── -->
+<div id="live-tour-drawer" role="dialog" aria-modal="false" aria-labelledby="live-tour-title">
+  <div id="live-tour-inner">
+    <button id="live-tour-close" type="button" onclick="window.__closeLiveTour&&window.__closeLiveTour()" aria-label="Close">&times;</button>
+    <h2 id="live-tour-title">Live Tour</h2>
     <div class="drawer-live-guide" id="drawer-live-guide">
-      <div class="drawer-live-guide-label">Live Guided Tour</div>
       <div id="lg-visitor">
+        <div class="lg-status" style="margin-top:0">Enter the PIN from your agent to join a guided walkthrough.</div>
         <div class="lg-row">
-          <input type="text" id="lg-pin-input" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="PIN" class="lg-input" aria-label="Live tour PIN" autocomplete="off">
+          <input type="text" id="lg-pin-input" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="Enter PIN" class="lg-input" aria-label="Live tour PIN" autocomplete="off">
           <button type="button" id="lg-join-btn" class="lg-btn primary">Join Live Tour</button>
         </div>
         <div class="lg-status" id="lg-visitor-status" aria-live="polite"></div>
@@ -1450,11 +1453,10 @@ ${hasAgentContact ? `<div id="agent-drawer">
         </div>
       </div>
     </div>
-    ${socialLinksHtml ? `<div class="drawer-social-label">Social</div><div class="drawer-social-pills">${socialLinksHtml}</div>` : ""}
   </div>
 </div>
 <!-- Hidden audio sink for the Live Guided Tour voice channel. Lives
-     outside the drawer so the offscreen translateX transform on the
+     outside the drawer so the offscreen translate transform on the
      drawer can never inadvertently mute playback in any browser. -->
 <audio id="lg-audio" autoplay style="display:none"></audio>` : ""}
 
