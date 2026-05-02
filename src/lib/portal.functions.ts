@@ -3322,8 +3322,11 @@ if(frame){
     if(!wasConnected && state.isConnected && state.status==="connected"){
       wasConnected=true;
       if(leaveBtn) leaveBtn.hidden=false;
-      hideOverlaysForLiveTour();
+      // Visitor: auto-close the Live Tour drawer so the tour fills the
+      // screen. Agent stays in the drawer to manage stops.
+      if(state.role==="visitor") hideOverlaysForLiveTour();
     }
+    setHudButtonState(state);
 
     // If the session ends/errors after having been connected, return
     // both sides to a clean idle state automatically.
