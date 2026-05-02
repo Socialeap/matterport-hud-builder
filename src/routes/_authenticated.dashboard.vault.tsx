@@ -12,12 +12,22 @@ import {
   Pencil,
   Trash2,
   ExternalLink,
-  FileJson,
   Upload,
   Sparkles,
-  ArrowRight,
   type LucideIcon,
 } from "lucide-react";
+import { PropertyMapperChooserDialog } from "@/components/vault/PropertyMapperChooserDialog";
+import {
+  WizardModal,
+  type SavePayload,
+} from "@/components/vault/wizard/WizardModal";
+import {
+  PATH_STEP_COUNT,
+  makeEmptyDraft,
+  type WizardDraft,
+  type WizardPath,
+} from "@/components/vault/wizard/types";
+import { useVaultTemplates } from "@/hooks/useVaultTemplates";
 import { toast } from "sonner";
 
 import { useAuth } from "@/hooks/use-auth";
