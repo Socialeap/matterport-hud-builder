@@ -1378,6 +1378,7 @@ ${askAssets.css}
       </button>
       ${askAssets.toggleBtn}
       <span id="hud-agent-name"></span>
+      ${hasAgentContact ? `<button id="hud-live-tour-btn" class="hud-live-tour-btn" type="button" aria-label="Live Tour" title="Live Tour" aria-expanded="false" onclick="window.__openLiveTour&&window.__openLiveTour()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4"/><path d="M5 7l3 3"/><path d="M19 7l-3 3"/><circle cx="12" cy="14" r="4"/><path d="M8 22h8"/><path d="M12 18v4"/></svg><span class="hud-live-tour-label">Live Tour</span><span class="lt-dot" aria-hidden="true"></span></button>` : ""}
       ${hasAgentContact ? `<button class="hud-contact-btn" onclick="window.__openContact&&window.__openContact()">Contact</button>` : ""}
     </div>
   </div>
