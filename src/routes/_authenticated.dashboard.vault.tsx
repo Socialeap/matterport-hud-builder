@@ -600,6 +600,20 @@ function VaultPage() {
         setCopyrightAck={setCopyrightAck}
         onSave={handleSave}
       />
+
+      <PropertyMapperChooserDialog
+        open={chooserOpen && !isStarter}
+        onOpenChange={setChooserOpen}
+        onPick={(path: WizardPath) => setMapperDraft(makeEmptyDraft(path))}
+        disabled={isStarter}
+      />
+
+      <WizardModal
+        draft={mapperDraft}
+        setDraft={setMapperDraft}
+        saving={mapperSaving}
+        onSave={handleMapperSave}
+      />
     </div>
   );
 }
