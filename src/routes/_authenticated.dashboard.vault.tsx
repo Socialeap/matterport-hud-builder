@@ -202,7 +202,39 @@ function VaultPage() {
   const [chooserOpen, setChooserOpen] = useState(false);
   const [mapperDraft, setMapperDraft] = useState<WizardDraft | null>(null);
   const [mapperSaving, setMapperSaving] = useState(false);
-  const { create: createMapper, update: updateMapper } = useVaultTemplates();
+  const {
+    templates,
+    loading: templatesLoading,
+    create: createMapper,
+    update: updateMapper,
+    remove: removeMapper,
+  } = useVaultTemplates();
+
+  const openEditMapper = (tpl: typeof templates[number]) => {
+    setMapperDraft({
+      id: tpl.id,
+      path: "manual",
+      // jump to final "Name & save" step (index 1 for the manual path)
+      step: PATH_STEP_COUNT.manual - 1,
+      label: tpl.label,
+      doc_kind: tpl.doc_kind,
+      extractor: tpl.extractor,
+      schema_text: JSON.stringify(tpl.field_schema, null, 2),
+      source: { kind: "manual" },
+    });
+  };
+
+  const handleDeleteMapper = async (tpl: typeof templates[number]) => {
+    if (!confirm(`Delete "${tpl.label}"? This cannot be undone.`)) return;
+    await removeMapper(tpl.id);
+  };
+
+  const handleToggleMapperActive = async (
+    tpl: typeof templates[number],
+    next: boolean,
+  ) => {
+    await updateMapper(tpl.id, { is_active: next });
+  };
 
   const handleMapperSave = async (payload: SavePayload): Promise<boolean> => {
     setMapperSaving(true);
@@ -501,7 +533,10 @@ function VaultPage() {
         <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 h-auto">
           {CATEGORIES.map((c) => {
             const Icon = c.icon;
-            const count = assetsByCategory[c.value].length;
+            const count =
+              c.value === "property_doc"
+                ? templates.length
+                : assetsByCategory[c.value].length;
             return (
               <TabsTrigger
                 key={c.value}
@@ -520,57 +555,74 @@ function VaultPage() {
           })}
         </TabsList>
 
-        {CATEGORIES.map((c) => (
-          <TabsContent key={c.value} value={c.value} className="space-y-4">
-            <CategoryGuide category={c} />
+        {CATEGORIES.map((c) => {
+          const isMapper = c.value === "property_doc";
+          const itemCount = isMapper
+            ? templates.length
+            : assetsByCategory[c.value].length;
+          const isLoading = isMapper ? templatesLoading : loading;
+          return (
+            <TabsContent key={c.value} value={c.value} className="space-y-4">
+              <CategoryGuide category={c} />
 
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold">{c.label}</h2>
+                  <p className="text-xs text-muted-foreground">
+                    {itemCount} {isMapper ? "map" : "asset"}
+                    {itemCount === 1 ? "" : "s"} in vault
+                  </p>
+                </div>
+                <Button onClick={openCreate} size="sm" disabled={isStarter}>
+                  {isStarter ? <Lock className="mr-1 size-4" /> : <Plus className="mr-1 size-4" />}
+                  Add Asset
+                </Button>
+              </div>
 
-
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold">{c.label}</h2>
-                <p className="text-xs text-muted-foreground">
-                  {assetsByCategory[c.value].length} asset
-                  {assetsByCategory[c.value].length === 1 ? "" : "s"} in vault
-                </p>
-              </div>
-              <Button onClick={openCreate} size="sm" disabled={isStarter}>
-                {isStarter ? <Lock className="mr-1 size-4" /> : <Plus className="mr-1 size-4" />}
-                Add Asset
-              </Button>
-            </div>
-
-            {isStarter ? (
-              <div className="rounded-lg border border-dashed border-border bg-muted/20 py-12 text-center opacity-70">
-                <c.icon className="mx-auto size-10 text-muted-foreground/60" />
-                <p className="mt-3 text-sm font-medium">
-                  Sample {c.label.toLowerCase()} appear here for Pro members
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Upgrade to Pro to start curating assets in this category.
-                </p>
-              </div>
-            ) : loading ? (
-              <div className="flex items-center justify-center py-10">
-                <div className="h-6 w-6 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-              </div>
-            ) : assetsByCategory[c.value].length === 0 ? (
-              <EmptyState category={c} onAdd={openCreate} />
-            ) : (
-              <div className="grid gap-3 sm:grid-cols-2">
-                {assetsByCategory[c.value].map((asset) => (
-                  <AssetCard
-                    key={asset.id}
-                    asset={asset}
-                    onEdit={() => openEdit(asset)}
-                    onDelete={() => handleDelete(asset)}
-                    onToggle={(next) => handleToggleActive(asset, next)}
-                  />
-                ))}
-              </div>
-            )}
-          </TabsContent>
-        ))}
+              {isStarter ? (
+                <div className="rounded-lg border border-dashed border-border bg-muted/20 py-12 text-center opacity-70">
+                  <c.icon className="mx-auto size-10 text-muted-foreground/60" />
+                  <p className="mt-3 text-sm font-medium">
+                    Sample {c.label.toLowerCase()} appear here for Pro members
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Upgrade to Pro to start curating assets in this category.
+                  </p>
+                </div>
+              ) : isLoading ? (
+                <div className="flex items-center justify-center py-10">
+                  <div className="h-6 w-6 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+                </div>
+              ) : itemCount === 0 ? (
+                <EmptyState category={c} onAdd={openCreate} />
+              ) : isMapper ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {templates.map((tpl) => (
+                    <MapperCard
+                      key={tpl.id}
+                      template={tpl}
+                      onEdit={() => openEditMapper(tpl)}
+                      onDelete={() => handleDeleteMapper(tpl)}
+                      onToggle={(next: boolean) => handleToggleMapperActive(tpl, next)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {assetsByCategory[c.value].map((asset) => (
+                    <AssetCard
+                      key={asset.id}
+                      asset={asset}
+                      onEdit={() => openEdit(asset)}
+                      onDelete={() => handleDelete(asset)}
+                      onToggle={(next) => handleToggleActive(asset, next)}
+                    />
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+          );
+        })}
       </Tabs>
 
       {isStarter && (
@@ -582,7 +634,7 @@ function VaultPage() {
       )}
 
       <AssetEditorDialog
-        open={editorOpen && !isStarter}
+        open={editorOpen && !isStarter && activeTab !== "property_doc"}
         onOpenChange={(open) => {
           setEditorOpen(open);
           if (!open) {
@@ -951,5 +1003,62 @@ function AssetEditorDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function MapperCard({
+  template,
+  onEdit,
+  onDelete,
+  onToggle,
+}: {
+  template: import("@/lib/extraction/provider").VaultTemplate;
+  onEdit: () => void;
+  onDelete: () => void;
+  onToggle: (next: boolean) => void;
+}) {
+  const fieldCount = Object.keys(template.field_schema?.properties ?? {}).length;
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <Sparkles className="size-4 shrink-0 text-primary" />
+            <CardTitle className="truncate text-base">{template.label}</CardTitle>
+          </div>
+          <div className="flex items-center gap-2">
+            <Label
+              htmlFor={`mapper-switch-${template.id}`}
+              className="text-xs text-muted-foreground whitespace-nowrap"
+            >
+              Available
+            </Label>
+            <Switch
+              id={`mapper-switch-${template.id}`}
+              checked={template.is_active}
+              onCheckedChange={onToggle}
+            />
+          </div>
+        </div>
+        <CardDescription className="line-clamp-2">
+          {template.doc_kind ? `${template.doc_kind} · ` : ""}
+          {fieldCount} field{fieldCount === 1 ? "" : "s"} mapped for AI Chat
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex items-center justify-between gap-2 pt-0">
+        <span className="flex items-center gap-1 text-xs text-muted-foreground truncate">
+          <FileText className="size-3 shrink-0" />
+          <span className="truncate">Property Map · v{template.version}</span>
+        </span>
+        <div className="flex shrink-0 gap-1">
+          <Button size="sm" variant="ghost" onClick={onEdit}>
+            <Pencil className="size-3.5" />
+          </Button>
+          <Button size="sm" variant="ghost" onClick={onDelete}>
+            <Trash2 className="size-3.5 text-destructive" />
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

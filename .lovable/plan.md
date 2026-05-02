@@ -1,48 +1,45 @@
-# Streamline Vault → Property Mapper UX
+## Problem
 
-## Goals
-1. Rename the **Property Docs** tab → **Property Mapper** (label only — keep the underlying `property_doc` category enum so existing assets keep working).
-2. Replace the current "Add Asset" → upload modal flow for Property Mapper with a single **3-card chooser modal** (Smart AI Blueprint / Pre-Built Template / Pro Developer Setup).
-3. Remove the standalone "Property Mapper for AI Chat" intro card from the Vault page and the separate "Open Property Mapper" CTA — its messaging folds into the Smart AI Blueprint card description.
-4. Each card opens the appropriate wizard step (the existing `WizardModal` machinery is reused so no logic is rewritten).
+1. **New mappers don't appear in the list.** The wizard saves to the `vault_templates` table, but the Property Mapper tab renders rows from `vault_assets`. The two never meet, so the new "Gallery/Exhibit" map is saved successfully but is invisible.
+2. **Old "Add Property Mapper" modal still opens.** The intercept in `openCreate()` exists but the legacy `AssetEditorDialog` is always mounted in the tree and the legacy property-doc upload flow remains as a fallback path. We need to make the chooser the *only* possible entry point for the Property Mapper tab.
 
-## Current state (verified)
-- `src/routes/_authenticated.dashboard.vault.tsx` defines the `property_doc` category with label "Property Mapper" already (line 131) BUT the active-tab heading still derives from it, and the **+ Add Asset** button calls `openCreate()` which opens `AssetEditorDialog` (a generic file-upload form). For property docs this is the wrong destination.
-- `PropertyDocArchitectCallout` (lines 906-967) is the current intro card linking to `/dashboard/vault/templates?architect=1`. To be removed.
-- The mapper experience already lives at `/dashboard/vault/templates` (`_authenticated.dashboard.vault.templates.tsx`) and uses `WizardHub` (3 cards) + `WizardModal` (full wizard).
-- `WizardHub` already supports both `compact` and rich flip-card modes; we'll reuse the rich mode inside the new chooser dialog.
+## Fix
 
-## Changes
+### File: `src/routes/_authenticated.dashboard.vault.tsx`
 
-### A. `src/routes/_authenticated.dashboard.vault.tsx`
-1. **Tab label** — update the user-facing label everywhere it's still "Property Docs". (Already says "Property Mapper" at line 131 — verify the page heading at lines 493-497 reads "Property Mapper" via `c.label`; no string change needed there. Also update the inline copy on line 446 and the toast/empty-state strings if they say "Property Docs".)
-2. **Remove** the `PropertyDocArchitectCallout` render (line 488-490) and the function definition (lines 906-967). Also remove the now-unused `Sparkles`, `ArrowRight`, `FileJson`, `Wand2` imports if no longer used elsewhere on the page.
-3. **Intercept `openCreate` for `property_doc`**: when `activeCategory.value === "property_doc"`, open the new `PropertyMapperChooserDialog` instead of `AssetEditorDialog`. All other categories keep their existing flow.
-4. Add a small piece of state: `const [chooserOpen, setChooserOpen] = useState(false);`
+1. **Render templates, not assets, on the Property Mapper tab.**
+   - Read `templates` from the existing `useVaultTemplates()` hook (already imported).
+   - In the tab body for `property_doc`, replace the `vault_assets` grid with a list of `vault_templates` rows.
+   - Reuse the existing `AssetCard` visual pattern but bind to template fields (`label`, `doc_kind`, field count from `field_schema.properties`).
+   - Wire each card's actions to template operations:
+     - **Edit** → seed `mapperDraft` with existing template values (id, label, doc_kind, extractor, schema_text serialized from `field_schema`) and open `WizardModal` directly on the final "Name & Save" step.
+     - **Delete** → call `useVaultTemplates().remove(id)` (with a confirm).
+     - **Toggle Available** → call `useVaultTemplates().update(id, { is_active: next })`.
+   - Use the asset-count badge on the tab trigger from `templates.length` for the property_doc tab (and `assetsByCategory[c.value].length` for all others).
+   - Show the existing empty-state with a CTA that opens the chooser when there are no templates yet.
 
-### B. New component: `src/components/vault/PropertyMapperChooserDialog.tsx`
-A small wrapper that:
-- Renders a `<Dialog>` with `WizardHub` inside (rich/non-compact mode so the flip-cards & explainers appear — this is where the "Smart AI Blueprint" card now carries the educational copy that was in the removed intro card).
-- Header copy adapted from the deleted intro: *"Property Mapper for AI Chat — Build a reusable map of facts your clients' AI Chat will pull from uploaded property documents. Pick how you want to start."*
-- On `onPick(path)`:
-  - Closes the chooser.
-  - Opens the existing `WizardModal` directly on the same page, by lifting `draft`/`saving` state up (mirroring `_authenticated.dashboard.vault.templates.tsx`).
-  - Wires `handleSave` to call `useVaultTemplates().create/update` (same hook as the templates route uses) so the result is persisted as a vault template, identical to what happens on the templates route.
+2. **Harden the Add Asset interception.**
+   - Keep the existing early-return in `openCreate()` for `property_doc` → `setChooserOpen(true)`.
+   - Additionally, in the rendered tab body, when the active category is `property_doc`, render the templates list path *exclusively*, never falling back to `EmptyState`'s default add path that goes through the legacy editor — point its `onAdd` to `setChooserOpen(true)`.
+   - Guard the legacy `<AssetEditorDialog>` so it can never open while `activeTab === "property_doc"`: change its `open` prop to `editorOpen && !isStarter && activeTab !== "property_doc"`. This prevents any race where the legacy dialog could appear for the Property Mapper tab.
+   - Remove the now-obsolete `property_doc` info banner inside `AssetEditorDialog` (lines 778–791) since users will never reach it for that category.
 
-This means MSPs no longer need to navigate to `/dashboard/vault/templates` to create a mapper — it all happens in-modal from the Vault tab. The `/dashboard/vault/templates` route remains accessible (unchanged) for the management list, but it's no longer surfaced as a separate primary entry from the Vault page.
+3. **Migration of existing legacy `vault_assets` rows of `category_type = 'property_doc'` (e.g. "Hotel Sample", "Sample 1422 Heritage Oak Court").**
+   - These were uploaded under the previous "Property Docs" flow and are not Property Maps. Two safe options — recommend option A:
+     - **A. Leave them in the database, hide from the Property Mapper tab.** The Property Mapper tab now shows templates only. The legacy rows remain accessible via the database for safety; we can add a one-time "Legacy Property Docs" subsection later if needed.
+     - **B. Surface them in a small "Uploaded property documents (legacy)" sub-section under the templates list, read-only with a Delete action.**
+   - We will go with **A** unless the user prefers B. No data is destroyed.
 
-### C. Smart AI Blueprint card copy enrichment
-In `src/components/vault/wizard/WizardHub.tsx`, extend the `ai` card's `blurb` / `howItWorks` text to absorb the educational framing from the removed intro card ("Easily build a mapping template for each type or category of property — Offices, Hotels, Apartments, Galleries, Luxury Rentals — that your clients use to help the AI scan and convert their uploaded property data into real-world answers in the 'Ask AI' chat.").
+### Files
 
-### D. Cleanup
-- Verify no other references to the removed `PropertyDocArchitectCallout` remain.
-- The "Vault → Property Mapper" link inside `AssetEditorDialog` (lines 727-740) becomes dead code for property_doc since that dialog will no longer open for that category — leave the conditional in place (harmless) or remove the `category.value === "property_doc"` branch for tidiness.
+- `src/routes/_authenticated.dashboard.vault.tsx` — list/edit/delete/toggle wiring for templates on the Property Mapper tab; harden modal guards.
 
-## Out of scope
-- The `/dashboard/vault/templates` route stays as-is for now (it remains the place to *manage* / edit / delete existing maps). If you'd later like to fully consolidate it into the Vault tab list (showing existing maps as asset cards under Property Mapper), that's a follow-up.
-- No DB / RLS changes. `vault_templates` table and category enum unchanged.
+No DB migration. No changes to the wizard, the chooser dialog, or `useVaultTemplates`.
 
-## Files touched
-- `src/routes/_authenticated.dashboard.vault.tsx` (remove intro card, intercept Add Asset for property_doc, mount chooser + wizard)
-- `src/components/vault/PropertyMapperChooserDialog.tsx` (new)
-- `src/components/vault/wizard/WizardHub.tsx` (enrich AI card copy)
+## Verification
+
+After the change:
+- Clicking "Add Asset" on the Property Mapper tab opens the 3-card chooser, never the legacy dialog.
+- Completing the wizard for "Gallery/Exhibit" causes the new map to appear immediately in the Property Mapper tab list (refresh comes from `useVaultTemplates.refresh()` already called in `create`).
+- Edit / Delete / Available toggle on a template card update `vault_templates` and reflect in the list.
+- All other tabs (Sound Library, Visual Portal Filters, etc.) continue to use `vault_assets` unchanged.
