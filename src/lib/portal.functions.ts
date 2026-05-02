@@ -3118,18 +3118,20 @@ if(frame){
   var lastTeleportTs=0;
   var wasConnected=false;
 
-  // Hide the HUD header + close the contact drawer. Used after a live
-  // session reaches "connected" so the 3D tour fills the screen.
+  // After a visitor connects, auto-close the Live Tour drawer so the
+  // tour fills the screen. The HUD header (and the Live Tour button)
+  // remains visible so the visitor can reopen the panel anytime.
   function hideOverlaysForLiveTour(){
-    try { if(window.__closeContact) window.__closeContact(); } catch(_e){}
-    try {
-      if(typeof setHudVisible==="function") setHudVisible(false);
-      else if(window.__setHudVisible) window.__setHudVisible(false);
-      else {
-        var hh=document.getElementById("hud-header");
-        if(hh){ hh.classList.remove("visible"); hh.style.transform="translateY(-100%)"; hh.style.opacity="0"; hh.style.pointerEvents="none"; }
-      }
-    } catch(_e){}
+    try { if(window.__closeLiveTour) window.__closeLiveTour(); } catch(_e){}
+  }
+
+  // Reflect session state on the HUD Live Tour button.
+  function setHudButtonState(state){
+    var btn=document.getElementById("hud-live-tour-btn");
+    if(!btn) return;
+    btn.classList.remove("is-waiting","connected");
+    if(state.isConnected) btn.classList.add("connected");
+    else if(state.status==="waiting"||state.status==="connecting"||state.status==="initializing") btn.classList.add("is-waiting");
   }
 
   // Reset the Live-Guide UI back to the idle (visitor-default) state.
