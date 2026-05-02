@@ -646,35 +646,24 @@ export function HudPreview({
             )}
 
             {/* Contact actions */}
-            <div className="space-y-2 mb-4">
-              {agent.phone && (
-                <>
-                  <a
-                    href={`tel:${agent.phone}`}
-                    className="flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2.5 text-xs font-medium text-white transition-colors hover:bg-white/20"
-                  >
-                    <Phone className="h-3.5 w-3.5 text-white/70" />
-                    Call {agent.phone}
-                  </a>
-                  <a
-                    href={`sms:${agent.phone}`}
-                    className="flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2.5 text-xs font-medium text-white transition-colors hover:bg-white/20"
-                  >
-                    <MessageSquare className="h-3.5 w-3.5 text-white/70" />
-                    Text {agent.phone}
-                  </a>
-                </>
-              )}
-              {agent.email && (
+            {agent.phone && (
+              <div className="space-y-2 mb-4">
                 <a
-                  href={`mailto:${agent.email}`}
+                  href={`tel:${agent.phone}`}
                   className="flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2.5 text-xs font-medium text-white transition-colors hover:bg-white/20"
                 >
-                  <Mail className="h-3.5 w-3.5 text-white/70" />
-                  {agent.email}
+                  <Phone className="h-3.5 w-3.5 text-white/70" />
+                  Call {agent.phone}
                 </a>
-              )}
-            </div>
+                <a
+                  href={`sms:${agent.phone}`}
+                  className="flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2.5 text-xs font-medium text-white transition-colors hover:bg-white/20"
+                >
+                  <MessageSquare className="h-3.5 w-3.5 text-white/70" />
+                  Text {agent.phone}
+                </a>
+              </div>
+            )}
 
             {/* Quick-message form (matches the standalone end-product) */}
             {(agent.email || agent.phone) && (() => {
@@ -701,11 +690,10 @@ export function HudPreview({
               const buildBody = (forSms: boolean) => {
                 const msg = qMessage.trim();
                 const ve = qEmail.trim();
-                const trailer = ve ? (forSms ? `\nReply to: ${ve}` : `\n\n— Sent from ${ve}`) : "";
+                const trailer = ve ? (forSms ? `\nReply to: ${ve}` : `\n\nVisitor: ${ve}`) : "";
                 return msg + trailer;
               };
               const ok = qMessage.trim().length > 0;
-              const mailHref = `mailto:${agent.email || ""}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(buildBody(false))}`;
               const agentFirstName = (agent.name || "").trim().split(/\s+/)[0] || "agent";
               const smsHref = `sms:${agent.phone || ""}?body=${encodeURIComponent(buildBody(true))}`;
               const onCopy = async () => {
@@ -752,8 +740,11 @@ export function HudPreview({
                   <div className="flex flex-wrap gap-1.5">
                     {agent.email && (
                       <a
-                        href={ok ? mailHref : undefined}
-                        onClick={(e) => { if (!ok) e.preventDefault(); else setQStatus("Opening your email app…"); }}
+                        href={ok ? "#" : undefined}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          if (ok) setQStatus("Email options open in the downloaded presentation.");
+                        }}
                         aria-disabled={!ok}
                         className="inline-flex flex-1 min-w-[110px] items-center justify-center gap-1 rounded-lg px-3 py-2 text-xs font-semibold text-white transition-opacity"
                         style={{ backgroundColor: accentColor, opacity: ok ? 1 : 0.45, pointerEvents: ok ? "auto" : "none" }}

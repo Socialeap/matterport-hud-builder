@@ -1240,6 +1240,26 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .modal-close-btn:hover{background:rgba(255,255,255,0.2)}
 .modal-body{padding:16px}
 
+/* ── Email options modal ─────────────────────────────────────────── */
+#email-modal .modal-box{width:min(560px,94vw);background:#f8fafc;color:#101828;border:1px solid #d9e0ea;border-radius:14px}
+#email-modal .modal-top-bar{border-bottom:1px solid #e2e8f0}
+#email-modal .modal-title{color:#101828}
+#email-modal .modal-close-btn{background:#edf2f7;color:#344054}
+#email-modal .modal-close-btn:hover{background:#e2e8f0}
+.email-modal-intro{margin:0 0 14px;color:#5b667a;font-size:14px;line-height:1.45}
+.email-modal-note{margin:0 0 16px;color:#667085;font-size:12px;line-height:1.45}
+.email-preview{display:grid;gap:10px;margin:0 0 16px;padding:12px;border-radius:8px;background:#f1f5f9;border:1px solid #e2e8f0;font-size:13px}
+.email-preview-label{font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#667085;margin-bottom:3px}
+.email-preview-value{white-space:pre-wrap;overflow-wrap:anywhere;color:#101828}
+.email-option-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.email-option-grid a,.email-option-grid button{appearance:none;border:0;border-radius:8px;padding:11px 12px;font:inherit;font-size:13px;font-weight:700;text-align:center;text-decoration:none;cursor:pointer}
+.email-option-service{background:#e8eef6;color:#172033}
+.email-option-service:hover{background:#dde7f3}
+.email-option-copy{grid-column:1/-1;background:#fff;color:#344054;border:1px solid #d0d5dd!important}
+.email-option-copy:hover{background:#f8fafc}
+.email-option-status{min-height:18px;margin-top:12px;color:#047857;font-size:12px}
+@media(max-width:460px){.email-option-grid{grid-template-columns:1fr}.email-option-copy{grid-column:auto}}
+
 /* ── Carousel-specific ────────────────────────────────────────────── */
 #carousel-media-stage{position:relative;aspect-ratio:16/9;width:100%;background:#000;border-radius:10px;overflow:hidden}
 #carousel-media-stage img,#carousel-media-stage video,#carousel-media-stage iframe{width:100%;height:100%;object-fit:contain}
@@ -1413,6 +1433,43 @@ ${hasAgentContact ? `<div id="agent-drawer">
      outside the drawer so the offscreen translateX transform on the
      drawer can never inadvertently mute playback in any browser. -->
 <audio id="lg-audio" autoplay style="display:none"></audio>` : ""}
+
+<!-- ── Email options modal ───────────────────────────────────────── -->
+<div id="email-modal" class="modal-backdrop" onclick="if(event.target===this)window.__closeEmailOptions&&window.__closeEmailOptions()">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div class="modal-top-bar">
+      <span class="modal-title">Email Contact</span>
+      <button class="modal-close-btn" onclick="window.__closeEmailOptions&&window.__closeEmailOptions()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="email-modal-intro">Choose an email option to open a draft with your message.</p>
+      <p class="email-modal-note">Use Copy email details if you prefer another email app, or if your service asks you to paste the message manually.</p>
+      <section class="email-preview">
+        <div>
+          <div class="email-preview-label">To</div>
+          <div class="email-preview-value" id="email-preview-to"></div>
+        </div>
+        <div>
+          <div class="email-preview-label">Subject</div>
+          <div class="email-preview-value" id="email-preview-subject"></div>
+        </div>
+        <div>
+          <div class="email-preview-label">Message</div>
+          <div class="email-preview-value" id="email-preview-body"></div>
+        </div>
+      </section>
+      <div class="email-option-grid">
+        <a id="email-option-native" class="email-option-service" href="#" target="_blank" rel="noopener">Mail App</a>
+        <a id="email-option-gmail" class="email-option-service" href="#" target="_blank" rel="noopener">Gmail</a>
+        <a id="email-option-outlook" class="email-option-service" href="#" target="_blank" rel="noopener">Outlook</a>
+        <a id="email-option-yahoo" class="email-option-service" href="#" target="_blank" rel="noopener">Yahoo</a>
+        <a id="email-option-icloud" class="email-option-service" href="#" target="_blank" rel="noopener">iCloud Mail</a>
+        <button id="email-option-copy" class="email-option-copy" type="button">Copy email details</button>
+      </div>
+      <div class="email-option-status" id="email-option-status" aria-live="polite"></div>
+    </div>
+  </div>
+</div>
 
 <!-- ── Neighborhood Map modal ─────────────────────────────────────── -->
 <div id="map-modal" class="modal-backdrop" onclick="if(event.target===this)window.__closeModal('map')">
@@ -1846,17 +1903,36 @@ function buildEmailRedirectUrl(recipient,subject,body){
   if(!to) return "";
   var subj=String(subject||"Inquiry").replace(/[\\r\\n]+/g," ").trim();
   var msg=String(body||"").trim();
-  var url=EMAIL_REDIRECTOR_URL+"#to="+encodeURIComponent(to)+"&subject="+encodeURIComponent(subj)+"&body="+encodeURIComponent(msg);
+  var url=EMAIL_REDIRECTOR_URL+"?to="+encodeURIComponent(to)+"&subject="+encodeURIComponent(subj)+"&body="+encodeURIComponent(msg);
   while(url.length>7000&&msg.length>200){
     msg=msg.slice(0,Math.max(200,msg.length-500));
-    url=EMAIL_REDIRECTOR_URL+"#to="+encodeURIComponent(to)+"&subject="+encodeURIComponent(subj)+"&body="+encodeURIComponent(msg);
+    url=EMAIL_REDIRECTOR_URL+"?to="+encodeURIComponent(to)+"&subject="+encodeURIComponent(subj)+"&body="+encodeURIComponent(msg);
   }
   return url;
+}
+function buildWebmailUrl(service,recipient,subject,body){
+  var to=sanitizeEmailAddress(recipient);
+  if(!to) return "";
+  var subj=String(subject||"Inquiry").replace(/[\\r\\n]+/g," ").trim();
+  var msg=String(body||"").trim();
+  if(service==="gmail"){
+    return "https://mail.google.com/mail/?view=cm&fs=1&to="+encodeURIComponent(to)+"&su="+encodeURIComponent(subj)+"&body="+encodeURIComponent(msg);
+  }
+  if(service==="outlook"){
+    return "https://outlook.office.com/mail/deeplink/compose?to="+encodeURIComponent(to)+"&subject="+encodeURIComponent(subj)+"&body="+encodeURIComponent(msg);
+  }
+  if(service==="yahoo"){
+    return "https://compose.mail.yahoo.com/?to="+encodeURIComponent(to)+"&subject="+encodeURIComponent(subj)+"&body="+encodeURIComponent(msg);
+  }
+  if(service==="icloud"){
+    return "https://www.icloud.com/mail/";
+  }
+  return "";
 }
 function buildVisitorEmailBody(message,visitorEmail,extraLines){
   var parts=[];
   var email=String(visitorEmail||"").trim();
-  if(email) parts.push("From: "+email);
+  if(email) parts.push("Visitor: "+email);
   if(extraLines&&extraLines.length) parts=parts.concat(extraLines);
   parts.push("Message:");
   parts.push(String(message||"").trim());
@@ -1869,53 +1945,39 @@ function prepareEmailRedirectLink(link,recipient,subject,body,statusEl){
   return url;
 }
 function openEmailRedirect(recipient,subject,body,statusEl){
-  var url=buildEmailRedirectUrl(recipient,subject,body);
-  if(!url){
+  var to=sanitizeEmailAddress(recipient);
+  if(!to){
     if(statusEl) statusEl.textContent="No email address configured.";
     return false;
   }
-  var opened=null;
-  var popupW=520;
-  var popupH=680;
-  var screenLeft=typeof window.screenX==="number"?window.screenX:(window.screenLeft||0);
-  var screenTop=typeof window.screenY==="number"?window.screenY:(window.screenTop||0);
-  var outerW=window.outerWidth||document.documentElement.clientWidth||screen.availWidth||popupW;
-  var outerH=window.outerHeight||document.documentElement.clientHeight||screen.availHeight||popupH;
-  var left=Math.max(0,Math.round(screenLeft+(outerW-popupW)/2));
-  var top=Math.max(0,Math.round(screenTop+(outerH-popupH)/2));
-  var features=[
-    "popup=yes",
-    "width="+popupW,
-    "height="+popupH,
-    "left="+left,
-    "top="+top,
-    "resizable=yes",
-    "scrollbars=yes",
-    "toolbar=no",
-    "menubar=no",
-    "location=no",
-    "status=no"
-  ].join(",");
-  try{
-    opened=window.open(url,"presentationEmailHandoff",features);
-    if(opened){
-      try{ opened.opener=null; }catch(_e){}
-      try{ opened.focus(); }catch(_e){}
-    }
-  }catch(_e){}
-  if(statusEl) statusEl.textContent="Opening contact options...";
-  if(!opened){
-    setTimeout(function(){
-      copyContactText(
-        sanitizeEmailAddress(recipient),
-        statusEl,
-        "Email address copied to clipboard.",
-        "Please use Copy."
-      );
-    },1000);
+  var subj=String(subject||"Inquiry").replace(/[\\r\\n]+/g," ").trim();
+  var msg=String(body||"").trim();
+  var modal=document.getElementById("email-modal");
+  if(!modal){
+    if(statusEl) statusEl.textContent="Email options are unavailable. Use Copy.";
     return false;
   }
+  window.__emailOptionsPayload={to:to,subject:subj,body:msg};
+  setText("email-preview-to",to);
+  setText("email-preview-subject",subj);
+  setText("email-preview-body",msg||"(No message provided)");
+  setHref("email-option-native",buildEmailRedirectUrl(to,subj,msg));
+  setHref("email-option-gmail",buildWebmailUrl("gmail",to,subj,msg));
+  setHref("email-option-outlook",buildWebmailUrl("outlook",to,subj,msg));
+  setHref("email-option-yahoo",buildWebmailUrl("yahoo",to,subj,msg));
+  setHref("email-option-icloud",buildWebmailUrl("icloud",to,subj,msg));
+  setText("email-option-status","");
+  modal.classList.add("open");
+  if(statusEl) statusEl.textContent="Choose an email option.";
   return true;
+}
+function setText(id,value){
+  var el=document.getElementById(id);
+  if(el) el.textContent=String(value||"");
+}
+function setHref(id,value){
+  var el=document.getElementById(id);
+  if(el) el.setAttribute("href",value||"#");
 }
 async function copyContactText(text,statusEl,okMsg,failMsg){
   try{
@@ -1933,6 +1995,29 @@ async function copyContactText(text,statusEl,okMsg,failMsg){
     return false;
   }
 }
+function getEmailOptionsText(){
+  var p=window.__emailOptionsPayload||{};
+  return "To: "+(p.to||"")+"\\nSubject: "+(p.subject||"")+"\\n\\n"+(p.body||"");
+}
+window.__closeEmailOptions=function(){
+  var modal=document.getElementById("email-modal");
+  if(modal) modal.classList.remove("open");
+};
+(function initEmailOptions(){
+  var copyBtn=document.getElementById("email-option-copy");
+  var statusEl=document.getElementById("email-option-status");
+  var icloudEl=document.getElementById("email-option-icloud");
+  if(copyBtn){
+    copyBtn.addEventListener("click",function(){
+      copyContactText(getEmailOptionsText(),statusEl,"Copied email details.","Could not copy email details.");
+    });
+  }
+  if(icloudEl){
+    icloudEl.addEventListener("click",function(){
+      copyContactText(getEmailOptionsText(),statusEl,"Copied details for iCloud Mail.","Could not copy email details.");
+    });
+  }
+})();
 
 // ── Quick-message form inside contact drawer ─────────────────────
 (function initQuickMsg(){
