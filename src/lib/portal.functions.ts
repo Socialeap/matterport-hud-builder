@@ -659,8 +659,8 @@ function buildAskAssets(
 .ask-inquiry-input:disabled{opacity:0.5}
 .ask-inquiry-textarea{resize:vertical;min-height:60px;font-family:inherit}
 .ask-inquiry-actions{display:flex;gap:8px;align-items:center}
-.ask-inquiry-send{background:${escapeHtml(accentColor)};border:none;color:#fff;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px;font-weight:600}
-.ask-inquiry-send:disabled{opacity:0.5;cursor:not-allowed}
+.ask-inquiry-send{background:${escapeHtml(accentColor)};border:none;color:#fff;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
+.ask-inquiry-send[aria-disabled="true"]{opacity:0.5;cursor:not-allowed;pointer-events:none}
 .ask-inquiry-sms{color:#bbb;text-decoration:underline;font-size:12px}
 .ask-inquiry-status{font-size:11px;color:#888;margin-top:2px}
 `;
@@ -1362,7 +1362,7 @@ ${hasAgentContact ? `<div id="agent-drawer">
     <div class="drawer-actions">
       ${agent.phone ? `<a href="tel:${escapeHtml(String(agent.phone))}" class="drawer-action-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.27h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.61a16 16 0 0 0 6 6l.91-.91a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.73 16l.19.92z"/></svg>Call ${escapeHtml(String(agent.phone))}</a>` : ""}
       ${agent.phone ? `<a href="sms:${escapeHtml(String(agent.phone))}" class="drawer-action-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Text ${escapeHtml(String(agent.phone))}</a>` : ""}
-      ${agentHasEmail ? `<button type="button" id="drawer-agent-email" class="drawer-action-link drawer-action-button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>${escapeHtml(agentEmailForMailto)}</button><button type="button" id="drawer-agent-copy-email" class="drawer-action-link drawer-action-button drawer-action-copy">Copy email address</button><div class="drawer-email-status" id="drawer-email-status" aria-live="polite"></div>` : ""}
+      ${agentHasEmail ? `<a href="#" id="drawer-agent-email" class="drawer-action-link drawer-action-button" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>${escapeHtml(agentEmailForMailto)}</a><button type="button" id="drawer-agent-copy-email" class="drawer-action-link drawer-action-button drawer-action-copy">Copy email address</button><div class="drawer-email-status" id="drawer-email-status" aria-live="polite"></div>` : ""}
     </div>
     ${(agentHasEmail || agent.phone) ? `<div class="drawer-quickmsg" id="drawer-quickmsg">
       <div class="drawer-quickmsg-label">Ask a quick question</div>
@@ -1370,7 +1370,7 @@ ${hasAgentContact ? `<div id="agent-drawer">
       <textarea class="drawer-qfield drawer-qtextarea" id="drawer-qmsg" rows="4" placeholder="Type your question, or pick a topic above…" aria-label="Your message"></textarea>
       <input type="email" class="drawer-qfield" id="drawer-qemail" placeholder="Your email (so we can reply)" autocomplete="email" aria-label="Your email">
       <div class="drawer-qsend-row">
-        ${agentHasEmail ? `<button type="button" id="drawer-qsend-email" class="drawer-qsend primary" aria-disabled="true">Email ${escapeHtml(agentFirstName)}</button>` : ""}
+        ${agentHasEmail ? `<a id="drawer-qsend-email" class="drawer-qsend primary" href="#" aria-disabled="true" role="button" target="_blank" rel="noopener">Email ${escapeHtml(agentFirstName)}</a>` : ""}
         ${agent.phone ? `<a id="drawer-qsend-sms" class="drawer-qsend secondary" href="#" aria-disabled="true" role="button">Text ${escapeHtml(agentFirstName)}</a>` : ""}
         <button type="button" id="drawer-qcopy" class="drawer-qcopy" aria-disabled="true">Copy</button>
       </div>
@@ -1833,22 +1833,64 @@ window.__closeContact=function(){
   if(d) d.classList.remove("open");
 };
 
-// ── Local email launcher (hidden iframe, no page navigation)
+// ── Edge email redirect helpers (client-only, no email backend)
+var EMAIL_REDIRECTOR_URL="https://polished-sky-f30e.shakoure.workers.dev/";
 function sanitizeEmailAddress(value){
   var email=String(value||"").trim().replace(/^mailto:/i,"").split("?")[0].trim();
   return /^[^\\s@<>"]+@[^\\s@<>"]+\\.[^\\s@<>"]+$/.test(email)?email:"";
 }
-function buildMailtoUrl(recipient,subject,body){
+function isValidVisitorEmail(value){
+  var email=String(value||"").trim();
+  return !email||/^[^\\s@<>"]+@[^\\s@<>"]+\\.[^\\s@<>"]+$/.test(email);
+}
+function buildEmailRedirectUrl(recipient,subject,body){
   var to=sanitizeEmailAddress(recipient);
   if(!to) return "";
   var subj=String(subject||"Inquiry").replace(/[\\r\\n]+/g," ").trim();
   var msg=String(body||"").trim();
-  var url="mailto:"+to+"?subject="+encodeURIComponent(subj)+"&body="+encodeURIComponent(msg);
-  while(url.length>1900&&msg.length>50){
-    msg=msg.slice(0,Math.max(50,msg.length-200));
-    url="mailto:"+to+"?subject="+encodeURIComponent(subj)+"&body="+encodeURIComponent(msg);
+  var url=EMAIL_REDIRECTOR_URL+"?to="+encodeURIComponent(to)+"&subject="+encodeURIComponent(subj)+"&body="+encodeURIComponent(msg);
+  while(url.length>7000&&msg.length>200){
+    msg=msg.slice(0,Math.max(200,msg.length-500));
+    url=EMAIL_REDIRECTOR_URL+"?to="+encodeURIComponent(to)+"&subject="+encodeURIComponent(subj)+"&body="+encodeURIComponent(msg);
   }
   return url;
+}
+function buildVisitorEmailBody(message,visitorEmail,extraLines){
+  var parts=[];
+  var email=String(visitorEmail||"").trim();
+  if(email) parts.push("From: "+email);
+  if(extraLines&&extraLines.length) parts=parts.concat(extraLines);
+  parts.push("Message:");
+  parts.push(String(message||"").trim());
+  return parts.filter(function(part){return String(part||"").trim().length>0;}).join("\\n\\n");
+}
+function prepareEmailRedirectLink(link,recipient,subject,body,statusEl){
+  var url=buildEmailRedirectUrl(recipient,subject,body);
+  if(link) link.setAttribute("href",url||"#");
+  if(!url&&statusEl) statusEl.textContent="No email address configured.";
+  return url;
+}
+function openEmailRedirect(recipient,subject,body,statusEl){
+  var url=buildEmailRedirectUrl(recipient,subject,body);
+  if(!url){
+    if(statusEl) statusEl.textContent="No email address configured.";
+    return false;
+  }
+  var opened=null;
+  try{ opened=window.open(url,"_blank"); }catch(_e){}
+  if(statusEl) statusEl.textContent="Opening your email app… If nothing opens, use Copy.";
+  if(!opened){
+    setTimeout(function(){
+      copyContactText(
+        sanitizeEmailAddress(recipient),
+        statusEl,
+        "Pop-up blocked. Email address copied to clipboard.",
+        "Pop-up blocked. Please use Copy."
+      );
+    },1000);
+    return false;
+  }
+  return true;
 }
 async function copyContactText(text,statusEl,okMsg,failMsg){
   try{
@@ -1863,45 +1905,6 @@ async function copyContactText(text,statusEl,okMsg,failMsg){
     return true;
   }catch(_e){
     if(statusEl) statusEl.textContent=failMsg||"Couldn't copy — please select and copy manually.";
-    return false;
-  }
-}
-function launchEmailClient(recipient,subject,body,statusEl,fallbackText){
-  var url=buildMailtoUrl(recipient,subject,body);
-  if(!url){
-    if(statusEl) statusEl.textContent="No email address configured.";
-    return false;
-  }
-  try{
-    var frame=document.createElement("iframe");
-    frame.setAttribute("aria-hidden","true");
-    frame.tabIndex=-1;
-    frame.style.position="absolute";
-    frame.style.width="0";
-    frame.style.height="0";
-    frame.style.border="0";
-    frame.style.opacity="0";
-    frame.style.pointerEvents="none";
-    frame.src=url;
-    document.body.appendChild(frame);
-    setTimeout(function(){
-      try{ if(frame.parentNode) frame.parentNode.removeChild(frame); }catch(_e){}
-    },1200);
-    if(statusEl) statusEl.textContent="Opening your email app… Details copied as a backup.";
-    copyContactText(
-      fallbackText||("To: "+sanitizeEmailAddress(recipient)+"\\nSubject: "+String(subject||"Inquiry")+"\\n\\n"+String(body||"")),
-      null,
-      "",
-      ""
-    );
-    return true;
-  }catch(_e){
-    copyContactText(
-      fallbackText||("To: "+sanitizeEmailAddress(recipient)+"\\nSubject: "+String(subject||"Inquiry")+"\\n\\n"+String(body||"")),
-      statusEl,
-      "Email details copied. Paste them into your email app.",
-      "Could not open email app or copy details."
-    );
     return false;
   }
 }
@@ -1968,11 +1971,8 @@ function launchEmailClient(recipient,subject,body,statusEl,fallbackText){
   function buildBody(forSms){
     var msg=(msgEl.value||"").trim();
     var visitorEmail=(emailEl.value||"").trim();
-    var trailer="";
-    if(visitorEmail){
-      trailer=forSms ? ("\\nReply to: "+visitorEmail) : ("\\n\\n— Sent from "+visitorEmail);
-    }
-    return msg+trailer;
+    if(forSms) return msg+(visitorEmail?"\\nReply to: "+visitorEmail:"");
+    return buildVisitorEmailBody(msg,visitorEmail,["Property: "+currentPropName()]);
   }
   function buildSmsUrl(){
     if(!agentPhone) return "";
@@ -1990,6 +1990,7 @@ function launchEmailClient(recipient,subject,body,statusEl,fallbackText){
     var smsReady=ok&&!!agentPhone;
     if(emailBtn){
       emailBtn.setAttribute("aria-disabled", emailReady ? "false":"true");
+      emailBtn.setAttribute("href", emailReady ? buildEmailRedirectUrl(agentEmail,buildSubject(),buildBody(false)) : "#");
     }
     if(smsBtn){
       smsBtn.setAttribute("aria-disabled", smsReady ? "false":"true");
@@ -2000,15 +2001,21 @@ function launchEmailClient(recipient,subject,body,statusEl,fallbackText){
   msgEl.addEventListener("input",refresh);
   emailEl.addEventListener("input",refresh);
   if(directEmailBtn){
-    directEmailBtn.addEventListener("click",function(){
+    directEmailBtn.addEventListener("click",function(ev){
       if(!agentEmail){
+        ev.preventDefault();
         if(directStatusEl) directStatusEl.textContent="No email address configured.";
         return;
       }
       var pn=currentPropName();
       var subject="Inquiry — "+pn;
       var body="Hi "+(agentFirstName||"there")+",\\n\\nI would like more information about "+pn+".\\n\\n";
-      launchEmailClient(agentEmail,subject,body,directStatusEl,"To: "+agentEmail+"\\nSubject: "+subject+"\\n\\n"+body);
+      if(!prepareEmailRedirectLink(directEmailBtn,agentEmail,subject,body,directStatusEl)){
+        ev.preventDefault();
+        return;
+      }
+      ev.preventDefault();
+      openEmailRedirect(agentEmail,subject,body,directStatusEl);
     });
   }
   if(directCopyEmailBtn){
@@ -2017,21 +2024,29 @@ function launchEmailClient(recipient,subject,body,statusEl,fallbackText){
     });
   }
   if(emailBtn){
-    emailBtn.addEventListener("click",function(){
+    emailBtn.addEventListener("click",function(ev){
       if(emailBtn.getAttribute("aria-disabled")==="true"){
+        ev.preventDefault();
         return;
       }
       if(!agentEmail){
+        ev.preventDefault();
         statusEl.textContent="No email address configured.";
         return;
       }
-      launchEmailClient(
-        agentEmail,
-        buildSubject(),
-        buildBody(false),
-        statusEl,
-        "To: "+agentEmail+"\\nSubject: "+buildSubject()+"\\n\\n"+buildBody(false)
-      );
+      if(!isValidVisitorEmail(emailEl.value)){
+        ev.preventDefault();
+        statusEl.textContent="Please enter a valid email address or leave it blank.";
+        return;
+      }
+      var subject=buildSubject();
+      var body=buildBody(false);
+      if(!prepareEmailRedirectLink(emailBtn,agentEmail,subject,body,statusEl)){
+        ev.preventDefault();
+        return;
+      }
+      ev.preventDefault();
+      openEmailRedirect(agentEmail,subject,body,statusEl);
     });
   }
   if(smsBtn){
@@ -2053,7 +2068,7 @@ function launchEmailClient(recipient,subject,body,statusEl,fallbackText){
   if(copyBtn){
     copyBtn.addEventListener("click",async function(){
       if(copyBtn.getAttribute("aria-disabled")==="true") return;
-      var text="Subject: "+buildSubject()+"\\n\\n"+buildBody(false);
+      var text=(agentEmail?"To: "+agentEmail+"\\n":"")+"Subject: "+buildSubject()+"\\n\\n"+buildBody(false);
       try{
         if(navigator.clipboard&&navigator.clipboard.writeText){
           await navigator.clipboard.writeText(text);
@@ -2271,7 +2286,7 @@ function __dqaRenderInquiryForm(prefilledQuestion,_propertyUuid){
   // Lead-capture downgrade: rendered when the per-property Gemini
   // subsidy is exhausted. Form-only by design — never auto-sends.
   // Submit prefers the backend lead path (handle-lead-capture, Pro
-  // tier only) and falls back to a client-side mailto: link otherwise.
+  // tier only) and falls back to the HTTPS email redirector otherwise.
   var prop=(props&&props[current])||{};
   var propertyName=prop.name||"this property";
   var agentEmail=String((C.agent&&C.agent.email)||"").trim();
@@ -2286,7 +2301,7 @@ function __dqaRenderInquiryForm(prefilledQuestion,_propertyUuid){
     +'<textarea class="ask-inquiry-input ask-inquiry-textarea" data-k="message" rows="4" required>'+escapeText(String(prefilledQuestion||""))+'</textarea>'
     +'</div>'
     +'<div class="ask-inquiry-actions">'
-    +'<button class="ask-inquiry-send" type="button">Email '+escapeText((String((C.agent&&C.agent.name)||"").trim().split(/\\s+/)[0])||"agent")+'</button>'
+    +'<a class="ask-inquiry-send" href="#" role="button" target="_blank" rel="noopener">Email '+escapeText((String((C.agent&&C.agent.name)||"").trim().split(/\\s+/)[0])||"agent")+'</a>'
     +(agentPhone?'<a class="ask-inquiry-sms" href="sms:'+escapeText(agentPhone)+'?body='+encodeURIComponent("Question about "+propertyName+":\\n\\n"+(prefilledQuestion||""))+'">Text instead</a>':'')
     +'</div>'
     +'<div class="ask-inquiry-status" aria-live="polite"></div>';
@@ -2294,22 +2309,26 @@ function __dqaRenderInquiryForm(prefilledQuestion,_propertyUuid){
   __docsQa.messages.scrollTop=__docsQa.messages.scrollHeight;
   var inputs=card.querySelectorAll(".ask-inquiry-input");
   var statusEl=card.querySelector(".ask-inquiry-status");
-  card.querySelector(".ask-inquiry-send").addEventListener("click",function(){
+  var sendEl=card.querySelector(".ask-inquiry-send");
+  sendEl.addEventListener("click",function(ev){
     var values={};
     for(var i=0;i<inputs.length;i++){
       values[inputs[i].getAttribute("data-k")]=inputs[i].value.trim();
     }
     if(!values.email||!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(values.email)){
+      ev.preventDefault();
       statusEl.textContent="Please enter a valid email.";
       statusEl.style.color="#b91c1c";
       return;
     }
     if(!values.message){
+      ev.preventDefault();
       statusEl.textContent="Please include a message.";
       statusEl.style.color="#b91c1c";
       return;
     }
     if(!agentEmail){
+      ev.preventDefault();
       statusEl.textContent="Sorry, no contact channel is configured for this listing.";
       statusEl.style.color="#b91c1c";
       return;
@@ -2317,25 +2336,31 @@ function __dqaRenderInquiryForm(prefilledQuestion,_propertyUuid){
     // Capture the Listing Launch Kit src=… tag from the URL so the agent
     // sees which marketplace/channel the visitor came from. Sanitized
     // tightly (kebab-style only, ≤32 chars) and skipped silently if the
-    // URL has no src parameter — additive, never breaks the mailto body.
+    // URL has no src parameter — additive, never breaks the email body.
     var leadSrc="";
     try{
       var rawSrc=new URLSearchParams(window.location.search).get("src")||"";
       if(/^[a-z0-9-]{1,32}$/i.test(rawSrc)) leadSrc=rawSrc.toLowerCase();
     }catch(_e){}
-    // Build the contact payload synchronously so the mail launch remains tied
-    // to the visitor's click gesture.
+    // Build the contact payload synchronously so the Worker launch remains
+    // tied to the visitor's click gesture.
     var subject="Question about "+propertyName;
-    var body=[
-      values.message,
-      "",
-      "— "+(values.name||"Visitor")+(values.phone?" ("+values.phone+")":"")+(values.email?" <"+values.email+">":""),
+    var body=buildVisitorEmailBody(values.message,values.email,[
+      values.name?"Name: "+values.name:"",
+      values.phone?"Phone: "+values.phone:"",
+      "Property: "+propertyName,
       leadSrc?"Source: "+leadSrc:""
-    ].filter(Boolean).join("\\n");
-    statusEl.textContent="Opening your email app… Details copied as a backup.";
+    ]);
+    if(!prepareEmailRedirectLink(sendEl,agentEmail,subject,body,statusEl)){
+      ev.preventDefault();
+      statusEl.style.color="#b91c1c";
+      return;
+    }
+    ev.preventDefault();
+    openEmailRedirect(agentEmail,subject,body,statusEl);
     statusEl.style.color="#047857";
     // Fire-and-forget lead-capture (Pro tier). We do NOT await — awaiting here would
-    // void the user-gesture and Chromium-based browsers would block the mailto handoff.
+    // void the user-gesture and Chromium-based browsers may block the pop-up.
     var supabaseOrigin=window.__SYNTHESIS_URL__?String(window.__SYNTHESIS_URL__).replace(/\\/functions\\/v1\\/.*$/,""):"";
     var studioId=String(C.studioId||"");
     if(supabaseOrigin&&studioId){
@@ -2347,10 +2372,8 @@ function __dqaRenderInquiryForm(prefilledQuestion,_propertyUuid){
         }).catch(function(){});
       }catch(_){}
     }
-    // Trigger the mail client as the synchronous tail of the click handler.
-    launchEmailClient(agentEmail,subject,body,statusEl,"To: "+agentEmail+"\\nSubject: "+subject+"\\n\\n"+body);
     for(var j=0;j<inputs.length;j++) inputs[j].disabled=true;
-    card.querySelector(".ask-inquiry-send").disabled=true;
+    sendEl.setAttribute("aria-disabled","true");
   });
 }
 function __dqaEvidenceUnits(content){
