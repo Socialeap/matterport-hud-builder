@@ -1848,10 +1848,10 @@ function buildEmailRedirectUrl(recipient,subject,body){
   if(!to) return "";
   var subj=String(subject||"Inquiry").replace(/[\\r\\n]+/g," ").trim();
   var msg=String(body||"").trim();
-  var url=EMAIL_REDIRECTOR_URL+"?to="+encodeURIComponent(to)+"&subject="+encodeURIComponent(subj)+"&body="+encodeURIComponent(msg);
+  var url=EMAIL_REDIRECTOR_URL+"#to="+encodeURIComponent(to)+"&subject="+encodeURIComponent(subj)+"&body="+encodeURIComponent(msg);
   while(url.length>7000&&msg.length>200){
     msg=msg.slice(0,Math.max(200,msg.length-500));
-    url=EMAIL_REDIRECTOR_URL+"?to="+encodeURIComponent(to)+"&subject="+encodeURIComponent(subj)+"&body="+encodeURIComponent(msg);
+    url=EMAIL_REDIRECTOR_URL+"#to="+encodeURIComponent(to)+"&subject="+encodeURIComponent(subj)+"&body="+encodeURIComponent(msg);
   }
   return url;
 }
@@ -1877,8 +1877,35 @@ function openEmailRedirect(recipient,subject,body,statusEl){
     return false;
   }
   var opened=null;
-  try{ opened=window.open(url,"_blank"); }catch(_e){}
-  if(statusEl) statusEl.textContent="Opening your email app… If nothing opens, use Copy.";
+  var popupW=520;
+  var popupH=680;
+  var screenLeft=typeof window.screenX==="number"?window.screenX:(window.screenLeft||0);
+  var screenTop=typeof window.screenY==="number"?window.screenY:(window.screenTop||0);
+  var outerW=window.outerWidth||document.documentElement.clientWidth||screen.availWidth||popupW;
+  var outerH=window.outerHeight||document.documentElement.clientHeight||screen.availHeight||popupH;
+  var left=Math.max(0,Math.round(screenLeft+(outerW-popupW)/2));
+  var top=Math.max(0,Math.round(screenTop+(outerH-popupH)/2));
+  var features=[
+    "popup=yes",
+    "width="+popupW,
+    "height="+popupH,
+    "left="+left,
+    "top="+top,
+    "resizable=yes",
+    "scrollbars=yes",
+    "toolbar=no",
+    "menubar=no",
+    "location=no",
+    "status=no"
+  ].join(",");
+  try{
+    opened=window.open(url,"presentationEmailHandoff",features);
+    if(opened){
+      try{ opened.opener=null; }catch(_e){}
+      try{ opened.focus(); }catch(_e){}
+    }
+  }catch(_e){}
+  if(statusEl) statusEl.textContent="Opening contact window… If nothing opens, use Copy.";
   if(!opened){
     setTimeout(function(){
       copyContactText(
