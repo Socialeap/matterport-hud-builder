@@ -634,7 +634,7 @@ function VaultPage() {
       )}
 
       <AssetEditorDialog
-        open={editorOpen && !isStarter}
+        open={editorOpen && !isStarter && activeTab !== "property_doc"}
         onOpenChange={(open) => {
           setEditorOpen(open);
           if (!open) {
