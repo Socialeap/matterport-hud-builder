@@ -1005,3 +1005,60 @@ function AssetEditorDialog({
     </Dialog>
   );
 }
+
+function MapperCard({
+  template,
+  onEdit,
+  onDelete,
+  onToggle,
+}: {
+  template: import("@/lib/extraction/provider").VaultTemplate;
+  onEdit: () => void;
+  onDelete: () => void;
+  onToggle: (next: boolean) => void;
+}) {
+  const fieldCount = Object.keys(template.field_schema?.properties ?? {}).length;
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <Sparkles className="size-4 shrink-0 text-primary" />
+            <CardTitle className="truncate text-base">{template.label}</CardTitle>
+          </div>
+          <div className="flex items-center gap-2">
+            <Label
+              htmlFor={`mapper-switch-${template.id}`}
+              className="text-xs text-muted-foreground whitespace-nowrap"
+            >
+              Available
+            </Label>
+            <Switch
+              id={`mapper-switch-${template.id}`}
+              checked={template.is_active}
+              onCheckedChange={onToggle}
+            />
+          </div>
+        </div>
+        <CardDescription className="line-clamp-2">
+          {template.doc_kind ? `${template.doc_kind} · ` : ""}
+          {fieldCount} field{fieldCount === 1 ? "" : "s"} mapped for AI Chat
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex items-center justify-between gap-2 pt-0">
+        <span className="flex items-center gap-1 text-xs text-muted-foreground truncate">
+          <FileText className="size-3 shrink-0" />
+          <span className="truncate">Property Map · v{template.version}</span>
+        </span>
+        <div className="flex shrink-0 gap-1">
+          <Button size="sm" variant="ghost" onClick={onEdit}>
+            <Pencil className="size-3.5" />
+          </Button>
+          <Button size="sm" variant="ghost" onClick={onDelete}>
+            <Trash2 className="size-3.5 text-destructive" />
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
