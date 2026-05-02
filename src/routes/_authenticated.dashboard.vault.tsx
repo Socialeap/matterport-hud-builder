@@ -524,9 +524,7 @@ function VaultPage() {
           <TabsContent key={c.value} value={c.value} className="space-y-4">
             <CategoryGuide category={c} />
 
-            {c.value === "property_doc" && (
-              <PropertyDocArchitectCallout isStarter={isStarter} />
-            )}
+
 
             <div className="flex items-center justify-between">
               <div>
