@@ -270,6 +270,10 @@ function VaultPage() {
   }, [assets]);
 
   const openCreate = () => {
+    if (activeCategory.value === "property_doc") {
+      setChooserOpen(true);
+      return;
+    }
     setEditingId(null);
     setForm({
       ...emptyForm,
