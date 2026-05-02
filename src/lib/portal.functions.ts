@@ -1904,14 +1904,28 @@ if(silentBtn) silentBtn.addEventListener("click",function(){
   try { dismissGate(); } catch(_e){}
 });
 
-// \u2500\u2500 Contact panel
+// ── Contact + Live Tour drawers (mutually exclusive)
 window.__openContact=function(){
+  try { if(window.__closeLiveTour) window.__closeLiveTour(); } catch(_e){}
   var d=document.getElementById("agent-drawer");
   if(d) d.classList.add("open");
 };
 window.__closeContact=function(){
   var d=document.getElementById("agent-drawer");
   if(d) d.classList.remove("open");
+};
+window.__openLiveTour=function(){
+  try { if(window.__closeContact) window.__closeContact(); } catch(_e){}
+  var d=document.getElementById("live-tour-drawer");
+  if(d) d.classList.add("open");
+  var b=document.getElementById("hud-live-tour-btn");
+  if(b) b.setAttribute("aria-expanded","true");
+};
+window.__closeLiveTour=function(){
+  var d=document.getElementById("live-tour-drawer");
+  if(d) d.classList.remove("open");
+  var b=document.getElementById("hud-live-tour-btn");
+  if(b) b.setAttribute("aria-expanded","false");
 };
 
 // ── Edge email redirect helpers (client-only, no email backend)
