@@ -533,7 +533,10 @@ function VaultPage() {
         <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 h-auto">
           {CATEGORIES.map((c) => {
             const Icon = c.icon;
-            const count = assetsByCategory[c.value].length;
+            const count =
+              c.value === "property_doc"
+                ? templates.length
+                : assetsByCategory[c.value].length;
             return (
               <TabsTrigger
                 key={c.value}
@@ -552,57 +555,74 @@ function VaultPage() {
           })}
         </TabsList>
 
-        {CATEGORIES.map((c) => (
-          <TabsContent key={c.value} value={c.value} className="space-y-4">
-            <CategoryGuide category={c} />
+        {CATEGORIES.map((c) => {
+          const isMapper = c.value === "property_doc";
+          const itemCount = isMapper
+            ? templates.length
+            : assetsByCategory[c.value].length;
+          const isLoading = isMapper ? templatesLoading : loading;
+          return (
+            <TabsContent key={c.value} value={c.value} className="space-y-4">
+              <CategoryGuide category={c} />
 
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold">{c.label}</h2>
+                  <p className="text-xs text-muted-foreground">
+                    {itemCount} {isMapper ? "map" : "asset"}
+                    {itemCount === 1 ? "" : "s"} in vault
+                  </p>
+                </div>
+                <Button onClick={openCreate} size="sm" disabled={isStarter}>
+                  {isStarter ? <Lock className="mr-1 size-4" /> : <Plus className="mr-1 size-4" />}
+                  Add Asset
+                </Button>
+              </div>
 
-
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold">{c.label}</h2>
-                <p className="text-xs text-muted-foreground">
-                  {assetsByCategory[c.value].length} asset
-                  {assetsByCategory[c.value].length === 1 ? "" : "s"} in vault
-                </p>
-              </div>
-              <Button onClick={openCreate} size="sm" disabled={isStarter}>
-                {isStarter ? <Lock className="mr-1 size-4" /> : <Plus className="mr-1 size-4" />}
-                Add Asset
-              </Button>
-            </div>
-
-            {isStarter ? (
-              <div className="rounded-lg border border-dashed border-border bg-muted/20 py-12 text-center opacity-70">
-                <c.icon className="mx-auto size-10 text-muted-foreground/60" />
-                <p className="mt-3 text-sm font-medium">
-                  Sample {c.label.toLowerCase()} appear here for Pro members
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Upgrade to Pro to start curating assets in this category.
-                </p>
-              </div>
-            ) : loading ? (
-              <div className="flex items-center justify-center py-10">
-                <div className="h-6 w-6 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-              </div>
-            ) : assetsByCategory[c.value].length === 0 ? (
-              <EmptyState category={c} onAdd={openCreate} />
-            ) : (
-              <div className="grid gap-3 sm:grid-cols-2">
-                {assetsByCategory[c.value].map((asset) => (
-                  <AssetCard
-                    key={asset.id}
-                    asset={asset}
-                    onEdit={() => openEdit(asset)}
-                    onDelete={() => handleDelete(asset)}
-                    onToggle={(next) => handleToggleActive(asset, next)}
-                  />
-                ))}
-              </div>
-            )}
-          </TabsContent>
-        ))}
+              {isStarter ? (
+                <div className="rounded-lg border border-dashed border-border bg-muted/20 py-12 text-center opacity-70">
+                  <c.icon className="mx-auto size-10 text-muted-foreground/60" />
+                  <p className="mt-3 text-sm font-medium">
+                    Sample {c.label.toLowerCase()} appear here for Pro members
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Upgrade to Pro to start curating assets in this category.
+                  </p>
+                </div>
+              ) : isLoading ? (
+                <div className="flex items-center justify-center py-10">
+                  <div className="h-6 w-6 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+                </div>
+              ) : itemCount === 0 ? (
+                <EmptyState category={c} onAdd={openCreate} />
+              ) : isMapper ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {templates.map((tpl) => (
+                    <MapperCard
+                      key={tpl.id}
+                      template={tpl}
+                      onEdit={() => openEditMapper(tpl)}
+                      onDelete={() => handleDeleteMapper(tpl)}
+                      onToggle={(next) => handleToggleMapperActive(tpl, next)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {assetsByCategory[c.value].map((asset) => (
+                    <AssetCard
+                      key={asset.id}
+                      asset={asset}
+                      onEdit={() => openEdit(asset)}
+                      onDelete={() => handleDelete(asset)}
+                      onToggle={(next) => handleToggleActive(asset, next)}
+                    />
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+          );
+        })}
       </Tabs>
 
       {isStarter && (
