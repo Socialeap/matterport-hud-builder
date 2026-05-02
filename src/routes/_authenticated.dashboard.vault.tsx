@@ -603,7 +603,7 @@ function VaultPage() {
                       template={tpl}
                       onEdit={() => openEditMapper(tpl)}
                       onDelete={() => handleDeleteMapper(tpl)}
-                      onToggle={(next) => handleToggleMapperActive(tpl, next)}
+                      onToggle={(next: boolean) => handleToggleMapperActive(tpl, next)}
                     />
                   ))}
                 </div>
