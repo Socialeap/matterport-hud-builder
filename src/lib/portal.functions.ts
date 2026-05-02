@@ -1229,6 +1229,29 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .lg-stop-btn:disabled{opacity:0.45;cursor:not-allowed}
 .lg-stops-empty{font-size:11px;color:rgba(255,255,255,0.5);font-style:italic}
 
+/* ── Live Tour drawer (separate from contact drawer; lighter/glassier) ── */
+#live-tour-drawer{position:fixed;top:0;right:0;width:min(320px,90vw);height:100%;z-index:2000;overflow-y:auto;transform:translateX(100%);transition:transform 0.3s ease;background:rgba(10,12,20,0.55);backdrop-filter:blur(28px) saturate(160%);-webkit-backdrop-filter:blur(28px) saturate(160%);border-left:1px solid rgba(255,255,255,0.06);box-shadow:-8px 0 32px rgba(0,0,0,0.18)}
+#live-tour-drawer.open{transform:translateX(0)}
+#live-tour-inner{padding:14px 14px 24px;position:relative}
+#live-tour-close{position:absolute;top:10px;right:10px;width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,0.1);border:none;color:rgba(255,255,255,0.7);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.2s}
+#live-tour-close:hover{background:rgba(255,255,255,0.2)}
+#live-tour-title{font-size:13px;font-weight:600;color:#fff;margin:0 0 12px}
+#live-tour-drawer .drawer-live-guide{margin-top:0;border-top:none;padding-top:0;margin-bottom:0}
+#live-tour-drawer .lg-stops{max-height:42vh;overflow-y:auto}
+.hud-live-tour-btn{position:relative;padding:5px 10px 5px 10px;border-radius:6px;font-size:12px;font-weight:600;border:1px solid rgba(255,255,255,0.18);color:#fff;cursor:pointer;background:rgba(255,255,255,0.08);transition:background 0.2s;display:inline-flex;align-items:center;gap:6px;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+.hud-live-tour-btn:hover{background:rgba(255,255,255,0.16)}
+.hud-live-tour-btn svg{width:13px;height:13px}
+.hud-live-tour-btn .lt-dot{width:7px;height:7px;border-radius:50%;background:transparent;display:inline-block}
+.hud-live-tour-btn.is-waiting .lt-dot{background:${escapeHtml(accentColor)};opacity:0.85}
+.hud-live-tour-btn.connected .lt-dot{background:${escapeHtml(accentColor)};animation:lt-pulse 1.6s ease-in-out infinite}
+@keyframes lt-pulse{0%,100%{box-shadow:0 0 0 0 ${escapeHtml(accentColor)}66}50%{box-shadow:0 0 0 6px ${escapeHtml(accentColor)}00}}
+@media(max-width:480px){.hud-live-tour-btn .hud-live-tour-label{display:none}}
+@media(max-width:640px){
+  #agent-drawer,#live-tour-drawer{top:auto;bottom:0;left:0;right:0;width:100%;height:auto;max-height:85vh;border-radius:16px 16px 0 0;border-left:none;border-top:1px solid rgba(255,255,255,0.08);transform:translateY(100%)}
+  #agent-drawer.open,#live-tour-drawer.open{transform:translateY(0)}
+  #live-tour-drawer{max-height:70vh}
+}
+
 /* ── Shared modal backdrop ────────────────────────────────────────── */
 .modal-backdrop{position:fixed;inset:0;z-index:2500;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.65);backdrop-filter:blur(14px) brightness(0.55);-webkit-backdrop-filter:blur(14px) brightness(0.55);padding:16px}
 .modal-backdrop.open{display:flex}
