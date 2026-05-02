@@ -41,9 +41,9 @@ const CARDS: PathCard[] = [
     icon: Wand2,
     title: "Smart AI Blueprint",
     blurb:
-      "Describe what you sell — AI suggests the facts worth pulling, you tick what matters.",
+      "Describe a property type — Offices, Hotels, Apartments, Galleries, Luxury Rentals — and AI suggests the facts worth pulling. You tick what matters.",
     howItWorks:
-      "The MSP simply types a few words describing the property (e.g., \"Luxury Beachfront Condo\"), and your platform's AI automatically generates the perfect checklist of fields it thinks are most important for that property type.",
+      "Type a few words describing the property class (e.g., \"Luxury Beachfront Condo\"). Our AI generates a checklist of fields most important for that property type, which your clients use to help the AI scan and convert their uploaded property data into real-world answers in the \"Ask AI\" chat.",
     scenario:
       "Best for standard properties and impatient users. If an MSP is listing a typical 3-bedroom house and doesn't want to think about data structures, they click this. The AI does the heavy lifting of figuring out what matters.",
     badge: "AI-assisted",
