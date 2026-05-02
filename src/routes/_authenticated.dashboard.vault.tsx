@@ -202,7 +202,39 @@ function VaultPage() {
   const [chooserOpen, setChooserOpen] = useState(false);
   const [mapperDraft, setMapperDraft] = useState<WizardDraft | null>(null);
   const [mapperSaving, setMapperSaving] = useState(false);
-  const { create: createMapper, update: updateMapper } = useVaultTemplates();
+  const {
+    templates,
+    loading: templatesLoading,
+    create: createMapper,
+    update: updateMapper,
+    remove: removeMapper,
+  } = useVaultTemplates();
+
+  const openEditMapper = (tpl: typeof templates[number]) => {
+    setMapperDraft({
+      id: tpl.id,
+      path: "manual",
+      // jump to final "Name & save" step (index 1 for the manual path)
+      step: PATH_STEP_COUNT.manual - 1,
+      label: tpl.label,
+      doc_kind: tpl.doc_kind,
+      extractor: tpl.extractor,
+      schema_text: JSON.stringify(tpl.field_schema, null, 2),
+      source: { kind: "manual" },
+    });
+  };
+
+  const handleDeleteMapper = async (tpl: typeof templates[number]) => {
+    if (!confirm(`Delete "${tpl.label}"? This cannot be undone.`)) return;
+    await removeMapper(tpl.id);
+  };
+
+  const handleToggleMapperActive = async (
+    tpl: typeof templates[number],
+    next: boolean,
+  ) => {
+    await updateMapper(tpl.id, { is_active: next });
+  };
 
   const handleMapperSave = async (payload: SavePayload): Promise<boolean> => {
     setMapperSaving(true);
