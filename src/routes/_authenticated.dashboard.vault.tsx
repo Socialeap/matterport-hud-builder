@@ -12,12 +12,22 @@ import {
   Pencil,
   Trash2,
   ExternalLink,
-  FileJson,
   Upload,
   Sparkles,
-  ArrowRight,
   type LucideIcon,
 } from "lucide-react";
+import { PropertyMapperChooserDialog } from "@/components/vault/PropertyMapperChooserDialog";
+import {
+  WizardModal,
+  type SavePayload,
+} from "@/components/vault/wizard/WizardModal";
+import {
+  PATH_STEP_COUNT,
+  makeEmptyDraft,
+  type WizardDraft,
+  type WizardPath,
+} from "@/components/vault/wizard/types";
+import { useVaultTemplates } from "@/hooks/useVaultTemplates";
 import { toast } from "sonner";
 
 import { useAuth } from "@/hooks/use-auth";
@@ -188,6 +198,31 @@ function VaultPage() {
   const [copyrightAck, setCopyrightAck] = useState(false);
   const [tier, setTier] = useState<"starter" | "pro" | null>(null);
 
+  // Property Mapper chooser + wizard state (only used for property_doc category)
+  const [chooserOpen, setChooserOpen] = useState(false);
+  const [mapperDraft, setMapperDraft] = useState<WizardDraft | null>(null);
+  const [mapperSaving, setMapperSaving] = useState(false);
+  const { create: createMapper, update: updateMapper } = useVaultTemplates();
+
+  const handleMapperSave = async (payload: SavePayload): Promise<boolean> => {
+    setMapperSaving(true);
+    const ok = payload.id
+      ? await updateMapper(payload.id, {
+          label: payload.label,
+          doc_kind: payload.doc_kind,
+          extractor: payload.extractor,
+          field_schema: payload.field_schema,
+        })
+      : !!(await createMapper({
+          label: payload.label,
+          doc_kind: payload.doc_kind,
+          extractor: payload.extractor,
+          field_schema: payload.field_schema,
+        }));
+    setMapperSaving(false);
+    return ok;
+  };
+
   useEffect(() => {
     if (!user) return;
     supabase
@@ -235,6 +270,10 @@ function VaultPage() {
   }, [assets]);
 
   const openCreate = () => {
+    if (activeCategory.value === "property_doc") {
+      setChooserOpen(true);
+      return;
+    }
     setEditingId(null);
     setForm({
       ...emptyForm,
@@ -485,9 +524,7 @@ function VaultPage() {
           <TabsContent key={c.value} value={c.value} className="space-y-4">
             <CategoryGuide category={c} />
 
-            {c.value === "property_doc" && (
-              <PropertyDocArchitectCallout isStarter={isStarter} />
-            )}
+
 
             <div className="flex items-center justify-between">
               <div>
@@ -562,6 +599,20 @@ function VaultPage() {
         copyrightAck={copyrightAck}
         setCopyrightAck={setCopyrightAck}
         onSave={handleSave}
+      />
+
+      <PropertyMapperChooserDialog
+        open={chooserOpen && !isStarter}
+        onOpenChange={setChooserOpen}
+        onPick={(path: WizardPath) => setMapperDraft(makeEmptyDraft(path))}
+        disabled={isStarter}
+      />
+
+      <WizardModal
+        draft={mapperDraft}
+        setDraft={setMapperDraft}
+        saving={mapperSaving}
+        onSave={handleMapperSave}
       />
     </div>
   );
@@ -900,68 +951,5 @@ function AssetEditorDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function PropertyDocArchitectCallout({ isStarter }: { isStarter: boolean }) {
-  return (
-    <Card className="border-2 border-primary/40 bg-gradient-to-br from-primary/5 via-background to-primary/10">
-      <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-start gap-3">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/15">
-            <Wand2 className="size-5 text-primary" />
-          </div>
-          <div className="space-y-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="text-sm font-semibold text-foreground">
-                Property Mapper for AI Chat
-              </p>
-              <Badge variant="secondary" className="text-[10px]">
-                Recommended
-              </Badge>
-              <Badge variant="outline" className="text-[10px]">
-                AI-assisted · Gemini 2.5 Flash-Lite
-              </Badge>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Easily build a mapping template for each type or category of
-              property (e.g., Offices, Hotels, Apartments, Galleries, or
-              Luxury Rentals). Your clients can use these to help the AI scan
-              and convert their uploaded property data into real-world answers
-              to visitors in the "Ask AI" chat.
-            </p>
-            <p className="text-[11px] text-muted-foreground/80">
-              <span className="font-medium text-foreground/80">How it works:</span>{" "}
-              Describe property class → Select key facts → Finalize Mapper for
-              client use.
-            </p>
-          </div>
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-1.5">
-          {isStarter ? (
-            <span className="inline-flex items-center gap-1 rounded-md border border-border bg-muted px-3 py-2 text-xs font-medium text-muted-foreground">
-              <Lock className="size-3.5" /> Pro feature
-            </span>
-          ) : (
-            <>
-              <Button asChild size="sm" className="gap-1">
-                <Link to="/dashboard/vault/templates" search={{ architect: 1 }}>
-                  <Sparkles className="size-3.5" />
-                  Open Property Mapper
-                  <ArrowRight className="size-3.5" />
-                </Link>
-              </Button>
-              <Link
-                to="/dashboard/vault/templates"
-                search={{}}
-                className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
-              >
-                <FileJson className="size-3" /> Manage existing mappers
-              </Link>
-            </>
-          )}
-        </div>
-      </CardContent>
-    </Card>
   );
 }

@@ -1,98 +1,48 @@
+# Streamline Vault → Property Mapper UX
 
-## Goal
+## Goals
+1. Rename the **Property Docs** tab → **Property Mapper** (label only — keep the underlying `property_doc` category enum so existing assets keep working).
+2. Replace the current "Add Asset" → upload modal flow for Property Mapper with a single **3-card chooser modal** (Smart AI Blueprint / Pre-Built Template / Pro Developer Setup).
+3. Remove the standalone "Property Mapper for AI Chat" intro card from the Vault page and the separate "Open Property Mapper" CTA — its messaging folds into the Smart AI Blueprint card description.
+4. Each card opens the appropriate wizard step (the existing `WizardModal` machinery is reused so no logic is rewritten).
 
-Separate the generated presentation's single right-side drawer into two independent surfaces:
-
-1. **Contact drawer** ("Get in Touch") — lead capture only.
-2. **Live Tour drawer** — visitor PIN entry + agent host controls + tour stops. Lighter, more transparent, opened from a new HUD button.
-
-Both live entirely inside the generated standalone HTML produced by `src/lib/portal.functions.ts` (the only place this UI is authored). No other surface needs UI changes.
-
-## Scope
-
-All edits land in **`src/lib/portal.functions.ts`** — CSS block, HUD header markup, drawer markup, and the `initLiveGuide` IIFE. No schema, server function, or component-tree changes. Existing live-session controller (`src/lib/portal/live-session.mjs`) and contact-form wiring are reused as-is.
+## Current state (verified)
+- `src/routes/_authenticated.dashboard.vault.tsx` defines the `property_doc` category with label "Property Mapper" already (line 131) BUT the active-tab heading still derives from it, and the **+ Add Asset** button calls `openCreate()` which opens `AssetEditorDialog` (a generic file-upload form). For property docs this is the wrong destination.
+- `PropertyDocArchitectCallout` (lines 906-967) is the current intro card linking to `/dashboard/vault/templates?architect=1`. To be removed.
+- The mapper experience already lives at `/dashboard/vault/templates` (`_authenticated.dashboard.vault.templates.tsx`) and uses `WizardHub` (3 cards) + `WizardModal` (full wizard).
+- `WizardHub` already supports both `compact` and rich flip-card modes; we'll reuse the rich mode inside the new chooser dialog.
 
 ## Changes
 
-### 1. New "Live Tour" drawer + HUD button (markup)
+### A. `src/routes/_authenticated.dashboard.vault.tsx`
+1. **Tab label** — update the user-facing label everywhere it's still "Property Docs". (Already says "Property Mapper" at line 131 — verify the page heading at lines 493-497 reads "Property Mapper" via `c.label`; no string change needed there. Also update the inline copy on line 446 and the toast/empty-state strings if they say "Property Docs".)
+2. **Remove** the `PropertyDocArchitectCallout` render (line 488-490) and the function definition (lines 906-967). Also remove the now-unused `Sparkles`, `ArrowRight`, `FileJson`, `Wand2` imports if no longer used elsewhere on the page.
+3. **Intercept `openCreate` for `property_doc`**: when `activeCategory.value === "property_doc"`, open the new `PropertyMapperChooserDialog` instead of `AssetEditorDialog`. All other categories keep their existing flow.
+4. Add a small piece of state: `const [chooserOpen, setChooserOpen] = useState(false);`
 
-- Add a new `<div id="live-tour-drawer">` sibling to `#agent-drawer`, rendered only when `hasLiveTour` is true (see flag rule below).
-- Inside it, move the entire current `.drawer-live-guide` block (visitor pane, agent pane, PIN display, status, stops, "I'm the agent" toggle). Wrap with a header bar matching the contact drawer (title "Live Tour" + close button).
-- Add a new `#hud-live-tour-btn` to `#hud-right` in the HUD header, immediately before the existing Contact button. Icon (broadcast/signal SVG) + label "Live Tour"; on viewports `<480px` show icon-only with `aria-label`/`title="Live Tour"`. Render only when `hasLiveTour`.
-- Remove the `<div class="drawer-live-guide">…</div>` block from inside `#agent-drawer` (lines 1397–1428). The hidden `<audio id="lg-audio">` sink stays at body level (already outside the drawer).
+### B. New component: `src/components/vault/PropertyMapperChooserDialog.tsx`
+A small wrapper that:
+- Renders a `<Dialog>` with `WizardHub` inside (rich/non-compact mode so the flip-cards & explainers appear — this is where the "Smart AI Blueprint" card now carries the educational copy that was in the removed intro card).
+- Header copy adapted from the deleted intro: *"Property Mapper for AI Chat — Build a reusable map of facts your clients' AI Chat will pull from uploaded property documents. Pick how you want to start."*
+- On `onPick(path)`:
+  - Closes the chooser.
+  - Opens the existing `WizardModal` directly on the same page, by lifting `draft`/`saving` state up (mirroring `_authenticated.dashboard.vault.templates.tsx`).
+  - Wires `handleSave` to call `useVaultTemplates().create/update` (same hook as the templates route uses) so the result is persisted as a vault template, identical to what happens on the templates route.
 
-### 2. Open/close wiring
+This means MSPs no longer need to navigate to `/dashboard/vault/templates` to create a mapper — it all happens in-modal from the Vault tab. The `/dashboard/vault/templates` route remains accessible (unchanged) for the management list, but it's no longer surfaced as a separate primary entry from the Vault page.
 
-Add two new globals next to `__openContact` / `__closeContact`:
+### C. Smart AI Blueprint card copy enrichment
+In `src/components/vault/wizard/WizardHub.tsx`, extend the `ai` card's `blurb` / `howItWorks` text to absorb the educational framing from the removed intro card ("Easily build a mapping template for each type or category of property — Offices, Hotels, Apartments, Galleries, Luxury Rentals — that your clients use to help the AI scan and convert their uploaded property data into real-world answers in the 'Ask AI' chat.").
 
-```js
-window.__openLiveTour = function(){
-  if (window.__closeContact) window.__closeContact();
-  document.getElementById("live-tour-drawer")?.classList.add("open");
-  document.getElementById("hud-live-tour-btn")?.setAttribute("aria-expanded","true");
-};
-window.__closeLiveTour = function(){
-  document.getElementById("live-tour-drawer")?.classList.remove("open");
-  document.getElementById("hud-live-tour-btn")?.setAttribute("aria-expanded","false");
-};
-```
-
-Update `__openContact` to call `__closeLiveTour()` first (mutual exclusion). Wire the new HUD button to `__openLiveTour`. Esc key handler (already present for the contact drawer near line 2320) is extended to also close the Live Tour drawer.
-
-### 3. Auto-hide on connect, reopen via HUD
-
-In `initLiveGuide`'s state subscriber, when a visitor transitions to `isConnected === true`, replace the current `hideOverlaysForLiveTour()` (which closes the contact drawer + hides HUD) with: close the Live Tour drawer (`__closeLiveTour()`), keep the HUD header visible so the user can reopen it, and set the HUD button into a "connected" visual state (see §5). Agent role keeps the drawer open by default (host needs the stops list).
-
-### 4. Visual style — Live Tour drawer
-
-New CSS block, deliberately lighter than `#agent-drawer`:
-
-- `position:fixed; top:0; right:0; width:min(320px,90vw); height:100%`
-- `background: rgba(10,12,20,0.55)` (vs contact drawer's `${hudBgColor}cc` ≈ 0.8 opacity)
-- `backdrop-filter: blur(28px) saturate(160%)`
-- `border-left:1px solid rgba(255,255,255,0.06)`
-- Same slide transform/transition as the contact drawer for consistency
-- Compact internal padding; reuse existing `.lg-*` classes verbatim so the inner controls don't need restyling
-- Stops list uses `max-height:40vh; overflow-y:auto` so many bookmarks scroll inside the drawer instead of growing it
-
-HUD button styling reuses `.hud-icon-btn`; add a `.hud-live-tour-btn.connected` modifier with a subtle pulsing accent dot (`box-shadow:0 0 0 0 ${accentColor}` keyframes) to reflect active session.
-
-### 5. HUD button states
-
-Driven by the same `onState` subscriber already in `initLiveGuide`:
-
-- idle → no modifier
-- agent waiting / visitor connecting → `.is-waiting` (steady accent dot)
-- connected → `.connected` (pulsing dot)
-- error → revert to idle (status text remains in the drawer)
-
-### 6. Visibility flag
-
-There is no existing `liveTourEnabled` boolean on the presentation. Define it inline at template time:
-
-```ts
-const hasLiveTour = hasAgentContact; // current behaviour: live tour rendered only when contact section exists
-```
-
-Keeping it equal to `hasAgentContact` preserves the current implicit gate and matches the existing condition that wraps `#agent-drawer`. Easy to tighten later (e.g. require ≥1 `liveTourStops` across properties) without touching the rest of the plan.
-
-### 7. Mobile behaviour
-
-At `max-width: 640px`, both drawers switch to `bottom:0; left:0; right:0; width:100%; height:auto; max-height:85vh; border-radius:16px 16px 0 0; transform:translateY(100%)` with `.open{transform:translateY(0)}`. Live Tour drawer caps at `max-height:70vh` so the tour stays visible behind it.
-
-### 8. Contact drawer
-
-After removing the `.drawer-live-guide` block, the contact drawer keeps: title, close, agent row, welcome note, call/text actions, quick-message section, social pills. No other refactor — copy, layout, and quick-message wiring stay identical to today.
-
-## Technical notes
-
-- Single source-of-truth file: `src/lib/portal.functions.ts`. The `initLiveGuide` IIFE keeps the same element IDs (`lg-pin-input`, `lg-stops`, etc.) — they just live under `#live-tour-drawer` now, so `getElementById` lookups are unchanged. Only the `section = getElementById("drawer-live-guide")` early-return gets re-pointed to `#live-tour-drawer-body`.
-- `hideOverlaysForLiveTour()` is repurposed to "close Live Tour drawer + keep HUD". The "hide HUD on connect" behaviour is dropped per the spec ("Keep the Live Tour header button active/available so the visitor can reopen the panel").
-- No backend, schema, or generated-HTML contract changes; existing exported presentations continue to function. New presentations get the new layout on next regeneration — expected and desired.
-- Accessibility: both drawers get `role="dialog" aria-modal="false" aria-labelledby="…-title"`; HUD button gets `aria-expanded`; Esc closes whichever is open; focus moves into the drawer on open and back to the trigger on close.
+### D. Cleanup
+- Verify no other references to the removed `PropertyDocArchitectCallout` remain.
+- The "Vault → Property Mapper" link inside `AssetEditorDialog` (lines 727-740) becomes dead code for property_doc since that dialog will no longer open for that category — leave the conditional in place (harmless) or remove the `category.value === "property_doc"` branch for tidiness.
 
 ## Out of scope
+- The `/dashboard/vault/templates` route stays as-is for now (it remains the place to *manage* / edit / delete existing maps). If you'd later like to fully consolidate it into the Vault tab list (showing existing maps as asset cards under Property Mapper), that's a follow-up.
+- No DB / RLS changes. `vault_templates` table and category enum unchanged.
 
-- Builder-side toggle for `liveTourEnabled` (kept implicit via `hasAgentContact`).
-- New stop metadata, scheduling, or analytics.
-- Changes to non-generated UI (dashboard, builder sandbox preview).
+## Files touched
+- `src/routes/_authenticated.dashboard.vault.tsx` (remove intro card, intercept Add Asset for property_doc, mount chooser + wizard)
+- `src/components/vault/PropertyMapperChooserDialog.tsx` (new)
+- `src/components/vault/wizard/WizardHub.tsx` (enrich AI card copy)
