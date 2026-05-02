@@ -1,76 +1,98 @@
-## Diagnosis
 
-The edge function logs show Stripe returning `platform_account_required`:
+## Goal
 
-> "Only Stripe Connect platforms can work with other accounts."
+Separate the generated presentation's single right-side drawer into two independent surfaces:
 
-This is rejected at `stripe.checkout.sessions.create(..., { stripeAccount })` in `supabase/functions/create-connect-checkout/index.ts`. The MSP's Express account being fully onboarded (per screenshot) is not the problem — Stripe is refusing the call on the **platform** side.
+1. **Contact drawer** ("Get in Touch") — lead capture only.
+2. **Live Tour drawer** — visitor PIN entry + agent host controls + tour stops. Lighter, more transparent, opened from a new HUD button.
 
-There are two distinct issues:
+Both live entirely inside the generated standalone HTML produced by `src/lib/portal.functions.ts` (the only place this UI is authored). No other surface needs UI changes.
 
-### Issue A — Platform Profile not activated (root cause, manual fix)
-Our app's Stripe **platform** account (the one behind the gateway-routed `STRIPE_SANDBOX_API_KEY`) must be a fully activated Connect platform: Connect enabled, Platform Profile completed (Loss Liability set to "Platform is responsible for losses"), branding/business details filled in. Until that's done in the Stripe Dashboard, every `stripeAccount`-scoped call will fail with this exact error. Code cannot fix this — it's a one-time dashboard task by whoever owns the Stripe platform account.
+## Scope
 
-The existing `stripe-connect-onboard` already documents this (lines 72–84) for `accounts.create`. The same prerequisite governs `checkout.sessions.create` with `stripeAccount`.
-
-### Issue B — Hardcoded `env = "sandbox"` in create-connect-checkout (code bug)
-Line 152 of `create-connect-checkout/index.ts`:
-```ts
-const env: StripeEnv = "sandbox";
-```
-Every other Connect function (`stripe-connect-status`, `stripe-connect-account-session`, `stripe-connect-onboard`) accepts `environment` from the request body. This function ignores it. Consequences:
-- Even after the platform is activated in **live**, paid checkout will still hit sandbox.
-- If the MSP's `stripe_connect_id` was created in live but we call sandbox, the Connect ID doesn't exist there, which is another path to a similar error.
-- Sandbox/live drift is silent — no way to tell from the UI which environment a failure came from.
+All edits land in **`src/lib/portal.functions.ts`** — CSS block, HUD header markup, drawer markup, and the `initLiveGuide` IIFE. No schema, server function, or component-tree changes. Existing live-session controller (`src/lib/portal/live-session.mjs`) and contact-form wiring are reused as-is.
 
 ## Changes
 
-### 1. `supabase/functions/create-connect-checkout/index.ts`
-- Accept `environment` from the request body (mirror `stripe-connect-status` pattern). Default to `sandbox` when omitted, but no longer hardcode it.
-- Wrap the `stripe.checkout.sessions.create(...)` call in a try/catch. When Stripe returns `platform_account_required` or `StripePermissionError`, return a **400** with a friendly message:
-  > "Payments are temporarily unavailable for this Studio. The platform's Stripe Connect setup is incomplete. Please contact support."
-  Include `code: "platform_not_activated"` in the JSON so the client can render a clean state instead of the raw Stripe error.
-- When Stripe returns `resource_missing` for the connected account (Connect ID exists in DB but not in this Stripe environment), return 400 with `code: "stripe_account_env_mismatch"` and a message asking the MSP to reconnect Stripe — same pattern already used in `stripe-connect-account-session` lines 86–100.
-- Log `env`, `connectId`, and Stripe error code at the start of the catch so future failures are diagnosable from edge function logs without leaking PII.
+### 1. New "Live Tour" drawer + HUD button (markup)
 
-### 2. `src/components/portal/HudBuilderSandbox.tsx` (checkout invocation, ~line 1244)
-- Pass `environment: getStripeEnvironment()` in the `supabase.functions.invoke("create-connect-checkout", { body: { ... } })` call so the server uses the same environment the client's Stripe.js was loaded with.
-- When the response contains `code: "platform_not_activated"`, show a clear toast: "Payments are temporarily unavailable. We've been notified." (instead of the current generic error path on line 1260).
-- When `code: "stripe_account_env_mismatch"`, surface a message telling the user the Studio owner needs to reconnect their payout account.
+- Add a new `<div id="live-tour-drawer">` sibling to `#agent-drawer`, rendered only when `hasLiveTour` is true (see flag rule below).
+- Inside it, move the entire current `.drawer-live-guide` block (visitor pane, agent pane, PIN display, status, stops, "I'm the agent" toggle). Wrap with a header bar matching the contact drawer (title "Live Tour" + close button).
+- Add a new `#hud-live-tour-btn` to `#hud-right` in the HUD header, immediately before the existing Contact button. Icon (broadcast/signal SVG) + label "Live Tour"; on viewports `<480px` show icon-only with `aria-label`/`title="Live Tour"`. Render only when `hasLiveTour`.
+- Remove the `<div class="drawer-live-guide">…</div>` block from inside `#agent-drawer` (lines 1397–1428). The hidden `<audio id="lg-audio">` sink stays at body level (already outside the drawer).
 
-### 3. `supabase/functions/stripe-connect-onboard/index.ts` (small consistency fix)
-- Extend the existing `platform-profile` catch (lines 72–84) to also match `platform_account_required` so onboarding fails gracefully with the same friendly message instead of a raw 500.
+### 2. Open/close wiring
 
-### 4. Documentation note (no file change required, but called out here)
-The actual remedy for **Issue A** is manual and lives outside the codebase:
+Add two new globals next to `__openContact` / `__closeContact`:
 
-1. The Stripe **platform** account owner logs in to the Stripe Dashboard.
-2. Switch to the same environment our gateway uses (sandbox first, then live).
-3. Go to Connect → Settings → Platform Profile.
-4. Complete every required section, especially **Loss Liability** ("Platform is responsible for losses").
-5. Confirm Connect is enabled (Connect → Overview should show "Active", not "Get started").
-
-Once that one-time activation is done in **sandbox**, paid checkout for the MSP shown in the screenshot will work immediately — no further code change needed beyond the fixes above. The same activation must be repeated in **live** before production checkouts.
-
-## Technical details
-
-```text
-Client (HudBuilderSandbox)
-    └─ invokes "create-connect-checkout" { providerId, modelId, modelCount, returnUrl, environment }
-            ↓
-Edge function (create-connect-checkout)
-    ├─ resolves access via resolve_studio_access (free vs paid)         ✓ working
-    ├─ validates ownership of saved_models row                          ✓ working
-    ├─ calculates price via shared pricing.ts                           ✓ working
-    └─ stripe.checkout.sessions.create(..., { stripeAccount })          ✗ FAILS HERE
-            └─ Stripe → 403 platform_account_required
-                (platform profile not completed in sandbox)
+```js
+window.__openLiveTour = function(){
+  if (window.__closeContact) window.__closeContact();
+  document.getElementById("live-tour-drawer")?.classList.add("open");
+  document.getElementById("hud-live-tour-btn")?.setAttribute("aria-expanded","true");
+};
+window.__closeLiveTour = function(){
+  document.getElementById("live-tour-drawer")?.classList.remove("open");
+  document.getElementById("hud-live-tour-btn")?.setAttribute("aria-expanded","false");
+};
 ```
 
-Acceptance:
-- Anonymous and authenticated paid checkouts no longer surface the raw Stripe permission error string.
-- Edge function logs include `env` and `code` for any future Stripe failure.
-- After the platform owner completes the Stripe Platform Profile in sandbox, `create-connect-checkout` returns a `clientSecret` and the embedded checkout mounts.
-- `environment` is passed end-to-end so live mode will work without further code changes once live platform profile is also completed.
+Update `__openContact` to call `__closeLiveTour()` first (mutual exclusion). Wire the new HUD button to `__openLiveTour`. Esc key handler (already present for the contact drawer near line 2320) is extended to also close the Live Tour drawer.
 
-No DB migration. No new dependencies. No changes to pricing logic, free-flow, or `savePresentationRequest`.
+### 3. Auto-hide on connect, reopen via HUD
+
+In `initLiveGuide`'s state subscriber, when a visitor transitions to `isConnected === true`, replace the current `hideOverlaysForLiveTour()` (which closes the contact drawer + hides HUD) with: close the Live Tour drawer (`__closeLiveTour()`), keep the HUD header visible so the user can reopen it, and set the HUD button into a "connected" visual state (see §5). Agent role keeps the drawer open by default (host needs the stops list).
+
+### 4. Visual style — Live Tour drawer
+
+New CSS block, deliberately lighter than `#agent-drawer`:
+
+- `position:fixed; top:0; right:0; width:min(320px,90vw); height:100%`
+- `background: rgba(10,12,20,0.55)` (vs contact drawer's `${hudBgColor}cc` ≈ 0.8 opacity)
+- `backdrop-filter: blur(28px) saturate(160%)`
+- `border-left:1px solid rgba(255,255,255,0.06)`
+- Same slide transform/transition as the contact drawer for consistency
+- Compact internal padding; reuse existing `.lg-*` classes verbatim so the inner controls don't need restyling
+- Stops list uses `max-height:40vh; overflow-y:auto` so many bookmarks scroll inside the drawer instead of growing it
+
+HUD button styling reuses `.hud-icon-btn`; add a `.hud-live-tour-btn.connected` modifier with a subtle pulsing accent dot (`box-shadow:0 0 0 0 ${accentColor}` keyframes) to reflect active session.
+
+### 5. HUD button states
+
+Driven by the same `onState` subscriber already in `initLiveGuide`:
+
+- idle → no modifier
+- agent waiting / visitor connecting → `.is-waiting` (steady accent dot)
+- connected → `.connected` (pulsing dot)
+- error → revert to idle (status text remains in the drawer)
+
+### 6. Visibility flag
+
+There is no existing `liveTourEnabled` boolean on the presentation. Define it inline at template time:
+
+```ts
+const hasLiveTour = hasAgentContact; // current behaviour: live tour rendered only when contact section exists
+```
+
+Keeping it equal to `hasAgentContact` preserves the current implicit gate and matches the existing condition that wraps `#agent-drawer`. Easy to tighten later (e.g. require ≥1 `liveTourStops` across properties) without touching the rest of the plan.
+
+### 7. Mobile behaviour
+
+At `max-width: 640px`, both drawers switch to `bottom:0; left:0; right:0; width:100%; height:auto; max-height:85vh; border-radius:16px 16px 0 0; transform:translateY(100%)` with `.open{transform:translateY(0)}`. Live Tour drawer caps at `max-height:70vh` so the tour stays visible behind it.
+
+### 8. Contact drawer
+
+After removing the `.drawer-live-guide` block, the contact drawer keeps: title, close, agent row, welcome note, call/text actions, quick-message section, social pills. No other refactor — copy, layout, and quick-message wiring stay identical to today.
+
+## Technical notes
+
+- Single source-of-truth file: `src/lib/portal.functions.ts`. The `initLiveGuide` IIFE keeps the same element IDs (`lg-pin-input`, `lg-stops`, etc.) — they just live under `#live-tour-drawer` now, so `getElementById` lookups are unchanged. Only the `section = getElementById("drawer-live-guide")` early-return gets re-pointed to `#live-tour-drawer-body`.
+- `hideOverlaysForLiveTour()` is repurposed to "close Live Tour drawer + keep HUD". The "hide HUD on connect" behaviour is dropped per the spec ("Keep the Live Tour header button active/available so the visitor can reopen the panel").
+- No backend, schema, or generated-HTML contract changes; existing exported presentations continue to function. New presentations get the new layout on next regeneration — expected and desired.
+- Accessibility: both drawers get `role="dialog" aria-modal="false" aria-labelledby="…-title"`; HUD button gets `aria-expanded`; Esc closes whichever is open; focus moves into the drawer on open and back to the trigger on close.
+
+## Out of scope
+
+- Builder-side toggle for `liveTourEnabled` (kept implicit via `hasAgentContact`).
+- New stop metadata, scheduling, or analytics.
+- Changes to non-generated UI (dashboard, builder sandbox preview).

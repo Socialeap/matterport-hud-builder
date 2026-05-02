@@ -1229,6 +1229,29 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .lg-stop-btn:disabled{opacity:0.45;cursor:not-allowed}
 .lg-stops-empty{font-size:11px;color:rgba(255,255,255,0.5);font-style:italic}
 
+/* ── Live Tour drawer (separate from contact drawer; lighter/glassier) ── */
+#live-tour-drawer{position:fixed;top:0;right:0;width:min(320px,90vw);height:100%;z-index:2000;overflow-y:auto;transform:translateX(100%);transition:transform 0.3s ease;background:rgba(10,12,20,0.55);backdrop-filter:blur(28px) saturate(160%);-webkit-backdrop-filter:blur(28px) saturate(160%);border-left:1px solid rgba(255,255,255,0.06);box-shadow:-8px 0 32px rgba(0,0,0,0.18)}
+#live-tour-drawer.open{transform:translateX(0)}
+#live-tour-inner{padding:14px 14px 24px;position:relative}
+#live-tour-close{position:absolute;top:10px;right:10px;width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,0.1);border:none;color:rgba(255,255,255,0.7);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.2s}
+#live-tour-close:hover{background:rgba(255,255,255,0.2)}
+#live-tour-title{font-size:13px;font-weight:600;color:#fff;margin:0 0 12px}
+#live-tour-drawer .drawer-live-guide{margin-top:0;border-top:none;padding-top:0;margin-bottom:0}
+#live-tour-drawer .lg-stops{max-height:42vh;overflow-y:auto}
+.hud-live-tour-btn{position:relative;padding:5px 10px 5px 10px;border-radius:6px;font-size:12px;font-weight:600;border:1px solid rgba(255,255,255,0.18);color:#fff;cursor:pointer;background:rgba(255,255,255,0.08);transition:background 0.2s;display:inline-flex;align-items:center;gap:6px;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+.hud-live-tour-btn:hover{background:rgba(255,255,255,0.16)}
+.hud-live-tour-btn svg{width:13px;height:13px}
+.hud-live-tour-btn .lt-dot{width:7px;height:7px;border-radius:50%;background:transparent;display:inline-block}
+.hud-live-tour-btn.is-waiting .lt-dot{background:${escapeHtml(accentColor)};opacity:0.85}
+.hud-live-tour-btn.connected .lt-dot{background:${escapeHtml(accentColor)};animation:lt-pulse 1.6s ease-in-out infinite}
+@keyframes lt-pulse{0%,100%{box-shadow:0 0 0 0 ${escapeHtml(accentColor)}66}50%{box-shadow:0 0 0 6px ${escapeHtml(accentColor)}00}}
+@media(max-width:480px){.hud-live-tour-btn .hud-live-tour-label{display:none}}
+@media(max-width:640px){
+  #agent-drawer,#live-tour-drawer{top:auto;bottom:0;left:0;right:0;width:100%;height:auto;max-height:85vh;border-radius:16px 16px 0 0;border-left:none;border-top:1px solid rgba(255,255,255,0.08);transform:translateY(100%)}
+  #agent-drawer.open,#live-tour-drawer.open{transform:translateY(0)}
+  #live-tour-drawer{max-height:70vh}
+}
+
 /* ── Shared modal backdrop ────────────────────────────────────────── */
 .modal-backdrop{position:fixed;inset:0;z-index:2500;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.65);backdrop-filter:blur(14px) brightness(0.55);-webkit-backdrop-filter:blur(14px) brightness(0.55);padding:16px}
 .modal-backdrop.open{display:flex}
@@ -1355,6 +1378,7 @@ ${askAssets.css}
       </button>
       ${askAssets.toggleBtn}
       <span id="hud-agent-name"></span>
+      ${hasAgentContact ? `<button id="hud-live-tour-btn" class="hud-live-tour-btn" type="button" aria-label="Live Tour" title="Live Tour" aria-expanded="false" onclick="window.__openLiveTour&&window.__openLiveTour()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4"/><path d="M5 7l3 3"/><path d="M19 7l-3 3"/><circle cx="12" cy="14" r="4"/><path d="M8 22h8"/><path d="M12 18v4"/></svg><span class="hud-live-tour-label">Live Tour</span><span class="lt-dot" aria-hidden="true"></span></button>` : ""}
       ${hasAgentContact ? `<button class="hud-contact-btn" onclick="window.__openContact&&window.__openContact()">Contact</button>` : ""}
     </div>
   </div>
@@ -1394,16 +1418,19 @@ ${hasAgentContact ? `<div id="agent-drawer">
       </div>
       <div class="drawer-qstatus" id="drawer-qstatus" aria-live="polite"></div>
     </div>` : ""}
-    <!-- ── Live Guided Tour ───────────────────────────────────────
-         Visitor pane is the default. Agents click the "I'm the agent"
-         link to flip into the agent pane. Both panes share the same
-         underlying createLiveSession() controller — only one role can
-         be active at a time per device. -->
+    ${socialLinksHtml ? `<div class="drawer-social-label">Social</div><div class="drawer-social-pills">${socialLinksHtml}</div>` : ""}
+  </div>
+</div>
+<!-- ── Live Tour drawer (separated from Get in Touch) ─────────────── -->
+<div id="live-tour-drawer" role="dialog" aria-modal="false" aria-labelledby="live-tour-title">
+  <div id="live-tour-inner">
+    <button id="live-tour-close" type="button" onclick="window.__closeLiveTour&&window.__closeLiveTour()" aria-label="Close">&times;</button>
+    <h2 id="live-tour-title">Live Tour</h2>
     <div class="drawer-live-guide" id="drawer-live-guide">
-      <div class="drawer-live-guide-label">Live Guided Tour</div>
       <div id="lg-visitor">
+        <div class="lg-status" style="margin-top:0">Enter the PIN from your agent to join a guided walkthrough.</div>
         <div class="lg-row">
-          <input type="text" id="lg-pin-input" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="PIN" class="lg-input" aria-label="Live tour PIN" autocomplete="off">
+          <input type="text" id="lg-pin-input" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="Enter PIN" class="lg-input" aria-label="Live tour PIN" autocomplete="off">
           <button type="button" id="lg-join-btn" class="lg-btn primary">Join Live Tour</button>
         </div>
         <div class="lg-status" id="lg-visitor-status" aria-live="polite"></div>
@@ -1426,11 +1453,10 @@ ${hasAgentContact ? `<div id="agent-drawer">
         </div>
       </div>
     </div>
-    ${socialLinksHtml ? `<div class="drawer-social-label">Social</div><div class="drawer-social-pills">${socialLinksHtml}</div>` : ""}
   </div>
 </div>
 <!-- Hidden audio sink for the Live Guided Tour voice channel. Lives
-     outside the drawer so the offscreen translateX transform on the
+     outside the drawer so the offscreen translate transform on the
      drawer can never inadvertently mute playback in any browser. -->
 <audio id="lg-audio" autoplay style="display:none"></audio>` : ""}
 
@@ -1878,14 +1904,28 @@ if(silentBtn) silentBtn.addEventListener("click",function(){
   try { dismissGate(); } catch(_e){}
 });
 
-// \u2500\u2500 Contact panel
+// ── Contact + Live Tour drawers (mutually exclusive)
 window.__openContact=function(){
+  try { if(window.__closeLiveTour) window.__closeLiveTour(); } catch(_e){}
   var d=document.getElementById("agent-drawer");
   if(d) d.classList.add("open");
 };
 window.__closeContact=function(){
   var d=document.getElementById("agent-drawer");
   if(d) d.classList.remove("open");
+};
+window.__openLiveTour=function(){
+  try { if(window.__closeContact) window.__closeContact(); } catch(_e){}
+  var d=document.getElementById("live-tour-drawer");
+  if(d) d.classList.add("open");
+  var b=document.getElementById("hud-live-tour-btn");
+  if(b) b.setAttribute("aria-expanded","true");
+};
+window.__closeLiveTour=function(){
+  var d=document.getElementById("live-tour-drawer");
+  if(d) d.classList.remove("open");
+  var b=document.getElementById("hud-live-tour-btn");
+  if(b) b.setAttribute("aria-expanded","false");
 };
 
 // ── Edge email redirect helpers (client-only, no email backend)
@@ -2319,6 +2359,8 @@ document.addEventListener("keydown",function(e){
   });
   var dr=document.getElementById("agent-drawer");
   if(dr&&dr.classList.contains("open")) window.__closeContact();
+  var lt=document.getElementById("live-tour-drawer");
+  if(lt&&lt.classList.contains("open")) window.__closeLiveTour();
 });
 
 function renderPropertyDocs(_i){
@@ -3076,18 +3118,20 @@ if(frame){
   var lastTeleportTs=0;
   var wasConnected=false;
 
-  // Hide the HUD header + close the contact drawer. Used after a live
-  // session reaches "connected" so the 3D tour fills the screen.
+  // After a visitor connects, auto-close the Live Tour drawer so the
+  // tour fills the screen. The HUD header (and the Live Tour button)
+  // remains visible so the visitor can reopen the panel anytime.
   function hideOverlaysForLiveTour(){
-    try { if(window.__closeContact) window.__closeContact(); } catch(_e){}
-    try {
-      if(typeof setHudVisible==="function") setHudVisible(false);
-      else if(window.__setHudVisible) window.__setHudVisible(false);
-      else {
-        var hh=document.getElementById("hud-header");
-        if(hh){ hh.classList.remove("visible"); hh.style.transform="translateY(-100%)"; hh.style.opacity="0"; hh.style.pointerEvents="none"; }
-      }
-    } catch(_e){}
+    try { if(window.__closeLiveTour) window.__closeLiveTour(); } catch(_e){}
+  }
+
+  // Reflect session state on the HUD Live Tour button.
+  function setHudButtonState(state){
+    var btn=document.getElementById("hud-live-tour-btn");
+    if(!btn) return;
+    btn.classList.remove("is-waiting","connected");
+    if(state.isConnected) btn.classList.add("connected");
+    else if(state.status==="waiting"||state.status==="connecting"||state.status==="initializing") btn.classList.add("is-waiting");
   }
 
   // Reset the Live-Guide UI back to the idle (visitor-default) state.
@@ -3278,8 +3322,11 @@ if(frame){
     if(!wasConnected && state.isConnected && state.status==="connected"){
       wasConnected=true;
       if(leaveBtn) leaveBtn.hidden=false;
-      hideOverlaysForLiveTour();
+      // Visitor: auto-close the Live Tour drawer so the tour fills the
+      // screen. Agent stays in the drawer to manage stops.
+      if(state.role==="visitor") hideOverlaysForLiveTour();
     }
+    setHudButtonState(state);
 
     // If the session ends/errors after having been connected, return
     // both sides to a clean idle state automatically.
