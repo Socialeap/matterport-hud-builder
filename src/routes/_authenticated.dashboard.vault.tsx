@@ -198,6 +198,31 @@ function VaultPage() {
   const [copyrightAck, setCopyrightAck] = useState(false);
   const [tier, setTier] = useState<"starter" | "pro" | null>(null);
 
+  // Property Mapper chooser + wizard state (only used for property_doc category)
+  const [chooserOpen, setChooserOpen] = useState(false);
+  const [mapperDraft, setMapperDraft] = useState<WizardDraft | null>(null);
+  const [mapperSaving, setMapperSaving] = useState(false);
+  const { create: createMapper, update: updateMapper } = useVaultTemplates();
+
+  const handleMapperSave = async (payload: SavePayload): Promise<boolean> => {
+    setMapperSaving(true);
+    const ok = payload.id
+      ? await updateMapper(payload.id, {
+          label: payload.label,
+          doc_kind: payload.doc_kind,
+          extractor: payload.extractor,
+          field_schema: payload.field_schema,
+        })
+      : !!(await createMapper({
+          label: payload.label,
+          doc_kind: payload.doc_kind,
+          extractor: payload.extractor,
+          field_schema: payload.field_schema,
+        }));
+    setMapperSaving(false);
+    return ok;
+  };
+
   useEffect(() => {
     if (!user) return;
     supabase
