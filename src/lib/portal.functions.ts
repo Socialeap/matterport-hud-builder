@@ -1934,7 +1934,6 @@ function buildVisitorEmailBody(message,visitorEmail,extraLines){
   var email=String(visitorEmail||"").trim();
   if(email) parts.push("Visitor: "+email);
   if(extraLines&&extraLines.length) parts=parts.concat(extraLines);
-  parts.push("Message:");
   parts.push(String(message||"").trim());
   return parts.filter(function(part){return String(part||"").trim().length>0;}).join("\\n\\n");
 }
@@ -1999,6 +1998,37 @@ function getEmailOptionsText(){
   var p=window.__emailOptionsPayload||{};
   return "To: "+(p.to||"")+"\\nSubject: "+(p.subject||"")+"\\n\\n"+(p.body||"");
 }
+function openEmailOptionPopup(url,target,statusEl){
+  if(!url||url==="#") return false;
+  var popupW=720;
+  var popupH=760;
+  var screenLeft=typeof window.screenX==="number"?window.screenX:(window.screenLeft||0);
+  var screenTop=typeof window.screenY==="number"?window.screenY:(window.screenTop||0);
+  var outerW=window.outerWidth||document.documentElement.clientWidth||screen.availWidth||popupW;
+  var outerH=window.outerHeight||document.documentElement.clientHeight||screen.availHeight||popupH;
+  var left=Math.max(0,Math.round(screenLeft+(outerW-popupW)/2));
+  var top=Math.max(0,Math.round(screenTop+(outerH-popupH)/2));
+  var features=[
+    "popup=yes",
+    "width="+popupW,
+    "height="+popupH,
+    "left="+left,
+    "top="+top,
+    "resizable=yes",
+    "scrollbars=yes",
+    "toolbar=no",
+    "menubar=no",
+    "location=no",
+    "status=no"
+  ].join(",");
+  var opened=null;
+  try{
+    opened=window.open(url,target||"presentationEmailOption",features);
+    if(opened) opened.focus();
+  }catch(_e){}
+  if(!opened&&statusEl) statusEl.textContent="Pop-up blocked. Use Copy email details.";
+  return !!opened;
+}
 window.__closeEmailOptions=function(){
   var modal=document.getElementById("email-modal");
   if(modal) modal.classList.remove("open");
@@ -2006,15 +2036,30 @@ window.__closeEmailOptions=function(){
 (function initEmailOptions(){
   var copyBtn=document.getElementById("email-option-copy");
   var statusEl=document.getElementById("email-option-status");
-  var icloudEl=document.getElementById("email-option-icloud");
+  var optionLinks=[
+    ["email-option-native","presentationEmailMailApp","Opening Mail App..."],
+    ["email-option-gmail","presentationEmailGmail","Opening Gmail..."],
+    ["email-option-outlook","presentationEmailOutlook","Opening Outlook..."],
+    ["email-option-yahoo","presentationEmailYahoo","Opening Yahoo Mail..."],
+    ["email-option-icloud","presentationEmailIcloud","Opening iCloud Mail..."]
+  ];
+  for(var i=0;i<optionLinks.length;i++){
+    (function(cfg){
+      var el=document.getElementById(cfg[0]);
+      if(!el) return;
+      el.addEventListener("click",function(ev){
+        ev.preventDefault();
+        var href=el.getAttribute("href")||"#";
+        if(cfg[0]==="email-option-icloud"){
+          copyContactText(getEmailOptionsText(),statusEl,"Copied details for iCloud Mail.","Could not copy email details.");
+        }
+        if(openEmailOptionPopup(href,cfg[1],statusEl)&&statusEl) statusEl.textContent=cfg[2];
+      });
+    })(optionLinks[i]);
+  }
   if(copyBtn){
     copyBtn.addEventListener("click",function(){
       copyContactText(getEmailOptionsText(),statusEl,"Copied email details.","Could not copy email details.");
-    });
-  }
-  if(icloudEl){
-    icloudEl.addEventListener("click",function(){
-      copyContactText(getEmailOptionsText(),statusEl,"Copied details for iCloud Mail.","Could not copy email details.");
     });
   }
 })();
