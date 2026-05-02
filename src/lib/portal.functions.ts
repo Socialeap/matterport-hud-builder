@@ -659,8 +659,8 @@ function buildAskAssets(
 .ask-inquiry-input:disabled{opacity:0.5}
 .ask-inquiry-textarea{resize:vertical;min-height:60px;font-family:inherit}
 .ask-inquiry-actions{display:flex;gap:8px;align-items:center}
-.ask-inquiry-send{background:${escapeHtml(accentColor)};border:none;color:#fff;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px;font-weight:600}
-.ask-inquiry-send:disabled{opacity:0.5;cursor:not-allowed}
+.ask-inquiry-send{background:${escapeHtml(accentColor)};border:none;color:#fff;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
+.ask-inquiry-send[aria-disabled="true"]{opacity:0.5;cursor:not-allowed;pointer-events:none}
 .ask-inquiry-sms{color:#bbb;text-decoration:underline;font-size:12px}
 .ask-inquiry-status{font-size:11px;color:#888;margin-top:2px}
 `;
@@ -1362,7 +1362,7 @@ ${hasAgentContact ? `<div id="agent-drawer">
     <div class="drawer-actions">
       ${agent.phone ? `<a href="tel:${escapeHtml(String(agent.phone))}" class="drawer-action-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.27h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.61a16 16 0 0 0 6 6l.91-.91a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.73 16l.19.92z"/></svg>Call ${escapeHtml(String(agent.phone))}</a>` : ""}
       ${agent.phone ? `<a href="sms:${escapeHtml(String(agent.phone))}" class="drawer-action-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Text ${escapeHtml(String(agent.phone))}</a>` : ""}
-      ${agentHasEmail ? `<button type="button" id="drawer-agent-email" class="drawer-action-link drawer-action-button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>${escapeHtml(agentEmailForMailto)}</button><button type="button" id="drawer-agent-copy-email" class="drawer-action-link drawer-action-button drawer-action-copy">Copy email address</button><div class="drawer-email-status" id="drawer-email-status" aria-live="polite"></div>` : ""}
+      ${agentHasEmail ? `<a href="mailto:${escapeHtml(agentEmailForMailto)}" id="drawer-agent-email" class="drawer-action-link drawer-action-button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>${escapeHtml(agentEmailForMailto)}</a><button type="button" id="drawer-agent-copy-email" class="drawer-action-link drawer-action-button drawer-action-copy">Copy email address</button><div class="drawer-email-status" id="drawer-email-status" aria-live="polite"></div>` : ""}
     </div>
     ${(agentHasEmail || agent.phone) ? `<div class="drawer-quickmsg" id="drawer-quickmsg">
       <div class="drawer-quickmsg-label">Ask a quick question</div>
@@ -1370,7 +1370,7 @@ ${hasAgentContact ? `<div id="agent-drawer">
       <textarea class="drawer-qfield drawer-qtextarea" id="drawer-qmsg" rows="4" placeholder="Type your question, or pick a topic above…" aria-label="Your message"></textarea>
       <input type="email" class="drawer-qfield" id="drawer-qemail" placeholder="Your email (so we can reply)" autocomplete="email" aria-label="Your email">
       <div class="drawer-qsend-row">
-        ${agentHasEmail ? `<button type="button" id="drawer-qsend-email" class="drawer-qsend primary" aria-disabled="true">Email ${escapeHtml(agentFirstName)}</button>` : ""}
+        ${agentHasEmail ? `<a id="drawer-qsend-email" class="drawer-qsend primary" href="#" aria-disabled="true" role="button">Email ${escapeHtml(agentFirstName)}</a>` : ""}
         ${agent.phone ? `<a id="drawer-qsend-sms" class="drawer-qsend secondary" href="#" aria-disabled="true" role="button">Text ${escapeHtml(agentFirstName)}</a>` : ""}
         <button type="button" id="drawer-qcopy" class="drawer-qcopy" aria-disabled="true">Copy</button>
       </div>
@@ -1833,7 +1833,7 @@ window.__closeContact=function(){
   if(d) d.classList.remove("open");
 };
 
-// ── Local email launcher (hidden iframe, no page navigation)
+// ── Native email-link helpers (client-only, no backend)
 function sanitizeEmailAddress(value){
   var email=String(value||"").trim().replace(/^mailto:/i,"").split("?")[0].trim();
   return /^[^\\s@<>"]+@[^\\s@<>"]+\\.[^\\s@<>"]+$/.test(email)?email:"";
@@ -1850,6 +1850,15 @@ function buildMailtoUrl(recipient,subject,body){
   }
   return url;
 }
+function prepareEmailLink(link,recipient,subject,body,statusEl){
+  var url=buildMailtoUrl(recipient,subject,body);
+  if(link) link.setAttribute("href",url||"#");
+  if(!url&&statusEl) statusEl.textContent="No email address configured.";
+  return url;
+}
+function noteEmailLaunch(statusEl,copyLabel){
+  if(statusEl) statusEl.textContent="Opening your email app… If nothing opens, use "+(copyLabel||"Copy")+".";
+}
 async function copyContactText(text,statusEl,okMsg,failMsg){
   try{
     if(navigator.clipboard&&navigator.clipboard.writeText){
@@ -1863,45 +1872,6 @@ async function copyContactText(text,statusEl,okMsg,failMsg){
     return true;
   }catch(_e){
     if(statusEl) statusEl.textContent=failMsg||"Couldn't copy — please select and copy manually.";
-    return false;
-  }
-}
-function launchEmailClient(recipient,subject,body,statusEl,fallbackText){
-  var url=buildMailtoUrl(recipient,subject,body);
-  if(!url){
-    if(statusEl) statusEl.textContent="No email address configured.";
-    return false;
-  }
-  try{
-    var frame=document.createElement("iframe");
-    frame.setAttribute("aria-hidden","true");
-    frame.tabIndex=-1;
-    frame.style.position="absolute";
-    frame.style.width="0";
-    frame.style.height="0";
-    frame.style.border="0";
-    frame.style.opacity="0";
-    frame.style.pointerEvents="none";
-    frame.src=url;
-    document.body.appendChild(frame);
-    setTimeout(function(){
-      try{ if(frame.parentNode) frame.parentNode.removeChild(frame); }catch(_e){}
-    },1200);
-    if(statusEl) statusEl.textContent="Opening your email app… Details copied as a backup.";
-    copyContactText(
-      fallbackText||("To: "+sanitizeEmailAddress(recipient)+"\\nSubject: "+String(subject||"Inquiry")+"\\n\\n"+String(body||"")),
-      null,
-      "",
-      ""
-    );
-    return true;
-  }catch(_e){
-    copyContactText(
-      fallbackText||("To: "+sanitizeEmailAddress(recipient)+"\\nSubject: "+String(subject||"Inquiry")+"\\n\\n"+String(body||"")),
-      statusEl,
-      "Email details copied. Paste them into your email app.",
-      "Could not open email app or copy details."
-    );
     return false;
   }
 }
@@ -1990,6 +1960,7 @@ function launchEmailClient(recipient,subject,body,statusEl,fallbackText){
     var smsReady=ok&&!!agentPhone;
     if(emailBtn){
       emailBtn.setAttribute("aria-disabled", emailReady ? "false":"true");
+      emailBtn.setAttribute("href", emailReady ? buildMailtoUrl(agentEmail,buildSubject(),buildBody(false)) : "#");
     }
     if(smsBtn){
       smsBtn.setAttribute("aria-disabled", smsReady ? "false":"true");
@@ -2000,15 +1971,20 @@ function launchEmailClient(recipient,subject,body,statusEl,fallbackText){
   msgEl.addEventListener("input",refresh);
   emailEl.addEventListener("input",refresh);
   if(directEmailBtn){
-    directEmailBtn.addEventListener("click",function(){
+    directEmailBtn.addEventListener("click",function(ev){
       if(!agentEmail){
+        ev.preventDefault();
         if(directStatusEl) directStatusEl.textContent="No email address configured.";
         return;
       }
       var pn=currentPropName();
       var subject="Inquiry — "+pn;
       var body="Hi "+(agentFirstName||"there")+",\\n\\nI would like more information about "+pn+".\\n\\n";
-      launchEmailClient(agentEmail,subject,body,directStatusEl,"To: "+agentEmail+"\\nSubject: "+subject+"\\n\\n"+body);
+      if(!prepareEmailLink(directEmailBtn,agentEmail,subject,body,directStatusEl)){
+        ev.preventDefault();
+        return;
+      }
+      noteEmailLaunch(directStatusEl,"Copy email address");
     });
   }
   if(directCopyEmailBtn){
@@ -2017,21 +1993,23 @@ function launchEmailClient(recipient,subject,body,statusEl,fallbackText){
     });
   }
   if(emailBtn){
-    emailBtn.addEventListener("click",function(){
+    emailBtn.addEventListener("click",function(ev){
       if(emailBtn.getAttribute("aria-disabled")==="true"){
+        ev.preventDefault();
         return;
       }
       if(!agentEmail){
+        ev.preventDefault();
         statusEl.textContent="No email address configured.";
         return;
       }
-      launchEmailClient(
-        agentEmail,
-        buildSubject(),
-        buildBody(false),
-        statusEl,
-        "To: "+agentEmail+"\\nSubject: "+buildSubject()+"\\n\\n"+buildBody(false)
-      );
+      var subject=buildSubject();
+      var body=buildBody(false);
+      if(!prepareEmailLink(emailBtn,agentEmail,subject,body,statusEl)){
+        ev.preventDefault();
+        return;
+      }
+      noteEmailLaunch(statusEl,"Copy");
     });
   }
   if(smsBtn){
@@ -2053,7 +2031,7 @@ function launchEmailClient(recipient,subject,body,statusEl,fallbackText){
   if(copyBtn){
     copyBtn.addEventListener("click",async function(){
       if(copyBtn.getAttribute("aria-disabled")==="true") return;
-      var text="Subject: "+buildSubject()+"\\n\\n"+buildBody(false);
+      var text=(agentEmail?"To: "+agentEmail+"\\n":"")+"Subject: "+buildSubject()+"\\n\\n"+buildBody(false);
       try{
         if(navigator.clipboard&&navigator.clipboard.writeText){
           await navigator.clipboard.writeText(text);
@@ -2286,7 +2264,7 @@ function __dqaRenderInquiryForm(prefilledQuestion,_propertyUuid){
     +'<textarea class="ask-inquiry-input ask-inquiry-textarea" data-k="message" rows="4" required>'+escapeText(String(prefilledQuestion||""))+'</textarea>'
     +'</div>'
     +'<div class="ask-inquiry-actions">'
-    +'<button class="ask-inquiry-send" type="button">Email '+escapeText((String((C.agent&&C.agent.name)||"").trim().split(/\\s+/)[0])||"agent")+'</button>'
+    +'<a class="ask-inquiry-send" href="#" role="button">Email '+escapeText((String((C.agent&&C.agent.name)||"").trim().split(/\\s+/)[0])||"agent")+'</a>'
     +(agentPhone?'<a class="ask-inquiry-sms" href="sms:'+escapeText(agentPhone)+'?body='+encodeURIComponent("Question about "+propertyName+":\\n\\n"+(prefilledQuestion||""))+'">Text instead</a>':'')
     +'</div>'
     +'<div class="ask-inquiry-status" aria-live="polite"></div>';
@@ -2294,22 +2272,26 @@ function __dqaRenderInquiryForm(prefilledQuestion,_propertyUuid){
   __docsQa.messages.scrollTop=__docsQa.messages.scrollHeight;
   var inputs=card.querySelectorAll(".ask-inquiry-input");
   var statusEl=card.querySelector(".ask-inquiry-status");
-  card.querySelector(".ask-inquiry-send").addEventListener("click",function(){
+  var sendEl=card.querySelector(".ask-inquiry-send");
+  sendEl.addEventListener("click",function(ev){
     var values={};
     for(var i=0;i<inputs.length;i++){
       values[inputs[i].getAttribute("data-k")]=inputs[i].value.trim();
     }
     if(!values.email||!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(values.email)){
+      ev.preventDefault();
       statusEl.textContent="Please enter a valid email.";
       statusEl.style.color="#b91c1c";
       return;
     }
     if(!values.message){
+      ev.preventDefault();
       statusEl.textContent="Please include a message.";
       statusEl.style.color="#b91c1c";
       return;
     }
     if(!agentEmail){
+      ev.preventDefault();
       statusEl.textContent="Sorry, no contact channel is configured for this listing.";
       statusEl.style.color="#b91c1c";
       return;
@@ -2332,7 +2314,12 @@ function __dqaRenderInquiryForm(prefilledQuestion,_propertyUuid){
       "— "+(values.name||"Visitor")+(values.phone?" ("+values.phone+")":"")+(values.email?" <"+values.email+">":""),
       leadSrc?"Source: "+leadSrc:""
     ].filter(Boolean).join("\\n");
-    statusEl.textContent="Opening your email app… Details copied as a backup.";
+    if(!prepareEmailLink(sendEl,agentEmail,subject,body,statusEl)){
+      ev.preventDefault();
+      statusEl.style.color="#b91c1c";
+      return;
+    }
+    noteEmailLaunch(statusEl,"Copy");
     statusEl.style.color="#047857";
     // Fire-and-forget lead-capture (Pro tier). We do NOT await — awaiting here would
     // void the user-gesture and Chromium-based browsers would block the mailto handoff.
@@ -2347,10 +2334,8 @@ function __dqaRenderInquiryForm(prefilledQuestion,_propertyUuid){
         }).catch(function(){});
       }catch(_){}
     }
-    // Trigger the mail client as the synchronous tail of the click handler.
-    launchEmailClient(agentEmail,subject,body,statusEl,"To: "+agentEmail+"\\nSubject: "+subject+"\\n\\n"+body);
     for(var j=0;j<inputs.length;j++) inputs[j].disabled=true;
-    card.querySelector(".ask-inquiry-send").disabled=true;
+    sendEl.setAttribute("aria-disabled","true");
   });
 }
 function __dqaEvidenceUnits(content){
