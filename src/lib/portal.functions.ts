@@ -2359,6 +2359,8 @@ document.addEventListener("keydown",function(e){
   });
   var dr=document.getElementById("agent-drawer");
   if(dr&&dr.classList.contains("open")) window.__closeContact();
+  var lt=document.getElementById("live-tour-drawer");
+  if(lt&&lt.classList.contains("open")) window.__closeLiveTour();
 });
 
 function renderPropertyDocs(_i){
