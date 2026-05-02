@@ -1179,7 +1179,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .drawer-action-button{width:100%;border:none;font-family:inherit;text-align:left;cursor:pointer}
 .drawer-action-copy{justify-content:center;border:1px solid rgba(255,255,255,0.14);background:transparent;color:rgba(255,255,255,0.82);font-size:11px;padding:7px 10px}
 .drawer-action-copy:hover{background:rgba(255,255,255,0.1)}
-.drawer-email-status{font-size:11px;color:rgba(255,255,255,0.55);min-height:14px;margin:0 2px 2px;line-height:1.35}
 .drawer-social-label{font-size:10px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:rgba(255,255,255,0.4);margin-bottom:6px}
 .drawer-social-pills{display:flex;flex-wrap:wrap;gap:6px}
 .social-pill{display:inline-flex;align-items:center;border-radius:999px;background:rgba(255,255,255,0.1);padding:4px 10px;font-size:11px;font-weight:500;color:#fff;text-decoration:none;transition:background 0.2s}
@@ -1359,11 +1358,10 @@ ${hasAgentContact ? `<div id="agent-drawer">
       </div>
     </div>
     ${agent.welcomeNote ? `<div class="drawer-welcome"><p>${escapeHtml(String(agent.welcomeNote))}</p></div>` : ""}
-    <div class="drawer-actions">
+    ${agent.phone ? `<div class="drawer-actions">
       ${agent.phone ? `<a href="tel:${escapeHtml(String(agent.phone))}" class="drawer-action-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.27h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.61a16 16 0 0 0 6 6l.91-.91a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.73 16l.19.92z"/></svg>Call ${escapeHtml(String(agent.phone))}</a>` : ""}
       ${agent.phone ? `<a href="sms:${escapeHtml(String(agent.phone))}" class="drawer-action-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Text ${escapeHtml(String(agent.phone))}</a>` : ""}
-      ${agentHasEmail ? `<a href="#" id="drawer-agent-email" class="drawer-action-link drawer-action-button" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>${escapeHtml(agentEmailForMailto)}</a><button type="button" id="drawer-agent-copy-email" class="drawer-action-link drawer-action-button drawer-action-copy">Copy email address</button><div class="drawer-email-status" id="drawer-email-status" aria-live="polite"></div>` : ""}
-    </div>
+    </div>` : ""}
     ${(agentHasEmail || agent.phone) ? `<div class="drawer-quickmsg" id="drawer-quickmsg">
       <div class="drawer-quickmsg-label">Ask a quick question</div>
       <div class="drawer-qchips" id="drawer-qchips" role="group" aria-label="Question templates"></div>
@@ -1905,14 +1903,14 @@ function openEmailRedirect(recipient,subject,body,statusEl){
       try{ opened.focus(); }catch(_e){}
     }
   }catch(_e){}
-  if(statusEl) statusEl.textContent="Opening contact window… If nothing opens, use Copy.";
+  if(statusEl) statusEl.textContent="Opening contact options...";
   if(!opened){
     setTimeout(function(){
       copyContactText(
         sanitizeEmailAddress(recipient),
         statusEl,
-        "Pop-up blocked. Email address copied to clipboard.",
-        "Pop-up blocked. Please use Copy."
+        "Email address copied to clipboard.",
+        "Please use Copy."
       );
     },1000);
     return false;
@@ -1943,16 +1941,12 @@ async function copyContactText(text,statusEl,okMsg,failMsg){
   var chipsEl=document.getElementById("drawer-qchips");
   var msgEl=document.getElementById("drawer-qmsg");
   var emailEl=document.getElementById("drawer-qemail");
-  var directEmailBtn=document.getElementById("drawer-agent-email");
-  var directCopyEmailBtn=document.getElementById("drawer-agent-copy-email");
-  var directStatusEl=document.getElementById("drawer-email-status");
   var emailBtn=document.getElementById("drawer-qsend-email");
   var smsBtn=document.getElementById("drawer-qsend-sms");
   var copyBtn=document.getElementById("drawer-qcopy");
   var statusEl=document.getElementById("drawer-qstatus");
   var agentEmail=${JSON.stringify(agentEmailForMailto)};
   var agentPhone=${JSON.stringify(agent.phone || "")};
-  var agentFirstName=${JSON.stringify(agentFirstName)};
   var TEMPLATES=[
     {label:"Pricing", subject:"Pricing question — {P}", body:"Hi, could you share the asking price and any recent price changes for {P}?"},
     {label:"Availability", subject:"Availability — {P}", body:"Is {P} still available? When can I view it?"},
@@ -2027,29 +2021,6 @@ async function copyContactText(text,statusEl,okMsg,failMsg){
   }
   msgEl.addEventListener("input",refresh);
   emailEl.addEventListener("input",refresh);
-  if(directEmailBtn){
-    directEmailBtn.addEventListener("click",function(ev){
-      if(!agentEmail){
-        ev.preventDefault();
-        if(directStatusEl) directStatusEl.textContent="No email address configured.";
-        return;
-      }
-      var pn=currentPropName();
-      var subject="Inquiry — "+pn;
-      var body="Hi "+(agentFirstName||"there")+",\\n\\nI would like more information about "+pn+".\\n\\n";
-      if(!prepareEmailRedirectLink(directEmailBtn,agentEmail,subject,body,directStatusEl)){
-        ev.preventDefault();
-        return;
-      }
-      ev.preventDefault();
-      openEmailRedirect(agentEmail,subject,body,directStatusEl);
-    });
-  }
-  if(directCopyEmailBtn){
-    directCopyEmailBtn.addEventListener("click",function(){
-      copyContactText(agentEmail,directStatusEl,"Email copied to clipboard.","Could not copy email address.");
-    });
-  }
   if(emailBtn){
     emailBtn.addEventListener("click",function(ev){
       if(emailBtn.getAttribute("aria-disabled")==="true"){
@@ -2089,7 +2060,7 @@ async function copyContactText(text,statusEl,okMsg,failMsg){
         return;
       }
       smsBtn.setAttribute("href",url);
-      statusEl.textContent="Opening your messaging app… If nothing happens, use Copy to paste it elsewhere.";
+      statusEl.textContent="Opening text message...";
     });
   }
   if(copyBtn){
