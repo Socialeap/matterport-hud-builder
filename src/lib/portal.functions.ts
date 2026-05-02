@@ -387,6 +387,15 @@ function escapeHtml(str: string): string {
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+function normalizeEmailForMailto(value: unknown): string {
+  const email = String(value ?? "")
+    .trim()
+    .replace(/^mailto:/i, "")
+    .split("?")[0]
+    .trim();
+  return /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(email) ? email : "";
+}
+
 // Encryption helpers + iteration count come from
 // ./portal/protected-export. Keeping them in their own module lets the
 // round-trip test exercise the AES-GCM/PBKDF2 plumbing without dragging
@@ -1065,6 +1074,10 @@ export const generatePresentation = createServerFn({ method: "POST" })
       ? `<img src="${escapeHtml(String(agent.avatarUrl))}" alt="${escapeHtml(String(agent.name || "Agent"))}" class="agent-avatar-img">`
       : `<div class="agent-avatar-init">${escapeHtml((String(agent.name || "?")).charAt(0).toUpperCase())}</div>`;
 
+    const agentEmailForMailto = normalizeEmailForMailto(agent.email);
+    const agentHasEmail = agentEmailForMailto.length > 0;
+    const agentFirstName = (String(agent.name || "").trim().split(/\s+/)[0]) || "agent";
+    const hasAgentContact = Boolean(agent.phone || agentHasEmail || agent.name);
 
     const html = `<!DOCTYPE html>
 <html lang="en">
@@ -1319,7 +1332,7 @@ ${askAssets.css}
       </button>
       ${askAssets.toggleBtn}
       <span id="hud-agent-name"></span>
-      ${(agent.phone || agent.email || agent.name) ? `<button class="hud-contact-btn" onclick="window.__openContact&&window.__openContact()">Contact</button>` : ""}
+      ${hasAgentContact ? `<button class="hud-contact-btn" onclick="window.__openContact&&window.__openContact()">Contact</button>` : ""}
     </div>
   </div>
 </div>
@@ -1330,7 +1343,7 @@ ${askAssets.css}
 <!-- (Bottom toolbar removed: Ask AI / Ask docs are now in the HUD header to keep the Matterport logo unobstructed.) -->
 
 <!-- ── Agent contact panel ───────────────────────────────────────── -->
-${(agent.phone || agent.email || agent.name) ? `<div id="agent-drawer">
+${hasAgentContact ? `<div id="agent-drawer">
   <div id="drawer-inner">
     <button id="drawer-close" onclick="window.__closeContact&&window.__closeContact()" aria-label="Close">&times;</button>
     <div id="drawer-title">Get in Touch</div>
@@ -1345,16 +1358,16 @@ ${(agent.phone || agent.email || agent.name) ? `<div id="agent-drawer">
     <div class="drawer-actions">
       ${agent.phone ? `<a href="tel:${escapeHtml(String(agent.phone))}" class="drawer-action-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.27h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.61a16 16 0 0 0 6 6l.91-.91a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.73 16l.19.92z"/></svg>Call ${escapeHtml(String(agent.phone))}</a>` : ""}
       ${agent.phone ? `<a href="sms:${escapeHtml(String(agent.phone))}" class="drawer-action-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Text ${escapeHtml(String(agent.phone))}</a>` : ""}
-      ${agent.email ? `<a href="mailto:${escapeHtml(String(agent.email))}" class="drawer-action-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>${escapeHtml(String(agent.email))}</a>` : ""}
+      ${agentHasEmail ? `<a id="drawer-agent-email" href="mailto:${escapeHtml(agentEmailForMailto)}" class="drawer-action-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>${escapeHtml(agentEmailForMailto)}</a>` : ""}
     </div>
-    ${(agent.email || agent.phone) ? `<div class="drawer-quickmsg" id="drawer-quickmsg">
+    ${(agentHasEmail || agent.phone) ? `<div class="drawer-quickmsg" id="drawer-quickmsg">
       <div class="drawer-quickmsg-label">Ask a quick question</div>
       <div class="drawer-qchips" id="drawer-qchips" role="group" aria-label="Question templates"></div>
       <textarea class="drawer-qfield drawer-qtextarea" id="drawer-qmsg" rows="4" placeholder="Type your question, or pick a topic above…" aria-label="Your message"></textarea>
       <input type="email" class="drawer-qfield" id="drawer-qemail" placeholder="Your email (so we can reply)" autocomplete="email" aria-label="Your email">
       <div class="drawer-qsend-row">
-        ${agent.email ? `<a id="drawer-qsend-email" class="drawer-qsend primary" href="#" aria-disabled="true" role="button">Email ${escapeHtml((String(agent.name || "").trim().split(/\s+/)[0]) || "agent")}</a>` : ""}
-        ${agent.phone ? `<a id="drawer-qsend-sms" class="drawer-qsend secondary" href="#" aria-disabled="true" role="button">Text ${escapeHtml((String(agent.name || "").trim().split(/\s+/)[0]) || "agent")}</a>` : ""}
+        ${agentHasEmail ? `<a id="drawer-qsend-email" class="drawer-qsend primary" href="#" aria-disabled="true" role="button">Email ${escapeHtml(agentFirstName)}</a>` : ""}
+        ${agent.phone ? `<a id="drawer-qsend-sms" class="drawer-qsend secondary" href="#" aria-disabled="true" role="button">Text ${escapeHtml(agentFirstName)}</a>` : ""}
         <button type="button" id="drawer-qcopy" class="drawer-qcopy" aria-disabled="true">Copy</button>
       </div>
       <div class="drawer-qstatus" id="drawer-qstatus" aria-live="polite"></div>
@@ -1827,7 +1840,7 @@ window.__closeContact=function(){
   var smsBtn=document.getElementById("drawer-qsend-sms");
   var copyBtn=document.getElementById("drawer-qcopy");
   var statusEl=document.getElementById("drawer-qstatus");
-  var agentEmail=${JSON.stringify(agent.email || "")};
+  var agentEmail=${JSON.stringify(agentEmailForMailto)};
   var agentPhone=${JSON.stringify(agent.phone || "")};
   var TEMPLATES=[
     {label:"Pricing", subject:"Pricing question — {P}", body:"Hi, could you share the asking price and any recent price changes for {P}?"},
@@ -1880,40 +1893,74 @@ window.__closeContact=function(){
     }
     return msg+trailer;
   }
+  function buildEmailUrl(){
+    if(!agentEmail) return "";
+    var subj=buildSubject();
+    var body=buildBody(false);
+    var url="mailto:"+agentEmail+"?subject="+encodeURIComponent(subj)+"&body="+encodeURIComponent(body);
+    // If too long, shorten the body itself (re-encode) instead of slicing the encoded URL, which can leave a dangling % triplet.
+    while(url.length>1900 && body.length>50){
+      body=body.slice(0,Math.max(50,body.length-200));
+      url="mailto:"+agentEmail+"?subject="+encodeURIComponent(subj)+"&body="+encodeURIComponent(body);
+    }
+    return url;
+  }
+  function buildSmsUrl(){
+    if(!agentPhone) return "";
+    var body=buildBody(true);
+    var url="sms:"+agentPhone+"?body="+encodeURIComponent(body);
+    while(url.length>1900 && body.length>50){
+      body=body.slice(0,Math.max(50,body.length-200));
+      url="sms:"+agentPhone+"?body="+encodeURIComponent(body);
+    }
+    return url;
+  }
   function refresh(){
     var ok=(msgEl.value||"").trim().length>0;
-    if(emailBtn) emailBtn.setAttribute("aria-disabled", ok ? "false":"true");
-    if(smsBtn) smsBtn.setAttribute("aria-disabled", ok ? "false":"true");
+    var emailReady=ok&&!!agentEmail;
+    var smsReady=ok&&!!agentPhone;
+    if(emailBtn){
+      emailBtn.setAttribute("aria-disabled", emailReady ? "false":"true");
+      emailBtn.setAttribute("href", emailReady ? buildEmailUrl() : "#");
+    }
+    if(smsBtn){
+      smsBtn.setAttribute("aria-disabled", smsReady ? "false":"true");
+      smsBtn.setAttribute("href", smsReady ? buildSmsUrl() : "#");
+    }
     if(copyBtn) copyBtn.setAttribute("aria-disabled", ok ? "false":"true");
   }
   msgEl.addEventListener("input",refresh);
+  emailEl.addEventListener("input",refresh);
   if(emailBtn){
     emailBtn.addEventListener("click",function(ev){
-      ev.preventDefault();
-      if(emailBtn.getAttribute("aria-disabled")==="true") return;
-      if(!agentEmail){ statusEl.textContent="No email address configured."; return; }
-      var subj=buildSubject();
-      var body=buildBody(false);
-      // RFC 6068: recipient must be a literal addr-spec — do NOT percent-encode the email or '@' becomes %40 and Chrome/Edge silently refuse to launch the mail client.
-      var url="mailto:"+agentEmail+"?subject="+encodeURIComponent(subj)+"&body="+encodeURIComponent(body);
-      // If too long, shorten the body itself (re-encode) instead of slicing the encoded URL, which can leave a dangling % triplet.
-      while(url.length>1900 && body.length>50){
-        body=body.slice(0,Math.max(50,body.length-200));
-        url="mailto:"+agentEmail+"?subject="+encodeURIComponent(subj)+"&body="+encodeURIComponent(body);
+      if(emailBtn.getAttribute("aria-disabled")==="true"){
+        ev.preventDefault();
+        return;
       }
+      var url=buildEmailUrl();
+      if(!url){
+        ev.preventDefault();
+        statusEl.textContent="No email address configured.";
+        return;
+      }
+      emailBtn.setAttribute("href",url);
       statusEl.textContent="Opening your email app… If nothing happens, use Copy.";
-      // Navigation must be the synchronous tail of the click handler — no awaits above.
-      window.location.href=url;
+      // Let the native anchor navigation open mailto: while the user gesture is still active.
     });
   }
   if(smsBtn){
     smsBtn.addEventListener("click",function(ev){
-      ev.preventDefault();
-      if(smsBtn.getAttribute("aria-disabled")==="true") return;
-      if(!agentPhone){ statusEl.textContent="No phone number configured."; return; }
-      var url="sms:"+agentPhone+"?body="+encodeURIComponent(buildBody(true));
-      if(url.length>1900){ url=url.slice(0,1900); }
-      window.location.href=url;
+      if(smsBtn.getAttribute("aria-disabled")==="true"){
+        ev.preventDefault();
+        return;
+      }
+      var url=buildSmsUrl();
+      if(!url){
+        ev.preventDefault();
+        statusEl.textContent="No phone number configured.";
+        return;
+      }
+      smsBtn.setAttribute("href",url);
       statusEl.textContent="Opening your messaging app… If nothing happens, use Copy to paste it elsewhere.";
     });
   }
