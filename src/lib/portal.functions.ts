@@ -1832,7 +1832,7 @@ function updateHud(i){
   var p=props[i];
   if(!p) return;
   var elLoc=document.getElementById("hud-prop-loc");
-  var elAgent=document.getElementById("hud-agent-name");
+  var elAgent=null;
   if(elLoc){
     // Compose "{property name} \u2014 {address} \u2014 {city/state}" but
     // skip any segment that already duplicates the brand name shown above
@@ -1847,8 +1847,6 @@ function updateHud(i){
     if(loc && addr.toLowerCase().indexOf(loc.toLowerCase())===-1 && loc.toLowerCase()!==brand) parts.push(loc);
     elLoc.textContent=parts.join(" \u2014 ");
   }
-  if(elAgent) elAgent.textContent=(C.agent&&C.agent.name)?C.agent.name:"";
-  if(elAgent) elAgent.textContent=(C.agent&&C.agent.name)?C.agent.name:"";
   var mapBtn=document.getElementById("hud-map-btn");
   if(mapBtn) mapBtn.style.display=(p.enableNeighborhoodMap&&p.location)?"":"none";
   var cinBtn=document.getElementById("hud-cinema-btn");
