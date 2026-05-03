@@ -2187,7 +2187,6 @@ window.__closeEmailOptions=function(){
     if(copyBtn) copyBtn.setAttribute("aria-disabled", ok ? "false":"true");
   }
   msgEl.addEventListener("input",refresh);
-  emailEl.addEventListener("input",refresh);
   if(emailBtn){
     emailBtn.addEventListener("click",function(ev){
       if(emailBtn.getAttribute("aria-disabled")==="true"){
