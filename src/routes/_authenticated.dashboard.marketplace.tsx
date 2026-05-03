@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Card,
@@ -12,7 +12,13 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Sparkles, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { useMspAccess } from "@/hooks/use-msp-access";
-import { LeadCard, type MarketplaceLead } from "@/components/marketplace/LeadCard";
+import {
+  LeadCard,
+  type BeaconDisposition,
+  type MarketplaceLead,
+} from "@/components/marketplace/LeadCard";
+import { OutreachComposer } from "@/components/marketplace/OutreachComposer";
+import { MarketplaceStandingBadge } from "@/components/dashboard/MarketplaceStandingBadge";
 
 export const Route = createFileRoute("/_authenticated/dashboard/marketplace")({
   component: MarketplacePage,
@@ -22,8 +28,25 @@ function MarketplacePage() {
   const { hasPaid } = useMspAccess();
   const [rows, setRows] = useState<MarketplaceLead[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [composeFor, setComposeFor] = useState<MarketplaceLead | null>(null);
+  const [pendingDispositionId, setPendingDispositionId] = useState<string | null>(null);
 
   const isLocked = !hasPaid;
+
+  const fetchRows = useCallback(async () => {
+    const { data, error: rpcError } = await supabase.rpc(
+      "get_my_matched_beacons",
+    );
+    if (rpcError) {
+      toast.error("Could not load your marketplace contacts");
+      return;
+    }
+    // RPC return shape was extended in PR2/PR3 with exclusive_until,
+    // contacted_at, is_currently_exclusive, disposition, has_outreach.
+    // The auto-generated Database types lag the migration; cast
+    // through unknown.
+    setRows((data as unknown as MarketplaceLead[]) ?? []);
+  }, []);
 
   useEffect(() => {
     if (isLocked) {
@@ -32,28 +55,38 @@ function MarketplacePage() {
     }
     let cancelled = false;
     void (async () => {
-      const { data, error: rpcError } = await supabase.rpc(
-        "get_my_matched_beacons",
-      );
-      if (cancelled) return;
-
-      if (rpcError) {
-        toast.error("Could not load your marketplace contacts");
-        setLoading(false);
-        return;
-      }
-
-      // RPC return shape was extended in PR2 with exclusive_until,
-      // contacted_at, is_currently_exclusive. The auto-generated
-      // Database types lag the migration; cast through unknown.
-      setRows((data as unknown as MarketplaceLead[]) ?? []);
-      setLoading(false);
+      await fetchRows();
+      if (!cancelled) setLoading(false);
     })();
-
     return () => {
       cancelled = true;
     };
-  }, [isLocked]);
+  }, [isLocked, fetchRows]);
+
+  const handleDisposition = useCallback(
+    async (lead: MarketplaceLead, disposition: BeaconDisposition) => {
+      setPendingDispositionId(lead.id);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase as any).rpc(
+        "set_beacon_disposition",
+        { p_beacon_id: lead.id, p_disposition: disposition },
+      );
+      setPendingDispositionId(null);
+      if (error) {
+        toast.error("Could not save disposition");
+        return;
+      }
+      toast.success(
+        disposition === "won"
+          ? "Marked as Won — score updated"
+          : disposition === "unresponsive"
+            ? "Marked as Unresponsive"
+            : "Marked as Lost",
+      );
+      await fetchRows();
+    },
+    [fetchRows],
+  );
 
   // Bucket leads into the three sections derived from the
   // exclusive-window state.
@@ -99,6 +132,8 @@ function MarketplacePage() {
       exclusive_until: new Date(Date.now() + 1000 * 60 * 60 * 60).toISOString(),
       contacted_at: null,
       is_currently_exclusive: true,
+      disposition: null,
+      has_outreach: false,
     },
     {
       id: "sample-2",
@@ -113,6 +148,8 @@ function MarketplacePage() {
       exclusive_until: new Date(Date.now() + 1000 * 60 * 60 * 18).toISOString(),
       contacted_at: null,
       is_currently_exclusive: true,
+      disposition: null,
+      has_outreach: false,
     },
   ];
 
@@ -122,16 +159,19 @@ function MarketplacePage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Marketplace Leads</h1>
           <p className="text-sm text-muted-foreground">
-            Each lead is yours <em>exclusively</em> for 72 hours. If you don't
+            Each lead is yours <em>exclusively</em> for 24 hours. If you don't
             reach out before the window closes, the lead automatically
             re-pools to the next Pro in your area.
           </p>
         </div>
-        <Link to="/dashboard/branding">
-          <Button variant="outline" size="sm" disabled={isLocked}>
-            Configure Listing
-          </Button>
-        </Link>
+        <div className="flex flex-col items-end gap-2">
+          {!isLocked && <MarketplaceStandingBadge />}
+          <Link to="/dashboard/branding">
+            <Button variant="outline" size="sm" disabled={isLocked}>
+              Configure Listing
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {isLocked ? (
@@ -153,7 +193,7 @@ function MarketplacePage() {
                     Unlock real agent contacts with Pro
                   </h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Upgrade to Pro to receive — and exclusively own for 72
+                    Upgrade to Pro to receive — and exclusively own for 24
                     hours — leads from agents in your service area.
                   </p>
                 </div>
@@ -196,12 +236,17 @@ function MarketplacePage() {
             description="Yours exclusively. Reach out before the countdown ends."
             empty="No open windows right now. New leads will appear here automatically."
             leads={buckets.active}
+            onCompose={(lead) => setComposeFor(lead)}
+            onDisposition={handleDisposition}
+            pendingDispositionId={pendingDispositionId}
           />
           <Section
             title="Awaiting Your Response"
-            description="You've reached out — waiting on the agent."
+            description="You've reached out — mark the outcome once the agent replies."
             empty="Nothing waiting on a reply yet. Once you contact a lead, it shows up here."
             leads={buckets.awaiting}
+            onDisposition={handleDisposition}
+            pendingDispositionId={pendingDispositionId}
           />
           <Section
             title="Past Leads"
@@ -209,6 +254,8 @@ function MarketplacePage() {
             empty="No past leads yet."
             leads={buckets.past}
             collapsedByDefault
+            onDisposition={handleDisposition}
+            pendingDispositionId={pendingDispositionId}
           />
         </div>
       )}
@@ -218,13 +265,29 @@ function MarketplacePage() {
           <CardTitle className="text-base">A note on outreach</CardTitle>
           <CardDescription>
             Each agent below explicitly opted in to be contacted by a local Pro
-            Partner when one becomes active. Your 72-hour exclusive window
+            Partner when one becomes active. Your 24-hour exclusive window
             means no other Pro is being shown the same lead — make it count.
-            Be specific about your local market and the value of a 3D
-            presentation for their listings.
+            Outreach goes out through 3DPS so the agent can flag inappropriate
+            messages with one click; we use those signals to maintain your
+            Marketplace Standing.
           </CardDescription>
         </CardHeader>
       </Card>
+
+      {composeFor && (
+        <OutreachComposer
+          open
+          onOpenChange={(o) => !o && setComposeFor(null)}
+          beaconId={composeFor.id}
+          agentName={composeFor.name}
+          agentCity={composeFor.city}
+          agentRegion={composeFor.region}
+          onSent={() => {
+            setComposeFor(null);
+            void fetchRows();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -235,6 +298,9 @@ interface SectionProps {
   empty: string;
   leads: MarketplaceLead[];
   collapsedByDefault?: boolean;
+  onCompose?: (lead: MarketplaceLead) => void;
+  onDisposition?: (lead: MarketplaceLead, disposition: BeaconDisposition) => void;
+  pendingDispositionId?: string | null;
 }
 
 function Section({
@@ -243,6 +309,9 @@ function Section({
   empty,
   leads,
   collapsedByDefault = false,
+  onCompose,
+  onDisposition,
+  pendingDispositionId,
 }: SectionProps) {
   const [expanded, setExpanded] = useState(!collapsedByDefault);
 
@@ -277,7 +346,13 @@ function Section({
       ) : expanded ? (
         <div className="space-y-3">
           {leads.map((lead) => (
-            <LeadCard key={lead.id} lead={lead} />
+            <LeadCard
+              key={lead.id}
+              lead={lead}
+              onCompose={onCompose}
+              onDisposition={onDisposition}
+              pendingDisposition={pendingDispositionId === lead.id}
+            />
           ))}
         </div>
       ) : null}

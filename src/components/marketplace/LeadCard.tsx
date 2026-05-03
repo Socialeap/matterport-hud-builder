@@ -3,14 +3,19 @@
  * marketplace dashboard. Renders the agent's contact info plus a
  * countdown-aware status badge derived from `exclusive_until`.
  *
- * The card itself is presentation-only — bucketing into the
- * Active / Awaiting Response / Past sections is the parent's job.
+ * Presentation-only — bucketing into Active / Awaiting / Past is
+ * the parent's job. Card-level affordances vary by state:
+ *   * Active + no outreach → "Compose Outreach" button
+ *   * Awaiting (contacted, no disposition) → [Won][Lost][Unresponsive]
+ *   * Past with disposition → disposition stamp
  */
 import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Building2, Mail, MapPin } from "lucide-react";
+import { Building2, Mail, MapPin, MessageSquare, CheckCircle2, XCircle, Clock4 } from "lucide-react";
+
+export type BeaconDisposition = "won" | "lost" | "unresponsive";
 
 export interface MarketplaceLead {
   id: string;
@@ -25,10 +30,16 @@ export interface MarketplaceLead {
   exclusive_until: string | null;
   contacted_at: string | null;
   is_currently_exclusive: boolean;
+  disposition: BeaconDisposition | null;
+  has_outreach: boolean;
 }
 
 const HOUR_MS = 60 * 60 * 1000;
-const URGENCY_WINDOW_MS = 24 * HOUR_MS;
+// Triggers the amber border + destructive-variant countdown badge
+// when fewer than this many hours remain in the 24-hour exclusive
+// window. 8h = the last third of the window; the value used to be
+// 24h when the window itself was 72h.
+const URGENCY_WINDOW_MS = 8 * HOUR_MS;
 
 function formatRemaining(target: Date, now: Date): string {
   const diff = target.getTime() - now.getTime();
@@ -48,7 +59,26 @@ function formatDate(iso: string): string {
   });
 }
 
-export function LeadCard({ lead }: { lead: MarketplaceLead }) {
+interface LeadCardProps {
+  lead: MarketplaceLead;
+  onCompose?: (lead: MarketplaceLead) => void;
+  onDisposition?: (lead: MarketplaceLead, disposition: BeaconDisposition) => void;
+  /** True while a disposition mutation is in-flight for this lead. */
+  pendingDisposition?: boolean;
+}
+
+const DISPOSITION_LABEL: Record<BeaconDisposition, string> = {
+  won: "Won",
+  lost: "Lost",
+  unresponsive: "Unresponsive",
+};
+
+export function LeadCard({
+  lead,
+  onCompose,
+  onDisposition,
+  pendingDisposition = false,
+}: LeadCardProps) {
   // Tick once per minute so the countdown stays roughly fresh
   // without being a render-loop hot path.
   const [now, setNow] = useState(() => new Date());
@@ -59,10 +89,13 @@ export function LeadCard({ lead }: { lead: MarketplaceLead }) {
   }, [lead.exclusive_until, lead.is_currently_exclusive]);
 
   const expiresAt = lead.exclusive_until ? new Date(lead.exclusive_until) : null;
-  const isActive =
+  const windowOpen =
     lead.is_currently_exclusive && expiresAt !== null && expiresAt > now;
   const remainingMs = expiresAt ? expiresAt.getTime() - now.getTime() : 0;
-  const isUrgent = isActive && remainingMs <= URGENCY_WINDOW_MS;
+  const isUrgent = windowOpen && remainingMs <= URGENCY_WINDOW_MS;
+
+  const isAwaiting = !!lead.contacted_at && !lead.disposition;
+  const showCompose = windowOpen && !lead.has_outreach && !!onCompose;
 
   return (
     <Card className={isUrgent ? "border-amber-300 dark:border-amber-700" : ""}>
@@ -73,7 +106,7 @@ export function LeadCard({ lead }: { lead: MarketplaceLead }) {
               {lead.name || "Anonymous agent"}
             </h3>
 
-            {isActive && expiresAt && (
+            {windowOpen && expiresAt && (
               <Badge
                 variant={isUrgent ? "destructive" : "default"}
                 className="text-[10px]"
@@ -82,13 +115,22 @@ export function LeadCard({ lead }: { lead: MarketplaceLead }) {
               </Badge>
             )}
 
-            {!isActive && lead.contacted_at && (
+            {lead.disposition && (
+              <Badge
+                variant={lead.disposition === "won" ? "default" : "outline"}
+                className="text-[10px]"
+              >
+                {DISPOSITION_LABEL[lead.disposition]}
+              </Badge>
+            )}
+
+            {!windowOpen && lead.contacted_at && !lead.disposition && (
               <Badge variant="secondary" className="text-[10px]">
                 Contacted {formatDate(lead.contacted_at)}
               </Badge>
             )}
 
-            {!isActive && !lead.contacted_at && lead.exclusive_until && (
+            {!windowOpen && !lead.contacted_at && lead.exclusive_until && (
               <Badge variant="outline" className="text-[10px]">
                 Re-pooled
               </Badge>
@@ -111,21 +153,67 @@ export function LeadCard({ lead }: { lead: MarketplaceLead }) {
             </span>
             <span>Joined {formatDate(lead.created_at)}</span>
           </div>
+
+          {isAwaiting && onDisposition && (
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                Disposition
+              </span>
+              <Button
+                size="sm"
+                variant="default"
+                className="h-7 px-2 text-xs"
+                disabled={pendingDisposition}
+                onClick={() => onDisposition(lead, "won")}
+              >
+                <CheckCircle2 className="mr-1 size-3" /> Won
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 px-2 text-xs"
+                disabled={pendingDisposition}
+                onClick={() => onDisposition(lead, "lost")}
+              >
+                <XCircle className="mr-1 size-3" /> Lost
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 px-2 text-xs"
+                disabled={pendingDisposition}
+                onClick={() => onDisposition(lead, "unresponsive")}
+              >
+                <Clock4 className="mr-1 size-3" /> Unresponsive
+              </Button>
+            </div>
+          )}
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
-          {isActive ? (
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          {windowOpen ? (
+            <span className="text-xs text-muted-foreground">{lead.email}</span>
+          ) : (
+            <span className="text-xs text-muted-foreground">{lead.email}</span>
+          )}
+
+          {showCompose ? (
+            <Button
+              size="sm"
+              className="gap-1.5"
+              onClick={() => onCompose && onCompose(lead)}
+            >
+              <MessageSquare className="size-3.5" />
+              Compose Outreach
+            </Button>
+          ) : windowOpen && lead.has_outreach ? (
             <a href={`mailto:${lead.email}`}>
-              <Button size="sm" className="gap-1.5">
+              <Button size="sm" variant="outline" className="gap-1.5">
                 <Mail className="size-3.5" />
-                {lead.email}
+                Reply directly
               </Button>
             </a>
-          ) : (
-            <span className="text-xs text-muted-foreground">
-              {lead.email}
-            </span>
-          )}
+          ) : null}
         </div>
       </CardContent>
     </Card>

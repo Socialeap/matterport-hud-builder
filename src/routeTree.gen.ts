@@ -24,6 +24,7 @@ import { Route as PSlugRouteImport } from './routes/p.$slug'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as EmailUnsubscribeRouteImport } from './routes/email/unsubscribe'
 import { Route as ApiMpImageRouteImport } from './routes/api/mp-image'
+import { Route as ApiMarketplaceFeedbackRouteImport } from './routes/api/marketplace-feedback'
 import { Route as ApiGeocodeBrandingRouteImport } from './routes/api/geocode-branding'
 import { Route as ApiGeocodeBeaconRouteImport } from './routes/api/geocode-beacon'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated.dashboard'
@@ -33,6 +34,7 @@ import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authe
 import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated.admin.index'
 import { Route as PSlugDemoRouteImport } from './routes/p.$slug.demo'
 import { Route as PSlugBuilderRouteImport } from './routes/p.$slug.builder'
+import { Route as MarketplaceFeedbackTokenRouteImport } from './routes/marketplace.feedback.$token'
 import { Route as LovableEmailSuppressionRouteImport } from './routes/lovable/email/suppression'
 import { Route as AuthenticatedDashboardVaultRouteImport } from './routes/_authenticated.dashboard.vault'
 import { Route as AuthenticatedDashboardUpgradeRouteImport } from './routes/_authenticated.dashboard.upgrade'
@@ -125,6 +127,11 @@ const ApiMpImageRoute = ApiMpImageRouteImport.update({
   path: '/api/mp-image',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiMarketplaceFeedbackRoute = ApiMarketplaceFeedbackRouteImport.update({
+  id: '/api/marketplace-feedback',
+  path: '/api/marketplace-feedback',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiGeocodeBrandingRoute = ApiGeocodeBrandingRouteImport.update({
   id: '/api/geocode-branding',
   path: '/api/geocode-branding',
@@ -171,6 +178,12 @@ const PSlugBuilderRoute = PSlugBuilderRouteImport.update({
   path: '/builder',
   getParentRoute: () => PSlugRoute,
 } as any)
+const MarketplaceFeedbackTokenRoute =
+  MarketplaceFeedbackTokenRouteImport.update({
+    id: '/marketplace/feedback/$token',
+    path: '/marketplace/feedback/$token',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const LovableEmailSuppressionRoute = LovableEmailSuppressionRouteImport.update({
   id: '/lovable/email/suppression',
   path: '/lovable/email/suppression',
@@ -288,6 +301,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof AuthenticatedDashboardRouteWithChildren
   '/api/geocode-beacon': typeof ApiGeocodeBeaconRoute
   '/api/geocode-branding': typeof ApiGeocodeBrandingRoute
+  '/api/marketplace-feedback': typeof ApiMarketplaceFeedbackRoute
   '/api/mp-image': typeof ApiMpImageRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -305,6 +319,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/upgrade': typeof AuthenticatedDashboardUpgradeRoute
   '/dashboard/vault': typeof AuthenticatedDashboardVaultRouteWithChildren
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
+  '/marketplace/feedback/$token': typeof MarketplaceFeedbackTokenRoute
   '/p/$slug/builder': typeof PSlugBuilderRoute
   '/p/$slug/demo': typeof PSlugDemoRoute
   '/admin/': typeof AuthenticatedAdminIndexRoute
@@ -328,6 +343,7 @@ export interface FileRoutesByTo {
   '/unsubscribe': typeof UnsubscribeRoute
   '/api/geocode-beacon': typeof ApiGeocodeBeaconRoute
   '/api/geocode-branding': typeof ApiGeocodeBrandingRoute
+  '/api/marketplace-feedback': typeof ApiMarketplaceFeedbackRoute
   '/api/mp-image': typeof ApiMpImageRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -344,6 +360,7 @@ export interface FileRoutesByTo {
   '/dashboard/upgrade': typeof AuthenticatedDashboardUpgradeRoute
   '/dashboard/vault': typeof AuthenticatedDashboardVaultRouteWithChildren
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
+  '/marketplace/feedback/$token': typeof MarketplaceFeedbackTokenRoute
   '/p/$slug/builder': typeof PSlugBuilderRoute
   '/p/$slug/demo': typeof PSlugDemoRoute
   '/admin': typeof AuthenticatedAdminIndexRoute
@@ -371,6 +388,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRouteWithChildren
   '/api/geocode-beacon': typeof ApiGeocodeBeaconRoute
   '/api/geocode-branding': typeof ApiGeocodeBrandingRoute
+  '/api/marketplace-feedback': typeof ApiMarketplaceFeedbackRoute
   '/api/mp-image': typeof ApiMpImageRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -388,6 +406,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard/upgrade': typeof AuthenticatedDashboardUpgradeRoute
   '/_authenticated/dashboard/vault': typeof AuthenticatedDashboardVaultRouteWithChildren
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
+  '/marketplace/feedback/$token': typeof MarketplaceFeedbackTokenRoute
   '/p/$slug/builder': typeof PSlugBuilderRoute
   '/p/$slug/demo': typeof PSlugDemoRoute
   '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
@@ -415,6 +434,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/api/geocode-beacon'
     | '/api/geocode-branding'
+    | '/api/marketplace-feedback'
     | '/api/mp-image'
     | '/email/unsubscribe'
     | '/invite/$token'
@@ -432,6 +452,7 @@ export interface FileRouteTypes {
     | '/dashboard/upgrade'
     | '/dashboard/vault'
     | '/lovable/email/suppression'
+    | '/marketplace/feedback/$token'
     | '/p/$slug/builder'
     | '/p/$slug/demo'
     | '/admin/'
@@ -455,6 +476,7 @@ export interface FileRouteTypes {
     | '/unsubscribe'
     | '/api/geocode-beacon'
     | '/api/geocode-branding'
+    | '/api/marketplace-feedback'
     | '/api/mp-image'
     | '/email/unsubscribe'
     | '/invite/$token'
@@ -471,6 +493,7 @@ export interface FileRouteTypes {
     | '/dashboard/upgrade'
     | '/dashboard/vault'
     | '/lovable/email/suppression'
+    | '/marketplace/feedback/$token'
     | '/p/$slug/builder'
     | '/p/$slug/demo'
     | '/admin'
@@ -497,6 +520,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard'
     | '/api/geocode-beacon'
     | '/api/geocode-branding'
+    | '/api/marketplace-feedback'
     | '/api/mp-image'
     | '/email/unsubscribe'
     | '/invite/$token'
@@ -514,6 +538,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard/upgrade'
     | '/_authenticated/dashboard/vault'
     | '/lovable/email/suppression'
+    | '/marketplace/feedback/$token'
     | '/p/$slug/builder'
     | '/p/$slug/demo'
     | '/_authenticated/admin/'
@@ -539,11 +564,13 @@ export interface RootRouteChildren {
   UnsubscribeRoute: typeof UnsubscribeRoute
   ApiGeocodeBeaconRoute: typeof ApiGeocodeBeaconRoute
   ApiGeocodeBrandingRoute: typeof ApiGeocodeBrandingRoute
+  ApiMarketplaceFeedbackRoute: typeof ApiMarketplaceFeedbackRoute
   ApiMpImageRoute: typeof ApiMpImageRoute
   EmailUnsubscribeRoute: typeof EmailUnsubscribeRoute
   InviteTokenRoute: typeof InviteTokenRoute
   PSlugRoute: typeof PSlugRouteWithChildren
   LovableEmailSuppressionRoute: typeof LovableEmailSuppressionRoute
+  MarketplaceFeedbackTokenRoute: typeof MarketplaceFeedbackTokenRoute
   LovableEmailQueueProcessRoute: typeof LovableEmailQueueProcessRoute
   LovableEmailTransactionalPreviewRoute: typeof LovableEmailTransactionalPreviewRoute
   LovableEmailTransactionalSendRoute: typeof LovableEmailTransactionalSendRoute
@@ -656,6 +683,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiMpImageRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/marketplace-feedback': {
+      id: '/api/marketplace-feedback'
+      path: '/api/marketplace-feedback'
+      fullPath: '/api/marketplace-feedback'
+      preLoaderRoute: typeof ApiMarketplaceFeedbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/geocode-branding': {
       id: '/api/geocode-branding'
       path: '/api/geocode-branding'
@@ -718,6 +752,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/p/$slug/builder'
       preLoaderRoute: typeof PSlugBuilderRouteImport
       parentRoute: typeof PSlugRoute
+    }
+    '/marketplace/feedback/$token': {
+      id: '/marketplace/feedback/$token'
+      path: '/marketplace/feedback/$token'
+      fullPath: '/marketplace/feedback/$token'
+      preLoaderRoute: typeof MarketplaceFeedbackTokenRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/lovable/email/suppression': {
       id: '/lovable/email/suppression'
@@ -949,11 +990,13 @@ const rootRouteChildren: RootRouteChildren = {
   UnsubscribeRoute: UnsubscribeRoute,
   ApiGeocodeBeaconRoute: ApiGeocodeBeaconRoute,
   ApiGeocodeBrandingRoute: ApiGeocodeBrandingRoute,
+  ApiMarketplaceFeedbackRoute: ApiMarketplaceFeedbackRoute,
   ApiMpImageRoute: ApiMpImageRoute,
   EmailUnsubscribeRoute: EmailUnsubscribeRoute,
   InviteTokenRoute: InviteTokenRoute,
   PSlugRoute: PSlugRouteWithChildren,
   LovableEmailSuppressionRoute: LovableEmailSuppressionRoute,
+  MarketplaceFeedbackTokenRoute: MarketplaceFeedbackTokenRoute,
   LovableEmailQueueProcessRoute: LovableEmailQueueProcessRoute,
   LovableEmailTransactionalPreviewRoute: LovableEmailTransactionalPreviewRoute,
   LovableEmailTransactionalSendRoute: LovableEmailTransactionalSendRoute,
