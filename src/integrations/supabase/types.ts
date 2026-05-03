@@ -1104,15 +1104,10 @@ export type Database = {
         Returns: {
           brokerage: string
           city: string
-          contacted_at: string | null
           created_at: string
-          disposition: Database["public"]["Enums"]["beacon_disposition"] | null
           email: string
-          exclusive_until: string | null
-          has_outreach: boolean
           id: string
-          is_currently_exclusive: boolean
-          is_leaked: boolean
+          is_first_match_with_me: boolean
           name: string
           region: string
           status: Database["public"]["Enums"]["beacon_status"]
@@ -1140,10 +1135,6 @@ export type Database = {
       get_user_tier: {
         Args: { check_env?: string; user_uuid: string }
         Returns: string
-      }
-      get_my_service_polygon: {
-        Args: never
-        Returns: Json
       }
       has_role: {
         Args: {
@@ -1234,10 +1225,6 @@ export type Database = {
           viewer_role: string
         }[]
       }
-      set_my_service_polygon: {
-        Args: { p_geojson?: Json | null }
-        Returns: boolean
-      }
       search_msp_directory: {
         Args: { p_city?: string; p_zip?: string }
         Returns: {
@@ -1262,7 +1249,6 @@ export type Database = {
     Enums: {
       app_role: "admin" | "provider" | "client"
       app_tier: "starter" | "pro"
-      beacon_disposition: "won" | "lost" | "unresponsive"
       beacon_status: "waiting" | "matched" | "unsubscribed" | "expired"
       invitation_status: "pending" | "accepted" | "expired" | "declined"
       license_status: "active" | "past_due" | "expired"
@@ -1416,7 +1402,6 @@ export const Constants = {
     Enums: {
       app_role: ["admin", "provider", "client"],
       app_tier: ["starter", "pro"],
-      beacon_disposition: ["won", "lost", "unresponsive"],
       beacon_status: ["waiting", "matched", "unsubscribed", "expired"],
       invitation_status: ["pending", "accepted", "expired", "declined"],
       license_status: ["active", "past_due", "expired"],
