@@ -1469,7 +1469,7 @@ ${hasAgentContact ? `<div id="agent-drawer">
     </div>
     <div class="modal-body">
       <p class="email-modal-intro">Choose an email option to open a draft with your message.</p>
-      <p class="email-modal-note">Use Copy email details if you prefer another email app, or if your service asks you to paste the message manually.</p>
+      <p class="email-modal-note">Gmail, Outlook, Yahoo, and Mail App can open drafts. For iCloud Mail, details are copied so you can paste after clicking Compose.</p>
       <section class="email-preview">
         <div>
           <div class="email-preview-label">To</div>
@@ -1489,7 +1489,7 @@ ${hasAgentContact ? `<div id="agent-drawer">
         <a id="email-option-gmail" class="email-option-service" href="#" target="_blank" rel="noopener">Gmail</a>
         <a id="email-option-outlook" class="email-option-service" href="#" target="_blank" rel="noopener">Outlook</a>
         <a id="email-option-yahoo" class="email-option-service" href="#" target="_blank" rel="noopener">Yahoo</a>
-        <a id="email-option-icloud" class="email-option-service" href="#" target="_blank" rel="noopener">iCloud Mail</a>
+        <a id="email-option-icloud" class="email-option-service" href="#" target="_blank" rel="noopener">iCloud Mail (copy + open)</a>
         <button id="email-option-copy" class="email-option-copy" type="button">Copy email details</button>
       </div>
       <div class="email-option-status" id="email-option-status" aria-live="polite"></div>
@@ -2081,7 +2081,7 @@ window.__closeEmailOptions=function(){
     ["email-option-gmail","presentationEmailGmail","Opening Gmail..."],
     ["email-option-outlook","presentationEmailOutlook","Opening Outlook..."],
     ["email-option-yahoo","presentationEmailYahoo","Opening Yahoo Mail..."],
-    ["email-option-icloud","presentationEmailIcloud","Opening iCloud Mail..."]
+    ["email-option-icloud","presentationEmailIcloud","Details copied. In iCloud Mail, click Compose and paste."]
   ];
   for(var i=0;i<optionLinks.length;i++){
     (function(cfg){
@@ -2091,7 +2091,9 @@ window.__closeEmailOptions=function(){
         ev.preventDefault();
         var href=el.getAttribute("href")||"#";
         if(cfg[0]==="email-option-icloud"){
-          copyContactText(getEmailOptionsText(),statusEl,"Copied details for iCloud Mail.","Could not copy email details.");
+          copyContactText(getEmailOptionsText(),statusEl,cfg[2],"Could not copy email details. Open iCloud Mail, then use Copy email details.");
+          openEmailOptionPopup(href,cfg[1],statusEl);
+          return;
         }
         if(openEmailOptionPopup(href,cfg[1],statusEl)&&statusEl) statusEl.textContent=cfg[2];
       });
