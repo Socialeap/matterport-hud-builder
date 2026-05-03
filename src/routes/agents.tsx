@@ -675,7 +675,7 @@ function DirectorySection() {
                   ) : (
                     <>
                       <Search className="size-4" />
-                      Find Studios
+                      Find MSPs w/Studio
                     </>
                   )}
                 </Button>
