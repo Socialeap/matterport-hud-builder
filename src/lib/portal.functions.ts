@@ -1134,8 +1134,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .hud-icon-btn{width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.12);border:none;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background 0.2s;flex-shrink:0;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
 .hud-icon-btn:hover{background:rgba(255,255,255,0.22)}
 .hud-icon-btn svg{width:14px;height:14px}
-#hud-agent-name{font-size:12px;color:rgba(255,255,255,0.75);white-space:nowrap;display:none}
-@media(min-width:520px){#hud-agent-name{display:block}}
 .hud-contact-btn{padding:5px 12px;border-radius:6px;font-size:12px;font-weight:600;border:none;color:#fff;cursor:pointer;background:${escapeHtml(accentColor)};transition:opacity 0.2s}
 .hud-contact-btn:hover{opacity:0.85}
 #hud-mute-btn{display:none}
@@ -1377,7 +1375,7 @@ ${askAssets.css}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
       </button>
       ${askAssets.toggleBtn}
-      <span id="hud-agent-name"></span>
+      
       ${hasAgentContact ? `<button id="hud-live-tour-btn" class="hud-live-tour-btn" type="button" aria-label="Live Tour" title="Live Tour" aria-expanded="false" onclick="window.__openLiveTour&&window.__openLiveTour()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4"/><path d="M5 7l3 3"/><path d="M19 7l-3 3"/><circle cx="12" cy="14" r="4"/><path d="M8 22h8"/><path d="M12 18v4"/></svg><span class="hud-live-tour-label">Live Tour</span><span class="lt-dot" aria-hidden="true"></span></button>` : ""}
       ${hasAgentContact ? `<button class="hud-contact-btn" onclick="window.__openContact&&window.__openContact()">Contact</button>` : ""}
     </div>
@@ -1404,13 +1402,13 @@ ${hasAgentContact ? `<div id="agent-drawer">
     ${agent.welcomeNote ? `<div class="drawer-welcome"><p>${escapeHtml(String(agent.welcomeNote))}</p></div>` : ""}
     ${agent.phone ? `<div class="drawer-actions">
       ${agent.phone ? `<a href="tel:${escapeHtml(String(agent.phone))}" class="drawer-action-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.27h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.61a16 16 0 0 0 6 6l.91-.91a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.73 16l.19.92z"/></svg>Call ${escapeHtml(String(agent.phone))}</a>` : ""}
-      ${agent.phone ? `<a href="sms:${escapeHtml(String(agent.phone))}" class="drawer-action-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Text ${escapeHtml(String(agent.phone))}</a>` : ""}
+      
     </div>` : ""}
     ${(agentHasEmail || agent.phone) ? `<div class="drawer-quickmsg" id="drawer-quickmsg">
       <div class="drawer-quickmsg-label">Ask a quick question</div>
       <div class="drawer-qchips" id="drawer-qchips" role="group" aria-label="Question templates"></div>
       <textarea class="drawer-qfield drawer-qtextarea" id="drawer-qmsg" rows="4" placeholder="Type your question, or pick a topic above…" aria-label="Your message"></textarea>
-      <input type="email" class="drawer-qfield" id="drawer-qemail" placeholder="Your email (so we can reply)" autocomplete="email" aria-label="Your email">
+      
       <div class="drawer-qsend-row">
         ${agentHasEmail ? `<a id="drawer-qsend-email" class="drawer-qsend primary" href="#" aria-disabled="true" role="button" target="_blank" rel="noopener">Email ${escapeHtml(agentFirstName)}</a>` : ""}
         ${agent.phone ? `<a id="drawer-qsend-sms" class="drawer-qsend secondary" href="#" aria-disabled="true" role="button">Text ${escapeHtml(agentFirstName)}</a>` : ""}
@@ -1832,7 +1830,7 @@ function updateHud(i){
   var p=props[i];
   if(!p) return;
   var elLoc=document.getElementById("hud-prop-loc");
-  var elAgent=document.getElementById("hud-agent-name");
+  var elAgent=null;
   if(elLoc){
     // Compose "{property name} \u2014 {address} \u2014 {city/state}" but
     // skip any segment that already duplicates the brand name shown above
@@ -1847,8 +1845,6 @@ function updateHud(i){
     if(loc && addr.toLowerCase().indexOf(loc.toLowerCase())===-1 && loc.toLowerCase()!==brand) parts.push(loc);
     elLoc.textContent=parts.join(" \u2014 ");
   }
-  if(elAgent) elAgent.textContent=(C.agent&&C.agent.name)?C.agent.name:"";
-  if(elAgent) elAgent.textContent=(C.agent&&C.agent.name)?C.agent.name:"";
   var mapBtn=document.getElementById("hud-map-btn");
   if(mapBtn) mapBtn.style.display=(p.enableNeighborhoodMap&&p.location)?"":"none";
   var cinBtn=document.getElementById("hud-cinema-btn");
@@ -2112,7 +2108,7 @@ window.__closeEmailOptions=function(){
   if(!wrap) return;
   var chipsEl=document.getElementById("drawer-qchips");
   var msgEl=document.getElementById("drawer-qmsg");
-  var emailEl=document.getElementById("drawer-qemail");
+  
   var emailBtn=document.getElementById("drawer-qsend-email");
   var smsBtn=document.getElementById("drawer-qsend-sms");
   var copyBtn=document.getElementById("drawer-qcopy");
@@ -2163,9 +2159,8 @@ window.__closeEmailOptions=function(){
   }
   function buildBody(forSms){
     var msg=(msgEl.value||"").trim();
-    var visitorEmail=(emailEl.value||"").trim();
-    if(forSms) return msg+(visitorEmail?"\\nReply to: "+visitorEmail:"");
-    return buildVisitorEmailBody(msg,visitorEmail,["Property: "+currentPropName()]);
+    if(forSms) return msg;
+    return buildVisitorEmailBody(msg,"",["Property: "+currentPropName()]);
   }
   function buildSmsUrl(){
     if(!agentPhone) return "";
@@ -2192,7 +2187,6 @@ window.__closeEmailOptions=function(){
     if(copyBtn) copyBtn.setAttribute("aria-disabled", ok ? "false":"true");
   }
   msgEl.addEventListener("input",refresh);
-  emailEl.addEventListener("input",refresh);
   if(emailBtn){
     emailBtn.addEventListener("click",function(ev){
       if(emailBtn.getAttribute("aria-disabled")==="true"){
@@ -2202,11 +2196,6 @@ window.__closeEmailOptions=function(){
       if(!agentEmail){
         ev.preventDefault();
         statusEl.textContent="No email address configured.";
-        return;
-      }
-      if(!isValidVisitorEmail(emailEl.value)){
-        ev.preventDefault();
-        statusEl.textContent="Please enter a valid email address or leave it blank.";
         return;
       }
       var subject=buildSubject();
