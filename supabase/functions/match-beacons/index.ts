@@ -29,10 +29,12 @@ interface ClaimedMatch {
   beacon_city: string;
   beacon_region: string | null;
   provider_id: string;
+  provider_email: string | null;
   provider_brand_name: string;
   provider_slug: string | null;
   provider_tier: "starter" | "pro";
   provider_custom_domain: string | null;
+  exclusive_until: string | null;
 }
 
 function buildStudioUrl(match: ClaimedMatch): string | null {
@@ -92,58 +94,102 @@ serve(async (req) => {
 
   const matches = claimed ?? [];
 
-  let enqueued = 0;
+  let enqueuedAgent = 0;
+  let enqueuedProvider = 0;
   let suppressed = 0;
   let failed = 0;
 
   for (const match of matches) {
-    // Suppression check — if the agent has unsubscribed/bounced, skip.
-    // The notification row is already inserted (claim is committed) so
-    // we don't re-attempt — the beacon is permanently considered
-    // "first matched" to this provider but no email goes out.
-    const { data: suppressedRow } = await supabase
-      .from("suppressed_emails")
-      .select("email")
-      .eq("email", match.beacon_email)
-      .maybeSingle();
-
-    if (suppressedRow) {
-      suppressed += 1;
-      continue;
-    }
-
     const studioUrl = buildStudioUrl(match);
     const cityLabel = match.beacon_region
       ? `${match.beacon_city}, ${match.beacon_region}`
       : match.beacon_city;
 
-    const { error: enqueueError } = await supabase.rpc("enqueue_email", {
+    // ------------------------------------------------------
+    // Agent-side: existing "MSP is now active in your area"
+    // notification. Suppression check is per-recipient.
+    // ------------------------------------------------------
+    const { data: agentSuppressed } = await supabase
+      .from("suppressed_emails")
+      .select("email")
+      .eq("email", match.beacon_email)
+      .maybeSingle();
+
+    if (agentSuppressed) {
+      suppressed += 1;
+    } else {
+      const { error: agentEnqueueError } = await supabase.rpc("enqueue_email", {
+        queue_name: "transactional_emails",
+        payload: {
+          template_name: "beacon-match-found",
+          recipient_email: match.beacon_email,
+          data: {
+            agentName: match.beacon_name ?? "there",
+            city: cityLabel,
+            mspBrandName: match.provider_brand_name,
+            studioUrl,
+          },
+        },
+      });
+
+      if (agentEnqueueError) {
+        console.error("match-beacons: agent enqueue failed:", agentEnqueueError);
+        failed += 1;
+      } else {
+        enqueuedAgent += 1;
+      }
+    }
+
+    // ------------------------------------------------------
+    // Pro-side: new "you have an exclusive lead, 72h clock"
+    // notification. Skip silently if the RPC didn't return an
+    // email (provider row exists but no auth.users.email — should
+    // not happen in practice but defended against).
+    // ------------------------------------------------------
+    if (!match.provider_email) {
+      continue;
+    }
+
+    const { data: providerSuppressed } = await supabase
+      .from("suppressed_emails")
+      .select("email")
+      .eq("email", match.provider_email)
+      .maybeSingle();
+    if (providerSuppressed) {
+      // Don't count toward the agent suppressed counter — these
+      // are different recipients.
+      continue;
+    }
+
+    const { error: providerEnqueueError } = await supabase.rpc("enqueue_email", {
       queue_name: "transactional_emails",
       payload: {
-        template_name: "beacon-match-found",
-        recipient_email: match.beacon_email,
+        template_name: "marketplace-lead-assigned",
+        recipient_email: match.provider_email,
         data: {
-          agentName: match.beacon_name ?? "there",
+          providerName: match.provider_brand_name,
+          agentName: match.beacon_name,
           city: cityLabel,
-          mspBrandName: match.provider_brand_name,
+          expiresAtIso: match.exclusive_until,
+          dashboardUrl: `${SITE_URL}/dashboard/marketplace`,
           studioUrl,
         },
       },
     });
 
-    if (enqueueError) {
-      console.error("match-beacons: enqueue failed:", enqueueError);
+    if (providerEnqueueError) {
+      console.error("match-beacons: provider enqueue failed:", providerEnqueueError);
       failed += 1;
-      continue;
+    } else {
+      enqueuedProvider += 1;
     }
-
-    enqueued += 1;
   }
 
   return json(200, {
     success: true,
     claimed: matches.length,
-    enqueued,
+    enqueued_agent: enqueuedAgent,
+    enqueued_provider: enqueuedProvider,
     suppressed,
     failed,
   });

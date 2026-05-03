@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Card,
@@ -8,29 +8,24 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Mail, MapPin, Sparkles, Building2, Lock } from "lucide-react";
+import { Loader2, Sparkles, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { useMspAccess } from "@/hooks/use-msp-access";
-import type { Database } from "@/integrations/supabase/types";
+import { LeadCard, type MarketplaceLead } from "@/components/marketplace/LeadCard";
 
 export const Route = createFileRoute("/_authenticated/dashboard/marketplace")({
   component: MarketplacePage,
 });
 
-type MatchedBeacon = Database["public"]["Functions"]["get_my_matched_beacons"]["Returns"][number];
-
 function MarketplacePage() {
   const { hasPaid } = useMspAccess();
-  const [rows, setRows] = useState<MatchedBeacon[] | null>(null);
+  const [rows, setRows] = useState<MarketplaceLead[] | null>(null);
   const [loading, setLoading] = useState(true);
-  
 
   const isLocked = !hasPaid;
 
   useEffect(() => {
-    // Don't hit the RPC for unpaid MSPs — it will 401/raise. Show preview instead.
     if (isLocked) {
       setLoading(false);
       return;
@@ -48,7 +43,10 @@ function MarketplacePage() {
         return;
       }
 
-      setRows(data ?? []);
+      // RPC return shape was extended in PR2 with exclusive_until,
+      // contacted_at, is_currently_exclusive. The auto-generated
+      // Database types lag the migration; cast through unknown.
+      setRows((data as unknown as MarketplaceLead[]) ?? []);
       setLoading(false);
     })();
 
@@ -57,8 +55,37 @@ function MarketplacePage() {
     };
   }, [isLocked]);
 
-  // Sample data shown to unpaid MSPs as a teaser of what Pro unlocks.
-  const sampleBeacons: MatchedBeacon[] = [
+  // Bucket leads into the three sections derived from the
+  // exclusive-window state.
+  //
+  //   Active            : currently mine and the window is open,
+  //                       no contact yet
+  //   Awaiting Response : I contacted them; waiting on the agent
+  //                       (PR3 will populate this via the composer
+  //                       — in PR2 it's almost always empty)
+  //   Past              : window closed without contact, or I was
+  //                       re-pooled past in favor of another Pro
+  const buckets = useMemo(() => {
+    const active: MarketplaceLead[] = [];
+    const awaiting: MarketplaceLead[] = [];
+    const past: MarketplaceLead[] = [];
+    const now = Date.now();
+    for (const row of rows ?? []) {
+      const exp = row.exclusive_until ? new Date(row.exclusive_until).getTime() : null;
+      const windowOpen =
+        row.is_currently_exclusive && exp !== null && exp > now;
+      if (row.contacted_at) {
+        awaiting.push(row);
+      } else if (windowOpen) {
+        active.push(row);
+      } else {
+        past.push(row);
+      }
+    }
+    return { active, awaiting, past };
+  }, [rows]);
+
+  const sampleBeacons: MarketplaceLead[] = [
     {
       id: "sample-1",
       name: "Jane Doe",
@@ -67,9 +94,11 @@ function MarketplacePage() {
       city: "Your City",
       region: "CA",
       zip: "90210",
-      status: "waiting",
-      created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(),
-      is_first_match_with_me: true,
+      status: "matched",
+      created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 1).toISOString(),
+      exclusive_until: new Date(Date.now() + 1000 * 60 * 60 * 60).toISOString(),
+      contacted_at: null,
+      is_currently_exclusive: true,
     },
     {
       id: "sample-2",
@@ -79,21 +108,11 @@ function MarketplacePage() {
       city: "Your City",
       region: "CA",
       zip: "90211",
-      status: "waiting",
-      created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 5).toISOString(),
-      is_first_match_with_me: true,
-    },
-    {
-      id: "sample-3",
-      name: "Priya Patel",
-      email: "priya.p@homefinders.io",
-      brokerage: "HomeFinders",
-      city: "Your City",
-      region: "CA",
-      zip: "90212",
       status: "matched",
-      created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 9).toISOString(),
-      is_first_match_with_me: false,
+      created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(),
+      exclusive_until: new Date(Date.now() + 1000 * 60 * 60 * 18).toISOString(),
+      contacted_at: null,
+      is_currently_exclusive: true,
     },
   ];
 
@@ -101,9 +120,11 @@ function MarketplacePage() {
     <div className="mx-auto max-w-4xl space-y-6">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Marketplace Contacts</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Marketplace Leads</h1>
           <p className="text-sm text-muted-foreground">
-            Agents who joined the waitlist for a Pro Partner in your service area.
+            Each lead is yours <em>exclusively</em> for 72 hours. If you don't
+            reach out before the window closes, the lead automatically
+            re-pools to the next Pro in your area.
           </p>
         </div>
         <Link to="/dashboard/branding">
@@ -120,7 +141,7 @@ function MarketplacePage() {
             className="space-y-3 pointer-events-none select-none opacity-60 blur-[2px]"
           >
             {sampleBeacons.map((row) => (
-              <BeaconCard key={row.id} beacon={row} />
+              <LeadCard key={row.id} lead={row} />
             ))}
           </div>
           <div className="absolute inset-0 flex items-center justify-center p-4">
@@ -132,8 +153,8 @@ function MarketplacePage() {
                     Unlock real agent contacts with Pro
                   </h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Upgrade to Pro to see — and reach out to — agents in your
-                    service area who've requested a local 3D presentation partner.
+                    Upgrade to Pro to receive — and exclusively own for 72
+                    hours — leads from agents in your service area.
                   </p>
                 </div>
                 <Link to="/dashboard/upgrade">
@@ -151,29 +172,45 @@ function MarketplacePage() {
             <Loader2 className="size-6 animate-spin text-muted-foreground" />
           </CardContent>
         </Card>
-      ) : rows && rows.length > 0 ? (
-        <div className="space-y-3">
-          {rows.map((row) => (
-            <BeaconCard key={row.id} beacon={row} />
-          ))}
-        </div>
-      ) : (
+      ) : (rows?.length ?? 0) === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center gap-3 p-10 text-center">
             <Sparkles className="size-8 text-muted-foreground" />
             <div>
-              <h3 className="text-base font-semibold">No contacts yet</h3>
+              <h3 className="text-base font-semibold">No leads yet</h3>
               <p className="mt-1 max-w-md text-sm text-muted-foreground">
-                Once your listing is public and an agent in your service area joins
-                the waitlist, they'll appear here. Make sure your{" "}
+                Once your listing is public and an agent in your service area
+                joins the waitlist, they'll appear here. Make sure your{" "}
                 <Link to="/dashboard/branding" className="text-primary underline">
                   Marketplace Listing
                 </Link>{" "}
-                is enabled with your city, state, and service ZIPs configured.
+                is enabled with your city, state, and service area configured.
               </p>
             </div>
           </CardContent>
         </Card>
+      ) : (
+        <div className="space-y-8">
+          <Section
+            title="Active Leads"
+            description="Yours exclusively. Reach out before the countdown ends."
+            empty="No open windows right now. New leads will appear here automatically."
+            leads={buckets.active}
+          />
+          <Section
+            title="Awaiting Your Response"
+            description="You've reached out — waiting on the agent."
+            empty="Nothing waiting on a reply yet. Once you contact a lead, it shows up here."
+            leads={buckets.awaiting}
+          />
+          <Section
+            title="Past Leads"
+            description="Windows that closed without contact, or that re-pooled to another Pro."
+            empty="No past leads yet."
+            leads={buckets.past}
+            collapsedByDefault
+          />
+        </div>
       )}
 
       <Card className="border-dashed">
@@ -181,9 +218,10 @@ function MarketplacePage() {
           <CardTitle className="text-base">A note on outreach</CardTitle>
           <CardDescription>
             Each agent below explicitly opted in to be contacted by a local Pro
-            Partner when one becomes active. Reach out via email — be specific
-            about your local market and the value of a 3D presentation for
-            their listings. Avoid mass-messaging.
+            Partner when one becomes active. Your 72-hour exclusive window
+            means no other Pro is being shown the same lead — make it count.
+            Be specific about your local market and the value of a 3D
+            presentation for their listings.
           </CardDescription>
         </CardHeader>
       </Card>
@@ -191,60 +229,58 @@ function MarketplacePage() {
   );
 }
 
-function BeaconCard({ beacon }: { beacon: MatchedBeacon }) {
-  const submittedAt = new Date(beacon.created_at).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+interface SectionProps {
+  title: string;
+  description: string;
+  empty: string;
+  leads: MarketplaceLead[];
+  collapsedByDefault?: boolean;
+}
+
+function Section({
+  title,
+  description,
+  empty,
+  leads,
+  collapsedByDefault = false,
+}: SectionProps) {
+  const [expanded, setExpanded] = useState(!collapsedByDefault);
 
   return (
-    <Card>
-      <CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-start sm:gap-6">
-        <div className="flex flex-1 flex-col gap-2 min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-base font-semibold">
-              {beacon.name || "Anonymous agent"}
-            </h3>
-            {beacon.is_first_match_with_me && (
-              <Badge variant="default" className="text-[10px]">
-                Matched to you
-              </Badge>
-            )}
-            {beacon.status === "matched" && !beacon.is_first_match_with_me && (
-              <Badge variant="outline" className="text-[10px]">
-                Matched elsewhere
-              </Badge>
-            )}
-          </div>
-
-          {beacon.brokerage && (
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Building2 className="size-3" />
-              {beacon.brokerage}
-            </div>
-          )}
-
-          <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1">
-              <MapPin className="size-3" />
-              {beacon.city}
-              {beacon.region ? `, ${beacon.region}` : ""}
-              {beacon.zip ? ` · ${beacon.zip}` : ""}
+    <section className="space-y-3">
+      <header className="flex items-end justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold tracking-tight">
+            {title}
+            <span className="ml-2 text-sm font-normal text-muted-foreground">
+              {leads.length}
             </span>
-            <span>Joined {submittedAt}</span>
-          </div>
+          </h2>
+          <p className="text-xs text-muted-foreground">{description}</p>
         </div>
+        {collapsedByDefault && leads.length > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-xs"
+            onClick={() => setExpanded((v) => !v)}
+          >
+            {expanded ? "Hide" : "Show"}
+          </Button>
+        )}
+      </header>
 
-        <div className="flex shrink-0 items-center gap-2">
-          <a href={`mailto:${beacon.email}`}>
-            <Button size="sm" className="gap-1.5">
-              <Mail className="size-3.5" />
-              {beacon.email}
-            </Button>
-          </a>
+      {leads.length === 0 ? (
+        <p className="rounded-md border border-dashed border-border px-4 py-3 text-xs text-muted-foreground">
+          {empty}
+        </p>
+      ) : expanded ? (
+        <div className="space-y-3">
+          {leads.map((lead) => (
+            <LeadCard key={lead.id} lead={lead} />
+          ))}
         </div>
-      </CardContent>
-    </Card>
+      ) : null}
+    </section>
   );
 }

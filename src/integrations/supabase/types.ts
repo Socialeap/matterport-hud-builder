@@ -1104,10 +1104,12 @@ export type Database = {
         Returns: {
           brokerage: string
           city: string
+          contacted_at: string | null
           created_at: string
           email: string
+          exclusive_until: string | null
           id: string
-          is_first_match_with_me: boolean
+          is_currently_exclusive: boolean
           name: string
           region: string
           status: Database["public"]["Enums"]["beacon_status"]
