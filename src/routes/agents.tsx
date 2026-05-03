@@ -712,16 +712,16 @@ function DirectorySection() {
             {/* Results */}
             <div className="space-y-4">
               {!hasSearched && (
-                <div className="rounded-lg border border-dashed border-white/15 bg-white/[0.02] p-10 text-center">
-                  <Search className="mx-auto mb-3 size-8 text-white/30" />
-                  <p className="text-sm text-white/60">
-                    Enter a city or ZIP to find your local 3D Presentation Studio Pro Partner.
-                  </p>
-                </div>
+                <DemoPreview
+                  mocks={visibleMocks}
+                  defaultCity={city}
+                  defaultRegion={region}
+                  defaultZip={zip}
+                />
               )}
 
               {hasSearched && !hasResults && (
-                <div className="space-y-4">
+                <div className="space-y-6">
                   <div className="rounded-lg border border-amber-300/30 bg-amber-300/5 p-5">
                     <h3 className="text-base font-semibold text-amber-100">
                       No Pro Partner in {lastQuery!.city || lastQuery!.zip} yet.
@@ -737,6 +737,7 @@ function DirectorySection() {
                     defaultZip={lastQuery!.zip}
                     variant="dark"
                   />
+                  <DemoPreview mocks={visibleMocks} hideForm />
                 </div>
               )}
 
