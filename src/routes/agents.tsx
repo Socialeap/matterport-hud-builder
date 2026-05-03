@@ -900,3 +900,74 @@ function MSPCard({ msp, isSample = false }: { msp: DirectoryMSP; isSample?: bool
     </Card>
   );
 }
+
+/* ------------------------------------------------------------------ */
+/*  Demo preview — sample MSP cards + waitlist form                    */
+/* ------------------------------------------------------------------ */
+
+function DemoPreview({
+  mocks,
+  defaultCity = "",
+  defaultRegion = "",
+  defaultZip = "",
+  hideForm = false,
+}: {
+  mocks: DirectoryMSP[];
+  defaultCity?: string;
+  defaultRegion?: string;
+  defaultZip?: string;
+  hideForm?: boolean;
+}) {
+  return (
+    <div className="space-y-6">
+      <div className="flex items-start gap-3 rounded-lg border border-cyan-300/30 bg-cyan-300/5 p-4">
+        <Info className="mt-0.5 size-4 shrink-0 text-cyan-300" />
+        <div className="space-y-1 text-sm">
+          <p className="font-semibold text-cyan-100">Live Directory launching soon</p>
+          <p className="text-white/70">
+            The studios below are sample listings shown for demonstration. Use the
+            filters to preview how the directory will work, then drop your email below
+            to be notified the moment Pro Partners activate near you.
+          </p>
+        </div>
+      </div>
+
+      <div>
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-white/50">
+          Sample studios
+        </p>
+        {mocks.length > 0 ? (
+          <div className="grid gap-4 sm:grid-cols-2">
+            {mocks.map((m) => (
+              <MSPCard key={m.brand_name} msp={m} isSample />
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-lg border border-dashed border-white/15 bg-white/[0.02] p-6 text-center">
+            <p className="text-sm text-white/60">
+              No sample studios match every selected specialty. Try removing a filter.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {!hideForm && (
+        <div className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
+          <h3 className="text-base font-semibold text-white">
+            Notify me when a Pro Partner is live in my area
+          </h3>
+          <p className="mt-1 mb-4 text-sm text-white/60">
+            Agents and property managers — be first in line. We'll email you the moment
+            an MSP activates locally and offers capture + studio services in your market.
+          </p>
+          <BeaconForm
+            defaultCity={defaultCity}
+            defaultRegion={defaultRegion}
+            defaultZip={defaultZip}
+            variant="dark"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
