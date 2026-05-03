@@ -675,6 +675,56 @@ function DirectorySection() {
   );
 }
 
+function FilterGroup({
+  title,
+  subtitle,
+  options,
+  selected,
+  onToggle,
+}: {
+  title: string;
+  subtitle?: string;
+  options: ReadonlyArray<FilterOption>;
+  selected: Set<MarketplaceSpecialty>;
+  onToggle: (id: MarketplaceSpecialty) => void;
+}) {
+  return (
+    <div>
+      <div className="mb-3">
+        <p className="text-xs font-semibold uppercase tracking-wider text-white/60">{title}</p>
+        {subtitle && <p className="mt-0.5 text-[10px] text-white/40">{subtitle}</p>}
+      </div>
+      <div className="space-y-2">
+        {options.map((f) => {
+          const checked = selected.has(f.value);
+          const Icon = f.icon;
+          return (
+            <label
+              key={f.value}
+              className={`flex cursor-pointer items-center gap-2.5 rounded-md border px-2.5 py-2 text-sm transition-colors ${
+                checked
+                  ? "border-cyan-300/50 bg-cyan-300/10 text-white"
+                  : "border-white/10 bg-white/5 text-white/70 hover:border-white/20 hover:text-white"
+              }`}
+            >
+              <Checkbox
+                checked={checked}
+                onCheckedChange={() => onToggle(f.value)}
+                className="border-white/30 data-[state=checked]:bg-cyan-400 data-[state=checked]:text-[#0a0e27]"
+              />
+              <Icon className="size-3.5 shrink-0 opacity-70" />
+              <span className="flex-1 truncate">{f.label}</span>
+              {f.note && (
+                <span className="shrink-0 text-[10px] text-white/40">{f.note}</span>
+              )}
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function MSPCard({ msp }: { msp: DirectoryMSP }) {
   const isPro = msp.tier === "pro";
   const studioUrl = msp.slug
