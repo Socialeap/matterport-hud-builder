@@ -815,7 +815,7 @@ function FilterGroup({
   );
 }
 
-function MSPCard({ msp }: { msp: DirectoryMSP }) {
+function MSPCard({ msp, isSample = false }: { msp: DirectoryMSP; isSample?: boolean }) {
   const isPro = msp.tier === "pro";
   const studioUrl = msp.slug
     ? buildStudioUrl(msp.slug, { tier: msp.tier, customDomain: null })
@@ -840,11 +840,18 @@ function MSPCard({ msp }: { msp: DirectoryMSP }) {
           <div className="min-w-0 flex-1">
             <div className="flex items-start justify-between gap-2">
               <h3 className="truncate text-base font-semibold text-white">{msp.brand_name}</h3>
-              {isPro && (
-                <Badge className="shrink-0 bg-cyan-400/15 text-cyan-200 ring-1 ring-cyan-300/30">
-                  Pro
-                </Badge>
-              )}
+              <div className="flex shrink-0 items-center gap-1.5">
+                {isSample && (
+                  <Badge className="bg-slate-400/15 text-slate-200 ring-1 ring-slate-300/30">
+                    Sample
+                  </Badge>
+                )}
+                {isPro && (
+                  <Badge className="bg-cyan-400/15 text-cyan-200 ring-1 ring-cyan-300/30">
+                    Pro
+                  </Badge>
+                )}
+              </div>
             </div>
             <p className="flex items-center gap-1 text-xs text-white/50">
               <MapPin className="size-3" />
