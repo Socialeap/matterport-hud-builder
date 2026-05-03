@@ -181,6 +181,9 @@ serve(async (req) => {
         // Still return 200 — the data exists, the operator can investigate.
         return json(200, { success: true });
       }
+      // Resubmission may also unblock matching if a new MSP went public
+      // since the original submission. Fire and forget.
+      void triggerMatcher();
       return json(200, { success: true });
     }
 
@@ -188,5 +191,38 @@ serve(async (req) => {
     return json(500, { error: "Could not save beacon" });
   }
 
+  // Trigger the matcher so the new beacon gets emailed to a Pro Partner
+  // in real time. We don't await — the matcher runs independently and
+  // its failure must not affect the beacon-capture response.
+  void triggerMatcher();
+
   return json(200, { success: true });
 });
+
+/**
+ * Fire-and-forget invocation of the match-beacons Edge Function.
+ *
+ * Why server-to-server rather than letting the matcher run on a
+ * cron: latency. An agent who just submitted a beacon should get
+ * the match email within seconds when an MSP already serves their
+ * area, not after a cron tick.
+ *
+ * The matcher is global and idempotent, so calling it from many
+ * trigger points is safe.
+ */
+function triggerMatcher(): Promise<void> {
+  const url = `${Deno.env.get("SUPABASE_URL")}/functions/v1/match-beacons`;
+  return fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""}`,
+    },
+    body: "{}",
+  })
+    .then(() => undefined)
+    .catch((err) => {
+      // Log but never throw — matcher invocation is best-effort.
+      console.error("capture-beacon: matcher invocation failed:", err);
+    });
+}

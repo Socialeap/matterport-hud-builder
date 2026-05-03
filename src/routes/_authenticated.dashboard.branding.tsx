@@ -329,6 +329,23 @@ function BrandingPage() {
         service_zips: parsedZips,
         specialties: allowedSpecialties,
       };
+
+      // Fire the marketplace matcher when the listing is public AND
+      // either just flipped public OR the service area changed. The
+      // matcher is global + idempotent so we don't need to wait on it
+      // or surface its result to the user.
+      const wentPublic =
+        updated.is_directory_public && !savedSnapshot.is_directory_public;
+      const serviceAreaChanged =
+        updated.is_directory_public &&
+        (updated.primary_city !== savedSnapshot.primary_city ||
+          updated.region !== savedSnapshot.region ||
+          JSON.stringify(updated.service_zips) !==
+            JSON.stringify(savedSnapshot.service_zips));
+      if (wentPublic || serviceAreaChanged) {
+        void supabase.functions.invoke("match-beacons", { body: {} });
+      }
+
       setBranding(updated);
       setSavedSnapshot(updated);
       savedSnapshotRef.current = updated;

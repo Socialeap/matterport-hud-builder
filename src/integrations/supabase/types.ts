@@ -1138,9 +1138,57 @@ export type Database = {
         }
         Returns: number
       }
+      claim_pending_beacon_matches: {
+        Args: { p_limit?: number }
+        Returns: {
+          beacon_id: string
+          beacon_email: string
+          beacon_name: string | null
+          beacon_city: string
+          beacon_region: string | null
+          provider_id: string
+          provider_brand_name: string
+          provider_slug: string | null
+          provider_tier: Database["public"]["Enums"]["app_tier"]
+          provider_custom_domain: string | null
+        }[]
+      }
+      get_my_matched_beacons: {
+        Args: Record<string, never>
+        Returns: {
+          id: string
+          email: string
+          name: string | null
+          brokerage: string | null
+          city: string
+          region: string | null
+          zip: string | null
+          status: Database["public"]["Enums"]["beacon_status"]
+          is_first_match_with_me: boolean
+          created_at: string
+          matched_at: string | null
+        }[]
+      }
+      is_provider_serving_location: {
+        Args: {
+          p_provider_id: string
+          p_city: string | null
+          p_region: string | null
+          p_zip: string | null
+        }
+        Returns: boolean
+      }
       provider_has_paid_access: {
         Args: { _provider_id: string }
         Returns: boolean
+      }
+      public_beacon_demand: {
+        Args: Record<string, never>
+        Returns: {
+          city: string
+          region: string
+          waiting_count: number
+        }[]
       }
       read_ask_quota_counter: {
         Args: { p_property_uuid: string; p_saved_model_id: string }
@@ -1200,6 +1248,18 @@ export type Database = {
           provider_brand_name: string
           viewer_matches_provider: boolean
           viewer_role: string
+        }[]
+      }
+      search_msp_directory: {
+        Args: { p_city?: string | null; p_zip?: string | null }
+        Returns: {
+          brand_name: string
+          logo_url: string | null
+          primary_city: string
+          region: string
+          slug: string | null
+          specialties: Database["public"]["Enums"]["marketplace_specialty"][]
+          tier: Database["public"]["Enums"]["app_tier"]
         }[]
       }
       set_client_byok_active: {

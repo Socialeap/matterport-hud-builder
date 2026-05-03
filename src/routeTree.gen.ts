@@ -14,6 +14,7 @@ import { Route as TermsRouteImport } from './routes/terms'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as OpportunitiesRouteImport } from './routes/opportunities'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as AgentsRouteImport } from './routes/agents'
@@ -37,6 +38,7 @@ import { Route as AuthenticatedDashboardStatsRouteImport } from './routes/_authe
 import { Route as AuthenticatedDashboardPricingRouteImport } from './routes/_authenticated.dashboard.pricing'
 import { Route as AuthenticatedDashboardPayoutsRouteImport } from './routes/_authenticated.dashboard.payouts'
 import { Route as AuthenticatedDashboardOrdersRouteImport } from './routes/_authenticated.dashboard.orders'
+import { Route as AuthenticatedDashboardMarketplaceRouteImport } from './routes/_authenticated.dashboard.marketplace'
 import { Route as AuthenticatedDashboardDemoRouteImport } from './routes/_authenticated.dashboard.demo'
 import { Route as AuthenticatedDashboardClientsRouteImport } from './routes/_authenticated.dashboard.clients'
 import { Route as AuthenticatedDashboardBrandingRouteImport } from './routes/_authenticated.dashboard.branding'
@@ -70,6 +72,11 @@ const ResetPasswordRoute = ResetPasswordRouteImport.update({
 const PrivacyRoute = PrivacyRouteImport.update({
   id: '/privacy',
   path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OpportunitiesRoute = OpportunitiesRouteImport.update({
+  id: '/opportunities',
+  path: '/opportunities',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -193,6 +200,12 @@ const AuthenticatedDashboardOrdersRoute =
     path: '/orders',
     getParentRoute: () => AuthenticatedDashboardRoute,
   } as any)
+const AuthenticatedDashboardMarketplaceRoute =
+  AuthenticatedDashboardMarketplaceRouteImport.update({
+    id: '/marketplace',
+    path: '/marketplace',
+    getParentRoute: () => AuthenticatedDashboardRoute,
+  } as any)
 const AuthenticatedDashboardDemoRoute =
   AuthenticatedDashboardDemoRouteImport.update({
     id: '/demo',
@@ -253,6 +266,7 @@ export interface FileRoutesByFullPath {
   '/agents': typeof AgentsRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
+  '/opportunities': typeof OpportunitiesRoute
   '/privacy': typeof PrivacyRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
@@ -269,6 +283,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/branding': typeof AuthenticatedDashboardBrandingRoute
   '/dashboard/clients': typeof AuthenticatedDashboardClientsRoute
   '/dashboard/demo': typeof AuthenticatedDashboardDemoRoute
+  '/dashboard/marketplace': typeof AuthenticatedDashboardMarketplaceRoute
   '/dashboard/orders': typeof AuthenticatedDashboardOrdersRoute
   '/dashboard/payouts': typeof AuthenticatedDashboardPayoutsRoute
   '/dashboard/pricing': typeof AuthenticatedDashboardPricingRoute
@@ -291,6 +306,7 @@ export interface FileRoutesByTo {
   '/agents': typeof AgentsRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
+  '/opportunities': typeof OpportunitiesRoute
   '/privacy': typeof PrivacyRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
@@ -304,6 +320,7 @@ export interface FileRoutesByTo {
   '/dashboard/branding': typeof AuthenticatedDashboardBrandingRoute
   '/dashboard/clients': typeof AuthenticatedDashboardClientsRoute
   '/dashboard/demo': typeof AuthenticatedDashboardDemoRoute
+  '/dashboard/marketplace': typeof AuthenticatedDashboardMarketplaceRoute
   '/dashboard/orders': typeof AuthenticatedDashboardOrdersRoute
   '/dashboard/payouts': typeof AuthenticatedDashboardPayoutsRoute
   '/dashboard/pricing': typeof AuthenticatedDashboardPricingRoute
@@ -328,6 +345,7 @@ export interface FileRoutesById {
   '/agents': typeof AgentsRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
+  '/opportunities': typeof OpportunitiesRoute
   '/privacy': typeof PrivacyRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
@@ -344,6 +362,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard/branding': typeof AuthenticatedDashboardBrandingRoute
   '/_authenticated/dashboard/clients': typeof AuthenticatedDashboardClientsRoute
   '/_authenticated/dashboard/demo': typeof AuthenticatedDashboardDemoRoute
+  '/_authenticated/dashboard/marketplace': typeof AuthenticatedDashboardMarketplaceRoute
   '/_authenticated/dashboard/orders': typeof AuthenticatedDashboardOrdersRoute
   '/_authenticated/dashboard/payouts': typeof AuthenticatedDashboardPayoutsRoute
   '/_authenticated/dashboard/pricing': typeof AuthenticatedDashboardPricingRoute
@@ -368,6 +387,7 @@ export interface FileRouteTypes {
     | '/agents'
     | '/forgot-password'
     | '/login'
+    | '/opportunities'
     | '/privacy'
     | '/reset-password'
     | '/signup'
@@ -384,6 +404,7 @@ export interface FileRouteTypes {
     | '/dashboard/branding'
     | '/dashboard/clients'
     | '/dashboard/demo'
+    | '/dashboard/marketplace'
     | '/dashboard/orders'
     | '/dashboard/payouts'
     | '/dashboard/pricing'
@@ -406,6 +427,7 @@ export interface FileRouteTypes {
     | '/agents'
     | '/forgot-password'
     | '/login'
+    | '/opportunities'
     | '/privacy'
     | '/reset-password'
     | '/signup'
@@ -419,6 +441,7 @@ export interface FileRouteTypes {
     | '/dashboard/branding'
     | '/dashboard/clients'
     | '/dashboard/demo'
+    | '/dashboard/marketplace'
     | '/dashboard/orders'
     | '/dashboard/payouts'
     | '/dashboard/pricing'
@@ -442,6 +465,7 @@ export interface FileRouteTypes {
     | '/agents'
     | '/forgot-password'
     | '/login'
+    | '/opportunities'
     | '/privacy'
     | '/reset-password'
     | '/signup'
@@ -458,6 +482,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard/branding'
     | '/_authenticated/dashboard/clients'
     | '/_authenticated/dashboard/demo'
+    | '/_authenticated/dashboard/marketplace'
     | '/_authenticated/dashboard/orders'
     | '/_authenticated/dashboard/payouts'
     | '/_authenticated/dashboard/pricing'
@@ -482,6 +507,7 @@ export interface RootRouteChildren {
   AgentsRoute: typeof AgentsRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   LoginRoute: typeof LoginRoute
+  OpportunitiesRoute: typeof OpportunitiesRoute
   PrivacyRoute: typeof PrivacyRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
@@ -532,6 +558,13 @@ declare module '@tanstack/react-router' {
       path: '/privacy'
       fullPath: '/privacy'
       preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/opportunities': {
+      id: '/opportunities'
+      path: '/opportunities'
+      fullPath: '/opportunities'
+      preLoaderRoute: typeof OpportunitiesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -695,6 +728,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardOrdersRouteImport
       parentRoute: typeof AuthenticatedDashboardRoute
     }
+    '/_authenticated/dashboard/marketplace': {
+      id: '/_authenticated/dashboard/marketplace'
+      path: '/marketplace'
+      fullPath: '/dashboard/marketplace'
+      preLoaderRoute: typeof AuthenticatedDashboardMarketplaceRouteImport
+      parentRoute: typeof AuthenticatedDashboardRoute
+    }
     '/_authenticated/dashboard/demo': {
       id: '/_authenticated/dashboard/demo'
       path: '/demo'
@@ -794,6 +834,7 @@ interface AuthenticatedDashboardRouteChildren {
   AuthenticatedDashboardBrandingRoute: typeof AuthenticatedDashboardBrandingRoute
   AuthenticatedDashboardClientsRoute: typeof AuthenticatedDashboardClientsRoute
   AuthenticatedDashboardDemoRoute: typeof AuthenticatedDashboardDemoRoute
+  AuthenticatedDashboardMarketplaceRoute: typeof AuthenticatedDashboardMarketplaceRoute
   AuthenticatedDashboardOrdersRoute: typeof AuthenticatedDashboardOrdersRoute
   AuthenticatedDashboardPayoutsRoute: typeof AuthenticatedDashboardPayoutsRoute
   AuthenticatedDashboardPricingRoute: typeof AuthenticatedDashboardPricingRoute
@@ -809,6 +850,8 @@ const AuthenticatedDashboardRouteChildren: AuthenticatedDashboardRouteChildren =
     AuthenticatedDashboardBrandingRoute: AuthenticatedDashboardBrandingRoute,
     AuthenticatedDashboardClientsRoute: AuthenticatedDashboardClientsRoute,
     AuthenticatedDashboardDemoRoute: AuthenticatedDashboardDemoRoute,
+    AuthenticatedDashboardMarketplaceRoute:
+      AuthenticatedDashboardMarketplaceRoute,
     AuthenticatedDashboardOrdersRoute: AuthenticatedDashboardOrdersRoute,
     AuthenticatedDashboardPayoutsRoute: AuthenticatedDashboardPayoutsRoute,
     AuthenticatedDashboardPricingRoute: AuthenticatedDashboardPricingRoute,
@@ -858,6 +901,7 @@ const rootRouteChildren: RootRouteChildren = {
   AgentsRoute: AgentsRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
   LoginRoute: LoginRoute,
+  OpportunitiesRoute: OpportunitiesRoute,
   PrivacyRoute: PrivacyRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
