@@ -2108,7 +2108,7 @@ window.__closeEmailOptions=function(){
   if(!wrap) return;
   var chipsEl=document.getElementById("drawer-qchips");
   var msgEl=document.getElementById("drawer-qmsg");
-  var emailEl=document.getElementById("drawer-qemail");
+  
   var emailBtn=document.getElementById("drawer-qsend-email");
   var smsBtn=document.getElementById("drawer-qsend-sms");
   var copyBtn=document.getElementById("drawer-qcopy");
