@@ -2159,9 +2159,8 @@ window.__closeEmailOptions=function(){
   }
   function buildBody(forSms){
     var msg=(msgEl.value||"").trim();
-    var visitorEmail=(emailEl.value||"").trim();
-    if(forSms) return msg+(visitorEmail?"\\nReply to: "+visitorEmail:"");
-    return buildVisitorEmailBody(msg,visitorEmail,["Property: "+currentPropName()]);
+    if(forSms) return msg;
+    return buildVisitorEmailBody(msg,"",["Property: "+currentPropName()]);
   }
   function buildSmsUrl(){
     if(!agentPhone) return "";
