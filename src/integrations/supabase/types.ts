@@ -1112,6 +1112,7 @@ export type Database = {
           has_outreach: boolean
           id: string
           is_currently_exclusive: boolean
+          is_leaked: boolean
           name: string
           region: string
           status: Database["public"]["Enums"]["beacon_status"]

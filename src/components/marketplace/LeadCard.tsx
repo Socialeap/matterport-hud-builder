@@ -30,6 +30,8 @@ export interface MarketplaceLead {
   exclusive_until: string | null;
   contacted_at: string | null;
   is_currently_exclusive: boolean;
+  /** True for open-pool leads — no single owner, first-to-compose wins. */
+  is_leaked: boolean;
   disposition: BeaconDisposition | null;
   has_outreach: boolean;
 }
@@ -95,7 +97,14 @@ export function LeadCard({
   const isUrgent = windowOpen && remainingMs <= URGENCY_WINDOW_MS;
 
   const isAwaiting = !!lead.contacted_at && !lead.disposition;
-  const showCompose = windowOpen && !lead.has_outreach && !!onCompose;
+  // Compose is offered when the caller can claim — either their
+  // exclusive window is open, or the lead has leaked into the
+  // open pool and nobody has contacted the agent yet.
+  const showCompose =
+    !lead.has_outreach &&
+    !lead.contacted_at &&
+    (windowOpen || lead.is_leaked) &&
+    !!onCompose;
 
   return (
     <Card className={isUrgent ? "border-amber-300 dark:border-amber-700" : ""}>
@@ -115,6 +124,12 @@ export function LeadCard({
               </Badge>
             )}
 
+            {lead.is_leaked && !lead.contacted_at && (
+              <Badge variant="default" className="text-[10px]">
+                Open lead
+              </Badge>
+            )}
+
             {lead.disposition && (
               <Badge
                 variant={lead.disposition === "won" ? "default" : "outline"}
@@ -124,13 +139,13 @@ export function LeadCard({
               </Badge>
             )}
 
-            {!windowOpen && lead.contacted_at && !lead.disposition && (
+            {!windowOpen && !lead.is_leaked && lead.contacted_at && !lead.disposition && (
               <Badge variant="secondary" className="text-[10px]">
                 Contacted {formatDate(lead.contacted_at)}
               </Badge>
             )}
 
-            {!windowOpen && !lead.contacted_at && lead.exclusive_until && (
+            {!windowOpen && !lead.is_leaked && !lead.contacted_at && lead.exclusive_until && (
               <Badge variant="outline" className="text-[10px]">
                 Re-pooled
               </Badge>
