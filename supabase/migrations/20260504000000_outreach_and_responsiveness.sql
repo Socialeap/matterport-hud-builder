@@ -697,7 +697,7 @@ BEGIN
           EXIT;
         END IF;
 
-        v_exclusive_until := now() + interval '72 hours';
+        v_exclusive_until := now() + interval '24 hours';
 
         UPDATE public.agent_beacons
            SET status                = 'matched',
@@ -861,6 +861,125 @@ $$;
 
 REVOKE EXECUTE ON FUNCTION public.get_my_matched_beacons() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_my_matched_beacons() TO authenticated;
+
+-- ------------------------------------------------------------
+-- 15. repool_expired_exclusives_and_enqueue — 24-hour window
+-- ------------------------------------------------------------
+-- The exclusive-window length was originally specified as 72 hours
+-- in PR2's version of this function, but agents waiting up to 72
+-- hours for a single Pro to act is too long. Re-creating the
+-- function here with a 24-hour interval supersedes the PR2 body.
+-- The pool-advance logic, idempotency guards, and email payload
+-- shape are unchanged — only the interval literal differs.
+--
+-- CREATE OR REPLACE means this is non-destructive: the function
+-- name and signature stay the same, callers (the pg_cron schedule
+-- from PR2) continue to work without re-scheduling.
+CREATE OR REPLACE FUNCTION public.repool_expired_exclusives_and_enqueue()
+RETURNS INTEGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_beacon RECORD;
+  v_next RECORD;
+  v_repooled INT := 0;
+  v_studio_url TEXT;
+  v_dashboard_url TEXT := 'https://3dps.transcendencemedia.com';
+BEGIN
+  FOR v_beacon IN
+    SELECT b.id, b.email, b.name, b.city, b.region, b.exclusive_provider_id
+    FROM public.agent_beacons b
+    WHERE b.status = 'matched'
+      AND b.contacted_at IS NULL
+      AND b.exclusive_until IS NOT NULL
+      AND b.exclusive_until < now()
+      AND b.exclusive_provider_id IS NOT NULL
+    ORDER BY b.exclusive_until ASC
+    FOR UPDATE OF b SKIP LOCKED
+    LIMIT 50
+  LOOP
+    INSERT INTO public.beacon_match_pool (beacon_id, provider_id, rank, attempted_at)
+    VALUES (v_beacon.id, v_beacon.exclusive_provider_id, 0, now())
+    ON CONFLICT (beacon_id, provider_id)
+      DO UPDATE SET attempted_at = COALESCE(public.beacon_match_pool.attempted_at, now());
+
+    SELECT bmp.provider_id,
+           bs.brand_name,
+           bs.slug,
+           bs.tier,
+           bs.custom_domain,
+           u.email AS provider_email
+    INTO v_next
+    FROM public.beacon_match_pool bmp
+    JOIN public.branding_settings bs ON bs.provider_id = bmp.provider_id
+    JOIN auth.users u ON u.id = bmp.provider_id
+    WHERE bmp.beacon_id = v_beacon.id
+      AND bmp.attempted_at IS NULL
+      AND bs.is_directory_public = TRUE
+    ORDER BY bmp.rank ASC
+    LIMIT 1;
+
+    IF v_next.provider_id IS NULL THEN
+      UPDATE public.agent_beacons
+         SET exclusive_provider_id = NULL,
+             exclusive_until       = NULL
+       WHERE id = v_beacon.id;
+      CONTINUE;
+    END IF;
+
+    -- Promote the next Pro: 24h window, repool notification row,
+    -- enqueue the assignment email.
+    UPDATE public.agent_beacons
+       SET exclusive_provider_id = v_next.provider_id,
+           exclusive_until       = now() + interval '24 hours'
+     WHERE id = v_beacon.id;
+
+    INSERT INTO public.beacon_notifications (beacon_id, provider_id, kind)
+    VALUES (v_beacon.id, v_next.provider_id, 'repool')
+    ON CONFLICT (beacon_id, provider_id, kind) DO NOTHING;
+
+    IF v_next.tier = 'pro'
+       AND v_next.custom_domain IS NOT NULL
+       AND length(trim(v_next.custom_domain)) > 0 THEN
+      v_studio_url := 'https://' || regexp_replace(v_next.custom_domain, '^https?://', '')
+                      || '/p/' || COALESCE(v_next.slug, '');
+    ELSIF v_next.slug IS NOT NULL THEN
+      v_studio_url := v_dashboard_url || '/p/' || v_next.slug;
+    ELSE
+      v_studio_url := NULL;
+    END IF;
+
+    PERFORM public.enqueue_email(
+      'transactional_emails',
+      jsonb_build_object(
+        'template_name', 'marketplace-lead-assigned',
+        'recipient_email', v_next.provider_email,
+        'data', jsonb_build_object(
+          'providerName', v_next.brand_name,
+          'agentName', v_beacon.name,
+          'city', CASE
+                    WHEN v_beacon.region IS NOT NULL
+                      THEN v_beacon.city || ', ' || v_beacon.region
+                    ELSE v_beacon.city
+                  END,
+          'expiresAtIso', (now() + interval '24 hours')::text,
+          'dashboardUrl', v_dashboard_url || '/dashboard/marketplace',
+          'studioUrl', v_studio_url
+        )
+      )
+    );
+
+    v_repooled := v_repooled + 1;
+  END LOOP;
+
+  RETURN v_repooled;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.repool_expired_exclusives_and_enqueue() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.repool_expired_exclusives_and_enqueue() TO service_role;
 
 -- ============================================================
 -- End of composer / disposition / responsiveness migration
