@@ -27,7 +27,14 @@ function MarketplacePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const isLocked = !hasPaid;
+
   useEffect(() => {
+    // Don't hit the RPC for unpaid MSPs — it will 401/raise. Show preview instead.
+    if (isLocked) {
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     void (async () => {
       const { data, error: rpcError } = await supabase.rpc(
@@ -36,11 +43,7 @@ function MarketplacePage() {
       if (cancelled) return;
 
       if (rpcError) {
-        // The RPC raises specific RAISE EXCEPTIONs that surface as PostgREST
-        // errors. We don't expose the SQL message verbatim — translate to
-        // friendly copy.
-        const msg =
-          rpcError.message?.toLowerCase() ?? "";
+        const msg = rpcError.message?.toLowerCase() ?? "";
         if (msg.includes("active pro license required")) {
           setError("pro_required");
         } else if (msg.includes("provider role required")) {
@@ -60,39 +63,47 @@ function MarketplacePage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isLocked]);
 
-  // Pro-license gate. The RPC enforces this server-side too — this is just
-  // for nicer UX so the user understands why they don't see contacts.
-  if (error === "pro_required" || (!loading && !hasPaid)) {
-    return (
-      <div className="mx-auto max-w-3xl space-y-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Marketplace Contacts</h1>
-          <p className="text-sm text-muted-foreground">
-            Agents waiting in your service area.
-          </p>
-        </div>
-        <Card>
-          <CardContent className="flex flex-col items-center gap-3 p-10 text-center">
-            <Lock className="size-8 text-muted-foreground" />
-            <div>
-              <h3 className="text-base font-semibold">Marketplace contacts are a Pro feature</h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Activate a Pro license to see — and reach out to — agents
-                who've requested a local Pro Partner in your service area.
-              </p>
-            </div>
-            <Link to="/dashboard/upgrade">
-              <Button size="sm" className="mt-2">
-                View Plans
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  // Sample data shown to unpaid MSPs as a teaser of what Pro unlocks.
+  const sampleBeacons: MatchedBeacon[] = [
+    {
+      id: "sample-1",
+      name: "Jane Doe",
+      email: "jane.d@brokerage.com",
+      brokerage: "Coastal Realty Group",
+      city: "Your City",
+      region: "CA",
+      zip: "90210",
+      status: "waiting",
+      created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(),
+      is_first_match_with_me: true,
+    },
+    {
+      id: "sample-2",
+      name: "Marcus Lee",
+      email: "marcus@listingpros.com",
+      brokerage: "Listing Pros",
+      city: "Your City",
+      region: "CA",
+      zip: "90211",
+      status: "waiting",
+      created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 5).toISOString(),
+      is_first_match_with_me: true,
+    },
+    {
+      id: "sample-3",
+      name: "Priya Patel",
+      email: "priya.p@homefinders.io",
+      brokerage: "HomeFinders",
+      city: "Your City",
+      region: "CA",
+      zip: "90212",
+      status: "matched",
+      created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 9).toISOString(),
+      is_first_match_with_me: false,
+    },
+  ];
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
