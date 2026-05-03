@@ -1410,7 +1410,7 @@ ${hasAgentContact ? `<div id="agent-drawer">
       <div class="drawer-quickmsg-label">Ask a quick question</div>
       <div class="drawer-qchips" id="drawer-qchips" role="group" aria-label="Question templates"></div>
       <textarea class="drawer-qfield drawer-qtextarea" id="drawer-qmsg" rows="4" placeholder="Type your question, or pick a topic above…" aria-label="Your message"></textarea>
-      <input type="email" class="drawer-qfield" id="drawer-qemail" placeholder="Your email (so we can reply)" autocomplete="email" aria-label="Your email">
+      
       <div class="drawer-qsend-row">
         ${agentHasEmail ? `<a id="drawer-qsend-email" class="drawer-qsend primary" href="#" aria-disabled="true" role="button" target="_blank" rel="noopener">Email ${escapeHtml(agentFirstName)}</a>` : ""}
         ${agent.phone ? `<a id="drawer-qsend-sms" class="drawer-qsend secondary" href="#" aria-disabled="true" role="button">Text ${escapeHtml(agentFirstName)}</a>` : ""}
