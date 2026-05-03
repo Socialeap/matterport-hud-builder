@@ -30,6 +30,7 @@ import {
   Shapes,
   MapPinned,
   Magnet,
+  Info,
 } from "lucide-react";
 import heroHudBanner from "@/assets/hero-hud-showcase.png";
 import tmLogo from "@/assets/tm-logo-landscape.png";
@@ -171,6 +172,84 @@ interface DirectoryMSP {
   primary_city: string;
   region: string;
 }
+
+// Sample MSPs shown for demonstration before the live directory is populated.
+// `slug: null` makes MSPCard render a disabled "Studio coming soon" CTA — no
+// broken links. These are clearly labeled as "Sample" in the UI.
+const MOCK_MSPS: DirectoryMSP[] = [
+  {
+    brand_name: "Skyline 3D Studios",
+    slug: null,
+    logo_url: null,
+    tier: "pro",
+    specialties: [
+      "scan-matterport-pro3",
+      "scan-drone-aerial",
+      "scan-twilight-photography",
+      "vault-sound-library",
+      "vault-portal-filters",
+      "ai-lead-generation",
+    ],
+    primary_city: "Atlanta",
+    region: "GA",
+  },
+  {
+    brand_name: "Coastal Tour Co.",
+    slug: null,
+    logo_url: null,
+    tier: "starter",
+    specialties: ["scan-matterport-pro3", "scan-floor-plans", "scan-same-day-turnaround"],
+    primary_city: "San Diego",
+    region: "CA",
+  },
+  {
+    brand_name: "Lakeshore Immersive",
+    slug: null,
+    logo_url: null,
+    tier: "pro",
+    specialties: [
+      "scan-matterport-pro3",
+      "scan-dimensional-measurements",
+      "vault-interactive-widgets",
+      "vault-property-mapper",
+    ],
+    primary_city: "Chicago",
+    region: "IL",
+  },
+  {
+    brand_name: "Lone Star Spaces",
+    slug: null,
+    logo_url: null,
+    tier: "starter",
+    specialties: ["scan-matterport-pro3", "scan-drone-aerial", "vault-custom-icons"],
+    primary_city: "Austin",
+    region: "TX",
+  },
+  {
+    brand_name: "Mile High Matterworks",
+    slug: null,
+    logo_url: null,
+    tier: "pro",
+    specialties: [
+      "scan-matterport-pro3",
+      "scan-twilight-photography",
+      "vault-sound-library",
+      "vault-property-mapper",
+      "ai-lead-generation",
+    ],
+    primary_city: "Denver",
+    region: "CO",
+  },
+  {
+    brand_name: "Beacon Hill Tours",
+    slug: null,
+    logo_url: null,
+    tier: "starter",
+    specialties: ["scan-matterport-pro3", "scan-floor-plans", "vault-portal-filters"],
+    primary_city: "Boston",
+    region: "MA",
+  },
+];
 
 /* ------------------------------------------------------------------ */
 /*  Page                                                               */
@@ -444,6 +523,16 @@ function DirectorySection() {
     );
   }, [results, selectedSpecialties]);
 
+  // Demo cards mirror the same specialty-filter behavior as live results, so
+  // visitors get an immediate sense of how filtering works before any Pros
+  // are live in their city.
+  const visibleMocks = useMemo(() => {
+    if (selectedSpecialties.size === 0) return MOCK_MSPS;
+    return MOCK_MSPS.filter((m) =>
+      Array.from(selectedSpecialties).every((s) => m.specialties.includes(s)),
+    );
+  }, [selectedSpecialties]);
+
   const handleSearch = async (e: FormEvent) => {
     e.preventDefault();
     const cityTrim = city.trim();
@@ -623,16 +712,16 @@ function DirectorySection() {
             {/* Results */}
             <div className="space-y-4">
               {!hasSearched && (
-                <div className="rounded-lg border border-dashed border-white/15 bg-white/[0.02] p-10 text-center">
-                  <Search className="mx-auto mb-3 size-8 text-white/30" />
-                  <p className="text-sm text-white/60">
-                    Enter a city or ZIP to find your local 3D Presentation Studio Pro Partner.
-                  </p>
-                </div>
+                <DemoPreview
+                  mocks={visibleMocks}
+                  defaultCity={city}
+                  defaultRegion={region}
+                  defaultZip={zip}
+                />
               )}
 
               {hasSearched && !hasResults && (
-                <div className="space-y-4">
+                <div className="space-y-6">
                   <div className="rounded-lg border border-amber-300/30 bg-amber-300/5 p-5">
                     <h3 className="text-base font-semibold text-amber-100">
                       No Pro Partner in {lastQuery!.city || lastQuery!.zip} yet.
@@ -648,6 +737,7 @@ function DirectorySection() {
                     defaultZip={lastQuery!.zip}
                     variant="dark"
                   />
+                  <DemoPreview mocks={visibleMocks} hideForm />
                 </div>
               )}
 
@@ -725,7 +815,7 @@ function FilterGroup({
   );
 }
 
-function MSPCard({ msp }: { msp: DirectoryMSP }) {
+function MSPCard({ msp, isSample = false }: { msp: DirectoryMSP; isSample?: boolean }) {
   const isPro = msp.tier === "pro";
   const studioUrl = msp.slug
     ? buildStudioUrl(msp.slug, { tier: msp.tier, customDomain: null })
@@ -750,11 +840,18 @@ function MSPCard({ msp }: { msp: DirectoryMSP }) {
           <div className="min-w-0 flex-1">
             <div className="flex items-start justify-between gap-2">
               <h3 className="truncate text-base font-semibold text-white">{msp.brand_name}</h3>
-              {isPro && (
-                <Badge className="shrink-0 bg-cyan-400/15 text-cyan-200 ring-1 ring-cyan-300/30">
-                  Pro
-                </Badge>
-              )}
+              <div className="flex shrink-0 items-center gap-1.5">
+                {isSample && (
+                  <Badge className="bg-slate-400/15 text-slate-200 ring-1 ring-slate-300/30">
+                    Sample
+                  </Badge>
+                )}
+                {isPro && (
+                  <Badge className="bg-cyan-400/15 text-cyan-200 ring-1 ring-cyan-300/30">
+                    Pro
+                  </Badge>
+                )}
+              </div>
             </div>
             <p className="flex items-center gap-1 text-xs text-white/50">
               <MapPin className="size-3" />
@@ -801,5 +898,76 @@ function MSPCard({ msp }: { msp: DirectoryMSP }) {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Demo preview — sample MSP cards + waitlist form                    */
+/* ------------------------------------------------------------------ */
+
+function DemoPreview({
+  mocks,
+  defaultCity = "",
+  defaultRegion = "",
+  defaultZip = "",
+  hideForm = false,
+}: {
+  mocks: DirectoryMSP[];
+  defaultCity?: string;
+  defaultRegion?: string;
+  defaultZip?: string;
+  hideForm?: boolean;
+}) {
+  return (
+    <div className="space-y-6">
+      <div className="flex items-start gap-3 rounded-lg border border-cyan-300/30 bg-cyan-300/5 p-4">
+        <Info className="mt-0.5 size-4 shrink-0 text-cyan-300" />
+        <div className="space-y-1 text-sm">
+          <p className="font-semibold text-cyan-100">Live Directory launching soon</p>
+          <p className="text-white/70">
+            The studios below are sample listings shown for demonstration. Use the
+            filters to preview how the directory will work, then drop your email below
+            to be notified the moment Pro Partners activate near you.
+          </p>
+        </div>
+      </div>
+
+      <div>
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-white/50">
+          Sample studios
+        </p>
+        {mocks.length > 0 ? (
+          <div className="grid gap-4 sm:grid-cols-2">
+            {mocks.map((m) => (
+              <MSPCard key={m.brand_name} msp={m} isSample />
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-lg border border-dashed border-white/15 bg-white/[0.02] p-6 text-center">
+            <p className="text-sm text-white/60">
+              No sample studios match every selected specialty. Try removing a filter.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {!hideForm && (
+        <div className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
+          <h3 className="text-base font-semibold text-white">
+            Notify me when a Pro Partner is live in my area
+          </h3>
+          <p className="mt-1 mb-4 text-sm text-white/60">
+            Agents and property managers — be first in line. We'll email you the moment
+            an MSP activates locally and offers capture + studio services in your market.
+          </p>
+          <BeaconForm
+            defaultCity={defaultCity}
+            defaultRegion={defaultRegion}
+            defaultZip={defaultZip}
+            variant="dark"
+          />
+        </div>
+      )}
+    </div>
   );
 }
