@@ -1,85 +1,49 @@
-## Goal
+## Problem 1: Pro features locked for active Pro accounts
 
-Restore the **Production Vault feature filters** that were dropped from the `/agents` MSP directory in PR #587e63d, and re-organize the directory's filter UI around the two MSP service types you described:
+**Root cause (verified against the database):**
 
-1. **On-Site Scanning Services** — what the MSP does at the property (3D capture / photography differentiators).
-2. **Studio / Presentation Services** — Production Vault assets that vary studio-to-studio.
+For `transcendencemedia` we have two competing tier sources:
 
-This restores agents' ability to find MSPs by the features that actually differentiate them, on top of the existing City / ZIP / Region search.
+| Source | Value |
+|---|---|
+| `licenses.tier` (admin grant / source of truth) | `pro` (active, no expiry) |
+| `branding_settings.tier` | `starter` |
+| `purchases` rows | `starter_tier` only |
 
-## Scope of changes
+`DashboardSidebar.tsx` reads tier exclusively from `branding_settings.tier`:
 
-### 1. Database — extend the `marketplace_specialty` enum
-
-The directory RPC (`search_msp_directory`) returns each MSP's `specialties: marketplace_specialty[]` from `branding_settings`. We extend that enum so MSPs can self-tag both scanning offerings and vault offerings.
-
-Add new enum values (additive — no breaking change):
-
-**Studio / Vault features** (restored from b2cd250) MSP should have a minimum number of items from each asset class in order to offer that service:
-
-- `vault-sound-library (at least 12 ambient tracks)`
-- `vault-portal-filters (at least 3)`
-- `vault-interactive-widgets (at least 2)`
-- `vault-custom-icons (at least 2 sets)`
-- `vault-property-mapper (at least 6)`
-- `ai-lead-generation`
-
-**Scanning services** (new — your "Service Type 1"):
-
-- `scan-matterport-pro3`
-- `scan-drone-aerial`
-- `scan-twilight-photography`
-- `scan-floor-plans`
-- `scan-dimensional measurements`
-- `scan-same-day-turnaround`
-
-The existing values should be dropped: (`residential`, `luxury`, `commercial`, `new-construction`, `multi-family`, `vacation-rental`, `ai-specialist`, `cinema-mode-specialist`).
-
-### 2. `/agents` directory UI (`src/routes/agents.tsx`)
-
-Replace the single flat checkbox row in `DirectorySection` with a **two-group filter panel**:
-
-```text
-┌─ Filter by services ──────────────────────────────┐
-│ ON-SITE SCANNING                                       │
-│ □ Matterport Pro3   □ Drone / Aerial                   │
-│ □ Twilight Photo    □ Floor Plans                      │
-│ □ Dimensional Measurements  □ Same-Day Turnaround      │
-│                                                        │
-│ STUDIO PRESENTATION (Production Vault; w/minimum items │
-│ □ Sound Library         □ Visual Portal Filters        │
-│ □ Interactive Widgets   □ Custom Iconography           │
-│ □ Property Mapper       □ AI Lead Generation           │
-└────────────────────────────────────────────────────┘
+```ts
+supabase.from("branding_settings").select("tier")...
+setTier((data?.tier as "starter" | "pro") ?? "starter");
 ```
 
-Implementation:
+So when an admin grants Pro via `licenses` (or `admin_grants`), `branding_settings.tier` is never updated — the sidebar's `isPro` stays false and the **Marketplace** nav stays locked. The same flag also drives any other `requiresPro` UI.
 
-- Re-import the icons removed in b2cd250 (`Music2`, `Wand2`, `Puzzle`, `Shapes`, `MapPinned`, `Magnet`, `DollarSign`) plus new icons for scanning (`Camera`, `Plane`, `Sunset`, `Ruler`, `Sofa`, ruler, `Zap`).
-- Replace `SPECIALTY_FILTERS` with two arrays `SCANNING_FILTERS` and `STUDIO_FILTERS`, each typed against the extended `MarketplaceSpecialty` enum.
-- `selectedSpecialties` state stays a single `Set<MarketplaceSpecialty>`; the existing "match all selected" filter logic in `useMemo` works unchanged.
-- Update each MSP card so badges render with their proper labels via a combined `SPECIALTY_LABEL` map.
-- Discard the existing `residential / luxury / commercial / ...` "
-  &nbsp;
-  3. `/dashboard/branding` MSP listing config (`src/routes/_authenticated.dashboard.branding.tsx`)
+Meanwhile `useMspAccess` correctly calls `provider_has_paid_access` RPC (which inspects `licenses` + `purchases` + `admin_grants`), so `hasPaid` is true. The two halves disagree.
 
-Extend `SPECIALTY_OPTIONS` so MSPs can check off the new scanning + vault tags when configuring their public marketplace listing. Group them in the form with the same two headings ("On-Site Scanning Services" / "Studio Presentation Services") so the MSP-side and agent-side vocabularies match.
+**Fix:** make sidebar tier detection consistent with the rest of the app.
 
-All new tags are `proOnly: false` (available to Starter and Pro) — they describe what the MSP can deliver, not which platform tier they're on.
+- Replace the `branding_settings.tier` query in `DashboardSidebar` with a call to `get_license_info` (already used by `useLusLicense`). Treat `tier === 'pro'` AND `license_status === 'active'` AND not expired as Pro.
+- Fall back to `branding_settings.tier` only if no license row exists (preserves behavior for brand-new MSPs).
+- No DB migration required. (Optionally, we could backfill `branding_settings.tier` from `licenses` via a trigger later, but the read-side fix is sufficient and safer.)
 
-### 4. No changes required
+## Problem 2: Marketplace tab shows a hard lock for unpaid MSPs
 
-- `search_msp_directory` RPC already returns the full `specialties` array — no SQL change needed beyond the enum addition.
-- `BeaconForm`, `/opportunities`, `/dashboard/marketplace` are unaffected.
-- `vault_assets` / `vault_templates` are not touched — these are *self-declared* tags on the listing, not auto-derived from the MSP's actual vault contents (matches how the Marketplace Listing form already works for `ai-specialist` etc.).
+Currently `_authenticated.dashboard.marketplace.tsx` short-circuits to a "Pro feature" card when `!hasPaid`. The user wants a teaser/preview view instead.
 
-## Files to edit
+**Fix:**
 
-- `supabase/migrations/<new>.sql` — `ALTER TYPE marketplace_specialty ADD VALUE …` (×12)
-- `src/routes/agents.tsx` — restore filter arrays, split into two groups, update render
-- `src/routes/_authenticated.dashboard.branding.tsx` — extend `SPECIALTY_OPTIONS`, group in UI
+- Always render the full marketplace layout (header, filters, sample contact cards).
+- When `!hasPaid` (or RPC returns `pro_required`):
+  - Render 2–3 skeleton/sample `BeaconCard`s populated with blurred/placeholder data ("Jane D.", "•••@•••", masked city) wrapped in a container with `pointer-events-none opacity-60 select-none blur-[2px]` and `aria-hidden`.
+  - Overlay a centered "Upgrade to Pro to unlock real contacts" call-to-action card with a `View Plans` button linking to `/dashboard/upgrade`.
+  - Disable the "Configure Listing" button (or keep enabled — branding page is fine to visit; we'll keep enabled).
+- Also remove the sidebar's `requiresPro` lock for `/dashboard/marketplace` so unpaid MSPs can navigate to the preview. The page itself handles the gating UI.
+- Server-side RPC `get_my_matched_beacons` continues to enforce the Pro requirement, so no real contact data leaks.
 
-## Out of scope (call out for later)
+## Files to change
 
-- Auto-deriving the Studio tags from each MSP's actual `vault_assets` row counts (e.g. only show "Sound Library" if they have ≥ N audio assets). The current MVP keeps these as self-declared — same as today's `ai-specialist` tag.
-- A pricing-tier badge on the directory card (the older `calculatePricingTier` helper from b2cd250). Branding now uses live `base_price_cents` via the RPC, so this can be a follow-up if you want the $/$$/$$$ glyph back.
+- `src/components/dashboard/DashboardSidebar.tsx` — switch tier source to `get_license_info`; remove `requiresPro` from the Marketplace nav item (keep the lock for any other Pro-only items if applicable; currently Marketplace is the only one).
+- `src/routes/_authenticated.dashboard.marketplace.tsx` — replace the lock-card early return with the always-rendered layout + blurred sample cards + upgrade overlay when unpaid.
+
+No DB migrations, no schema changes.

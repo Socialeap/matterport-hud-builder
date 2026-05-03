@@ -63,7 +63,7 @@ interface NavItem {
 const allNavItems: readonly NavItem[] = [
   { label: "Overview", to: "/dashboard", icon: LayoutDashboard, roles: ["provider", "client"] },
   { label: "Branding", to: "/dashboard/branding", icon: Palette, roles: ["provider"] },
-  { label: "Marketplace", to: "/dashboard/marketplace", icon: Store, roles: ["provider"], requiresPro: true },
+  { label: "Marketplace", to: "/dashboard/marketplace", icon: Store, roles: ["provider"] },
   { label: "Production Vault", to: "/dashboard/vault", icon: Archive, roles: ["provider"], requiresPaid: true },
   { label: "Pricing", to: "/dashboard/pricing", icon: DollarSign, roles: ["provider"] },
   { label: "Orders", to: "/dashboard/orders", icon: ShoppingCart, roles: ["provider", "client"] },
@@ -85,14 +85,34 @@ export function DashboardSidebar() {
 
   useEffect(() => {
     if (!user || isClient) return;
-    supabase
-      .from("branding_settings")
-      .select("tier")
-      .eq("provider_id", user.id)
-      .maybeSingle()
-      .then(({ data }) => {
-        setTier((data?.tier as "starter" | "pro") ?? "starter");
+    let cancelled = false;
+    (async () => {
+      // Source of truth for tier is the licenses table (admin grants + Stripe).
+      // branding_settings.tier is a stale denormalization and must not gate UI.
+      const { data: lic } = await supabase.rpc("get_license_info", {
+        user_uuid: user.id,
       });
+      if (cancelled) return;
+      const row = lic && lic.length > 0 ? lic[0] : null;
+      const licenseActive =
+        row?.license_status === "active" &&
+        (!row?.license_expiry || new Date(row.license_expiry).getTime() > Date.now());
+      if (row && licenseActive) {
+        setTier((row.tier as "starter" | "pro") ?? "starter");
+        return;
+      }
+      // Fallback for brand-new MSPs without a licenses row yet.
+      const { data: bs } = await supabase
+        .from("branding_settings")
+        .select("tier")
+        .eq("provider_id", user.id)
+        .maybeSingle();
+      if (cancelled) return;
+      setTier((bs?.tier as "starter" | "pro") ?? "starter");
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [user, isClient]);
 
   const isPro = tier === "pro";
