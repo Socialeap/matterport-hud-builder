@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/use-auth";
 import {
   Card,
   CardContent,
@@ -9,7 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Sparkles, Lock } from "lucide-react";
+import { Loader2, Sparkles, Lock, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { useMspAccess } from "@/hooks/use-msp-access";
 import {
@@ -26,12 +27,36 @@ export const Route = createFileRoute("/_authenticated/dashboard/marketplace")({
 
 function MarketplacePage() {
   const { hasPaid } = useMspAccess();
+  const { user } = useAuth();
   const [rows, setRows] = useState<MarketplaceLead[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [composeFor, setComposeFor] = useState<MarketplaceLead | null>(null);
   const [pendingDispositionId, setPendingDispositionId] = useState<string | null>(null);
+  const [tier, setTier] = useState<"starter" | "pro" | null>(null);
 
   const isLocked = !hasPaid;
+  const isStarter = tier === "starter";
+
+  // Pull the caller's tier so we can show the "Win More Leads"
+  // upgrade nudge to Starters. Read once on mount; tier changes
+  // via Stripe checkout will refetch when the user navigates back.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    void (async () => {
+      const { data } = await supabase
+        .from("branding_settings")
+        .select("tier")
+        .eq("provider_id", user.id)
+        .maybeSingle();
+      if (cancelled) return;
+      const t = (data?.tier as "starter" | "pro" | undefined) ?? null;
+      setTier(t);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   const fetchRows = useCallback(async () => {
     const { data, error: rpcError } = await supabase.rpc(
@@ -88,16 +113,21 @@ function MarketplacePage() {
     [fetchRows],
   );
 
-  // Bucket leads into the three sections derived from the
-  // exclusive-window state.
+  // Bucket leads into the three sections.
   //
-  //   Active            : currently mine and the window is open,
-  //                       no contact yet
-  //   Awaiting Response : I contacted them; waiting on the agent
-  //                       (PR3 will populate this via the composer
-  //                       — in PR2 it's almost always empty)
-  //   Past              : window closed without contact, or I was
-  //                       re-pooled past in favor of another Pro
+  //   Active            : claimable by me right now — either my
+  //                       Pro window is open, or the lead has
+  //                       leaked into the open pool and I qualify
+  //   Awaiting Response : I sent outreach via the composer, no
+  //                       disposition yet
+  //   Past              : window closed without contact, was
+  //                       re-pooled past me, or another provider
+  //                       claimed the leaked lead before I did
+  //
+  // Note we bucket on `has_outreach` (did *I* send) rather than
+  // `contacted_at` (did anyone send) — under the open-pool model
+  // a leaked lead can be claimed by another Pro/Starter, in which
+  // case I should NOT see it sitting in my Awaiting bucket.
   const buckets = useMemo(() => {
     const active: MarketplaceLead[] = [];
     const awaiting: MarketplaceLead[] = [];
@@ -107,9 +137,9 @@ function MarketplacePage() {
       const exp = row.exclusive_until ? new Date(row.exclusive_until).getTime() : null;
       const windowOpen =
         row.is_currently_exclusive && exp !== null && exp > now;
-      if (row.contacted_at) {
+      if (row.has_outreach) {
         awaiting.push(row);
-      } else if (windowOpen) {
+      } else if (windowOpen || row.is_leaked) {
         active.push(row);
       } else {
         past.push(row);
@@ -129,9 +159,10 @@ function MarketplacePage() {
       zip: "90210",
       status: "matched",
       created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 1).toISOString(),
-      exclusive_until: new Date(Date.now() + 1000 * 60 * 60 * 60).toISOString(),
+      exclusive_until: new Date(Date.now() + 1000 * 60 * 60 * 20).toISOString(),
       contacted_at: null,
       is_currently_exclusive: true,
+      is_leaked: false,
       disposition: null,
       has_outreach: false,
     },
@@ -145,9 +176,10 @@ function MarketplacePage() {
       zip: "90211",
       status: "matched",
       created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(),
-      exclusive_until: new Date(Date.now() + 1000 * 60 * 60 * 18).toISOString(),
+      exclusive_until: null,
       contacted_at: null,
-      is_currently_exclusive: true,
+      is_currently_exclusive: false,
+      is_leaked: true,
       disposition: null,
       has_outreach: false,
     },
@@ -159,9 +191,9 @@ function MarketplacePage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Marketplace Leads</h1>
           <p className="text-sm text-muted-foreground">
-            Each lead is yours <em>exclusively</em> for 72 hours. If you don't
-            reach out before the window closes, the lead automatically
-            re-pools to the next Pro in your area.
+            Pros get a 24-hour exclusive window on every new lead. If the lead
+            isn't claimed in that window, it opens to the wider pool — Starters
+            included. First to send outreach via the composer wins.
           </p>
         </div>
         <div className="flex flex-col items-end gap-2">
@@ -173,6 +205,24 @@ function MarketplacePage() {
           </Link>
         </div>
       </div>
+
+      {!isLocked && isStarter && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:gap-4">
+            <Zap className="size-5 shrink-0 text-primary" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold">Win more leads with Pro</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Pros get a 24-hour head start on every lead in their area.
+                Upgrade to claim leads before they leak to the general pool.
+              </p>
+            </div>
+            <Link to="/dashboard/upgrade">
+              <Button size="sm">Upgrade to Pro</Button>
+            </Link>
+          </CardContent>
+        </Card>
+      )}
 
       {isLocked ? (
         <div className="relative">
@@ -190,11 +240,12 @@ function MarketplacePage() {
                 <Lock className="size-8 text-muted-foreground" />
                 <div>
                   <h3 className="text-base font-semibold">
-                    Unlock real agent contacts with Pro
+                    Activate your account to see real leads
                   </h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Upgrade to Pro to receive — and exclusively own for 72
-                    hours — leads from agents in your service area.
+                    Both Starter and Pro plans unlock the marketplace.
+                    Pros get a 24-hour exclusive head start on every lead;
+                    Starters claim leads after the Pro window closes.
                   </p>
                 </div>
                 <Link to="/dashboard/upgrade">
@@ -233,8 +284,8 @@ function MarketplacePage() {
         <div className="space-y-8">
           <Section
             title="Active Leads"
-            description="Yours exclusively. Reach out before the countdown ends."
-            empty="No open windows right now. New leads will appear here automatically."
+            description="Claimable right now — your exclusive Pro window or a leaked open-pool lead."
+            empty="No claimable leads right now. New ones will appear here automatically."
             leads={buckets.active}
             onCompose={(lead) => setComposeFor(lead)}
             onDisposition={handleDisposition}
@@ -264,12 +315,11 @@ function MarketplacePage() {
         <CardHeader>
           <CardTitle className="text-base">A note on outreach</CardTitle>
           <CardDescription>
-            Each agent below explicitly opted in to be contacted by a local Pro
-            Partner when one becomes active. Your 72-hour exclusive window
-            means no other Pro is being shown the same lead — make it count.
-            Outreach goes out through 3DPS so the agent can flag inappropriate
-            messages with one click; we use those signals to maintain your
-            Marketplace Standing.
+            Each agent below explicitly opted in to be contacted by a local
+            partner. Outreach goes out through 3DPS so the agent can flag
+            inappropriate messages with one click — those signals affect
+            your Marketplace Standing, which is the gatekeeper for receiving
+            new leads (Starter and Pro alike).
           </CardDescription>
         </CardHeader>
       </Card>
