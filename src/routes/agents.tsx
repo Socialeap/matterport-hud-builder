@@ -862,14 +862,21 @@ function MSPCard({ msp, isSample = false }: { msp: DirectoryMSP; isSample?: bool
 
         {msp.specialties.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
-            {msp.specialties.map((s) => (
-              <span
-                key={s}
-                className="inline-flex items-center rounded-md bg-white/5 px-2 py-0.5 text-[11px] text-white/70 ring-1 ring-white/10"
-              >
-                {SPECIALTY_LABEL[s]}
-              </span>
-            ))}
+            {msp.specialties.map((s) => {
+              const opt = [...SCANNING_FILTERS, ...STUDIO_FILTERS].find((o) => o.value === s);
+              if (!opt) return null;
+              const Icon = opt.icon;
+              return (
+                <span
+                  key={s}
+                  title={opt.label}
+                  aria-label={opt.label}
+                  className="inline-flex size-7 items-center justify-center rounded-md bg-white/5 text-white/70 ring-1 ring-white/10"
+                >
+                  <Icon className="size-3.5" />
+                </span>
+              );
+            })}
           </div>
         )}
 
