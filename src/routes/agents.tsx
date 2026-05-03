@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Bot,
   Video,
@@ -675,7 +676,7 @@ function DirectorySection() {
                   ) : (
                     <>
                       <Search className="size-4" />
-                      Find Studios
+                      Find MSPs w/Studio
                     </>
                   )}
                 </Button>
@@ -862,14 +863,21 @@ function MSPCard({ msp, isSample = false }: { msp: DirectoryMSP; isSample?: bool
 
         {msp.specialties.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
-            {msp.specialties.map((s) => (
-              <span
-                key={s}
-                className="inline-flex items-center rounded-md bg-white/5 px-2 py-0.5 text-[11px] text-white/70 ring-1 ring-white/10"
-              >
-                {SPECIALTY_LABEL[s]}
-              </span>
-            ))}
+            {msp.specialties.map((s) => {
+              const opt = [...SCANNING_FILTERS, ...STUDIO_FILTERS].find((o) => o.value === s);
+              if (!opt) return null;
+              const Icon = opt.icon;
+              return (
+                <span
+                  key={s}
+                  title={opt.label}
+                  aria-label={opt.label}
+                  className="inline-flex size-7 items-center justify-center rounded-md bg-white/5 text-white/70 ring-1 ring-white/10"
+                >
+                  <Icon className="size-3.5" />
+                </span>
+              );
+            })}
           </div>
         )}
 
@@ -952,21 +960,31 @@ function DemoPreview({
       </div>
 
       {!hideForm && (
-        <div className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
-          <h3 className="text-base font-semibold text-white">
-            Notify me when a Pro Partner is live in my area
-          </h3>
-          <p className="mt-1 mb-4 text-sm text-white/60">
-            Agents and property managers — be first in line. We'll email you the moment
-            an MSP activates locally and offers capture + studio services in your market.
-          </p>
-          <BeaconForm
-            defaultCity={defaultCity}
-            defaultRegion={defaultRegion}
-            defaultZip={defaultZip}
-            variant="dark"
-          />
-        </div>
+        <Collapsible className="rounded-lg border border-white/10 bg-white/[0.03]">
+          <CollapsibleTrigger className="group flex w-full items-center justify-between gap-3 p-4 text-left">
+            <div className="flex items-center gap-2">
+              <MailCheck className="size-4 text-cyan-300" />
+              <h3 className="text-sm font-semibold text-white sm:text-base">
+                Notify me when a Pro Partner is live in my area
+              </h3>
+            </div>
+            <ChevronRight className="size-4 shrink-0 text-white/60 transition-transform group-data-[state=open]:rotate-90" />
+          </CollapsibleTrigger>
+          <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
+            <div className="border-t border-white/10 p-5">
+              <p className="mb-4 text-sm text-white/60">
+                Agents and property managers — be first in line. We'll email you the moment
+                an MSP activates locally and offers capture + studio services in your market.
+              </p>
+              <BeaconForm
+                defaultCity={defaultCity}
+                defaultRegion={defaultRegion}
+                defaultZip={defaultZip}
+                variant="dark"
+              />
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
       )}
     </div>
   );
