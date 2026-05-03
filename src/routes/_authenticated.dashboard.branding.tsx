@@ -27,16 +27,23 @@ type MarketplaceSpecialty = Database["public"]["Enums"]["marketplace_specialty"]
 const SPECIALTY_OPTIONS: ReadonlyArray<{
   value: MarketplaceSpecialty;
   label: string;
+  group: "scanning" | "studio";
   proOnly: boolean;
 }> = [
-  { value: "residential", label: "Residential", proOnly: false },
-  { value: "luxury", label: "Luxury", proOnly: false },
-  { value: "commercial", label: "Commercial", proOnly: false },
-  { value: "new-construction", label: "New Construction", proOnly: false },
-  { value: "multi-family", label: "Multi-Family", proOnly: false },
-  { value: "vacation-rental", label: "Vacation Rental", proOnly: false },
-  { value: "ai-specialist", label: "AI Concierge Specialist", proOnly: true },
-  { value: "cinema-mode-specialist", label: "Cinema Mode Specialist", proOnly: true },
+  // On-site scanning services
+  { value: "scan-matterport-pro3", label: "Matterport Pro3", group: "scanning", proOnly: false },
+  { value: "scan-drone-aerial", label: "Drone / Aerial", group: "scanning", proOnly: false },
+  { value: "scan-twilight-photography", label: "Twilight Photography", group: "scanning", proOnly: false },
+  { value: "scan-floor-plans", label: "Floor Plans", group: "scanning", proOnly: false },
+  { value: "scan-dimensional-measurements", label: "Dimensional Measurements", group: "scanning", proOnly: false },
+  { value: "scan-same-day-turnaround", label: "Same-Day Turnaround", group: "scanning", proOnly: false },
+  // Studio (Production Vault) services
+  { value: "vault-sound-library", label: "Sound Library (12+ tracks)", group: "studio", proOnly: false },
+  { value: "vault-portal-filters", label: "Visual Portal Filters (3+)", group: "studio", proOnly: false },
+  { value: "vault-interactive-widgets", label: "Interactive Widgets (2+)", group: "studio", proOnly: false },
+  { value: "vault-custom-icons", label: "Custom Iconography (2+ sets)", group: "studio", proOnly: false },
+  { value: "vault-property-mapper", label: "Property Mapper (6+ maps)", group: "studio", proOnly: false },
+  { value: "ai-lead-generation", label: "AI Lead Generation", group: "studio", proOnly: false },
 ];
 
 const ZIP_RE = /^\d{5}(-\d{4})?$/;
