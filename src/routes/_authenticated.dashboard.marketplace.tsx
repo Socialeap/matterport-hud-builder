@@ -25,7 +25,7 @@ function MarketplacePage() {
   const { hasPaid } = useMspAccess();
   const [rows, setRows] = useState<MatchedBeacon[] | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  
 
   const isLocked = !hasPaid;
 
