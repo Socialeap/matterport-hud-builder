@@ -24,6 +24,8 @@ import { Route as PSlugRouteImport } from './routes/p.$slug'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as EmailUnsubscribeRouteImport } from './routes/email/unsubscribe'
 import { Route as ApiMpImageRouteImport } from './routes/api/mp-image'
+import { Route as ApiGeocodeBrandingRouteImport } from './routes/api/geocode-branding'
+import { Route as ApiGeocodeBeaconRouteImport } from './routes/api/geocode-beacon'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated.dashboard'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated.admin'
 import { Route as PSlugIndexRouteImport } from './routes/p.$slug.index'
@@ -121,6 +123,16 @@ const EmailUnsubscribeRoute = EmailUnsubscribeRouteImport.update({
 const ApiMpImageRoute = ApiMpImageRouteImport.update({
   id: '/api/mp-image',
   path: '/api/mp-image',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiGeocodeBrandingRoute = ApiGeocodeBrandingRouteImport.update({
+  id: '/api/geocode-branding',
+  path: '/api/geocode-branding',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiGeocodeBeaconRoute = ApiGeocodeBeaconRouteImport.update({
+  id: '/api/geocode-beacon',
+  path: '/api/geocode-beacon',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
@@ -274,6 +286,8 @@ export interface FileRoutesByFullPath {
   '/unsubscribe': typeof UnsubscribeRoute
   '/admin': typeof AuthenticatedAdminRouteWithChildren
   '/dashboard': typeof AuthenticatedDashboardRouteWithChildren
+  '/api/geocode-beacon': typeof ApiGeocodeBeaconRoute
+  '/api/geocode-branding': typeof ApiGeocodeBrandingRoute
   '/api/mp-image': typeof ApiMpImageRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -312,6 +326,8 @@ export interface FileRoutesByTo {
   '/signup': typeof SignupRoute
   '/terms': typeof TermsRoute
   '/unsubscribe': typeof UnsubscribeRoute
+  '/api/geocode-beacon': typeof ApiGeocodeBeaconRoute
+  '/api/geocode-branding': typeof ApiGeocodeBrandingRoute
   '/api/mp-image': typeof ApiMpImageRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -353,6 +369,8 @@ export interface FileRoutesById {
   '/unsubscribe': typeof UnsubscribeRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRouteWithChildren
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRouteWithChildren
+  '/api/geocode-beacon': typeof ApiGeocodeBeaconRoute
+  '/api/geocode-branding': typeof ApiGeocodeBrandingRoute
   '/api/mp-image': typeof ApiMpImageRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -395,6 +413,8 @@ export interface FileRouteTypes {
     | '/unsubscribe'
     | '/admin'
     | '/dashboard'
+    | '/api/geocode-beacon'
+    | '/api/geocode-branding'
     | '/api/mp-image'
     | '/email/unsubscribe'
     | '/invite/$token'
@@ -433,6 +453,8 @@ export interface FileRouteTypes {
     | '/signup'
     | '/terms'
     | '/unsubscribe'
+    | '/api/geocode-beacon'
+    | '/api/geocode-branding'
     | '/api/mp-image'
     | '/email/unsubscribe'
     | '/invite/$token'
@@ -473,6 +495,8 @@ export interface FileRouteTypes {
     | '/unsubscribe'
     | '/_authenticated/admin'
     | '/_authenticated/dashboard'
+    | '/api/geocode-beacon'
+    | '/api/geocode-branding'
     | '/api/mp-image'
     | '/email/unsubscribe'
     | '/invite/$token'
@@ -513,6 +537,8 @@ export interface RootRouteChildren {
   SignupRoute: typeof SignupRoute
   TermsRoute: typeof TermsRoute
   UnsubscribeRoute: typeof UnsubscribeRoute
+  ApiGeocodeBeaconRoute: typeof ApiGeocodeBeaconRoute
+  ApiGeocodeBrandingRoute: typeof ApiGeocodeBrandingRoute
   ApiMpImageRoute: typeof ApiMpImageRoute
   EmailUnsubscribeRoute: typeof EmailUnsubscribeRoute
   InviteTokenRoute: typeof InviteTokenRoute
@@ -628,6 +654,20 @@ declare module '@tanstack/react-router' {
       path: '/api/mp-image'
       fullPath: '/api/mp-image'
       preLoaderRoute: typeof ApiMpImageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/geocode-branding': {
+      id: '/api/geocode-branding'
+      path: '/api/geocode-branding'
+      fullPath: '/api/geocode-branding'
+      preLoaderRoute: typeof ApiGeocodeBrandingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/geocode-beacon': {
+      id: '/api/geocode-beacon'
+      path: '/api/geocode-beacon'
+      fullPath: '/api/geocode-beacon'
+      preLoaderRoute: typeof ApiGeocodeBeaconRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/dashboard': {
@@ -907,6 +947,8 @@ const rootRouteChildren: RootRouteChildren = {
   SignupRoute: SignupRoute,
   TermsRoute: TermsRoute,
   UnsubscribeRoute: UnsubscribeRoute,
+  ApiGeocodeBeaconRoute: ApiGeocodeBeaconRoute,
+  ApiGeocodeBrandingRoute: ApiGeocodeBrandingRoute,
   ApiMpImageRoute: ApiMpImageRoute,
   EmailUnsubscribeRoute: EmailUnsubscribeRoute,
   InviteTokenRoute: InviteTokenRoute,

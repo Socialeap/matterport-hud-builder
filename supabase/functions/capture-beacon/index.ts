@@ -133,22 +133,26 @@ serve(async (req) => {
 
   // Try insert first; if it fails on the unique key, do a targeted
   // update keyed on (lower(email), lower(city)).
-  const { error: insertError } = await supabase.from("agent_beacons").insert({
-    email,
-    name,
-    brokerage,
-    city: cityRaw,
-    region,
-    zip,
-    country: "US",
-    consent_given: true,
-    consent_text: consentText,
-    consent_at: new Date().toISOString(),
-    source_ip: ip === "unknown" ? null : ip,
-    user_agent: userAgent,
-    status: "waiting",
-    expires_at: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString(),
-  });
+  const { data: inserted, error: insertError } = await supabase
+    .from("agent_beacons")
+    .insert({
+      email,
+      name,
+      brokerage,
+      city: cityRaw,
+      region,
+      zip,
+      country: "US",
+      consent_given: true,
+      consent_text: consentText,
+      consent_at: new Date().toISOString(),
+      source_ip: ip === "unknown" ? null : ip,
+      user_agent: userAgent,
+      status: "waiting",
+      expires_at: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString(),
+    })
+    .select("id")
+    .maybeSingle();
 
   if (insertError) {
     // 23505 = unique violation: same (email, city) already on file.
@@ -184,6 +188,10 @@ serve(async (req) => {
       // Resubmission may also unblock matching if a new MSP went public
       // since the original submission. Fire and forget.
       void triggerMatcher();
+      // Don't re-geocode on resubmission: lat/lng for this (email, city)
+      // pair was either captured on the first submission or the prior
+      // attempt was non-matching; either way Census costs us nothing
+      // useful here.
       return json(200, { success: true });
     }
 
@@ -195,6 +203,14 @@ serve(async (req) => {
   // in real time. We don't await — the matcher runs independently and
   // its failure must not affect the beacon-capture response.
   void triggerMatcher();
+
+  // Fire-and-forget geocoding via the TanStack Start server route, so
+  // the form-submit response stays fast (Census p99 ≈ 3s). Geocoding
+  // failure is non-fatal — the SQL matcher's ZIP/trigram tiers cover
+  // ungeocoded beacons.
+  if (inserted?.id) {
+    void triggerGeocode(inserted.id);
+  }
 
   return json(200, { success: true });
 });
@@ -224,5 +240,32 @@ function triggerMatcher(): Promise<void> {
     .catch((err) => {
       // Log but never throw — matcher invocation is best-effort.
       console.error("capture-beacon: matcher invocation failed:", err);
+    });
+}
+
+/**
+ * Fire-and-forget POST to the TanStack Start geocoder endpoint. The
+ * dashboard URL and shared secret are configured via env. If either
+ * is missing (e.g. local dev without the dashboard running) we skip
+ * silently — the matcher's ZIP/trigram tiers cover the gap.
+ */
+function triggerGeocode(beaconId: string): Promise<void> {
+  const dashboardBase = Deno.env.get("DASHBOARD_BASE_URL");
+  const secret = Deno.env.get("INTERNAL_GEOCODE_SECRET");
+  if (!dashboardBase || !secret) {
+    return Promise.resolve();
+  }
+  const url = `${dashboardBase.replace(/\/+$/, "")}/api/geocode-beacon`;
+  return fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-internal-secret": secret,
+    },
+    body: JSON.stringify({ beaconId }),
+  })
+    .then(() => undefined)
+    .catch((err) => {
+      console.error("capture-beacon: geocode invocation failed:", err);
     });
 }

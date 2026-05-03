@@ -1136,6 +1136,10 @@ export type Database = {
         Args: { check_env?: string; user_uuid: string }
         Returns: string
       }
+      get_my_service_polygon: {
+        Args: never
+        Returns: Json
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -1224,6 +1228,10 @@ export type Database = {
           viewer_matches_provider: boolean
           viewer_role: string
         }[]
+      }
+      set_my_service_polygon: {
+        Args: { p_geojson?: Json | null }
+        Returns: boolean
       }
       search_msp_directory: {
         Args: { p_city?: string; p_zip?: string }
