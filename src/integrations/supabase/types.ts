@@ -44,72 +44,6 @@ export type Database = {
         }
         Relationships: []
       }
-      agent_beacons: {
-        Row: {
-          brokerage: string | null
-          city: string
-          consent_at: string
-          consent_given: boolean
-          consent_text: string
-          country: string
-          created_at: string
-          email: string
-          expires_at: string
-          id: string
-          matched_at: string | null
-          matched_provider_id: string | null
-          name: string | null
-          region: string | null
-          source_ip: string | null
-          status: Database["public"]["Enums"]["beacon_status"]
-          updated_at: string
-          user_agent: string | null
-          zip: string | null
-        }
-        Insert: {
-          brokerage?: string | null
-          city: string
-          consent_at?: string
-          consent_given: boolean
-          consent_text: string
-          country?: string
-          created_at?: string
-          email: string
-          expires_at?: string
-          id?: string
-          matched_at?: string | null
-          matched_provider_id?: string | null
-          name?: string | null
-          region?: string | null
-          source_ip?: string | null
-          status?: Database["public"]["Enums"]["beacon_status"]
-          updated_at?: string
-          user_agent?: string | null
-          zip?: string | null
-        }
-        Update: {
-          brokerage?: string | null
-          city?: string
-          consent_at?: string
-          consent_given?: boolean
-          consent_text?: string
-          country?: string
-          created_at?: string
-          email?: string
-          expires_at?: string
-          id?: string
-          matched_at?: string | null
-          matched_provider_id?: string | null
-          name?: string | null
-          region?: string | null
-          source_ip?: string | null
-          status?: Database["public"]["Enums"]["beacon_status"]
-          updated_at?: string
-          user_agent?: string | null
-          zip?: string | null
-        }
-        Relationships: []
-      }
       ask_quota_counters: {
         Row: {
           byok_active: boolean
@@ -181,55 +115,12 @@ export type Database = {
         }
         Relationships: []
       }
-      beacon_notifications: {
-        Row: {
-          beacon_id: string
-          created_at: string
-          email_send_log_id: string | null
-          id: string
-          kind: string
-          provider_id: string
-        }
-        Insert: {
-          beacon_id: string
-          created_at?: string
-          email_send_log_id?: string | null
-          id?: string
-          kind: string
-          provider_id: string
-        }
-        Update: {
-          beacon_id?: string
-          created_at?: string
-          email_send_log_id?: string | null
-          id?: string
-          kind?: string
-          provider_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "beacon_notifications_beacon_id_fkey"
-            columns: ["beacon_id"]
-            isOneToOne: false
-            referencedRelation: "agent_beacons"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "beacon_notifications_email_send_log_id_fkey"
-            columns: ["email_send_log_id"]
-            isOneToOne: false
-            referencedRelation: "email_send_log"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       branding_settings: {
         Row: {
           accent_color: string
           additional_model_fee_cents: number | null
           base_price_cents: number | null
           brand_name: string
-          country: string
           created_at: string
           custom_domain: string | null
           favicon_url: string | null
@@ -241,18 +132,10 @@ export type Database = {
           hud_bg_color: string
           id: string
           instant_payout_fee_bps: number
-          is_directory_public: boolean
-          latitude: number | null
           logo_url: string | null
-          longitude: number | null
           model_threshold: number | null
-          primary_city: string | null
           provider_id: string
-          region: string | null
-          service_radius_miles: number | null
-          service_zips: string[]
           slug: string | null
-          specialties: Database["public"]["Enums"]["marketplace_specialty"][]
           stripe_connect_id: string | null
           stripe_onboarding_complete: boolean | null
           tier: Database["public"]["Enums"]["app_tier"]
@@ -265,7 +148,6 @@ export type Database = {
           additional_model_fee_cents?: number | null
           base_price_cents?: number | null
           brand_name?: string
-          country?: string
           created_at?: string
           custom_domain?: string | null
           favicon_url?: string | null
@@ -277,18 +159,10 @@ export type Database = {
           hud_bg_color?: string
           id?: string
           instant_payout_fee_bps?: number
-          is_directory_public?: boolean
-          latitude?: number | null
           logo_url?: string | null
-          longitude?: number | null
           model_threshold?: number | null
-          primary_city?: string | null
           provider_id: string
-          region?: string | null
-          service_radius_miles?: number | null
-          service_zips?: string[]
           slug?: string | null
-          specialties?: Database["public"]["Enums"]["marketplace_specialty"][]
           stripe_connect_id?: string | null
           stripe_onboarding_complete?: boolean | null
           tier?: Database["public"]["Enums"]["app_tier"]
@@ -301,7 +175,6 @@ export type Database = {
           additional_model_fee_cents?: number | null
           base_price_cents?: number | null
           brand_name?: string
-          country?: string
           created_at?: string
           custom_domain?: string | null
           favicon_url?: string | null
@@ -313,18 +186,10 @@ export type Database = {
           hud_bg_color?: string
           id?: string
           instant_payout_fee_bps?: number
-          is_directory_public?: boolean
-          latitude?: number | null
           logo_url?: string | null
-          longitude?: number | null
           model_threshold?: number | null
-          primary_city?: string | null
           provider_id?: string
-          region?: string | null
-          service_radius_miles?: number | null
-          service_zips?: string[]
           slug?: string | null
-          specialties?: Database["public"]["Enums"]["marketplace_specialty"][]
           stripe_connect_id?: string | null
           stripe_onboarding_complete?: boolean | null
           tier?: Database["public"]["Enums"]["app_tier"]
@@ -1138,57 +1003,9 @@ export type Database = {
         }
         Returns: number
       }
-      claim_pending_beacon_matches: {
-        Args: { p_limit?: number }
-        Returns: {
-          beacon_id: string
-          beacon_email: string
-          beacon_name: string | null
-          beacon_city: string
-          beacon_region: string | null
-          provider_id: string
-          provider_brand_name: string
-          provider_slug: string | null
-          provider_tier: Database["public"]["Enums"]["app_tier"]
-          provider_custom_domain: string | null
-        }[]
-      }
-      get_my_matched_beacons: {
-        Args: Record<string, never>
-        Returns: {
-          id: string
-          email: string
-          name: string | null
-          brokerage: string | null
-          city: string
-          region: string | null
-          zip: string | null
-          status: Database["public"]["Enums"]["beacon_status"]
-          is_first_match_with_me: boolean
-          created_at: string
-          matched_at: string | null
-        }[]
-      }
-      is_provider_serving_location: {
-        Args: {
-          p_provider_id: string
-          p_city: string | null
-          p_region: string | null
-          p_zip: string | null
-        }
-        Returns: boolean
-      }
       provider_has_paid_access: {
         Args: { _provider_id: string }
         Returns: boolean
-      }
-      public_beacon_demand: {
-        Args: Record<string, never>
-        Returns: {
-          city: string
-          region: string
-          waiting_count: number
-        }[]
       }
       read_ask_quota_counter: {
         Args: { p_property_uuid: string; p_saved_model_id: string }
@@ -1250,18 +1067,6 @@ export type Database = {
           viewer_role: string
         }[]
       }
-      search_msp_directory: {
-        Args: { p_city?: string | null; p_zip?: string | null }
-        Returns: {
-          brand_name: string
-          logo_url: string | null
-          primary_city: string
-          region: string
-          slug: string | null
-          specialties: Database["public"]["Enums"]["marketplace_specialty"][]
-          tier: Database["public"]["Enums"]["app_tier"]
-        }[]
-      }
       set_client_byok_active: {
         Args: { p_active: boolean; p_client_id: string }
         Returns: number
@@ -1274,18 +1079,8 @@ export type Database = {
     Enums: {
       app_role: "admin" | "provider" | "client"
       app_tier: "starter" | "pro"
-      beacon_status: "waiting" | "matched" | "unsubscribed" | "expired"
       invitation_status: "pending" | "accepted" | "expired" | "declined"
       license_status: "active" | "past_due" | "expired"
-      marketplace_specialty:
-        | "residential"
-        | "luxury"
-        | "commercial"
-        | "new-construction"
-        | "multi-family"
-        | "vacation-rental"
-        | "ai-specialist"
-        | "cinema-mode-specialist"
       model_status: "preview" | "pending_payment" | "paid"
       vault_category:
         | "spatial_audio"
@@ -1423,19 +1218,8 @@ export const Constants = {
     Enums: {
       app_role: ["admin", "provider", "client"],
       app_tier: ["starter", "pro"],
-      beacon_status: ["waiting", "matched", "unsubscribed", "expired"],
       invitation_status: ["pending", "accepted", "expired", "declined"],
       license_status: ["active", "past_due", "expired"],
-      marketplace_specialty: [
-        "residential",
-        "luxury",
-        "commercial",
-        "new-construction",
-        "multi-family",
-        "vacation-rental",
-        "ai-specialist",
-        "cinema-mode-specialist",
-      ],
       model_status: ["preview", "pending_payment", "paid"],
       vault_category: [
         "spatial_audio",
