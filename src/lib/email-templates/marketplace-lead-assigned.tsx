@@ -22,9 +22,9 @@ interface MarketplaceLeadAssignedProps {
 }
 
 function formatExpiry(iso?: string): string {
-  if (!iso) return 'in 72 hours'
+  if (!iso) return 'in 24 hours'
   const date = new Date(iso)
-  if (Number.isNaN(date.getTime())) return 'in 72 hours'
+  if (Number.isNaN(date.getTime())) return 'in 24 hours'
   return date.toLocaleString('en-US', {
     weekday: 'short',
     month: 'short',
@@ -60,7 +60,7 @@ function MarketplaceLeadAssignedEmail({
             <Text style={text}>
               <strong>{agentLabel}</strong> in <strong>{city}</strong> has
               joined the 3DPS Marketplace and is matched exclusively to you
-              for the next 72 hours. No other Pro Partner sees this lead
+              for the next 24 hours. No other Pro Partner sees this lead
               while your window is open.
             </Text>
 
@@ -101,13 +101,13 @@ function MarketplaceLeadAssignedEmail({
 export const template = {
   component: MarketplaceLeadAssignedEmail,
   subject: ({ city }: Record<string, unknown>) =>
-    `New exclusive lead in ${city || 'your area'} — respond within 72h`,
+    `New exclusive lead in ${city || 'your area'} — respond within 24h`,
   displayName: 'Marketplace Lead Assigned',
   previewData: {
     providerName: 'Magnolia Immersive',
     agentName: 'Sarah Lin',
     city: 'Atlanta, GA',
-    expiresAtIso: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+    expiresAtIso: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     dashboardUrl: 'https://3dps.transcendencemedia.com/dashboard/marketplace',
     studioUrl: 'https://3dps.transcendencemedia.com/p/magnolia-immersive',
   },
