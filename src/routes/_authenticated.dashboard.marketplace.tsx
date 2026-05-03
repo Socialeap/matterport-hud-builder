@@ -115,13 +115,45 @@ function MarketplacePage() {
           </p>
         </div>
         <Link to="/dashboard/branding">
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" disabled={isLocked}>
             Configure Listing
           </Button>
         </Link>
       </div>
 
-      {loading ? (
+      {isLocked ? (
+        <div className="relative">
+          <div
+            aria-hidden
+            className="space-y-3 pointer-events-none select-none opacity-60 blur-[2px]"
+          >
+            {sampleBeacons.map((row) => (
+              <BeaconCard key={row.id} beacon={row} />
+            ))}
+          </div>
+          <div className="absolute inset-0 flex items-center justify-center p-4">
+            <Card className="max-w-md shadow-lg">
+              <CardContent className="flex flex-col items-center gap-3 p-6 text-center">
+                <Lock className="size-8 text-muted-foreground" />
+                <div>
+                  <h3 className="text-base font-semibold">
+                    Unlock real agent contacts with Pro
+                  </h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Upgrade to Pro to see — and reach out to — agents in your
+                    service area who've requested a local 3D presentation partner.
+                  </p>
+                </div>
+                <Link to="/dashboard/upgrade">
+                  <Button size="sm" className="mt-1">
+                    View Plans
+                  </Button>
+                </Link>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      ) : loading ? (
         <Card>
           <CardContent className="flex items-center justify-center p-12">
             <Loader2 className="size-6 animate-spin text-muted-foreground" />
