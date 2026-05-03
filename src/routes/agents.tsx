@@ -523,6 +523,16 @@ function DirectorySection() {
     );
   }, [results, selectedSpecialties]);
 
+  // Demo cards mirror the same specialty-filter behavior as live results, so
+  // visitors get an immediate sense of how filtering works before any Pros
+  // are live in their city.
+  const visibleMocks = useMemo(() => {
+    if (selectedSpecialties.size === 0) return MOCK_MSPS;
+    return MOCK_MSPS.filter((m) =>
+      Array.from(selectedSpecialties).every((s) => m.specialties.includes(s)),
+    );
+  }, [selectedSpecialties]);
+
   const handleSearch = async (e: FormEvent) => {
     e.preventDefault();
     const cityTrim = city.trim();
