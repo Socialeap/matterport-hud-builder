@@ -2198,11 +2198,6 @@ window.__closeEmailOptions=function(){
         statusEl.textContent="No email address configured.";
         return;
       }
-      if(!isValidVisitorEmail(emailEl.value)){
-        ev.preventDefault();
-        statusEl.textContent="Please enter a valid email address or leave it blank.";
-        return;
-      }
       var subject=buildSubject();
       var body=buildBody(false);
       if(!prepareEmailRedirectLink(emailBtn,agentEmail,subject,body,statusEl)){
