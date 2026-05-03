@@ -32,6 +32,7 @@ import {
   Lock,
   BarChart2,
   Shield,
+  Store,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -40,6 +41,7 @@ import { useMspAccess } from "@/hooks/use-msp-access";
 type NavRoute =
   | "/dashboard"
   | "/dashboard/branding"
+  | "/dashboard/marketplace"
   | "/dashboard/vault"
   | "/dashboard/pricing"
   | "/dashboard/orders"
@@ -61,6 +63,7 @@ interface NavItem {
 const allNavItems: readonly NavItem[] = [
   { label: "Overview", to: "/dashboard", icon: LayoutDashboard, roles: ["provider", "client"] },
   { label: "Branding", to: "/dashboard/branding", icon: Palette, roles: ["provider"] },
+  { label: "Marketplace", to: "/dashboard/marketplace", icon: Store, roles: ["provider"], requiresPro: true },
   { label: "Production Vault", to: "/dashboard/vault", icon: Archive, roles: ["provider"], requiresPaid: true },
   { label: "Pricing", to: "/dashboard/pricing", icon: DollarSign, roles: ["provider"] },
   { label: "Orders", to: "/dashboard/orders", icon: ShoppingCart, roles: ["provider", "client"] },
@@ -136,7 +139,7 @@ export function DashboardSidebar() {
                   const isLocked = lockedForPro || lockedForUnpaid;
                   const lockTooltip = lockedForUnpaid
                     ? `Purchase a plan to unlock ${item.label}`
-                    : "Upgrade to Pro to unlock the Production Vault";
+                    : `Upgrade to Pro to unlock ${item.label}`;
 
                   if (isLocked) {
                     return (

@@ -38,3 +38,6 @@ verify_jwt = false
 
 [functions.capture-beacon]
 verify_jwt = false
+
+[functions.match-beacons]
+verify_jwt = false

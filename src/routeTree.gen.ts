@@ -38,6 +38,7 @@ import { Route as AuthenticatedDashboardStatsRouteImport } from './routes/_authe
 import { Route as AuthenticatedDashboardPricingRouteImport } from './routes/_authenticated.dashboard.pricing'
 import { Route as AuthenticatedDashboardPayoutsRouteImport } from './routes/_authenticated.dashboard.payouts'
 import { Route as AuthenticatedDashboardOrdersRouteImport } from './routes/_authenticated.dashboard.orders'
+import { Route as AuthenticatedDashboardMarketplaceRouteImport } from './routes/_authenticated.dashboard.marketplace'
 import { Route as AuthenticatedDashboardDemoRouteImport } from './routes/_authenticated.dashboard.demo'
 import { Route as AuthenticatedDashboardClientsRouteImport } from './routes/_authenticated.dashboard.clients'
 import { Route as AuthenticatedDashboardBrandingRouteImport } from './routes/_authenticated.dashboard.branding'
@@ -199,6 +200,12 @@ const AuthenticatedDashboardOrdersRoute =
     path: '/orders',
     getParentRoute: () => AuthenticatedDashboardRoute,
   } as any)
+const AuthenticatedDashboardMarketplaceRoute =
+  AuthenticatedDashboardMarketplaceRouteImport.update({
+    id: '/marketplace',
+    path: '/marketplace',
+    getParentRoute: () => AuthenticatedDashboardRoute,
+  } as any)
 const AuthenticatedDashboardDemoRoute =
   AuthenticatedDashboardDemoRouteImport.update({
     id: '/demo',
@@ -276,6 +283,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/branding': typeof AuthenticatedDashboardBrandingRoute
   '/dashboard/clients': typeof AuthenticatedDashboardClientsRoute
   '/dashboard/demo': typeof AuthenticatedDashboardDemoRoute
+  '/dashboard/marketplace': typeof AuthenticatedDashboardMarketplaceRoute
   '/dashboard/orders': typeof AuthenticatedDashboardOrdersRoute
   '/dashboard/payouts': typeof AuthenticatedDashboardPayoutsRoute
   '/dashboard/pricing': typeof AuthenticatedDashboardPricingRoute
@@ -312,6 +320,7 @@ export interface FileRoutesByTo {
   '/dashboard/branding': typeof AuthenticatedDashboardBrandingRoute
   '/dashboard/clients': typeof AuthenticatedDashboardClientsRoute
   '/dashboard/demo': typeof AuthenticatedDashboardDemoRoute
+  '/dashboard/marketplace': typeof AuthenticatedDashboardMarketplaceRoute
   '/dashboard/orders': typeof AuthenticatedDashboardOrdersRoute
   '/dashboard/payouts': typeof AuthenticatedDashboardPayoutsRoute
   '/dashboard/pricing': typeof AuthenticatedDashboardPricingRoute
@@ -353,6 +362,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard/branding': typeof AuthenticatedDashboardBrandingRoute
   '/_authenticated/dashboard/clients': typeof AuthenticatedDashboardClientsRoute
   '/_authenticated/dashboard/demo': typeof AuthenticatedDashboardDemoRoute
+  '/_authenticated/dashboard/marketplace': typeof AuthenticatedDashboardMarketplaceRoute
   '/_authenticated/dashboard/orders': typeof AuthenticatedDashboardOrdersRoute
   '/_authenticated/dashboard/payouts': typeof AuthenticatedDashboardPayoutsRoute
   '/_authenticated/dashboard/pricing': typeof AuthenticatedDashboardPricingRoute
@@ -394,6 +404,7 @@ export interface FileRouteTypes {
     | '/dashboard/branding'
     | '/dashboard/clients'
     | '/dashboard/demo'
+    | '/dashboard/marketplace'
     | '/dashboard/orders'
     | '/dashboard/payouts'
     | '/dashboard/pricing'
@@ -430,6 +441,7 @@ export interface FileRouteTypes {
     | '/dashboard/branding'
     | '/dashboard/clients'
     | '/dashboard/demo'
+    | '/dashboard/marketplace'
     | '/dashboard/orders'
     | '/dashboard/payouts'
     | '/dashboard/pricing'
@@ -470,6 +482,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard/branding'
     | '/_authenticated/dashboard/clients'
     | '/_authenticated/dashboard/demo'
+    | '/_authenticated/dashboard/marketplace'
     | '/_authenticated/dashboard/orders'
     | '/_authenticated/dashboard/payouts'
     | '/_authenticated/dashboard/pricing'
@@ -715,6 +728,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardOrdersRouteImport
       parentRoute: typeof AuthenticatedDashboardRoute
     }
+    '/_authenticated/dashboard/marketplace': {
+      id: '/_authenticated/dashboard/marketplace'
+      path: '/marketplace'
+      fullPath: '/dashboard/marketplace'
+      preLoaderRoute: typeof AuthenticatedDashboardMarketplaceRouteImport
+      parentRoute: typeof AuthenticatedDashboardRoute
+    }
     '/_authenticated/dashboard/demo': {
       id: '/_authenticated/dashboard/demo'
       path: '/demo'
@@ -814,6 +834,7 @@ interface AuthenticatedDashboardRouteChildren {
   AuthenticatedDashboardBrandingRoute: typeof AuthenticatedDashboardBrandingRoute
   AuthenticatedDashboardClientsRoute: typeof AuthenticatedDashboardClientsRoute
   AuthenticatedDashboardDemoRoute: typeof AuthenticatedDashboardDemoRoute
+  AuthenticatedDashboardMarketplaceRoute: typeof AuthenticatedDashboardMarketplaceRoute
   AuthenticatedDashboardOrdersRoute: typeof AuthenticatedDashboardOrdersRoute
   AuthenticatedDashboardPayoutsRoute: typeof AuthenticatedDashboardPayoutsRoute
   AuthenticatedDashboardPricingRoute: typeof AuthenticatedDashboardPricingRoute
@@ -829,6 +850,8 @@ const AuthenticatedDashboardRouteChildren: AuthenticatedDashboardRouteChildren =
     AuthenticatedDashboardBrandingRoute: AuthenticatedDashboardBrandingRoute,
     AuthenticatedDashboardClientsRoute: AuthenticatedDashboardClientsRoute,
     AuthenticatedDashboardDemoRoute: AuthenticatedDashboardDemoRoute,
+    AuthenticatedDashboardMarketplaceRoute:
+      AuthenticatedDashboardMarketplaceRoute,
     AuthenticatedDashboardOrdersRoute: AuthenticatedDashboardOrdersRoute,
     AuthenticatedDashboardPayoutsRoute: AuthenticatedDashboardPayoutsRoute,
     AuthenticatedDashboardPricingRoute: AuthenticatedDashboardPricingRoute,
