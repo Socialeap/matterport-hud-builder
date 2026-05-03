@@ -592,32 +592,20 @@ function DirectorySection() {
                 </Button>
               </form>
 
-              <div>
-                <label className="mb-3 block text-xs font-semibold uppercase tracking-wider text-white/60">
-                  Specialties
-                </label>
-                <div className="space-y-2">
-                  {SPECIALTY_FILTERS.map((f) => {
-                    const checked = selectedSpecialties.has(f.value);
-                    return (
-                      <label
-                        key={f.value}
-                        className={`flex cursor-pointer items-center gap-2.5 rounded-md border px-2.5 py-2 text-sm transition-colors ${
-                          checked
-                            ? "border-cyan-300/50 bg-cyan-300/10 text-white"
-                            : "border-white/10 bg-white/5 text-white/70 hover:border-white/20 hover:text-white"
-                        }`}
-                      >
-                        <Checkbox
-                          checked={checked}
-                          onCheckedChange={() => toggleSpecialty(f.value)}
-                          className="border-white/30 data-[state=checked]:bg-cyan-400 data-[state=checked]:text-[#0a0e27]"
-                        />
-                        <span className="flex-1 truncate">{f.label}</span>
-                      </label>
-                    );
-                  })}
-                </div>
+              <div className="space-y-5">
+                <FilterGroup
+                  title="On-Site Scanning"
+                  options={SCANNING_FILTERS}
+                  selected={selectedSpecialties}
+                  onToggle={toggleSpecialty}
+                />
+                <FilterGroup
+                  title="Studio Presentation (Production Vault)"
+                  subtitle="Minimum-quantity service offering"
+                  options={STUDIO_FILTERS}
+                  selected={selectedSpecialties}
+                  onToggle={toggleSpecialty}
+                />
               </div>
 
               {(hasSearched || selectedSpecialties.size > 0) && (
