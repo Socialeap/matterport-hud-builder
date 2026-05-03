@@ -35,7 +35,11 @@ export interface MarketplaceLead {
 }
 
 const HOUR_MS = 60 * 60 * 1000;
-const URGENCY_WINDOW_MS = 24 * HOUR_MS;
+// Triggers the amber border + destructive-variant countdown badge
+// when fewer than this many hours remain in the 24-hour exclusive
+// window. 8h = the last third of the window; the value used to be
+// 24h when the window itself was 72h.
+const URGENCY_WINDOW_MS = 8 * HOUR_MS;
 
 function formatRemaining(target: Date, now: Date): string {
   const diff = target.getTime() - now.getTime();

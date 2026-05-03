@@ -159,7 +159,7 @@ function MarketplacePage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Marketplace Leads</h1>
           <p className="text-sm text-muted-foreground">
-            Each lead is yours <em>exclusively</em> for 72 hours. If you don't
+            Each lead is yours <em>exclusively</em> for 24 hours. If you don't
             reach out before the window closes, the lead automatically
             re-pools to the next Pro in your area.
           </p>
@@ -193,7 +193,7 @@ function MarketplacePage() {
                     Unlock real agent contacts with Pro
                   </h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Upgrade to Pro to receive — and exclusively own for 72
+                    Upgrade to Pro to receive — and exclusively own for 24
                     hours — leads from agents in your service area.
                   </p>
                 </div>
@@ -265,7 +265,7 @@ function MarketplacePage() {
           <CardTitle className="text-base">A note on outreach</CardTitle>
           <CardDescription>
             Each agent below explicitly opted in to be contacted by a local Pro
-            Partner when one becomes active. Your 72-hour exclusive window
+            Partner when one becomes active. Your 24-hour exclusive window
             means no other Pro is being shown the same lead — make it count.
             Outreach goes out through 3DPS so the agent can flag inappropriate
             messages with one click; we use those signals to maintain your
