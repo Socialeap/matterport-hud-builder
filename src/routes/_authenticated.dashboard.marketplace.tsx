@@ -43,15 +43,7 @@ function MarketplacePage() {
       if (cancelled) return;
 
       if (rpcError) {
-        const msg = rpcError.message?.toLowerCase() ?? "";
-        if (msg.includes("active pro license required")) {
-          setError("pro_required");
-        } else if (msg.includes("provider role required")) {
-          setError("not_provider");
-        } else {
-          setError("unknown");
-          toast.error("Could not load your marketplace contacts");
-        }
+        toast.error("Could not load your marketplace contacts");
         setLoading(false);
         return;
       }
