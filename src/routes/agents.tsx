@@ -173,6 +173,84 @@ interface DirectoryMSP {
   region: string;
 }
 
+// Sample MSPs shown for demonstration before the live directory is populated.
+// `slug: null` makes MSPCard render a disabled "Studio coming soon" CTA — no
+// broken links. These are clearly labeled as "Sample" in the UI.
+const MOCK_MSPS: DirectoryMSP[] = [
+  {
+    brand_name: "Skyline 3D Studios",
+    slug: null,
+    logo_url: null,
+    tier: "pro",
+    specialties: [
+      "scan-matterport-pro3",
+      "scan-drone-aerial",
+      "scan-twilight-photography",
+      "vault-sound-library",
+      "vault-portal-filters",
+      "ai-lead-generation",
+    ],
+    primary_city: "Atlanta",
+    region: "GA",
+  },
+  {
+    brand_name: "Coastal Tour Co.",
+    slug: null,
+    logo_url: null,
+    tier: "starter",
+    specialties: ["scan-matterport-pro3", "scan-floor-plans", "scan-same-day-turnaround"],
+    primary_city: "San Diego",
+    region: "CA",
+  },
+  {
+    brand_name: "Lakeshore Immersive",
+    slug: null,
+    logo_url: null,
+    tier: "pro",
+    specialties: [
+      "scan-matterport-pro3",
+      "scan-dimensional-measurements",
+      "vault-interactive-widgets",
+      "vault-property-mapper",
+    ],
+    primary_city: "Chicago",
+    region: "IL",
+  },
+  {
+    brand_name: "Lone Star Spaces",
+    slug: null,
+    logo_url: null,
+    tier: "starter",
+    specialties: ["scan-matterport-pro3", "scan-drone-aerial", "vault-custom-icons"],
+    primary_city: "Austin",
+    region: "TX",
+  },
+  {
+    brand_name: "Mile High Matterworks",
+    slug: null,
+    logo_url: null,
+    tier: "pro",
+    specialties: [
+      "scan-matterport-pro3",
+      "scan-twilight-photography",
+      "vault-sound-library",
+      "vault-property-mapper",
+      "ai-lead-generation",
+    ],
+    primary_city: "Denver",
+    region: "CO",
+  },
+  {
+    brand_name: "Beacon Hill Tours",
+    slug: null,
+    logo_url: null,
+    tier: "starter",
+    specialties: ["scan-matterport-pro3", "scan-floor-plans", "vault-portal-filters"],
+    primary_city: "Boston",
+    region: "MA",
+  },
+];
+
 /* ------------------------------------------------------------------ */
 /*  Page                                                               */
 /* ------------------------------------------------------------------ */
