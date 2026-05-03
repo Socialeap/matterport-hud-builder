@@ -468,8 +468,8 @@ function DirectorySection() {
 
     setSearching(true);
     const { data, error } = await supabase.rpc("search_msp_directory", {
-      p_city: searchMode === "city" ? cityTrim : null,
-      p_zip: searchMode === "zip" ? zipTrim : null,
+      p_city: searchMode === "city" ? cityTrim : undefined,
+      p_zip: searchMode === "zip" ? zipTrim : undefined,
     });
     setSearching(false);
 
