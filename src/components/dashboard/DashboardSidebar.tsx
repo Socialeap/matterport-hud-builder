@@ -63,7 +63,7 @@ interface NavItem {
 const allNavItems: readonly NavItem[] = [
   { label: "Overview", to: "/dashboard", icon: LayoutDashboard, roles: ["provider", "client"] },
   { label: "Branding", to: "/dashboard/branding", icon: Palette, roles: ["provider"] },
-  { label: "Marketplace", to: "/dashboard/marketplace", icon: Store, roles: ["provider"], requiresPro: true },
+  { label: "Marketplace", to: "/dashboard/marketplace", icon: Store, roles: ["provider"] },
   { label: "Production Vault", to: "/dashboard/vault", icon: Archive, roles: ["provider"], requiresPaid: true },
   { label: "Pricing", to: "/dashboard/pricing", icon: DollarSign, roles: ["provider"] },
   { label: "Orders", to: "/dashboard/orders", icon: ShoppingCart, roles: ["provider", "client"] },
