@@ -8,9 +8,11 @@ import { Label } from "@/components/ui/label";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Lock, Copy, X } from "lucide-react";
+import { Lock, Copy, X, MapPin } from "lucide-react";
 import { toast } from "sonner";
 import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { uploadBrandAsset } from "@/lib/storage";
 import { useStripeCheckout } from "@/hooks/useStripeCheckout";
 import { getStripeEnvironment } from "@/lib/stripe";
@@ -18,6 +20,27 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { buildStudioUrl } from "@/lib/public-url";
 import { useMspAccess } from "@/hooks/use-msp-access";
 import { StudioPreviewPanel } from "@/components/dashboard/StudioPreviewPanel";
+import type { Database } from "@/integrations/supabase/types";
+
+type MarketplaceSpecialty = Database["public"]["Enums"]["marketplace_specialty"];
+
+const SPECIALTY_OPTIONS: ReadonlyArray<{
+  value: MarketplaceSpecialty;
+  label: string;
+  proOnly: boolean;
+}> = [
+  { value: "residential", label: "Residential", proOnly: false },
+  { value: "luxury", label: "Luxury", proOnly: false },
+  { value: "commercial", label: "Commercial", proOnly: false },
+  { value: "new-construction", label: "New Construction", proOnly: false },
+  { value: "multi-family", label: "Multi-Family", proOnly: false },
+  { value: "vacation-rental", label: "Vacation Rental", proOnly: false },
+  { value: "ai-specialist", label: "AI Concierge Specialist", proOnly: true },
+  { value: "cinema-mode-specialist", label: "Cinema Mode Specialist", proOnly: true },
+];
+
+const ZIP_RE = /^\d{5}(-\d{4})?$/;
+const STATE_RE = /^[A-Z]{2}$/;
 
 export const Route = createFileRoute("/_authenticated/dashboard/branding")({
   component: BrandingPage,
@@ -40,6 +63,12 @@ interface BrandingData {
   additional_model_fee_cents: number | null;
   hero_bg_url: string | null;
   hero_bg_opacity: number;
+  // Marketplace listing
+  is_directory_public: boolean;
+  primary_city: string | null;
+  region: string | null;
+  service_zips: string[];
+  specialties: MarketplaceSpecialty[];
 }
 
 const defaultBranding: BrandingData = {
@@ -59,6 +88,11 @@ const defaultBranding: BrandingData = {
   additional_model_fee_cents: null,
   hero_bg_url: null,
   hero_bg_opacity: 0.45,
+  is_directory_public: false,
+  primary_city: null,
+  region: null,
+  service_zips: [],
+  specialties: [],
 };
 
 function BrandingPage() {
@@ -73,14 +107,18 @@ function BrandingPage() {
   const [savedSnapshot, setSavedSnapshot] = useState<BrandingData>(defaultBranding);
   const savedSnapshotRef = useRef<BrandingData>(defaultBranding);
   const [previewVersion, setPreviewVersion] = useState(0);
+  // Free-text mirror for service_zips so users can type commas/spaces
+  // without us fighting their cursor on every keystroke.
+  const [zipsInput, setZipsInput] = useState("");
 
   const hasUnsavedChanges = useMemo(
     () =>
       JSON.stringify(branding) !== JSON.stringify(savedSnapshot) ||
       !!logoFile ||
       !!faviconFile ||
-      !!heroFile,
-    [branding, savedSnapshot, logoFile, faviconFile, heroFile],
+      !!heroFile ||
+      zipsInput !== savedSnapshot.service_zips.join(", "),
+    [branding, savedSnapshot, logoFile, faviconFile, heroFile, zipsInput],
   );
 
   const isPro = branding.tier === "pro";
@@ -120,8 +158,13 @@ function BrandingPage() {
         base_price_cents: data.base_price_cents,
         model_threshold: data.model_threshold ?? 1,
         additional_model_fee_cents: data.additional_model_fee_cents,
-        hero_bg_url: (data as any).hero_bg_url ?? null,
-        hero_bg_opacity: (data as any).hero_bg_opacity ?? 0.45,
+        hero_bg_url: data.hero_bg_url ?? null,
+        hero_bg_opacity: data.hero_bg_opacity ?? 0.45,
+        is_directory_public: data.is_directory_public ?? false,
+        primary_city: data.primary_city ?? null,
+        region: data.region ?? null,
+        service_zips: data.service_zips ?? [],
+        specialties: data.specialties ?? [],
       };
       // Only update state if the fetched payload actually differs from
       // what we already have — prevents needless re-renders that would
@@ -131,6 +174,7 @@ function BrandingPage() {
         savedSnapshotRef.current = next;
         setBranding(next);
         setSavedSnapshot(next);
+        setZipsInput(next.service_zips.join(", "));
       }
     }
     setLoading(false);
@@ -167,8 +211,55 @@ function BrandingPage() {
     }
   }, [user, fetchBranding]);
 
+  // Parse the free-text zips input into a clean string[] of unique
+  // 5- or 9-digit codes. Invalid entries are silently dropped here;
+  // the inline hint UI tells the user what was rejected.
+  const parsedZips = useMemo(() => {
+    const seen = new Set<string>();
+    return zipsInput
+      .split(/[\s,]+/)
+      .map((z) => z.trim())
+      .filter((z) => {
+        if (!z || !ZIP_RE.test(z) || seen.has(z)) return false;
+        seen.add(z);
+        return true;
+      });
+  }, [zipsInput]);
+
+  const invalidZipCount = useMemo(() => {
+    const tokens = zipsInput.split(/[\s,]+/).filter((t) => t.trim().length > 0);
+    return tokens.length - parsedZips.length;
+  }, [zipsInput, parsedZips]);
+
+  const toggleSpecialty = (value: MarketplaceSpecialty, proOnly: boolean) => {
+    if (proOnly && !isPro) return;
+    setBranding((prev) => {
+      const has = prev.specialties.includes(value);
+      return {
+        ...prev,
+        specialties: has
+          ? prev.specialties.filter((s) => s !== value)
+          : [...prev.specialties, value],
+      };
+    });
+  };
+
   const handleSave = async () => {
     if (!user) return;
+
+    // Marketplace listing validation: if the MSP is publishing, they
+    // must at least name a city and a 2-letter state.
+    if (branding.is_directory_public) {
+      if (!branding.primary_city || branding.primary_city.trim().length < 2) {
+        toast.error("Add a Primary City before listing in the Marketplace");
+        return;
+      }
+      if (!branding.region || !STATE_RE.test(branding.region)) {
+        toast.error("Add a 2-letter state code (e.g. GA) before listing");
+        return;
+      }
+    }
+
     setSaving(true);
 
     let logoUrl = branding.logo_url;
@@ -192,6 +283,13 @@ function BrandingPage() {
       else toast.error("Failed to upload hero background");
     }
 
+    // Strip Pro-only specialty tags if the MSP is on Starter — defense
+    // in depth in case the UI gating was bypassed.
+    const allowedSpecialties = branding.specialties.filter((s) => {
+      const opt = SPECIALTY_OPTIONS.find((o) => o.value === s);
+      return opt ? !opt.proOnly || isPro : false;
+    });
+
     const { error } = await supabase
       .from("branding_settings")
       .upsert(
@@ -210,6 +308,11 @@ function BrandingPage() {
           additional_model_fee_cents: branding.additional_model_fee_cents,
           hero_bg_url: heroUrl,
           hero_bg_opacity: branding.hero_bg_opacity,
+          is_directory_public: branding.is_directory_public,
+          primary_city: branding.primary_city?.trim() || null,
+          region: branding.region?.trim().toUpperCase() || null,
+          service_zips: parsedZips,
+          specialties: allowedSpecialties,
         } as any,
         { onConflict: "provider_id" }
       );
@@ -223,6 +326,8 @@ function BrandingPage() {
         logo_url: logoUrl,
         favicon_url: faviconUrl,
         hero_bg_url: heroUrl,
+        service_zips: parsedZips,
+        specialties: allowedSpecialties,
       };
       setBranding(updated);
       setSavedSnapshot(updated);
@@ -230,6 +335,7 @@ function BrandingPage() {
       setLogoFile(null);
       setFaviconFile(null);
       setHeroFile(null);
+      setZipsInput(parsedZips.join(", "));
       setPreviewVersion((n) => n + 1);
       toast.success("Branding settings saved");
     }
@@ -520,6 +626,127 @@ function BrandingPage() {
               <Button size="sm" className="mt-3" onClick={() => handleUpgrade()}>
                 {!hasPaid ? "Choose a plan" : "Upgrade to Pro — $199"}
               </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Marketplace listing — opt-in directory presence for the
+          agent-facing /find-a-studio search (rolls out in a follow-up PR). */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <MapPin className="size-4 text-muted-foreground" />
+                <CardTitle>Marketplace Listing</CardTitle>
+              </div>
+              <CardDescription className="mt-1">
+                List your Studio in our agent-facing directory. This is a
+                supplemental marketing channel — it does not change your
+                personal branding or existing workflow.
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                id="is_directory_public"
+                checked={branding.is_directory_public}
+                onCheckedChange={(checked) =>
+                  setBranding({ ...branding, is_directory_public: checked })
+                }
+              />
+              <Label htmlFor="is_directory_public" className="text-sm">
+                {branding.is_directory_public ? "Listed" : "Hidden"}
+              </Label>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="primary_city">Primary City</Label>
+              <Input
+                id="primary_city"
+                value={branding.primary_city ?? ""}
+                onChange={(e) =>
+                  setBranding({ ...branding, primary_city: e.target.value })
+                }
+                placeholder="Atlanta"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="region">State</Label>
+              <Input
+                id="region"
+                maxLength={2}
+                value={branding.region ?? ""}
+                onChange={(e) =>
+                  setBranding({
+                    ...branding,
+                    region: e.target.value.toUpperCase().replace(/[^A-Z]/g, ""),
+                  })
+                }
+                placeholder="GA"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="service_zips">Service ZIP Codes</Label>
+            <Input
+              id="service_zips"
+              value={zipsInput}
+              onChange={(e) => setZipsInput(e.target.value)}
+              placeholder="30303, 30308, 30312"
+            />
+            <p className="text-xs text-muted-foreground">
+              Comma- or space-separated. Agents searching by ZIP will match
+              against this list. {parsedZips.length} valid
+              {invalidZipCount > 0 ? `, ${invalidZipCount} ignored` : ""}.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Specialties</Label>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {SPECIALTY_OPTIONS.map((opt) => {
+                const checked = branding.specialties.includes(opt.value);
+                const disabled = opt.proOnly && !isPro;
+                return (
+                  <label
+                    key={opt.value}
+                    className={`flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm ${
+                      disabled
+                        ? "cursor-not-allowed opacity-50"
+                        : "cursor-pointer hover:bg-muted/50"
+                    }`}
+                  >
+                    <Checkbox
+                      checked={checked}
+                      disabled={disabled}
+                      onCheckedChange={() =>
+                        toggleSpecialty(opt.value, opt.proOnly)
+                      }
+                    />
+                    <span className="flex-1">{opt.label}</span>
+                    {opt.proOnly && (
+                      <Badge variant="outline" className="text-[10px]">
+                        Pro
+                      </Badge>
+                    )}
+                  </label>
+                );
+              })}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Pro-only tags require an active Pro license to claim.
+            </p>
+          </div>
+
+          {branding.is_directory_public && (
+            <div className="rounded-md border border-dashed border-primary/30 bg-primary/5 p-3 text-xs text-muted-foreground">
+              Your studio will appear in agent search results once the
+              Marketplace launches. Save your changes to publish.
             </div>
           )}
         </CardContent>

@@ -35,3 +35,6 @@ verify_jwt = false
 
 [functions.validate-byok]
 verify_jwt = false
+
+[functions.capture-beacon]
+verify_jwt = false
