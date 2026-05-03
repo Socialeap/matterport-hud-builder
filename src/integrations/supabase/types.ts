@@ -1104,10 +1104,12 @@ export type Database = {
         Returns: {
           brokerage: string
           city: string
+          contacted_at: string | null
           created_at: string
           email: string
+          exclusive_until: string | null
           id: string
-          is_first_match_with_me: boolean
+          is_currently_exclusive: boolean
           name: string
           region: string
           status: Database["public"]["Enums"]["beacon_status"]
@@ -1135,6 +1137,10 @@ export type Database = {
       get_user_tier: {
         Args: { check_env?: string; user_uuid: string }
         Returns: string
+      }
+      get_my_service_polygon: {
+        Args: never
+        Returns: Json
       }
       has_role: {
         Args: {
@@ -1224,6 +1230,10 @@ export type Database = {
           viewer_matches_provider: boolean
           viewer_role: string
         }[]
+      }
+      set_my_service_polygon: {
+        Args: { p_geojson?: Json | null }
+        Returns: boolean
       }
       search_msp_directory: {
         Args: { p_city?: string; p_zip?: string }

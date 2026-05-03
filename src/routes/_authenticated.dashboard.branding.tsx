@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useAuth } from "@/hooks/use-auth";
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { lazy, Suspense, useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,10 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Lock, Copy, X, MapPin } from "lucide-react";
+
+// Lazy-loaded so the ~150 KB Leaflet bundle ships only when a Pro
+// MSP actually opens the Service Area editor.
+const ServiceAreaMap = lazy(() => import("@/components/dashboard/ServiceAreaMap"));
 import { toast } from "sonner";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
@@ -74,8 +78,10 @@ interface BrandingData {
   is_directory_public: boolean;
   primary_city: string | null;
   region: string | null;
+  service_radius_miles: number | null;
   service_zips: string[];
   specialties: MarketplaceSpecialty[];
+  service_polygon: GeoJSON.Polygon | null;
 }
 
 const defaultBranding: BrandingData = {
@@ -98,8 +104,10 @@ const defaultBranding: BrandingData = {
   is_directory_public: false,
   primary_city: null,
   region: null,
+  service_radius_miles: null,
   service_zips: [],
   specialties: [],
+  service_polygon: null,
 };
 
 function BrandingPage() {
@@ -170,8 +178,16 @@ function BrandingPage() {
         is_directory_public: data.is_directory_public ?? false,
         primary_city: data.primary_city ?? null,
         region: data.region ?? null,
+        // service_radius_miles is on the row but not yet in the
+        // generated Database types; read it via untyped fallback.
+        service_radius_miles:
+          (data as unknown as { service_radius_miles?: number | null })
+            .service_radius_miles ?? null,
         service_zips: data.service_zips ?? [],
         specialties: data.specialties ?? [],
+        // Polygon is loaded separately via get_my_service_polygon RPC
+        // (geometry columns aren't natively rendered by Postgrest).
+        service_polygon: savedSnapshotRef.current.service_polygon,
       };
       // Only update state if the fetched payload actually differs from
       // what we already have — prevents needless re-renders that would
@@ -182,6 +198,25 @@ function BrandingPage() {
         setBranding(next);
         setSavedSnapshot(next);
         setZipsInput(next.service_zips.join(", "));
+      }
+
+      // Polygon is gated on Pro license at the RPC level. Attempt
+      // unconditionally and tolerate the 42501 error for Starter users
+      // — they just see an empty polygon and the upgrade prompt.
+      if (data.tier === "pro") {
+        const { data: polygonJson } = await supabase.rpc(
+          "get_my_service_polygon",
+        );
+        const candidate =
+          polygonJson && typeof polygonJson === "object" && !Array.isArray(polygonJson)
+            ? (polygonJson as unknown as GeoJSON.Polygon)
+            : null;
+        if (candidate && candidate.type === "Polygon") {
+          const withPoly = { ...next, service_polygon: candidate };
+          savedSnapshotRef.current = withPoly;
+          setBranding(withPoly);
+          setSavedSnapshot(withPoly);
+        }
       }
     }
     setLoading(false);
@@ -318,52 +353,114 @@ function BrandingPage() {
           is_directory_public: branding.is_directory_public,
           primary_city: branding.primary_city?.trim() || null,
           region: branding.region?.trim().toUpperCase() || null,
+          service_radius_miles: branding.service_radius_miles,
           service_zips: parsedZips,
           specialties: allowedSpecialties,
         } as any,
         { onConflict: "provider_id" }
       );
 
-    setSaving(false);
     if (error) {
+      setSaving(false);
       toast.error("Failed to save branding settings");
-    } else {
-      const updated: BrandingData = {
-        ...branding,
-        logo_url: logoUrl,
-        favicon_url: faviconUrl,
-        hero_bg_url: heroUrl,
-        service_zips: parsedZips,
-        specialties: allowedSpecialties,
-      };
-
-      // Fire the marketplace matcher when the listing is public AND
-      // either just flipped public OR the service area changed. The
-      // matcher is global + idempotent so we don't need to wait on it
-      // or surface its result to the user.
-      const wentPublic =
-        updated.is_directory_public && !savedSnapshot.is_directory_public;
-      const serviceAreaChanged =
-        updated.is_directory_public &&
-        (updated.primary_city !== savedSnapshot.primary_city ||
-          updated.region !== savedSnapshot.region ||
-          JSON.stringify(updated.service_zips) !==
-            JSON.stringify(savedSnapshot.service_zips));
-      if (wentPublic || serviceAreaChanged) {
-        void supabase.functions.invoke("match-beacons", { body: {} });
-      }
-
-      setBranding(updated);
-      setSavedSnapshot(updated);
-      savedSnapshotRef.current = updated;
-      setLogoFile(null);
-      setFaviconFile(null);
-      setHeroFile(null);
-      setZipsInput(parsedZips.join(", "));
-      setPreviewVersion((n) => n + 1);
-      toast.success("Branding settings saved");
+      return;
     }
+
+    // Persist the polygon via the SECURITY DEFINER RPC. Geometry
+    // columns aren't writable through Postgrest's row UPDATE path,
+    // so this is the only authenticated write surface for them.
+    // Gated to Pro at the RPC level — Starter callers get 42501,
+    // which we surface as a soft warning rather than a hard error.
+    const polygonChanged =
+      JSON.stringify(branding.service_polygon ?? null) !==
+      JSON.stringify(savedSnapshot.service_polygon ?? null);
+    if (isPro && polygonChanged) {
+      const { error: polygonError } = await supabase.rpc(
+        "set_my_service_polygon",
+        {
+          p_geojson: (branding.service_polygon ?? null) as never,
+        },
+      );
+      if (polygonError) {
+        // Surface but don't unwind the row save — the rest of the
+        // settings did persist; the MSP can retry the polygon edit.
+        toast.warning(
+          "Branding saved, but the service-area polygon could not be updated.",
+        );
+      }
+    }
+
+    setSaving(false);
+
+    const updated: BrandingData = {
+      ...branding,
+      logo_url: logoUrl,
+      favicon_url: faviconUrl,
+      hero_bg_url: heroUrl,
+      service_zips: parsedZips,
+      specialties: allowedSpecialties,
+    };
+
+    // Fire the marketplace matcher when the listing is public AND
+    // either just flipped public OR the service area changed. The
+    // matcher is global + idempotent so we don't need to wait on it
+    // or surface its result to the user.
+    const wentPublic =
+      updated.is_directory_public && !savedSnapshot.is_directory_public;
+    const cityOrRegionChanged =
+      updated.primary_city !== savedSnapshot.primary_city ||
+      updated.region !== savedSnapshot.region;
+    const serviceAreaChanged =
+      updated.is_directory_public &&
+      (cityOrRegionChanged ||
+        JSON.stringify(updated.service_zips) !==
+          JSON.stringify(savedSnapshot.service_zips) ||
+        polygonChanged);
+    if (wentPublic || serviceAreaChanged) {
+      void supabase.functions.invoke("match-beacons", { body: {} });
+    }
+
+    // Re-geocode the listing's centroid when the city or region
+    // changes. Fire-and-forget — Census can be slow and we don't
+    // want to block the toast. The matcher's ZIP/trigram tiers
+    // continue to work if geocoding fails.
+    if (updated.is_directory_public && cityOrRegionChanged) {
+      void triggerGeocodeBranding();
+    }
+
+    setBranding(updated);
+    setSavedSnapshot(updated);
+    savedSnapshotRef.current = updated;
+    setLogoFile(null);
+    setFaviconFile(null);
+    setHeroFile(null);
+    setZipsInput(parsedZips.join(", "));
+    setPreviewVersion((n) => n + 1);
+    toast.success("Branding settings saved");
   };
+
+  /**
+   * Best-effort POST to /api/geocode-branding so the server can
+   * resolve city/state to lat/lng via Census. Silent failure: the
+   * matcher degrades to ZIP/trigram if geocoding is unavailable.
+   */
+  const triggerGeocodeBranding = useCallback(async () => {
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) return;
+      await fetch("/api/geocode-branding", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: "{}",
+      });
+    } catch {
+      // best-effort; matcher degrades gracefully
+    }
+  }, []);
 
   if (loading) {
     return (
@@ -775,6 +872,109 @@ function BrandingPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Service Area — geospatial matching layer.
+          Pro draws a polygon (most precise match tier).
+          Starter sees an upgrade prompt; their listing still
+          matches via the radius / ZIP / fuzzy-city fallbacks. */}
+      {branding.is_directory_public && (
+        <Card className={!isPro ? "opacity-95" : ""}>
+          <CardHeader>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <MapPin className="size-4 text-muted-foreground" />
+                  <CardTitle>Service Area</CardTitle>
+                  {!isPro && <Lock className="size-4 text-muted-foreground" />}
+                </div>
+                <CardDescription className="mt-1">
+                  Define how the marketplace matches incoming agent leads
+                  to your listing. Polygon matches always win over radius
+                  and ZIP fallbacks.
+                </CardDescription>
+              </div>
+              <Badge variant="outline" className="text-[10px]">Pro polygon</Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="service_radius">Service Radius (miles)</Label>
+              <Input
+                id="service_radius"
+                type="number"
+                min={1}
+                max={500}
+                value={branding.service_radius_miles ?? ""}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  const next = raw === "" ? null : Math.max(1, Math.min(500, Number(raw) || 0));
+                  setBranding({ ...branding, service_radius_miles: next });
+                }}
+                placeholder="25"
+              />
+              <p className="text-xs text-muted-foreground">
+                Used for radius-based matches when no polygon is drawn.
+                Leave blank to match by ZIP / city only.
+              </p>
+            </div>
+
+            {isPro ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Custom Polygon</Label>
+                  {branding.service_polygon && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={() =>
+                        setBranding({ ...branding, service_polygon: null })
+                      }
+                    >
+                      <X className="h-3 w-3 mr-1" />
+                      Clear polygon
+                    </Button>
+                  )}
+                </div>
+                <Suspense
+                  fallback={
+                    <div className="flex h-80 w-full items-center justify-center rounded-md border border-input bg-muted/30 text-xs text-muted-foreground">
+                      Loading map editor…
+                    </div>
+                  }
+                >
+                  <ServiceAreaMap
+                    initialPolygon={savedSnapshot.service_polygon}
+                    initialCenter={null}
+                    onPolygonChange={(p) =>
+                      setBranding((prev) => ({ ...prev, service_polygon: p }))
+                    }
+                  />
+                </Suspense>
+                <p className="text-xs text-muted-foreground">
+                  Click the polygon tool (top-right) to draw your service
+                  area. Only one polygon is stored at a time — drawing a
+                  new one replaces the old.
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed border-primary/30 bg-primary/5 p-4 text-center">
+                <p className="text-sm font-medium text-foreground">
+                  Polygon service areas are a Pro feature
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Upgrade to draw the exact area where you accept jobs.
+                  Your listing still matches via radius and ZIP today.
+                </p>
+                <Button size="sm" className="mt-3" onClick={() => handleUpgrade()}>
+                  Upgrade to Pro
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <StudioPreviewPanel
         slug={savedSnapshot.slug}
