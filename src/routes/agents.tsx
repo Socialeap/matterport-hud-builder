@@ -18,6 +18,18 @@ import {
   CheckCircle2,
   ArrowRight,
   Loader2,
+  Camera,
+  Plane,
+  Sunset,
+  Ruler,
+  Sofa,
+  Zap,
+  Music2,
+  Wand2,
+  Puzzle,
+  Shapes,
+  MapPinned,
+  Magnet,
 } from "lucide-react";
 import heroHudBanner from "@/assets/hero-hud-showcase.png";
 import tmLogo from "@/assets/tm-logo-landscape.png";
@@ -119,25 +131,36 @@ const journeySteps = [
 /*  MSP Directory data + filters                                       */
 /* ------------------------------------------------------------------ */
 
-const SPECIALTY_FILTERS: ReadonlyArray<{
+type FilterOption = {
   value: MarketplaceSpecialty;
   label: string;
-}> = [
-  { value: "residential", label: "Residential" },
-  { value: "luxury", label: "Luxury" },
-  { value: "commercial", label: "Commercial" },
-  { value: "new-construction", label: "New Construction" },
-  { value: "multi-family", label: "Multi-Family" },
-  { value: "vacation-rental", label: "Vacation Rental" },
-  { value: "ai-specialist", label: "AI Concierge" },
-  { value: "cinema-mode-specialist", label: "Cinema Mode" },
+  icon: typeof Camera;
+  note?: string;
+};
+
+// Group 1: On-site scanning / 3D capture services
+const SCANNING_FILTERS: ReadonlyArray<FilterOption> = [
+  { value: "scan-matterport-pro3", label: "Matterport Pro3", icon: Camera },
+  { value: "scan-drone-aerial", label: "Drone / Aerial", icon: Plane },
+  { value: "scan-twilight-photography", label: "Twilight Photography", icon: Sunset },
+  { value: "scan-floor-plans", label: "Floor Plans", icon: Ruler },
+  { value: "scan-dimensional-measurements", label: "Dimensional Measurements", icon: Sofa },
+  { value: "scan-same-day-turnaround", label: "Same-Day Turnaround", icon: Zap },
 ];
 
-const SPECIALTY_LABEL: Record<MarketplaceSpecialty, string> =
-  Object.fromEntries(SPECIALTY_FILTERS.map((s) => [s.value, s.label])) as Record<
-    MarketplaceSpecialty,
-    string
-  >;
+// Group 2: Studio (Production Vault) services with minimum-quantity hints
+const STUDIO_FILTERS: ReadonlyArray<FilterOption> = [
+  { value: "vault-sound-library", label: "Sound Library", icon: Music2, note: "12+ tracks" },
+  { value: "vault-portal-filters", label: "Visual Portal Filters", icon: Wand2, note: "3+" },
+  { value: "vault-interactive-widgets", label: "Interactive Widgets", icon: Puzzle, note: "2+" },
+  { value: "vault-custom-icons", label: "Custom Iconography", icon: Shapes, note: "2+ sets" },
+  { value: "vault-property-mapper", label: "Property Mapper", icon: MapPinned, note: "6+ maps" },
+  { value: "ai-lead-generation", label: "AI Lead Generation", icon: Magnet },
+];
+
+const SPECIALTY_LABEL: Record<MarketplaceSpecialty, string> = Object.fromEntries(
+  [...SCANNING_FILTERS, ...STUDIO_FILTERS].map((s) => [s.value, s.label]),
+) as Record<MarketplaceSpecialty, string>;
 
 interface DirectoryMSP {
   brand_name: string;
@@ -445,8 +468,8 @@ function DirectorySection() {
 
     setSearching(true);
     const { data, error } = await supabase.rpc("search_msp_directory", {
-      p_city: searchMode === "city" ? cityTrim : null,
-      p_zip: searchMode === "zip" ? zipTrim : null,
+      p_city: searchMode === "city" ? cityTrim : undefined,
+      p_zip: searchMode === "zip" ? zipTrim : undefined,
     });
     setSearching(false);
 
@@ -569,32 +592,20 @@ function DirectorySection() {
                 </Button>
               </form>
 
-              <div>
-                <label className="mb-3 block text-xs font-semibold uppercase tracking-wider text-white/60">
-                  Specialties
-                </label>
-                <div className="space-y-2">
-                  {SPECIALTY_FILTERS.map((f) => {
-                    const checked = selectedSpecialties.has(f.value);
-                    return (
-                      <label
-                        key={f.value}
-                        className={`flex cursor-pointer items-center gap-2.5 rounded-md border px-2.5 py-2 text-sm transition-colors ${
-                          checked
-                            ? "border-cyan-300/50 bg-cyan-300/10 text-white"
-                            : "border-white/10 bg-white/5 text-white/70 hover:border-white/20 hover:text-white"
-                        }`}
-                      >
-                        <Checkbox
-                          checked={checked}
-                          onCheckedChange={() => toggleSpecialty(f.value)}
-                          className="border-white/30 data-[state=checked]:bg-cyan-400 data-[state=checked]:text-[#0a0e27]"
-                        />
-                        <span className="flex-1 truncate">{f.label}</span>
-                      </label>
-                    );
-                  })}
-                </div>
+              <div className="space-y-5">
+                <FilterGroup
+                  title="On-Site Scanning"
+                  options={SCANNING_FILTERS}
+                  selected={selectedSpecialties}
+                  onToggle={toggleSpecialty}
+                />
+                <FilterGroup
+                  title="Studio Presentation (Production Vault)"
+                  subtitle="Minimum-quantity service offering"
+                  options={STUDIO_FILTERS}
+                  selected={selectedSpecialties}
+                  onToggle={toggleSpecialty}
+                />
               </div>
 
               {(hasSearched || selectedSpecialties.size > 0) && (
@@ -661,6 +672,56 @@ function DirectorySection() {
         </Card>
       </div>
     </section>
+  );
+}
+
+function FilterGroup({
+  title,
+  subtitle,
+  options,
+  selected,
+  onToggle,
+}: {
+  title: string;
+  subtitle?: string;
+  options: ReadonlyArray<FilterOption>;
+  selected: Set<MarketplaceSpecialty>;
+  onToggle: (id: MarketplaceSpecialty) => void;
+}) {
+  return (
+    <div>
+      <div className="mb-3">
+        <p className="text-xs font-semibold uppercase tracking-wider text-white/60">{title}</p>
+        {subtitle && <p className="mt-0.5 text-[10px] text-white/40">{subtitle}</p>}
+      </div>
+      <div className="space-y-2">
+        {options.map((f) => {
+          const checked = selected.has(f.value);
+          const Icon = f.icon;
+          return (
+            <label
+              key={f.value}
+              className={`flex cursor-pointer items-center gap-2.5 rounded-md border px-2.5 py-2 text-sm transition-colors ${
+                checked
+                  ? "border-cyan-300/50 bg-cyan-300/10 text-white"
+                  : "border-white/10 bg-white/5 text-white/70 hover:border-white/20 hover:text-white"
+              }`}
+            >
+              <Checkbox
+                checked={checked}
+                onCheckedChange={() => onToggle(f.value)}
+                className="border-white/30 data-[state=checked]:bg-cyan-400 data-[state=checked]:text-[#0a0e27]"
+              />
+              <Icon className="size-3.5 shrink-0 opacity-70" />
+              <span className="flex-1 truncate">{f.label}</span>
+              {f.note && (
+                <span className="shrink-0 text-[10px] text-white/40">{f.note}</span>
+              )}
+            </label>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
