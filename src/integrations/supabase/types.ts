@@ -1106,8 +1106,10 @@ export type Database = {
           city: string
           contacted_at: string | null
           created_at: string
+          disposition: Database["public"]["Enums"]["beacon_disposition"] | null
           email: string
           exclusive_until: string | null
+          has_outreach: boolean
           id: string
           is_currently_exclusive: boolean
           name: string
@@ -1259,6 +1261,7 @@ export type Database = {
     Enums: {
       app_role: "admin" | "provider" | "client"
       app_tier: "starter" | "pro"
+      beacon_disposition: "won" | "lost" | "unresponsive"
       beacon_status: "waiting" | "matched" | "unsubscribed" | "expired"
       invitation_status: "pending" | "accepted" | "expired" | "declined"
       license_status: "active" | "past_due" | "expired"
@@ -1412,6 +1415,7 @@ export const Constants = {
     Enums: {
       app_role: ["admin", "provider", "client"],
       app_tier: ["starter", "pro"],
+      beacon_disposition: ["won", "lost", "unresponsive"],
       beacon_status: ["waiting", "matched", "unsubscribed", "expired"],
       invitation_status: ["pending", "accepted", "expired", "declined"],
       license_status: ["active", "past_due", "expired"],
