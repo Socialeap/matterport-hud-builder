@@ -30,6 +30,7 @@ import {
   Shapes,
   MapPinned,
   Magnet,
+  Info,
 } from "lucide-react";
 import heroHudBanner from "@/assets/hero-hud-showcase.png";
 import tmLogo from "@/assets/tm-logo-landscape.png";
