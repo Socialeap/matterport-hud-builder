@@ -6,12 +6,6 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
   Bot,
   Video,
   MailCheck,
@@ -23,18 +17,18 @@ import {
   Users,
   CheckCircle2,
   ArrowRight,
-  Music2,
-  Wand2,
-  Puzzle,
-  Shapes,
-  MapPinned,
-  Magnet,
-  DollarSign,
+  Loader2,
 } from "lucide-react";
 import heroHudBanner from "@/assets/hero-hud-showcase.png";
 import tmLogo from "@/assets/tm-logo-landscape.png";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { BeaconForm } from "@/components/marketplace/BeaconForm";
+import { buildStudioUrl } from "@/lib/public-url";
+import type { Database } from "@/integrations/supabase/types";
+
+type MarketplaceSpecialty = Database["public"]["Enums"]["marketplace_specialty"];
 
 const SITE_URL = "https://matterport-hud-builder.lovable.app";
 const OG_TITLE = "Find a 3D Presentation Studio for Your Listings — For Agents & Property Managers";
@@ -125,124 +119,35 @@ const journeySteps = [
 /*  MSP Directory data + filters                                       */
 /* ------------------------------------------------------------------ */
 
-// Differentiating services an MSP studio may or may not offer.
-// (Common platform features like custom branding, AI Concierge, live tours,
-// analytics, and custom domain hosting are available to every MSP, so they're
-// covered in the Benefits section above — not used for differentiation here.)
-const FEATURE_FILTERS = [
-  { id: "sound", icon: Music2, label: "Sound Library", note: "12+ tracks" },
-  { id: "filters", icon: Wand2, label: "Visual Portal Filters", note: "3+" },
-  { id: "widgets", icon: Puzzle, label: "Interactive Widgets", note: "2+" },
-  { id: "icons", icon: Shapes, label: "Custom Iconography", note: "1+ set" },
-  { id: "mapper", icon: MapPinned, label: "Property Mapper", note: "5+ maps" },
-  { id: "leadgen", icon: Magnet, label: "AI Lead Generation" },
-] as const;
-
-type FeatureId = typeof FEATURE_FILTERS[number]["id"];
-
-type PricingTier = "$" | "$$" | "$$$";
-
-/**
- * Maps an MSP's published per-model and per-bundle base prices to a
- * 3-tier rating that's displayed on the directory card.
- *
- *   $   — below $80 / model OR below $451 / bundle
- *   $$  — $81–$119 / model OR $451–$599 / bundle
- *   $$$ — over $119 / model OR over $599 / bundle
- *
- * If the two sources disagree, the higher tier wins.
- */
-function calculatePricingTier(perModel: number, perBundle: number): PricingTier {
-  const modelTier = perModel > 119 ? 3 : perModel > 80 ? 2 : 1;
-  const bundleTier = perBundle > 599 ? 3 : perBundle > 451 ? 2 : 1;
-  const tier = Math.max(modelTier, bundleTier);
-  return (["$", "$$", "$$$"] as const)[tier - 1];
-}
-
-interface SampleMSP {
-  id: string;
-  name: string;
-  city: string;
-  state: string;
-  tagline: string;
-  features: FeatureId[];
-  pricing: { perModel: number; perBundle: number };
-}
-
-const SAMPLE_MSPS: SampleMSP[] = [
-  {
-    id: "transcendence-media",
-    name: "Transcendence Media",
-    city: "Los Angeles",
-    state: "CA",
-    tagline: "Cinematic 3D presentations with full vault assets and AI lead capture.",
-    features: ["sound", "filters", "widgets", "icons", "mapper", "leadgen"],
-    pricing: { perModel: 149, perBundle: 699 },
-  },
-  {
-    id: "skyline-tours",
-    name: "Skyline Tours",
-    city: "Austin",
-    state: "TX",
-    tagline: "Fast-turnaround Matterport for residential agents.",
-    features: ["mapper", "leadgen"],
-    pricing: { perModel: 75, perBundle: 399 },
-  },
-  {
-    id: "harbor-spaces",
-    name: "Harbor Spaces",
-    city: "Boston",
-    state: "MA",
-    tagline: "Coastal property specialists with custom iconography and property maps.",
-    features: ["sound", "icons", "mapper"],
-    pricing: { perModel: 99, perBundle: 549 },
-  },
-  {
-    id: "midwest-3d",
-    name: "Midwest 3D",
-    city: "Chicago",
-    state: "IL",
-    tagline: "High-volume residential MSP with property mapper bundles.",
-    features: ["sound", "filters", "mapper", "leadgen"],
-    pricing: { perModel: 89, perBundle: 499 },
-  },
-  {
-    id: "desert-vista-tours",
-    name: "Desert Vista Tours",
-    city: "Phoenix",
-    state: "AZ",
-    tagline: "Luxury & resort Matterport with curated sound library and portal filters.",
-    features: ["sound", "filters", "widgets"],
-    pricing: { perModel: 129, perBundle: 649 },
-  },
-  {
-    id: "pacific-render",
-    name: "Pacific Render",
-    city: "Seattle",
-    state: "WA",
-    tagline: "Tech-forward studio with AI lead generation built in.",
-    features: ["filters", "widgets", "icons", "leadgen"],
-    pricing: { perModel: 109, perBundle: 579 },
-  },
-  {
-    id: "magnolia-immersive",
-    name: "Magnolia Immersive",
-    city: "Atlanta",
-    state: "GA",
-    tagline: "Boutique southern MSP focused on storytelling and interactive widgets.",
-    features: ["sound", "widgets", "icons"],
-    pricing: { perModel: 79, perBundle: 429 },
-  },
-  {
-    id: "rocky-mtn-spaces",
-    name: "Rocky Mountain Spaces",
-    city: "Denver",
-    state: "CO",
-    tagline: "Mountain real estate specialists with cinematic portal filters.",
-    features: ["filters", "icons", "mapper"],
-    pricing: { perModel: 115, perBundle: 589 },
-  },
+const SPECIALTY_FILTERS: ReadonlyArray<{
+  value: MarketplaceSpecialty;
+  label: string;
+}> = [
+  { value: "residential", label: "Residential" },
+  { value: "luxury", label: "Luxury" },
+  { value: "commercial", label: "Commercial" },
+  { value: "new-construction", label: "New Construction" },
+  { value: "multi-family", label: "Multi-Family" },
+  { value: "vacation-rental", label: "Vacation Rental" },
+  { value: "ai-specialist", label: "AI Concierge" },
+  { value: "cinema-mode-specialist", label: "Cinema Mode" },
 ];
+
+const SPECIALTY_LABEL: Record<MarketplaceSpecialty, string> =
+  Object.fromEntries(SPECIALTY_FILTERS.map((s) => [s.value, s.label])) as Record<
+    MarketplaceSpecialty,
+    string
+  >;
+
+interface DirectoryMSP {
+  brand_name: string;
+  slug: string | null;
+  logo_url: string | null;
+  tier: "starter" | "pro";
+  specialties: MarketplaceSpecialty[];
+  primary_city: string;
+  region: string;
+}
 
 /* ------------------------------------------------------------------ */
 /*  Page                                                               */
@@ -470,16 +375,28 @@ function AgentsPage() {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Directory section (interactive, no backend)                        */
+/*  Directory section (live)                                           */
 /* ------------------------------------------------------------------ */
 
-function DirectorySection() {
-  const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState<Set<FeatureId>>(new Set());
-  const [waitlistEmail, setWaitlistEmail] = useState("");
+const ZIP_RE = /^\d{5}(-\d{4})?$/;
+const STATE_RE = /^[A-Z]{2}$/;
 
-  const toggleFeature = (id: FeatureId) => {
-    setSelected((prev) => {
+function DirectorySection() {
+  const [searchMode, setSearchMode] = useState<"city" | "zip">("city");
+  const [city, setCity] = useState("");
+  const [region, setRegion] = useState("");
+  const [zip, setZip] = useState("");
+  const [results, setResults] = useState<DirectoryMSP[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [lastQuery, setLastQuery] = useState<{ city: string; region: string; zip: string } | null>(
+    null,
+  );
+  const [selectedSpecialties, setSelectedSpecialties] = useState<Set<MarketplaceSpecialty>>(
+    new Set(),
+  );
+
+  const toggleSpecialty = (id: MarketplaceSpecialty) => {
+    setSelectedSpecialties((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -488,41 +405,82 @@ function DirectorySection() {
   };
 
   const reset = () => {
-    setQuery("");
-    setSelected(new Set());
+    setCity("");
+    setRegion("");
+    setZip("");
+    setResults(null);
+    setSelectedSpecialties(new Set());
+    setLastQuery(null);
   };
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return SAMPLE_MSPS.filter((m) => {
-      const matchesQuery =
-        !q ||
-        m.city.toLowerCase().includes(q) ||
-        m.state.toLowerCase().includes(q) ||
-        `${m.city}, ${m.state}`.toLowerCase().includes(q) ||
-        m.name.toLowerCase().includes(q);
-      const matchesFeatures =
-        selected.size === 0 || Array.from(selected).every((f) => m.features.includes(f));
-      return matchesQuery && matchesFeatures;
-    });
-  }, [query, selected]);
+    if (!results) return null;
+    if (selectedSpecialties.size === 0) return results;
+    return results.filter((m) =>
+      Array.from(selectedSpecialties).every((s) => m.specialties.includes(s)),
+    );
+  }, [results, selectedSpecialties]);
 
-  const handleWaitlist = (e: FormEvent) => {
+  const handleSearch = async (e: FormEvent) => {
     e.preventDefault();
-    if (!waitlistEmail.trim()) return;
-    toast.success("Thanks — we'll email you when the directory is live.");
-    setWaitlistEmail("");
+    const cityTrim = city.trim();
+    const regionTrim = region.trim().toUpperCase();
+    const zipTrim = zip.trim();
+
+    if (searchMode === "city") {
+      if (cityTrim.length < 2) {
+        toast.error("Please enter a city");
+        return;
+      }
+      if (regionTrim && !STATE_RE.test(regionTrim)) {
+        toast.error("Please enter a 2-letter state code (e.g. GA)");
+        return;
+      }
+    } else {
+      if (!ZIP_RE.test(zipTrim)) {
+        toast.error("ZIP must be 5 digits (or 5+4)");
+        return;
+      }
+    }
+
+    setSearching(true);
+    const { data, error } = await supabase.rpc("search_msp_directory", {
+      p_city: searchMode === "city" ? cityTrim : null,
+      p_zip: searchMode === "zip" ? zipTrim : null,
+    });
+    setSearching(false);
+
+    if (error) {
+      toast.error("Could not load the directory. Please try again.");
+      return;
+    }
+
+    // We only filter by region client-side — the RPC is city-only by design
+    // (zip is ANY-of-array). This keeps the SQL simple and lets us surface
+    // results from MSPs serving multiple states with the same city name.
+    const rows = (data ?? []) as DirectoryMSP[];
+    const finalRows = regionTrim
+      ? rows.filter((r) => r.region === regionTrim)
+      : rows;
+    setResults(finalRows);
+    setLastQuery({ city: cityTrim, region: regionTrim, zip: zipTrim });
   };
 
+  const hasSearched = lastQuery !== null;
+  const hasResults = (filtered?.length ?? 0) > 0;
+
   return (
-    <section id="directory" className="relative z-10 px-4 py-16 sm:py-24" style={{ background: "rgba(255,255,255,0.02)" }}>
+    <section
+      id="directory"
+      className="relative z-10 px-4 py-16 sm:py-24"
+      style={{ background: "rgba(255,255,255,0.02)" }}
+    >
       <div className="mx-auto max-w-6xl">
         <div className="mb-8 flex flex-col items-center justify-center gap-3 text-center">
-          <Badge className="bg-amber-300/15 text-amber-200 backdrop-blur">Coming Soon</Badge>
           <h2 className="text-3xl font-bold text-white sm:text-4xl">MSP Directory</h2>
           <p className="mx-auto max-w-2xl text-white/60">
-            Search by location and the features that matter most to your listings. The directory
-            launches soon — these listings are previews so you can explore the experience.
+            Search by city or ZIP. If no Pro Partner is live in your market yet, drop your details
+            so we can notify you the moment one activates locally.
           </p>
         </div>
 
@@ -530,33 +488,97 @@ function DirectorySection() {
           <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
             {/* Filter rail */}
             <aside className="space-y-6">
-              <div>
-                <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-white/60">
-                  Location
-                </label>
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/40" />
-                  <Input
-                    placeholder="City, state, or ZIP"
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    className="border-white/10 bg-white/5 pl-9 text-white placeholder:text-white/40"
-                  />
+              <form onSubmit={handleSearch} className="space-y-4">
+                <div>
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-white/60">
+                    Search By
+                  </label>
+                  <div className="grid grid-cols-2 gap-1 rounded-md bg-white/5 p-1">
+                    <button
+                      type="button"
+                      onClick={() => setSearchMode("city")}
+                      className={`rounded px-3 py-1.5 text-xs font-medium transition-colors ${
+                        searchMode === "city"
+                          ? "bg-cyan-400 text-[#0a0e27]"
+                          : "text-white/60 hover:text-white"
+                      }`}
+                    >
+                      City
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSearchMode("zip")}
+                      className={`rounded px-3 py-1.5 text-xs font-medium transition-colors ${
+                        searchMode === "zip"
+                          ? "bg-cyan-400 text-[#0a0e27]"
+                          : "text-white/60 hover:text-white"
+                      }`}
+                    >
+                      ZIP
+                    </button>
+                  </div>
                 </div>
-              </div>
+
+                {searchMode === "city" ? (
+                  <div className="space-y-3">
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/40" />
+                      <Input
+                        placeholder="City"
+                        value={city}
+                        onChange={(e) => setCity(e.target.value)}
+                        className="border-white/10 bg-white/5 pl-9 text-white placeholder:text-white/40"
+                      />
+                    </div>
+                    <Input
+                      placeholder="State (optional, e.g. GA)"
+                      value={region}
+                      maxLength={2}
+                      onChange={(e) =>
+                        setRegion(
+                          e.target.value.toUpperCase().replace(/[^A-Z]/g, ""),
+                        )
+                      }
+                      className="border-white/10 bg-white/5 text-white placeholder:text-white/40"
+                    />
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/40" />
+                    <Input
+                      placeholder="ZIP code"
+                      value={zip}
+                      onChange={(e) => setZip(e.target.value)}
+                      className="border-white/10 bg-white/5 pl-9 text-white placeholder:text-white/40"
+                    />
+                  </div>
+                )}
+
+                <Button type="submit" disabled={searching} className="w-full gap-2">
+                  {searching ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" />
+                      Searching…
+                    </>
+                  ) : (
+                    <>
+                      <Search className="size-4" />
+                      Find Studios
+                    </>
+                  )}
+                </Button>
+              </form>
 
               <div>
                 <label className="mb-3 block text-xs font-semibold uppercase tracking-wider text-white/60">
-                  Required Services
+                  Specialties
                 </label>
                 <div className="space-y-2">
-                  {FEATURE_FILTERS.map((f) => {
-                    const Icon = f.icon;
-                    const checked = selected.has(f.id);
-                    const note = "note" in f ? f.note : undefined;
+                  {SPECIALTY_FILTERS.map((f) => {
+                    const checked = selectedSpecialties.has(f.value);
                     return (
                       <label
-                        key={f.id}
+                        key={f.value}
                         className={`flex cursor-pointer items-center gap-2.5 rounded-md border px-2.5 py-2 text-sm transition-colors ${
                           checked
                             ? "border-cyan-300/50 bg-cyan-300/10 text-white"
@@ -565,76 +587,74 @@ function DirectorySection() {
                       >
                         <Checkbox
                           checked={checked}
-                          onCheckedChange={() => toggleFeature(f.id)}
+                          onCheckedChange={() => toggleSpecialty(f.value)}
                           className="border-white/30 data-[state=checked]:bg-cyan-400 data-[state=checked]:text-[#0a0e27]"
                         />
-                        <Icon className="size-4 shrink-0 opacity-80" />
                         <span className="flex-1 truncate">{f.label}</span>
-                        {note && (
-                          <span className="shrink-0 text-[10px] uppercase tracking-wider text-white/40">
-                            {note}
-                          </span>
-                        )}
                       </label>
                     );
                   })}
                 </div>
               </div>
 
-              {(query || selected.size > 0) && (
+              {(hasSearched || selectedSpecialties.size > 0) && (
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={reset}
                   className="w-full text-white/70 hover:bg-white/10 hover:text-white"
                 >
-                  Reset filters
+                  Reset
                 </Button>
               )}
             </aside>
 
             {/* Results */}
             <div className="space-y-4">
-              {/* Waitlist banner */}
-              <div className="rounded-lg border border-amber-300/30 bg-amber-300/5 p-4">
-                <form
-                  onSubmit={handleWaitlist}
-                  className="flex flex-col items-start gap-3 text-sm sm:flex-row sm:items-center"
-                >
-                  <p className="flex-1 text-white/80">
-                    <span className="font-semibold text-amber-200">Directory launching soon.</span>{" "}
-                    Get notified the moment we go live.
-                  </p>
-                  <div className="flex w-full gap-2 sm:w-auto">
-                    <Input
-                      type="email"
-                      required
-                      placeholder="you@email.com"
-                      value={waitlistEmail}
-                      onChange={(e) => setWaitlistEmail(e.target.value)}
-                      className="border-white/10 bg-white/5 text-white placeholder:text-white/40 sm:w-56"
-                    />
-                    <Button type="submit" size="sm" className="shrink-0">
-                      Notify Me
-                    </Button>
-                  </div>
-                </form>
-              </div>
-
-              {/* Cards */}
-              {filtered.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-white/15 bg-white/2 p-10 text-center">
-                  <Building2 className="mx-auto mb-3 size-8 text-white/30" />
+              {!hasSearched && (
+                <div className="rounded-lg border border-dashed border-white/15 bg-white/[0.02] p-10 text-center">
+                  <Search className="mx-auto mb-3 size-8 text-white/30" />
                   <p className="text-sm text-white/60">
-                    No matches yet — adjust your filters or check back soon.
+                    Enter a city or ZIP to find your local 3D Presentation Studio Pro Partner.
                   </p>
                 </div>
-              ) : (
-                <div className="grid gap-4 sm:grid-cols-2">
-                  {filtered.map((m) => (
-                    <MSPCard key={m.id} msp={m} />
-                  ))}
+              )}
+
+              {hasSearched && !hasResults && (
+                <div className="space-y-4">
+                  <div className="rounded-lg border border-amber-300/30 bg-amber-300/5 p-5">
+                    <h3 className="text-base font-semibold text-amber-100">
+                      No Pro Partner in {lastQuery!.city || lastQuery!.zip} yet.
+                    </h3>
+                    <p className="mt-1 text-sm text-white/70">
+                      Be first in line. Drop your details below and we'll email you the moment a
+                      local Pro Partner activates in your market.
+                    </p>
+                  </div>
+                  <BeaconForm
+                    defaultCity={lastQuery!.city}
+                    defaultRegion={lastQuery!.region}
+                    defaultZip={lastQuery!.zip}
+                    variant="dark"
+                  />
                 </div>
+              )}
+
+              {hasSearched && hasResults && (
+                <>
+                  <p className="text-sm text-white/60">
+                    {filtered!.length} {filtered!.length === 1 ? "Pro Partner" : "Pro Partners"}{" "}
+                    serving{" "}
+                    <span className="font-medium text-white">
+                      {lastQuery!.city || lastQuery!.zip}
+                    </span>
+                  </p>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {filtered!.map((m) => (
+                      <MSPCard key={`${m.slug ?? m.brand_name}`} msp={m} />
+                    ))}
+                  </div>
+                </>
               )}
             </div>
           </div>
@@ -644,95 +664,79 @@ function DirectorySection() {
   );
 }
 
-function MSPCard({ msp }: { msp: SampleMSP }) {
-  const tier = calculatePricingTier(msp.pricing.perModel, msp.pricing.perBundle);
-  const tierLabel =
-    tier === "$"
-      ? "Budget-friendly"
-      : tier === "$$"
-        ? "Mid-range"
-        : "Premium";
+function MSPCard({ msp }: { msp: DirectoryMSP }) {
+  const isPro = msp.tier === "pro";
+  const studioUrl = msp.slug
+    ? buildStudioUrl(msp.slug, { tier: msp.tier, customDomain: null })
+    : null;
 
   return (
     <Card className="flex h-full flex-col border-white/10 bg-white/5 transition-all hover:-translate-y-0.5 hover:border-cyan-300/30">
       <CardContent className="flex flex-1 flex-col gap-3 p-5">
         <div className="flex items-start gap-3">
-          <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-500/30 to-blue-500/30 text-white">
-            <Building2 className="size-5" />
+          <div className="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gradient-to-br from-cyan-500/30 to-blue-500/30 text-white">
+            {msp.logo_url ? (
+              <img
+                src={msp.logo_url}
+                alt={`${msp.brand_name} logo`}
+                className="size-full object-contain"
+                loading="lazy"
+              />
+            ) : (
+              <Building2 className="size-5" />
+            )}
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-start justify-between gap-2">
-              <h3 className="truncate text-base font-semibold text-white">{msp.name}</h3>
-              <TooltipProvider delayDuration={150}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="inline-flex shrink-0 items-center gap-0.5 rounded-md bg-emerald-300/10 px-1.5 py-0.5 font-mono text-xs font-bold text-emerald-300 ring-1 ring-emerald-300/20">
-                      <DollarSign className="size-3" />
-                      {tier === "$$" ? <DollarSign className="-ml-1.5 size-3" /> : null}
-                      {tier === "$$$" ? (
-                        <>
-                          <DollarSign className="-ml-1.5 size-3" />
-                          <DollarSign className="-ml-1.5 size-3" />
-                        </>
-                      ) : null}
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent>Base Pricing: {tierLabel}</TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              <h3 className="truncate text-base font-semibold text-white">{msp.brand_name}</h3>
+              {isPro && (
+                <Badge className="shrink-0 bg-cyan-400/15 text-cyan-200 ring-1 ring-cyan-300/30">
+                  Pro
+                </Badge>
+              )}
             </div>
             <p className="flex items-center gap-1 text-xs text-white/50">
               <MapPin className="size-3" />
-              {msp.city}, {msp.state}
+              {msp.primary_city}, {msp.region}
             </p>
           </div>
         </div>
 
-        <p className="text-sm leading-relaxed text-white/70">{msp.tagline}</p>
-
-        <div className="flex flex-wrap gap-1.5">
-          {msp.features.map((fid) => {
-            const def = FEATURE_FILTERS.find((f) => f.id === fid);
-            if (!def) return null;
-            const Icon = def.icon;
-            return (
-              <TooltipProvider key={fid} delayDuration={150}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="inline-flex size-7 items-center justify-center rounded-md bg-white/5 text-white/70 ring-1 ring-white/10">
-                      <Icon className="size-3.5" />
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent>{def.label}</TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            );
-          })}
-        </div>
+        {msp.specialties.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {msp.specialties.map((s) => (
+              <span
+                key={s}
+                className="inline-flex items-center rounded-md bg-white/5 px-2 py-0.5 text-[11px] text-white/70 ring-1 ring-white/10"
+              >
+                {SPECIALTY_LABEL[s]}
+              </span>
+            ))}
+          </div>
+        )}
 
         <div className="mt-auto flex items-center gap-2 pt-3">
-          <TooltipProvider delayDuration={150}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="flex-1">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled
-                    className="w-full cursor-not-allowed border-white/15 bg-white/5 text-white/50"
-                  >
-                    Request a Quote
-                    <ArrowRight className="ml-1 size-3.5" />
-                  </Button>
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>Coming soon</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          <Badge variant="outline" className="border-white/15 bg-transparent text-[10px] uppercase tracking-wider text-white/50">
-            <Users className="mr-1 size-3" />
-            Preview
-          </Badge>
+          {studioUrl ? (
+            <a href={studioUrl} target="_blank" rel="noreferrer" className="flex-1">
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full border-white/15 bg-white/5 text-white hover:bg-white/10"
+              >
+                Visit Studio
+                <ArrowRight className="ml-1 size-3.5" />
+              </Button>
+            </a>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled
+              className="w-full flex-1 cursor-not-allowed border-white/15 bg-white/5 text-white/50"
+            >
+              Studio coming soon
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>
