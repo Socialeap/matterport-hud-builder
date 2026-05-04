@@ -935,17 +935,6 @@ function DemoPreview({
 }) {
   return (
     <div className="space-y-6">
-      <div className="flex items-start gap-3 rounded-lg border border-cyan-300/30 bg-cyan-300/5 p-4">
-        <Info className="mt-0.5 size-4 shrink-0 text-cyan-300" />
-        <div className="space-y-1 text-sm">
-          <p className="font-semibold text-cyan-100">Live Directory launching soon</p>
-          <p className="text-white/70">
-            The studios below are sample listings shown for demonstration. Use the
-            filters to preview how the directory will work, then drop your email below
-            to be notified the moment Pro Partners activate near you.
-          </p>
-        </div>
-      </div>
 
       <div>
         <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-white/50">
