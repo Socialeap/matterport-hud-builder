@@ -172,12 +172,13 @@ export function slidingWindowChunks(
   const section = options.section;
   const source: ChunkSource = options.source ?? "pdf";
 
-  const clean = String(text || "").replace(/\s+/g, " ").trim();
+  const raw = String(text || "");
+  const clean = raw.replace(/\s+/g, " ").trim();
   if (!clean) return [];
 
   const out: PropertyChunk[] = [];
   const windows = sentenceWindowChunks(
-    clean,
+    raw,
     chunkChars,
     overlapChars,
     maxChunks,
