@@ -75,7 +75,7 @@ export function EnhancementsSection({
 
   useEffect(() => {
     if (!models.some((m) => m.id === activeId)) {
-      setActiveId(models[0]?.id ?? "");
+      setActiveId((models.find((m) => m.isPrimary) ?? models[0])?.id ?? "");
     }
   }, [models, activeId]);
 
