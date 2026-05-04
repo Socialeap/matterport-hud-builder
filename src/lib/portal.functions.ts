@@ -1917,7 +1917,10 @@ if(!C){
 var props=C.properties||[];
 var uuidByIndex=C.propertyUuidByIndex||[];
 var frame=document.getElementById("matterport-frame");
-var tabsEl=document.getElementById("tabs");
+var propSwitchEl=document.getElementById("hud-prop-switch");
+var propTriggerEl=document.getElementById("hud-prop-trigger");
+var propMenuEl=document.getElementById("hud-prop-menu");
+var propCurrentEl=document.getElementById("hud-prop-current");
 var current=0;
 var soundEnabled=false;
 var audioEl=null;
