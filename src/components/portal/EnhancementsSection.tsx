@@ -69,7 +69,9 @@ export function EnhancementsSection({
 }: Props) {
   // Active property tab. Defaults to the first model and self-corrects if the
   // user removes the property currently selected.
-  const [activeId, setActiveId] = useState<string>(() => models[0]?.id ?? "");
+  const [activeId, setActiveId] = useState<string>(
+    () => (models.find((m) => m.isPrimary) ?? models[0])?.id ?? "",
+  );
 
   useEffect(() => {
     if (!models.some((m) => m.id === activeId)) {
