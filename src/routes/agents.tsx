@@ -411,7 +411,7 @@ function AgentsPage() {
       <section id="how-it-works" className="relative z-10 px-4 py-16 sm:py-24">
         <div className="mx-auto max-w-6xl">
           <div className="mb-12 text-center">
-            <h2 className="text-3xl font-bold text-white sm:text-4xl">How It Works</h2>
+            <h2 className="text-3xl font-bold text-amber-300 sm:text-4xl">How It Works</h2>
             <p className="mx-auto mt-3 max-w-2xl text-white/60">
               From finding the right MSP to delivering a polished presentation — three simple steps.
             </p>
