@@ -396,9 +396,8 @@ export function PublishDistributeSection({
 
             {netlifyBlocked && (
               <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-900/90 dark:text-amber-200/90">
-                Your browser blocked the publish window. Please allow popups
-                for this site or use the "Open Netlify Drop in New Tab" link
-                above.
+                If the Netlify portal does not appear, click 'Open Netlify
+                drop in new tab'.
               </div>
             )}
 
