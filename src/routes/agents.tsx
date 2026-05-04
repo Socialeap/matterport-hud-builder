@@ -144,10 +144,10 @@ type FilterOption = {
 // Group 1: On-site scanning / 3D capture services
 const SCANNING_FILTERS: ReadonlyArray<FilterOption> = [
   { value: "scan-matterport-pro3", label: "Matterport Pro3", icon: Camera },
-  { value: "scan-drone-aerial", label: "Drone / Aerial", icon: Plane },
+  { value: "scan-drone-aerial", label: "Drone / Aerial", icon: Helicopter },
   { value: "scan-twilight-photography", label: "Twilight Photography", icon: Sunset },
   { value: "scan-floor-plans", label: "Floor Plans", icon: Ruler },
-  { value: "scan-dimensional-measurements", label: "Dimensional Measurements", icon: Sofa },
+  { value: "scan-dimensional-measurements", label: "Dimensional Measurements", icon: Box },
   { value: "scan-same-day-turnaround", label: "Same-Day Turnaround", icon: Zap },
 ];
 
