@@ -198,9 +198,9 @@ export function PublishDistributeSection({
 
   const openNetlifyPublishWindow = useCallback(() => {
     setNetlifyBlocked(false);
-    const width = 560;
-    const height = 760;
-    const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
+    const width = Math.max(420, Math.round(window.outerWidth / 3));
+    const height = Math.max(480, Math.round(window.outerHeight / 2));
+    const left = window.screenX + Math.max(0, window.outerWidth - width - 24);
     const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
     const features = [
       `width=${width}`,
