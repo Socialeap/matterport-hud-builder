@@ -39,6 +39,15 @@ const GLOBAL_REPLACEMENTS: Array<[RegExp, string]> = [
   [/­/g, ""],
   // Form feed / vertical tab (PDF layout artifacts)
   [/[\f\v]/g, "\n"],
+  // Inline citation markers like [1], [2, 5, 7] that pollute sentence
+  // splitting and confuse the LLM. Strip aggressively — they never
+  // carry semantic value in property docs.
+  [/\[\s*\d+(?:\s*,\s*\d+)*\s*\]/g, ""],
+  // Insert a hard break before an inline section header that begins
+  // a new label run mid-sentence (e.g. "...downtown Chaska. Real
+  // Estate & Membership Details The property is..."). Heuristic:
+  // a period followed by 2-5 capitalized words and then more prose.
+  [/\.\s+([A-Z][\w&]+(?:\s+[A-Z][\w&]+){1,4})\s+(?=[A-Z][a-z])/g, ".\n\n$1\n"],
 ];
 
 // Patterns that, if matched within a chunk, flip its visibility to
