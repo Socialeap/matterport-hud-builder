@@ -69,14 +69,27 @@ export function PropertyModelsSection({
             No properties added yet. Click "Add Property" to get started.
           </p>
         )}
-        {models.map((model, index) => (
+        {(() => {
+          const primaryFlagged = models.findIndex((m) => m.isPrimary);
+          const effectivePrimaryIdx = primaryFlagged === -1 ? 0 : primaryFlagged;
+          return models.map((model, index) => {
+            const isPrimary = index === effectivePrimaryIdx;
+            return (
           <div
             key={model.id}
-            className="rounded-lg border border-border p-4 space-y-3"
+            className={`rounded-lg border p-4 space-y-3 ${
+              isPrimary ? "border-primary/60 bg-primary/5" : "border-border"
+            }`}
           >
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-foreground">
+              <span className="flex items-center gap-2 text-sm font-medium text-foreground">
                 Property {index + 1}
+                {isPrimary && (
+                  <Badge variant="outline" className="gap-1 border-primary/40 text-[10px] uppercase tracking-wide text-primary">
+                    <Star className="size-3 fill-primary text-primary" />
+                    Loads first
+                  </Badge>
+                )}
               </span>
               <div className="flex items-center gap-1">
                 <Button
