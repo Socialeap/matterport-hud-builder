@@ -20,7 +20,6 @@ import {
   ArrowRight,
   Loader2,
   Camera,
-  Plane,
   Helicopter,
   Sunset,
   Ruler,
