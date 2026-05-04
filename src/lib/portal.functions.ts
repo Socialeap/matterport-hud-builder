@@ -3199,13 +3199,45 @@ window.__openAsk=function(){
   __dqaInit();
 };
 
+function propLabel(p){
+  if(!p) return "Property";
+  var n=(p.propertyName||"").trim();
+  if(n) return n;
+  // Fall back to address only when no friendly name was supplied.
+  return (p.name||"").trim()||"Property";
+}
+function setPropTrigger(i){
+  if(!propCurrentEl) return;
+  var lbl=propLabel(props[i]);
+  propCurrentEl.textContent=lbl;
+  propCurrentEl.title=lbl;
+}
+function setPropMenuSelected(i){
+  if(!propMenuEl) return;
+  var opts=propMenuEl.querySelectorAll(".hud-prop-opt");
+  opts.forEach(function(o,j){o.setAttribute("aria-selected",j===i?"true":"false");});
+}
+function closePropMenu(){
+  if(!propMenuEl||!propTriggerEl) return;
+  propMenuEl.hidden=true;
+  propTriggerEl.setAttribute("aria-expanded","false");
+}
+function openPropMenu(){
+  if(!propMenuEl||!propTriggerEl) return;
+  propMenuEl.hidden=false;
+  propTriggerEl.setAttribute("aria-expanded","true");
+  // Focus selected option for keyboard nav.
+  var sel=propMenuEl.querySelector('[aria-selected="true"]')||propMenuEl.querySelector(".hud-prop-opt");
+  if(sel&&sel.focus) sel.focus();
+}
+
+// Persist last-selected property per export so revisits resume on it.
+var __propStorageKey="__lvb_prop_idx_"+(window.location.pathname||"x");
 function load(i){
   current=i;
   try { if(frame && props[i]) frame.src=props[i].iframeUrl; } catch(_e){}
-  try {
-    var tabs=tabsEl?tabsEl.querySelectorAll(".tab"):[];
-    tabs.forEach(function(t,j){t.classList.toggle("active",j===i)});
-  } catch(_e){}
+  try { setPropTrigger(i); setPropMenuSelected(i); } catch(_e){}
+  try { localStorage.setItem(__propStorageKey,String(i)); } catch(_e){}
   try { renderPropertyDocs(i); } catch(_e){}
   try { updateHud(i); } catch(_e){}
   try { if(typeof window.__lgOnPropertyChange==="function") window.__lgOnPropertyChange(i); } catch(_e){}
@@ -3218,20 +3250,59 @@ function load(i){
     if(__docsQa.abortCtrl){__docsQa.abortCtrl.abort();__docsQa.abortCtrl=null;}
     __docsQa.currentIndexKey=null;
     if(__docsQa.messages){
-      __docsQa.messages.innerHTML='<div class="ask-msg assistant">Switched to '+escapeText((props[i]&&props[i].name)||"property")+'. Ask me something.</div>';
+      __docsQa.messages.innerHTML='<div class="ask-msg assistant">Switched to '+escapeText(propLabel(props[i]))+'. Ask me something.</div>';
     }
     if(__docsQa.initPromise&&window.__ASK_HAS_DOCS__){ __dqaRebuildIndex(i); }
   } catch(_e){}
 }
 try {
-  props.forEach(function(p,i){
-    var btn=document.createElement("button");
-    btn.className="tab"+(i===0?" active":"");
-    btn.textContent=p.name;
-    btn.onclick=function(){load(i)};
-    if(tabsEl) tabsEl.appendChild(btn);
-  });
-  if(props.length>1&&tabsEl) tabsEl.classList.add("multi");
+  if(props.length>1 && propSwitchEl && propMenuEl && propTriggerEl){
+    propSwitchEl.hidden=false;
+    propSwitchEl.classList.add("multi");
+    props.forEach(function(p,i){
+      var li=document.createElement("li");
+      var btn=document.createElement("button");
+      btn.type="button";
+      btn.className="hud-prop-opt";
+      btn.setAttribute("role","option");
+      btn.setAttribute("aria-selected",i===0?"true":"false");
+      var nameSpan=document.createElement("span");
+      nameSpan.className="hud-prop-opt-name";
+      var lbl=propLabel(p);
+      nameSpan.textContent=lbl;
+      nameSpan.title=lbl;
+      btn.appendChild(nameSpan);
+      if(i===0){
+        var chip=document.createElement("span");
+        chip.className="hud-prop-opt-primary";
+        chip.textContent="Primary";
+        btn.appendChild(chip);
+      }
+      btn.addEventListener("click",function(){ load(i); closePropMenu(); if(propTriggerEl) propTriggerEl.focus(); });
+      li.appendChild(btn);
+      propMenuEl.appendChild(li);
+    });
+    propTriggerEl.addEventListener("click",function(e){
+      e.stopPropagation();
+      if(propMenuEl.hidden) openPropMenu(); else closePropMenu();
+    });
+    document.addEventListener("click",function(e){
+      if(propMenuEl.hidden) return;
+      if(propSwitchEl.contains(e.target)) return;
+      closePropMenu();
+    });
+    document.addEventListener("keydown",function(e){
+      if(propMenuEl.hidden) return;
+      var opts=Array.prototype.slice.call(propMenuEl.querySelectorAll(".hud-prop-opt"));
+      var idx=opts.indexOf(document.activeElement);
+      if(e.key==="Escape"){ closePropMenu(); if(propTriggerEl) propTriggerEl.focus(); }
+      else if(e.key==="ArrowDown"){ e.preventDefault(); var n=opts[(idx+1+opts.length)%opts.length]; if(n) n.focus(); }
+      else if(e.key==="ArrowUp"){ e.preventDefault(); var p2=opts[(idx-1+opts.length)%opts.length]; if(p2) p2.focus(); }
+    });
+  }
+  // Set the trigger label even for single-property tours so the HUD has
+  // sensible text. The switcher itself stays hidden when props.length<=1.
+  if(props.length>0) setPropTrigger(0);
 } catch(_e){}
 // Critical bootstrap: ensure the Matterport iframe gets its src even if
 // later HUD/Ask wiring throws. Run this BEFORE the full load(0) so the
