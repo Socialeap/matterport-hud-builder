@@ -334,7 +334,7 @@ function AgentsPage() {
       <section className="relative z-10 px-4 pt-24 pb-12 sm:pt-32 sm:pb-16">
         <div className="mx-auto max-w-4xl text-center">
           <Badge className="mb-4 bg-white/10 text-white/80 backdrop-blur">For Agents · Property Managers · Marketers</Badge>
-          <h1 className="mx-auto max-w-3xl text-4xl font-bold leading-[1.1] tracking-tight text-white lg:text-6xl sm:text-5xl">
+          <h1 className="mx-auto max-w-3xl text-4xl font-bold leading-[1.1] tracking-tight text-amber-300 lg:text-6xl sm:text-5xl">
             Find a 3D Presentation Studio for{" "}
             <span className="bg-gradient-to-r from-cyan-300 to-blue-400 bg-clip-text text-transparent">
               Your Listings
