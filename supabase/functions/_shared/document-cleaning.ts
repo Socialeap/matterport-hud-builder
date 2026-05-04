@@ -39,6 +39,14 @@ const GLOBAL_REPLACEMENTS: Array<[RegExp, string]> = [
   [/­/g, ""],
   // Form feed / vertical tab (PDF layout artifacts)
   [/[\f\v]/g, "\n"],
+  // Inline citation markers like [1], [2, 5, 7] that pollute sentence
+  // splitting and confuse the LLM. Strip aggressively — they never
+  // carry semantic value in property docs.
+  [/\[\s*\d+(?:\s*,\s*\d+)*\s*\]/g, ""],
+  // Insert a hard break before known section-header phrases that
+  // commonly bleed into the previous chunk. Conservative list — only
+  // multi-word capitalised phrases that look like document sections.
+  [/\.\s+((?:Property|Investment|Real\s+Estate|Building|Site|Location|Neighborhood|Amenities|Pricing|Membership|Capacity|Construction|Hospitality|Hotel|Room|Reception|Ceremony|Coworking|Office|Tenant|Lease|Financial|Operating|Contact|Security|Directions|History|Overview|Features|Specifications)(?:\s+(?:&|and)\s+\w+|\s+\w+){0,3})\s+(?=[A-Z][a-z])/g, ".\n\n$1\n"],
 ];
 
 // Patterns that, if matched within a chunk, flip its visibility to

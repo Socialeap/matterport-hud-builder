@@ -453,6 +453,7 @@ function _normalizeEvidenceSection(section) {
 function rescoreChunksByIntent(chunks, intent, intentAllowsFn) {
   if (!chunks || !chunks.length) return [];
   if (!intent || intent === "unknown" || !intentAllowsFn) return chunks.slice();
+  var evidenceTerms = _INTENT_EVIDENCE_TERMS[intent] || [];
   var out = [];
   for (var i = 0; i < chunks.length; i++) {
     var c = chunks[i];
@@ -460,6 +461,20 @@ function rescoreChunksByIntent(chunks, intent, intentAllowsFn) {
     var section = _normalizeEvidenceSection(c.source || c.section || "");
     var allowed = hitKind === "field_chunk" ? intentAllowsFn(section, intent) : true;
     var sectionMatches = section ? intentAllowsFn(section, intent) : false;
+    // Content-based rescue: for raw chunks where the section label is
+    // generic (template names like "coworking_brochure"), test the chunk
+    // content against the intent's evidence terms. 2+ hits flips the
+    // chunk to "intent matched" so it survives downstream gates.
+    if (!sectionMatches && hitKind !== "field_chunk" && evidenceTerms.length) {
+      var body = String(c.content || "").toLowerCase();
+      var hits = 0;
+      for (var t = 0; t < evidenceTerms.length; t++) {
+        if (body.indexOf(evidenceTerms[t]) >= 0) {
+          hits++;
+          if (hits >= 2) { sectionMatches = true; break; }
+        }
+      }
+    }
     var newScore = Number(c.score || 0);
     if (sectionMatches) newScore += 0.05;
     else if (hitKind === "field_chunk" && !allowed) newScore -= 0.10;
@@ -486,13 +501,14 @@ function rescoreChunksByIntent(chunks, intent, intentAllowsFn) {
 function assembleSynthChunks(tier3, tier1) {
   var out = [];
   var seen = {};
+  var CAP = 8;
   function pushOne(o) {
     if (!o || !o.id) return;
     if (seen[o.id]) return;
     seen[o.id] = true;
     out.push(o);
   }
-  for (var i = 0; i < tier3.length && out.length < 5; i++) {
+  for (var i = 0; i < tier3.length && out.length < CAP; i++) {
     var t3 = tier3[i];
     var t3Id = t3.parentId || t3.id;
     pushOne({
@@ -502,7 +518,7 @@ function assembleSynthChunks(tier3, tier1) {
       score: t3.score,
     });
   }
-  for (var j = 0; j < tier1.length && out.length < 5; j++) {
+  for (var j = 0; j < tier1.length && out.length < CAP; j++) {
     var tqa = tier1[j].qa;
     if (!tqa) continue;
     var qaId = tqa.source_anchor_id || (tqa.field ? ("field:" + tqa.field) : (tqa.id || ("t1-" + j)));
@@ -678,6 +694,22 @@ function decideAnswer(inputs) {
   var fallbackChunks = hasIntent ? deterministicChunks : chunksRescored;
   var guardedChunks = canSynthesize ? allowedChunks : fallbackChunks;
   if (hasIntent && guardedChunks.length === 0 && tier1.length === 0) {
+    // When synthesis is available, give Gemini a last chance with any
+    // raw chunks we have rather than refusing — the runtime's section-
+    // label gating is too strict for generic template labels.
+    if (canSynthesize && chunksRescored.length > 0) {
+      var rescueChunks = assembleSynthChunks(chunksRescored.slice(0, 8), []);
+      if (rescueChunks.length > 0) {
+        return {
+          path: "synthesis",
+          text: "",
+          intent: intent,
+          strictUnknown: false,
+          needsSynthesis: true,
+          synthChunks: rescueChunks,
+        };
+      }
+    }
     return {
       path: "strict_unknown",
       text: VALUE_INTENT_MISS_COPY[intent] || STRICT_UNKNOWN_COPY,

@@ -205,7 +205,7 @@ function BrandingPage() {
       // — they just see an empty polygon and the upgrade prompt.
       if (data.tier === "pro") {
         const { data: polygonJson } = await supabase.rpc(
-          "get_my_service_polygon",
+          "get_my_service_polygon" as never,
         );
         const candidate =
           polygonJson && typeof polygonJson === "object" && !Array.isArray(polygonJson)
@@ -376,10 +376,10 @@ function BrandingPage() {
       JSON.stringify(savedSnapshot.service_polygon ?? null);
     if (isPro && polygonChanged) {
       const { error: polygonError } = await supabase.rpc(
-        "set_my_service_polygon",
+        "set_my_service_polygon" as never,
         {
           p_geojson: (branding.service_polygon ?? null) as never,
-        },
+        } as never,
       );
       if (polygonError) {
         // Surface but don't unwind the row save — the rest of the
