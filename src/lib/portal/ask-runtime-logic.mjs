@@ -486,13 +486,14 @@ function rescoreChunksByIntent(chunks, intent, intentAllowsFn) {
 function assembleSynthChunks(tier3, tier1) {
   var out = [];
   var seen = {};
+  var CAP = 8;
   function pushOne(o) {
     if (!o || !o.id) return;
     if (seen[o.id]) return;
     seen[o.id] = true;
     out.push(o);
   }
-  for (var i = 0; i < tier3.length && out.length < 5; i++) {
+  for (var i = 0; i < tier3.length && out.length < CAP; i++) {
     var t3 = tier3[i];
     var t3Id = t3.parentId || t3.id;
     pushOne({
@@ -502,7 +503,7 @@ function assembleSynthChunks(tier3, tier1) {
       score: t3.score,
     });
   }
-  for (var j = 0; j < tier1.length && out.length < 5; j++) {
+  for (var j = 0; j < tier1.length && out.length < CAP; j++) {
     var tqa = tier1[j].qa;
     if (!tqa) continue;
     var qaId = tqa.source_anchor_id || (tqa.field ? ("field:" + tqa.field) : (tqa.id || ("t1-" + j)));
