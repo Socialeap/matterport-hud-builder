@@ -26,6 +26,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useIndexing } from "@/lib/rag/indexing-context";
 import { IndexingStatusBadge } from "@/components/portal/IndexingStatusBadge";
 import { AiTrainingWizard } from "@/components/portal/ai-training-wizard/AiTrainingWizard";
+import { PropertyInfoSheetTipsDialog } from "@/components/portal/PropertyInfoSheetTipsDialog";
 import type { PropertyModel } from "./types";
 
 interface Props {
