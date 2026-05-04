@@ -453,6 +453,7 @@ function _normalizeEvidenceSection(section) {
 function rescoreChunksByIntent(chunks, intent, intentAllowsFn) {
   if (!chunks || !chunks.length) return [];
   if (!intent || intent === "unknown" || !intentAllowsFn) return chunks.slice();
+  var evidenceTerms = _INTENT_EVIDENCE_TERMS[intent] || [];
   var out = [];
   for (var i = 0; i < chunks.length; i++) {
     var c = chunks[i];
@@ -460,6 +461,20 @@ function rescoreChunksByIntent(chunks, intent, intentAllowsFn) {
     var section = _normalizeEvidenceSection(c.source || c.section || "");
     var allowed = hitKind === "field_chunk" ? intentAllowsFn(section, intent) : true;
     var sectionMatches = section ? intentAllowsFn(section, intent) : false;
+    // Content-based rescue: for raw chunks where the section label is
+    // generic (template names like "coworking_brochure"), test the chunk
+    // content against the intent's evidence terms. 2+ hits flips the
+    // chunk to "intent matched" so it survives downstream gates.
+    if (!sectionMatches && hitKind !== "field_chunk" && evidenceTerms.length) {
+      var body = String(c.content || "").toLowerCase();
+      var hits = 0;
+      for (var t = 0; t < evidenceTerms.length; t++) {
+        if (body.indexOf(evidenceTerms[t]) >= 0) {
+          hits++;
+          if (hits >= 2) { sectionMatches = true; break; }
+        }
+      }
+    }
     var newScore = Number(c.score || 0);
     if (sectionMatches) newScore += 0.05;
     else if (hitKind === "field_chunk" && !allowed) newScore -= 0.10;
