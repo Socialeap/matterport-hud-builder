@@ -433,6 +433,163 @@ const PATTERNS: PatternSpec[] = [
     pattern: /\bdeveloped\s+by\s+([A-Z][\w&.\-' ]{2,60}?)(?=[.,;:\n]|\s+(?:and|with|in|for)\s)/,
     transform: (m) => m[1].trim().replace(/\s+/g, " "),
   },
+
+  // ── Cross-category facts (Residential, Hospitality, Office, Multi-Family,
+  //    Coworking, Event Space). Order: most specific first.
+
+  // Open / establish years (complement to the existing `built|completed`).
+  {
+    field: "year_opened",
+    pattern: /\b(?:opened|established|launched|inaugurated)\s+(?:in\s+)?((?:19|20)\d{2})\b/i,
+    transform: (m) => toNumber(m[1]),
+  },
+  // "circa 1892" / "c. 1892" historical marker
+  {
+    field: "year_built",
+    pattern: /\b(?:circa|c\.)\s*((?:1[789]|20)\d{2})\b/i,
+    transform: (m) => toNumber(m[1]),
+  },
+
+  // Internet / connectivity (Coworking, Multi-Family, Office, Hospitality)
+  {
+    field: "internet_speed",
+    pattern: /\b(\d{1,4}\s*(?:Mbps|Gbps|gigabit|gig[-\s]?speed))\b/i,
+    transform: (m) => m[1].trim(),
+  },
+  {
+    field: "internet_provider",
+    pattern: /\b(Metronet|Spectrum|Comcast|Xfinity|AT&T\s+Fiber|Verizon\s+Fios|Google\s+Fiber|Cox|Frontier)\b/i,
+    transform: (m) => m[1].trim(),
+  },
+
+  // Coworking-specific counts (also relevant to flex office)
+  {
+    field: "private_office_count",
+    pattern: /\b(\d{1,3})\s+private\s+offices?\b/i,
+    transform: (m) => toNumber(m[1]),
+  },
+  {
+    field: "dedicated_desk_count",
+    pattern: /\b(\d{1,3})\s+dedicated\s+desks?\b/i,
+    transform: (m) => toNumber(m[1]),
+  },
+  {
+    field: "private_office_price_min",
+    pattern: /\bprivate\s+offices?[^.]{0,80}?\$([\d,]+)\s*[–-]\s*\$?([\d,]+)\s*(?:\/mo|per\s+month|monthly)?/i,
+    transform: (m) => toNumber(m[1]),
+  },
+  {
+    field: "private_office_price_max",
+    pattern: /\bprivate\s+offices?[^.]{0,80}?\$([\d,]+)\s*[–-]\s*\$?([\d,]+)\s*(?:\/mo|per\s+month|monthly)?/i,
+    transform: (m) => toNumber(m[2]),
+  },
+  {
+    field: "dedicated_desk_price",
+    pattern: /\bdedicated\s+desks?[^.]{0,60}?(?:from\s+)?\$([\d,]+)/i,
+    transform: (m) => toNumber(m[1]),
+  },
+
+  // Event / hospitality capacities (Event Space, Hospitality)
+  {
+    field: "ceremony_capacity",
+    pattern: /\bceremony[^.]{0,40}?(\d{2,5})\s*(?:guests?|seats?|people)\b/i,
+    transform: (m) => toNumber(m[1]),
+  },
+  {
+    field: "reception_capacity_seated",
+    pattern: /\breception[^.]{0,40}?(\d{2,5})\s+seated\b/i,
+    transform: (m) => toNumber(m[1]),
+  },
+  {
+    field: "reception_capacity_standing",
+    pattern: /\breception[^.]{0,40}?(\d{2,5})\s+standing\b/i,
+    transform: (m) => toNumber(m[1]),
+  },
+  {
+    field: "cocktail_capacity",
+    pattern: /\bcocktail[^.]{0,40}?(\d{2,5})\s*(?:guests?|people)?\b/i,
+    transform: (m) => toNumber(m[1]),
+  },
+  {
+    field: "conference_room_capacity",
+    pattern: /\bconference\s+room[^.]{0,40}?(\d{1,3})\s*[–-]\s*(\d{1,3})\s*(?:people|guests|attendees)\b/i,
+    transform: (m) => toNumber(m[2]),
+  },
+
+  // Heights — Coworking/loft/event/office
+  {
+    field: "ceiling_height_feet",
+    pattern: /\bceilings?[^.]{0,30}?(\d{1,2})(?:[-\s]?(?:foot|ft|feet|'))/i,
+    transform: (m) => toNumber(m[1]),
+  },
+
+  // Walkability scores — every category
+  {
+    field: "walk_score",
+    pattern: /\bWalk\s+Score[:\s]+(?:of\s+)?(\d{1,3})\b/i,
+    transform: (m) => toNumber(m[1]),
+  },
+  {
+    field: "bike_score",
+    pattern: /\bBike\s+Score[:\s]+(?:of\s+)?(\d{1,3})\b/i,
+    transform: (m) => toNumber(m[1]),
+  },
+  {
+    field: "transit_score",
+    pattern: /\bTransit\s+Score[:\s]+(?:of\s+)?(\d{1,3})\b/i,
+    transform: (m) => toNumber(m[1]),
+  },
+
+  // Multi-family / residential rentals — monthly rent ranges
+  {
+    field: "monthly_rent_min",
+    pattern: /\$([\d,]+)\s*[–-]\s*\$([\d,]+)\s*(?:\/mo|per\s+month|monthly)/i,
+    transform: (m) => toNumber(m[1]),
+  },
+  {
+    field: "monthly_rent_max",
+    pattern: /\$([\d,]+)\s*[–-]\s*\$([\d,]+)\s*(?:\/mo|per\s+month|monthly)/i,
+    transform: (m) => toNumber(m[2]),
+  },
+
+  // Commercial office classification & tenancy
+  {
+    field: "building_class",
+    pattern: /\bClass\s+(A\+?|B|C|Trophy)\b\s+(?:office\s+)?building/i,
+    transform: (m) => m[1].trim(),
+  },
+  {
+    field: "anchor_tenant",
+    pattern: /\bAnchor\s+(?:tenant|tenants?)?:?\s*([A-Z][A-Za-z0-9 &.,'\-]{2,60}?)(?=[.;\n]|$)/,
+    transform: (m) => m[1].trim().replace(/\s+/g, " "),
+  },
+
+  // Boolean amenity presence (cross-category)
+  {
+    field: "kitchen_present",
+    pattern: /\b(?:full\s+)?kitchen\b(?:[^.]{0,40}\b(?:available|on[-\s]site|included))?/i,
+    transform: () => true,
+  },
+  {
+    field: "pool_present",
+    pattern: /\b(?:swimming\s+)?pool\b(?:[^.]{0,40}\b(?:available|on[-\s]site|heated|outdoor|indoor))?/i,
+    transform: () => true,
+  },
+  {
+    field: "gym_present",
+    pattern: /\b(?:gym|fitness\s+center|fitness\s+room|workout\s+room)\b/i,
+    transform: () => true,
+  },
+  {
+    field: "outdoor_space_present",
+    pattern: /\b(?:rooftop|patio|terrace|courtyard|balcony|outdoor\s+space)\b/i,
+    transform: () => true,
+  },
+  {
+    field: "pet_policy",
+    pattern: /\b(pet[-\s]?friendly|no\s+pets?|pets?\s+allowed|pets?\s+welcome)\b/i,
+    transform: (m) => m[1].trim(),
+  },
 ];
 
 // ── Public API ───────────────────────────────────────────────────────────────
