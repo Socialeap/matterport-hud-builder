@@ -530,11 +530,116 @@ async function loadExtractionsByProperty(
         extracted_at: String(row.extracted_at ?? ""),
       });
     }
+    // ── Dedupe: when a property has multiple extraction rows for the
+    //    same template_id (e.g. after a re-train that left the old row
+    //    in place), keep only the newest by extracted_at. Without this
+    //    the exported HTML can carry several megabytes of stale
+    //    canonical_qas for the same template.
+    for (const uuid of Object.keys(out)) {
+      const byTpl = new Map<string, PropertyExtractionForHud>();
+      for (const ex of out[uuid]) {
+        const cur = byTpl.get(ex.template_id);
+        if (!cur || String(ex.extracted_at || "") > String(cur.extracted_at || "")) {
+          byTpl.set(ex.template_id, ex);
+        }
+      }
+      out[uuid] = Array.from(byTpl.values());
+    }
     return out;
   } catch (err) {
     console.error("loadExtractionsByProperty threw:", err);
     return {};
   }
+}
+
+/**
+ * Pack embeddings out of extractions + qaDatabase into a shared base64
+ * pool keyed by stable refs (source_anchor_id for canonical QAs,
+ * template_id+chunk_id for chunks). Each unique vector is serialised
+ * once. Replaces the per-row `embedding: number[]` field with a small
+ * `embedding_ref: string` pointer, dropping ~3-4× of file weight on
+ * presentations that have many QA variants per field.
+ */
+function packExportEmbeddings(
+  extractionsByProperty: ExtractionsByProperty,
+  qaDatabase: QADatabaseEntry[],
+): {
+  extractions: Record<string, unknown[]>;
+  qaDatabase: unknown[];
+  pool: Record<string, string>;
+  poolSize: number;
+} {
+  const pool: Record<string, string> = {};
+  let poolSize = 0;
+
+  const packVec = (v: number[] | null | undefined): string | null => {
+    if (!Array.isArray(v) || v.length === 0) return null;
+    const f32 = new Float32Array(v);
+    const buf = Buffer.from(f32.buffer, f32.byteOffset, f32.byteLength);
+    return buf.toString("base64");
+  };
+  const refFor = (key: string, v: number[] | null | undefined): string | null => {
+    if (!key) return null;
+    if (!(key in pool)) {
+      const packed = packVec(v);
+      if (!packed) return null;
+      pool[key] = packed;
+      poolSize++;
+    }
+    return key;
+  };
+
+  const extractions: Record<string, unknown[]> = {};
+  for (const [uuid, arr] of Object.entries(extractionsByProperty)) {
+    extractions[uuid] = arr.map((e) => ({
+      template_id: e.template_id,
+      template_label: e.template_label,
+      fields: e.fields,
+      chunks: e.chunks.map((c) => {
+        const key = `chunk:${e.template_id}:${c.id}`;
+        const ref = refFor(key, c.embedding);
+        return {
+          id: c.id,
+          section: c.section,
+          content: c.content,
+          kind: c.kind,
+          source: c.source,
+          embedding_ref: ref,
+        };
+      }),
+      canonical_qas: e.canonical_qas.map((q) => {
+        // Pool by source_anchor_id so all phrasing variants of the
+        // same field share one vector — the dominant size win.
+        const key = q.source_anchor_id || `qa:${q.id}`;
+        const ref = refFor(key, q.embedding);
+        return {
+          id: q.id,
+          field: q.field,
+          question: q.question,
+          answer: q.answer,
+          source_anchor_id: q.source_anchor_id,
+          embedding_ref: ref,
+        };
+      }),
+      candidate_fields: e.candidate_fields,
+      field_provenance: e.field_provenance,
+      extracted_at: e.extracted_at,
+    }));
+  }
+
+  const packedQa = qaDatabase.map((q) => {
+    const key = q.source_anchor_id || `qa:${q.id}`;
+    const ref = refFor(key, q.embedding);
+    return {
+      id: q.id,
+      question: q.question,
+      answer: q.answer,
+      source_anchor_id: q.source_anchor_id,
+      embedding_ref: ref,
+    };
+  });
+
+  return { extractions, qaDatabase: packedQa, pool, poolSize };
 }
 
 /** Coerce an unknown JSONB value to a number[] or null. Guards against
@@ -1547,10 +1652,17 @@ ${propertyDocsPanelHtml}
 ${poweredByFooter}
 ${
   propertyDocsData
-    ? `<script>window.__PROPERTY_EXTRACTIONS__=${safeJsonScriptLiteral(propertyDocsData)};</script>`
-    : ""
+    ? (() => {
+        const packed = packExportEmbeddings(propertyDocsData, hasQA ? qaDatabase : []);
+        const poolJs = `<script>window.__EMB_POOL__=${safeJsonScriptLiteral(packed.pool)};(function(){var p=window.__EMB_POOL__||{};function dec(s){if(typeof s!=="string"||!s)return null;try{var bin=atob(s),u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return Array.from(new Float32Array(u.buffer));}catch(e){return null;}}function hydrate(o){if(!o||typeof o!=="object")return;if(typeof o.embedding_ref==="string"){o.embedding=dec(p[o.embedding_ref]);}}window.__EMB_HYDRATE__=hydrate;window.__EMB_DEC__=dec;})();</script>`;
+        const extJs = `<script>window.__PROPERTY_EXTRACTIONS__=${safeJsonScriptLiteral(packed.extractions)};(function(){var d=window.__PROPERTY_EXTRACTIONS__||{},h=window.__EMB_HYDRATE__;if(!h)return;for(var k in d){var arr=d[k]||[];for(var i=0;i<arr.length;i++){var e=arr[i]||{};(e.chunks||[]).forEach(h);(e.canonical_qas||[]).forEach(h);}}})();</script>`;
+        const qaJs = hasQA
+          ? `<script>window.__QA_DATABASE__=${safeJsonScriptLiteral(packed.qaDatabase)};(function(){var d=window.__QA_DATABASE__||[],h=window.__EMB_HYDRATE__;if(!h)return;for(var i=0;i<d.length;i++)h(d[i]);})();</script>`
+          : "";
+        return poolJs + "\n" + extJs + (qaJs ? "\n" + qaJs : "");
+      })()
+    : (hasQA ? `<script>window.__QA_DATABASE__=${safeJsonScriptLiteral(qaDatabase)};</script>` : "")
 }
-${hasQA ? `<script>window.__QA_DATABASE__=${safeJsonScriptLiteral(qaDatabase)};</script>` : ""}
 ${synthesisUrl ? `<script>window.__SYNTHESIS_URL__=${JSON.stringify(synthesisUrl)};</script>` : ""}
 ${presentationToken ? `<script>window.__PRESENTATION_TOKEN__=${JSON.stringify(presentationToken)};window.__SAVED_MODEL_ID__=${JSON.stringify(model.id)};</script>` : ""}
 ${protectionArmed ? `<script>window.__PROTECTED__=true;window.__PROTECTED_BLOB__=${safeJsonScriptLiteral(protectedBlob)};${passwordHint ? `window.__PROTECTED_HINT__=${JSON.stringify(passwordHint)};` : ""}</script>` : ""}
@@ -2707,17 +2819,32 @@ async function __dqaInit(){
   __docsQa.send=document.getElementById("ask-send");
   __docsQa.messages=document.getElementById("ask-messages");
   if(!__docsQa.input||!__docsQa.send) return;
+  // Always re-enable the input no matter what the loaders below do.
+  // The chat is functional even with no embeddings (BM25 + curated +
+  // synthesis fallback), so visitors must always be able to type.
+  function __dqaEnableInput(){
+    try{
+      __docsQa.input.placeholder="Ask a question about this property\u2026";
+      __docsQa.input.disabled=false;
+      __docsQa.send.disabled=false;
+    }catch(_){}
+  }
+  // Hard safety net — if anything below stalls past 8s the input still
+  // unlocks. Hybrid search will upgrade in place once loaders settle.
+  var __dqaSafetyTimer=setTimeout(__dqaEnableInput,8000);
+
   __docsQa.initPromise=(async function(){
-    // Load Orama first (tiny), then transformers.js (heavy, WASM + ONNX
-    // weights). One shared download for both knowledge sources.
-    var oramaModule=await import("https://cdn.jsdelivr.net/npm/@orama/orama@3.0.0/+esm");
-    __docsQa.oramaModule=oramaModule;
-    __docsQa.MODE_HYBRID=oramaModule.MODE_HYBRID_SEARCH;
+    try{
+      var oramaModule=await import("https://cdn.jsdelivr.net/npm/@orama/orama@3.0.0/+esm");
+      __docsQa.oramaModule=oramaModule;
+      __docsQa.MODE_HYBRID=oramaModule.MODE_HYBRID_SEARCH;
+    }catch(oramaErr){
+      console.warn("ask: orama load failed, search disabled:",oramaErr);
+      __docsQa.oramaModule=null;
+    }
     try{
       var tf=await import("https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.1.0");
       tf.env.allowLocalModels=false;
-      // WebGPU-first with WASM fallback; q8 in both paths to keep
-      // cold-load bandwidth down relative to v4's fp32 default.
       var pipe=null;
       try{
         if(typeof navigator!=="undefined"&&navigator.gpu){
@@ -2732,18 +2859,23 @@ async function __dqaInit(){
       }
       __docsQa.embedPipeline=pipe;
     }catch(err){
-      // Network or WASM failure — graceful degradation to BM25-only.
       console.warn("ask: transformers load failed, falling back to BM25:",err);
       __docsQa.embedPipeline=null;
     }
-  })();
-  await __docsQa.initPromise;
-  // Build both indexes (whichever apply to this presentation).
-  if(window.__ASK_HAS_DOCS__) await __dqaRebuildIndex(current);
-  await __askBuildCuratedDb();
-  __docsQa.input.placeholder="Ask a question about this property\u2026";
-  __docsQa.input.disabled=false;
-  __docsQa.send.disabled=false;
+  })().catch(function(err){console.warn("ask: init wrapper rejected:",err);});
+
+  try{
+    await __docsQa.initPromise;
+    if(window.__ASK_HAS_DOCS__){
+      try{ await __dqaRebuildIndex(current); }catch(idxErr){ console.warn("ask: docs index build failed:",idxErr); }
+    }
+    try{ await __askBuildCuratedDb(); }catch(qaErr){ console.warn("ask: curated db build failed:",qaErr); }
+  }catch(outerErr){
+    console.warn("ask: init outer failure (non-fatal):",outerErr);
+  }finally{
+    clearTimeout(__dqaSafetyTimer);
+    __dqaEnableInput();
+  }
   async function handleAsk(){
     var q=(__docsQa.input.value||"").trim();
     if(!q) return;
