@@ -91,13 +91,16 @@ export function SourceStep({ source, onChange, onBack, onContinue }: Props) {
 
   return (
     <div className="space-y-4">
-      <header className="space-y-1">
-        <h3 className="text-sm font-semibold text-foreground">
-          What should the AI read?
-        </h3>
-        <p className="text-xs leading-snug text-muted-foreground">
-          Drop a brochure, datasheet, or floorplan. PDF works best.
-        </p>
+      <header className="flex items-start justify-between gap-2">
+        <div className="space-y-1">
+          <h3 className="text-sm font-semibold text-foreground">
+            What should the AI read?
+          </h3>
+          <p className="text-xs leading-snug text-muted-foreground">
+            Drop a brochure, datasheet, or floorplan. PDF works best.
+          </p>
+        </div>
+        <PropertyInfoSheetTipsDialog />
       </header>
 
       {/* Drop zone */}
