@@ -1746,6 +1746,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
                     onChange={handleModelChange}
                     onMediaChange={handleMediaChange}
                     onOpenBehavior={handleOpenBehavior}
+                    onSetPrimary={handleSetPrimary}
                     savedModelId={savedModelId}
                   />
                 </AccordionContent>
