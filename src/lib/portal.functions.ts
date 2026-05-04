@@ -1231,13 +1231,31 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 #hud-header{position:fixed;top:0;left:0;right:0;z-index:1200;transform:translateY(-100%);opacity:0;pointer-events:none;transition:transform 0.3s ease,opacity 0.3s ease;will-change:transform,opacity;isolation:isolate;-webkit-backface-visibility:hidden;backface-visibility:hidden}
 #hud-header.visible{transform:translateY(0);opacity:1;pointer-events:auto}
 #hud-inner{display:grid;grid-template-columns:220px minmax(0,1fr) auto;align-items:center;gap:12px;padding:10px 16px;background:${escapeHtml(hudBgColor)}99;backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid rgba(255,255,255,0.08);box-shadow:0 4px 24px rgba(0,0,0,0.15),inset 0 1px 0 rgba(255,255,255,0.06)}
-#hud-left-spacer{min-width:0}
+#hud-left-spacer{min-width:0;display:flex;align-items:center;justify-content:flex-start;padding-left:8px}
 #hud-center{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;min-width:0;gap:2px}
 #hud-logo{height:30px;max-width:160px;object-fit:contain;flex-shrink:0;margin-bottom:2px}
 #hud-brand{font-size:13px;font-weight:600;color:#fff;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 3px rgba(0,0,0,0.4)}
 #hud-prop-loc{font-size:11px;color:rgba(255,255,255,0.75);max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #hud-right{display:flex;align-items:center;gap:6px;flex-shrink:0;margin-right:32px;justify-self:end}
-@media(max-width:720px){#hud-inner{grid-template-columns:0 minmax(0,1fr) auto;gap:8px}#hud-left-spacer{display:none}#hud-logo{height:26px;max-width:120px}}
+@media(max-width:720px){#hud-inner{grid-template-columns:auto minmax(0,1fr) auto;gap:8px}#hud-logo{height:26px;max-width:120px}#hud-brand{font-size:12px}}
+
+/* ── In-HUD property switcher (replaces the legacy #tabs overlay) ── */
+.hud-prop-switch{position:relative;display:none}
+.hud-prop-switch.multi{display:inline-flex}
+#hud-prop-trigger{display:inline-flex;align-items:center;gap:6px;max-width:200px;height:30px;padding:0 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.18);background:rgba(255,255,255,0.10);color:#fff;font:600 12px/1 system-ui,-apple-system,sans-serif;cursor:pointer;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);transition:background 0.2s,border-color 0.2s}
+#hud-prop-trigger:hover{background:rgba(255,255,255,0.18);border-color:${escapeHtml(accentColor)}aa}
+#hud-prop-trigger[aria-expanded="true"]{background:rgba(255,255,255,0.20);border-color:${escapeHtml(accentColor)}}
+#hud-prop-current{max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#hud-prop-trigger svg{width:11px;height:11px;opacity:0.75;transition:transform 0.2s}
+#hud-prop-trigger[aria-expanded="true"] svg{transform:rotate(180deg)}
+#hud-prop-menu{position:absolute;top:calc(100% + 6px);left:0;min-width:220px;max-width:320px;max-height:60vh;overflow-y:auto;list-style:none;margin:0;padding:4px;border-radius:10px;background:${escapeHtml(hudBgColor)}f0;border:1px solid rgba(255,255,255,0.12);box-shadow:0 12px 40px rgba(0,0,0,0.45);backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);z-index:1400}
+#hud-prop-menu[hidden]{display:none}
+#hud-prop-menu li{margin:0}
+.hud-prop-opt{display:flex;align-items:center;gap:8px;width:100%;padding:8px 10px;border:none;background:transparent;color:rgba(255,255,255,0.85);font:500 12px/1.3 system-ui,-apple-system,sans-serif;text-align:left;cursor:pointer;border-radius:6px;transition:background 0.15s}
+.hud-prop-opt:hover,.hud-prop-opt:focus-visible{background:rgba(255,255,255,0.10);outline:none;color:#fff}
+.hud-prop-opt[aria-selected="true"]{background:${escapeHtml(accentColor)}33;color:#fff}
+.hud-prop-opt-name{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hud-prop-opt-primary{font-size:9px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:${escapeHtml(accentColor)};border:1px solid ${escapeHtml(accentColor)}66;padding:1px 5px;border-radius:999px;flex-shrink:0}
 .hud-icon-btn{width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.12);border:none;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background 0.2s;flex-shrink:0;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
 .hud-icon-btn:hover{background:rgba(255,255,255,0.22)}
 .hud-icon-btn svg{width:14px;height:14px}
