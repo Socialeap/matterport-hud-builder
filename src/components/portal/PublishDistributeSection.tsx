@@ -198,9 +198,9 @@ export function PublishDistributeSection({
 
   const openNetlifyPublishWindow = useCallback(() => {
     setNetlifyBlocked(false);
-    const width = 560;
-    const height = 760;
-    const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
+    const width = Math.max(420, Math.round(window.outerWidth / 3));
+    const height = Math.max(480, Math.round(window.outerHeight / 2));
+    const left = window.screenX + Math.max(0, window.outerWidth - width - 24);
     const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
     const features = [
       `width=${width}`,
@@ -307,16 +307,11 @@ export function PublishDistributeSection({
   return (
     <div className="space-y-5">
       {/* Strategic positioning copy */}
-      <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
-        <p className="font-medium text-foreground">
-          Use marketplaces for exposure. Use your 3DPS presentation for the experience.
-        </p>
-        <p className="mt-1">
-          3DPS does not lock your presentation into our hosting. You own the
-          file and can publish it wherever you prefer — Netlify, your own
-          website, a brokerage page, or another static web host.
-        </p>
-      </div>
+      <p className="text-xs text-muted-foreground">
+        While you can use any web hosting platform to publish your presentation
+        file (or upload to your own site), we recommend using Netlify which is
+        a really easy and free. See how below.
+      </p>
 
       {/* Step 1 — Download the package */}
       <div className="rounded-lg border bg-card p-4">
@@ -330,7 +325,7 @@ export function PublishDistributeSection({
           <div className="flex-1 space-y-2">
             <div>
               <h4 className="text-sm font-semibold text-foreground">
-                Download Your Presentation Package
+                If you haven't already, Download Your Presentation Package
               </h4>
               <p className="text-xs text-muted-foreground">
                 Generate the publish-ready presentation file you'll upload to
@@ -371,9 +366,10 @@ export function PublishDistributeSection({
                 Open Netlify Publish Window
               </h4>
               <p className="text-xs text-muted-foreground">
-                Netlify Drop opens in a small focused window so you can drag
-                your file in without losing your place here. Signup, upload,
-                and account flows all happen on Netlify's own site.
+                Click 'Browse files to upload' &gt;&gt; Select your presentation
+                file &gt;&gt; Signup (if you haven't already) &gt;&gt; select
+                'Rename and Deploy' &gt;&gt; click 'Finish Later' &gt;&gt; Copy
+                &amp; click open your link.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -400,9 +396,8 @@ export function PublishDistributeSection({
 
             {netlifyBlocked && (
               <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-900/90 dark:text-amber-200/90">
-                Your browser blocked the publish window. Please allow popups
-                for this site or use the "Open Netlify Drop in New Tab" link
-                above.
+                If the Netlify portal does not appear, click 'Open Netlify
+                drop in new tab'.
               </div>
             )}
 

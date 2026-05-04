@@ -20,10 +20,10 @@ import {
   ArrowRight,
   Loader2,
   Camera,
-  Plane,
+  Helicopter,
   Sunset,
   Ruler,
-  Sofa,
+  Box,
   Zap,
   Music2,
   Wand2,
@@ -31,7 +31,7 @@ import {
   Shapes,
   MapPinned,
   Magnet,
-  Info,
+  
 } from "lucide-react";
 import heroHudBanner from "@/assets/hero-hud-showcase.png";
 import tmLogo from "@/assets/tm-logo-landscape.png";
@@ -143,10 +143,10 @@ type FilterOption = {
 // Group 1: On-site scanning / 3D capture services
 const SCANNING_FILTERS: ReadonlyArray<FilterOption> = [
   { value: "scan-matterport-pro3", label: "Matterport Pro3", icon: Camera },
-  { value: "scan-drone-aerial", label: "Drone / Aerial", icon: Plane },
+  { value: "scan-drone-aerial", label: "Drone / Aerial", icon: Helicopter },
   { value: "scan-twilight-photography", label: "Twilight Photography", icon: Sunset },
   { value: "scan-floor-plans", label: "Floor Plans", icon: Ruler },
-  { value: "scan-dimensional-measurements", label: "Dimensional Measurements", icon: Sofa },
+  { value: "scan-dimensional-measurements", label: "Dimensional Measurements", icon: Box },
   { value: "scan-same-day-turnaround", label: "Same-Day Turnaround", icon: Zap },
 ];
 
@@ -334,7 +334,7 @@ function AgentsPage() {
       <section className="relative z-10 px-4 pt-24 pb-12 sm:pt-32 sm:pb-16">
         <div className="mx-auto max-w-4xl text-center">
           <Badge className="mb-4 bg-white/10 text-white/80 backdrop-blur">For Agents · Property Managers · Marketers</Badge>
-          <h1 className="mx-auto max-w-3xl text-4xl font-bold leading-[1.1] tracking-tight text-white lg:text-6xl sm:text-5xl">
+          <h1 className="mx-auto max-w-3xl text-4xl font-bold leading-[1.1] tracking-tight text-amber-300 lg:text-6xl sm:text-5xl">
             Find a 3D Presentation Studio for{" "}
             <span className="bg-gradient-to-r from-cyan-300 to-blue-400 bg-clip-text text-transparent">
               Your Listings
@@ -382,7 +382,7 @@ function AgentsPage() {
       <section id="benefits" className="relative z-10 px-4 py-16 sm:py-24" style={{ background: "rgba(255,255,255,0.02)" }}>
         <div className="mx-auto max-w-6xl">
           <div className="mb-12 text-center">
-            <h2 className="text-3xl font-bold text-white sm:text-4xl">What Your Listings Get</h2>
+            <h2 className="text-3xl font-bold text-amber-300 sm:text-4xl">What Your Listings Get</h2>
             <p className="mx-auto mt-3 max-w-2xl text-white/60">
               Every MSP in the directory uses the 3D Presentation Studio platform — so your
               listings get the same powerful feature set, branded by them.
@@ -411,7 +411,7 @@ function AgentsPage() {
       <section id="how-it-works" className="relative z-10 px-4 py-16 sm:py-24">
         <div className="mx-auto max-w-6xl">
           <div className="mb-12 text-center">
-            <h2 className="text-3xl font-bold text-white sm:text-4xl">How It Works</h2>
+            <h2 className="text-3xl font-bold text-amber-300 sm:text-4xl">How It Works</h2>
             <p className="mx-auto mt-3 max-w-2xl text-white/60">
               From finding the right MSP to delivering a polished presentation — three simple steps.
             </p>
@@ -444,7 +444,7 @@ function AgentsPage() {
       <section className="relative z-10 px-4 py-16 sm:py-20" style={{ background: "rgba(255,255,255,0.015)" }}>
         <div className="mx-auto max-w-3xl text-center">
           <CheckCircle2 className="mx-auto mb-4 size-10 text-emerald-300" />
-          <h2 className="text-2xl font-bold text-white sm:text-3xl">You Work Directly With the MSP</h2>
+          <h2 className="text-2xl font-bold text-amber-300 sm:text-3xl">You Work Directly With the MSP</h2>
           <p className="mx-auto mt-4 max-w-2xl text-white/60">
             Every studio in this directory uses the 3D Presentation Studio platform, but your engagement
             is between you and the MSP — pricing, scope, and delivery are theirs to set. We don't take a
@@ -590,10 +590,17 @@ function DirectorySection() {
     >
       <div className="mx-auto max-w-6xl">
         <div className="mb-8 flex flex-col items-center justify-center gap-3 text-center">
-          <h2 className="text-3xl font-bold text-white sm:text-4xl">MSP Directory</h2>
+          <h2 className="text-3xl font-bold text-amber-300 sm:text-4xl">MSP Directory</h2>
           <p className="mx-auto max-w-2xl text-white/60">
             Search by city or ZIP. If no Pro Partner is live in your market yet, drop your details
             so we can notify you the moment one activates locally.
+          </p>
+        </div>
+
+        <div className="mb-6 text-center">
+          <p className="text-base font-bold text-amber-300 sm:text-lg">Live Directory launching soon</p>
+          <p className="mx-auto mt-1 max-w-2xl text-xs text-white/60">
+            The studios shown below are sample listings for demonstration. Use the filters to preview how the directory will work, then drop your email to be notified the moment Pro Partners activate near you.
           </p>
         </div>
 
@@ -840,7 +847,7 @@ function MSPCard({ msp, isSample = false }: { msp: DirectoryMSP; isSample?: bool
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-start justify-between gap-2">
-              <h3 className="truncate text-base font-semibold text-white">{msp.brand_name}</h3>
+              <h3 className="truncate text-base font-semibold text-amber-300">{msp.brand_name}</h3>
               <div className="flex shrink-0 items-center gap-1.5">
                 {isSample && (
                   <Badge className="bg-slate-400/15 text-slate-200 ring-1 ring-slate-300/30">
@@ -928,17 +935,6 @@ function DemoPreview({
 }) {
   return (
     <div className="space-y-6">
-      <div className="flex items-start gap-3 rounded-lg border border-cyan-300/30 bg-cyan-300/5 p-4">
-        <Info className="mt-0.5 size-4 shrink-0 text-cyan-300" />
-        <div className="space-y-1 text-sm">
-          <p className="font-semibold text-cyan-100">Live Directory launching soon</p>
-          <p className="text-white/70">
-            The studios below are sample listings shown for demonstration. Use the
-            filters to preview how the directory will work, then drop your email below
-            to be notified the moment Pro Partners activate near you.
-          </p>
-        </div>
-      </div>
 
       <div>
         <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-white/50">
