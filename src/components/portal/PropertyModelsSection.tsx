@@ -124,6 +124,30 @@ export function PropertyModelsSection({
               />
             </div>
 
+            {onSetPrimary && models.length > 1 && (
+              <div className="flex items-start gap-3 rounded-md border border-border/60 bg-muted/30 p-3">
+                <Star className={`mt-0.5 size-4 shrink-0 ${isPrimary ? "fill-primary text-primary" : "text-muted-foreground"}`} />
+                <div className="flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <Label htmlFor={`primary-toggle-${model.id}`} className="text-xs font-medium">
+                      Load this property first
+                    </Label>
+                    <Switch
+                      id={`primary-toggle-${model.id}`}
+                      checked={isPrimary}
+                      disabled={isPrimary}
+                      onCheckedChange={(checked) => {
+                        if (checked) onSetPrimary(model.id);
+                      }}
+                    />
+                  </div>
+                  <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+                    Visitors see this property when the tour opens. Only one property can be primary — turning another one on will switch it.
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label className="text-xs">Property Address</Label>
@@ -256,7 +280,9 @@ export function PropertyModelsSection({
               </div>
             ) : null}
           </div>
-        ))}
+            );
+          });
+        })()}
     </div>
   );
 
