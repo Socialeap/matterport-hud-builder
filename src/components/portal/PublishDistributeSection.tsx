@@ -366,9 +366,10 @@ export function PublishDistributeSection({
                 Open Netlify Publish Window
               </h4>
               <p className="text-xs text-muted-foreground">
-                Netlify Drop opens in a small focused window so you can drag
-                your file in without losing your place here. Signup, upload,
-                and account flows all happen on Netlify's own site.
+                Click 'Browse files to upload' &gt;&gt; Select your presentation
+                file &gt;&gt; Signup (if you haven't already) &gt;&gt; select
+                'Rename and Deploy' &gt;&gt; click 'Finish Later' &gt;&gt; Copy
+                &amp; click open your link.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
