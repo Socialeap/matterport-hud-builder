@@ -11,6 +11,8 @@ import {
   uploadLimitDescription,
 } from "@/lib/limits";
 
+import { PropertyInfoSheetTipsDialog } from "@/components/portal/PropertyInfoSheetTipsDialog";
+
 import type { WizardSource } from "../types";
 
 interface Props {
