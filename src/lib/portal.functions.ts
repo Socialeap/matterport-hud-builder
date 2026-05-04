@@ -1762,8 +1762,29 @@ ${askAssets.moduleScript}
     window.__setHudVisible=setHudVisible;
     window.__isHudVisible=function(){return hudVisible;};
     if(hudToggle){
-      hudToggle.addEventListener("click",function(){ setHudVisible(!hudVisible); });
+      hudToggle.addEventListener("click",function(){
+        setHudVisible(!hudVisible);
+        // First-click stops the attention pulse for good.
+        hudToggle.classList.remove("pulsing");
+      });
+      // Begin a gentle attention pulse shortly after the gate dismisses
+      // so first-time visitors notice the chevron. Auto-stops after 12s
+      // even if the user never clicks, so it never becomes annoying.
+      setTimeout(function(){
+        if(hudToggle && !hudVisible) hudToggle.classList.add("pulsing");
+      },1500);
+      setTimeout(function(){
+        if(hudToggle) hudToggle.classList.remove("pulsing");
+      },13500);
     }
+    // Keyboard shortcut: "H" toggles the HUD header (ignored when typing).
+    document.addEventListener("keydown",function(e){
+      if(e.key!=="h"&&e.key!=="H") return;
+      var t=e.target;
+      if(t&&(t.tagName==="INPUT"||t.tagName==="TEXTAREA"||t.isContentEditable)) return;
+      setHudVisible(!hudVisible);
+      if(hudToggle) hudToggle.classList.remove("pulsing");
+    });
 
     function hideGate(openHud){
       var g=document.getElementById("gate");
