@@ -590,7 +590,7 @@ function DirectorySection() {
     >
       <div className="mx-auto max-w-6xl">
         <div className="mb-8 flex flex-col items-center justify-center gap-3 text-center">
-          <h2 className="text-3xl font-bold text-white sm:text-4xl">MSP Directory</h2>
+          <h2 className="text-3xl font-bold text-amber-300 sm:text-4xl">MSP Directory</h2>
           <p className="mx-auto max-w-2xl text-white/60">
             Search by city or ZIP. If no Pro Partner is live in your market yet, drop your details
             so we can notify you the moment one activates locally.
