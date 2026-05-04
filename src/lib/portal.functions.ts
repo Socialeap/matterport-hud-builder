@@ -2819,17 +2819,32 @@ async function __dqaInit(){
   __docsQa.send=document.getElementById("ask-send");
   __docsQa.messages=document.getElementById("ask-messages");
   if(!__docsQa.input||!__docsQa.send) return;
+  // Always re-enable the input no matter what the loaders below do.
+  // The chat is functional even with no embeddings (BM25 + curated +
+  // synthesis fallback), so visitors must always be able to type.
+  function __dqaEnableInput(){
+    try{
+      __docsQa.input.placeholder="Ask a question about this property\u2026";
+      __docsQa.input.disabled=false;
+      __docsQa.send.disabled=false;
+    }catch(_){}
+  }
+  // Hard safety net — if anything below stalls past 8s the input still
+  // unlocks. Hybrid search will upgrade in place once loaders settle.
+  var __dqaSafetyTimer=setTimeout(__dqaEnableInput,8000);
+
   __docsQa.initPromise=(async function(){
-    // Load Orama first (tiny), then transformers.js (heavy, WASM + ONNX
-    // weights). One shared download for both knowledge sources.
-    var oramaModule=await import("https://cdn.jsdelivr.net/npm/@orama/orama@3.0.0/+esm");
-    __docsQa.oramaModule=oramaModule;
-    __docsQa.MODE_HYBRID=oramaModule.MODE_HYBRID_SEARCH;
+    try{
+      var oramaModule=await import("https://cdn.jsdelivr.net/npm/@orama/orama@3.0.0/+esm");
+      __docsQa.oramaModule=oramaModule;
+      __docsQa.MODE_HYBRID=oramaModule.MODE_HYBRID_SEARCH;
+    }catch(oramaErr){
+      console.warn("ask: orama load failed, search disabled:",oramaErr);
+      __docsQa.oramaModule=null;
+    }
     try{
       var tf=await import("https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.1.0");
       tf.env.allowLocalModels=false;
-      // WebGPU-first with WASM fallback; q8 in both paths to keep
-      // cold-load bandwidth down relative to v4's fp32 default.
       var pipe=null;
       try{
         if(typeof navigator!=="undefined"&&navigator.gpu){
@@ -2844,18 +2859,23 @@ async function __dqaInit(){
       }
       __docsQa.embedPipeline=pipe;
     }catch(err){
-      // Network or WASM failure — graceful degradation to BM25-only.
       console.warn("ask: transformers load failed, falling back to BM25:",err);
       __docsQa.embedPipeline=null;
     }
-  })();
-  await __docsQa.initPromise;
-  // Build both indexes (whichever apply to this presentation).
-  if(window.__ASK_HAS_DOCS__) await __dqaRebuildIndex(current);
-  await __askBuildCuratedDb();
-  __docsQa.input.placeholder="Ask a question about this property\u2026";
-  __docsQa.input.disabled=false;
-  __docsQa.send.disabled=false;
+  })().catch(function(err){console.warn("ask: init wrapper rejected:",err);});
+
+  try{
+    await __docsQa.initPromise;
+    if(window.__ASK_HAS_DOCS__){
+      try{ await __dqaRebuildIndex(current); }catch(idxErr){ console.warn("ask: docs index build failed:",idxErr); }
+    }
+    try{ await __askBuildCuratedDb(); }catch(qaErr){ console.warn("ask: curated db build failed:",qaErr); }
+  }catch(outerErr){
+    console.warn("ask: init outer failure (non-fatal):",outerErr);
+  }finally{
+    clearTimeout(__dqaSafetyTimer);
+    __dqaEnableInput();
+  }
   async function handleAsk(){
     var q=(__docsQa.input.value||"").trim();
     if(!q) return;
