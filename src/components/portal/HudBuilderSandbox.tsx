@@ -102,7 +102,26 @@ function createEmptyModel(): PropertyModel {
     matterportId: "",
     musicUrl: "",
     cinematicVideoUrl: "",
+    isPrimary: false,
   };
+}
+
+/**
+ * Normalize a list of models so exactly one is marked `isPrimary` and
+ * the primary appears at index 0. Used both before export and for the
+ * in-builder UI so the dropdown / load order stays predictable. Pure
+ * function — does not mutate the input.
+ */
+function normalizePrimary(models: PropertyModel[]): PropertyModel[] {
+  if (models.length === 0) return models;
+  const primaryIdx = models.findIndex((m) => m.isPrimary);
+  const flagged = models.map((m, i) => ({
+    ...m,
+    isPrimary: primaryIdx === -1 ? i === 0 : i === primaryIdx,
+  }));
+  if (primaryIdx <= 0) return flagged;
+  const head = flagged[primaryIdx];
+  return [head, ...flagged.filter((_, i) => i !== primaryIdx)];
 }
 
 /**
@@ -706,6 +725,16 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     );
   }, []);
 
+  /**
+   * Mark a single model as primary. The toggle is intentionally
+   * single-on across all properties — turning one on turns every
+   * other off. To "unset" a primary, the user simply enables a
+   * different one.
+   */
+  const handleSetPrimary = useCallback((id: string) => {
+    setModels((prev) => prev.map((m) => ({ ...m, isPrimary: m.id === id })));
+  }, []);
+
   const handleMediaChange = useCallback((id: string, assets: import("./types").MediaAsset[]) => {
     setModels((prev) => prev.map((m) => (m.id === id ? { ...m, multimedia: assets } : m)));
   }, []);
@@ -1024,7 +1053,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
             modelId,
             providerId: branding.provider_id,
             name: models[0]?.name || "Untitled Presentation",
-            properties: models,
+            properties: normalizePrimary(models),
             tourConfig: behaviors as unknown as Record<string, unknown>,
             agent: refreshAgent as unknown as Record<string, string>,
             brandingOverrides: {
@@ -1255,7 +1284,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
       const presentationPayload = {
         providerId: branding.provider_id,
         name: models[0]?.name || "Untitled Presentation",
-        properties: models,
+        properties: normalizePrimary(models),
         tourConfig: behaviors as unknown as Record<string, unknown>,
         agent: finalAgent as unknown as Record<string, string>,
         brandingOverrides: {
@@ -1717,6 +1746,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
                     onChange={handleModelChange}
                     onMediaChange={handleMediaChange}
                     onOpenBehavior={handleOpenBehavior}
+                    onSetPrimary={handleSetPrimary}
                     savedModelId={savedModelId}
                   />
                 </AccordionContent>

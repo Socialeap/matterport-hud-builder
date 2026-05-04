@@ -52,6 +52,7 @@ interface SavePresentationInput {
     enableNeighborhoodMap?: boolean;
     multimedia?: SavePresentationMediaAsset[];
     liveTourStops?: SavePresentationLiveTourStop[];
+    isPrimary?: boolean;
   }>;
   tourConfig: Record<string, unknown>;
   agent: Record<string, string>;
@@ -324,6 +325,7 @@ interface PropertyData {
   enableNeighborhoodMap?: boolean;
   multimedia?: PropertyMediaAsset[];
   liveTourStops?: PropertyLiveTourStop[];
+  isPrimary?: boolean;
 }
 
 interface TourConfigData {
@@ -1229,13 +1231,31 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 #hud-header{position:fixed;top:0;left:0;right:0;z-index:1200;transform:translateY(-100%);opacity:0;pointer-events:none;transition:transform 0.3s ease,opacity 0.3s ease;will-change:transform,opacity;isolation:isolate;-webkit-backface-visibility:hidden;backface-visibility:hidden}
 #hud-header.visible{transform:translateY(0);opacity:1;pointer-events:auto}
 #hud-inner{display:grid;grid-template-columns:220px minmax(0,1fr) auto;align-items:center;gap:12px;padding:10px 16px;background:${escapeHtml(hudBgColor)}99;backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid rgba(255,255,255,0.08);box-shadow:0 4px 24px rgba(0,0,0,0.15),inset 0 1px 0 rgba(255,255,255,0.06)}
-#hud-left-spacer{min-width:0}
+#hud-left-spacer{min-width:0;display:flex;align-items:center;justify-content:flex-start;padding-left:8px}
 #hud-center{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;min-width:0;gap:2px}
 #hud-logo{height:30px;max-width:160px;object-fit:contain;flex-shrink:0;margin-bottom:2px}
 #hud-brand{font-size:13px;font-weight:600;color:#fff;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 3px rgba(0,0,0,0.4)}
 #hud-prop-loc{font-size:11px;color:rgba(255,255,255,0.75);max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #hud-right{display:flex;align-items:center;gap:6px;flex-shrink:0;margin-right:32px;justify-self:end}
-@media(max-width:720px){#hud-inner{grid-template-columns:0 minmax(0,1fr) auto;gap:8px}#hud-left-spacer{display:none}#hud-logo{height:26px;max-width:120px}}
+@media(max-width:720px){#hud-inner{grid-template-columns:auto minmax(0,1fr) auto;gap:8px}#hud-logo{height:26px;max-width:120px}#hud-brand{font-size:12px}}
+
+/* ── In-HUD property switcher (replaces the legacy #tabs overlay) ── */
+.hud-prop-switch{position:relative;display:none}
+.hud-prop-switch.multi{display:inline-flex}
+#hud-prop-trigger{display:inline-flex;align-items:center;gap:6px;max-width:200px;height:30px;padding:0 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.18);background:rgba(255,255,255,0.10);color:#fff;font:600 12px/1 system-ui,-apple-system,sans-serif;cursor:pointer;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);transition:background 0.2s,border-color 0.2s}
+#hud-prop-trigger:hover{background:rgba(255,255,255,0.18);border-color:${escapeHtml(accentColor)}aa}
+#hud-prop-trigger[aria-expanded="true"]{background:rgba(255,255,255,0.20);border-color:${escapeHtml(accentColor)}}
+#hud-prop-current{max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#hud-prop-trigger svg{width:11px;height:11px;opacity:0.75;transition:transform 0.2s}
+#hud-prop-trigger[aria-expanded="true"] svg{transform:rotate(180deg)}
+#hud-prop-menu{position:absolute;top:calc(100% + 6px);left:0;min-width:220px;max-width:320px;max-height:60vh;overflow-y:auto;list-style:none;margin:0;padding:4px;border-radius:10px;background:${escapeHtml(hudBgColor)}f0;border:1px solid rgba(255,255,255,0.12);box-shadow:0 12px 40px rgba(0,0,0,0.45);backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);z-index:1400}
+#hud-prop-menu[hidden]{display:none}
+#hud-prop-menu li{margin:0}
+.hud-prop-opt{display:flex;align-items:center;gap:8px;width:100%;padding:8px 10px;border:none;background:transparent;color:rgba(255,255,255,0.85);font:500 12px/1.3 system-ui,-apple-system,sans-serif;text-align:left;cursor:pointer;border-radius:6px;transition:background 0.15s}
+.hud-prop-opt:hover,.hud-prop-opt:focus-visible{background:rgba(255,255,255,0.10);outline:none;color:#fff}
+.hud-prop-opt[aria-selected="true"]{background:${escapeHtml(accentColor)}33;color:#fff}
+.hud-prop-opt-name{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hud-prop-opt-primary{font-size:9px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:${escapeHtml(accentColor)};border:1px solid ${escapeHtml(accentColor)}66;padding:1px 5px;border-radius:999px;flex-shrink:0}
 .hud-icon-btn{width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.12);border:none;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background 0.2s;flex-shrink:0;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
 .hud-icon-btn:hover{background:rgba(255,255,255,0.22)}
 .hud-icon-btn svg{width:14px;height:14px}
@@ -1245,19 +1265,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 #hud-mute-btn.visible{display:flex}
 
 /* ── HUD toggle chevron ───────────────────────────────────────────── */
-#hud-toggle{position:fixed;top:8px;right:8px;z-index:1300;width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,0.18);border:none;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background 0.2s;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
-#hud-toggle:hover{background:rgba(255,255,255,0.28)}
-#hud-toggle svg{width:12px;height:12px}
+#hud-toggle{position:fixed;top:8px;right:8px;z-index:1300;width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.28);border:1px solid rgba(255,255,255,0.18);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background 0.2s,transform 0.15s,box-shadow 0.2s;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);box-shadow:0 2px 10px rgba(0,0,0,0.35),0 0 0 2px ${escapeHtml(accentColor)}55}
+#hud-toggle:hover{background:rgba(255,255,255,0.4);transform:scale(1.05)}
+#hud-toggle svg{width:16px;height:16px}
+#hud-toggle.pulsing{animation:hudTogglePulse 2s ease-in-out infinite}
+@keyframes hudTogglePulse{0%,100%{box-shadow:0 2px 10px rgba(0,0,0,0.35),0 0 0 2px ${escapeHtml(accentColor)}55,0 0 0 0 ${escapeHtml(accentColor)}99}50%{box-shadow:0 2px 10px rgba(0,0,0,0.35),0 0 0 2px ${escapeHtml(accentColor)}cc,0 0 0 12px ${escapeHtml(accentColor)}00}}
 /* ── Leave-session pill (live tour only; hidden until connected) ─── */
-#hud-leave-btn{position:fixed;top:8px;right:40px;z-index:1300;height:24px;padding:0 10px;border-radius:999px;background:rgba(255,255,255,0.18);border:none;color:#fff;font:600 11px/1 system-ui,-apple-system,sans-serif;letter-spacing:0.02em;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:background 0.2s,color 0.2s;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+#hud-leave-btn{position:fixed;top:11px;right:48px;z-index:1300;height:26px;padding:0 10px;border-radius:999px;background:rgba(255,255,255,0.18);border:none;color:#fff;font:600 11px/1 system-ui,-apple-system,sans-serif;letter-spacing:0.02em;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:background 0.2s,color 0.2s;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
 #hud-leave-btn:hover{background:rgba(220,38,38,0.85);color:#fff}
 #hud-leave-btn[hidden]{display:none}
 
-/* ── Property tabs (top-left overlay) ────────────────────────────── */
-#tabs{position:fixed;top:8px;left:8px;z-index:600;display:none;gap:4px;background:rgba(0,0,0,0.35);padding:4px 6px;border-radius:999px;border:1px solid rgba(255,255,255,0.08);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
-#tabs.multi{display:flex}
-.tab{padding:4px 12px;border-radius:999px;cursor:pointer;font-size:12px;font-weight:500;background:transparent;border:none;color:rgba(255,255,255,0.65);transition:background 0.2s,color 0.2s}
-.tab.active{background:${escapeHtml(accentColor)};color:#fff}
+/* (Legacy #tabs property switcher removed — selector now lives inside the HUD header as #hud-prop-switch.) */
 
 /* (Bottom toolbar removed — Ask AI / Ask docs buttons now live in the HUD header to keep the Matterport logo unobstructed.) */
 
@@ -1451,7 +1469,7 @@ ${askAssets.css}
 
 <!-- ── HUD toggle button ─────────────────────────────────────────── -->
 <button id="hud-leave-btn" hidden aria-label="Leave live tour" title="Leave Live Tour">Leave</button>
-<button id="hud-toggle" aria-label="Toggle header">
+<button id="hud-toggle" aria-label="Show or hide the top toolbar" title="Show / hide header" aria-keyshortcuts="H">
   <svg id="hud-chevron-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="display:none"><polyline points="18 15 12 9 6 15"/></svg>
   <svg id="hud-chevron-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
 </button>
@@ -1459,7 +1477,15 @@ ${askAssets.css}
 <!-- ── HUD top header ─────────────────────────────────────────────── -->
 <div id="hud-header">
   <div id="hud-inner">
-    <div id="hud-left-spacer" aria-hidden="true"></div>
+    <div id="hud-left-spacer">
+      <div id="hud-prop-switch" class="hud-prop-switch" hidden>
+        <button id="hud-prop-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="hud-prop-menu">
+          <span id="hud-prop-current">Property</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <ul id="hud-prop-menu" role="listbox" aria-label="Choose a property" hidden></ul>
+      </div>
+    </div>
     <div id="hud-center">
       ${logoUrl ? `<img id="hud-logo" src="${escapeHtml(logoUrl)}" alt="Logo">` : ""}
       <div id="hud-brand">${escapeHtml(brandName)}</div>
@@ -1487,8 +1513,7 @@ ${askAssets.css}
   </div>
 </div>
 
-<!-- ── Property tabs (top-left, shown only when >1 property) ─────── -->
-<div id="tabs"></div>
+<!-- (Legacy #tabs property switcher removed — see #hud-prop-switch above.) -->
 
 <!-- (Bottom toolbar removed: Ask AI / Ask docs are now in the HUD header to keep the Matterport logo unobstructed.) -->
 
@@ -1737,8 +1762,29 @@ ${askAssets.moduleScript}
     window.__setHudVisible=setHudVisible;
     window.__isHudVisible=function(){return hudVisible;};
     if(hudToggle){
-      hudToggle.addEventListener("click",function(){ setHudVisible(!hudVisible); });
+      hudToggle.addEventListener("click",function(){
+        setHudVisible(!hudVisible);
+        // First-click stops the attention pulse for good.
+        hudToggle.classList.remove("pulsing");
+      });
+      // Begin a gentle attention pulse shortly after the gate dismisses
+      // so first-time visitors notice the chevron. Auto-stops after 12s
+      // even if the user never clicks, so it never becomes annoying.
+      setTimeout(function(){
+        if(hudToggle && !hudVisible) hudToggle.classList.add("pulsing");
+      },1500);
+      setTimeout(function(){
+        if(hudToggle) hudToggle.classList.remove("pulsing");
+      },13500);
     }
+    // Keyboard shortcut: "H" toggles the HUD header (ignored when typing).
+    document.addEventListener("keydown",function(e){
+      if(e.key!=="h"&&e.key!=="H") return;
+      var t=e.target;
+      if(t&&(t.tagName==="INPUT"||t.tagName==="TEXTAREA"||t.isContentEditable)) return;
+      setHudVisible(!hudVisible);
+      if(hudToggle) hudToggle.classList.remove("pulsing");
+    });
 
     function hideGate(openHud){
       var g=document.getElementById("gate");
@@ -1871,7 +1917,10 @@ if(!C){
 var props=C.properties||[];
 var uuidByIndex=C.propertyUuidByIndex||[];
 var frame=document.getElementById("matterport-frame");
-var tabsEl=document.getElementById("tabs");
+var propSwitchEl=document.getElementById("hud-prop-switch");
+var propTriggerEl=document.getElementById("hud-prop-trigger");
+var propMenuEl=document.getElementById("hud-prop-menu");
+var propCurrentEl=document.getElementById("hud-prop-current");
 var current=0;
 var soundEnabled=false;
 var audioEl=null;
@@ -3150,13 +3199,45 @@ window.__openAsk=function(){
   __dqaInit();
 };
 
+function propLabel(p){
+  if(!p) return "Property";
+  var n=(p.propertyName||"").trim();
+  if(n) return n;
+  // Fall back to address only when no friendly name was supplied.
+  return (p.name||"").trim()||"Property";
+}
+function setPropTrigger(i){
+  if(!propCurrentEl) return;
+  var lbl=propLabel(props[i]);
+  propCurrentEl.textContent=lbl;
+  propCurrentEl.title=lbl;
+}
+function setPropMenuSelected(i){
+  if(!propMenuEl) return;
+  var opts=propMenuEl.querySelectorAll(".hud-prop-opt");
+  opts.forEach(function(o,j){o.setAttribute("aria-selected",j===i?"true":"false");});
+}
+function closePropMenu(){
+  if(!propMenuEl||!propTriggerEl) return;
+  propMenuEl.hidden=true;
+  propTriggerEl.setAttribute("aria-expanded","false");
+}
+function openPropMenu(){
+  if(!propMenuEl||!propTriggerEl) return;
+  propMenuEl.hidden=false;
+  propTriggerEl.setAttribute("aria-expanded","true");
+  // Focus selected option for keyboard nav.
+  var sel=propMenuEl.querySelector('[aria-selected="true"]')||propMenuEl.querySelector(".hud-prop-opt");
+  if(sel&&sel.focus) sel.focus();
+}
+
+// Persist last-selected property per export so revisits resume on it.
+var __propStorageKey="__lvb_prop_idx_"+(window.location.pathname||"x");
 function load(i){
   current=i;
   try { if(frame && props[i]) frame.src=props[i].iframeUrl; } catch(_e){}
-  try {
-    var tabs=tabsEl?tabsEl.querySelectorAll(".tab"):[];
-    tabs.forEach(function(t,j){t.classList.toggle("active",j===i)});
-  } catch(_e){}
+  try { setPropTrigger(i); setPropMenuSelected(i); } catch(_e){}
+  try { localStorage.setItem(__propStorageKey,String(i)); } catch(_e){}
   try { renderPropertyDocs(i); } catch(_e){}
   try { updateHud(i); } catch(_e){}
   try { if(typeof window.__lgOnPropertyChange==="function") window.__lgOnPropertyChange(i); } catch(_e){}
@@ -3169,26 +3250,75 @@ function load(i){
     if(__docsQa.abortCtrl){__docsQa.abortCtrl.abort();__docsQa.abortCtrl=null;}
     __docsQa.currentIndexKey=null;
     if(__docsQa.messages){
-      __docsQa.messages.innerHTML='<div class="ask-msg assistant">Switched to '+escapeText((props[i]&&props[i].name)||"property")+'. Ask me something.</div>';
+      __docsQa.messages.innerHTML='<div class="ask-msg assistant">Switched to '+escapeText(propLabel(props[i]))+'. Ask me something.</div>';
     }
     if(__docsQa.initPromise&&window.__ASK_HAS_DOCS__){ __dqaRebuildIndex(i); }
   } catch(_e){}
 }
 try {
-  props.forEach(function(p,i){
-    var btn=document.createElement("button");
-    btn.className="tab"+(i===0?" active":"");
-    btn.textContent=p.name;
-    btn.onclick=function(){load(i)};
-    if(tabsEl) tabsEl.appendChild(btn);
-  });
-  if(props.length>1&&tabsEl) tabsEl.classList.add("multi");
+  if(props.length>1 && propSwitchEl && propMenuEl && propTriggerEl){
+    propSwitchEl.hidden=false;
+    propSwitchEl.classList.add("multi");
+    props.forEach(function(p,i){
+      var li=document.createElement("li");
+      var btn=document.createElement("button");
+      btn.type="button";
+      btn.className="hud-prop-opt";
+      btn.setAttribute("role","option");
+      btn.setAttribute("aria-selected",i===0?"true":"false");
+      var nameSpan=document.createElement("span");
+      nameSpan.className="hud-prop-opt-name";
+      var lbl=propLabel(p);
+      nameSpan.textContent=lbl;
+      nameSpan.title=lbl;
+      btn.appendChild(nameSpan);
+      if(i===0){
+        var chip=document.createElement("span");
+        chip.className="hud-prop-opt-primary";
+        chip.textContent="Primary";
+        btn.appendChild(chip);
+      }
+      btn.addEventListener("click",function(){ load(i); closePropMenu(); if(propTriggerEl) propTriggerEl.focus(); });
+      li.appendChild(btn);
+      propMenuEl.appendChild(li);
+    });
+    propTriggerEl.addEventListener("click",function(e){
+      e.stopPropagation();
+      if(propMenuEl.hidden) openPropMenu(); else closePropMenu();
+    });
+    document.addEventListener("click",function(e){
+      if(propMenuEl.hidden) return;
+      if(propSwitchEl.contains(e.target)) return;
+      closePropMenu();
+    });
+    document.addEventListener("keydown",function(e){
+      if(propMenuEl.hidden) return;
+      var opts=Array.prototype.slice.call(propMenuEl.querySelectorAll(".hud-prop-opt"));
+      var idx=opts.indexOf(document.activeElement);
+      if(e.key==="Escape"){ closePropMenu(); if(propTriggerEl) propTriggerEl.focus(); }
+      else if(e.key==="ArrowDown"){ e.preventDefault(); var n=opts[(idx+1+opts.length)%opts.length]; if(n) n.focus(); }
+      else if(e.key==="ArrowUp"){ e.preventDefault(); var p2=opts[(idx-1+opts.length)%opts.length]; if(p2) p2.focus(); }
+    });
+  }
+  // Set the trigger label even for single-property tours so the HUD has
+  // sensible text. The switcher itself stays hidden when props.length<=1.
+  if(props.length>0) setPropTrigger(0);
 } catch(_e){}
 // Critical bootstrap: ensure the Matterport iframe gets its src even if
 // later HUD/Ask wiring throws. Run this BEFORE the full load(0) so the
 // 3D tour is visible the moment the user dismisses the gate.
 try { if(props.length>0&&frame&&props[0]) frame.src=props[0].iframeUrl; } catch(_e){}
-try { if(props.length>0) load(0); } catch(_e){ console.error("[presentation] load(0) failed",_e); }
+try {
+  if(props.length>0){
+    var __startIdx=0;
+    try {
+      var __raw=localStorage.getItem(__propStorageKey);
+      var __n=__raw==null?NaN:parseInt(__raw,10);
+      if(isFinite(__n)&&__n>=0&&__n<props.length) __startIdx=__n;
+    } catch(_e){}
+    load(__startIdx);
+  }
+} catch(_e){ console.error("[presentation] initial load failed",_e); }
 
 // Pre-warm the Ask pipeline after the Matterport iframe has finished
 // its initial load. Gated on the panel actually existing so tours

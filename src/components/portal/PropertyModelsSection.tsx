@@ -18,6 +18,7 @@ import {
   Image as ImageIcon,
   Video as VideoIcon,
   X,
+  Star,
 } from "lucide-react";
 import type { PropertyModel, MediaAsset } from "./types";
 import { MediaSyncModal } from "./MediaSyncModal";
@@ -31,6 +32,8 @@ interface PropertyModelsSectionProps {
   onChange: (id: string, field: keyof PropertyModel, value: string | boolean) => void;
   onMediaChange: (id: string, assets: MediaAsset[]) => void;
   onOpenBehavior: (id: string) => void;
+  /** Mark the chosen model as the one that loads first in the visitor's tour. */
+  onSetPrimary?: (id: string) => void;
   savedModelId?: string | null;
   /** When true, render only the inner body (no Card/Header wrapper) — used inside Accordion. */
   headless?: boolean;
@@ -43,6 +46,7 @@ export function PropertyModelsSection({
   onChange,
   onMediaChange,
   onOpenBehavior,
+  onSetPrimary,
   savedModelId,
   headless,
 }: PropertyModelsSectionProps) {
@@ -65,14 +69,27 @@ export function PropertyModelsSection({
             No properties added yet. Click "Add Property" to get started.
           </p>
         )}
-        {models.map((model, index) => (
+        {(() => {
+          const primaryFlagged = models.findIndex((m) => m.isPrimary);
+          const effectivePrimaryIdx = primaryFlagged === -1 ? 0 : primaryFlagged;
+          return models.map((model, index) => {
+            const isPrimary = index === effectivePrimaryIdx;
+            return (
           <div
             key={model.id}
-            className="rounded-lg border border-border p-4 space-y-3"
+            className={`rounded-lg border p-4 space-y-3 ${
+              isPrimary ? "border-primary/60 bg-primary/5" : "border-border"
+            }`}
           >
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-foreground">
+              <span className="flex items-center gap-2 text-sm font-medium text-foreground">
                 Property {index + 1}
+                {isPrimary && (
+                  <Badge variant="outline" className="gap-1 border-primary/40 text-[10px] uppercase tracking-wide text-primary">
+                    <Star className="size-3 fill-primary text-primary" />
+                    Loads first
+                  </Badge>
+                )}
               </span>
               <div className="flex items-center gap-1">
                 <Button
@@ -106,6 +123,30 @@ export function PropertyModelsSection({
                 placeholder="e.g. The Grand Hotel, Aspen Loft (leave blank for residential)"
               />
             </div>
+
+            {onSetPrimary && models.length > 1 && (
+              <div className="flex items-start gap-3 rounded-md border border-border/60 bg-muted/30 p-3">
+                <Star className={`mt-0.5 size-4 shrink-0 ${isPrimary ? "fill-primary text-primary" : "text-muted-foreground"}`} />
+                <div className="flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <Label htmlFor={`primary-toggle-${model.id}`} className="text-xs font-medium">
+                      Load this property first
+                    </Label>
+                    <Switch
+                      id={`primary-toggle-${model.id}`}
+                      checked={isPrimary}
+                      disabled={isPrimary}
+                      onCheckedChange={(checked) => {
+                        if (checked) onSetPrimary(model.id);
+                      }}
+                    />
+                  </div>
+                  <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+                    Visitors see this property when the tour opens. Only one property can be primary — turning another one on will switch it.
+                  </p>
+                </div>
+              </div>
+            )}
 
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">
@@ -239,7 +280,9 @@ export function PropertyModelsSection({
               </div>
             ) : null}
           </div>
-        ))}
+            );
+          });
+        })()}
     </div>
   );
 
