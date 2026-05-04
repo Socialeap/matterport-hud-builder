@@ -1652,10 +1652,17 @@ ${propertyDocsPanelHtml}
 ${poweredByFooter}
 ${
   propertyDocsData
-    ? `<script>window.__PROPERTY_EXTRACTIONS__=${safeJsonScriptLiteral(propertyDocsData)};</script>`
-    : ""
+    ? (() => {
+        const packed = packExportEmbeddings(propertyDocsData, hasQA ? qaDatabase : []);
+        const poolJs = `<script>window.__EMB_POOL__=${safeJsonScriptLiteral(packed.pool)};(function(){var p=window.__EMB_POOL__||{};function dec(s){if(typeof s!=="string"||!s)return null;try{var bin=atob(s),u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return Array.from(new Float32Array(u.buffer));}catch(e){return null;}}function hydrate(o){if(!o||typeof o!=="object")return;if(typeof o.embedding_ref==="string"){o.embedding=dec(p[o.embedding_ref]);}}window.__EMB_HYDRATE__=hydrate;window.__EMB_DEC__=dec;})();</script>`;
+        const extJs = `<script>window.__PROPERTY_EXTRACTIONS__=${safeJsonScriptLiteral(packed.extractions)};(function(){var d=window.__PROPERTY_EXTRACTIONS__||{},h=window.__EMB_HYDRATE__;if(!h)return;for(var k in d){var arr=d[k]||[];for(var i=0;i<arr.length;i++){var e=arr[i]||{};(e.chunks||[]).forEach(h);(e.canonical_qas||[]).forEach(h);}}})();</script>`;
+        const qaJs = hasQA
+          ? `<script>window.__QA_DATABASE__=${safeJsonScriptLiteral(packed.qaDatabase)};(function(){var d=window.__QA_DATABASE__||[],h=window.__EMB_HYDRATE__;if(!h)return;for(var i=0;i<d.length;i++)h(d[i]);})();</script>`
+          : "";
+        return poolJs + "\n" + extJs + (qaJs ? "\n" + qaJs : "");
+      })()
+    : (hasQA ? `<script>window.__QA_DATABASE__=${safeJsonScriptLiteral(qaDatabase)};</script>` : "")
 }
-${hasQA ? `<script>window.__QA_DATABASE__=${safeJsonScriptLiteral(qaDatabase)};</script>` : ""}
 ${synthesisUrl ? `<script>window.__SYNTHESIS_URL__=${JSON.stringify(synthesisUrl)};</script>` : ""}
 ${presentationToken ? `<script>window.__PRESENTATION_TOKEN__=${JSON.stringify(presentationToken)};window.__SAVED_MODEL_ID__=${JSON.stringify(model.id)};</script>` : ""}
 ${protectionArmed ? `<script>window.__PROTECTED__=true;window.__PROTECTED_BLOB__=${safeJsonScriptLiteral(protectedBlob)};${passwordHint ? `window.__PROTECTED_HINT__=${JSON.stringify(passwordHint)};` : ""}</script>` : ""}
