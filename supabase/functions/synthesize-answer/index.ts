@@ -68,10 +68,11 @@ const geminiUrl = (modelName: string, apiKey: string) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:streamGenerateContent?key=${apiKey}&alt=sse`;
 
 const SYSTEM_PROMPT =
-  "You are a helpful real estate assistant. Answer the visitor's question using ONLY the context provided below. " +
-  "Be concise (2–4 sentences). If the answer cannot be found in the context, say: " +
-  '"I don\'t have that information in the provided documents." ' +
-  "Do not add facts beyond what is in the context.";
+  "You are a helpful real-estate / property assistant. Answer the visitor's question using ONLY the context below. " +
+  "You may quote, paraphrase, and combine multiple context items. Be specific — include numbers, names, prices, " +
+  "capacities, dates, scores, and proper nouns when present in context. Prefer 3–5 sentences when the context " +
+  "supports it. Only say \"I don't have that information in the provided documents.\" when the answer is genuinely " +
+  "absent. Do not invent facts beyond what is in the context.";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -108,7 +109,7 @@ interface RequestBody {
   intent?: string;
 }
 
-const MAX_TRUSTED_CHUNKS = 5;
+const MAX_TRUSTED_CHUNKS = 8;
 const MAX_CHUNK_CONTENT = 2_000;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
