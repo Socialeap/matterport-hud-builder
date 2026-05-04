@@ -840,7 +840,7 @@ function MSPCard({ msp, isSample = false }: { msp: DirectoryMSP; isSample?: bool
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-start justify-between gap-2">
-              <h3 className="truncate text-base font-semibold text-white">{msp.brand_name}</h3>
+              <h3 className="truncate text-base font-semibold text-amber-300">{msp.brand_name}</h3>
               <div className="flex shrink-0 items-center gap-1.5">
                 {isSample && (
                   <Badge className="bg-slate-400/15 text-slate-200 ring-1 ring-slate-300/30">
