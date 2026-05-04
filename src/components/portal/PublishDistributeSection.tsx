@@ -307,16 +307,11 @@ export function PublishDistributeSection({
   return (
     <div className="space-y-5">
       {/* Strategic positioning copy */}
-      <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
-        <p className="font-medium text-foreground">
-          Use marketplaces for exposure. Use your 3DPS presentation for the experience.
-        </p>
-        <p className="mt-1">
-          3DPS does not lock your presentation into our hosting. You own the
-          file and can publish it wherever you prefer — Netlify, your own
-          website, a brokerage page, or another static web host.
-        </p>
-      </div>
+      <p className="text-xs text-muted-foreground">
+        While you can use any web hosting platform to publish your presentation
+        file (or upload to your own site), we recommend using Netlify which is
+        a really easy and free. See how below.
+      </p>
 
       {/* Step 1 — Download the package */}
       <div className="rounded-lg border bg-card p-4">
