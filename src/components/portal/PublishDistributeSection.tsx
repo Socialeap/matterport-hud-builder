@@ -325,7 +325,7 @@ export function PublishDistributeSection({
           <div className="flex-1 space-y-2">
             <div>
               <h4 className="text-sm font-semibold text-foreground">
-                Download Your Presentation Package
+                If you haven't already, Download Your Presentation Package
               </h4>
               <p className="text-xs text-muted-foreground">
                 Generate the publish-ready presentation file you'll upload to
