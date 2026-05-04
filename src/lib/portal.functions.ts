@@ -1265,19 +1265,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 #hud-mute-btn.visible{display:flex}
 
 /* ── HUD toggle chevron ───────────────────────────────────────────── */
-#hud-toggle{position:fixed;top:8px;right:8px;z-index:1300;width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,0.18);border:none;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background 0.2s;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
-#hud-toggle:hover{background:rgba(255,255,255,0.28)}
-#hud-toggle svg{width:12px;height:12px}
+#hud-toggle{position:fixed;top:8px;right:8px;z-index:1300;width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.28);border:1px solid rgba(255,255,255,0.18);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background 0.2s,transform 0.15s,box-shadow 0.2s;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);box-shadow:0 2px 10px rgba(0,0,0,0.35),0 0 0 2px ${escapeHtml(accentColor)}55}
+#hud-toggle:hover{background:rgba(255,255,255,0.4);transform:scale(1.05)}
+#hud-toggle svg{width:16px;height:16px}
+#hud-toggle.pulsing{animation:hudTogglePulse 2s ease-in-out infinite}
+@keyframes hudTogglePulse{0%,100%{box-shadow:0 2px 10px rgba(0,0,0,0.35),0 0 0 2px ${escapeHtml(accentColor)}55,0 0 0 0 ${escapeHtml(accentColor)}99}50%{box-shadow:0 2px 10px rgba(0,0,0,0.35),0 0 0 2px ${escapeHtml(accentColor)}cc,0 0 0 12px ${escapeHtml(accentColor)}00}}
 /* ── Leave-session pill (live tour only; hidden until connected) ─── */
-#hud-leave-btn{position:fixed;top:8px;right:40px;z-index:1300;height:24px;padding:0 10px;border-radius:999px;background:rgba(255,255,255,0.18);border:none;color:#fff;font:600 11px/1 system-ui,-apple-system,sans-serif;letter-spacing:0.02em;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:background 0.2s,color 0.2s;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+#hud-leave-btn{position:fixed;top:11px;right:48px;z-index:1300;height:26px;padding:0 10px;border-radius:999px;background:rgba(255,255,255,0.18);border:none;color:#fff;font:600 11px/1 system-ui,-apple-system,sans-serif;letter-spacing:0.02em;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:background 0.2s,color 0.2s;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
 #hud-leave-btn:hover{background:rgba(220,38,38,0.85);color:#fff}
 #hud-leave-btn[hidden]{display:none}
 
-/* ── Property tabs (top-left overlay) ────────────────────────────── */
-#tabs{position:fixed;top:8px;left:8px;z-index:600;display:none;gap:4px;background:rgba(0,0,0,0.35);padding:4px 6px;border-radius:999px;border:1px solid rgba(255,255,255,0.08);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
-#tabs.multi{display:flex}
-.tab{padding:4px 12px;border-radius:999px;cursor:pointer;font-size:12px;font-weight:500;background:transparent;border:none;color:rgba(255,255,255,0.65);transition:background 0.2s,color 0.2s}
-.tab.active{background:${escapeHtml(accentColor)};color:#fff}
+/* (Legacy #tabs property switcher removed — selector now lives inside the HUD header as #hud-prop-switch.) */
 
 /* (Bottom toolbar removed — Ask AI / Ask docs buttons now live in the HUD header to keep the Matterport logo unobstructed.) */
 
