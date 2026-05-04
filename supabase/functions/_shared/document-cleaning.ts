@@ -43,11 +43,10 @@ const GLOBAL_REPLACEMENTS: Array<[RegExp, string]> = [
   // splitting and confuse the LLM. Strip aggressively — they never
   // carry semantic value in property docs.
   [/\[\s*\d+(?:\s*,\s*\d+)*\s*\]/g, ""],
-  // Insert a hard break before an inline section header that begins
-  // a new label run mid-sentence (e.g. "...downtown Chaska. Real
-  // Estate & Membership Details The property is..."). Heuristic:
-  // a period followed by 2-5 capitalized words and then more prose.
-  [/\.\s+([A-Z][\w&]+(?:\s+[A-Z][\w&]+){1,4})\s+(?=[A-Z][a-z])/g, ".\n\n$1\n"],
+  // Insert a hard break before known section-header phrases that
+  // commonly bleed into the previous chunk. Conservative list — only
+  // multi-word capitalised phrases that look like document sections.
+  [/\.\s+((?:Property|Investment|Real\s+Estate|Building|Site|Location|Neighborhood|Amenities|Pricing|Membership|Capacity|Construction|Hospitality|Hotel|Room|Reception|Ceremony|Coworking|Office|Tenant|Lease|Financial|Operating|Contact|Security|Directions|History|Overview|Features|Specifications)(?:\s+(?:&|and)\s+\w+|\s+\w+){0,3})\s+(?=[A-Z][a-z])/g, ".\n\n$1\n"],
 ];
 
 // Patterns that, if matched within a chunk, flip its visibility to
