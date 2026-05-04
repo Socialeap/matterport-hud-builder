@@ -18,6 +18,7 @@ import {
   Image as ImageIcon,
   Video as VideoIcon,
   X,
+  Star,
 } from "lucide-react";
 import type { PropertyModel, MediaAsset } from "./types";
 import { MediaSyncModal } from "./MediaSyncModal";
@@ -31,6 +32,8 @@ interface PropertyModelsSectionProps {
   onChange: (id: string, field: keyof PropertyModel, value: string | boolean) => void;
   onMediaChange: (id: string, assets: MediaAsset[]) => void;
   onOpenBehavior: (id: string) => void;
+  /** Mark the chosen model as the one that loads first in the visitor's tour. */
+  onSetPrimary?: (id: string) => void;
   savedModelId?: string | null;
   /** When true, render only the inner body (no Card/Header wrapper) — used inside Accordion. */
   headless?: boolean;
@@ -43,6 +46,7 @@ export function PropertyModelsSection({
   onChange,
   onMediaChange,
   onOpenBehavior,
+  onSetPrimary,
   savedModelId,
   headless,
 }: PropertyModelsSectionProps) {
