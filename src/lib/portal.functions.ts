@@ -52,6 +52,7 @@ interface SavePresentationInput {
     enableNeighborhoodMap?: boolean;
     multimedia?: SavePresentationMediaAsset[];
     liveTourStops?: SavePresentationLiveTourStop[];
+    isPrimary?: boolean;
   }>;
   tourConfig: Record<string, unknown>;
   agent: Record<string, string>;
@@ -324,6 +325,7 @@ interface PropertyData {
   enableNeighborhoodMap?: boolean;
   multimedia?: PropertyMediaAsset[];
   liveTourStops?: PropertyLiveTourStop[];
+  isPrimary?: boolean;
 }
 
 interface TourConfigData {

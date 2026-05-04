@@ -62,6 +62,13 @@ export interface PropertyModel {
    * `[]` identically (no Live Guide available for that property).
    */
   liveTourStops?: LiveTourStop[];
+  /**
+   * When true, this property loads first in the visitor's tour and
+   * appears at the top of the in-HUD property dropdown. Exactly one
+   * model is primary at a time; if no flag is set, the first model in
+   * the array is treated as primary by the runtime + builder.
+   */
+  isPrimary?: boolean;
 }
 
 export function buildNeighborhoodMapUrl(location: string): string {
