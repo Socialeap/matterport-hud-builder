@@ -597,6 +597,13 @@ function DirectorySection() {
           </p>
         </div>
 
+        <div className="mb-6 text-center">
+          <p className="text-base font-bold text-amber-300 sm:text-lg">Live Directory launching soon</p>
+          <p className="mx-auto mt-1 max-w-2xl text-xs text-white/60">
+            The studios shown below are sample listings for demonstration. Use the filters to preview how the directory will work, then drop your email to be notified the moment Pro Partners activate near you.
+          </p>
+        </div>
+
         <Card className="border-white/10 bg-white/5 p-4 backdrop-blur sm:p-6">
           <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
             {/* Filter rail */}
