@@ -70,10 +70,27 @@ function scoreQuality(text: string): number {
 }
 
 function splitEvidenceUnits(text: string): string[] {
-  const clean = String(text || "").replace(/\s+/g, " ").trim();
-  if (!clean) return [];
+  const raw = String(text || "");
+  if (!raw.trim()) return [];
 
-  const units: string[] = [];
+  // Phase 1: bullet-aware emission. Recognise lines that start with
+  // a bullet glyph (-, •, *, ●, –) or a numbered marker (1., 1)) and
+  // emit each as its own evidence unit BEFORE collapsing whitespace.
+  // This prevents brochures that pack pricing/capacity/amenity facts
+  // into bulleted lists from collapsing into a single illegible blob.
+  const bulletUnits: string[] = [];
+  const bulletRe = /^\s*(?:[-•*●–]|\d{1,2}[.)])\s+(.+)$/;
+  for (const line of raw.split(/\r?\n/)) {
+    const m = line.match(bulletRe);
+    if (!m) continue;
+    const body = m[1].trim().replace(/\s+/g, " ");
+    if (body.length >= 6 && body.length <= 600) bulletUnits.push(body);
+  }
+
+  const clean = raw.replace(/\s+/g, " ").trim();
+  if (!clean) return bulletUnits;
+
+  const units: string[] = [...bulletUnits];
   const labelRe =
     /(?:^|[.;]\s+)([A-Z][A-Za-z0-9 /&()+.'-]{2,52}):\s*([^:]{12,520}?)(?=(?:[.;]\s+[A-Z][A-Za-z0-9 /&()+.'-]{2,52}:\s)|$)/g;
   let m: RegExpExecArray | null;
