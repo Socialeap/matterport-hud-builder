@@ -694,6 +694,22 @@ function decideAnswer(inputs) {
   var fallbackChunks = hasIntent ? deterministicChunks : chunksRescored;
   var guardedChunks = canSynthesize ? allowedChunks : fallbackChunks;
   if (hasIntent && guardedChunks.length === 0 && tier1.length === 0) {
+    // When synthesis is available, give Gemini a last chance with any
+    // raw chunks we have rather than refusing — the runtime's section-
+    // label gating is too strict for generic template labels.
+    if (canSynthesize && chunksRescored.length > 0) {
+      var rescueChunks = assembleSynthChunks(chunksRescored.slice(0, 8), []);
+      if (rescueChunks.length > 0) {
+        return {
+          path: "synthesis",
+          text: "",
+          intent: intent,
+          strictUnknown: false,
+          needsSynthesis: true,
+          synthChunks: rescueChunks,
+        };
+      }
+    }
     return {
       path: "strict_unknown",
       text: VALUE_INTENT_MISS_COPY[intent] || STRICT_UNKNOWN_COPY,
