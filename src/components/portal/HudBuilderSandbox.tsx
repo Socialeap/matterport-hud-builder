@@ -1053,7 +1053,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
             modelId,
             providerId: branding.provider_id,
             name: models[0]?.name || "Untitled Presentation",
-            properties: models,
+            properties: normalizePrimary(models),
             tourConfig: behaviors as unknown as Record<string, unknown>,
             agent: refreshAgent as unknown as Record<string, string>,
             brandingOverrides: {
@@ -1284,7 +1284,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
       const presentationPayload = {
         providerId: branding.provider_id,
         name: models[0]?.name || "Untitled Presentation",
-        properties: models,
+        properties: normalizePrimary(models),
         tourConfig: behaviors as unknown as Record<string, unknown>,
         agent: finalAgent as unknown as Record<string, string>,
         brandingOverrides: {
