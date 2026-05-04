@@ -308,6 +308,45 @@ function verifyLiveSessionRuntime() {
   }
 }
 
+/**
+ * Catch markdown auto-link corruption in source. The generated HTML
+ * has been hit by a Slack/Markdown auto-linker (most likely upstream
+ * in the Lovable preview pipeline) that rewrites any `word.word` token
+ * inside the inlined JS/CSS as `[word.word](http://word.word)`,
+ * silently breaking the runtime. Once seen in source, the only safe
+ * action is a hard fail — a downloaded file with these patterns will
+ * never boot.
+ *
+ * The download-time sanitizer in src/lib/portal/html-quality-check.ts
+ * will reverse this if it slips through transmission, but the source
+ * itself must stay clean.
+ */
+function assertNoMarkdownAutoLinks(src) {
+  const re = /\[([^\]\n(]+)\]\((https?:\/\/[^\s)\n]+)\)/g;
+  const offenders = [];
+  let m;
+  while ((m = re.exec(src)) !== null) {
+    if (m[2].replace(/^https?:\/\//, "") === m[1]) {
+      offenders.push({ offset: m.index, match: m[0] });
+      if (offenders.length > 20) break;
+    }
+  }
+  if (offenders.length > 0) {
+    console.error(
+      `[verify-html] ❌ Found ${offenders.length} markdown auto-link corruption(s) in portal.functions.ts.`,
+    );
+    console.error(
+      `[verify-html] Patterns like \`[event.target](http://event.target)\` break the inlined JS/CSS. Replace with the unwrapped token.`,
+    );
+    for (const off of offenders) {
+      const { line, col } = lineColOf(src, off.offset);
+      console.error(`  src/lib/portal.functions.ts:${line}:${col} → ${off.match.slice(0, 120)}`);
+    }
+    process.exit(1);
+  }
+  console.log(`[verify-html] ✅ No markdown auto-link corruption in source.`);
+}
+
 function assertRequiredStartupTokens(src) {
   const required = [
     'id="gate-sound-btn"',
@@ -450,6 +489,7 @@ function main() {
   const offenders = scanLiteral(src, start, end);
   const commentOffenders = scanCommentInterpolations(src, start, end);
 
+  assertNoMarkdownAutoLinks(src);
   assertRequiredStartupTokens(src);
   assertHudGateStartsClosed(src);
   parseRuntimeIIFE(src);

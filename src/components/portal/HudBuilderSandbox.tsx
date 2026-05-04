@@ -80,6 +80,11 @@ import {
   describeOptimization,
   BRAND_ASSET_LIMITS,
 } from "@/lib/portal/image-optimizer";
+import {
+  runQualityChecks,
+  summarizeReport,
+  type QualityCheckResult,
+} from "@/lib/portal/html-quality-check";
 
 const DEFAULT_ACCESS: DraftAccessState = {
   passwordProtected: false,
@@ -363,6 +368,11 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
   const [isReleased, setIsReleased] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [downloadStep, setDownloadStep] = useState("");
+  // Latest quality-check results from the pre-download validator. Cleared
+  // when a fresh download starts; populated whenever checks finish (pass
+  // or fail). Surfaced in the download panel so the agent sees exactly
+  // which guard tripped if a download is blocked.
+  const [downloadChecks, setDownloadChecks] = useState<QualityCheckResult[]>([]);
   // Set true after a successful Property Intelligence extraction so we can
   // nudge the agent to re-generate the standalone HTML (which embeds the
   // newly-indexed __PROPERTY_EXTRACTIONS__ payload).
@@ -967,6 +977,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
    */
   const runDownload = useCallback(async (modelId: string) => {
     setDownloading(true);
+    setDownloadChecks([]);
     setDownloadStep("Refreshing saved configuration…");
     try {
       let refreshAgent = agent;
@@ -1130,7 +1141,48 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
         toast.warning(result.askAiWarning);
       }
 
-      const blob = new Blob([result.html], { type: "text/html" });
+      // Pre-download quality gate. Sanitizes known-recoverable corruption
+      // (e.g. Slack/Markdown auto-link rewrites of JS/CSS) and validates
+      // structure, required tokens, and inline-script parseability before
+      // ever creating a Blob. If any error-severity check trips, the
+      // download is aborted and the reason is surfaced in the UI panel
+      // and via toast — visitors must never receive a broken file.
+      setDownloadStep("Running quality checks…");
+      const report = runQualityChecks(result.html);
+      setDownloadChecks(report.checks);
+      if (report.sanitizationCount > 0) {
+        console.warn(
+          `[download] Auto-repaired ${report.sanitizationCount} markdown auto-link corruption(s) in generated HTML before download. Investigate the generation pipeline.`,
+        );
+      }
+      if (!report.ok) {
+        const failed = report.checks.filter(
+          (c) => !c.passed && c.severity === "error",
+        );
+        const summary = summarizeReport(report);
+        console.error(
+          `[download] Quality check failed — refusing to download.\n${summary}`,
+        );
+        const firstReason = failed[0]?.detail || "Generated file failed validation.";
+        toast.error(
+          `Download blocked: ${failed.length} quality check(s) failed. ${firstReason}`,
+        );
+        setDownloadStep("Download blocked — see checks above.");
+        // Leave checks visible so the agent can read them.
+        setDownloading(false);
+        return;
+      }
+      // Warnings are non-blocking but still worth logging.
+      const warnings = report.checks.filter(
+        (c) => !c.passed && c.severity === "warning",
+      );
+      if (warnings.length > 0) {
+        console.warn(
+          `[download] Quality checks passed with ${warnings.length} warning(s):\n${summarizeReport(report)}`,
+        );
+      }
+
+      const blob = new Blob([report.html], { type: "text/html" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -1918,6 +1970,73 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
                 <p className="mt-1 text-sm text-muted-foreground">
                   {downloadStep || "Generating your presentation file…"}
                 </p>
+                {downloadChecks.length > 0 && (
+                  <ul className="mt-4 space-y-1.5 text-left text-xs">
+                    {downloadChecks.map((check, idx) => {
+                      const failed = !check.passed && check.severity === "error";
+                      const warned = !check.passed && check.severity === "warning";
+                      const icon = failed ? "✕" : warned ? "!" : "✓";
+                      const color = failed
+                        ? "text-red-600"
+                        : warned
+                          ? "text-amber-600"
+                          : "text-emerald-600";
+                      return (
+                        <li key={idx} className="flex gap-2">
+                          <span className={`font-mono font-bold ${color}`}>{icon}</span>
+                          <span className="flex-1">
+                            <span className="font-medium text-foreground">{check.name}</span>
+                            <span className="ml-1 text-muted-foreground">— {check.detail}</span>
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            ) : downloadChecks.some((c) => !c.passed && c.severity === "error") ? (
+              /* Hard fail — checks blocked the download. Show what tripped
+                 so the agent can see exactly which guard refused, and
+                 expose a Retry that re-runs the full pipeline. */
+              <div className="rounded-lg border-2 border-red-500/50 bg-red-500/5 p-6">
+                <h3 className="text-lg font-semibold text-foreground text-center">
+                  Download Blocked — Quality Checks Failed
+                </h3>
+                <p className="mt-1 text-sm text-muted-foreground text-center">
+                  The generated file failed validation and was not written to disk.
+                  Try again, or contact support if this keeps happening.
+                </p>
+                <ul className="mt-4 space-y-1.5 text-left text-xs">
+                  {downloadChecks.map((check, idx) => {
+                    const failed = !check.passed && check.severity === "error";
+                    const warned = !check.passed && check.severity === "warning";
+                    const icon = failed ? "✕" : warned ? "!" : "✓";
+                    const color = failed
+                      ? "text-red-600"
+                      : warned
+                        ? "text-amber-600"
+                        : "text-emerald-600";
+                    return (
+                      <li key={idx} className="flex gap-2">
+                        <span className={`font-mono font-bold ${color}`}>{icon}</span>
+                        <span className="flex-1">
+                          <span className="font-medium text-foreground">{check.name}</span>
+                          <span className="ml-1 text-muted-foreground">— {check.detail}</span>
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <div className="mt-4 flex justify-center">
+                  <Button
+                    onClick={() => {
+                      if (savedModelId) runDownload(savedModelId);
+                    }}
+                    disabled={!savedModelId || downloading}
+                  >
+                    Retry download
+                  </Button>
+                </div>
               </div>
             ) : isReleased ? (
               /* Re-download fallback (e.g. user closed the auto-download). */
