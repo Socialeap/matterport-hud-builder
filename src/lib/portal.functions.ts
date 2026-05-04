@@ -3308,7 +3308,17 @@ try {
 // later HUD/Ask wiring throws. Run this BEFORE the full load(0) so the
 // 3D tour is visible the moment the user dismisses the gate.
 try { if(props.length>0&&frame&&props[0]) frame.src=props[0].iframeUrl; } catch(_e){}
-try { if(props.length>0) load(0); } catch(_e){ console.error("[presentation] load(0) failed",_e); }
+try {
+  if(props.length>0){
+    var __startIdx=0;
+    try {
+      var __raw=localStorage.getItem(__propStorageKey);
+      var __n=__raw==null?NaN:parseInt(__raw,10);
+      if(isFinite(__n)&&__n>=0&&__n<props.length) __startIdx=__n;
+    } catch(_e){}
+    load(__startIdx);
+  }
+} catch(_e){ console.error("[presentation] initial load failed",_e); }
 
 // Pre-warm the Ask pipeline after the Matterport iframe has finished
 // its initial load. Gated on the panel actually existing so tours
