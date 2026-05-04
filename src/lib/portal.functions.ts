@@ -1469,7 +1469,7 @@ ${askAssets.css}
 
 <!-- ── HUD toggle button ─────────────────────────────────────────── -->
 <button id="hud-leave-btn" hidden aria-label="Leave live tour" title="Leave Live Tour">Leave</button>
-<button id="hud-toggle" aria-label="Toggle header">
+<button id="hud-toggle" aria-label="Show or hide the top toolbar" title="Show / hide header" aria-keyshortcuts="H">
   <svg id="hud-chevron-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="display:none"><polyline points="18 15 12 9 6 15"/></svg>
   <svg id="hud-chevron-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
 </button>
@@ -1477,7 +1477,15 @@ ${askAssets.css}
 <!-- ── HUD top header ─────────────────────────────────────────────── -->
 <div id="hud-header">
   <div id="hud-inner">
-    <div id="hud-left-spacer" aria-hidden="true"></div>
+    <div id="hud-left-spacer">
+      <div id="hud-prop-switch" class="hud-prop-switch" hidden>
+        <button id="hud-prop-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="hud-prop-menu">
+          <span id="hud-prop-current">Property</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <ul id="hud-prop-menu" role="listbox" aria-label="Choose a property" hidden></ul>
+      </div>
+    </div>
     <div id="hud-center">
       ${logoUrl ? `<img id="hud-logo" src="${escapeHtml(logoUrl)}" alt="Logo">` : ""}
       <div id="hud-brand">${escapeHtml(brandName)}</div>
@@ -1505,8 +1513,7 @@ ${askAssets.css}
   </div>
 </div>
 
-<!-- ── Property tabs (top-left, shown only when >1 property) ─────── -->
-<div id="tabs"></div>
+<!-- (Legacy #tabs property switcher removed — see #hud-prop-switch above.) -->
 
 <!-- (Bottom toolbar removed: Ask AI / Ask docs are now in the HUD header to keep the Matterport logo unobstructed.) -->
 
