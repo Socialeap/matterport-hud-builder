@@ -61,15 +61,18 @@ export function PropertyIntelligenceSection({
   return (
     <div className="space-y-3">
       <div className="rounded-md border border-primary/20 bg-primary/5 p-3 text-xs leading-snug text-foreground/80">
-        <p className="flex items-start gap-2">
-          <Sparkles className="mt-0.5 size-3.5 shrink-0 text-primary" />
-          <span>
-            Set up an <strong>AI Chat Assistant</strong> for each property.
-            We'll guide you through teaching it from a brochure, datasheet,
-            or public listing — visitors can then ask questions on the
-            published tour.
-          </span>
-        </p>
+        <div className="flex items-start justify-between gap-2">
+          <p className="flex items-start gap-2">
+            <Sparkles className="mt-0.5 size-3.5 shrink-0 text-primary" />
+            <span>
+              Set up an <strong>AI Chat Assistant</strong> for each property.
+              We'll guide you through teaching it from a brochure, datasheet,
+              or public listing — visitors can then ask questions on the
+              published tour.
+            </span>
+          </p>
+          <PropertyInfoSheetTipsDialog />
+        </div>
       </div>
 
       {models.length > 0 && lusActive && (
