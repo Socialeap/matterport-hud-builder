@@ -444,7 +444,7 @@ function AgentsPage() {
       <section className="relative z-10 px-4 py-16 sm:py-20" style={{ background: "rgba(255,255,255,0.015)" }}>
         <div className="mx-auto max-w-3xl text-center">
           <CheckCircle2 className="mx-auto mb-4 size-10 text-emerald-300" />
-          <h2 className="text-2xl font-bold text-white sm:text-3xl">You Work Directly With the MSP</h2>
+          <h2 className="text-2xl font-bold text-amber-300 sm:text-3xl">You Work Directly With the MSP</h2>
           <p className="mx-auto mt-4 max-w-2xl text-white/60">
             Every studio in this directory uses the 3D Presentation Studio platform, but your engagement
             is between you and the MSP — pricing, scope, and delivery are theirs to set. We don't take a
