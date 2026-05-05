@@ -57,9 +57,36 @@ const REQUIRED_TOKENS: ReadonlyArray<{ token: string; label: string }> = [
   { token: 'id="matterport-frame"', label: "Matterport iframe element" },
   { token: 'id="hud-header"', label: "HUD header element" },
   { token: 'id="hud-toggle"', label: "HUD toggle button" },
-  { token: 'id="gate-sound-btn"', label: "Welcome gate sound button" },
-  { token: 'id="gate-silent-btn"', label: "Welcome gate silent button" },
+  { token: 'id="gate"', label: "Welcome gate container" },
   { token: "[presentation] safety bootstrap failed", label: "Safety bootstrap script" },
+];
+
+/**
+ * The welcome gate has two mutually-exclusive variants in the generator
+ * template (see src/lib/portal.functions.ts gate template literal):
+ *   - unprotected: sound/silent buttons let visitors choose audio
+ *   - protected:   password form replaces the audio buttons entirely
+ *
+ * Exactly one variant should appear in any given export. Requiring
+ * either variant satisfies the gate, but the absence of BOTH is a hard
+ * error: the file would render without any way to dismiss the gate.
+ */
+const GATE_VARIANTS: ReadonlyArray<{
+  name: string;
+  tokens: ReadonlyArray<string>;
+}> = [
+  {
+    name: "unprotected (sound/silent buttons)",
+    tokens: ['id="gate-sound-btn"', 'id="gate-silent-btn"'],
+  },
+  {
+    name: "password-protected (password form)",
+    tokens: [
+      'id="gate-password-form"',
+      'id="gate-password-input"',
+      'id="gate-password-submit"',
+    ],
+  },
 ];
 
 /**
@@ -200,6 +227,46 @@ export function runQualityChecks(rawHtml: string): QualityCheckReport {
       passed: true,
       severity: "error",
       detail: `All ${REQUIRED_TOKENS.length} required elements and bootstrap markers present.`,
+    });
+  }
+
+  // 3b. Gate variant — exactly one of the mutually-exclusive gate
+  //     templates (sound/silent buttons OR password form) must be
+  //     fully present, never zero, ideally not both. Without a gate
+  //     variant the visitor has no way to dismiss the welcome overlay.
+  const matchedVariants = GATE_VARIANTS.filter((v) =>
+    v.tokens.every((t) => html.includes(t)),
+  );
+  if (matchedVariants.length === 0) {
+    const detailLines = GATE_VARIANTS.map((v) => {
+      const missing = v.tokens.filter((t) => !html.includes(t));
+      return `${v.name}: missing ${missing.join(", ")}`;
+    });
+    checks.push({
+      name: "Welcome gate variant",
+      passed: false,
+      severity: "error",
+      detail: `No complete gate variant detected. ${detailLines.join("; ")}.`,
+    });
+  } else if (matchedVariants.length > 1) {
+    // Both variants in the same export means the conditional template
+    // accidentally rendered both branches — visitors would see two
+    // overlapping gates. Warn but don't block; the file may still be
+    // recoverable, and zero-day blocking risks worse UX than warning.
+    checks.push({
+      name: "Welcome gate variant",
+      passed: false,
+      severity: "warning",
+      detail: `Both gate variants are present (${matchedVariants
+        .map((v) => v.name)
+        .join(" + ")}); generator template may have rendered both branches.`,
+    });
+  } else {
+    checks.push({
+      name: "Welcome gate variant",
+      passed: true,
+      severity: "error",
+      detail: `Detected ${matchedVariants[0].name} gate.`,
     });
   }
 
