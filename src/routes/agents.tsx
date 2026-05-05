@@ -115,17 +115,17 @@ const journeySteps = [
   {
     step: 1,
     title: "Find Your MSP",
-    description: "Search the directory by location and the features that matter to your listings.",
+    description: "Search the directory by location and the studio features that matter for your listings.",
   },
   {
     step: 2,
-    title: "Share Your Matterport",
-    description: "Hand off your tour links. Your MSP configures branding, AI training, and tour behavior.",
+    title: "Hire for Capture &/or Studio Access",
+    description: "Hire your MSP to scan & virtualize your property into a 3D digital twin, and/or get access to their studio to brand and customize the tour presentation yourself.",
   },
   {
     step: 3,
-    title: "Receive a Branded Presentation",
-    description: "Get a self-contained, interactive 3D presentation file — yours to share, embed, or host anywhere.",
+    title: "Launch Your Branded Presentation",
+    description: "Inside the studio, you customize branding, AI chat, media, and tour behavior — then download a self-contained 3D presentation file to share, embed, or host anywhere.",
   },
 ];
 
