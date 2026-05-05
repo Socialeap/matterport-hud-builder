@@ -125,6 +125,9 @@ export function StudioPreviewPanel({
             <CardDescription>
               See exactly what visitors will see at your Studio URL — even before publishing. Your URL only goes live to the public after you activate a plan.
             </CardDescription>
+            <div className="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-200">
+              <strong>Please note:</strong> all custom presentation elements in your file are permanent, but your 3D tours still require an active Matterport account.
+            </div>
           </div>
           {externalUrl && (
             <div className="flex items-center gap-2">
