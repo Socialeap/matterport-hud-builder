@@ -341,9 +341,7 @@ function AgentsPage() {
             </span>
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-white/60 sm:text-lg">
-            Hire a Matterport Service Provider who can deliver beautifully branded, interactive 3D
-            tour presentations for the properties you market — complete with AI Concierge, live
-            guided tours, and built-in lead capture.
+            Hire a Matterport Service Provider who not only captures & virtualizes your properties, but provides studio access where you easily brand & customize your tour experience — including multi-property showcases with AI chat, multimedia player,  live guided tours, lead capture, and more.
           </p>
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <a href="#directory">
