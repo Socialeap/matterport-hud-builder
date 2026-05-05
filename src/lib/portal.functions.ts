@@ -777,7 +777,7 @@ function buildAskAssets(
   const panelHtml = `
 <div id="ask-panel">
   <div id="ask-header"><h4>Ask about this property</h4><button id="ask-close" onclick="document.getElementById('ask-panel').classList.remove('open')">&times;</button></div>
-  <div id="ask-messages"><div class="ask-msg assistant" id="ask-welcome">Hi! Ask me anything about this property.</div></div>
+  <div id="ask-messages"><div class="ask-msg assistant" id="ask-welcome">For basics about this property, I can help! For more detail, reach out by clicking Contact.</div></div>
   <div id="ask-input-row"><input id="ask-input" type="text" placeholder="Initializing AI Assistant..." disabled /><button id="ask-send" disabled>Send</button></div>
 </div>`;
 
@@ -3250,7 +3250,7 @@ function load(i){
     if(__docsQa.abortCtrl){__docsQa.abortCtrl.abort();__docsQa.abortCtrl=null;}
     __docsQa.currentIndexKey=null;
     if(__docsQa.messages){
-      __docsQa.messages.innerHTML='<div class="ask-msg assistant">Switched to '+escapeText(propLabel(props[i]))+'. Ask me something.</div>';
+      __docsQa.messages.innerHTML='<div class="ask-msg assistant">Switched to '+escapeText(propLabel(props[i]))+'. For basics about this property, I can help! For more detail, reach out by clicking Contact.</div>';
     }
     if(__docsQa.initPromise&&window.__ASK_HAS_DOCS__){ __dqaRebuildIndex(i); }
   } catch(_e){}
