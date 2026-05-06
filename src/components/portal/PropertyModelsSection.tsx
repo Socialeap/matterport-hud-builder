@@ -37,6 +37,8 @@ interface PropertyModelsSectionProps {
   savedModelId?: string | null;
   /** When true, render only the inner body (no Card/Header wrapper) — used inside Accordion. */
   headless?: boolean;
+  /** Hard cap on number of property models. When reached, the Add button disables. */
+  maxModels?: number;
 }
 
 export function PropertyModelsSection({
@@ -49,14 +51,25 @@ export function PropertyModelsSection({
   onSetPrimary,
   savedModelId,
   headless,
+  maxModels,
 }: PropertyModelsSectionProps) {
   const { isActive: lusActive, loading: lusLoading } = useLusLicense();
   const showPremium = lusLoading || lusActive;
   const [syncModelId, setSyncModelId] = useState<string | null>(null);
   const syncModel = syncModelId ? models.find((m) => m.id === syncModelId) ?? null : null;
+  const atCap = typeof maxModels === "number" && models.length >= maxModels;
+  const helperNote = typeof maxModels === "number"
+    ? `Recommended 2–4 · max ${maxModels} per presentation`
+    : null;
 
   const addButton = (
-    <Button size="sm" variant="outline" onClick={onAdd}>
+    <Button
+      size="sm"
+      variant="outline"
+      onClick={onAdd}
+      disabled={atCap}
+      title={atCap ? `Limit reached — ${maxModels} properties per presentation.` : undefined}
+    >
       <Plus className="mr-1 size-3" />
       Add Property
     </Button>
