@@ -1,86 +1,69 @@
-# Fix: Inline `<script> #7` Parse Failure
+I understand why this failed now. The export is being blocked by the new safety guard itself, not by the Google Maps regex anymore.
 
-## Root Cause (confirmed)
+Root cause: the runtime-lint scanner I added is too naive. It tries to identify JavaScript regex literals using a broad regex over the entire inline `<script>` body. That scanner is incorrectly treating ordinary `// ...` JavaScript comments as the start of regex literals. Because those comments naturally end at a newline, the scanner reports the newline as a “raw control character inside a regex.” The snippets you pasted prove this: every reported offender starts with a comment, e.g. `// Resolve immediately...`, `// Early HUD wiring...`, not an actual regex literal. So the generator is throwing before returning the HTML.
 
-`src/lib/portal.functions.ts` emits the entire visitor-side runtime as one large **JavaScript template literal** (backtick string). Inside a template literal, `\r`, `\n`, and `\t` are interpreted by the **build-time** JS parser as actual CR / LF / TAB characters before the string is ever written to disk.
-
-The Neighborhood Map fix from the previous turn added this line at **line 2418**:
+The earlier map regex source line now appears correct in `portal.functions.ts`:
 
 ```js
-.map(function(s){return (s||"").replace(/[\r\n\t]+/g," ").trim();})
+.replace(/[\\r\\n\\t]+/g," ")
 ```
 
-After template-literal evaluation, the generated HTML contains a regex literal with **real newline and tab characters inside the slashes** — which is illegal (regex literals must be single-line). Browsers throw `Invalid regular expression: missing /`. The pre-download quality check correctly caught it.
+In the emitted presentation runtime, that becomes the intended JavaScript regex:
 
-Every other regex in the same file that targets whitespace already uses the correct double-escape, e.g. line 2102:
 ```js
-var subj=String(subject||"Inquiry").replace(/[\\r\\n]+/g," ").trim();
-```
-The new line was the only outlier.
-
-## Fix
-
-### 1. Escape the regex (one-line correctness fix)
-
-`src/lib/portal.functions.ts` line 2418 — change:
-```js
-.map(function(s){return (s||"").replace(/[\r\n\t]+/g," ").trim();})
-```
-to:
-```js
-.map(function(s){return (s||"").replace(/[\\r\\n\\t]+/g," ").trim();})
+.replace(/[\r\n\t]+/g," ")
 ```
 
-This emits the literal text `/[\r\n\t]+/g` into the runtime, which the visitor's browser parses correctly.
+The remaining failure is a false positive in `src/lib/portal/runtime-lint.ts` and the matching client-side repair logic has the same underlying risk.
 
-### 2. Add a permanent guard against the same class of bug
+Plan to fix safely:
 
-The existing `src/lib/portal/html-quality-check.ts` already runs `new Function(scriptBody)` on every inline script and blocks the download on parse failure — that's exactly why this regression was caught instead of shipping. We will **strengthen** it (no new component needed, just extend what is already wired to the download path):
+1. Replace the broad regex-literal scanner with a small JavaScript-aware scanner
+   - Update `src/lib/portal/runtime-lint.ts` so it walks inline script text character-by-character.
+   - Explicitly skip:
+     - `//` line comments
+     - `/* ... */` block comments
+     - single-quoted strings
+     - double-quoted strings
+     - template literals
+   - Only consider `/.../flags` when the slash appears in a context where JavaScript can start a regex literal, not after identifiers/numbers/closing brackets where it is likely division or a comment.
+   - Detect the real target condition: an actual regex literal containing raw CR/LF/TAB before its closing slash.
 
-- **Pre-emit lint**: Add a tiny check in `portal.functions.ts` (or a sibling `portal/runtime-lint.ts`) that scans the assembled runtime string for any regex literal containing a raw `\n`, `\r`, or `\t` character (i.e. the bytes 0x0A/0x0D/0x09 inside a `/.../flags` literal). If found, throw with the offending snippet and line context **before** returning the HTML to the client. This turns the failure mode from "user clicks Download, sees a blocked toast" into "the generation server function logs a precise location" — much easier to debug if it ever recurs.
-- **Auto-repair pass (safe subset)**: In `html-quality-check.ts`, after the existing markdown-auto-link sanitizer and **before** the `new Function(...)` parse check, run a narrow repair pass that, *only inside detected `<script>` blocks*, replaces raw control characters (`\n`, `\r`, `\t`) that appear **inside a regex literal** (between unescaped `/` delimiters on the same logical token) with their escaped equivalents (`\\n`, `\\r`, `\\t`). If any repair is applied, record it as a `warning` check (mirrors how the auto-link repair is reported) so the user still gets a successful download but the support team sees the warning. If after repair the script still fails to parse, the existing hard-fail behavior stands.
+2. Fix the client-side “healing” sanitizer to avoid mutating comments or strings
+   - Update `src/lib/portal/html-quality-check.ts` so `sanitizeRegexControlChars` uses the same scanner logic rather than a broad regex replacement.
+   - This prevents it from accidentally rewriting harmless comments or other JavaScript text during download validation.
+   - Keep the markdown auto-link sanitizer and required-token checks unchanged.
 
-This gives us defense in depth without changing the pass/fail semantics of a clean build:
+3. Keep the server guard, but make its error precise
+   - Preserve `assertRuntimeRegexSafety(html)` in `generatePresentation` because the guard is valuable.
+   - Change only the implementation so it flags real regex-literal corruption and ignores comments.
+   - Improve snippets so future errors identify the actual literal and line without misleading comment output.
 
+4. Add targeted regression coverage
+   - Add/extend tests or verification coverage for:
+     - `// comments with newlines` should not be flagged.
+     - `/* block comments */` should not be flagged.
+     - normal safe regex like `/[\r\n\t]+/g` should not be flagged.
+     - intentionally corrupted regex with a raw newline inside the literal should be flagged.
+     - sanitizer repairs only corrupted regex literals, not comments.
+   - This prevents another “fix the guard, break the export” loop.
+
+5. Verify the full generation/download path
+   - Confirm `generatePresentation` can assemble HTML without `assertRuntimeRegexSafety` throwing.
+   - Confirm the browser-side `runQualityChecks(result.html)` path still parses inline scripts and allows download.
+   - Confirm the map-address logic remains intact and still emits the Google Maps embed query with property name/address/location.
+
+Execution path being protected:
+
+```text
+Builder Download button
+  -> HudBuilderSandbox.handleDownload
+  -> generatePresentation server function
+  -> portal.functions.ts assembles self-contained HTML
+  -> assertRuntimeRegexSafety(html)
+  -> returns { success, html }
+  -> runQualityChecks(html) in browser
+  -> Blob download
 ```
-generator emits runtime
-        │
-        ▼
-runtime-lint (NEW, server-side) ──fail fast──► clear server log + 500
-        │ ok
-        ▼
-HTML returned to browser
-        │
-        ▼
-sanitizeMarkdownAutoLinks (existing)
-        │
-        ▼
-sanitizeRegexControlChars (NEW, client-side, narrow scope) ──► warning if applied
-        │
-        ▼
-new Function(script) parse check (existing) ──fail──► download blocked
-        │ ok
-        ▼
-download proceeds
-```
 
-### 3. Documentation note (small, in code)
-
-Add a short comment block above the existing `// ── Modal helpers` section in `portal.functions.ts` reminding future editors that the entire string is a JS template literal, so backslash escapes inside regex / string literals must be **doubled** (`\\n` not `\n`). This is the same gotcha that has bitten this file before.
-
-## Files Touched
-
-- `src/lib/portal.functions.ts` — escape line 2418, add reminder comment, call the new pre-emit lint before returning.
-- `src/lib/portal/runtime-lint.ts` (new, ~40 lines) — single exported function `assertRuntimeRegexSafety(html)` used by the generator.
-- `src/lib/portal/html-quality-check.ts` — add `sanitizeRegexControlChars` step + a new `QualityCheckResult` entry; integrate into `runQualityChecks` between auto-link sanitize and the inline-script parse check.
-
-## Why not a more aggressive auto-healer?
-
-Generic "try to repair broken JS" is unsafe — it can silently mask real bugs and ship a half-working presentation. The narrow repair above only touches a known, mechanical, fully reversible corruption class (control chars inside regex literals), which mirrors how the existing markdown-auto-link repair works. Anything beyond that stays in the hard-fail path so we never ship a silently-degraded file.
-
-## Verification
-
-After the change, regenerate the same presentation and confirm:
-1. Quality-check report shows all green (or a single warning if the auto-repair triggers).
-2. Open the downloaded HTML, click the Neighborhood button on each property, confirm the Google Maps embed loads with the enriched query (propertyName + address + location).
-3. No console errors in the visitor tab.
+The change will be deliberately limited to the safety utilities and their tests, avoiding rewrites to the main presentation generator except if a truly unsafe escaped regex is found during verification.
