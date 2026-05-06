@@ -146,6 +146,7 @@ const SCANNING_FILTERS: ReadonlyArray<FilterOption> = [
   { value: "scan-matterport-pro3", label: "Matterport Pro3", icon: Camera },
   { value: "scan-drone-aerial", label: "Drone / Aerial", icon: Helicopter },
   { value: "scan-twilight-photography", label: "Twilight Photography", icon: Sunset },
+  { value: "scan-walkthrough-video-clips" as MarketplaceSpecialty, label: "Walk-through Video Clips", icon: Film },
   { value: "scan-floor-plans", label: "Floor Plans", icon: Ruler },
   { value: "scan-dimensional-measurements", label: "Dimensional Measurements", icon: Box },
   { value: "scan-same-day-turnaround", label: "Same-Day Turnaround", icon: Zap },
