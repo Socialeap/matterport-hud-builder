@@ -120,6 +120,50 @@ export function sanitizeMarkdownAutoLinks(input: string): {
   return { sanitized, replacements: count };
 }
 
+/**
+ * Repair regex literals inside inline <script> blocks that contain
+ * raw control characters (CR / LF / TAB) — the exact corruption that
+ * appears when an editor writes `/[\n]+/g` inside a JS template
+ * literal where it must be doubled (`/[\\n]+/g`). The browser refuses
+ * to parse such regex literals ("Invalid regular expression: missing /").
+ *
+ * Replaces the raw control char with its escaped form (`\n`, `\r`,
+ * `\t`) ONLY when it appears inside what looks like a single-line
+ * regex literal. Strings, comments, and template literals are left
+ * untouched.
+ *
+ * Returns the sanitized HTML and the count of replacements made.
+ */
+export function sanitizeRegexControlChars(input: string): {
+  sanitized: string;
+  replacements: number;
+} {
+  if (!input) return { sanitized: input, replacements: 0 };
+  let count = 0;
+  const sanitized = input.replace(
+    /<script(\s[^>]*)?>([\s\S]*?)<\/script>/gi,
+    (full, attrs: string | undefined, body: string) => {
+      if (attrs && /\ssrc\s*=/i.test(attrs)) return full;
+      // Match a permissive regex-literal shape that allows control
+      // chars in the body, then escape any raw control chars found.
+      const repaired = body.replace(
+        /\/(?![*/])((?:\\.|\[[\s\S]*?\]|[^/\\])+?)\/([gimsuy]*)/g,
+        (lit, inner: string, flags: string) => {
+          if (!/[\r\n\t]/.test(inner)) return lit;
+          const fixedInner = inner
+            .replace(/\r/g, "\\r")
+            .replace(/\n/g, "\\n")
+            .replace(/\t/g, "\\t");
+          count += 1;
+          return "/" + fixedInner + "/" + flags;
+        },
+      );
+      return full.replace(body, repaired);
+    },
+  );
+  return { sanitized, replacements: count };
+}
+
 /** Minimal balance check: counts open/close pairs after stripping strings/comments. */
 function countTokenBalance(jsSource: string): { open: number; close: number; balanced: boolean } {
   // We don't try to fully tokenize JS — that's what `new Function()` is for.
@@ -192,7 +236,23 @@ export function runQualityChecks(rawHtml: string): QualityCheckReport {
       detail: "Generated file is free of `[X](http://X)` auto-link patterns.",
     });
   }
-  const html = sanitized;
+  let html = sanitized;
+
+  // 1b. Regex-control-char sanitizer. Repairs `/[<raw newline>]+/`
+  //     style corruption that breaks inline-script parsing. This
+  //     mirrors how the auto-link repair works: surface as a warning
+  //     so the user still gets a download but the regression is
+  //     visible.
+  const regexFix = sanitizeRegexControlChars(html);
+  if (regexFix.replacements > 0) {
+    html = regexFix.sanitized;
+    checks.push({
+      name: "Regex control-char corruption repaired",
+      passed: true,
+      severity: "warning",
+      detail: `Escaped raw control chars inside ${regexFix.replacements} regex literal(s). Generator template should be fixed.`,
+    });
+  }
 
   // 2. Re-scan after sanitize: any leftover real markdown auto-links of
   //    the same shape would still break JS/CSS, so this is a hard fail.

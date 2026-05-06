@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { assembleAskRuntimeJS } from "./portal/ask-runtime-assembler";
 import { getLiveSessionRuntimeJS } from "./portal/live-session-source";
+import { assertRuntimeRegexSafety } from "./portal/runtime-lint";
 import {
   encryptConfigForExport,
   PROTECTED_MIN_PASSWORD_LEN,
@@ -2415,7 +2416,7 @@ window.__openModal=function(name,idx){
     var titleEl=document.getElementById("map-modal-title");
     if(mapFrame&&p&&(p.location||p.name||p.propertyName)){
       var segs=[p.propertyName,p.name,p.location]
-        .map(function(s){return (s||"").replace(/[\r\n\t]+/g," ").trim();})
+        .map(function(s){return (s||"").replace(/[\\r\\n\\t]+/g," ").trim();})
         .filter(function(s){return !!s;});
       var tail=segs.slice(1).join(", ").toLowerCase();
       if(segs[0] && tail.indexOf(segs[0].toLowerCase())!==-1) segs.shift();
@@ -3632,6 +3633,13 @@ if(frame){
 </script>
 </body>
 </html>`;
+
+    // Build-time safety net: scan the assembled runtime for regex
+    // literals containing raw control chars (the exact failure mode
+    // that broke the Neighborhood Map fix). Throws with a precise
+    // snippet + line so regressions surface in server logs instead
+    // of at the visitor's browser.
+    assertRuntimeRegexSafety(html);
 
     return askAiWarning
       ? { success: true, html, askAiWarning }
