@@ -7,6 +7,7 @@ interface NeighborhoodMapModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   location: string;
+  address?: string;
   propertyName?: string;
 }
 
@@ -14,10 +15,11 @@ export function NeighborhoodMapModal({
   open,
   onOpenChange,
   location,
+  address,
   propertyName,
 }: NeighborhoodMapModalProps) {
   const isMobile = useIsMobile();
-  const mapUrl = buildNeighborhoodMapUrl(location);
+  const mapUrl = buildNeighborhoodMapUrl({ propertyName, address, location });
   const title = propertyName ? `${propertyName} — Neighborhood` : "Neighborhood";
 
   if (!mapUrl) return null;

@@ -2413,8 +2413,13 @@ window.__openModal=function(name,idx){
     var p=props[current];
     var mapFrame=document.getElementById("map-frame");
     var titleEl=document.getElementById("map-modal-title");
-    if(mapFrame&&p&&p.location){
-      mapFrame.src="https://maps.google.com/maps?q="+encodeURIComponent(p.location)+"&t=&z=15&ie=UTF8&iwloc=&output=embed";
+    if(mapFrame&&p&&(p.location||p.name||p.propertyName)){
+      var segs=[p.propertyName,p.name,p.location]
+        .map(function(s){return (s||"").replace(/[\r\n\t]+/g," ").trim();})
+        .filter(function(s){return !!s;});
+      var tail=segs.slice(1).join(", ").toLowerCase();
+      if(segs[0] && tail.indexOf(segs[0].toLowerCase())!==-1) segs.shift();
+      mapFrame.src="https://www.google.com/maps?q="+encodeURIComponent(segs.join(", "))+"&t=&z=15&ie=UTF8&iwloc=&output=embed";
     }
     if(titleEl&&p) titleEl.textContent=(p.propertyName||p.name||"Property")+" \u2014 Neighborhood";
   }

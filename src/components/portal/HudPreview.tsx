@@ -814,7 +814,8 @@ export function HudPreview({
           open={mapOpen}
           onOpenChange={setMapOpen}
           location={currentModel.location}
-          propertyName={currentModel.name}
+          address={currentModel.name}
+          propertyName={currentModel.propertyName}
         />
       )}
 
