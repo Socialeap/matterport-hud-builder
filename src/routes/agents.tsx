@@ -591,16 +591,15 @@ function DirectorySection() {
       <div className="mx-auto max-w-6xl">
         <div className="mb-8 flex flex-col items-center justify-center gap-3 text-center">
           <h2 className="text-3xl font-bold text-amber-300 sm:text-4xl">MSP Directory</h2>
-          <p className="mx-auto max-w-2xl text-white/60">
-            Search by city or ZIP. If no Pro Partner is live in your market yet, drop your details
-            so we can notify you the moment one activates locally.
-          </p>
-        </div>
-
-        <div className="mb-6 text-center">
-          <p className="text-base font-bold text-amber-300 sm:text-lg">Live Directory launching soon</p>
-          <p className="mx-auto mt-1 max-w-2xl text-xs text-white/60 font-normal">
-            The studios shown below are sample listings for demonstration. Use the filters to preview how the directory will work, then drop your email to be notified the moment Pro Partners activate near you.
+          <p className="mx-auto max-w-2xl text-sm leading-relaxed text-white/70 sm:text-base">
+            Our live directory of Pro Partners is launching soon — direct listings are on the way.
+            In the meantime,{" "}
+            <strong className="font-semibold text-white">
+              select the on-site scanning &amp; studio services you're interested in and your
+              location below, and we'll notify you the moment a fitting Pro Partner is matched
+              in your area.
+            </strong>{" "}
+            The studio cards shown are sample listings so you can preview how filtering will work.
           </p>
         </div>
 
