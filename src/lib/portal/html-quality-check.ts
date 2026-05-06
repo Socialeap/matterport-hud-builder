@@ -22,6 +22,8 @@
  *   gap between server response and the user's disk.
  */
 
+import { findCorruptedRegexLiterals } from "./js-regex-scan";
+
 export type QualityCheckSeverity = "error" | "warning";
 
 export interface QualityCheckResult {
@@ -139,10 +141,6 @@ export function sanitizeRegexControlChars(input: string): {
   replacements: number;
 } {
   if (!input) return { sanitized: input, replacements: 0 };
-  // Lazy-import the lex-aware scanner so this module stays tree-shake
-  // friendly for any consumer that only needs the markdown sanitizer.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { findCorruptedRegexLiterals } = require("./js-regex-scan") as typeof import("./js-regex-scan");
   let count = 0;
   const sanitized = input.replace(
     /<script(\s[^>]*)?>([\s\S]*?)<\/script>/gi,
