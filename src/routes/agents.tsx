@@ -5,7 +5,14 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import {
   Bot,
   Video,
@@ -491,6 +498,7 @@ function DirectorySection() {
   const [zip, setZip] = useState("");
   const [results, setResults] = useState<DirectoryMSP[] | null>(null);
   const [searching, setSearching] = useState(false);
+  const [notifyOpen, setNotifyOpen] = useState(false);
   const [lastQuery, setLastQuery] = useState<{ city: string; region: string; zip: string } | null>(
     null,
   );
@@ -602,37 +610,6 @@ function DirectorySection() {
         </div>
 
         <Card className="border-white/10 bg-white/5 p-4 backdrop-blur sm:p-6">
-          {/* Notify CTA — first thing visible inside the Directory container.
-              Lives outside the rail/results grid so visitors can act on it
-              regardless of whether they've searched yet. */}
-          <Collapsible className="mb-6 rounded-lg border border-cyan-300/30 bg-cyan-300/5">
-            <CollapsibleTrigger className="group flex w-full items-center justify-between gap-3 p-4 text-left">
-              <div className="flex items-center gap-2">
-                <MailCheck className="size-4 text-cyan-300" />
-                <h3 className="text-sm font-semibold text-white sm:text-base">
-                  Notify me when a fitting Pro Partner is matched in my area
-                </h3>
-              </div>
-              <ChevronRight className="size-4 shrink-0 text-white/60 transition-transform group-data-[state=open]:rotate-90" />
-            </CollapsibleTrigger>
-            <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
-              <div className="border-t border-cyan-300/20 p-5">
-                <p className="mb-4 text-sm text-white/70">
-                  Pick the on-site scanning &amp; studio services you care about (in the filter
-                  rail below) and set your city or ZIP in the search — we'll email you the
-                  moment a Pro Partner offering those services activates locally.
-                </p>
-                <BeaconForm
-                  defaultCity={city}
-                  defaultRegion={region}
-                  defaultZip={zip}
-                  variant="dark"
-                  hideLocationFields
-                />
-              </div>
-            </CollapsibleContent>
-          </Collapsible>
-
           <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
             {/* Filter rail */}
             <aside className="space-y-6">
@@ -747,6 +724,41 @@ function DirectorySection() {
 
             {/* Results */}
             <div className="space-y-4">
+              <div className="flex justify-end">
+                <Dialog open={notifyOpen} onOpenChange={setNotifyOpen}>
+                  <DialogTrigger asChild>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-2 border-cyan-300/40 bg-cyan-300/5 text-cyan-100 hover:bg-cyan-300/10 hover:text-white"
+                    >
+                      <MailCheck className="size-4" />
+                      Notify me when matched
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="border-white/10 bg-[#0a0e27] text-white sm:max-w-lg">
+                    <DialogHeader>
+                      <DialogTitle className="text-white">
+                        Notify me when a Pro Partner is matched in my area
+                      </DialogTitle>
+                      <DialogDescription className="text-white/70">
+                        Pick the on-site scanning &amp; studio services you care about in
+                        the filter rail, and set your city or ZIP in the search — we'll
+                        email you the moment a fitting Pro Partner activates locally.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <BeaconForm
+                      defaultCity={city}
+                      defaultRegion={region}
+                      defaultZip={zip}
+                      variant="dark"
+                      hideLocationFields
+                      onSuccess={() => setNotifyOpen(false)}
+                    />
+                  </DialogContent>
+                </Dialog>
+              </div>
+
               {!hasSearched && <DemoPreview mocks={visibleMocks} />}
 
               {hasSearched && !hasResults && (
