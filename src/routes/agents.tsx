@@ -944,22 +944,9 @@ function MSPCard({ msp, isSample = false }: { msp: DirectoryMSP; isSample?: bool
 /*  Demo preview — sample MSP cards + waitlist form                    */
 /* ------------------------------------------------------------------ */
 
-function DemoPreview({
-  mocks,
-  defaultCity = "",
-  defaultRegion = "",
-  defaultZip = "",
-  hideForm = false,
-}: {
-  mocks: DirectoryMSP[];
-  defaultCity?: string;
-  defaultRegion?: string;
-  defaultZip?: string;
-  hideForm?: boolean;
-}) {
+function DemoPreview({ mocks }: { mocks: DirectoryMSP[] }) {
   return (
     <div className="space-y-6">
-
       <div>
         <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-white/50">
           Sample studios
@@ -978,34 +965,6 @@ function DemoPreview({
           </div>
         )}
       </div>
-
-      {!hideForm && (
-        <Collapsible className="rounded-lg border border-white/10 bg-white/[0.03]">
-          <CollapsibleTrigger className="group flex w-full items-center justify-between gap-3 p-4 text-left">
-            <div className="flex items-center gap-2">
-              <MailCheck className="size-4 text-cyan-300" />
-              <h3 className="text-sm font-semibold text-white sm:text-base">
-                Notify me when a Pro Partner is live in my area
-              </h3>
-            </div>
-            <ChevronRight className="size-4 shrink-0 text-white/60 transition-transform group-data-[state=open]:rotate-90" />
-          </CollapsibleTrigger>
-          <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
-            <div className="border-t border-white/10 p-5">
-              <p className="mb-4 text-sm text-white/60">
-                Agents and property managers — be first in line. We'll email you the moment
-                an MSP activates locally and offers capture + studio services in your market.
-              </p>
-              <BeaconForm
-                defaultCity={defaultCity}
-                defaultRegion={defaultRegion}
-                defaultZip={defaultZip}
-                variant="dark"
-              />
-            </div>
-          </CollapsibleContent>
-        </Collapsible>
-      )}
     </div>
   );
 }
