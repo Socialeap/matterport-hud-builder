@@ -723,6 +723,41 @@ function DirectorySection() {
 
             {/* Results */}
             <div className="space-y-4">
+              <div className="flex justify-end">
+                <Dialog open={notifyOpen} onOpenChange={setNotifyOpen}>
+                  <DialogTrigger asChild>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-2 border-cyan-300/40 bg-cyan-300/5 text-cyan-100 hover:bg-cyan-300/10 hover:text-white"
+                    >
+                      <MailCheck className="size-4" />
+                      Notify me when matched
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="border-white/10 bg-[#0a0e27] text-white sm:max-w-lg">
+                    <DialogHeader>
+                      <DialogTitle className="text-white">
+                        Notify me when a Pro Partner is matched in my area
+                      </DialogTitle>
+                      <DialogDescription className="text-white/70">
+                        Pick the on-site scanning &amp; studio services you care about in
+                        the filter rail, and set your city or ZIP in the search — we'll
+                        email you the moment a fitting Pro Partner activates locally.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <BeaconForm
+                      defaultCity={city}
+                      defaultRegion={region}
+                      defaultZip={zip}
+                      variant="dark"
+                      hideLocationFields
+                      onSuccess={() => setNotifyOpen(false)}
+                    />
+                  </DialogContent>
+                </Dialog>
+              </div>
+
               {!hasSearched && <DemoPreview mocks={visibleMocks} />}
 
               {hasSearched && !hasResults && (
