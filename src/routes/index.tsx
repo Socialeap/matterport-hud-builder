@@ -150,7 +150,7 @@ const presentationFeatures = [
   },
   {
     icon: Film,
-    title: "Matterport Media Sync & Cinema Mode",
+    title: "Media Sync & Cinema Mode",
     description:
       "Each property auto-syncs videos, photos, and GIFs from its Matterport Media page into a built-in carousel — plus a one-click Cinematic Video player for YouTube, Vimeo, Loom, Wistia, or .mp4 links.",
   },
@@ -241,7 +241,7 @@ const starterFeatures = [
   { text: "Client invitation management", included: true },
   { text: "Music & tour behavior config", included: true },
   { text: "AI Property FAQ Assistant*", included: true },
-  { text: "Matterport Media Sync & Cinema Mode", included: true },
+  { text: "Media Sync & Cinema Mode", included: true },
   { text: "Google-Powered Neighborhood Map", included: true },
   { text: "Easy Stripe-Connect payout options", included: true },
   { text: "Per-pricing for multiple property tours", included: true },
@@ -257,7 +257,7 @@ const proFeatures = [
   { text: "Client invitation management", included: true },
   { text: "Music & tour behavior config", included: true },
   { text: "AI Property FAQ Assistant*", included: true },
-  { text: "Matterport Media Sync & Cinema Mode", included: true },
+  { text: "Media Sync & Cinema Mode", included: true },
   { text: "Google-Powered Neighborhood Map", included: true },
   { text: "Easy Stripe-Connect payout options", included: true },
   { text: "Per-pricing for multiple property tours", included: true },
