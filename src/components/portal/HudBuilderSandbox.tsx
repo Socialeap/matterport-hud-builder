@@ -714,9 +714,17 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
   }, []);
 
   const handleAddModel = useCallback(() => {
-    const newModel = createEmptyModel();
-    setModels((prev) => [...prev, newModel]);
-    setBehaviors((prev) => ({ ...prev, [newModel.id]: { ...DEFAULT_BEHAVIOR } }));
+    setModels((prev) => {
+      if (prev.length >= MAX_PROPERTIES_PER_PRESENTATION) {
+        toast.error(
+          `You've reached the ${MAX_PROPERTIES_PER_PRESENTATION}-property limit for a single presentation. Remove a property or publish a second presentation to add more.`,
+        );
+        return prev;
+      }
+      const newModel = createEmptyModel();
+      setBehaviors((b) => ({ ...b, [newModel.id]: { ...DEFAULT_BEHAVIOR } }));
+      return [...prev, newModel];
+    });
   }, []);
 
   const handleRemoveModel = useCallback((id: string) => {
