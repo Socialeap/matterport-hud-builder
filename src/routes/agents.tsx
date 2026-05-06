@@ -341,7 +341,7 @@ function AgentsPage() {
             </span>
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-white/60 sm:text-lg">
-            _______________________
+            ___________________________
           </p>
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <a href="#directory">
@@ -597,7 +597,7 @@ function DirectorySection() {
 
         <div className="mb-6 text-center">
           <p className="text-base font-bold text-amber-300 sm:text-lg">Live Directory launching soon</p>
-          <p className="mx-auto mt-1 max-w-2xl text-xs text-white/60">
+          <p className="mx-auto mt-1 max-w-2xl text-xs text-white/60 font-normal">
             The studios shown below are sample listings for demonstration. Use the filters to preview how the directory will work, then drop your email to be notified the moment Pro Partners activate near you.
           </p>
         </div>
