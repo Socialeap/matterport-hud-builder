@@ -25,6 +25,20 @@ export const UPLOAD_LIMITS = {
 
 export type UploadKind = keyof typeof UPLOAD_LIMITS;
 
+/**
+ * Maximum number of property models per generated presentation.
+ *
+ * Rationale (see `.lovable/plan.md`):
+ * - Each model's media + branding + AI training payload is inlined into
+ *   the exported HTML; past ~5 properties, file size and initial paint
+ *   degrade noticeably for visitors on average connections.
+ * - The HUD header property switcher and Contact-drawer list are laid
+ *   out for a small, scannable set — beyond 5 they wrap awkwardly.
+ * - Multi-property presentations work best as a curated showcase, not a
+ *   catalog. Clients needing more should publish a second presentation.
+ */
+export const MAX_PROPERTIES_PER_PRESENTATION = 5;
+
 export interface UploadLimitCheckResult {
   ok: boolean;
   /** Bytes received. */

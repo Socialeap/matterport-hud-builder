@@ -37,6 +37,8 @@ interface PropertyModelsSectionProps {
   savedModelId?: string | null;
   /** When true, render only the inner body (no Card/Header wrapper) — used inside Accordion. */
   headless?: boolean;
+  /** Hard cap on number of property models. When reached, the Add button disables. */
+  maxModels?: number;
 }
 
 export function PropertyModelsSection({
@@ -49,14 +51,25 @@ export function PropertyModelsSection({
   onSetPrimary,
   savedModelId,
   headless,
+  maxModels,
 }: PropertyModelsSectionProps) {
   const { isActive: lusActive, loading: lusLoading } = useLusLicense();
   const showPremium = lusLoading || lusActive;
   const [syncModelId, setSyncModelId] = useState<string | null>(null);
   const syncModel = syncModelId ? models.find((m) => m.id === syncModelId) ?? null : null;
+  const atCap = typeof maxModels === "number" && models.length >= maxModels;
+  const helperNote = typeof maxModels === "number"
+    ? `Recommended 2–4 · max ${maxModels} per presentation`
+    : null;
 
   const addButton = (
-    <Button size="sm" variant="outline" onClick={onAdd}>
+    <Button
+      size="sm"
+      variant="outline"
+      onClick={onAdd}
+      disabled={atCap}
+      title={atCap ? `Limit reached — ${maxModels} properties per presentation.` : undefined}
+    >
       <Plus className="mr-1 size-3" />
       Add Property
     </Button>
@@ -306,7 +319,12 @@ export function PropertyModelsSection({
   if (headless) {
     return (
       <>
-        <div className="flex justify-end">{addButton}</div>
+        <div className="flex items-center justify-between gap-2 mb-2">
+          {helperNote ? (
+            <p className="text-[11px] leading-snug text-muted-foreground">{helperNote}</p>
+          ) : <span />}
+          {addButton}
+        </div>
         {body}
         {syncModalEl}
       </>
@@ -316,11 +334,16 @@ export function PropertyModelsSection({
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Home className="size-5 text-primary" />
-            Property Models
-          </CardTitle>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-col">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Home className="size-5 text-primary" />
+              Property Models
+            </CardTitle>
+            {helperNote && (
+              <p className="mt-1 text-[11px] leading-snug text-muted-foreground">{helperNote}</p>
+            )}
+          </div>
           {addButton}
         </div>
       </CardHeader>

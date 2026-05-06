@@ -59,6 +59,7 @@ import {
 } from "@/lib/portal.functions";
 import { uploadBrandAsset } from "@/lib/storage";
 import { toast } from "sonner";
+import { MAX_PROPERTIES_PER_PRESENTATION } from "@/lib/limits";
 import { calculatePresentationPrice } from "@/lib/portal/pricing";
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe-js";
 import { getStripeForConnect, getStripeEnvironment } from "@/lib/stripe";
@@ -714,9 +715,17 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
   }, []);
 
   const handleAddModel = useCallback(() => {
-    const newModel = createEmptyModel();
-    setModels((prev) => [...prev, newModel]);
-    setBehaviors((prev) => ({ ...prev, [newModel.id]: { ...DEFAULT_BEHAVIOR } }));
+    setModels((prev) => {
+      if (prev.length >= MAX_PROPERTIES_PER_PRESENTATION) {
+        toast.error(
+          `You've reached the ${MAX_PROPERTIES_PER_PRESENTATION}-property limit for a single presentation. Remove a property or publish a second presentation to add more.`,
+        );
+        return prev;
+      }
+      const newModel = createEmptyModel();
+      setBehaviors((b) => ({ ...b, [newModel.id]: { ...DEFAULT_BEHAVIOR } }));
+      return [...prev, newModel];
+    });
   }, []);
 
   const handleRemoveModel = useCallback((id: string) => {
@@ -1800,6 +1809,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
                     onOpenBehavior={handleOpenBehavior}
                     onSetPrimary={handleSetPrimary}
                     savedModelId={savedModelId}
+                    maxModels={MAX_PROPERTIES_PER_PRESENTATION}
                   />
                 </AccordionContent>
               </AccordionItem>
