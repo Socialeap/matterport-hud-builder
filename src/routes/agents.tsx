@@ -749,14 +749,7 @@ function DirectorySection() {
 
             {/* Results */}
             <div className="space-y-4">
-              {!hasSearched && (
-                <DemoPreview
-                  mocks={visibleMocks}
-                  defaultCity={city}
-                  defaultRegion={region}
-                  defaultZip={zip}
-                />
-              )}
+              {!hasSearched && <DemoPreview mocks={visibleMocks} />}
 
               {hasSearched && !hasResults && (
                 <div className="space-y-6">
@@ -774,8 +767,9 @@ function DirectorySection() {
                     defaultRegion={lastQuery!.region}
                     defaultZip={lastQuery!.zip}
                     variant="dark"
+                    hideLocationFields
                   />
-                  <DemoPreview mocks={visibleMocks} hideForm />
+                  <DemoPreview mocks={visibleMocks} />
                 </div>
               )}
 
