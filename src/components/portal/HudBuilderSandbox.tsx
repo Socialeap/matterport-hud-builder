@@ -59,6 +59,7 @@ import {
 } from "@/lib/portal.functions";
 import { uploadBrandAsset } from "@/lib/storage";
 import { toast } from "sonner";
+import { MAX_PROPERTIES_PER_PRESENTATION } from "@/lib/limits";
 import { calculatePresentationPrice } from "@/lib/portal/pricing";
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe-js";
 import { getStripeForConnect, getStripeEnvironment } from "@/lib/stripe";
