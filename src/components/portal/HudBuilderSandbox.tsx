@@ -591,11 +591,10 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     ? accessState.payoutsReady
     : false; // never imply payouts work until the resolver confirms
   const checkoutReady = accessVerified && pricingConfigured && payoutsReady;
-  const isWrongAccount =
-    accessVerified &&
-    (accessState.viewerRole === "provider" ||
-      accessState.viewerRole === "admin" ||
-      accessState.viewerMatchesProvider);
+  // Only block when the signed-in user IS the owner of this Studio (trying
+  // to buy from themselves). Other providers/admins visiting a different
+  // MSP's Studio are legitimate buyers — never lock them out.
+  const isWrongAccount = accessVerified && accessState.viewerMatchesProvider;
   // Privacy & Access download states. `passwordIncomplete` covers the
   // case where the agent flipped the toggle on but the password is
   // missing or under the minimum length — the button stays disabled
@@ -916,11 +915,10 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
 
   useEffect(() => {
     if (!userId || !accessState.loaded || accessState.error) return;
-    if (
-      accessState.viewerMatchesProvider ||
-      accessState.viewerRole === "provider" ||
-      accessState.viewerRole === "admin"
-    ) {
+    // Skip the approved-free-download lookup only for the Studio owner.
+    // Other providers/admins are normal buyers and should hit the regular
+    // pricing flow if no approved free download exists for them.
+    if (accessState.viewerMatchesProvider) {
       return;
     }
 
@@ -948,7 +946,6 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     accessState.error,
     accessState.loaded,
     accessState.viewerMatchesProvider,
-    accessState.viewerRole,
     branding.provider_id,
     getApprovedFreeDownloadFn,
     savedModelId,
@@ -2074,12 +2071,12 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
               /* Wrong account — provider/admin signed in instead of invited client. */
               <div className="rounded-lg border-2 border-amber-500/60 bg-amber-500/5 p-6">
                 <h3 className="text-lg font-semibold text-foreground">
-                  Wrong Account Signed In
+                  This Studio Belongs to Your Account
                 </h3>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  You're signed in as the MSP/admin account, not the invited client.
-                  Please sign out and sign back in with the invited client account
-                  to download this presentation.
+                  You're signed in as the owner of this Studio, so you can't
+                  purchase a presentation from yourself. Sign out and use a
+                  buyer account if you want to test the checkout flow.
                 </p>
                 <Button
                   size="lg"
