@@ -1,0 +1,1 @@
+ALTER TYPE public.marketplace_specialty ADD VALUE IF NOT EXISTS 'scan-walkthrough-video-clips';
