@@ -609,37 +609,6 @@ function DirectorySection() {
         </div>
 
         <Card className="border-white/10 bg-white/5 p-4 backdrop-blur sm:p-6">
-          {/* Notify CTA — first thing visible inside the Directory container.
-              Lives outside the rail/results grid so visitors can act on it
-              regardless of whether they've searched yet. */}
-          <Collapsible className="mb-6 rounded-lg border border-cyan-300/30 bg-cyan-300/5">
-            <CollapsibleTrigger className="group flex w-full items-center justify-between gap-3 p-4 text-left">
-              <div className="flex items-center gap-2">
-                <MailCheck className="size-4 text-cyan-300" />
-                <h3 className="text-sm font-semibold text-white sm:text-base">
-                  Notify me when a fitting Pro Partner is matched in my area
-                </h3>
-              </div>
-              <ChevronRight className="size-4 shrink-0 text-white/60 transition-transform group-data-[state=open]:rotate-90" />
-            </CollapsibleTrigger>
-            <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
-              <div className="border-t border-cyan-300/20 p-5">
-                <p className="mb-4 text-sm text-white/70">
-                  Pick the on-site scanning &amp; studio services you care about (in the filter
-                  rail below) and set your city or ZIP in the search — we'll email you the
-                  moment a Pro Partner offering those services activates locally.
-                </p>
-                <BeaconForm
-                  defaultCity={city}
-                  defaultRegion={region}
-                  defaultZip={zip}
-                  variant="dark"
-                  hideLocationFields
-                />
-              </div>
-            </CollapsibleContent>
-          </Collapsible>
-
           <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
             {/* Filter rail */}
             <aside className="space-y-6">
