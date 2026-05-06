@@ -6,7 +6,7 @@
  * inline runtime parsing in the generated presentation HTML.
  *
  * Why a hand-rolled scanner: a naive regex over the whole body cannot
- * tell a regex literal from a `//` comment, a `/* ... */` comment,
+ * tell a regex literal from a line comment, a block comment,
  * a string, a template literal, or a division operator. We hit a
  * false-positive in production where the scanner flagged ordinary
  * comments containing a newline. This module fixes that by tracking
