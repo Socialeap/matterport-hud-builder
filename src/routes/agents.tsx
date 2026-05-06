@@ -31,6 +31,7 @@ import {
   Shapes,
   MapPinned,
   Magnet,
+  Film,
   
 } from "lucide-react";
 import heroHudBanner from "@/assets/hero-hud-showcase.png";
