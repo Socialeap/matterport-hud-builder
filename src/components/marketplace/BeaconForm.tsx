@@ -26,6 +26,13 @@ interface BeaconFormProps {
   variant?: "dark" | "light";
   /** Called once the beacon submission has succeeded. */
   onSuccess?: () => void;
+  /**
+   * When true, the City / State / ZIP inputs are not rendered. The submitted
+   * payload still uses defaultCity / defaultRegion / defaultZip so the caller
+   * is responsible for keeping those values current (typically lifted from a
+   * sibling search field).
+   */
+  hideLocationFields?: boolean;
 }
 
 export function BeaconForm({
@@ -34,6 +41,7 @@ export function BeaconForm({
   defaultZip = "",
   variant = "dark",
   onSuccess,
+  hideLocationFields = false,
 }: BeaconFormProps) {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
