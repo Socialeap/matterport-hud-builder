@@ -384,7 +384,7 @@ function PortalPage() {
   const features: string[] = [
     "Custom branding (logo, color, contact)",
     "Music & tour behavior config",
-    "Matterport Media Sync & Cinema Mode",
+    "Media Sync & Cinema Mode",
     "Google-Powered Neighborhood Map",
   ];
   if (lusActive) {
