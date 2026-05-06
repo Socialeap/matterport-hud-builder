@@ -71,9 +71,20 @@ export interface PropertyModel {
   isPrimary?: boolean;
 }
 
-export function buildNeighborhoodMapUrl(location: string): string {
-  if (!location.trim()) return "";
-  return `https://maps.google.com/maps?q=${encodeURIComponent(location)}&t=&z=15&ie=UTF8&iwloc=&output=embed`;
+export function buildNeighborhoodMapUrl(
+  parts: { propertyName?: string; address?: string; location?: string } | string,
+): string {
+  // Back-compat: callers may still pass a single location string.
+  const p = typeof parts === "string" ? { location: parts } : parts;
+  const clean = (s?: string) => (s ?? "").replace(/[\r\n\t]+/g, " ").trim();
+  const segs = [clean(p.propertyName), clean(p.address), clean(p.location)].filter(Boolean);
+  if (segs.length === 0) return "";
+  // Drop propertyName if it's already contained in the address/location tail
+  const tail = segs.slice(1).join(", ").toLowerCase();
+  if (segs[0] && tail.includes(segs[0].toLowerCase())) segs.shift();
+  const q = encodeURIComponent(segs.join(", "));
+  // www.google.com is the keyless embed host that still allows iframing.
+  return `https://www.google.com/maps?q=${q}&t=&z=15&ie=UTF8&iwloc=&output=embed`;
 }
 
 export interface AgentContact {

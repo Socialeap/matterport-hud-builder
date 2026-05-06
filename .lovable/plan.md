@@ -1,36 +1,73 @@
-# Limit property models per presentation (max 5)
+# Fix Neighborhood Map rendering
 
-## Recommendation: 5 max
+## Root cause
 
-5 is the right ceiling:
-- The end-product HTML embeds each model's media, branding, and AI training payload inline. Past ~5 properties, file size, initial paint, and Matterport iframe pre-warming start to noticeably degrade the visitor experience on average connections.
-- The HUD header property switcher and Contact-drawer list were laid out for a small, scannable set — beyond 5 they wrap awkwardly.
-- Multi-property presentations are best framed as a curated showcase, not a catalog. Clients needing more should publish a second presentation, which keeps each .html lean and shareable.
+The map silently fails for two reasons:
 
-## Changes
+1. **Thin query** — `buildNeighborhoodMapUrl()` only forwards the `location` field (e.g. `"Vail, CO 81658"`). The street address (`700 Red Sandstone`) and the property name (`Piney River Ranch`) are dropped, so Google often resolves to a generic centroid or returns no usable place.
+2. **Wrong embed host** — both the builder preview (`types.ts`) and the runtime portal (`portal.functions.ts:2417`) use the legacy `maps.google.com/maps?...&output=embed` path. Google increasingly serves it with `X-Frame-Options: SAMEORIGIN`, so the iframe renders blank. The supported keyless embed path is `https://www.google.com/maps?q=…&output=embed`.
 
-### 1. `src/lib/limits.ts` — single source of truth
-Add:
+Both the builder modal and the exported standalone `.html` have the same bug — they must be fixed in lockstep.
+
+## Fix
+
+### 1. `src/components/portal/types.ts` — generalize the URL builder
+
 ```ts
-export const MAX_PROPERTIES_PER_PRESENTATION = 5;
+export function buildNeighborhoodMapUrl(parts: {
+  propertyName?: string;
+  address?: string;   // street, e.g. "700 Red Sandstone"
+  location?: string;  // city/state/zip, e.g. "Vail, CO 81658"
+}): string {
+  const clean = (s?: string) => (s ?? "").replace(/[\r\n\t]+/g, " ").trim();
+  const segs = [clean(parts.propertyName), clean(parts.address), clean(parts.location)]
+    .filter(Boolean);
+  if (segs.length === 0) return "";
+  // Drop propertyName if it's already inside address/location
+  const tail = segs.slice(1).join(", ").toLowerCase();
+  if (segs[0] && tail.includes(segs[0].toLowerCase())) segs.shift();
+  const q = encodeURIComponent(segs.join(", "));
+  return `https://www.google.com/maps?q=${q}&t=&z=15&ie=UTF8&iwloc=&output=embed`;
+}
 ```
 
-### 2. `src/components/portal/HudBuilderSandbox.tsx`
-- In `handleAddModel`, guard against exceeding the cap. Show a toast: *"You've reached the 5-property limit for a single presentation. Remove a property or publish a second presentation to add more."*
-- Pass `canAddMore` (`models.length < MAX`) and the limit value down to `PropertyModelsSection`.
+Why this is safe and effective:
+- Strips control chars (a stray newline is the silent killer that yields "no results").
+- Filters empties — a missing field never produces `q=,,,`.
+- Dedupes name/address overlap.
+- Single `encodeURIComponent` — safe for commas, ampersands, accents.
+- Keyless host — no API key shipped in the exported `.html` (which would leak to every visitor).
 
-### 3. `src/components/portal/PropertyModelsSection.tsx`
-- Accept `canAddMore` and `maxModels` props.
-- Disable the "Add Property" button when at the cap (with title/tooltip explaining why).
-- Add a small helper note **next to the "Property Models" title** in the section header, e.g. *"Recommended 2–4 · max 5 per presentation"*. In `headless` mode the same note renders alongside the Add button row.
+### 2. `src/components/portal/NeighborhoodMapModal.tsx`
 
-### 4. End-product HUD header — shift property switcher right (`src/lib/portal.functions.ts`)
-The `#hud-prop-switch` lives inside `#hud-left-spacer` which only has `padding-left:8px`. The Matterport iframe renders its own title and search control in the top-left (~roughly the first 200–220px). Bump the spacer's left padding so the property dropdown clears that region:
-```css
-#hud-left-spacer{ ... ; padding-left: 220px; }
+Add an optional `address` prop and call `buildNeighborhoodMapUrl({ propertyName, address, location })`.
+
+### 3. `src/components/portal/HudPreview.tsx` (~line 813)
+
+Pass `address={currentModel.name}` and `propertyName={currentModel.propertyName}` to `<NeighborhoodMapModal>` (the model's `name` field stores the street; `propertyName` stores the friendly name).
+
+### 4. `src/lib/portal.functions.ts` — runtime parity for exported `.html`
+
+Replace the inline `mapFrame.src=…` near line 2417 with ES5-safe composition:
+
+```js
+var segs=[p.propertyName,p.name,p.location]
+  .map(function(s){return (s||"").replace(/[\r\n\t]+/g," ").trim();})
+  .filter(Boolean);
+var tail=segs.slice(1).join(", ").toLowerCase();
+if(segs[0] && tail.indexOf(segs[0].toLowerCase())!==-1) segs.shift();
+mapFrame.src="https://www.google.com/maps?q="+encodeURIComponent(segs.join(", "))+"&t=&z=15&ie=UTF8&iwloc=&output=embed";
 ```
-At narrow viewports we keep the hud header responsive — no change to the right side. This is a CSS-only tweak in the generated HTML, so it also fixes the Preview (which uses the same generator output).
+
+Verify the model serializer (around line 944) includes `propertyName` and `name`; add them if missing.
+
+## Files touched
+
+- `src/components/portal/types.ts`
+- `src/components/portal/NeighborhoodMapModal.tsx`
+- `src/components/portal/HudPreview.tsx`
+- `src/lib/portal.functions.ts`
 
 ## Out of scope
-- No backend / schema changes. Cap is a UI guardrail; existing drafts with more than 5 properties continue to render — only adding a 6th from the builder is blocked.
-- No change to the download/quality-check flow or the rest of the end-product generator.
+
+No Google Maps API key is introduced — the keyless embed host stays free and avoids leaking a key in the standalone exported portal. If you later want richer pins (custom markers, Street View), that would be a separate decision to adopt the paid Embed API with a domain-restricted key.
