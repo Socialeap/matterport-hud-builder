@@ -139,25 +139,31 @@ export function sanitizeRegexControlChars(input: string): {
   replacements: number;
 } {
   if (!input) return { sanitized: input, replacements: 0 };
+  // Lazy-import the lex-aware scanner so this module stays tree-shake
+  // friendly for any consumer that only needs the markdown sanitizer.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { findCorruptedRegexLiterals } = require("./js-regex-scan") as typeof import("./js-regex-scan");
   let count = 0;
   const sanitized = input.replace(
     /<script(\s[^>]*)?>([\s\S]*?)<\/script>/gi,
     (full, attrs: string | undefined, body: string) => {
       if (attrs && /\ssrc\s*=/i.test(attrs)) return full;
-      // Match a permissive regex-literal shape that allows control
-      // chars in the body, then escape any raw control chars found.
-      const repaired = body.replace(
-        /\/(?![*/])((?:\\.|\[[\s\S]*?\]|[^/\\])+?)\/([gimsuy]*)/g,
-        (lit, inner: string, flags: string) => {
-          if (!/[\r\n\t]/.test(inner)) return lit;
-          const fixedInner = inner
-            .replace(/\r/g, "\\r")
-            .replace(/\n/g, "\\n")
-            .replace(/\t/g, "\\t");
-          count += 1;
-          return "/" + fixedInner + "/" + flags;
-        },
-      );
+      const hits = findCorruptedRegexLiterals(body);
+      if (hits.length === 0) return full;
+      // Replace from the end so earlier offsets stay valid.
+      let repaired = body;
+      for (let i = hits.length - 1; i >= 0; i--) {
+        const h = hits[i];
+        const fixedInner = h.inner
+          .replace(/\r/g, "\\r")
+          .replace(/\n/g, "\\n")
+          .replace(/\t/g, "\\t");
+        repaired =
+          repaired.slice(0, h.start) +
+          "/" + fixedInner + "/" + h.flags +
+          repaired.slice(h.end);
+        count += 1;
+      }
       return full.replace(body, repaired);
     },
   );
