@@ -1,73 +1,86 @@
-# Fix Neighborhood Map rendering
+# Fix: Inline `<script> #7` Parse Failure
 
-## Root cause
+## Root Cause (confirmed)
 
-The map silently fails for two reasons:
+`src/lib/portal.functions.ts` emits the entire visitor-side runtime as one large **JavaScript template literal** (backtick string). Inside a template literal, `\r`, `\n`, and `\t` are interpreted by the **build-time** JS parser as actual CR / LF / TAB characters before the string is ever written to disk.
 
-1. **Thin query** — `buildNeighborhoodMapUrl()` only forwards the `location` field (e.g. `"Vail, CO 81658"`). The street address (`700 Red Sandstone`) and the property name (`Piney River Ranch`) are dropped, so Google often resolves to a generic centroid or returns no usable place.
-2. **Wrong embed host** — both the builder preview (`types.ts`) and the runtime portal (`portal.functions.ts:2417`) use the legacy `maps.google.com/maps?...&output=embed` path. Google increasingly serves it with `X-Frame-Options: SAMEORIGIN`, so the iframe renders blank. The supported keyless embed path is `https://www.google.com/maps?q=…&output=embed`.
+The Neighborhood Map fix from the previous turn added this line at **line 2418**:
 
-Both the builder modal and the exported standalone `.html` have the same bug — they must be fixed in lockstep.
+```js
+.map(function(s){return (s||"").replace(/[\r\n\t]+/g," ").trim();})
+```
+
+After template-literal evaluation, the generated HTML contains a regex literal with **real newline and tab characters inside the slashes** — which is illegal (regex literals must be single-line). Browsers throw `Invalid regular expression: missing /`. The pre-download quality check correctly caught it.
+
+Every other regex in the same file that targets whitespace already uses the correct double-escape, e.g. line 2102:
+```js
+var subj=String(subject||"Inquiry").replace(/[\\r\\n]+/g," ").trim();
+```
+The new line was the only outlier.
 
 ## Fix
 
-### 1. `src/components/portal/types.ts` — generalize the URL builder
+### 1. Escape the regex (one-line correctness fix)
 
-```ts
-export function buildNeighborhoodMapUrl(parts: {
-  propertyName?: string;
-  address?: string;   // street, e.g. "700 Red Sandstone"
-  location?: string;  // city/state/zip, e.g. "Vail, CO 81658"
-}): string {
-  const clean = (s?: string) => (s ?? "").replace(/[\r\n\t]+/g, " ").trim();
-  const segs = [clean(parts.propertyName), clean(parts.address), clean(parts.location)]
-    .filter(Boolean);
-  if (segs.length === 0) return "";
-  // Drop propertyName if it's already inside address/location
-  const tail = segs.slice(1).join(", ").toLowerCase();
-  if (segs[0] && tail.includes(segs[0].toLowerCase())) segs.shift();
-  const q = encodeURIComponent(segs.join(", "));
-  return `https://www.google.com/maps?q=${q}&t=&z=15&ie=UTF8&iwloc=&output=embed`;
-}
-```
-
-Why this is safe and effective:
-- Strips control chars (a stray newline is the silent killer that yields "no results").
-- Filters empties — a missing field never produces `q=,,,`.
-- Dedupes name/address overlap.
-- Single `encodeURIComponent` — safe for commas, ampersands, accents.
-- Keyless host — no API key shipped in the exported `.html` (which would leak to every visitor).
-
-### 2. `src/components/portal/NeighborhoodMapModal.tsx`
-
-Add an optional `address` prop and call `buildNeighborhoodMapUrl({ propertyName, address, location })`.
-
-### 3. `src/components/portal/HudPreview.tsx` (~line 813)
-
-Pass `address={currentModel.name}` and `propertyName={currentModel.propertyName}` to `<NeighborhoodMapModal>` (the model's `name` field stores the street; `propertyName` stores the friendly name).
-
-### 4. `src/lib/portal.functions.ts` — runtime parity for exported `.html`
-
-Replace the inline `mapFrame.src=…` near line 2417 with ES5-safe composition:
-
+`src/lib/portal.functions.ts` line 2418 — change:
 ```js
-var segs=[p.propertyName,p.name,p.location]
-  .map(function(s){return (s||"").replace(/[\r\n\t]+/g," ").trim();})
-  .filter(Boolean);
-var tail=segs.slice(1).join(", ").toLowerCase();
-if(segs[0] && tail.indexOf(segs[0].toLowerCase())!==-1) segs.shift();
-mapFrame.src="https://www.google.com/maps?q="+encodeURIComponent(segs.join(", "))+"&t=&z=15&ie=UTF8&iwloc=&output=embed";
+.map(function(s){return (s||"").replace(/[\r\n\t]+/g," ").trim();})
+```
+to:
+```js
+.map(function(s){return (s||"").replace(/[\\r\\n\\t]+/g," ").trim();})
 ```
 
-Verify the model serializer (around line 944) includes `propertyName` and `name`; add them if missing.
+This emits the literal text `/[\r\n\t]+/g` into the runtime, which the visitor's browser parses correctly.
 
-## Files touched
+### 2. Add a permanent guard against the same class of bug
 
-- `src/components/portal/types.ts`
-- `src/components/portal/NeighborhoodMapModal.tsx`
-- `src/components/portal/HudPreview.tsx`
-- `src/lib/portal.functions.ts`
+The existing `src/lib/portal/html-quality-check.ts` already runs `new Function(scriptBody)` on every inline script and blocks the download on parse failure — that's exactly why this regression was caught instead of shipping. We will **strengthen** it (no new component needed, just extend what is already wired to the download path):
 
-## Out of scope
+- **Pre-emit lint**: Add a tiny check in `portal.functions.ts` (or a sibling `portal/runtime-lint.ts`) that scans the assembled runtime string for any regex literal containing a raw `\n`, `\r`, or `\t` character (i.e. the bytes 0x0A/0x0D/0x09 inside a `/.../flags` literal). If found, throw with the offending snippet and line context **before** returning the HTML to the client. This turns the failure mode from "user clicks Download, sees a blocked toast" into "the generation server function logs a precise location" — much easier to debug if it ever recurs.
+- **Auto-repair pass (safe subset)**: In `html-quality-check.ts`, after the existing markdown-auto-link sanitizer and **before** the `new Function(...)` parse check, run a narrow repair pass that, *only inside detected `<script>` blocks*, replaces raw control characters (`\n`, `\r`, `\t`) that appear **inside a regex literal** (between unescaped `/` delimiters on the same logical token) with their escaped equivalents (`\\n`, `\\r`, `\\t`). If any repair is applied, record it as a `warning` check (mirrors how the auto-link repair is reported) so the user still gets a successful download but the support team sees the warning. If after repair the script still fails to parse, the existing hard-fail behavior stands.
 
-No Google Maps API key is introduced — the keyless embed host stays free and avoids leaking a key in the standalone exported portal. If you later want richer pins (custom markers, Street View), that would be a separate decision to adopt the paid Embed API with a domain-restricted key.
+This gives us defense in depth without changing the pass/fail semantics of a clean build:
+
+```
+generator emits runtime
+        │
+        ▼
+runtime-lint (NEW, server-side) ──fail fast──► clear server log + 500
+        │ ok
+        ▼
+HTML returned to browser
+        │
+        ▼
+sanitizeMarkdownAutoLinks (existing)
+        │
+        ▼
+sanitizeRegexControlChars (NEW, client-side, narrow scope) ──► warning if applied
+        │
+        ▼
+new Function(script) parse check (existing) ──fail──► download blocked
+        │ ok
+        ▼
+download proceeds
+```
+
+### 3. Documentation note (small, in code)
+
+Add a short comment block above the existing `// ── Modal helpers` section in `portal.functions.ts` reminding future editors that the entire string is a JS template literal, so backslash escapes inside regex / string literals must be **doubled** (`\\n` not `\n`). This is the same gotcha that has bitten this file before.
+
+## Files Touched
+
+- `src/lib/portal.functions.ts` — escape line 2418, add reminder comment, call the new pre-emit lint before returning.
+- `src/lib/portal/runtime-lint.ts` (new, ~40 lines) — single exported function `assertRuntimeRegexSafety(html)` used by the generator.
+- `src/lib/portal/html-quality-check.ts` — add `sanitizeRegexControlChars` step + a new `QualityCheckResult` entry; integrate into `runQualityChecks` between auto-link sanitize and the inline-script parse check.
+
+## Why not a more aggressive auto-healer?
+
+Generic "try to repair broken JS" is unsafe — it can silently mask real bugs and ship a half-working presentation. The narrow repair above only touches a known, mechanical, fully reversible corruption class (control chars inside regex literals), which mirrors how the existing markdown-auto-link repair works. Anything beyond that stays in the hard-fail path so we never ship a silently-degraded file.
+
+## Verification
+
+After the change, regenerate the same presentation and confirm:
+1. Quality-check report shows all green (or a single warning if the auto-repair triggers).
+2. Open the downloaded HTML, click the Neighborhood button on each property, confirm the Google Maps embed loads with the enriched query (propertyName + address + location).
+3. No console errors in the visitor tab.

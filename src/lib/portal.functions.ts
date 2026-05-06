@@ -2415,7 +2415,7 @@ window.__openModal=function(name,idx){
     var titleEl=document.getElementById("map-modal-title");
     if(mapFrame&&p&&(p.location||p.name||p.propertyName)){
       var segs=[p.propertyName,p.name,p.location]
-        .map(function(s){return (s||"").replace(/[\r\n\t]+/g," ").trim();})
+        .map(function(s){return (s||"").replace(/[\\r\\n\\t]+/g," ").trim();})
         .filter(function(s){return !!s;});
       var tail=segs.slice(1).join(", ").toLowerCase();
       if(segs[0] && tail.indexOf(segs[0].toLowerCase())!==-1) segs.shift();
