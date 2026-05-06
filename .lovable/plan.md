@@ -1,37 +1,48 @@
-## Goal
+## Problem
 
-Replace the full-width "Notify me when a fitting Pro Partner is matched in my area" collapsible at the top of the Directory `Card` with a compact button that opens a **modal dialog**. Move the button from the top of the container to the **right side, above the Sample Studios / results column**.
+On `/p/{slug}/builder`, signing in with any account that has the `provider` or `admin` role triggers a hard "Wrong Account Signed In" block, even when that user is visiting a *different* MSP's Studio. This prevents legitimate cross-MSP purchases — exactly the lead-capture flow you want to keep open.
 
-## Changes — `src/routes/agents.tsx` (DirectorySection)
+## Root Cause
 
-1. **Remove the existing top-of-card Collapsible** (lines ~610–636) that currently wraps the BeaconForm.
-2. **Add a Dialog** (from `@/components/ui/dialog`) controlled by local state `notifyOpen`. Contents:
-   - Title: "Notify me when a Pro Partner is matched in my area"
-   - Short description paragraph (same gist as the current helper text — pick services in the rail and set city/ZIP in the search; we'll email when a match activates).
-   - `<BeaconForm defaultCity={city} defaultRegion={region} defaultZip={zip} variant="dark" hideLocationFields />`
-   - `onSuccess` closes the modal.
-   - Use `DialogContent` with `sm:max-w-lg` and dark styling consistent with the page (`bg-[#0a0e27] border-white/10 text-white`).
-3. **Place the trigger button above the results column**, inside the right grid cell (the `<div className="space-y-4">` that holds results), as the first child so it sits above `DemoPreview`, the no-results panel, and the live-results list. Layout:
-   ```
-   <div className="flex justify-end">
-     <DialogTrigger asChild>
-       <Button size="sm" variant="outline" className="gap-2 border-cyan-300/40 bg-cyan-300/5 text-cyan-100 hover:bg-cyan-300/10 hover:text-white">
-         <MailCheck className="size-4" />
-         Notify me when matched
-       </Button>
-     </DialogTrigger>
-   </div>
-   ```
-   Smaller footprint (sm size, right-aligned) so it doesn't span the container.
-4. **Drop the now-unused `Collapsible` imports** if no other usage remains in the file.
-5. **Leave the existing no-results inline `BeaconForm`** untouched — it's a different surface (post-search empty state) and still reads naturally there.
+`src/components/portal/HudBuilderSandbox.tsx` line ~594:
 
-## Technical notes
+```ts
+const isWrongAccount =
+  accessVerified &&
+  (accessState.viewerRole === "provider" ||
+   accessState.viewerRole === "admin"   ||
+   accessState.viewerMatchesProvider);
+```
 
-- `Dialog`, `DialogContent`, `DialogHeader`, `DialogTitle`, `DialogDescription`, `DialogTrigger` are already exported from `src/components/ui/dialog.tsx`.
-- `BeaconForm` already supports `hideLocationFields` and reads `defaultCity/Region/Zip` live from props, so the search rail values flow into the modal automatically when it opens.
-- No DB, edge function, or schema changes required.
+The first two clauses block **every** provider/admin account from buying from **any** Studio. Only the third clause (`viewerMatchesProvider`) is the legitimate "owner trying to buy their own Studio" guard.
 
-## Files touched
+The DB resolver (`resolve_studio_access`) already returns `viewer_matches_provider = true` only when `auth.uid() === _provider_id`, so it's safe to rely on it as the sole signal.
 
-- `src/routes/agents.tsx`
+## Fix
+
+**File:** `src/components/portal/HudBuilderSandbox.tsx`
+
+1. **Line ~594** — change `isWrongAccount` to only fire when the signed-in user is literally the owner of this Studio:
+
+```ts
+const isWrongAccount = accessVerified && accessState.viewerMatchesProvider;
+```
+
+2. **Lines ~917–925 (approved-free-download effect)** — narrow the early-return so we still skip for the owner but allow other providers/admins (they'll just get an empty result and fall through to normal pricing):
+
+```ts
+if (accessState.viewerMatchesProvider) return;
+```
+(remove the `viewerRole === "provider" / "admin"` clauses; update the dep list accordingly.)
+
+3. **Update the warning copy** at lines ~2076–2083 to match the narrower meaning ("This Studio is yours — switch to a buyer account to test the purchase flow.") so an MSP who *does* land on their own Studio still sees a sensible message.
+
+## Ripple Check
+
+- `EnhancementsSection` reads `viewerRole` independently (only swaps the BYOK Ask-AI section for clients) — **unaffected**.
+- `getApprovedFreeDownloadFn` lookup for non-owner providers will return no approved record, so the normal checkout path runs — **safe**.
+- `resolve_studio_access` RPC is unchanged.
+- The owner-self-purchase guard is preserved via `viewerMatchesProvider`.
+- Anonymous (unauthenticated) visitors are unaffected — `viewerRole` is `"unknown"` and `viewerMatchesProvider` is false.
+
+No DB migration, no edge function, no auth/RLS changes required.
