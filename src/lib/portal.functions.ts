@@ -3633,6 +3633,13 @@ if(frame){
 </body>
 </html>`;
 
+    // Build-time safety net: scan the assembled runtime for regex
+    // literals containing raw control chars (the exact failure mode
+    // that broke the Neighborhood Map fix). Throws with a precise
+    // snippet + line so regressions surface in server logs instead
+    // of at the visitor's browser.
+    assertRuntimeRegexSafety(html);
+
     return askAiWarning
       ? { success: true, html, askAiWarning }
       : { success: true, html };
