@@ -31,6 +31,7 @@ import {
   Shapes,
   MapPinned,
   Magnet,
+  Film,
   
 } from "lucide-react";
 import heroHudBanner from "@/assets/hero-hud-showcase.png";
@@ -145,6 +146,7 @@ const SCANNING_FILTERS: ReadonlyArray<FilterOption> = [
   { value: "scan-matterport-pro3", label: "Matterport Pro3", icon: Camera },
   { value: "scan-drone-aerial", label: "Drone / Aerial", icon: Helicopter },
   { value: "scan-twilight-photography", label: "Twilight Photography", icon: Sunset },
+  { value: "scan-walkthrough-video-clips" as MarketplaceSpecialty, label: "Walk-through Video Clips", icon: Film },
   { value: "scan-floor-plans", label: "Floor Plans", icon: Ruler },
   { value: "scan-dimensional-measurements", label: "Dimensional Measurements", icon: Box },
   { value: "scan-same-day-turnaround", label: "Same-Day Turnaround", icon: Zap },
@@ -589,20 +591,50 @@ function DirectorySection() {
       <div className="mx-auto max-w-6xl">
         <div className="mb-8 flex flex-col items-center justify-center gap-3 text-center">
           <h2 className="text-3xl font-bold text-amber-300 sm:text-4xl">MSP Directory</h2>
-          <p className="mx-auto max-w-2xl text-white/60">
-            Search by city or ZIP. If no Pro Partner is live in your market yet, drop your details
-            so we can notify you the moment one activates locally.
-          </p>
-        </div>
-
-        <div className="mb-6 text-center">
-          <p className="text-base font-bold text-amber-300 sm:text-lg">Live Directory launching soon</p>
-          <p className="mx-auto mt-1 max-w-2xl text-xs text-white/60 font-normal">
-            The studios shown below are sample listings for demonstration. Use the filters to preview how the directory will work, then drop your email to be notified the moment Pro Partners activate near you.
+          <p className="mx-auto max-w-2xl text-sm leading-relaxed text-white/70 sm:text-base">
+            Our live directory of Pro Partners is launching soon — direct listings are on the way.
+            In the meantime,{" "}
+            <strong className="font-semibold text-white">
+              select the on-site scanning &amp; studio services you're interested in and your
+              location below, and we'll notify you the moment a fitting Pro Partner is matched
+              in your area.
+            </strong>{" "}
+            The studio cards shown are sample listings so you can preview how filtering will work.
           </p>
         </div>
 
         <Card className="border-white/10 bg-white/5 p-4 backdrop-blur sm:p-6">
+          {/* Notify CTA — first thing visible inside the Directory container.
+              Lives outside the rail/results grid so visitors can act on it
+              regardless of whether they've searched yet. */}
+          <Collapsible className="mb-6 rounded-lg border border-cyan-300/30 bg-cyan-300/5">
+            <CollapsibleTrigger className="group flex w-full items-center justify-between gap-3 p-4 text-left">
+              <div className="flex items-center gap-2">
+                <MailCheck className="size-4 text-cyan-300" />
+                <h3 className="text-sm font-semibold text-white sm:text-base">
+                  Notify me when a fitting Pro Partner is matched in my area
+                </h3>
+              </div>
+              <ChevronRight className="size-4 shrink-0 text-white/60 transition-transform group-data-[state=open]:rotate-90" />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
+              <div className="border-t border-cyan-300/20 p-5">
+                <p className="mb-4 text-sm text-white/70">
+                  Pick the on-site scanning &amp; studio services you care about (in the filter
+                  rail below) and set your city or ZIP in the search — we'll email you the
+                  moment a Pro Partner offering those services activates locally.
+                </p>
+                <BeaconForm
+                  defaultCity={city}
+                  defaultRegion={region}
+                  defaultZip={zip}
+                  variant="dark"
+                  hideLocationFields
+                />
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+
           <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
             {/* Filter rail */}
             <aside className="space-y-6">
@@ -717,14 +749,7 @@ function DirectorySection() {
 
             {/* Results */}
             <div className="space-y-4">
-              {!hasSearched && (
-                <DemoPreview
-                  mocks={visibleMocks}
-                  defaultCity={city}
-                  defaultRegion={region}
-                  defaultZip={zip}
-                />
-              )}
+              {!hasSearched && <DemoPreview mocks={visibleMocks} />}
 
               {hasSearched && !hasResults && (
                 <div className="space-y-6">
@@ -742,8 +767,9 @@ function DirectorySection() {
                     defaultRegion={lastQuery!.region}
                     defaultZip={lastQuery!.zip}
                     variant="dark"
+                    hideLocationFields
                   />
-                  <DemoPreview mocks={visibleMocks} hideForm />
+                  <DemoPreview mocks={visibleMocks} />
                 </div>
               )}
 
@@ -918,22 +944,9 @@ function MSPCard({ msp, isSample = false }: { msp: DirectoryMSP; isSample?: bool
 /*  Demo preview — sample MSP cards + waitlist form                    */
 /* ------------------------------------------------------------------ */
 
-function DemoPreview({
-  mocks,
-  defaultCity = "",
-  defaultRegion = "",
-  defaultZip = "",
-  hideForm = false,
-}: {
-  mocks: DirectoryMSP[];
-  defaultCity?: string;
-  defaultRegion?: string;
-  defaultZip?: string;
-  hideForm?: boolean;
-}) {
+function DemoPreview({ mocks }: { mocks: DirectoryMSP[] }) {
   return (
     <div className="space-y-6">
-
       <div>
         <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-white/50">
           Sample studios
@@ -952,34 +965,6 @@ function DemoPreview({
           </div>
         )}
       </div>
-
-      {!hideForm && (
-        <Collapsible className="rounded-lg border border-white/10 bg-white/[0.03]">
-          <CollapsibleTrigger className="group flex w-full items-center justify-between gap-3 p-4 text-left">
-            <div className="flex items-center gap-2">
-              <MailCheck className="size-4 text-cyan-300" />
-              <h3 className="text-sm font-semibold text-white sm:text-base">
-                Notify me when a Pro Partner is live in my area
-              </h3>
-            </div>
-            <ChevronRight className="size-4 shrink-0 text-white/60 transition-transform group-data-[state=open]:rotate-90" />
-          </CollapsibleTrigger>
-          <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
-            <div className="border-t border-white/10 p-5">
-              <p className="mb-4 text-sm text-white/60">
-                Agents and property managers — be first in line. We'll email you the moment
-                an MSP activates locally and offers capture + studio services in your market.
-              </p>
-              <BeaconForm
-                defaultCity={defaultCity}
-                defaultRegion={defaultRegion}
-                defaultZip={defaultZip}
-                variant="dark"
-              />
-            </div>
-          </CollapsibleContent>
-        </Collapsible>
-      )}
     </div>
   );
 }

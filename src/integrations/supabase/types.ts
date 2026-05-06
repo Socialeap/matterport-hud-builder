@@ -1265,6 +1265,7 @@ export type Database = {
         | "vault-custom-icons"
         | "vault-property-mapper"
         | "ai-lead-generation"
+        | "scan-walkthrough-video-clips"
       model_status: "preview" | "pending_payment" | "paid"
       vault_category:
         | "spatial_audio"
@@ -1418,6 +1419,7 @@ export const Constants = {
         "vault-custom-icons",
         "vault-property-mapper",
         "ai-lead-generation",
+        "scan-walkthrough-video-clips",
       ],
       model_status: ["preview", "pending_payment", "paid"],
       vault_category: [
