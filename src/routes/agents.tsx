@@ -592,14 +592,12 @@ function DirectorySection() {
         <div className="mb-8 flex flex-col items-center justify-center gap-3 text-center">
           <h2 className="text-3xl font-bold text-amber-300 sm:text-4xl">MSP Directory</h2>
           <p className="mx-auto max-w-2xl text-sm leading-relaxed text-white/70 sm:text-base">
-            Our live directory of Pro Partners is launching soon — direct listings are on the way.
-            In the meantime,{" "}
+            Our live directory of Pro Partners is launching soon. In the meantime,{" "}
             <strong className="font-semibold text-white">
-              select the on-site scanning &amp; studio services you're interested in and your
-              location below, and we'll notify you the moment a fitting Pro Partner is matched
-              in your area.
+              select the On-Site Scanning & Studio services you're interested in, and
+              we'll notify you the moment a Pro Partner is matched in your area.
             </strong>{" "}
-            The studio cards shown are sample listings so you can preview how filtering will work.
+            The studio cards shown below are only samples the demo how filtering will work.
           </p>
         </div>
 
