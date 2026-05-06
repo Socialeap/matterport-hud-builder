@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { assembleAskRuntimeJS } from "./portal/ask-runtime-assembler";
 import { getLiveSessionRuntimeJS } from "./portal/live-session-source";
+import { assertRuntimeRegexSafety } from "./portal/runtime-lint";
 import {
   encryptConfigForExport,
   PROTECTED_MIN_PASSWORD_LEN,
