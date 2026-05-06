@@ -498,6 +498,7 @@ function DirectorySection() {
   const [zip, setZip] = useState("");
   const [results, setResults] = useState<DirectoryMSP[] | null>(null);
   const [searching, setSearching] = useState(false);
+  const [notifyOpen, setNotifyOpen] = useState(false);
   const [lastQuery, setLastQuery] = useState<{ city: string; region: string; zip: string } | null>(
     null,
   );
