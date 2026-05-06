@@ -236,7 +236,23 @@ export function runQualityChecks(rawHtml: string): QualityCheckReport {
       detail: "Generated file is free of `[X](http://X)` auto-link patterns.",
     });
   }
-  const html = sanitized;
+  let html = sanitized;
+
+  // 1b. Regex-control-char sanitizer. Repairs `/[<raw newline>]+/`
+  //     style corruption that breaks inline-script parsing. This
+  //     mirrors how the auto-link repair works: surface as a warning
+  //     so the user still gets a download but the regression is
+  //     visible.
+  const regexFix = sanitizeRegexControlChars(html);
+  if (regexFix.replacements > 0) {
+    html = regexFix.sanitized;
+    checks.push({
+      name: "Regex control-char corruption repaired",
+      passed: true,
+      severity: "warning",
+      detail: `Escaped raw control chars inside ${regexFix.replacements} regex literal(s). Generator template should be fixed.`,
+    });
+  }
 
   // 2. Re-scan after sanitize: any leftover real markdown auto-links of
   //    the same shape would still break JS/CSS, so this is a hard fail.
