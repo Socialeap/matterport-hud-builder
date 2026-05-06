@@ -201,49 +201,74 @@ export function BeaconForm({
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_100px_140px]">
-        <div className="space-y-1.5">
-          <Label htmlFor="beacon_city" className={labelClass}>
-            City <span className="text-red-400">*</span>
-          </Label>
-          <Input
-            id="beacon_city"
-            required
-            placeholder="Atlanta"
-            value={city}
-            onChange={(e) => setCity(e.target.value)}
-            className={inputClass}
-          />
+      {hideLocationFields ? (
+        <div
+          className={`rounded-md border px-3 py-2 text-xs ${
+            hasLocationContext
+              ? variant === "dark"
+                ? "border-cyan-300/20 bg-cyan-300/5 text-white/70"
+                : "border-cyan-500/20 bg-cyan-50 text-muted-foreground"
+              : variant === "dark"
+                ? "border-amber-300/30 bg-amber-300/5 text-amber-100"
+                : "border-amber-500/30 bg-amber-50 text-amber-900"
+          }`}
+        >
+          {hasLocationContext ? (
+            <>
+              We'll watch <span className="font-semibold">
+                {[defaultCity, defaultRegion].filter(Boolean).join(", ") || `ZIP ${defaultZip}`}
+              </span>{" "}
+              for new Pro Partners — based on the location in your search above.
+            </>
+          ) : (
+            <>Enter a city or ZIP in the search above so we know where to watch for Pro Partners.</>
+          )}
         </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="beacon_region" className={labelClass}>
-            State <span className="text-red-400">*</span>
-          </Label>
-          <Input
-            id="beacon_region"
-            required
-            maxLength={2}
-            placeholder="GA"
-            value={region}
-            onChange={(e) =>
-              setRegion(e.target.value.toUpperCase().replace(/[^A-Z]/g, ""))
-            }
-            className={inputClass}
-          />
+      ) : (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_100px_140px]">
+          <div className="space-y-1.5">
+            <Label htmlFor="beacon_city" className={labelClass}>
+              City <span className="text-red-400">*</span>
+            </Label>
+            <Input
+              id="beacon_city"
+              required
+              placeholder="Atlanta"
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              className={inputClass}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="beacon_region" className={labelClass}>
+              State <span className="text-red-400">*</span>
+            </Label>
+            <Input
+              id="beacon_region"
+              required
+              maxLength={2}
+              placeholder="GA"
+              value={region}
+              onChange={(e) =>
+                setRegion(e.target.value.toUpperCase().replace(/[^A-Z]/g, ""))
+              }
+              className={inputClass}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="beacon_zip" className={labelClass}>
+              ZIP
+            </Label>
+            <Input
+              id="beacon_zip"
+              placeholder="30303"
+              value={zip}
+              onChange={(e) => setZip(e.target.value)}
+              className={inputClass}
+            />
+          </div>
         </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="beacon_zip" className={labelClass}>
-            ZIP
-          </Label>
-          <Input
-            id="beacon_zip"
-            placeholder="30303"
-            value={zip}
-            onChange={(e) => setZip(e.target.value)}
-            className={inputClass}
-          />
-        </div>
-      </div>
+      )}
 
       <label
         className={`flex items-start gap-2.5 rounded-md border p-3 text-xs leading-relaxed ${
