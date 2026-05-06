@@ -319,7 +319,12 @@ export function PropertyModelsSection({
   if (headless) {
     return (
       <>
-        <div className="flex justify-end">{addButton}</div>
+        <div className="flex items-center justify-between gap-2 mb-2">
+          {helperNote ? (
+            <p className="text-[11px] leading-snug text-muted-foreground">{helperNote}</p>
+          ) : <span />}
+          {addButton}
+        </div>
         {body}
         {syncModalEl}
       </>
@@ -329,11 +334,16 @@ export function PropertyModelsSection({
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Home className="size-5 text-primary" />
-            Property Models
-          </CardTitle>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-col">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Home className="size-5 text-primary" />
+              Property Models
+            </CardTitle>
+            {helperNote && (
+              <p className="mt-1 text-[11px] leading-snug text-muted-foreground">{helperNote}</p>
+            )}
+          </div>
           {addButton}
         </div>
       </CardHeader>
