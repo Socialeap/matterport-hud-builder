@@ -1809,6 +1809,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
                     onOpenBehavior={handleOpenBehavior}
                     onSetPrimary={handleSetPrimary}
                     savedModelId={savedModelId}
+                    maxModels={MAX_PROPERTIES_PER_PRESENTATION}
                   />
                 </AccordionContent>
               </AccordionItem>
