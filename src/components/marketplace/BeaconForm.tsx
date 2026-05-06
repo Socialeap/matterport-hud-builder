@@ -64,6 +64,19 @@ export function BeaconForm({
   const helperClass =
     variant === "dark" ? "text-white/50" : "text-muted-foreground";
 
+  // When the location fields are hidden, the caller supplies city/region/zip
+  // via the default* props (typically lifted from a sibling search rail). We
+  // read directly from those props so the submitted payload stays in sync
+  // with whatever the visitor most recently typed in the search.
+  const effectiveCity = hideLocationFields ? defaultCity : city;
+  const effectiveRegion = hideLocationFields ? defaultRegion : region;
+  const effectiveZip = hideLocationFields ? defaultZip : zip;
+
+  const hasLocationContext =
+    hideLocationFields
+      ? Boolean(defaultCity.trim() || defaultZip.trim())
+      : true;
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
 
@@ -71,15 +84,24 @@ export function BeaconForm({
       toast.error("Please enter a valid email");
       return;
     }
-    if (city.trim().length < 2) {
-      toast.error("Please enter your city");
-      return;
+
+    if (hideLocationFields) {
+      if (!hasLocationContext) {
+        toast.error("Enter a city or ZIP in the search above so we know where to watch for Pro Partners");
+        return;
+      }
+    } else {
+      if (effectiveCity.trim().length < 2) {
+        toast.error("Please enter your city");
+        return;
+      }
+      if (!STATE_RE.test(effectiveRegion.trim().toUpperCase())) {
+        toast.error("Please enter a 2-letter state code (e.g. GA)");
+        return;
+      }
     }
-    if (!STATE_RE.test(region.trim().toUpperCase())) {
-      toast.error("Please enter a 2-letter state code (e.g. GA)");
-      return;
-    }
-    const zipTrim = zip.trim();
+
+    const zipTrim = effectiveZip.trim();
     if (zipTrim && !ZIP_RE.test(zipTrim)) {
       toast.error("ZIP must be 5 digits (or 5+4)");
       return;
@@ -95,8 +117,8 @@ export function BeaconForm({
         email: email.trim(),
         name: name.trim() || undefined,
         brokerage: brokerage.trim() || undefined,
-        city: city.trim(),
-        region: region.trim().toUpperCase(),
+        city: effectiveCity.trim() || (zipTrim ? "(via ZIP)" : ""),
+        region: effectiveRegion.trim().toUpperCase() || undefined,
         zip: zipTrim || undefined,
         consent_given: true,
         consent_text: CONSENT_TEXT,
