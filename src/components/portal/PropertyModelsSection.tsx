@@ -205,6 +205,12 @@ export function PropertyModelsSection({
               </div>
             </div>
 
+            <ManualMediaInputs
+              assets={model.multimedia ?? []}
+              onChange={(next) => onMediaChange(model.id, next)}
+            />
+
+
             {model.multimedia && model.multimedia.length > 0 && (
               <MediaAssetsList
                 assets={model.multimedia}
