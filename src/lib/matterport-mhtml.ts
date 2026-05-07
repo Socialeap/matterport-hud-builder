@@ -245,6 +245,48 @@ function buildClipEmbedUrl(modelId: string, assetId: string): string {
   return `https://my.matterport.com/resources/model/${modelId}/clip/${assetId}`;
 }
 
+/** Stable, deterministic short id for a URL (used when no Matterport asset id exists). */
+function hashId(input: string): string {
+  let h = 5381;
+  for (let i = 0; i < input.length; i++) h = ((h << 5) + h + input.charCodeAt(i)) >>> 0;
+  return `u${h.toString(36)}`.slice(0, 11).padEnd(11, "0");
+}
+
+const MEDIA_URL_RE =
+  /https?:\/\/[^\s"'<>()]+?\.(?:jpe?g|png|webp|gif|mp4|webm|mov|m4v)(?:\?[^\s"'<>()]*)?/gi;
+
+/**
+ * Fallback scan: walk the raw decoded text globally for any media-looking URL
+ * (img src, source src, href, JSON payloads, hidden divs). Ignores CSS
+ * visibility — every match becomes an asset. De-duped by URL.
+ */
+function extractRawMediaUrls(text: string): MediaAsset[] {
+  const seen = new Set<string>();
+  const out: MediaAsset[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = MEDIA_URL_RE.exec(text)) !== null) {
+    const url = m[0];
+    if (seen.has(url)) continue;
+    seen.add(url);
+    const ext = (url.split("?")[0].match(/\.([a-z0-9]+)$/i)?.[1] || "").toLowerCase();
+    let kind: MediaAssetKind = "photo";
+    if (["mp4", "webm", "mov", "m4v"].includes(ext)) kind = "video";
+    else if (ext === "gif") kind = "gif";
+    const id = hashId(url);
+    const fname = url.split("?")[0].split("/").pop() || "media";
+    out.push({
+      id,
+      kind,
+      visible: true,
+      label: prettyLabel(fname, fname),
+      filename: fname,
+      proxyUrl: url,
+      ...(kind === "video" ? { embedUrl: url } : {}),
+    });
+  }
+  return out;
+}
+
 /** Parse a Matterport MHTML file (as a string). Pure & synchronous. */
 export function parseMatterportMhtml(rawText: string): ParsedMhtml {
   // Decode only the HTML MIME part to avoid corrupting base64 image parts.
@@ -256,6 +298,13 @@ export function parseMatterportMhtml(rawText: string): ParsedMhtml {
   const gifs: MediaAsset[] = [];
 
   if (!modelId) {
+    // No Matterport model id detected — fall back to a global media-URL scan
+    // so the user can still extract images from arbitrary saved pages.
+    for (const a of extractRawMediaUrls(text)) {
+      if (a.kind === "video") videos.push(a);
+      else if (a.kind === "gif") gifs.push(a);
+      else photos.push(a);
+    }
     return { modelId: null, videos, photos, gifs };
   }
 
@@ -301,6 +350,20 @@ export function parseMatterportMhtml(rawText: string): ParsedMhtml {
         visible: true,
       });
     }
+  }
+
+  // Always supplement with a global raw-URL scan: catches images/videos
+  // tucked inside hidden divs, JSON payloads, or "Show More" panels that
+  // never rendered their thumbnail-card wrappers. De-duped by id below.
+  const seenIds = new Set<string>(
+    [...videos, ...photos, ...gifs].map((a) => a.id)
+  );
+  for (const a of extractRawMediaUrls(text)) {
+    if (seenIds.has(a.id)) continue;
+    seenIds.add(a.id);
+    if (a.kind === "video") videos.push(a);
+    else if (a.kind === "gif") gifs.push(a);
+    else photos.push(a);
   }
 
   return { modelId, videos, photos, gifs };

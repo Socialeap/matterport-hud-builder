@@ -94,7 +94,7 @@ export function PropertyModelsSection({
               isPrimary ? "border-primary/60 bg-primary/5" : "border-border"
             }`}
           >
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
               <span className="flex items-center gap-2 text-sm font-medium text-foreground">
                 Property {index + 1}
                 {isPrimary && (
@@ -102,6 +102,21 @@ export function PropertyModelsSection({
                     <Star className="size-3 fill-primary text-primary" />
                     Loads first
                   </Badge>
+                )}
+                {onSetPrimary && models.length > 1 && (
+                  <span className="ml-2 inline-flex items-center gap-1.5 rounded border border-border/60 bg-muted/30 px-2 py-0.5">
+                    <Label htmlFor={`primary-toggle-${model.id}`} className="text-[11px] font-normal text-muted-foreground cursor-pointer">
+                      Load first
+                    </Label>
+                    <Switch
+                      id={`primary-toggle-${model.id}`}
+                      checked={isPrimary}
+                      disabled={isPrimary}
+                      onCheckedChange={(checked) => {
+                        if (checked) onSetPrimary(model.id);
+                      }}
+                    />
+                  </span>
                 )}
               </span>
               <div className="flex items-center gap-1">
@@ -136,30 +151,6 @@ export function PropertyModelsSection({
                 placeholder="e.g. The Grand Hotel, Aspen Loft (leave blank for residential)"
               />
             </div>
-
-            {onSetPrimary && models.length > 1 && (
-              <div className="flex items-start gap-3 rounded-md border border-border/60 bg-muted/30 p-3">
-                <Star className={`mt-0.5 size-4 shrink-0 ${isPrimary ? "fill-primary text-primary" : "text-muted-foreground"}`} />
-                <div className="flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <Label htmlFor={`primary-toggle-${model.id}`} className="text-xs font-medium">
-                      Load this property first
-                    </Label>
-                    <Switch
-                      id={`primary-toggle-${model.id}`}
-                      checked={isPrimary}
-                      disabled={isPrimary}
-                      onCheckedChange={(checked) => {
-                        if (checked) onSetPrimary(model.id);
-                      }}
-                    />
-                  </div>
-                  <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
-                    Visitors see this property when the tour opens. Only one property can be primary — turning another one on will switch it.
-                  </p>
-                </div>
-              </div>
-            )}
 
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">
@@ -213,6 +204,12 @@ export function PropertyModelsSection({
                 />
               </div>
             </div>
+
+            <ManualMediaInputs
+              assets={model.multimedia ?? []}
+              onChange={(next) => onMediaChange(model.id, next)}
+            />
+
 
             {model.multimedia && model.multimedia.length > 0 && (
               <MediaAssetsList
@@ -428,3 +425,115 @@ function MediaAssetsList({ assets, modelId, onChange, onSyncMore }: MediaAssetsL
     </div>
   );
 }
+
+interface ManualMediaInputsProps {
+  assets: MediaAsset[];
+  onChange: (next: MediaAsset[]) => void;
+}
+
+const VIDEO_EXTS = ["mp4", "webm", "mov", "m4v"];
+
+function detectKind(url: string): "video" | "gif" | "photo" {
+  const clean = url.split("?")[0].toLowerCase();
+  const ext = clean.match(/\.([a-z0-9]+)$/)?.[1] ?? "";
+  if (VIDEO_EXTS.includes(ext)) return "video";
+  if (ext === "gif") return "gif";
+  if (/youtube\.com|youtu\.be|vimeo\.com|loom\.com|wistia\.com/.test(url)) return "video";
+  return "photo";
+}
+
+function manualHashId(input: string): string {
+  let h = 5381;
+  for (let i = 0; i < input.length; i++) h = ((h << 5) + h + input.charCodeAt(i)) >>> 0;
+  return `m${h.toString(36)}`.slice(0, 11).padEnd(11, "0");
+}
+
+interface DraftRow { url: string; label: string }
+
+function ManualMediaInputs({ assets, onChange }: ManualMediaInputsProps) {
+  const manualAssets = assets.filter((a) => a.id.startsWith("m") && a.proxyUrl);
+  const [draft, setDraft] = useState<DraftRow>({ url: "", label: "" });
+
+  const addDraft = () => {
+    const url = draft.url.trim();
+    if (!url) return;
+    const kind = detectKind(url);
+    const id = manualHashId(url);
+    if (assets.some((a) => a.id === id)) {
+      setDraft({ url: "", label: "" });
+      return;
+    }
+    const fname = url.split("?")[0].split("/").pop() || "media";
+    const next: MediaAsset = {
+      id,
+      kind,
+      visible: true,
+      label: draft.label.trim() || fname,
+      filename: fname,
+      proxyUrl: url,
+      ...(kind === "video" ? { embedUrl: url } : {}),
+    };
+    onChange([...assets, next]);
+    setDraft({ url: "", label: "" });
+  };
+
+  const removeManual = (id: string) => onChange(assets.filter((a) => a.id !== id));
+
+  return (
+    <div className="space-y-2 rounded-md border border-border/60 bg-muted/20 p-3">
+      <Label className="text-xs font-medium">Add Media URL <span className="text-muted-foreground font-normal">(optional)</span></Label>
+      <p className="text-[11px] leading-snug text-muted-foreground">
+        Paste a publicly-accessible image or video URL to add it to the carousel. Type is auto-detected.
+      </p>
+      {manualAssets.length > 0 && (
+        <ul className="divide-y divide-border/50 rounded border border-border/40 bg-background">
+          {manualAssets.map((a) => (
+            <li key={a.id} className="flex items-center gap-2 px-2 py-1.5">
+              <Badge variant="outline" className="text-[10px] capitalize shrink-0">{a.kind}</Badge>
+              <div className="flex-1 min-w-0">
+                <p className="truncate text-xs font-medium text-foreground">{a.label}</p>
+                <p className="truncate text-[10px] text-muted-foreground">{a.proxyUrl}</p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                onClick={() => removeManual(a.id)}
+                aria-label="Remove media URL"
+              >
+                <X className="size-3.5" />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="grid gap-2 sm:grid-cols-[1fr_minmax(0,180px)_auto]">
+        <Input
+          value={draft.url}
+          onChange={(e) => setDraft((d) => ({ ...d, url: e.target.value }))}
+          placeholder="https://example.com/photo.jpg"
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addDraft(); } }}
+        />
+        <Input
+          value={draft.label}
+          onChange={(e) => setDraft((d) => ({ ...d, label: e.target.value }))}
+          placeholder="Name or description"
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addDraft(); } }}
+        />
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={addDraft}
+          disabled={!draft.url.trim()}
+          className="shrink-0"
+        >
+          <Plus className="mr-1 size-3.5" />
+          Add
+        </Button>
+      </div>
+    </div>
+  );
+}
+

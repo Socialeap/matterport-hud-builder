@@ -241,9 +241,14 @@ export function MediaSyncModal({
                       Detected Model ID: <code className="rounded bg-muted px-1">{parsed.modelId}</code>
                     </p>
                   )}
-                  {!parsed.modelId && (
+                  {!parsed.modelId && total > 0 && (
+                    <p className="mt-2 text-[11px] text-muted-foreground">
+                      No Matterport Model ID found — extracted media URLs directly from the file.
+                    </p>
+                  )}
+                  {!parsed.modelId && total === 0 && (
                     <p className="mt-2 text-[11px] text-destructive">
-                      Could not detect a Model ID in this file.
+                      No media URLs detected in this file.
                     </p>
                   )}
                 </div>
