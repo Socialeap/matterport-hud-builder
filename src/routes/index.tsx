@@ -46,7 +46,7 @@ import {
   BarChart3,
   GraduationCap,
 } from "lucide-react";
-import heroHudBanner from "@/assets/hero-hud-showcase.png";
+import { HeroSlideshow } from "@/components/HeroSlideshow";
 import tmLogo from "@/assets/tm-logo-landscape.png";
 import { toast } from "sonner";
 
