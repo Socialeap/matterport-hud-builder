@@ -380,7 +380,7 @@ function AgentsPage() {
                 your-listing.com/tour/lakeshore-residence
               </div>
             </div>
-            <img src={heroHudBanner} alt="Branded 3D property tour presentation example" className="w-full" loading="eager" />
+            <HeroSlideshow />
           </div>
         </div>
       </section>
