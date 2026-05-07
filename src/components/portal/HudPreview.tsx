@@ -796,12 +796,7 @@ export function HudPreview({
         </div>
       </div>
 
-      {/* Powered by (Starter only) — hidden in fullViewport mode (page renders its own footer strip) */}
-      {!isPro && !fullViewport && (
-        <div className="bg-muted/30 px-4 py-1.5 text-center text-xs text-muted-foreground">
-          Powered by Transcendence Media
-        </div>
-      )}
+
 
       {currentModel && (
         <NeighborhoodMapModal
