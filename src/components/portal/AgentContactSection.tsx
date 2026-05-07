@@ -17,7 +17,7 @@ interface AgentContactSectionProps {
   headless?: boolean;
 }
 
-const MAX_AVATAR_BYTES = 500 * 1024; // 500 KB
+const MAX_AVATAR_BYTES = 10 * 1024 * 1024; // 10 MB source — auto-optimized to WebP after upload
 
 const socialFields: { key: keyof AgentContact; label: string; placeholder: string }[] = [
   { key: "linkedin", label: "LinkedIn", placeholder: "https://linkedin.com/in/..." },
@@ -41,7 +41,7 @@ export function AgentContactSection({ agent, onChange, onAvatarFileChange, headl
       return;
     }
     if (file.size > MAX_AVATAR_BYTES) {
-      toast.error("Avatar must be 500 KB or smaller");
+      toast.error("Profile photo must be 10 MB or smaller");
       e.target.value = "";
       return;
     }
@@ -99,7 +99,7 @@ export function AgentContactSection({ agent, onChange, onAvatarFileChange, headl
                 </Button>
               )}
             </div>
-            <p className="text-xs text-muted-foreground">PNG/JPG, square recommended, max 500 KB.</p>
+            <p className="text-xs text-muted-foreground">PNG/JPG, square recommended. Up to 10 MB — automatically optimized to WebP for fast loading.</p>
           </div>
         </div>
 
