@@ -1482,6 +1482,13 @@ ${askAssets.css}
       <div id="hud-prop-loc"></div>
     </div>
     <div id="hud-right">
+      <div id="hud-prop-switch" class="hud-prop-switch" hidden>
+        <button id="hud-prop-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="hud-prop-menu">
+          <span id="hud-prop-current">Property</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <ul id="hud-prop-menu" role="listbox" aria-label="Choose a property" hidden></ul>
+      </div>
       <button id="hud-mute-btn" class="hud-icon-btn" aria-label="Toggle sound" title="Toggle sound">
         <svg id="mute-icon-on" viewBox="0 0 24 24" fill="currentColor" style="display:none"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
         <svg id="mute-icon-off" viewBox="0 0 24 24" fill="currentColor"><path d="M16.5 12A4.5 4.5 0 0 0 14 7.97v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06A9.0 9.0 0 0 0 17.73 18l1.73 1.73L21 18.46 5.54 3 4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>
