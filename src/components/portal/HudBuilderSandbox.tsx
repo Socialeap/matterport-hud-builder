@@ -834,7 +834,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
       if (userId) {
         setAgentAvatarUploading(true);
         try {
-          const url = await uploadBrandAsset(userId, file, "avatar");
+          const url = await uploadBrandAsset(userId, processed, "avatar");
           if (url) {
             setAgent((prev) => ({ ...prev, avatarUrl: url }));
             setAgentAvatarFile(null);
