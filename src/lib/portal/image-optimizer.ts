@@ -147,6 +147,7 @@ export async function optimizeBrandImage(
 export const BRAND_ASSET_LIMITS = {
   logo: { maxWidth: 512, targetBytes: 150 * 1024 },
   favicon: { maxWidth: 128, targetBytes: 50 * 1024 },
+  avatar: { maxWidth: 512, targetBytes: 150 * 1024 },
 } as const;
 
 export function describeOptimization(result: OptimizeResult): string {
