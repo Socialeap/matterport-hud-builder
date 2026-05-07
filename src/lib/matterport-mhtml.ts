@@ -352,6 +352,20 @@ export function parseMatterportMhtml(rawText: string): ParsedMhtml {
     }
   }
 
+  // Always supplement with a global raw-URL scan: catches images/videos
+  // tucked inside hidden divs, JSON payloads, or "Show More" panels that
+  // never rendered their thumbnail-card wrappers. De-duped by id below.
+  const seenIds = new Set<string>(
+    [...videos, ...photos, ...gifs].map((a) => a.id)
+  );
+  for (const a of extractRawMediaUrls(text)) {
+    if (seenIds.has(a.id)) continue;
+    seenIds.add(a.id);
+    if (a.kind === "video") videos.push(a);
+    else if (a.kind === "gif") gifs.push(a);
+    else photos.push(a);
+  }
+
   return { modelId, videos, photos, gifs };
 }
 
