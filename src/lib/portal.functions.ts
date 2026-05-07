@@ -113,20 +113,16 @@ export const savePresentationRequest = createServerFn({ method: "POST" })
     }
     const access = Array.isArray(accessRows) ? accessRows[0] : null;
 
-    // Block self-checkout: an MSP (or admin viewing as the provider) must
-    // not purchase their own presentation through the client checkout.
-    if (access?.viewer_matches_provider) {
-      return {
-        success: false,
-        error: "You are signed in as the Studio owner. Sign in with a client account to purchase.",
-      };
-    }
+    // Owner self-build: an MSP using their own /builder is treated as a
+    // free build — no payment, no pricing/payouts gate. The owner-free
+    // bypass in create-connect-checkout will mark the row paid+released.
+    const isOwner = access?.viewer_matches_provider === true;
 
     // Free invitees (linked with is_free=true) skip pricing/payouts checks
     // because the charge is bypassed downstream in create-connect-checkout.
     // Everyone else (any signed-in client/agent) is welcome to build & pay,
     // but only if the MSP has finished pricing + Stripe Connect onboarding.
-    const isFree = access?.is_free === true;
+    const isFree = isOwner || access?.is_free === true;
     if (!isFree) {
       if (!access?.pricing_configured) {
         return {
