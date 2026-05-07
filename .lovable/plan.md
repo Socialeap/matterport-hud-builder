@@ -1,67 +1,47 @@
-## Goal
+## Problem
 
-When an MSP is signed in as the owner of a Studio and visits their own `/builder`, treat them as a legitimate user who can save, generate, and download a presentation **without paying and without switching accounts**. Today, the resolver flag `viewer_matches_provider=true` triggers a hard "Sign Out" block; we remove that block and add an owner-free-bypass everywhere a paywall fires.
+Clicking **Download** on `/builder` as the MSP (Studio owner) returns `"Provider has not connected Stripe"`.
 
-## Trace of the current restriction
+### Trace
 
-The owner is gated in three places, all keyed on `viewer_matches_provider`:
+1. `HudBuilderSandbox.handleDownload` → calls `savePresentation` → inserts `saved_models` row with `client_id = provider_id = userId` (confirmed in DB: row `03c08982…` has `client_id == provider_id`).
+2. Then invokes `create-connect-checkout` edge function.
+3. Edge function source (`supabase/functions/create-connect-checkout/index.ts` lines 99-117) **does** contain the owner self-build bypass that should mark the row paid+released and return `{ free: true, ownerFree: true }` before reaching the Stripe-onboarding gate at line 166.
+4. DB confirms `branding_settings.stripe_onboarding_complete = false` for this provider — that's the gate that fires the error message.
 
-1. **UI block** — `src/components/portal/HudBuilderSandbox.tsx`
-   - Line 597: `isWrongAccount = accessVerified && accessState.viewerMatchesProvider`
-   - Lines 2070-2093: renders the "This Studio Belongs to Your Account / Sign Out" panel and short-circuits the download CTA.
+The owner bypass exists in source but the live error means the bypass is not executing. Two likely causes (both addressed below):
 
-2. **Save server fn** — `src/lib/portal.functions.ts` `savePresentation` (lines 118-123)
-   - Returns `"You are signed in as the Studio owner…"` before inserting into `saved_models`.
+- **The deployed edge function is stale** — last source edit was 2026-05-07 20:16:47, and recent function logs show only boot/shutdown with no request logs since the user's click. The previous turn implemented the bypass but the function was never explicitly redeployed.
+- The bypass relies on `ownedModel.provider_id === user.id`. Authoritative, but if it ever doesn't match (e.g. admin viewing another provider via owner-equivalent flow) we'd still hit the Stripe gate. We'll keep this exact check — it is the correct authority.
 
-3. **Checkout edge function** — `supabase/functions/create-connect-checkout/index.ts`
-   - No owner bypass. Even if the UI lets the owner through, this would either route them through Stripe (fee to themselves) or fail pricing/payouts checks.
+There is **only one** source of the `"Provider has not connected Stripe"` string — `create-connect-checkout/index.ts:167`. No obsolete code paths to remove elsewhere.
 
-Downstream `generatePresentation` already works for the owner because it only requires `client_id = auth.uid()` AND `status='paid'` AND `is_released=true` — the owner bypass below sets both, and RLS on `saved_models` allows `client_id = auth.uid()` regardless of whether that user is also the `provider_id`.
+## Fix
 
-## Changes
+### 1. `supabase/functions/create-connect-checkout/index.ts`
 
-### 1. `src/components/portal/HudBuilderSandbox.tsx`
+Tighten the owner bypass and add explicit logging so future failures are diagnosable. Specifically:
+- Keep the existing owner-bypass block at lines 99-117 unchanged in behavior.
+- Add `console.log("[create-connect-checkout] owner self-build bypass", { modelId, userId: user.id })` so deployment correctness is visible in edge logs on the next click.
+- No change to the order: ownership guard → owner bypass → one-time-free → free-client → Stripe gate.
 
-- **Remove** the `isWrongAccount` branch (lines 2070-2093) and the `isWrongAccount` derivation (line 597). The owner is no longer treated as a blocked viewer.
-- Where the UI currently shows price / "Buy" copy, when `accessState.viewerMatchesProvider === true` show an owner-mode label instead (e.g. "Owner build — free download"). The download button stays enabled and uses the same `handleDownload` path.
-- No other state changes needed; `isFreeClient`/`checkoutReady` logic still runs but the owner path will skip Stripe via the changes below.
+### 2. Force redeploy
 
-### 2. `src/lib/portal.functions.ts` — `savePresentation`
+Use `supabase--deploy_edge_functions` for `create-connect-checkout` so the bypass is live. (This is the most likely root cause — the source has the fix, but the deployed bundle does not.)
 
-- Replace the `if (access?.viewer_matches_provider) { return error }` block (lines 118-123) with: when the viewer matches the provider, **skip the pricing/payouts gate** (treat as `isFree=true` for the rest of the handler) and proceed to insert the `saved_models` row with `client_id = userId` (which equals `provider_id`).
-- No schema change. RLS already permits this insert (policy: `client_id = auth.uid()`).
+### 3. Verification
 
-### 3. `supabase/functions/create-connect-checkout/index.ts`
+After deploy:
+- Call the function via `supabase--curl_edge_functions` (or just have the user click Download) and confirm it returns `{ free: true, ownerFree: true }` and `saved_models` row flips to `status='paid'`, `is_released=true`.
+- Check edge logs for the new `owner self-build bypass` line.
 
-- Add an **owner-free bypass** immediately after the `ownedModel` ownership guard, before the existing free-client / Stripe branches:
-  ```
-  if (ownedModel.provider_id === user.id) {
-    await supabaseAdmin.from("saved_models").update({
-      amount_cents: 0,
-      model_count: modelCount,
-      status: "paid",
-      is_released: true,
-    }).eq("id", modelId);
-    return new Response(JSON.stringify({ free: true, ownerFree: true, modelId }), { … });
-  }
-  ```
-- This mirrors the existing `oneTimeFree` / `isFree` shape so the client's existing `if (checkoutData?.free === true) { runDownload(...) }` branch handles it with no UI change.
-- The ownership guard on `ownedModel.client_id !== user.id` still passes because the owner's saved_models row has `client_id = user.id`.
+## Out of scope / deliberately unchanged
 
-### 4. (No DB or RLS changes required.)
+- `portal.functions.ts` `savePresentation` — owner-as-free path (lines 116-139) already correct from previous turn.
+- `HudBuilderSandbox.tsx` `isOwnerSelfBuild` UI branch — already correct.
+- Stripe onboarding state for the MSP — irrelevant to owner downloads. Not touched.
+- Public `/p/$slug` checkout, real client checkout, free-invitee flow, admin grants — all untouched.
 
-`saved_models.client_id` accepts the provider's own `auth.uid()`. `generatePresentation` filters by `client_id = userId`, which now matches the owner. `provider_has_paid_access` is unaffected (this flow doesn't gate on it).
+## Risk
 
-## Things deliberately NOT changed
-
-- Pricing / payouts / Stripe Connect onboarding gates remain enforced for true clients.
-- The "wrong account" copy is removed entirely, not just hidden — there is no scenario where blocking the owner of a Studio from using their own builder is correct.
-- License-expired and access-armed/password guards still apply to the owner (same rules as a client).
-- `order_notifications` row still gets created on save; the owner will see their own notification, which is acceptable (and a useful audit trail).
-
-## Risk / regression check
-
-- Public `/p/$slug` viewing for non-owners: untouched.
-- Real client checkout: untouched (owner bypass only fires when `provider_id === user.id`).
-- Admin viewing another provider: `viewer_matches_provider` is false for admins viewing a different MSP, so they continue to flow through the normal client path.
-- Free invitee flow: the new bypass is checked alongside (not replacing) the existing `oneTimeFree` and `isFree` branches.
+Minimal. The only behavior change is one extra `console.log`. The functional fix is the redeploy itself.

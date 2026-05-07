@@ -100,6 +100,7 @@ serve(async (req) => {
     // The MSP using their own /builder is not a buyer — they are the
     // owner. Mark the row paid + released at $0 and skip Stripe entirely.
     if (ownedModel.provider_id === user.id) {
+      console.log("[create-connect-checkout] owner self-build bypass", { modelId, userId: user.id });
       await supabaseAdmin
         .from("saved_models")
         .update({
