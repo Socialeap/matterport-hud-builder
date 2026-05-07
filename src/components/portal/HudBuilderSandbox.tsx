@@ -811,10 +811,24 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
         setAgent((prev) => ({ ...prev, avatarUrl: "" }));
         return;
       }
+
+      // Optimize (resize + WebP) before preview/upload, mirroring logo/favicon flow.
+      let processed: File = file;
+      let savingsMsg = "";
+      try {
+        const result = await optimizeBrandImage(file, { ...BRAND_ASSET_LIMITS.avatar, kind: "avatar" });
+        processed = result.file;
+        savingsMsg = describeOptimization(result);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Image optimization failed.");
+        return;
+      }
+
       // Show local preview immediately so the user gets feedback even before auth/upload.
-      const previewUrl = URL.createObjectURL(file);
-      setAgentAvatarFile(file);
+      const previewUrl = URL.createObjectURL(processed);
+      setAgentAvatarFile(processed);
       setAgent((prev) => ({ ...prev, avatarUrl: previewUrl }));
+      if (savingsMsg) toast.success(`Profile photo optimized to WebP (${savingsMsg})`);
 
       // If signed in, upload right away so the URL is permanent.
       if (userId) {
