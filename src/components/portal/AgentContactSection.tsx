@@ -99,7 +99,7 @@ export function AgentContactSection({ agent, onChange, onAvatarFileChange, headl
                 </Button>
               )}
             </div>
-            <p className="text-xs text-muted-foreground">PNG/JPG, square recommended, max 500 KB.</p>
+            <p className="text-xs text-muted-foreground">PNG/JPG, square recommended. Up to 10 MB — automatically optimized to WebP for fast loading.</p>
           </div>
         </div>
 
