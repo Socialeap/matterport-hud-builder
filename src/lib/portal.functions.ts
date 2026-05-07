@@ -1230,15 +1230,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 /* ── HUD header (top glassmorphism overlay) ──────────────────────── */
 #hud-header{position:fixed;top:0;left:0;right:0;z-index:1200;transform:translateY(-100%);opacity:0;pointer-events:none;transition:transform 0.3s ease,opacity 0.3s ease;will-change:transform,opacity;isolation:isolate;-webkit-backface-visibility:hidden;backface-visibility:hidden}
 #hud-header.visible{transform:translateY(0);opacity:1;pointer-events:auto}
-#hud-inner{display:grid;grid-template-columns:220px minmax(0,1fr) auto;align-items:center;gap:12px;padding:10px 16px;background:${escapeHtml(hudBgColor)}99;backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid rgba(255,255,255,0.08);box-shadow:0 4px 24px rgba(0,0,0,0.15),inset 0 1px 0 rgba(255,255,255,0.06)}
-#hud-left-spacer{min-width:0;display:flex;align-items:center;justify-content:flex-start;padding-left:220px}
-@media (max-width:640px){#hud-left-spacer{padding-left:120px}}
-#hud-center{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;min-width:0;gap:2px}
+#hud-inner{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;padding:10px 16px 10px 16px;padding-right:48px;background:${escapeHtml(hudBgColor)}99;backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid rgba(255,255,255,0.08);box-shadow:0 4px 24px rgba(0,0,0,0.15),inset 0 1px 0 rgba(255,255,255,0.06)}
+#hud-center{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;text-align:left;min-width:0;gap:2px;flex:1 1 auto}
 #hud-logo{height:30px;max-width:160px;object-fit:contain;flex-shrink:0;margin-bottom:2px}
 #hud-brand{font-size:13px;font-weight:600;color:#fff;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 3px rgba(0,0,0,0.4)}
 #hud-prop-loc{font-size:11px;color:rgba(255,255,255,0.75);max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#hud-right{display:flex;align-items:center;gap:6px;flex-shrink:0;margin-right:32px;justify-self:end}
-@media(max-width:720px){#hud-inner{grid-template-columns:auto minmax(0,1fr) auto;gap:8px}#hud-logo{height:26px;max-width:120px}#hud-brand{font-size:12px}}
+#hud-right{display:flex;flex-wrap:wrap;align-items:center;gap:6px;justify-content:flex-end;flex:0 1 auto;min-width:0}
+@media(max-width:720px){#hud-inner{padding-right:44px;gap:6px}#hud-logo{height:26px;max-width:120px}#hud-brand{font-size:12px}}
 
 /* ── In-HUD property switcher (replaces the legacy #tabs overlay) ── */
 .hud-prop-switch{position:relative;display:none}
