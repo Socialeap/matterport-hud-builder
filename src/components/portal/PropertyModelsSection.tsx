@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { canonicalProxyUrl, extractMatterportId } from "@/lib/matterport-mhtml";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -6,6 +6,17 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Lock,
   Plus,
@@ -19,6 +30,7 @@ import {
   Video as VideoIcon,
   X,
   Star,
+  ChevronDown,
 } from "lucide-react";
 import type { PropertyModel, MediaAsset } from "./types";
 import { MediaSyncModal } from "./MediaSyncModal";
@@ -62,6 +74,29 @@ export function PropertyModelsSection({
     ? `Recommended 2–4 · max ${maxModels} per presentation`
     : null;
 
+  // Single-open accordion state. Default to the primary (or first) model.
+  const primaryFlagged = models.findIndex((m) => m.isPrimary);
+  const effectivePrimaryIdx = primaryFlagged === -1 ? 0 : primaryFlagged;
+  const defaultOpenId = models[effectivePrimaryIdx]?.id ?? null;
+  const [openId, setOpenId] = useState<string | null>(defaultOpenId);
+
+  // When a new property is added, auto-open it.
+  const prevCountRef = useRef(models.length);
+  useEffect(() => {
+    if (models.length > prevCountRef.current) {
+      const last = models[models.length - 1];
+      if (last) setOpenId(last.id);
+    }
+    prevCountRef.current = models.length;
+  }, [models]);
+
+  // If the open id no longer exists (deleted), fall back to primary/first.
+  useEffect(() => {
+    if (openId && !models.some((m) => m.id === openId)) {
+      setOpenId(models[effectivePrimaryIdx]?.id ?? null);
+    }
+  }, [models, openId, effectivePrimaryIdx]);
+
   const addButton = (
     <Button
       size="sm"
@@ -75,235 +110,262 @@ export function PropertyModelsSection({
     </Button>
   );
 
+  const stop = (e: React.SyntheticEvent) => e.stopPropagation();
+
   const body = (
     <div className="space-y-4">
-        {models.length === 0 && (
-          <p className="py-6 text-center text-sm text-muted-foreground">
-            No properties added yet. Click "Add Property" to get started.
-          </p>
-        )}
-        {(() => {
-          const primaryFlagged = models.findIndex((m) => m.isPrimary);
-          const effectivePrimaryIdx = primaryFlagged === -1 ? 0 : primaryFlagged;
-          return models.map((model, index) => {
+      {models.length === 0 && (
+        <p className="py-6 text-center text-sm text-muted-foreground">
+          No properties added yet. Click "Add Property" to get started.
+        </p>
+      )}
+      {models.length > 0 && (
+        <Accordion
+          type="single"
+          collapsible
+          value={openId ?? ""}
+          onValueChange={(v) => setOpenId(v || null)}
+          className="space-y-3"
+        >
+          {models.map((model, index) => {
             const isPrimary = index === effectivePrimaryIdx;
             return (
-          <div
-            key={model.id}
-            className={`rounded-lg border p-4 space-y-3 ${
-              isPrimary ? "border-primary/60 bg-primary/5" : "border-border"
-            }`}
-          >
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <span className="flex items-center gap-2 text-sm font-medium text-foreground">
-                Property {index + 1}
-                {isPrimary && (
-                  <Badge variant="outline" className="gap-1 border-primary/40 text-[10px] uppercase tracking-wide text-primary">
-                    <Star className="size-3 fill-primary text-primary" />
-                    Loads first
-                  </Badge>
-                )}
-                {onSetPrimary && models.length > 1 && (
-                  <span className="ml-2 inline-flex items-center gap-1.5 rounded border border-border/60 bg-muted/30 px-2 py-0.5">
-                    <Label htmlFor={`primary-toggle-${model.id}`} className="text-[11px] font-normal text-muted-foreground cursor-pointer">
-                      Load first
-                    </Label>
-                    <Switch
-                      id={`primary-toggle-${model.id}`}
-                      checked={isPrimary}
-                      disabled={isPrimary}
-                      onCheckedChange={(checked) => {
-                        if (checked) onSetPrimary(model.id);
-                      }}
-                    />
-                  </span>
-                )}
-              </span>
-              <div className="flex items-center gap-1">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => onOpenBehavior(model.id)}
-                  title="Tour Behavior Settings"
-                >
-                  <Settings2 className="size-4" />
-                </Button>
-                {models.length > 1 && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="text-destructive hover:text-destructive"
-                    onClick={() => onRemove(model.id)}
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs">
-                Property Name <span className="text-muted-foreground">(optional)</span>
-              </Label>
-              <Input
-                value={model.propertyName ?? ""}
-                onChange={(e) => onChange(model.id, "propertyName", e.target.value)}
-                placeholder="e.g. The Grand Hotel, Aspen Loft (leave blank for residential)"
-              />
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1">
-                <Label className="text-xs">Property Address</Label>
-                <Input
-                  value={model.name}
-                  onChange={(e) => onChange(model.id, "name", e.target.value)}
-                  placeholder="123 Main Street"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Location</Label>
-                <Input
-                  value={model.location}
-                  onChange={(e) => onChange(model.id, "location", e.target.value)}
-                  placeholder="City, State"
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1">
-                <Label className="text-xs">Matterport Model ID or URL</Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    value={model.matterportId}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      // Auto-extract when a URL is pasted/typed; otherwise keep raw input
-                      // so the user can finish typing an 11-char ID without interference.
-                      const extracted = extractMatterportId(v);
-                      onChange(model.id, "matterportId", extracted.length === 11 ? extracted : v);
-                    }}
-                    onBlur={(e) => {
-                      const extracted = extractMatterportId(e.target.value);
-                      if (extracted && extracted !== e.target.value) {
-                        onChange(model.id, "matterportId", extracted);
-                      }
-                    }}
-                    placeholder="Paste Matterport URL or 11-char ID"
-                    className="flex-1"
-                  />
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setSyncModelId(model.id)}
-                    title="Sync videos, photos, and GIFs from a saved Matterport Media page"
-                    className="shrink-0"
-                  >
-                    <Download className="mr-1 size-3.5" />
-                    Sync
-                  </Button>
-                </div>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Music URL (optional)</Label>
-                <Input
-                  value={model.musicUrl}
-                  onChange={(e) => onChange(model.id, "musicUrl", e.target.value)}
-                  placeholder="https://example.com/music.mp3"
-                />
-              </div>
-            </div>
-
-            <ManualMediaInputs
-              assets={model.multimedia ?? []}
-              onChange={(next) => onMediaChange(model.id, next)}
-            />
-
-
-            {model.multimedia && model.multimedia.length > 0 && (
-              <MediaAssetsList
-                assets={model.multimedia}
-                modelId={model.matterportId}
-                onChange={(next) => onMediaChange(model.id, next)}
-                onSyncMore={() => setSyncModelId(model.id)}
-              />
-            )}
-
-            {(() => {
-              const raw = model.cinematicVideoUrl ?? "";
-              const parsed = parseCinematicVideo(raw);
-              const showWarning = raw.trim().length > 0 && parsed.kind === "invalid";
-              return (
-                <div className="space-y-1">
-                  <Label className="text-xs flex items-center gap-1.5">
-                    <Film className="size-3.5 text-primary" />
-                    Cinematic Video URL <span className="text-muted-foreground">(optional)</span>
-                  </Label>
-                  <Input
-                    value={raw}
-                    onChange={(e) => onChange(model.id, "cinematicVideoUrl", e.target.value)}
-                    placeholder="YouTube, Vimeo, Loom, Wistia, or .mp4 link"
-                  />
-                  {showWarning ? (
-                    <p className="text-[11px] leading-snug text-destructive">
-                      Unrecognized link. Use a YouTube, Vimeo, Loom, Wistia URL, or a direct .mp4 file.
-                    </p>
-                  ) : (
-                    <p className="text-[11px] leading-snug text-muted-foreground">
-                      Adds a "Cinema Mode" button to the Portal. Loads only when clicked — won't slow the tour.
-                    </p>
-                  )}
-                </div>
-              );
-            })()}
-
-            {showPremium ? (
-              <div className="flex items-start gap-3 rounded-md border border-border/60 bg-muted/30 p-3">
-                <MapPin className="mt-0.5 size-4 shrink-0 text-primary" />
-                <div className="flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <Label
-                      htmlFor={`map-toggle-${model.id}`}
-                      className="text-xs font-medium"
-                    >
-                      Enable Neighborhood Map
-                    </Label>
-                    <Switch
-                      id={`map-toggle-${model.id}`}
-                      checked={!!model.enableNeighborhoodMap}
-                      disabled={!model.location.trim()}
-                      onCheckedChange={(checked) =>
-                        onChange(model.id, "enableNeighborhoodMap", checked)
-                      }
-                    />
+              <AccordionItem
+                key={model.id}
+                value={model.id}
+                className={`rounded-lg border ${
+                  isPrimary ? "border-primary/60 bg-primary/5" : "border-border"
+                }`}
+              >
+                <AccordionTrigger className="px-4 py-3 hover:no-underline [&[data-state=open]>svg]:rotate-180">
+                  <div className="flex flex-1 items-center justify-between gap-2 flex-wrap pr-2">
+                    <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+                      Property {index + 1}
+                      {isPrimary && (
+                        <Badge variant="outline" className="gap-1 border-primary/40 text-[10px] uppercase tracking-wide text-primary">
+                          <Star className="size-3 fill-primary text-primary" />
+                          Loads first
+                        </Badge>
+                      )}
+                      {onSetPrimary && models.length > 1 && (
+                        <span
+                          className="ml-2 inline-flex items-center gap-1.5 rounded border border-border/60 bg-muted/30 px-2 py-0.5"
+                          onClick={stop}
+                        >
+                          <Label htmlFor={`primary-toggle-${model.id}`} className="text-[11px] font-normal text-muted-foreground cursor-pointer">
+                            Load first
+                          </Label>
+                          <Switch
+                            id={`primary-toggle-${model.id}`}
+                            checked={isPrimary}
+                            disabled={isPrimary}
+                            onClick={stop}
+                            onCheckedChange={(checked) => {
+                              if (checked) onSetPrimary(model.id);
+                            }}
+                          />
+                        </span>
+                      )}
+                    </span>
+                    <span className="flex items-center gap-1" onClick={stop}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        asChild
+                        title="Tour Behavior Settings"
+                      >
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          onClick={(e) => { e.stopPropagation(); onOpenBehavior(model.id); }}
+                        >
+                          <Settings2 className="size-4" />
+                        </span>
+                      </Button>
+                      {models.length > 1 && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          asChild
+                          className="text-destructive hover:text-destructive"
+                        >
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={(e) => { e.stopPropagation(); onRemove(model.id); }}
+                          >
+                            <Trash2 className="size-4" />
+                          </span>
+                        </Button>
+                      )}
+                    </span>
                   </div>
-                  <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
-                    {model.location.trim()
-                      ? "Adds a map button to the Portal using the Location above."
-                    : "Add the address above to enable this feature."}
-                  </p>
-                </div>
-              </div>
-            ) : model.enableNeighborhoodMap ? (
-              <div className="flex items-start gap-3 rounded-md border border-border/60 bg-muted/20 p-3">
-                <Lock className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                <div className="flex-1">
-                  <Label className="text-xs font-medium">
-                    Neighborhood Map (locked)
-                  </Label>
-                  <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
-                    Studio license inactive. Existing map still renders in your
-                    tour, but the toggle is paused until upkeep is reactivated.
-                  </p>
-                </div>
-              </div>
-            ) : null}
-          </div>
+                </AccordionTrigger>
+                <AccordionContent className="px-4 pb-4 pt-0">
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">
+                        Property Name <span className="text-muted-foreground">(optional)</span>
+                      </Label>
+                      <Input
+                        value={model.propertyName ?? ""}
+                        onChange={(e) => onChange(model.id, "propertyName", e.target.value)}
+                        placeholder="e.g. The Grand Hotel, Aspen Loft (leave blank for residential)"
+                      />
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Property Address</Label>
+                        <Input
+                          value={model.name}
+                          onChange={(e) => onChange(model.id, "name", e.target.value)}
+                          placeholder="123 Main Street"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Location</Label>
+                        <Input
+                          value={model.location}
+                          onChange={(e) => onChange(model.id, "location", e.target.value)}
+                          placeholder="City, State"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Matterport Model ID or URL</Label>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            value={model.matterportId}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              const extracted = extractMatterportId(v);
+                              onChange(model.id, "matterportId", extracted.length === 11 ? extracted : v);
+                            }}
+                            onBlur={(e) => {
+                              const extracted = extractMatterportId(e.target.value);
+                              if (extracted && extracted !== e.target.value) {
+                                onChange(model.id, "matterportId", extracted);
+                              }
+                            }}
+                            placeholder="Paste Matterport URL or 11-char ID"
+                            className="flex-1"
+                          />
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setSyncModelId(model.id)}
+                            title="Sync videos, photos, and GIFs from a saved Matterport Media page"
+                            className="shrink-0"
+                          >
+                            <Download className="mr-1 size-3.5" />
+                            Sync
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Music URL (optional)</Label>
+                        <Input
+                          value={model.musicUrl}
+                          onChange={(e) => onChange(model.id, "musicUrl", e.target.value)}
+                          placeholder="https://example.com/music.mp3"
+                        />
+                      </div>
+                    </div>
+
+                    <ManualMediaInputs
+                      assets={model.multimedia ?? []}
+                      onChange={(next) => onMediaChange(model.id, next)}
+                    />
+
+                    {model.multimedia && model.multimedia.length > 0 && (
+                      <MediaAssetsList
+                        assets={model.multimedia}
+                        modelId={model.matterportId}
+                        onChange={(next) => onMediaChange(model.id, next)}
+                        onSyncMore={() => setSyncModelId(model.id)}
+                      />
+                    )}
+
+                    {(() => {
+                      const raw = model.cinematicVideoUrl ?? "";
+                      const parsed = parseCinematicVideo(raw);
+                      const showWarning = raw.trim().length > 0 && parsed.kind === "invalid";
+                      return (
+                        <div className="space-y-1">
+                          <Label className="text-xs flex items-center gap-1.5">
+                            <Film className="size-3.5 text-primary" />
+                            Cinematic Video URL <span className="text-muted-foreground">(optional)</span>
+                          </Label>
+                          <Input
+                            value={raw}
+                            onChange={(e) => onChange(model.id, "cinematicVideoUrl", e.target.value)}
+                            placeholder="YouTube, Vimeo, Loom, Wistia, or .mp4 link"
+                          />
+                          {showWarning ? (
+                            <p className="text-[11px] leading-snug text-destructive">
+                              Unrecognized link. Use a YouTube, Vimeo, Loom, Wistia URL, or a direct .mp4 file.
+                            </p>
+                          ) : (
+                            <p className="text-[11px] leading-snug text-muted-foreground">
+                              Adds a "Cinema Mode" button to the Portal. Loads only when clicked — won't slow the tour.
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {showPremium ? (
+                      <div className="flex items-start gap-3 rounded-md border border-border/60 bg-muted/30 p-3">
+                        <MapPin className="mt-0.5 size-4 shrink-0 text-primary" />
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <Label
+                              htmlFor={`map-toggle-${model.id}`}
+                              className="text-xs font-medium"
+                            >
+                              Enable Neighborhood Map
+                            </Label>
+                            <Switch
+                              id={`map-toggle-${model.id}`}
+                              checked={!!model.enableNeighborhoodMap}
+                              disabled={!model.location.trim()}
+                              onCheckedChange={(checked) =>
+                                onChange(model.id, "enableNeighborhoodMap", checked)
+                              }
+                            />
+                          </div>
+                          <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+                            {model.location.trim()
+                              ? "Adds a map button to the Portal using the Location above."
+                              : "Add the address above to enable this feature."}
+                          </p>
+                        </div>
+                      </div>
+                    ) : model.enableNeighborhoodMap ? (
+                      <div className="flex items-start gap-3 rounded-md border border-border/60 bg-muted/20 p-3">
+                        <Lock className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                        <div className="flex-1">
+                          <Label className="text-xs font-medium">
+                            Neighborhood Map (locked)
+                          </Label>
+                          <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+                            Studio license inactive. Existing map still renders in your
+                            tour, but the toggle is paused until upkeep is reactivated.
+                          </p>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
             );
-          });
-        })()}
+          })}
+        </Accordion>
+      )}
     </div>
   );
 
@@ -369,6 +431,7 @@ interface MediaAssetsListProps {
 }
 
 function MediaAssetsList({ assets, modelId, onChange, onSyncMore }: MediaAssetsListProps) {
+  const [open, setOpen] = useState(false);
   const videoCount = assets.filter((a) => a.kind === "video").length;
   const photoCount = assets.filter((a) => a.kind === "photo").length;
   const gifCount = assets.filter((a) => a.kind === "gif").length;
@@ -379,61 +442,78 @@ function MediaAssetsList({ assets, modelId, onChange, onSyncMore }: MediaAssetsL
   const remove = (id: string) => onChange(assets.filter((a) => a.id !== id));
 
   return (
-    <div className="rounded-md border border-border/60 bg-muted/20 p-3 space-y-2">
+    <Collapsible
+      open={open}
+      onOpenChange={setOpen}
+      className="rounded-md border border-border/60 bg-muted/20 p-3 space-y-2"
+    >
       <div className="flex items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-          <span className="font-medium text-foreground">Synced media</span>
-          <Badge variant="secondary" className="text-[10px]">{videoCount} video</Badge>
-          <Badge variant="secondary" className="text-[10px]">{photoCount} photo</Badge>
-          {gifCount > 0 && <Badge variant="secondary" className="text-[10px]">{gifCount} GIF</Badge>}
-          <span>· {visibleCount} visible</span>
-        </div>
-        <Button type="button" size="sm" variant="ghost" onClick={onSyncMore} className="h-7 text-xs">
+        <CollapsibleTrigger asChild>
+          <button
+            type="button"
+            className="flex flex-1 items-center gap-2 text-left"
+            aria-label={open ? "Hide synced media list" : "Show synced media list"}
+          >
+            <ChevronDown
+              className={`size-3.5 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
+            />
+            <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+              <span className="font-medium text-foreground">Synced media</span>
+              <Badge variant="secondary" className="text-[10px]">{videoCount} video</Badge>
+              <Badge variant="secondary" className="text-[10px]">{photoCount} photo</Badge>
+              {gifCount > 0 && <Badge variant="secondary" className="text-[10px]">{gifCount} GIF</Badge>}
+              <span>· {visibleCount} visible</span>
+            </div>
+          </button>
+        </CollapsibleTrigger>
+        <Button type="button" size="sm" variant="ghost" onClick={onSyncMore} className="h-7 text-xs shrink-0">
           <Download className="mr-1 size-3" />
           Sync more
         </Button>
       </div>
-      <ul className="divide-y divide-border/50 rounded border border-border/40 bg-background">
-        {assets.map((a) => (
-          <li key={a.id} className="flex items-center gap-2 px-2 py-1.5">
-            <span className="flex size-7 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground overflow-hidden">
-              {a.kind !== "video" && canonicalProxyUrl(a, modelId) ? (
-                <img
-                  src={canonicalProxyUrl(a, modelId)}
-                  alt=""
-                  className="size-full object-cover"
-                  loading="lazy"
-                />
-              ) : a.kind === "video" ? (
-                <VideoIcon className="size-3.5" />
-              ) : (
-                <ImageIcon className="size-3.5" />
-              )}
-            </span>
-            <div className="flex-1 min-w-0">
-              <p className="truncate text-xs font-medium text-foreground">{a.label ?? a.id}</p>
-              <p className="truncate text-[10px] text-muted-foreground">{a.id}</p>
-            </div>
-            <Badge variant="outline" className="text-[10px] capitalize">{a.kind}</Badge>
-            <Switch
-              checked={a.visible}
-              onCheckedChange={(checked) => toggle(a.id, checked)}
-              aria-label={`Toggle visibility for ${a.label ?? a.id}`}
-            />
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              className="h-7 w-7 p-0 text-destructive hover:text-destructive"
-              onClick={() => remove(a.id)}
-              aria-label={`Remove ${a.label ?? a.id}`}
-            >
-              <X className="size-3.5" />
-            </Button>
-          </li>
-        ))}
-      </ul>
-    </div>
+      <CollapsibleContent>
+        <ul className="divide-y divide-border/50 rounded border border-border/40 bg-background">
+          {assets.map((a) => (
+            <li key={a.id} className="flex items-center gap-2 px-2 py-1.5">
+              <span className="flex size-7 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground overflow-hidden">
+                {a.kind !== "video" && canonicalProxyUrl(a, modelId) ? (
+                  <img
+                    src={canonicalProxyUrl(a, modelId)}
+                    alt=""
+                    className="size-full object-cover"
+                    loading="lazy"
+                  />
+                ) : a.kind === "video" ? (
+                  <VideoIcon className="size-3.5" />
+                ) : (
+                  <ImageIcon className="size-3.5" />
+                )}
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="truncate text-xs font-medium text-foreground">{a.label ?? a.id}</p>
+                <p className="truncate text-[10px] text-muted-foreground">{a.id}</p>
+              </div>
+              <Badge variant="outline" className="text-[10px] capitalize">{a.kind}</Badge>
+              <Switch
+                checked={a.visible}
+                onCheckedChange={(checked) => toggle(a.id, checked)}
+                aria-label={`Toggle visibility for ${a.label ?? a.id}`}
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                onClick={() => remove(a.id)}
+                aria-label={`Remove ${a.label ?? a.id}`}
+              >
+                <X className="size-3.5" />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -547,4 +627,3 @@ function ManualMediaInputs({ assets, onChange }: ManualMediaInputsProps) {
     </div>
   );
 }
-
