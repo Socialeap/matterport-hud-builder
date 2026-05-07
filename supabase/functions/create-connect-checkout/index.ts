@@ -96,6 +96,26 @@ serve(async (req) => {
       });
     }
 
+    // ── Owner self-build bypass ────────────────────────────────────────
+    // The MSP using their own /builder is not a buyer — they are the
+    // owner. Mark the row paid + released at $0 and skip Stripe entirely.
+    if (ownedModel.provider_id === user.id) {
+      await supabaseAdmin
+        .from("saved_models")
+        .update({
+          amount_cents: 0,
+          model_count: modelCount,
+          status: "paid",
+          is_released: true,
+        })
+        .eq("id", modelId);
+
+      return new Response(
+        JSON.stringify({ free: true, ownerFree: true, modelId }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // ── MSP-approved one-time free download ────────────────────────────
     // Providers can mark an individual order free from /dashboard/orders.
     // That flips this exact saved_model to paid + released + $0, so checkout
