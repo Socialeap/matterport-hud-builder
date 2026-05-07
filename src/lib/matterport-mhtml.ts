@@ -32,6 +32,34 @@ export interface ParsedMhtml {
 const ID_PATTERN = "[A-Za-z0-9]{11}";
 
 /**
+ * Extract an 11-character Matterport model ID from a raw user input.
+ * Accepts a bare ID, or any common Matterport URL form, e.g.:
+ *   https://my.matterport.com/show/?m=zaEo52Kuows
+ *   https://my.matterport.com/show?play=1&lang=en-US&m=51gJccyGVms
+ *   https://my.matterport.com/work?m=abcDEF12345
+ *   https://my.matterport.com/models/abcDEF12345
+ * Returns the trimmed input if it already looks like a valid ID, the
+ * extracted ID if a URL is detected, or the original trimmed string when
+ * no match is found (so the caller can preserve user input mid-typing).
+ */
+export function extractMatterportId(input: string): string {
+  const raw = (input ?? "").trim();
+  if (!raw) return "";
+  // Already a bare 11-char ID.
+  if (new RegExp(`^${ID_PATTERN}$`).test(raw)) return raw;
+  // Try ?m= / &m= query param first (most common share URL).
+  const q = raw.match(new RegExp(`[?&]m=(${ID_PATTERN})(?:[&#]|$)`, "i"));
+  if (q) return q[1];
+  // Try /models/<id> path form.
+  const p = raw.match(new RegExp(`/models/(${ID_PATTERN})(?:[/?#]|$)`, "i"));
+  if (p) return p[1];
+  // Last resort: any 11-char token preceded by a non-alphanumeric boundary.
+  const fallback = raw.match(new RegExp(`(?:^|[^A-Za-z0-9])(${ID_PATTERN})(?:[^A-Za-z0-9]|$)`));
+  if (fallback) return fallback[1];
+  return raw;
+}
+
+/**
  * Decode a quoted-printable-encoded string (RFC 2045).
  * Matterport-saved MHTML uses Content-Transfer-Encoding: quoted-printable,
  * which escapes "=" as "=3D" and inserts soft line breaks ("=" + newline)
