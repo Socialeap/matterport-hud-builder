@@ -11,7 +11,7 @@ const slides = [
   { src: slide4, caption: "Visitor interest can be direct or auto-detected to capture high quality leads 🤩" },
 ];
 
-const INTERVAL_MS = 4000;
+const INTERVAL_MS = 7000;
 
 export function HeroSlideshow() {
   const [active, setActive] = useState(0);
@@ -28,7 +28,7 @@ export function HeroSlideshow() {
   }, []);
 
   return (
-    <div className="relative w-full" style={{ aspectRatio: "1250 / 690" }}>
+    <div className="relative w-full bg-black" style={{ aspectRatio: "1250 / 690" }}>
       {slides.map((s, i) => (
         <div
           key={i}
@@ -40,7 +40,7 @@ export function HeroSlideshow() {
           <img
             src={s.src}
             alt={s.caption}
-            className="h-full w-full object-cover"
+            className="h-full w-full object-contain"
             loading={i === 0 ? "eager" : "lazy"}
           />
           <div className="absolute inset-0 flex items-center justify-center">
