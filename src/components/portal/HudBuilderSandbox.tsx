@@ -591,10 +591,9 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     ? accessState.payoutsReady
     : false; // never imply payouts work until the resolver confirms
   const checkoutReady = accessVerified && pricingConfigured && payoutsReady;
-  // Only block when the signed-in user IS the owner of this Studio (trying
-  // to buy from themselves). Other providers/admins visiting a different
-  // MSP's Studio are legitimate buyers — never lock them out.
-  const isWrongAccount = accessVerified && accessState.viewerMatchesProvider;
+  // Owner self-build: when the signed-in user IS the owner of this Studio,
+  // they can build and download for free — no checkout, no second account.
+  const isOwnerSelfBuild = accessVerified && accessState.viewerMatchesProvider;
   // Privacy & Access download states. `passwordIncomplete` covers the
   // case where the agent flipped the toggle on but the password is
   // missing or under the minimum length — the button stays disabled
