@@ -173,13 +173,24 @@ export function PropertyModelsSection({
 
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">
-                <Label className="text-xs">Matterport Model ID</Label>
+                <Label className="text-xs">Matterport Model ID or URL</Label>
                 <div className="flex items-center gap-2">
                   <Input
                     value={model.matterportId}
-                    onChange={(e) => onChange(model.id, "matterportId", e.target.value)}
-                    placeholder="e.g. SxQL3iGyoDo"
-                    maxLength={11}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      // Auto-extract when a URL is pasted/typed; otherwise keep raw input
+                      // so the user can finish typing an 11-char ID without interference.
+                      const extracted = extractMatterportId(v);
+                      onChange(model.id, "matterportId", extracted.length === 11 ? extracted : v);
+                    }}
+                    onBlur={(e) => {
+                      const extracted = extractMatterportId(e.target.value);
+                      if (extracted && extracted !== e.target.value) {
+                        onChange(model.id, "matterportId", extracted);
+                      }
+                    }}
+                    placeholder="Paste Matterport URL or 11-char ID"
                     className="flex-1"
                   />
                   <Button
