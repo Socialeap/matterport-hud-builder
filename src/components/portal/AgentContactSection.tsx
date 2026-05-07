@@ -17,7 +17,7 @@ interface AgentContactSectionProps {
   headless?: boolean;
 }
 
-const MAX_AVATAR_BYTES = 500 * 1024; // 500 KB
+const MAX_AVATAR_BYTES = 10 * 1024 * 1024; // 10 MB source — auto-optimized to WebP after upload
 
 const socialFields: { key: keyof AgentContact; label: string; placeholder: string }[] = [
   { key: "linkedin", label: "LinkedIn", placeholder: "https://linkedin.com/in/..." },
