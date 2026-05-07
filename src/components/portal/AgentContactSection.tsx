@@ -41,7 +41,7 @@ export function AgentContactSection({ agent, onChange, onAvatarFileChange, headl
       return;
     }
     if (file.size > MAX_AVATAR_BYTES) {
-      toast.error("Avatar must be 500 KB or smaller");
+      toast.error("Profile photo must be 10 MB or smaller");
       e.target.value = "";
       return;
     }
