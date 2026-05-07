@@ -1476,15 +1476,6 @@ ${askAssets.css}
 <!-- ── HUD top header ─────────────────────────────────────────────── -->
 <div id="hud-header">
   <div id="hud-inner">
-    <div id="hud-left-spacer">
-      <div id="hud-prop-switch" class="hud-prop-switch" hidden>
-        <button id="hud-prop-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="hud-prop-menu">
-          <span id="hud-prop-current">Property</span>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-        </button>
-        <ul id="hud-prop-menu" role="listbox" aria-label="Choose a property" hidden></ul>
-      </div>
-    </div>
     <div id="hud-center">
       ${logoUrl ? `<img id="hud-logo" src="${escapeHtml(logoUrl)}" alt="Logo">` : ""}
       <div id="hud-brand">${escapeHtml(brandName)}</div>
