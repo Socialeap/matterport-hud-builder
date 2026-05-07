@@ -591,20 +591,7 @@ function Index() {
               </div>
             </div>
             {/* Screenshot */}
-            <div className="relative">
-              <img
-                src={heroHudBanner}
-                alt="3D property tour Presentation Portal showcase"
-                className="w-full"
-                loading="eager"
-              />
-              {/* Center overlay text */}
-              <div className="absolute inset-0 flex items-center justify-center">
-                <p className="mx-4 max-w-lg text-lg font-medium text-white/90 lg:text-2xl text-left sm:text-xl" style={{ textShadow: '0 2px 12px rgba(0,0,0,0.7)', whiteSpace: 'pre-line' }}>
-                  Here... My clients easily build{"\n"}their own tour presentations 😉
-                </p>
-              </div>
-            </div>
+            <HeroSlideshow />
           </div>
 
           {/* CTA below image */}
