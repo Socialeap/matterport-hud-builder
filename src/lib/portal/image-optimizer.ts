@@ -18,7 +18,7 @@ export interface OptimizeOptions {
   /** Soft target — we iterate quality until we fit. */
   targetBytes: number;
   /** Used only for friendlier error messages ("logo" / "favicon"). */
-  kind: "logo" | "favicon";
+  kind: "logo" | "favicon" | "avatar";
 }
 
 export interface OptimizeResult {
