@@ -41,7 +41,7 @@ import {
   Film,
   
 } from "lucide-react";
-import heroHudBanner from "@/assets/hero-hud-showcase.png";
+import { HeroSlideshow } from "@/components/HeroSlideshow";
 import tmLogo from "@/assets/tm-logo-landscape.png";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
