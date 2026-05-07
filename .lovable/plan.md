@@ -1,36 +1,26 @@
-## Plan
+## Changes to `src/components/portal/PropertyModelsSection.tsx`
 
-All changes target `src/components/portal/HudPreview.tsx` (Builder Preview) and `src/lib/portal.functions.ts` (the generated standalone HTML). Both surfaces will end up with the same HUD layout.
+### 1. Property cards → single-open accordion
 
-### 1. Property selector — labels use Name, not address
+Replace the current `models.map(...)` rendering (each property as an always-open `<div className="rounded-lg border p-4 ...">`) with a Radix `Accordion` from `@/components/ui/accordion`:
 
-Today the Builder Preview renders properties as tabs above the iframe and labels each tab with `m.name` (the address field). The generated HTML already prefers `propertyName`. Align the Builder to the same rule.
+- `<Accordion type="single" collapsible value={openId} onValueChange={setOpenId}>` — controlled so we can default-open the primary property.
+- Each property becomes an `<AccordionItem value={model.id}>` with:
+  - `AccordionTrigger`: shows the existing header row (Property N label, "Loads first" badge, "Load first" switch, behavior gear, delete) — keep current styling, including the primary-highlight border/bg classes on the item wrapper.
+  - `AccordionContent`: holds all current body fields (Property Name, Address/Location, Matterport ID + Sync, Music URL, ManualMediaInputs, MediaAssetsList, Cinematic Video, Neighborhood Map block).
+- Default open: `useState(() => primaryModel?.id ?? models[0]?.id ?? null)`. When a new model is added (`onAdd`), open it — handled by parent today, so add a `useEffect` that opens the last model if `models.length` grew.
+- Action buttons inside the trigger (gear, trash, "Load first" switch) must call `e.stopPropagation()` in their `onClick`/`onCheckedChange` wrappers so they don't toggle the accordion.
+- Override AccordionTrigger default `flex justify-between py-4` with classes that match current header (`px-4 pt-4 pb-2 hover:no-underline`), and keep the chevron.
 
-In `HudPreview.tsx`, replace the tab label expression with the same `propLabel` logic used in the generated HTML:
-```
-label = (m.propertyName?.trim() || m.name?.trim() || `Property ${i+1}`)
-```
+### 2. Synced Media → collapsible (default closed)
 
-### 2. Move the property selector into the HUD header (Preview + Generated)
+In `MediaAssetsList`, wrap the existing list in `Collapsible` from `@/components/ui/collapsible` (default `open={false}`):
 
-**Preview (`HudPreview.tsx`)** — remove the standalone tabs row (lines ~429–454) and add a compact dropdown inside the existing HUD header (`<div className="flex items-center gap-2 mr-8">`, line ~545) so it sits on the same row as the Map / Cinema / Media / Ask / Live Tour / Contact buttons. Use a shadcn `Popover` (already imported) or a lightweight native `<select>` styled to match the existing glass buttons. The selector renders only when `models.length > 1`. The header row uses `flex flex-wrap items-center gap-2` so the controls reflow responsively across screen widths; the brand block on the left keeps `min-w-0` + `truncate` so it shrinks gracefully.
+- Keep the current summary row (counts + "Sync more" button) always visible as the trigger area.
+- Add a small chevron toggle button (`CollapsibleTrigger asChild`) next to "Sync more" labeled e.g. "Show/Hide".
+- Move the `<ul>` of assets inside `<CollapsibleContent>`.
+- "Sync more" button stays outside the trigger (its own click shouldn't toggle); ensure clicking it doesn't bubble.
 
-**Generated HTML (`portal.functions.ts`)** — the dropdown already exists (`#hud-prop-switch` inside `#hud-right` is the goal). Currently it's placed in `#hud-left-spacer` (lines 1482–1490). Move that block into `#hud-right` (line 1496) so it sits on the same row as Sound / Map / Cinema / Media / Ask / Live Tour / Contact. Update the `#hud-inner` CSS so the right group uses `flex-wrap` and reasonable `gap` for responsive spacing on narrow viewports. Tighten `#hud-prop-trigger` max-width so it doesn't dominate the row. No JS changes needed — the existing `setPropTrigger` / `propLabel` already prefer `propertyName`.
+### 3. No other files affected
 
-### 3. Remove the "Powered by Transcendence Media" footer
-
-- `HudPreview.tsx` lines 805–810: delete the `{!isPro && !fullViewport && …}` footer block.
-- `portal.functions.ts` lines 1088–1090: replace `poweredByFooter` with `""` unconditionally (and remove the related `#powered-by` CSS rules if present, leaving the variable untouched is fine since it now always emits empty string). Quick `rg "powered-by"` confirms there are no other consumers that would break.
-
-### 4. Preview matches Generated HTML
-
-The combination of (1) + (2) + (3) gives the Builder Preview the same single-row HUD header (logo / brand / property dropdown / icon buttons / Ask / Live Tour / Contact) and no footer that the downloaded standalone HTML produces. After the edits, do a side-by-side check of `/p/{slug}/builder` vs the exported file with the second screenshot as the reference layout.
-
-### Ripple-check
-
-- `propertyName` is already on `PropertyModel` (`src/components/portal/types.ts`) and surfaced in the Builder's `PropertyModelsSection`, so the new label has data to read; older models without `propertyName` fall back to `name` so nothing breaks.
-- Tab styling/handlers (`onSelectModel`, `accentColor` highlight) are preserved in the new dropdown.
-- The bookmark "above" block (`aboveBookmarkBlock`) and the Builder's bookmark/guided-paste flows live outside the removed tabs row, so they remain unchanged.
-- `MediaCarouselModal`, `CinemaModal`, `NeighborhoodMapModal` calls at the bottom of `HudPreview.tsx` are untouched.
-- Generated HTML: `propMenuEl`, `propTriggerEl`, `propCurrentEl` lookups are by `id`, so moving the markup between flex containers does not affect the runtime JS or the existing Live Tour / Ask / mute wiring.
-- No SSR, route, or server-fn surface is touched.
+Props, types, parent state, and generated HTML are unchanged. Purely a Builder Preview UX change.
