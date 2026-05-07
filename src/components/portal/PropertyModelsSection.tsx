@@ -94,7 +94,7 @@ export function PropertyModelsSection({
               isPrimary ? "border-primary/60 bg-primary/5" : "border-border"
             }`}
           >
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
               <span className="flex items-center gap-2 text-sm font-medium text-foreground">
                 Property {index + 1}
                 {isPrimary && (
@@ -102,6 +102,21 @@ export function PropertyModelsSection({
                     <Star className="size-3 fill-primary text-primary" />
                     Loads first
                   </Badge>
+                )}
+                {onSetPrimary && models.length > 1 && (
+                  <span className="ml-2 inline-flex items-center gap-1.5 rounded border border-border/60 bg-muted/30 px-2 py-0.5">
+                    <Label htmlFor={`primary-toggle-${model.id}`} className="text-[11px] font-normal text-muted-foreground cursor-pointer">
+                      Load first
+                    </Label>
+                    <Switch
+                      id={`primary-toggle-${model.id}`}
+                      checked={isPrimary}
+                      disabled={isPrimary}
+                      onCheckedChange={(checked) => {
+                        if (checked) onSetPrimary(model.id);
+                      }}
+                    />
+                  </span>
                 )}
               </span>
               <div className="flex items-center gap-1">
@@ -136,30 +151,6 @@ export function PropertyModelsSection({
                 placeholder="e.g. The Grand Hotel, Aspen Loft (leave blank for residential)"
               />
             </div>
-
-            {onSetPrimary && models.length > 1 && (
-              <div className="flex items-start gap-3 rounded-md border border-border/60 bg-muted/30 p-3">
-                <Star className={`mt-0.5 size-4 shrink-0 ${isPrimary ? "fill-primary text-primary" : "text-muted-foreground"}`} />
-                <div className="flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <Label htmlFor={`primary-toggle-${model.id}`} className="text-xs font-medium">
-                      Load this property first
-                    </Label>
-                    <Switch
-                      id={`primary-toggle-${model.id}`}
-                      checked={isPrimary}
-                      disabled={isPrimary}
-                      onCheckedChange={(checked) => {
-                        if (checked) onSetPrimary(model.id);
-                      }}
-                    />
-                  </div>
-                  <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
-                    Visitors see this property when the tour opens. Only one property can be primary — turning another one on will switch it.
-                  </p>
-                </div>
-              </div>
-            )}
 
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">
