@@ -2066,28 +2066,24 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
                   Download Presentation
                 </Button>
               </div>
-            ) : isWrongAccount ? (
-              /* Wrong account — provider/admin signed in instead of invited client. */
-              <div className="rounded-lg border-2 border-amber-500/60 bg-amber-500/5 p-6">
+            ) : isOwnerSelfBuild ? (
+              /* Owner self-build — MSP using their own Studio gets a free download. */
+              <div className="rounded-lg border-2 border-primary/40 bg-primary/5 p-6 text-center">
                 <h3 className="text-lg font-semibold text-foreground">
-                  This Studio Belongs to Your Account
+                  Owner Build — Free Download
                 </h3>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  You're signed in as the owner of this Studio, so you can't
-                  purchase a presentation from yourself. Sign out and use a
-                  buyer account if you want to test the checkout flow.
+                  You're signed in as the owner of this Studio. You can build
+                  and download presentations from your own Studio at no charge.
                 </p>
                 <Button
                   size="lg"
-                  variant="outline"
-                  className="mt-4 w-full"
-                  onClick={async () => {
-                    await supabase.auth.signOut();
-                    setUserId(null);
-                    setAccessRetryNonce((n) => n + 1);
-                  }}
+                  className="mt-4 text-white"
+                  style={{ backgroundColor: accentColor }}
+                  disabled={!!submitting || licenseExpired}
+                  onClick={() => void handleDownload()}
                 >
-                  Sign Out
+                  {submitting ? "Preparing…" : "Build & Download"}
                 </Button>
               </div>
             ) : accessFailed ? (
