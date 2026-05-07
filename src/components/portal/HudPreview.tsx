@@ -425,33 +425,9 @@ export function HudPreview({
             : "relative overflow-hidden rounded-lg border border-border shadow-lg"
         }
       >
-      {/* Property selector */}
-      {models.length > 1 && (
-        <div
-          className={
-            fullViewport
-              ? "absolute left-3 top-3 z-30 flex gap-1 rounded-full border border-white/10 bg-black/40 px-2 py-1 backdrop-blur-md"
-              : "flex gap-1 border-b border-border bg-muted/50 px-4 py-2"
-          }
-        >
-          {models.map((m, i) => (
-            <button
-              key={m.id}
-              onClick={() => onSelectModel(i)}
-              className={`rounded px-3 py-1 text-xs font-medium transition-colors ${
-                i === selectedModelIndex
-                  ? "text-white"
-                  : fullViewport
-                    ? "bg-transparent text-white/70 hover:bg-white/10"
-                    : "bg-transparent text-muted-foreground hover:bg-muted"
-              }`}
-              style={i === selectedModelIndex ? { backgroundColor: accentColor } : undefined}
-            >
-              {m.name || `Property ${i + 1}`}
-            </button>
-          ))}
-        </div>
-      )}
+      {/* Property selector moved into the HUD header (see below) so the
+          Builder Preview matches the generated standalone HTML layout. */}
+
 
       {/* Matterport iframe */}
       <div className={fullViewport ? "relative h-full w-full bg-black" : "relative aspect-video w-full bg-black"}>
@@ -511,7 +487,7 @@ export function HudPreview({
           }
         >
           <div
-            className="flex items-center justify-between px-4 py-4 border-b border-white/10"
+            className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-3 pr-12 border-b border-white/10"
             style={{
               backgroundColor: `${hudBgColor}66`,
               backdropFilter: "blur(20px) saturate(180%)",
@@ -519,22 +495,22 @@ export function HudPreview({
               boxShadow: "0 4px 24px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.08)",
             }}
           >
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 min-w-0 flex-1">
               {logoPreview && (
-                <img src={logoPreview} alt="Brand logo" className="h-8 object-contain" />
+                <img src={logoPreview} alt="Brand logo" className="h-8 object-contain shrink-0" />
               )}
-              <div>
-                <p className="text-sm font-semibold text-white drop-shadow-sm">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-white drop-shadow-sm truncate">
                   {brandName || "Your Brand"}
                 </p>
                 {currentModel && (
                   <>
                     {currentModel.propertyName?.trim() && (
-                      <p className="text-xs font-medium text-white/90 drop-shadow-sm">
+                      <p className="text-xs font-medium text-white/90 drop-shadow-sm truncate">
                         {currentModel.propertyName}
                       </p>
                     )}
-                    <p className="text-xs text-white/80 drop-shadow-sm">
+                    <p className="text-xs text-white/80 drop-shadow-sm truncate">
                       {currentModel.name || "Property"} — {currentModel.location || "Location"}
                     </p>
                   </>
@@ -542,7 +518,25 @@ export function HudPreview({
               </div>
             </div>
 
-            <div className="flex items-center gap-2 mr-8">
+            <div className="flex flex-wrap items-center justify-end gap-2 min-w-0">
+              {models.length > 1 && (
+                <select
+                  value={selectedModelIndex}
+                  onChange={(e) => onSelectModel(Number(e.target.value))}
+                  className="h-7 max-w-[180px] rounded-md border border-white/20 bg-white/15 px-2 text-xs font-semibold text-white backdrop-blur-md focus:outline-none focus:border-white/40"
+                  style={{ WebkitBackdropFilter: "blur(12px)", backdropFilter: "blur(12px)" }}
+                  aria-label="Choose a property"
+                >
+                  {models.map((m, i) => {
+                    const label = m.propertyName?.trim() || m.name?.trim() || `Property ${i + 1}`;
+                    return (
+                      <option key={m.id} value={i} className="bg-neutral-900 text-white">
+                        {label}
+                      </option>
+                    );
+                  })}
+                </select>
+              )}
               {currentModel?.enableNeighborhoodMap && currentModel.location.trim() && (
                 <button
                   onClick={() => setMapOpen(true)}
@@ -802,12 +796,7 @@ export function HudPreview({
         </div>
       </div>
 
-      {/* Powered by (Starter only) — hidden in fullViewport mode (page renders its own footer strip) */}
-      {!isPro && !fullViewport && (
-        <div className="bg-muted/30 px-4 py-1.5 text-center text-xs text-muted-foreground">
-          Powered by Transcendence Media
-        </div>
-      )}
+
 
       {currentModel && (
         <NeighborhoodMapModal

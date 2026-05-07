@@ -1085,9 +1085,8 @@ export const generatePresentation = createServerFn({ method: "POST" })
       hasQA,
     );
 
-    const poweredByFooter = isPro
-      ? ""
-      : `<footer id="powered-by">Powered by Transcendence Media</footer>`;
+    // "Powered by" footer removed by product decision.
+    const poweredByFooter = "";
 
     // Derive the Synthesis Bridge URL from the Supabase project URL.
     // VITE_SUPABASE_URL is inlined by Vite at build time for both client and
@@ -1231,15 +1230,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 /* ── HUD header (top glassmorphism overlay) ──────────────────────── */
 #hud-header{position:fixed;top:0;left:0;right:0;z-index:1200;transform:translateY(-100%);opacity:0;pointer-events:none;transition:transform 0.3s ease,opacity 0.3s ease;will-change:transform,opacity;isolation:isolate;-webkit-backface-visibility:hidden;backface-visibility:hidden}
 #hud-header.visible{transform:translateY(0);opacity:1;pointer-events:auto}
-#hud-inner{display:grid;grid-template-columns:220px minmax(0,1fr) auto;align-items:center;gap:12px;padding:10px 16px;background:${escapeHtml(hudBgColor)}99;backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid rgba(255,255,255,0.08);box-shadow:0 4px 24px rgba(0,0,0,0.15),inset 0 1px 0 rgba(255,255,255,0.06)}
-#hud-left-spacer{min-width:0;display:flex;align-items:center;justify-content:flex-start;padding-left:220px}
-@media (max-width:640px){#hud-left-spacer{padding-left:120px}}
-#hud-center{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;min-width:0;gap:2px}
+#hud-inner{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;padding:10px 16px 10px 16px;padding-right:48px;background:${escapeHtml(hudBgColor)}99;backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid rgba(255,255,255,0.08);box-shadow:0 4px 24px rgba(0,0,0,0.15),inset 0 1px 0 rgba(255,255,255,0.06)}
+#hud-center{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;text-align:left;min-width:0;gap:2px;flex:1 1 auto}
 #hud-logo{height:30px;max-width:160px;object-fit:contain;flex-shrink:0;margin-bottom:2px}
 #hud-brand{font-size:13px;font-weight:600;color:#fff;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 3px rgba(0,0,0,0.4)}
 #hud-prop-loc{font-size:11px;color:rgba(255,255,255,0.75);max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#hud-right{display:flex;align-items:center;gap:6px;flex-shrink:0;margin-right:32px;justify-self:end}
-@media(max-width:720px){#hud-inner{grid-template-columns:auto minmax(0,1fr) auto;gap:8px}#hud-logo{height:26px;max-width:120px}#hud-brand{font-size:12px}}
+#hud-right{display:flex;flex-wrap:wrap;align-items:center;gap:6px;justify-content:flex-end;flex:0 1 auto;min-width:0}
+@media(max-width:720px){#hud-inner{padding-right:44px;gap:6px}#hud-logo{height:26px;max-width:120px}#hud-brand{font-size:12px}}
 
 /* ── In-HUD property switcher (replaces the legacy #tabs overlay) ── */
 .hud-prop-switch{position:relative;display:none}
@@ -1422,13 +1419,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 
 /* ── Powered-by footer ────────────────────────────────────────────── */
 #powered-by{position:fixed;bottom:0;left:0;right:0;height:34px;display:flex;align-items:center;justify-content:center;font-size:11px;color:rgba(255,255,255,0.4);border-top:1px solid rgba(255,255,255,0.06);background:${escapeHtml(hudBgColor)}cc;z-index:499}
-${isPro ? "" : `/* Viewer above powered-by footer */
-#viewer{bottom:34px}`}
+/* "Powered by" footer removed — viewer fills the full screen. */
 
 /* ── Panel z-index overrides ───────────────────────────────────── */
 #ask-panel,#property-docs{z-index:1500}
-/* Property-docs panel still anchored bottom-left; clear powered-by footer when present */
-#property-docs{bottom:${isPro ? "16" : "50"}px}
+#property-docs{bottom:16px}
 
 ${askAssets.css}
 </style>
@@ -1479,7 +1474,12 @@ ${askAssets.css}
 <!-- ── HUD top header ─────────────────────────────────────────────── -->
 <div id="hud-header">
   <div id="hud-inner">
-    <div id="hud-left-spacer">
+    <div id="hud-center">
+      ${logoUrl ? `<img id="hud-logo" src="${escapeHtml(logoUrl)}" alt="Logo">` : ""}
+      <div id="hud-brand">${escapeHtml(brandName)}</div>
+      <div id="hud-prop-loc"></div>
+    </div>
+    <div id="hud-right">
       <div id="hud-prop-switch" class="hud-prop-switch" hidden>
         <button id="hud-prop-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="hud-prop-menu">
           <span id="hud-prop-current">Property</span>
@@ -1487,13 +1487,6 @@ ${askAssets.css}
         </button>
         <ul id="hud-prop-menu" role="listbox" aria-label="Choose a property" hidden></ul>
       </div>
-    </div>
-    <div id="hud-center">
-      ${logoUrl ? `<img id="hud-logo" src="${escapeHtml(logoUrl)}" alt="Logo">` : ""}
-      <div id="hud-brand">${escapeHtml(brandName)}</div>
-      <div id="hud-prop-loc"></div>
-    </div>
-    <div id="hud-right">
       <button id="hud-mute-btn" class="hud-icon-btn" aria-label="Toggle sound" title="Toggle sound">
         <svg id="mute-icon-on" viewBox="0 0 24 24" fill="currentColor" style="display:none"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
         <svg id="mute-icon-off" viewBox="0 0 24 24" fill="currentColor"><path d="M16.5 12A4.5 4.5 0 0 0 14 7.97v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06A9.0 9.0 0 0 0 17.73 18l1.73 1.73L21 18.46 5.54 3 4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>
