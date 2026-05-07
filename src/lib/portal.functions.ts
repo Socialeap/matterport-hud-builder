@@ -1419,13 +1419,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 
 /* ── Powered-by footer ────────────────────────────────────────────── */
 #powered-by{position:fixed;bottom:0;left:0;right:0;height:34px;display:flex;align-items:center;justify-content:center;font-size:11px;color:rgba(255,255,255,0.4);border-top:1px solid rgba(255,255,255,0.06);background:${escapeHtml(hudBgColor)}cc;z-index:499}
-${isPro ? "" : `/* Viewer above powered-by footer */
-#viewer{bottom:34px}`}
+/* "Powered by" footer removed — viewer fills the full screen. */
 
 /* ── Panel z-index overrides ───────────────────────────────────── */
 #ask-panel,#property-docs{z-index:1500}
-/* Property-docs panel still anchored bottom-left; clear powered-by footer when present */
-#property-docs{bottom:${isPro ? "16" : "50"}px}
+#property-docs{bottom:16px}
 
 ${askAssets.css}
 </style>
