@@ -1085,9 +1085,8 @@ export const generatePresentation = createServerFn({ method: "POST" })
       hasQA,
     );
 
-    const poweredByFooter = isPro
-      ? ""
-      : `<footer id="powered-by">Powered by Transcendence Media</footer>`;
+    // "Powered by" footer removed by product decision.
+    const poweredByFooter = "";
 
     // Derive the Synthesis Bridge URL from the Supabase project URL.
     // VITE_SUPABASE_URL is inlined by Vite at build time for both client and
