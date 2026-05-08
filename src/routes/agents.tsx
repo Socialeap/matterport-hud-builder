@@ -266,8 +266,10 @@ const MOCK_MSPS: DirectoryMSP[] = [
 /* ------------------------------------------------------------------ */
 
 function AgentsPage() {
-  const { isAuthenticated, hasAnyRole } = useAuth();
-  const dashboardTo = hasAnyRole(["provider", "admin"]) ? "/dashboard" : "/agent-dashboard";
+  const { isAuthenticated } = useAuth();
+  // The /agents landing page is for agents/clients — Dashboard always opens the Agent Dashboard,
+  // even for users who also happen to have provider/admin roles.
+  const dashboardTo = "/agent-dashboard";
   const navigate = useNavigate();
 
   const bg = "#0a0e27";
