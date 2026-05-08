@@ -28,6 +28,7 @@ import { Route as ApiMarketplaceFeedbackRouteImport } from './routes/api/marketp
 import { Route as ApiGeocodeBrandingRouteImport } from './routes/api/geocode-branding'
 import { Route as ApiGeocodeBeaconRouteImport } from './routes/api/geocode-beacon'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated.dashboard'
+import { Route as AuthenticatedAgentDashboardRouteImport } from './routes/_authenticated.agent-dashboard'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated.admin'
 import { Route as PSlugIndexRouteImport } from './routes/p.$slug.index'
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated.dashboard.index'
@@ -147,6 +148,12 @@ const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedAgentDashboardRoute =
+  AuthenticatedAgentDashboardRouteImport.update({
+    id: '/agent-dashboard',
+    path: '/agent-dashboard',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
   id: '/admin',
   path: '/admin',
@@ -298,6 +305,7 @@ export interface FileRoutesByFullPath {
   '/terms': typeof TermsRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/admin': typeof AuthenticatedAdminRouteWithChildren
+  '/agent-dashboard': typeof AuthenticatedAgentDashboardRoute
   '/dashboard': typeof AuthenticatedDashboardRouteWithChildren
   '/api/geocode-beacon': typeof ApiGeocodeBeaconRoute
   '/api/geocode-branding': typeof ApiGeocodeBrandingRoute
@@ -341,6 +349,7 @@ export interface FileRoutesByTo {
   '/signup': typeof SignupRoute
   '/terms': typeof TermsRoute
   '/unsubscribe': typeof UnsubscribeRoute
+  '/agent-dashboard': typeof AuthenticatedAgentDashboardRoute
   '/api/geocode-beacon': typeof ApiGeocodeBeaconRoute
   '/api/geocode-branding': typeof ApiGeocodeBrandingRoute
   '/api/marketplace-feedback': typeof ApiMarketplaceFeedbackRoute
@@ -385,6 +394,7 @@ export interface FileRoutesById {
   '/terms': typeof TermsRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRouteWithChildren
+  '/_authenticated/agent-dashboard': typeof AuthenticatedAgentDashboardRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRouteWithChildren
   '/api/geocode-beacon': typeof ApiGeocodeBeaconRoute
   '/api/geocode-branding': typeof ApiGeocodeBrandingRoute
@@ -431,6 +441,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/unsubscribe'
     | '/admin'
+    | '/agent-dashboard'
     | '/dashboard'
     | '/api/geocode-beacon'
     | '/api/geocode-branding'
@@ -474,6 +485,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/terms'
     | '/unsubscribe'
+    | '/agent-dashboard'
     | '/api/geocode-beacon'
     | '/api/geocode-branding'
     | '/api/marketplace-feedback'
@@ -517,6 +529,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/unsubscribe'
     | '/_authenticated/admin'
+    | '/_authenticated/agent-dashboard'
     | '/_authenticated/dashboard'
     | '/api/geocode-beacon'
     | '/api/geocode-branding'
@@ -709,6 +722,13 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/agent-dashboard': {
+      id: '/_authenticated/agent-dashboard'
+      path: '/agent-dashboard'
+      fullPath: '/agent-dashboard'
+      preLoaderRoute: typeof AuthenticatedAgentDashboardRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/admin': {
@@ -950,11 +970,13 @@ const AuthenticatedDashboardRouteWithChildren =
 
 interface AuthenticatedRouteChildren {
   AuthenticatedAdminRoute: typeof AuthenticatedAdminRouteWithChildren
+  AuthenticatedAgentDashboardRoute: typeof AuthenticatedAgentDashboardRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRouteWithChildren
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAdminRoute: AuthenticatedAdminRouteWithChildren,
+  AuthenticatedAgentDashboardRoute: AuthenticatedAgentDashboardRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRouteWithChildren,
 }
 
