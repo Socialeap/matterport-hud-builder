@@ -712,7 +712,7 @@ function DirectorySection() {
                   onToggle={toggleSpecialty}
                 />
                 <FilterGroup
-                  title="Studio Presentation (Production Vault)"
+                  title="Studio Presentation"
                   subtitle="Minimum-quantity service offering"
                   options={STUDIO_FILTERS}
                   selected={selectedSpecialties}
