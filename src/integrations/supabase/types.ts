@@ -64,6 +64,7 @@ export type Database = {
           preferable_services: Database["public"]["Enums"]["marketplace_specialty"][]
           pro_visibility_until: string | null
           region: string | null
+          service_match_notified_at: string | null
           source_ip: string | null
           status: Database["public"]["Enums"]["beacon_status"]
           updated_at: string
@@ -89,6 +90,7 @@ export type Database = {
           preferable_services?: Database["public"]["Enums"]["marketplace_specialty"][]
           pro_visibility_until?: string | null
           region?: string | null
+          service_match_notified_at?: string | null
           source_ip?: string | null
           status?: Database["public"]["Enums"]["beacon_status"]
           updated_at?: string
@@ -114,6 +116,7 @@ export type Database = {
           preferable_services?: Database["public"]["Enums"]["marketplace_specialty"][]
           pro_visibility_until?: string | null
           region?: string | null
+          service_match_notified_at?: string | null
           source_ip?: string | null
           status?: Database["public"]["Enums"]["beacon_status"]
           updated_at?: string
