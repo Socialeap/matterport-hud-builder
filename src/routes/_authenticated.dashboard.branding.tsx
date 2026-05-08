@@ -40,7 +40,7 @@ const SPECIALTY_OPTIONS: ReadonlyArray<{
   { value: "scan-twilight-photography", label: "Twilight Photography", group: "scanning", proOnly: false },
   { value: "scan-floor-plans", label: "Floor Plans", group: "scanning", proOnly: false },
   { value: "scan-dimensional-measurements", label: "Dimensional Measurements", group: "scanning", proOnly: false },
-  { value: "scan-same-day-turnaround", label: "Same-Day Turnaround", group: "scanning", proOnly: false },
+  { value: "scan-same-day-turnaround", label: "Two-Day Turnaround", group: "scanning", proOnly: false },
   { value: "scan-walkthrough-video-clips" as MarketplaceSpecialty, label: "Walk-through Video Clips", group: "scanning", proOnly: false },
   // Studio (Production Vault) services
   { value: "vault-sound-library", label: "Sound Library (12+ tracks)", group: "studio", proOnly: false },

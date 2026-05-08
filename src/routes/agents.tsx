@@ -39,8 +39,14 @@ import {
   MapPinned,
   Magnet,
   Film,
-  
+  Info,
 } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { HeroSlideshow } from "@/components/HeroSlideshow";
 import tmLogo from "@/assets/tm-logo-landscape.png";
 import { useAuth } from "@/hooks/use-auth";
@@ -146,27 +152,28 @@ type FilterOption = {
   label: string;
   icon: typeof Camera;
   note?: string;
+  tooltip: string;
 };
 
 // Group 1: On-site scanning / 3D capture services
 const SCANNING_FILTERS: ReadonlyArray<FilterOption> = [
-  { value: "scan-matterport-pro3", label: "Matterport Pro3", icon: Camera },
-  { value: "scan-drone-aerial", label: "Drone / Aerial", icon: Helicopter },
-  { value: "scan-twilight-photography", label: "Twilight Photography", icon: Sunset },
-  { value: "scan-walkthrough-video-clips" as MarketplaceSpecialty, label: "Walk-through Video Clips", icon: Film },
-  { value: "scan-floor-plans", label: "Floor Plans", icon: Ruler },
-  { value: "scan-dimensional-measurements", label: "Dimensional Measurements", icon: Box },
-  { value: "scan-same-day-turnaround", label: "Same-Day Turnaround", icon: Zap },
+  { value: "scan-matterport-pro3", label: "Matterport Pro3", icon: Camera, tooltip: "High-quality LiDAR scanning for indoor/outdoor 3D tours and high-accuracy spatial data." },
+  { value: "scan-drone-aerial", label: "Drone / Aerial", icon: Helicopter, tooltip: "Stunning bird's-eye views to highlight the property's scale, plot, and neighborhood context." },
+  { value: "scan-twilight-photography", label: "Twilight Photography", icon: Sunset, tooltip: "High-end \"Golden Hour\" hero shots designed to make your listing stop the scroll." },
+  { value: "scan-walkthrough-video-clips" as MarketplaceSpecialty, label: "Walk-through Video Clips", icon: Film, tooltip: "Cinematic, ready-to-post video clips for maximum social media engagement and reach." },
+  { value: "scan-floor-plans", label: "Floor Plans", icon: Ruler, tooltip: "Professional 2D layouts to help buyers visualize flow, room sizes, and furniture placement." },
+  { value: "scan-dimensional-measurements", label: "Dimensional Measurements", icon: Box, tooltip: "More accurate measurements when precise sizing and dimensions matter." },
+  { value: "scan-same-day-turnaround", label: "Two-Day Turnaround", icon: Zap, tooltip: "Get your finalized 3D tour delivered within 48 hrs, not next week." },
 ];
 
-// Group 2: Studio (Production Vault) services with minimum-quantity hints
+// Group 2: Studio services with minimum-quantity hints
 const STUDIO_FILTERS: ReadonlyArray<FilterOption> = [
-  { value: "vault-sound-library", label: "Sound Library", icon: Music2, note: "12+ tracks" },
-  { value: "vault-portal-filters", label: "Visual Portal Filters", icon: Wand2, note: "3+" },
-  { value: "vault-interactive-widgets", label: "Interactive Widgets", icon: Puzzle, note: "2+" },
-  { value: "vault-custom-icons", label: "Custom Iconography", icon: Shapes, note: "2+ sets" },
-  { value: "vault-property-mapper", label: "Property Mapper", icon: MapPinned, note: "6+ maps" },
-  { value: "ai-lead-generation", label: "AI Lead Generation", icon: Magnet },
+  { value: "vault-sound-library", label: "Sound Library", icon: Music2, note: "12+ tracks", tooltip: "Set the mood with curated background music or upload a voice-over intro over an ambient track." },
+  { value: "vault-portal-filters", label: "Visual Portal Filters", icon: Wand2, note: "3+", tooltip: "Professional color grading & style filters that enhance the property's \"vibe.\"" },
+  { value: "vault-interactive-widgets", label: "Interactive Widgets", icon: Puzzle, note: "2+", tooltip: "Interactive overlays for info, comparisons, menus, bookmarks, and more. (Coming Soon)" },
+  { value: "vault-custom-icons", label: "Custom Iconography", icon: Shapes, note: "2+ sets", tooltip: "Branded navigation icons for your agency's unique look & feel. (Coming Soon)" },
+  { value: "vault-property-mapper", label: "Property Mapper", icon: MapPinned, note: "6+ maps", tooltip: "Upload a detailed PDF with property specs used to train the \"Ask About This Property\" chat." },
+  { value: "ai-lead-generation", label: "AI Lead Generation", icon: Magnet, tooltip: "An automated 24/7 assistant to identify and capture buyer leads while you sleep." },
 ];
 
 const SPECIALTY_LABEL: Record<MarketplaceSpecialty, string> = Object.fromEntries(
@@ -705,7 +712,7 @@ function DirectorySection() {
                   onToggle={toggleSpecialty}
                 />
                 <FilterGroup
-                  title="Studio Presentation (Production Vault)"
+                  title="Studio Presentation"
                   subtitle="Minimum-quantity service offering"
                   options={STUDIO_FILTERS}
                   selected={selectedSpecialties}
@@ -824,39 +831,48 @@ function FilterGroup({
   onToggle: (id: MarketplaceSpecialty) => void;
 }) {
   return (
-    <div>
-      <div className="mb-3">
-        <p className="text-xs font-semibold uppercase tracking-wider text-white/60">{title}</p>
-        {subtitle && <p className="mt-0.5 text-[10px] text-white/40">{subtitle}</p>}
+    <TooltipProvider delayDuration={150}>
+      <div>
+        <div className="mb-3">
+          <p className="text-xs font-semibold uppercase tracking-wider text-white/60">{title}</p>
+          {subtitle && <p className="mt-0.5 text-[10px] text-white/40">{subtitle}</p>}
+        </div>
+        <div className="space-y-2">
+          {options.map((f) => {
+            const checked = selected.has(f.value);
+            const Icon = f.icon;
+            return (
+              <Tooltip key={f.value}>
+                <TooltipTrigger asChild>
+                  <label
+                    className={`flex cursor-pointer items-center gap-2.5 rounded-md border px-2.5 py-2 text-sm transition-colors ${
+                      checked
+                        ? "border-cyan-300/50 bg-cyan-300/10 text-white"
+                        : "border-white/10 bg-white/5 text-white/70 hover:border-white/20 hover:text-white"
+                    }`}
+                  >
+                    <Checkbox
+                      checked={checked}
+                      onCheckedChange={() => onToggle(f.value)}
+                      className="border-white/30 data-[state=checked]:bg-cyan-400 data-[state=checked]:text-[#0a0e27]"
+                    />
+                    <Icon className="size-3.5 shrink-0 opacity-70" />
+                    <span className="flex-1 truncate">{f.label}</span>
+                    <Info className="size-3 shrink-0 opacity-50" aria-hidden />
+                    {f.note && (
+                      <span className="shrink-0 text-[10px] text-white/40">{f.note}</span>
+                    )}
+                  </label>
+                </TooltipTrigger>
+                <TooltipContent side="right" className="max-w-xs text-xs leading-snug">
+                  {f.tooltip}
+                </TooltipContent>
+              </Tooltip>
+            );
+          })}
+        </div>
       </div>
-      <div className="space-y-2">
-        {options.map((f) => {
-          const checked = selected.has(f.value);
-          const Icon = f.icon;
-          return (
-            <label
-              key={f.value}
-              className={`flex cursor-pointer items-center gap-2.5 rounded-md border px-2.5 py-2 text-sm transition-colors ${
-                checked
-                  ? "border-cyan-300/50 bg-cyan-300/10 text-white"
-                  : "border-white/10 bg-white/5 text-white/70 hover:border-white/20 hover:text-white"
-              }`}
-            >
-              <Checkbox
-                checked={checked}
-                onCheckedChange={() => onToggle(f.value)}
-                className="border-white/30 data-[state=checked]:bg-cyan-400 data-[state=checked]:text-[#0a0e27]"
-              />
-              <Icon className="size-3.5 shrink-0 opacity-70" />
-              <span className="flex-1 truncate">{f.label}</span>
-              {f.note && (
-                <span className="shrink-0 text-[10px] text-white/40">{f.note}</span>
-              )}
-            </label>
-          );
-        })}
-      </div>
-    </div>
+    </TooltipProvider>
   );
 }
 
