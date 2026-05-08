@@ -164,10 +164,13 @@ function PrivacyPage() {
           <section>
             <h2 className="text-2xl font-semibold text-white">7. Generated Presentation Files</h2>
             <p className="mt-3">
-              The downloadable HTML presentation files 3DPS produces are designed to be self-contained
-              and host-anywhere. Once delivered, those files do not transmit data back to 3DPS. Their
-              behavior, hosting, and analytics integrations are the responsibility of the MSP or end
-              host.
+              The downloadable HTML presentation files 3DPS produces are designed to be portable
+              and host-anywhere — owned by the MSP or client and deployable on the hosting setup
+              of their choice. Optional Production Vault widgets may load selected optimized
+              assets from 3DPS infrastructure when visitors use those features. Aside from those
+              optional widget asset requests, the delivered files do not transmit data back to
+              3DPS. Hosting, behavior, and analytics integrations are the responsibility of the
+              MSP or end host.
             </p>
           </section>
 

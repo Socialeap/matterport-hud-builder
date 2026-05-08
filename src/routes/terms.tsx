@@ -70,9 +70,11 @@ function TermsPage() {
             <p className="mt-3">
               3DPS is a white-label studio that lets managed service providers (&quot;MSPs&quot;)
               build, brand, and distribute interactive 3D property tour presentations. The Service
-              includes a builder UI, a presentation generation engine that produces self-contained
-              HTML deliverables, optional AI Concierge features (subject to license), and Stripe-based
-              payment infrastructure.
+              includes a builder UI, a presentation generation engine that produces single-file
+              HTML deliverables that the MSP or client owns and can host anywhere, optional AI
+              Concierge features (subject to license), optional Production Vault widgets that may
+              load selected assets from 3DPS infrastructure when used, and Stripe-based payment
+              infrastructure.
             </p>
           </section>
 

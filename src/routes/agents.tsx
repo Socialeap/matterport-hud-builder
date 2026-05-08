@@ -133,7 +133,7 @@ const journeySteps = [
   {
     step: 3,
     title: "Launch Your Branded Presentation",
-    description: "Inside the studio, you customize branding, AI chat, media, and tour behavior — then download a self-contained 3D presentation file to share, embed, or host anywhere.",
+    description: "Inside the studio, you customize branding, AI chat, media, and tour behavior — then download a single HTML presentation file you own and can share, embed, or host anywhere.",
   },
 ];
 

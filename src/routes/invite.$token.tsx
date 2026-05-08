@@ -348,13 +348,13 @@ function InviteAcceptancePage() {
               <FeatureRow
                 icon={<Sparkles className="h-5 w-5" />}
                 title="Interactive widgets"
-                description="Music, cinematic intros, neighborhood maps, document Q&A — all included."
+                description="Music, cinematic intros, neighborhood maps, document Q&A — ready to drop in."
                 accent={accent}
               />
               <FeatureRow
                 icon={<ShieldCheck className="h-5 w-5" />}
                 title="Yours to keep"
-                description="Each Presentation is a self-contained file you can host anywhere."
+                description="Each Presentation is a single HTML file you own and can host anywhere — not locked behind a 3DPS-hosted page."
                 accent={accent}
               />
             </div>
