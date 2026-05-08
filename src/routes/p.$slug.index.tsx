@@ -562,8 +562,9 @@ function PortalPage() {
                 <h3 className="text-lg font-semibold">Download & Own</h3>
               </div>
               <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-                Preview your presentation. Once satisfied, make a one-time payment to get your
-                self-contained file — no monthly fees to keep it online.
+                Preview your presentation. Once satisfied, make a one-time payment to download
+                a portable HTML presentation file you own and can host anywhere — no monthly
+                fees to keep it online.
               </p>
             </div>
           </div>
@@ -615,7 +616,7 @@ function PortalPage() {
         {/* PUBLIC PRICING TABLE */}
         <PortalPricingSection branding={branding} accent={accent} />
 
-        {/* SOVEREIGNTY COMPARISON */}
+        {/* OWN-THE-FILE COMPARISON */}
         <section id="compare" className="scroll-mt-20 mx-auto max-w-6xl px-4 py-16 sm:px-6">
           <div className="mb-10 text-center">
             <h2 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl dark:text-white">

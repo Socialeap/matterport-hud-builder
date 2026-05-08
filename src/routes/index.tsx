@@ -53,7 +53,7 @@ import { toast } from "sonner";
 const SITE_URL = "https://matterport-hud-builder.lovable.app";
 const OG_TITLE = "3D Presentation Studio — Branded Matterport Tour Presentations";
 const OG_DESC =
-  "Launch your own white-label studio where clients customize and download self-contained Matterport 3D tour presentations. One-time purchase — no subscriptions, no per-tour fees.";
+  "Launch your own white-label studio where clients customize and download a single HTML Matterport 3D tour presentation file they own and can host anywhere. One-time purchase — no subscriptions, no per-tour fees.";
 const OG_IMAGE = `${SITE_URL}/og-3d-presentation-studio.png`;
 
 export const Route = createFileRoute("/")({
@@ -204,9 +204,9 @@ const salesFeatures = [
 const ownershipFeatures = [
   {
     icon: Globe,
-    title: "Brand + SEO/GEO Sovereignty",
+    title: "Own the File. Host It Anywhere.",
     description:
-      "Clients brand, download, and own the self-contained presentation file, optimized for human & AI search. Host on a variety of platforms,  including cost-free like Netlify or Github.",
+      "Clients brand, download, and own a single HTML presentation file — optimized for human & AI search — and host it anywhere: their own site, a client site, Netlify, GitHub Pages, or another static hosting setup. No platform-locked presentation page.",
   },
   {
     icon: BarChart3,
@@ -572,7 +572,7 @@ function Index() {
 
           {/* Subheadline */}
           <p className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-white/60 sm:text-lg">
-            Give clients a space to build, customize, and download presentations they fully own.
+            Give clients a space to build, customize, and download a portable HTML presentation file they own and can host anywhere.
           </p>
         </div>
 
@@ -701,7 +701,7 @@ function Index() {
             Clients will Love your Studio's  Self-Serve Work Flow
           </h2>
           <p className={`mx-auto mt-3 max-w-2xl text-center text-white/60`}>
-            Hand clients self-serve features — not a service ticket. They configure, brand, and walk away with a permanent, self-contained presentation file.
+            Hand clients self-serve features — not a service ticket. They configure, brand, and walk away with a portable HTML presentation file they own and can host anywhere.
           </p>
 
           {featureGroups.map((group) => (
@@ -946,7 +946,7 @@ function Index() {
             <div>
               <span className={`text-lg font-bold ${textColor}`}>3D Presentation Studio</span>
               <p className={`mt-2 text-sm ${textSubtle}`}>
-                Professional, white-labeled 3D property tour presentations. Your clients/agents customize & pay to download and host anywhere.
+                Professional, white-labeled 3D property tour presentations. Your clients/agents customize and pay to download a portable HTML presentation file they own and can host anywhere.
               </p>
             </div>
             <div>
