@@ -54,11 +54,15 @@ export type Database = {
           country: string
           created_at: string
           email: string
+          essential_services: Database["public"]["Enums"]["marketplace_specialty"][]
           expires_at: string
           id: string
+          match_token: string
           matched_at: string | null
           matched_provider_id: string | null
           name: string | null
+          preferable_services: Database["public"]["Enums"]["marketplace_specialty"][]
+          pro_visibility_until: string | null
           region: string | null
           source_ip: string | null
           status: Database["public"]["Enums"]["beacon_status"]
@@ -75,11 +79,15 @@ export type Database = {
           country?: string
           created_at?: string
           email: string
+          essential_services?: Database["public"]["Enums"]["marketplace_specialty"][]
           expires_at?: string
           id?: string
+          match_token?: string
           matched_at?: string | null
           matched_provider_id?: string | null
           name?: string | null
+          preferable_services?: Database["public"]["Enums"]["marketplace_specialty"][]
+          pro_visibility_until?: string | null
           region?: string | null
           source_ip?: string | null
           status?: Database["public"]["Enums"]["beacon_status"]
@@ -96,11 +104,15 @@ export type Database = {
           country?: string
           created_at?: string
           email?: string
+          essential_services?: Database["public"]["Enums"]["marketplace_specialty"][]
           expires_at?: string
           id?: string
+          match_token?: string
           matched_at?: string | null
           matched_provider_id?: string | null
           name?: string | null
+          preferable_services?: Database["public"]["Enums"]["marketplace_specialty"][]
+          pro_visibility_until?: string | null
           region?: string | null
           source_ip?: string | null
           status?: Database["public"]["Enums"]["beacon_status"]
@@ -232,6 +244,9 @@ export type Database = {
           country: string
           created_at: string
           custom_domain: string | null
+          directory_contact_email: string | null
+          directory_phone: string | null
+          directory_website_url: string | null
           favicon_url: string | null
           flat_price_per_model_cents: number | null
           ga_tracking_id: string | null
@@ -268,6 +283,9 @@ export type Database = {
           country?: string
           created_at?: string
           custom_domain?: string | null
+          directory_contact_email?: string | null
+          directory_phone?: string | null
+          directory_website_url?: string | null
           favicon_url?: string | null
           flat_price_per_model_cents?: number | null
           ga_tracking_id?: string | null
@@ -304,6 +322,9 @@ export type Database = {
           country?: string
           created_at?: string
           custom_domain?: string | null
+          directory_contact_email?: string | null
+          directory_phone?: string | null
+          directory_website_url?: string | null
           favicon_url?: string | null
           flat_price_per_model_cents?: number | null
           ga_tracking_id?: string | null
@@ -895,6 +916,41 @@ export type Database = {
         }
         Relationships: []
       }
+      service_match_interest_events: {
+        Row: {
+          beacon_id: string
+          created_at: string
+          event_type: string
+          id: string
+          metadata: Json
+          provider_id: string
+        }
+        Insert: {
+          beacon_id: string
+          created_at?: string
+          event_type: string
+          id?: string
+          metadata?: Json
+          provider_id: string
+        }
+        Update: {
+          beacon_id?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          metadata?: Json
+          provider_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_match_interest_events_beacon_id_fkey"
+            columns: ["beacon_id"]
+            isOneToOne: false
+            referencedRelation: "agent_beacons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       studio_preview_tokens: {
         Row: {
           created_at: string
@@ -1150,6 +1206,30 @@ export type Database = {
           start_date: string
         }[]
       }
+      get_service_match_results: {
+        Args: { p_match_token: string }
+        Returns: {
+          brand_name: string
+          directory_contact_email: string
+          directory_phone: string
+          directory_website_url: string
+          logo_url: string
+          match_quality: string
+          match_score: number
+          matched_essential: Database["public"]["Enums"]["marketplace_specialty"][]
+          matched_preferable: Database["public"]["Enums"]["marketplace_specialty"][]
+          missing_preferable: Database["public"]["Enums"]["marketplace_specialty"][]
+          primary_city: string
+          provider_id: string
+          region: string
+          slug: string
+          tier: Database["public"]["Enums"]["app_tier"]
+        }[]
+      }
+      get_service_match_summary: {
+        Args: { p_match_token: string }
+        Returns: Json
+      }
       get_user_tier: {
         Args: { check_env?: string; user_uuid: string }
         Returns: string
@@ -1229,6 +1309,14 @@ export type Database = {
           warning_email_sent_at: string
           was_new: boolean
         }[]
+      }
+      record_service_match_interest: {
+        Args: {
+          p_event_type: string
+          p_match_token: string
+          p_provider_id: string
+        }
+        Returns: Json
       }
       resolve_studio_access: {
         Args: { _provider_id: string }
