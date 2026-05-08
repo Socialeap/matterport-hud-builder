@@ -94,6 +94,59 @@ serve(async (req) => {
 
   const matches = claimed ?? [];
 
+  // ---- Additive: MSP Service Match agent emails ----
+  // Independent of claim_pending_beacon_matches. Sends "Your MSP
+  // Service Match is ready" once per beacon that has any service
+  // preferences set.
+  try {
+    const { data: pending } = await supabase
+      .from("agent_beacons")
+      .select("id, email, name, city, region, match_token, essential_services, preferable_services, expires_at, status")
+      .is("service_match_notified_at", null)
+      .eq("status", "waiting")
+      .gt("expires_at", new Date().toISOString())
+      .limit(50);
+
+    for (const b of pending ?? []) {
+      const hasPrefs =
+        (Array.isArray(b.essential_services) && b.essential_services.length > 0) ||
+        (Array.isArray(b.preferable_services) && b.preferable_services.length > 0);
+      if (!hasPrefs) continue;
+
+      const { data: sup } = await supabase
+        .from("suppressed_emails").select("email").eq("email", b.email).maybeSingle();
+      if (sup) continue;
+
+      const cityLabel = b.region ? `${b.city}, ${b.region}` : b.city;
+      const matchUrl = `${SITE_URL}/agents/match/${b.match_token}`;
+
+      const { error: enqErr } = await supabase.rpc("enqueue_email", {
+        queue_name: "transactional_emails",
+        payload: {
+          template_name: "service-match-ready",
+          recipient_email: b.email,
+          data: {
+            agentName: b.name ?? "there",
+            city: cityLabel,
+            essentialServices: b.essential_services ?? [],
+            preferableServices: b.preferable_services ?? [],
+            matchUrl,
+          },
+        },
+      });
+      if (enqErr) {
+        console.error("match-beacons: service-match enqueue failed:", enqErr);
+        continue;
+      }
+      await supabase.from("agent_beacons")
+        .update({ service_match_notified_at: new Date().toISOString() })
+        .eq("id", b.id);
+    }
+  } catch (err) {
+    console.error("match-beacons: service-match branch failed:", err);
+  }
+
+
   let enqueuedAgent = 0;
   let enqueuedProvider = 0;
   let suppressed = 0;
