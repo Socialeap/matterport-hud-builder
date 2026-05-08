@@ -1660,6 +1660,13 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
                     </span>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild className="cursor-pointer">
+                    <a href="/agent-dashboard" target="_blank" rel="noopener noreferrer">
+                      <UserCircle className="size-4" />
+                      My Agent Profile
+                    </a>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onSelect={async () => {
                       await supabase.auth.signOut();
