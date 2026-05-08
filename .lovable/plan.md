@@ -1,90 +1,30 @@
-# Agent Dashboard — Implementation Plan
+## Problem
 
-## Goal
+`/agent-dashboard` crashes with "No QueryClient set, use QueryClientProvider to set one". The page uses `useQuery`/`useMutation`/`useQueryClient` from `@tanstack/react-query`, but the app has never mounted a `QueryClientProvider` — it isn't in `src/routes/__root.tsx` or `src/router.tsx`. This is the first route in the project to use TanStack Query hooks, so the missing provider only surfaced now.
 
-Give signed-in **clients (agents)** their own dashboard, separate from the MSP dashboard. Store one reusable profile that auto-fills the HUD Builder's Agent/Manager Contact section on first load, and show a history of presentations the agent actually downloaded (paid or free) — across every MSP they've worked with.
+## Fix
 
-## User-facing changes
+Mount a single `QueryClientProvider` at the app root so any current/future route can use Query hooks.
 
-1. **`/agents` header** — the "Dashboard" button routes by role:
-   - `provider` or `admin` → `/dashboard` (current behavior, unchanged)
-   - `client` → `/agent-dashboard`
-   - no role yet → `/agent-dashboard` (default for non-MSP signups)
+### 1. `src/router.tsx`
+- Create a fresh `QueryClient` inside `getRouter()` (per-request, SSR-safe — never module-level).
+- Pass it on the router `context` alongside the existing `auth` field.
+- Keep `defaultPreloadStaleTime: 0`.
 
-2. **New page `/agent-dashboard`** (client-protected), two sections:
-   - **My Profile** — name, title/role, company/brokerage, email (read-only, from auth), phone, avatar (with the same WebP optimizer used elsewhere), default welcome note, social links (LinkedIn / X / Instagram / Facebook / TikTok / Other / Website), Google Analytics ID. Save button persists to `profiles`.
-   - **My Presentations** — table of every `saved_models` row owned by this user where the model has been downloaded (`is_released = true` OR `status = 'paid'`). Columns: Primary property name, MSP brand, Paid / Free, Amount, Download date. Sorted newest first.
+### 2. `src/routes/__root.tsx`
+- Wrap `<Outlet />` with `<QueryClientProvider client={queryClient}>` inside `RootComponent`, reading `queryClient` from route context (or via a small accessor). Toaster stays mounted at root.
+- Leave `AuthProvider` in place; QueryClientProvider goes inside it so hooks under authenticated routes work.
 
-3. **HUD Builder header** (`HudBuilderSandbox.tsx`) — add a small "My Agent Profile" link next to the avatar that opens `/agent-dashboard` in a new tab. Visible only when signed in as a client.
+### 3. No changes to `_authenticated.agent-dashboard.tsx`
+- Existing `useQuery`/`useMutation`/`useQueryClient` calls will resolve once the provider is mounted.
 
-4. **Builder autofill** — on builder mount, if the agent contact form is empty (no saved presentation draft for this MSP yet) and the signed-in user has a populated agent profile, seed the form fields from the profile. The agent can edit per-presentation; edits stay local to that presentation and never write back to the profile.
+### 4. Verification
+- Reload `/agents` → click Dashboard → confirm `/agent-dashboard` renders profile + history without the QueryClient error.
+- Confirm other routes (`/dashboard`, `/`, `/p/$slug`) still render — they don't use Query hooks, so behavior is unchanged.
 
-## Backend changes
+## Why this is minimal and safe
 
-### Schema (one migration)
-
-Extend `public.profiles` with the reusable agent fields:
-
-- `title_role text`
-- `company text`
-- `phone text`
-- `welcome_note text`
-- `social_links jsonb default '{}'::jsonb` (keys: linkedin, twitter, instagram, facebook, tiktok, other, website)
-- `ga_tracking_id text`
-
-All nullable. No data migration needed — existing rows stay valid. RLS policies on `profiles` already allow each user to read/update their own row, so no policy changes.
-
-### Download history
-
-Pure read — no new table. Server function `getMyAgentHistory` runs as the authenticated user and returns:
-
-```text
-SELECT sm.id, sm.name, sm.amount_cents, sm.is_released, sm.status,
-       sm.updated_at, sm.properties, bs.brand_name, bs.slug
-FROM saved_models sm
-LEFT JOIN branding_settings bs ON bs.provider_id = sm.provider_id
-WHERE sm.client_id = auth.uid()
-  AND (sm.is_released = true OR sm.status = 'paid')
-ORDER BY sm.updated_at DESC;
-```
-
-Primary property name is derived from `sm.properties[0].name` (fallback to `sm.name`). "Free" = `amount_cents = 0`.
-
-### Server functions (new file `src/lib/agent-profile.functions.ts`)
-
-- `getMyAgentProfile()` — returns the current user's `profiles` row (used by both the dashboard and the builder autofill).
-- `updateMyAgentProfile(input)` — Zod-validated upsert of the agent fields above.
-- `getMyAgentHistory()` — the SELECT above, shaped for the table.
-
-All three use `requireSupabaseAuth` middleware so RLS scopes everything to `auth.uid()`.
-
-## Routing & access control
-
-- New file `src/routes/_authenticated.agent-dashboard.tsx` — sits under the existing `_authenticated` layout, so unauthenticated visitors get redirected to `/login` automatically.
-- Inside the component, if the user's role is `provider` (and not also `client`), render a small "This dashboard is for agents — go to your MSP dashboard" notice with a link to `/dashboard`. We do **not** hard-redirect, because some users may legitimately hold both roles.
-- The `/agents` header button reads roles from the existing `useAuth` hook (already exposes role lookups via `user_roles`) and chooses the destination.
-
-## File touch list
-
-- `supabase/migrations/<new>.sql` — extend `profiles` with the six columns above.
-- `src/lib/agent-profile.functions.ts` — three server functions.
-- `src/routes/_authenticated.agent-dashboard.tsx` — new page.
-- `src/routes/agents.tsx` — make Dashboard button role-aware (~5-line change at line 329-332).
-- `src/components/portal/HudBuilderSandbox.tsx`:
-  - Add header "My Agent Profile" link for clients.
-  - On mount, if `agent` state is still defaults and `getMyAgentProfile()` returns a populated profile, seed the form (one-shot, gated by a ref so re-renders don't overwrite user edits).
-- `src/components/portal/AgentContactSection.tsx` — no changes needed; it already accepts the full set of fields.
-- `src/integrations/supabase/types.ts` — auto-regenerated by the migration (do not edit by hand).
-
-## Things explicitly NOT changing
-
-- No new auth flow — clients already sign in via the existing Google + email/password. The signup/invite path is unchanged.
-- No `agent_studio_visits` table — per your direction, only paid/free downloads are tracked, and that's already in `saved_models`.
-- No changes to `user_roles`, RLS on existing tables, the Stripe checkout flow, the owner self-build bypass, or the generated end-product HTML.
-- The MSP dashboard at `/dashboard` is untouched.
-
-## Risk & rollback
-
-- Migration is purely additive (new nullable columns) — safe to roll back with `ALTER TABLE … DROP COLUMN`.
-- Builder autofill is gated behind a "fields are still empty" check, so it can never overwrite a draft already in progress.
-- If `getMyAgentProfile()` errors, the builder silently falls back to today's behavior (manual entry).
+- Adds one provider; touches two files.
+- Per-request `QueryClient` avoids SSR data leakage.
+- No schema, RLS, or server-fn changes.
+- No edits to `agent-dashboard` logic, so the previously approved feature behavior is preserved.
