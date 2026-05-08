@@ -152,27 +152,28 @@ type FilterOption = {
   label: string;
   icon: typeof Camera;
   note?: string;
+  tooltip: string;
 };
 
 // Group 1: On-site scanning / 3D capture services
 const SCANNING_FILTERS: ReadonlyArray<FilterOption> = [
-  { value: "scan-matterport-pro3", label: "Matterport Pro3", icon: Camera },
-  { value: "scan-drone-aerial", label: "Drone / Aerial", icon: Helicopter },
-  { value: "scan-twilight-photography", label: "Twilight Photography", icon: Sunset },
-  { value: "scan-walkthrough-video-clips" as MarketplaceSpecialty, label: "Walk-through Video Clips", icon: Film },
-  { value: "scan-floor-plans", label: "Floor Plans", icon: Ruler },
-  { value: "scan-dimensional-measurements", label: "Dimensional Measurements", icon: Box },
-  { value: "scan-same-day-turnaround", label: "Same-Day Turnaround", icon: Zap },
+  { value: "scan-matterport-pro3", label: "Matterport Pro3", icon: Camera, tooltip: "High-quality LiDAR scanning for indoor/outdoor 3D tours and high-accuracy spatial data." },
+  { value: "scan-drone-aerial", label: "Drone / Aerial", icon: Helicopter, tooltip: "Stunning bird's-eye views to highlight the property's scale, plot, and neighborhood context." },
+  { value: "scan-twilight-photography", label: "Twilight Photography", icon: Sunset, tooltip: "High-end \"Golden Hour\" hero shots designed to make your listing stop the scroll." },
+  { value: "scan-walkthrough-video-clips" as MarketplaceSpecialty, label: "Walk-through Video Clips", icon: Film, tooltip: "Cinematic, ready-to-post video clips for maximum social media engagement and reach." },
+  { value: "scan-floor-plans", label: "Floor Plans", icon: Ruler, tooltip: "Professional 2D layouts to help buyers visualize flow, room sizes, and furniture placement." },
+  { value: "scan-dimensional-measurements", label: "Dimensional Measurements", icon: Box, tooltip: "More accurate measurements when precise sizing and dimensions matter." },
+  { value: "scan-same-day-turnaround", label: "Two-Day Turnaround", icon: Zap, tooltip: "Get your finalized 3D tour delivered within 48 hrs, not next week." },
 ];
 
-// Group 2: Studio (Production Vault) services with minimum-quantity hints
+// Group 2: Studio services with minimum-quantity hints
 const STUDIO_FILTERS: ReadonlyArray<FilterOption> = [
-  { value: "vault-sound-library", label: "Sound Library", icon: Music2, note: "12+ tracks" },
-  { value: "vault-portal-filters", label: "Visual Portal Filters", icon: Wand2, note: "3+" },
-  { value: "vault-interactive-widgets", label: "Interactive Widgets", icon: Puzzle, note: "2+" },
-  { value: "vault-custom-icons", label: "Custom Iconography", icon: Shapes, note: "2+ sets" },
-  { value: "vault-property-mapper", label: "Property Mapper", icon: MapPinned, note: "6+ maps" },
-  { value: "ai-lead-generation", label: "AI Lead Generation", icon: Magnet },
+  { value: "vault-sound-library", label: "Sound Library", icon: Music2, note: "12+ tracks", tooltip: "Set the mood with curated background music or upload a voice-over intro over an ambient track." },
+  { value: "vault-portal-filters", label: "Visual Portal Filters", icon: Wand2, note: "3+", tooltip: "Professional color grading & style filters that enhance the property's \"vibe.\"" },
+  { value: "vault-interactive-widgets", label: "Interactive Widgets", icon: Puzzle, note: "2+", tooltip: "Interactive overlays for info, comparisons, menus, bookmarks, and more. (Coming Soon)" },
+  { value: "vault-custom-icons", label: "Custom Iconography", icon: Shapes, note: "2+ sets", tooltip: "Branded navigation icons for your agency's unique look & feel. (Coming Soon)" },
+  { value: "vault-property-mapper", label: "Property Mapper", icon: MapPinned, note: "6+ maps", tooltip: "Upload a detailed PDF with property specs used to train the \"Ask About This Property\" chat." },
+  { value: "ai-lead-generation", label: "AI Lead Generation", icon: Magnet, tooltip: "An automated 24/7 assistant to identify and capture buyer leads while you sleep." },
 ];
 
 const SPECIALTY_LABEL: Record<MarketplaceSpecialty, string> = Object.fromEntries(
