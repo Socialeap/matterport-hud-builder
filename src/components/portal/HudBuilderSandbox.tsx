@@ -222,48 +222,44 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
   }, []);
 
   // Autofill the Agent/Manager Contact form from the signed-in user's saved
-  // Agent Profile — but only on first load when the form is still empty.
-  // Edits made here stay local to the presentation and never write back.
+  // Agent Profile — only when the form is still empty. If a draft restore
+  // happens later, applyDraft will overwrite these fields, which is correct.
   const agentAutofilledRef = useRef(false);
   const fetchAgentProfile = useServerFn(getMyAgentProfile);
   useEffect(() => {
     if (!userId || agentAutofilledRef.current) return;
-    // Wait for draft hydration so we don't race the draft restore.
-    if (!draftHydratedRef.current) return;
-    // Don't overwrite anything the user has typed or anything restored from a draft.
-    const isEmpty =
-      !agent.name && !agent.titleRole && !agent.email && !agent.phone &&
-      !agent.welcomeNote && !agent.avatarUrl && !agent.linkedin && !agent.twitter &&
-      !agent.instagram && !agent.facebook && !agent.tiktok && !agent.other &&
-      !agent.website && !agent.gaTrackingId;
-    if (!isEmpty) {
-      agentAutofilledRef.current = true;
-      return;
-    }
     let cancelled = false;
     (async () => {
       try {
         const { profile } = await fetchAgentProfile();
-        if (cancelled || !profile) return;
-        const social = (profile.social_links as Record<string, string>) ?? {};
+        if (cancelled || !profile || agentAutofilledRef.current) return;
         agentAutofilledRef.current = true;
-        setAgent((prev) => ({
-          ...prev,
-          name: profile.display_name ?? prev.name,
-          titleRole: profile.title_role ?? prev.titleRole,
-          email: viewer?.email ?? prev.email,
-          phone: profile.phone ?? prev.phone,
-          welcomeNote: profile.welcome_note ?? prev.welcomeNote,
-          avatarUrl: profile.avatar_url ?? prev.avatarUrl,
-          gaTrackingId: profile.ga_tracking_id ?? prev.gaTrackingId,
-          linkedin: social.linkedin ?? prev.linkedin,
-          twitter: social.twitter ?? prev.twitter,
-          instagram: social.instagram ?? prev.instagram,
-          facebook: social.facebook ?? prev.facebook,
-          tiktok: social.tiktok ?? prev.tiktok,
-          other: social.other ?? prev.other,
-          website: social.website ?? prev.website,
-        }));
+        const social = (profile.social_links as Record<string, string>) ?? {};
+        setAgent((prev) => {
+          const isEmpty =
+            !prev.name && !prev.titleRole && !prev.email && !prev.phone &&
+            !prev.welcomeNote && !prev.avatarUrl && !prev.linkedin && !prev.twitter &&
+            !prev.instagram && !prev.facebook && !prev.tiktok && !prev.other &&
+            !prev.website && !prev.gaTrackingId;
+          if (!isEmpty) return prev;
+          return {
+            ...prev,
+            name: profile.display_name ?? prev.name,
+            titleRole: profile.title_role ?? prev.titleRole,
+            email: viewer?.email ?? prev.email,
+            phone: profile.phone ?? prev.phone,
+            welcomeNote: profile.welcome_note ?? prev.welcomeNote,
+            avatarUrl: profile.avatar_url ?? prev.avatarUrl,
+            gaTrackingId: profile.ga_tracking_id ?? prev.gaTrackingId,
+            linkedin: social.linkedin ?? prev.linkedin,
+            twitter: social.twitter ?? prev.twitter,
+            instagram: social.instagram ?? prev.instagram,
+            facebook: social.facebook ?? prev.facebook,
+            tiktok: social.tiktok ?? prev.tiktok,
+            other: social.other ?? prev.other,
+            website: social.website ?? prev.website,
+          };
+        });
       } catch {
         // Silent fallback — keep manual entry working.
       }
@@ -272,7 +268,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, viewer?.email, draftBannerOpen]);
+  }, [userId, viewer?.email]);
 
   // Check license status — for clients, check the provider's license
   useEffect(() => {
