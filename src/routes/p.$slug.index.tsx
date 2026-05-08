@@ -653,7 +653,7 @@ function PortalPage() {
                 <ComparisonRow accent={accent} text="Full white-label — your brand, front and center" />
                 <ComparisonRow accent={accent} text="You own the presentation file forever" />
                 <ComparisonRow accent={accent} text="AI lead alerts straight to your inbox" />
-                <ComparisonRow accent={accent} text="One-time payment per tour. No subscriptions." />
+                <ComparisonRow accent={accent} text="One-time payment per downloaded presentation. No subscriptions." />
               </ul>
             </div>
           </div>
