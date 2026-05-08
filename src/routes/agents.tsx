@@ -266,7 +266,8 @@ const MOCK_MSPS: DirectoryMSP[] = [
 /* ------------------------------------------------------------------ */
 
 function AgentsPage() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, hasAnyRole } = useAuth();
+  const dashboardTo = hasAnyRole(["provider", "admin"]) ? "/dashboard" : "/agent-dashboard";
   const navigate = useNavigate();
 
   const bg = "#0a0e27";
@@ -327,7 +328,7 @@ function AgentsPage() {
               I'm an MSP →
             </Link>
             {isAuthenticated ? (
-              <Button size="sm" onClick={() => navigate({ to: "/dashboard" })}>
+              <Button size="sm" onClick={() => navigate({ to: dashboardTo })}>
                 Dashboard
               </Button>
             ) : (
