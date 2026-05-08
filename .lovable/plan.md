@@ -1,47 +1,90 @@
-## Problem
+# Agent Dashboard — Implementation Plan
 
-Clicking **Download** on `/builder` as the MSP (Studio owner) returns `"Provider has not connected Stripe"`.
+## Goal
 
-### Trace
+Give signed-in **clients (agents)** their own dashboard, separate from the MSP dashboard. Store one reusable profile that auto-fills the HUD Builder's Agent/Manager Contact section on first load, and show a history of presentations the agent actually downloaded (paid or free) — across every MSP they've worked with.
 
-1. `HudBuilderSandbox.handleDownload` → calls `savePresentation` → inserts `saved_models` row with `client_id = provider_id = userId` (confirmed in DB: row `03c08982…` has `client_id == provider_id`).
-2. Then invokes `create-connect-checkout` edge function.
-3. Edge function source (`supabase/functions/create-connect-checkout/index.ts` lines 99-117) **does** contain the owner self-build bypass that should mark the row paid+released and return `{ free: true, ownerFree: true }` before reaching the Stripe-onboarding gate at line 166.
-4. DB confirms `branding_settings.stripe_onboarding_complete = false` for this provider — that's the gate that fires the error message.
+## User-facing changes
 
-The owner bypass exists in source but the live error means the bypass is not executing. Two likely causes (both addressed below):
+1. **`/agents` header** — the "Dashboard" button routes by role:
+   - `provider` or `admin` → `/dashboard` (current behavior, unchanged)
+   - `client` → `/agent-dashboard`
+   - no role yet → `/agent-dashboard` (default for non-MSP signups)
 
-- **The deployed edge function is stale** — last source edit was 2026-05-07 20:16:47, and recent function logs show only boot/shutdown with no request logs since the user's click. The previous turn implemented the bypass but the function was never explicitly redeployed.
-- The bypass relies on `ownedModel.provider_id === user.id`. Authoritative, but if it ever doesn't match (e.g. admin viewing another provider via owner-equivalent flow) we'd still hit the Stripe gate. We'll keep this exact check — it is the correct authority.
+2. **New page `/agent-dashboard`** (client-protected), two sections:
+   - **My Profile** — name, title/role, company/brokerage, email (read-only, from auth), phone, avatar (with the same WebP optimizer used elsewhere), default welcome note, social links (LinkedIn / X / Instagram / Facebook / TikTok / Other / Website), Google Analytics ID. Save button persists to `profiles`.
+   - **My Presentations** — table of every `saved_models` row owned by this user where the model has been downloaded (`is_released = true` OR `status = 'paid'`). Columns: Primary property name, MSP brand, Paid / Free, Amount, Download date. Sorted newest first.
 
-There is **only one** source of the `"Provider has not connected Stripe"` string — `create-connect-checkout/index.ts:167`. No obsolete code paths to remove elsewhere.
+3. **HUD Builder header** (`HudBuilderSandbox.tsx`) — add a small "My Agent Profile" link next to the avatar that opens `/agent-dashboard` in a new tab. Visible only when signed in as a client.
 
-## Fix
+4. **Builder autofill** — on builder mount, if the agent contact form is empty (no saved presentation draft for this MSP yet) and the signed-in user has a populated agent profile, seed the form fields from the profile. The agent can edit per-presentation; edits stay local to that presentation and never write back to the profile.
 
-### 1. `supabase/functions/create-connect-checkout/index.ts`
+## Backend changes
 
-Tighten the owner bypass and add explicit logging so future failures are diagnosable. Specifically:
-- Keep the existing owner-bypass block at lines 99-117 unchanged in behavior.
-- Add `console.log("[create-connect-checkout] owner self-build bypass", { modelId, userId: user.id })` so deployment correctness is visible in edge logs on the next click.
-- No change to the order: ownership guard → owner bypass → one-time-free → free-client → Stripe gate.
+### Schema (one migration)
 
-### 2. Force redeploy
+Extend `public.profiles` with the reusable agent fields:
 
-Use `supabase--deploy_edge_functions` for `create-connect-checkout` so the bypass is live. (This is the most likely root cause — the source has the fix, but the deployed bundle does not.)
+- `title_role text`
+- `company text`
+- `phone text`
+- `welcome_note text`
+- `social_links jsonb default '{}'::jsonb` (keys: linkedin, twitter, instagram, facebook, tiktok, other, website)
+- `ga_tracking_id text`
 
-### 3. Verification
+All nullable. No data migration needed — existing rows stay valid. RLS policies on `profiles` already allow each user to read/update their own row, so no policy changes.
 
-After deploy:
-- Call the function via `supabase--curl_edge_functions` (or just have the user click Download) and confirm it returns `{ free: true, ownerFree: true }` and `saved_models` row flips to `status='paid'`, `is_released=true`.
-- Check edge logs for the new `owner self-build bypass` line.
+### Download history
 
-## Out of scope / deliberately unchanged
+Pure read — no new table. Server function `getMyAgentHistory` runs as the authenticated user and returns:
 
-- `portal.functions.ts` `savePresentation` — owner-as-free path (lines 116-139) already correct from previous turn.
-- `HudBuilderSandbox.tsx` `isOwnerSelfBuild` UI branch — already correct.
-- Stripe onboarding state for the MSP — irrelevant to owner downloads. Not touched.
-- Public `/p/$slug` checkout, real client checkout, free-invitee flow, admin grants — all untouched.
+```text
+SELECT sm.id, sm.name, sm.amount_cents, sm.is_released, sm.status,
+       sm.updated_at, sm.properties, bs.brand_name, bs.slug
+FROM saved_models sm
+LEFT JOIN branding_settings bs ON bs.provider_id = sm.provider_id
+WHERE sm.client_id = auth.uid()
+  AND (sm.is_released = true OR sm.status = 'paid')
+ORDER BY sm.updated_at DESC;
+```
 
-## Risk
+Primary property name is derived from `sm.properties[0].name` (fallback to `sm.name`). "Free" = `amount_cents = 0`.
 
-Minimal. The only behavior change is one extra `console.log`. The functional fix is the redeploy itself.
+### Server functions (new file `src/lib/agent-profile.functions.ts`)
+
+- `getMyAgentProfile()` — returns the current user's `profiles` row (used by both the dashboard and the builder autofill).
+- `updateMyAgentProfile(input)` — Zod-validated upsert of the agent fields above.
+- `getMyAgentHistory()` — the SELECT above, shaped for the table.
+
+All three use `requireSupabaseAuth` middleware so RLS scopes everything to `auth.uid()`.
+
+## Routing & access control
+
+- New file `src/routes/_authenticated.agent-dashboard.tsx` — sits under the existing `_authenticated` layout, so unauthenticated visitors get redirected to `/login` automatically.
+- Inside the component, if the user's role is `provider` (and not also `client`), render a small "This dashboard is for agents — go to your MSP dashboard" notice with a link to `/dashboard`. We do **not** hard-redirect, because some users may legitimately hold both roles.
+- The `/agents` header button reads roles from the existing `useAuth` hook (already exposes role lookups via `user_roles`) and chooses the destination.
+
+## File touch list
+
+- `supabase/migrations/<new>.sql` — extend `profiles` with the six columns above.
+- `src/lib/agent-profile.functions.ts` — three server functions.
+- `src/routes/_authenticated.agent-dashboard.tsx` — new page.
+- `src/routes/agents.tsx` — make Dashboard button role-aware (~5-line change at line 329-332).
+- `src/components/portal/HudBuilderSandbox.tsx`:
+  - Add header "My Agent Profile" link for clients.
+  - On mount, if `agent` state is still defaults and `getMyAgentProfile()` returns a populated profile, seed the form (one-shot, gated by a ref so re-renders don't overwrite user edits).
+- `src/components/portal/AgentContactSection.tsx` — no changes needed; it already accepts the full set of fields.
+- `src/integrations/supabase/types.ts` — auto-regenerated by the migration (do not edit by hand).
+
+## Things explicitly NOT changing
+
+- No new auth flow — clients already sign in via the existing Google + email/password. The signup/invite path is unchanged.
+- No `agent_studio_visits` table — per your direction, only paid/free downloads are tracked, and that's already in `saved_models`.
+- No changes to `user_roles`, RLS on existing tables, the Stripe checkout flow, the owner self-build bypass, or the generated end-product HTML.
+- The MSP dashboard at `/dashboard` is untouched.
+
+## Risk & rollback
+
+- Migration is purely additive (new nullable columns) — safe to roll back with `ALTER TABLE … DROP COLUMN`.
+- Builder autofill is gated behind a "fields are still empty" check, so it can never overwrite a draft already in progress.
+- If `getMyAgentProfile()` errors, the builder silently falls back to today's behavior (manual entry).

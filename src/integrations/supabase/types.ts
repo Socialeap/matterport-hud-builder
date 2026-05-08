@@ -648,30 +648,48 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null
+          company: string | null
           created_at: string
           display_name: string | null
+          ga_tracking_id: string | null
           id: string
+          phone: string | null
           provider_id: string | null
+          social_links: Json
+          title_role: string | null
           updated_at: string
           user_id: string
+          welcome_note: string | null
         }
         Insert: {
           avatar_url?: string | null
+          company?: string | null
           created_at?: string
           display_name?: string | null
+          ga_tracking_id?: string | null
           id?: string
+          phone?: string | null
           provider_id?: string | null
+          social_links?: Json
+          title_role?: string | null
           updated_at?: string
           user_id: string
+          welcome_note?: string | null
         }
         Update: {
           avatar_url?: string | null
+          company?: string | null
           created_at?: string
           display_name?: string | null
+          ga_tracking_id?: string | null
           id?: string
+          phone?: string | null
           provider_id?: string | null
+          social_links?: Json
+          title_role?: string | null
           updated_at?: string
           user_id?: string
+          welcome_note?: string | null
         }
         Relationships: []
       }
