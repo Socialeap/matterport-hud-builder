@@ -328,7 +328,7 @@ function AgentsPage() {
               I'm an MSP →
             </Link>
             {isAuthenticated ? (
-              <Button size="sm" onClick={() => navigate({ to: "/dashboard" })}>
+              <Button size="sm" onClick={() => navigate({ to: dashboardTo })}>
                 Dashboard
               </Button>
             ) : (
