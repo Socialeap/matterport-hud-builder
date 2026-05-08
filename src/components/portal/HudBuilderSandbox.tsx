@@ -86,6 +86,7 @@ import {
   summarizeReport,
   type QualityCheckResult,
 } from "@/lib/portal/html-quality-check";
+import { getMyAgentProfile } from "@/lib/agent-profile.functions";
 
 const DEFAULT_ACCESS: DraftAccessState = {
   passwordProtected: false,
