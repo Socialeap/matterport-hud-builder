@@ -90,8 +90,13 @@ const fetchBrandingBySlug = createServerFn({ method: "GET" })
       }
     }
 
+    // Strip non-serializable PostGIS geometry columns.
+    const { service_center: _sc, service_polygon: _sp, ...safeBranding } =
+      branding as typeof branding & { service_center?: unknown; service_polygon?: unknown };
+    void _sc; void _sp;
+
     return {
-      branding,
+      branding: safeBranding,
       demoPublished: demoCheck.published,
       lusActive,
       vaultAssetCount: vaultRes.count ?? 0,

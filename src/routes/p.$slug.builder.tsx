@@ -17,7 +17,11 @@ const fetchBrandingForBuilder = createServerFn({ method: "GET" })
     if (error || !branding) {
       return { branding: null };
     }
-    return { branding };
+    // Strip non-serializable PostGIS geometry columns before returning.
+    const { service_center: _sc, service_polygon: _sp, ...safeBranding } =
+      branding as typeof branding & { service_center?: unknown; service_polygon?: unknown };
+    void _sc; void _sp;
+    return { branding: safeBranding };
   });
 
 export const Route = createFileRoute("/p/$slug/builder")({
