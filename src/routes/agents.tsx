@@ -803,42 +803,6 @@ function DirectorySection() {
                   </DialogContent>
                 </Dialog>
 
-                <Dialog open={matchOpen} onOpenChange={setMatchOpen}>
-                  <DialogTrigger asChild>
-                    <Button
-                      size="sm"
-                      disabled={!hasAnyPref}
-                      className="gap-2 bg-cyan-400 text-[#0a0e27] hover:bg-cyan-300 disabled:opacity-50"
-                      title={
-                        hasAnyPref
-                          ? "Create your service-fit match"
-                          : "Mark at least one service Essential or Preferable to enable"
-                      }
-                    >
-                      <Sparkles className="size-4" />
-                      Create MSP Service Match
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="border-white/10 bg-[#0a0e27] text-white sm:max-w-2xl">
-                    <DialogHeader>
-                      <DialogTitle className="text-white">
-                        Create your MSP Service Match
-                      </DialogTitle>
-                      <DialogDescription className="text-white/70">
-                        We'll match studios in your area to the services you marked Essential or
-                        Preferable. For the first 24 hours, only Pro Partners are visible — after
-                        that, the match opens to all qualifying studios.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <ServiceMatchForm
-                      defaultCity={city}
-                      defaultRegion={region}
-                      defaultZip={zip}
-                      essentialServices={essentialServices}
-                      preferableServices={preferableServices}
-                    />
-                  </DialogContent>
-                </Dialog>
               </div>
 
 
