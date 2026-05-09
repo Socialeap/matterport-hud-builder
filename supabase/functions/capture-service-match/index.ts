@@ -184,6 +184,16 @@ serve(async (req) => {
       }
 
       void triggerMatcher();
+      void sendVisitorReadyEmail({
+        beaconId: updated.id,
+        matchToken: updated.match_token,
+        email,
+        name,
+        city: cityRaw,
+        essential,
+        preferable,
+        req,
+      });
       return json(200, { success: true, match_token: updated.match_token });
     }
 
