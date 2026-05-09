@@ -1209,6 +1209,10 @@ export type Database = {
           start_date: string
         }[]
       }
+      get_service_match_detail_for_admin: {
+        Args: { p_match_token: string }
+        Returns: Json
+      }
       get_service_match_requests_for_admin: {
         Args: never
         Returns: {

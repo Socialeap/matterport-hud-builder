@@ -184,6 +184,16 @@ serve(async (req) => {
       }
 
       void triggerMatcher();
+      void sendVisitorReadyEmail({
+        beaconId: updated.id,
+        matchToken: updated.match_token,
+        email,
+        name,
+        city: cityRaw,
+        essential,
+        preferable,
+        req,
+      });
       return json(200, { success: true, match_token: updated.match_token });
     }
 
@@ -193,9 +203,66 @@ serve(async (req) => {
 
   void triggerMatcher();
   if (inserted?.id) void triggerGeocode(inserted.id);
+  if (inserted?.id && inserted?.match_token) {
+    void sendVisitorReadyEmail({
+      beaconId: inserted.id,
+      matchToken: inserted.match_token,
+      email,
+      name,
+      city: cityRaw,
+      essential,
+      preferable,
+      req,
+    });
+  }
 
   return json(200, { success: true, match_token: inserted?.match_token });
 });
+
+async function sendVisitorReadyEmail(args: {
+  beaconId: string;
+  matchToken: string;
+  email: string;
+  name: string | null;
+  city: string;
+  essential: string[];
+  preferable: string[];
+  req: Request;
+}) {
+  try {
+    const origin = Deno.env.get("DASHBOARD_BASE_URL")
+      || args.req.headers.get("origin")
+      || "https://matterport-hud-builder.lovable.app";
+    const matchUrl = `${origin.replace(/\/+$/, "")}/agents/match/${args.matchToken}`;
+
+    const { error: enqueueErr } = await supabase.rpc("enqueue_email", {
+      queue_name: "transactional_emails",
+      payload: {
+        template_name: "service-match-ready",
+        recipient_email: args.email,
+        data: {
+          agentName: args.name ?? undefined,
+          city: args.city,
+          essentialServices: args.essential,
+          preferableServices: args.preferable,
+          matchUrl,
+        },
+      },
+    });
+
+    if (enqueueErr) {
+      console.error("capture-service-match: enqueue_email failed:", enqueueErr);
+      return;
+    }
+
+    await supabase
+      .from("agent_beacons")
+      .update({ service_match_notified_at: new Date().toISOString() })
+      .eq("id", args.beaconId);
+  } catch (err) {
+    console.error("capture-service-match: sendVisitorReadyEmail crashed:", err);
+  }
+}
 
 function triggerMatcher(): Promise<void> {
   const url = `${Deno.env.get("SUPABASE_URL")}/functions/v1/match-beacons`;

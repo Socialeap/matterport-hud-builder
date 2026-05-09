@@ -294,14 +294,13 @@ function AdminServiceMatches() {
                     </td>
                     <td className="px-3 py-2 text-right">
                       <Button asChild size="sm" variant="outline">
-                        <a
-                          href={`/agents/match/${r.match_token}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        <Link
+                          to="/admin/service-matches/$matchToken"
+                          params={{ matchToken: r.match_token }}
                           className="inline-flex items-center gap-1"
                         >
                           Open <ExternalLink className="size-3.5" />
-                        </a>
+                        </Link>
                       </Button>
                     </td>
                   </tr>
