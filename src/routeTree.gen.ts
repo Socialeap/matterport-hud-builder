@@ -37,6 +37,7 @@ import { Route as PSlugDemoRouteImport } from './routes/p.$slug.demo'
 import { Route as PSlugBuilderRouteImport } from './routes/p.$slug.builder'
 import { Route as MarketplaceFeedbackTokenRouteImport } from './routes/marketplace.feedback.$token'
 import { Route as LovableEmailSuppressionRouteImport } from './routes/lovable/email/suppression'
+import { Route as AgentsMatchMatchTokenRouteImport } from './routes/agents.match.$matchToken'
 import { Route as AuthenticatedDashboardVaultRouteImport } from './routes/_authenticated.dashboard.vault'
 import { Route as AuthenticatedDashboardUpgradeRouteImport } from './routes/_authenticated.dashboard.upgrade'
 import { Route as AuthenticatedDashboardStatsRouteImport } from './routes/_authenticated.dashboard.stats'
@@ -196,6 +197,11 @@ const LovableEmailSuppressionRoute = LovableEmailSuppressionRouteImport.update({
   path: '/lovable/email/suppression',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AgentsMatchMatchTokenRoute = AgentsMatchMatchTokenRouteImport.update({
+  id: '/match/$matchToken',
+  path: '/match/$matchToken',
+  getParentRoute: () => AgentsRoute,
+} as any)
 const AuthenticatedDashboardVaultRoute =
   AuthenticatedDashboardVaultRouteImport.update({
     id: '/vault',
@@ -295,7 +301,7 @@ const AuthenticatedDashboardVaultTemplatesRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/agents': typeof AgentsRoute
+  '/agents': typeof AgentsRouteWithChildren
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/opportunities': typeof OpportunitiesRoute
@@ -326,6 +332,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/stats': typeof AuthenticatedDashboardStatsRoute
   '/dashboard/upgrade': typeof AuthenticatedDashboardUpgradeRoute
   '/dashboard/vault': typeof AuthenticatedDashboardVaultRouteWithChildren
+  '/agents/match/$matchToken': typeof AgentsMatchMatchTokenRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/marketplace/feedback/$token': typeof MarketplaceFeedbackTokenRoute
   '/p/$slug/builder': typeof PSlugBuilderRoute
@@ -340,7 +347,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/agents': typeof AgentsRoute
+  '/agents': typeof AgentsRouteWithChildren
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/opportunities': typeof OpportunitiesRoute
@@ -368,6 +375,7 @@ export interface FileRoutesByTo {
   '/dashboard/stats': typeof AuthenticatedDashboardStatsRoute
   '/dashboard/upgrade': typeof AuthenticatedDashboardUpgradeRoute
   '/dashboard/vault': typeof AuthenticatedDashboardVaultRouteWithChildren
+  '/agents/match/$matchToken': typeof AgentsMatchMatchTokenRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/marketplace/feedback/$token': typeof MarketplaceFeedbackTokenRoute
   '/p/$slug/builder': typeof PSlugBuilderRoute
@@ -384,7 +392,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteWithChildren
-  '/agents': typeof AgentsRoute
+  '/agents': typeof AgentsRouteWithChildren
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/opportunities': typeof OpportunitiesRoute
@@ -415,6 +423,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard/stats': typeof AuthenticatedDashboardStatsRoute
   '/_authenticated/dashboard/upgrade': typeof AuthenticatedDashboardUpgradeRoute
   '/_authenticated/dashboard/vault': typeof AuthenticatedDashboardVaultRouteWithChildren
+  '/agents/match/$matchToken': typeof AgentsMatchMatchTokenRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/marketplace/feedback/$token': typeof MarketplaceFeedbackTokenRoute
   '/p/$slug/builder': typeof PSlugBuilderRoute
@@ -462,6 +471,7 @@ export interface FileRouteTypes {
     | '/dashboard/stats'
     | '/dashboard/upgrade'
     | '/dashboard/vault'
+    | '/agents/match/$matchToken'
     | '/lovable/email/suppression'
     | '/marketplace/feedback/$token'
     | '/p/$slug/builder'
@@ -504,6 +514,7 @@ export interface FileRouteTypes {
     | '/dashboard/stats'
     | '/dashboard/upgrade'
     | '/dashboard/vault'
+    | '/agents/match/$matchToken'
     | '/lovable/email/suppression'
     | '/marketplace/feedback/$token'
     | '/p/$slug/builder'
@@ -550,6 +561,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard/stats'
     | '/_authenticated/dashboard/upgrade'
     | '/_authenticated/dashboard/vault'
+    | '/agents/match/$matchToken'
     | '/lovable/email/suppression'
     | '/marketplace/feedback/$token'
     | '/p/$slug/builder'
@@ -566,7 +578,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
-  AgentsRoute: typeof AgentsRoute
+  AgentsRoute: typeof AgentsRouteWithChildren
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   LoginRoute: typeof LoginRoute
   OpportunitiesRoute: typeof OpportunitiesRoute
@@ -787,6 +799,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LovableEmailSuppressionRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/agents/match/$matchToken': {
+      id: '/agents/match/$matchToken'
+      path: '/match/$matchToken'
+      fullPath: '/agents/match/$matchToken'
+      preLoaderRoute: typeof AgentsMatchMatchTokenRouteImport
+      parentRoute: typeof AgentsRoute
+    }
     '/_authenticated/dashboard/vault': {
       id: '/_authenticated/dashboard/vault'
       path: '/vault'
@@ -984,6 +1003,17 @@ const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
   AuthenticatedRouteChildren,
 )
 
+interface AgentsRouteChildren {
+  AgentsMatchMatchTokenRoute: typeof AgentsMatchMatchTokenRoute
+}
+
+const AgentsRouteChildren: AgentsRouteChildren = {
+  AgentsMatchMatchTokenRoute: AgentsMatchMatchTokenRoute,
+}
+
+const AgentsRouteWithChildren =
+  AgentsRoute._addFileChildren(AgentsRouteChildren)
+
 interface PSlugRouteChildren {
   PSlugBuilderRoute: typeof PSlugBuilderRoute
   PSlugDemoRoute: typeof PSlugDemoRoute
@@ -1001,7 +1031,7 @@ const PSlugRouteWithChildren = PSlugRoute._addFileChildren(PSlugRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
-  AgentsRoute: AgentsRoute,
+  AgentsRoute: AgentsRouteWithChildren,
   ForgotPasswordRoute: ForgotPasswordRoute,
   LoginRoute: LoginRoute,
   OpportunitiesRoute: OpportunitiesRoute,
