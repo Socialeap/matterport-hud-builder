@@ -876,14 +876,14 @@ function FilterGroup({
   title,
   subtitle,
   options,
-  selected,
-  onToggle,
+  prefs,
+  onSetPref,
 }: {
   title: string;
   subtitle?: string;
   options: ReadonlyArray<FilterOption>;
-  selected: Set<MarketplaceSpecialty>;
-  onToggle: (id: MarketplaceSpecialty) => void;
+  prefs: Map<MarketplaceSpecialty, ServicePreference>;
+  onSetPref: (id: MarketplaceSpecialty, pref: ServicePreference | null) => void;
 }) {
   return (
     <TooltipProvider delayDuration={150}>
@@ -894,30 +894,54 @@ function FilterGroup({
         </div>
         <div className="space-y-2">
           {options.map((f) => {
-            const checked = selected.has(f.value);
+            const current = prefs.get(f.value) ?? null;
             const Icon = f.icon;
             return (
               <Tooltip key={f.value}>
                 <TooltipTrigger asChild>
-                  <label
-                    className={`flex cursor-pointer items-center gap-2.5 rounded-md border px-2.5 py-2 text-sm transition-colors ${
-                      checked
-                        ? "border-cyan-300/50 bg-cyan-300/10 text-white"
-                        : "border-white/10 bg-white/5 text-white/70 hover:border-white/20 hover:text-white"
+                  <div
+                    className={`flex flex-col gap-1.5 rounded-md border px-2.5 py-2 text-sm transition-colors ${
+                      current
+                        ? "border-cyan-300/40 bg-cyan-300/5 text-white"
+                        : "border-white/10 bg-white/5 text-white/70"
                     }`}
                   >
-                    <Checkbox
-                      checked={checked}
-                      onCheckedChange={() => onToggle(f.value)}
-                      className="border-white/30 data-[state=checked]:bg-cyan-400 data-[state=checked]:text-[#0a0e27]"
-                    />
-                    <Icon className="size-3.5 shrink-0 opacity-70" />
-                    <span className="flex-1 truncate">{f.label}</span>
-                    <Info className="size-3 shrink-0 opacity-50" aria-hidden />
-                    {f.note && (
-                      <span className="shrink-0 text-[10px] text-white/40">{f.note}</span>
-                    )}
-                  </label>
+                    <div className="flex items-center gap-2">
+                      <Icon className="size-3.5 shrink-0 opacity-70" />
+                      <span className="flex-1 truncate">{f.label}</span>
+                      <Info className="size-3 shrink-0 opacity-50" aria-hidden />
+                      {f.note && (
+                        <span className="shrink-0 text-[10px] text-white/40">{f.note}</span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-3 gap-1 rounded bg-white/5 p-0.5">
+                      {([
+                        { v: null, label: "Not Needed" },
+                        { v: "preferable", label: "Preferable" },
+                        { v: "essential", label: "Essential" },
+                      ] as const).map((opt) => {
+                        const active = current === opt.v;
+                        return (
+                          <button
+                            key={opt.label}
+                            type="button"
+                            onClick={() => onSetPref(f.value, opt.v)}
+                            className={`rounded px-1.5 py-1 text-[10px] font-medium transition-colors ${
+                              active
+                                ? opt.v === "essential"
+                                  ? "bg-amber-300 text-[#0a0e27]"
+                                  : opt.v === "preferable"
+                                    ? "bg-cyan-400 text-[#0a0e27]"
+                                    : "bg-white/20 text-white"
+                                : "text-white/60 hover:text-white"
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </TooltipTrigger>
                 <TooltipContent side="right" className="max-w-xs text-xs leading-snug">
                   {f.tooltip}
@@ -930,6 +954,7 @@ function FilterGroup({
     </TooltipProvider>
   );
 }
+
 
 function MSPCard({ msp, isSample = false }: { msp: DirectoryMSP; isSample?: boolean }) {
   const isPro = msp.tier === "pro";
