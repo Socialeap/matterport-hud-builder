@@ -882,6 +882,7 @@ function BrandingPage() {
           </div>
 
           <div className="space-y-2">
+            <Label>Specialties</Label>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {SPECIALTY_OPTIONS.map((opt) => {
                 const checked = branding.specialties.includes(opt.value);
