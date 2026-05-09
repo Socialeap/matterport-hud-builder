@@ -195,6 +195,9 @@ function BrandingPage() {
         // Polygon is loaded separately via get_my_service_polygon RPC
         // (geometry columns aren't natively rendered by Postgrest).
         service_polygon: savedSnapshotRef.current.service_polygon,
+        directory_website_url: data.directory_website_url ?? null,
+        directory_contact_email: data.directory_contact_email ?? null,
+        directory_phone: data.directory_phone ?? null,
       };
       // Only update state if the fetched payload actually differs from
       // what we already have — prevents needless re-renders that would
