@@ -39,6 +39,7 @@ const json = (status: number, body: Record<string, unknown>) =>
   });
 
 serve(async (req) => {
+ try {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -213,6 +214,22 @@ serve(async (req) => {
   }
 
   return json(200, { success: true });
+ } catch (err) {
+  // Top-level safety net: any uncaught throw becomes a clean JSON 500
+  // instead of a hung connection or opaque platform error. Without this,
+  // failures in supabase.from(...) / fetch / etc. surface as the generic
+  // "non-2xx" client toast with no diagnostics.
+  console.error("capture-beacon unhandled error:", err);
+  return new Response(
+    JSON.stringify({
+      error: err instanceof Error ? err.message : "Internal error",
+    }),
+    {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    },
+  );
+ }
 });
 
 /**

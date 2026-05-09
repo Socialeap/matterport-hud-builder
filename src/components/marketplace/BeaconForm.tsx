@@ -127,7 +127,19 @@ export function BeaconForm({
     setSubmitting(false);
 
     if (error) {
-      toast.error("Could not submit. Please try again shortly.");
+      console.error("capture-beacon error:", error);
+      const ctx = (
+        error as {
+          context?: { responseJson?: { error?: string }; status?: number };
+        }
+      ).context;
+      const status = ctx?.status;
+      const msg = ctx?.responseJson?.error ?? error.message;
+      toast.error(
+        msg
+          ? `Could not submit${status ? ` (${status})` : ""}: ${msg}`
+          : "Could not submit. Please try again shortly.",
+      );
       return;
     }
 
