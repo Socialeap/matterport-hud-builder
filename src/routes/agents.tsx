@@ -450,9 +450,19 @@ function DirectorySection() {
       if (cancelled) return;
       if (error) {
         // Non-fatal: empty state will render. Surface in console for ops.
-        console.warn("search_msp_directory (browse-all) failed:", error);
+        console.warn(
+          "[3DPS directory] search_msp_directory (browse-all) failed:",
+          error,
+        );
         setResults([]);
       } else {
+        // Diagnostic: visible in browser console so a tester can confirm the
+        // RPC fired and how many rows came back, even when the UI shows an
+        // empty grid (the most common cause is the seed migration not having
+        // been applied — the row count makes that immediately obvious).
+        console.info(
+          `[3DPS directory] browse-all loaded ${data?.length ?? 0} studios`,
+        );
         setResults((data ?? []) as DirectoryMSP[]);
       }
       setBrowseLoading(false);
@@ -793,7 +803,19 @@ function DirectorySection() {
               )}
 
               {!hasSearched && !browseLoading && !hasResults && (
-                <DirectoryEmptyState />
+                <DirectoryEmptyState
+                  kind={
+                    // results === [] → DB returned zero rows (seed not applied
+                    // / no public studios yet). results.length > 0 with
+                    // filtered to 0 → user filters narrowed the live set.
+                    // results === null is the loading case handled above.
+                    results !== null && results.length === 0
+                      ? "no-data"
+                      : selectedSpecialties.size > 0
+                        ? "filtered"
+                        : "pre-search"
+                  }
+                />
               )}
 
               {hasSearched && !hasResults && (
@@ -1034,10 +1056,52 @@ function MSPCard({ msp }: { msp: DirectoryMSP }) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Directory empty state (pre-search)                                  */
+/*  Directory empty states (variant-driven)                             */
 /* ------------------------------------------------------------------ */
 
-function DirectoryEmptyState() {
+type DirectoryEmptyKind = "no-data" | "filtered" | "pre-search";
+
+function DirectoryEmptyState({
+  kind = "pre-search",
+}: { kind?: DirectoryEmptyKind } = {}) {
+  if (kind === "no-data") {
+    return (
+      <div className="rounded-lg border border-amber-300/30 bg-amber-300/5 p-8 text-center">
+        <Building2 className="mx-auto mb-3 size-6 text-amber-300/70" />
+        <p className="text-sm font-semibold text-amber-100">
+          No studios are listed in the directory yet
+        </p>
+        <p className="mt-2 text-xs leading-relaxed text-amber-100/70">
+          The platform's directory is empty — either no MSPs have activated
+          their public listing, or the test seed migration has not been applied
+          to this Supabase project. Studios will appear here automatically once
+          they activate.
+        </p>
+        <p className="mt-3 text-[11px] text-amber-100/60">
+          If you're testing, verify with{" "}
+          <code className="rounded bg-white/10 px-1 py-0.5">
+            SELECT count(*) FROM public.branding_settings WHERE is_directory_public = TRUE;
+          </code>
+        </p>
+      </div>
+    );
+  }
+
+  if (kind === "filtered") {
+    return (
+      <div className="rounded-lg border border-dashed border-white/15 bg-white/[0.02] p-8 text-center">
+        <Search className="mx-auto mb-3 size-6 text-white/40" />
+        <p className="text-sm font-medium text-white">
+          No studios match your selected service filters
+        </p>
+        <p className="mt-1 text-xs text-white/50">
+          Try removing a few Essential or Preferable services in the filter
+          rail, or click <strong>Reset</strong> to clear all filters.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-lg border border-dashed border-white/15 bg-white/[0.02] p-8 text-center">
       <Search className="mx-auto mb-3 size-6 text-white/40" />

@@ -326,6 +326,22 @@ BEGIN
       score      = EXCLUDED.score,
       updated_at = now();
   END LOOP;
+
+  -- Visibility: surface the resulting row count in supabase db push output
+  -- so the operator can confirm at a glance that all 8 mock MSPs landed and
+  -- that the seed didn't silently abort halfway through.
+  RAISE NOTICE 'seed_mock_msps: % auth.users tagged seed_source=mock-msp-v1', (
+    SELECT count(*) FROM auth.users
+     WHERE raw_app_meta_data->>'seed_source' = 'mock-msp-v1'
+  );
+  RAISE NOTICE 'seed_mock_msps: % public-directory branding_settings rows', (
+    SELECT count(*) FROM public.branding_settings bs
+     WHERE bs.is_directory_public = TRUE
+       AND bs.provider_id IN (
+         SELECT id FROM auth.users
+          WHERE raw_app_meta_data->>'seed_source' = 'mock-msp-v1'
+       )
+  );
 END $$;
 
 -- =============================================================================
