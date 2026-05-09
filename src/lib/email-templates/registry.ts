@@ -17,6 +17,8 @@ import { template as askQuotaWarning } from './ask-quota-warning'
 import { template as beaconMatchFound } from './beacon-match-found'
 import { template as marketplaceLeadAssigned } from './marketplace-lead-assigned'
 import { template as marketplaceOutreach } from './marketplace-outreach'
+import { template as serviceMatchReady } from './service-match-ready'
+import { template as marketplaceLeadInterest } from './marketplace-lead-interest'
 
 export const TEMPLATES: Record<string, TemplateEntry> = {
   'invitation': invitation,
@@ -27,4 +29,6 @@ export const TEMPLATES: Record<string, TemplateEntry> = {
   'beacon-match-found': beaconMatchFound,
   'marketplace-lead-assigned': marketplaceLeadAssigned,
   'marketplace-outreach': marketplaceOutreach,
+  'service-match-ready': serviceMatchReady,
+  'marketplace-lead-interest': marketplaceLeadInterest,
 }
