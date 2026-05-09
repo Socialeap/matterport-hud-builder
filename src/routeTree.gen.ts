@@ -49,6 +49,7 @@ import { Route as AuthenticatedDashboardDemoRouteImport } from './routes/_authen
 import { Route as AuthenticatedDashboardClientsRouteImport } from './routes/_authenticated.dashboard.clients'
 import { Route as AuthenticatedDashboardBrandingRouteImport } from './routes/_authenticated.dashboard.branding'
 import { Route as AuthenticatedDashboardAccountRouteImport } from './routes/_authenticated.dashboard.account'
+import { Route as AuthenticatedAdminServiceMatchesRouteImport } from './routes/_authenticated.admin.service-matches'
 import { Route as AuthenticatedAdminProviderIdRouteImport } from './routes/_authenticated.admin.$providerId'
 import { Route as AuthenticatedAdminServiceMatchesIndexRouteImport } from './routes/_authenticated.admin.service-matches.index'
 import { Route as LovableEmailTransactionalSendRouteImport } from './routes/lovable/email/transactional/send'
@@ -270,6 +271,12 @@ const AuthenticatedDashboardAccountRoute =
     path: '/account',
     getParentRoute: () => AuthenticatedDashboardRoute,
   } as any)
+const AuthenticatedAdminServiceMatchesRoute =
+  AuthenticatedAdminServiceMatchesRouteImport.update({
+    id: '/service-matches',
+    path: '/service-matches',
+    getParentRoute: () => AuthenticatedAdminRoute,
+  } as any)
 const AuthenticatedAdminProviderIdRoute =
   AuthenticatedAdminProviderIdRouteImport.update({
     id: '/$providerId',
@@ -278,9 +285,9 @@ const AuthenticatedAdminProviderIdRoute =
   } as any)
 const AuthenticatedAdminServiceMatchesIndexRoute =
   AuthenticatedAdminServiceMatchesIndexRouteImport.update({
-    id: '/service-matches/',
-    path: '/service-matches/',
-    getParentRoute: () => AuthenticatedAdminRoute,
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedAdminServiceMatchesRoute,
   } as any)
 const LovableEmailTransactionalSendRoute =
   LovableEmailTransactionalSendRouteImport.update({
@@ -308,9 +315,9 @@ const AuthenticatedDashboardVaultTemplatesRoute =
   } as any)
 const AuthenticatedAdminServiceMatchesMatchTokenRoute =
   AuthenticatedAdminServiceMatchesMatchTokenRouteImport.update({
-    id: '/service-matches/$matchToken',
-    path: '/service-matches/$matchToken',
-    getParentRoute: () => AuthenticatedAdminRoute,
+    id: '/$matchToken',
+    path: '/$matchToken',
+    getParentRoute: () => AuthenticatedAdminServiceMatchesRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -335,6 +342,7 @@ export interface FileRoutesByFullPath {
   '/invite/$token': typeof InviteTokenRoute
   '/p/$slug': typeof PSlugRouteWithChildren
   '/admin/$providerId': typeof AuthenticatedAdminProviderIdRoute
+  '/admin/service-matches': typeof AuthenticatedAdminServiceMatchesRouteWithChildren
   '/dashboard/account': typeof AuthenticatedDashboardAccountRoute
   '/dashboard/branding': typeof AuthenticatedDashboardBrandingRoute
   '/dashboard/clients': typeof AuthenticatedDashboardClientsRoute
@@ -430,6 +438,7 @@ export interface FileRoutesById {
   '/invite/$token': typeof InviteTokenRoute
   '/p/$slug': typeof PSlugRouteWithChildren
   '/_authenticated/admin/$providerId': typeof AuthenticatedAdminProviderIdRoute
+  '/_authenticated/admin/service-matches': typeof AuthenticatedAdminServiceMatchesRouteWithChildren
   '/_authenticated/dashboard/account': typeof AuthenticatedDashboardAccountRoute
   '/_authenticated/dashboard/branding': typeof AuthenticatedDashboardBrandingRoute
   '/_authenticated/dashboard/clients': typeof AuthenticatedDashboardClientsRoute
@@ -480,6 +489,7 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/p/$slug'
     | '/admin/$providerId'
+    | '/admin/service-matches'
     | '/dashboard/account'
     | '/dashboard/branding'
     | '/dashboard/clients'
@@ -574,6 +584,7 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/p/$slug'
     | '/_authenticated/admin/$providerId'
+    | '/_authenticated/admin/service-matches'
     | '/_authenticated/dashboard/account'
     | '/_authenticated/dashboard/branding'
     | '/_authenticated/dashboard/clients'
@@ -909,6 +920,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardAccountRouteImport
       parentRoute: typeof AuthenticatedDashboardRoute
     }
+    '/_authenticated/admin/service-matches': {
+      id: '/_authenticated/admin/service-matches'
+      path: '/service-matches'
+      fullPath: '/admin/service-matches'
+      preLoaderRoute: typeof AuthenticatedAdminServiceMatchesRouteImport
+      parentRoute: typeof AuthenticatedAdminRoute
+    }
     '/_authenticated/admin/$providerId': {
       id: '/_authenticated/admin/$providerId'
       path: '/$providerId'
@@ -918,10 +936,10 @@ declare module '@tanstack/react-router' {
     }
     '/_authenticated/admin/service-matches/': {
       id: '/_authenticated/admin/service-matches/'
-      path: '/service-matches'
+      path: '/'
       fullPath: '/admin/service-matches/'
       preLoaderRoute: typeof AuthenticatedAdminServiceMatchesIndexRouteImport
-      parentRoute: typeof AuthenticatedAdminRoute
+      parentRoute: typeof AuthenticatedAdminServiceMatchesRoute
     }
     '/lovable/email/transactional/send': {
       id: '/lovable/email/transactional/send'
@@ -953,28 +971,43 @@ declare module '@tanstack/react-router' {
     }
     '/_authenticated/admin/service-matches/$matchToken': {
       id: '/_authenticated/admin/service-matches/$matchToken'
-      path: '/service-matches/$matchToken'
+      path: '/$matchToken'
       fullPath: '/admin/service-matches/$matchToken'
       preLoaderRoute: typeof AuthenticatedAdminServiceMatchesMatchTokenRouteImport
-      parentRoute: typeof AuthenticatedAdminRoute
+      parentRoute: typeof AuthenticatedAdminServiceMatchesRoute
     }
   }
 }
 
-interface AuthenticatedAdminRouteChildren {
-  AuthenticatedAdminProviderIdRoute: typeof AuthenticatedAdminProviderIdRoute
-  AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
+interface AuthenticatedAdminServiceMatchesRouteChildren {
   AuthenticatedAdminServiceMatchesMatchTokenRoute: typeof AuthenticatedAdminServiceMatchesMatchTokenRoute
   AuthenticatedAdminServiceMatchesIndexRoute: typeof AuthenticatedAdminServiceMatchesIndexRoute
 }
 
+const AuthenticatedAdminServiceMatchesRouteChildren: AuthenticatedAdminServiceMatchesRouteChildren =
+  {
+    AuthenticatedAdminServiceMatchesMatchTokenRoute:
+      AuthenticatedAdminServiceMatchesMatchTokenRoute,
+    AuthenticatedAdminServiceMatchesIndexRoute:
+      AuthenticatedAdminServiceMatchesIndexRoute,
+  }
+
+const AuthenticatedAdminServiceMatchesRouteWithChildren =
+  AuthenticatedAdminServiceMatchesRoute._addFileChildren(
+    AuthenticatedAdminServiceMatchesRouteChildren,
+  )
+
+interface AuthenticatedAdminRouteChildren {
+  AuthenticatedAdminProviderIdRoute: typeof AuthenticatedAdminProviderIdRoute
+  AuthenticatedAdminServiceMatchesRoute: typeof AuthenticatedAdminServiceMatchesRouteWithChildren
+  AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
+}
+
 const AuthenticatedAdminRouteChildren: AuthenticatedAdminRouteChildren = {
   AuthenticatedAdminProviderIdRoute: AuthenticatedAdminProviderIdRoute,
+  AuthenticatedAdminServiceMatchesRoute:
+    AuthenticatedAdminServiceMatchesRouteWithChildren,
   AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
-  AuthenticatedAdminServiceMatchesMatchTokenRoute:
-    AuthenticatedAdminServiceMatchesMatchTokenRoute,
-  AuthenticatedAdminServiceMatchesIndexRoute:
-    AuthenticatedAdminServiceMatchesIndexRoute,
 }
 
 const AuthenticatedAdminRouteWithChildren =
