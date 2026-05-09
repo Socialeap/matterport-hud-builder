@@ -111,6 +111,25 @@ function AdminServiceMatchDetail() {
     );
   }
 
+  if (loadError) {
+    return (
+      <div className="space-y-4">
+        <Button asChild variant="outline" size="sm">
+          <Link to="/admin/service-matches">
+            <ArrowLeft className="mr-1 size-4" /> Back to Service Match Requests
+          </Link>
+        </Button>
+        <Card>
+          <CardContent className="p-8 text-center text-destructive">
+            <p className="font-semibold">Could not load match detail</p>
+            <p className="mt-2 text-sm">{loadError}</p>
+            <p className="mt-2 text-xs text-muted-foreground">Token: <code>{matchToken}</code></p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   if (!data || data.status !== "ok" || !data.beacon) {
     return (
       <div className="space-y-4">
