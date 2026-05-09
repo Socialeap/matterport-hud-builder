@@ -47,6 +47,12 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { HeroSlideshow } from "@/components/HeroSlideshow";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import tmLogo from "@/assets/tm-logo-landscape.png";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
