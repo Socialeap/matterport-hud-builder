@@ -689,21 +689,46 @@ function DirectorySection() {
                 </Button>
               </form>
 
-              <div className="space-y-5">
-                <FilterGroup
-                  title="On-Site Scanning"
-                  options={SCANNING_FILTERS}
-                  prefs={servicePrefs}
-                  onSetPref={setSpecialtyPref}
-                />
-                <FilterGroup
-                  title="Studio Presentation"
-                  subtitle="Minimum-quantity service offering"
-                  options={STUDIO_FILTERS}
-                  prefs={servicePrefs}
-                  onSetPref={setSpecialtyPref}
-                />
-              </div>
+              <Accordion
+                type="single"
+                collapsible
+                defaultValue="scanning"
+                className="space-y-2"
+              >
+                <AccordionItem
+                  value="scanning"
+                  className="rounded-md border border-white/10 bg-white/5"
+                >
+                  <AccordionTrigger className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-white/80 hover:no-underline">
+                    On-Site Scanning
+                  </AccordionTrigger>
+                  <AccordionContent className="px-3 pb-3">
+                    <FilterGroup
+                      title=""
+                      options={SCANNING_FILTERS}
+                      prefs={servicePrefs}
+                      onSetPref={setSpecialtyPref}
+                    />
+                  </AccordionContent>
+                </AccordionItem>
+                <AccordionItem
+                  value="studio"
+                  className="rounded-md border border-white/10 bg-white/5"
+                >
+                  <AccordionTrigger className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-white/80 hover:no-underline">
+                    Studio Presentation
+                  </AccordionTrigger>
+                  <AccordionContent className="px-3 pb-3">
+                    <FilterGroup
+                      title=""
+                      subtitle="Minimum-quantity service offering"
+                      options={STUDIO_FILTERS}
+                      prefs={servicePrefs}
+                      onSetPref={setSpecialtyPref}
+                    />
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
 
               {(hasSearched || selectedSpecialties.size > 0) && (
                 <Button
