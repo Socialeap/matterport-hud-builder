@@ -13,10 +13,10 @@ const supabase = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
 );
 
-const EMAIL_RE = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;
-const ZIP_RE = /^\\d{5}(-\\d{4})?$/;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const ZIP_RE = /^\d{5}(-\d{4})?$/;
 const US_REGION_RE = /^[A-Z]{2}$/;
-const normalizeCity = (s: string) => s.trim().replace(/\\s+/g, " ");
+const normalizeCity = (s: string) => s.trim().replace(/\s+/g, " ");
 
 const ALLOWED_SPECIALTIES = new Set<string>([
   "scan-matterport-pro3",
