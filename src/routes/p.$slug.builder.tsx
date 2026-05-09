@@ -1,3 +1,4 @@
+import type React from "react";
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
@@ -17,7 +18,11 @@ const fetchBrandingForBuilder = createServerFn({ method: "GET" })
     if (error || !branding) {
       return { branding: null };
     }
-    return { branding };
+    // Strip non-serializable PostGIS geometry columns before returning.
+    const { service_center: _sc, service_polygon: _sp, ...safeBranding } =
+      branding as typeof branding & { service_center?: unknown; service_polygon?: unknown };
+    void _sc; void _sp;
+    return { branding: safeBranding };
   });
 
 export const Route = createFileRoute("/p/$slug/builder")({
@@ -73,7 +78,10 @@ function BuilderPage() {
 
   return (
     <IndexingProvider>
-      <HudBuilderSandbox branding={branding} slug={slug} />
+      <HudBuilderSandbox
+        branding={branding as React.ComponentProps<typeof HudBuilderSandbox>["branding"]}
+        slug={slug}
+      />
     </IndexingProvider>
   );
 }

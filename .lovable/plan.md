@@ -1,42 +1,41 @@
-## Findings
+## Root cause found
 
-The admin service-match detail URL is registered, but the route hierarchy is wired incorrectly:
+The request row exists in the database. Token `40449da8-cdf8-4c1b-bf31-5524f73c8a6c` maps to Shakoure Char’s Queens Village, NY service-match request, so the token itself is not invalid.
 
-```text
-/admin
-  /service-matches          <- table page
-    /$matchToken            <- detail page
-```
+The failure is downstream: the service-match detail RPC calls `get_service_match_results()`, which depends on a missing database helper: `public._is_provider_serving_beacon(uuid, uuid)`. That helper and its geocoding support columns are referenced by the current matching functions, but they are not present in the live database. When the admin detail page calls the RPC, the result-fetching step can crash and the UI collapses into the misleading “Match not found” state.
 
-Because `/admin/service-matches` currently renders the table directly and does not render an `<Outlet />`, the child route `/admin/service-matches/$matchToken` can match but its detail component is not mounted. That explains why clicking **Open** appears to do nothing or lands back in an existing dashboard/admin view instead of showing the match details.
+A second related data issue is also visible: there are currently zero MSPs marked as public directory candidates (`is_directory_public = true`), so once the backend crash is fixed, the page may correctly show “No qualifying MSPs yet” unless provider directory settings are completed.
 
-I also found a second risk: the admin layout redirects to `/dashboard` when `roles` is still empty, even if the user session has loaded but role lookup has not completed yet. This can create intermittent false redirects to the MSP Dashboard Overview.
+## Safest implementation plan
 
-## Safest fix plan
+1. **Repair the missing backend matching dependency**
+   - Add an idempotent migration that restores the geospatial support expected by service-match functions:
+     - `agent_beacons.lat`, `agent_beacons.lng`, `agent_beacons.geocoded_at`, generated `agent_beacons.beacon_point`
+     - `branding_settings.geocoded_at`, `branding_settings.service_polygon`, generated `branding_settings.service_center`
+     - `public._is_provider_serving_beacon(provider_id, beacon_id)`
+   - Use `CREATE EXTENSION IF NOT EXISTS` and `ADD COLUMN IF NOT EXISTS` so existing data is preserved.
+   - Keep matching logic unchanged: provider must be public, serve the visitor location, and satisfy all Essential services.
 
-1. **Repair the admin service-match route hierarchy**
-   - Convert `src/routes/_authenticated.admin.service-matches.tsx` into a lightweight layout route that renders `<Outlet />`.
-   - Move the current request table UI into a new index child route at `src/routes/_authenticated.admin.service-matches.index.tsx`.
-   - Keep the existing detail route at `src/routes/_authenticated.admin.service-matches.$matchToken.tsx` so `/admin/service-matches/:token` renders inside the service-match layout.
-   - This is the least invasive fix because it preserves the public URL structure and avoids forcing all admin links to change again.
+2. **Preserve privacy and access boundaries**
+   - Keep the visitor match page public but PII-free.
+   - Keep the admin detail RPC admin-only for visitor name, email, company, and full request context.
+   - Do not widen direct table access to `agent_beacons`.
 
-2. **Harden admin auth-role loading**
-   - Update `useAuth()` so `isLoading` remains true until roles are fetched for the signed-in user.
-   - Update the admin layout so it does not redirect to `/dashboard` while roles are still being resolved.
-   - This prevents valid admins from being bounced to the MSP Dashboard Overview during a direct deep-link load.
+3. **Make the admin detail page report real backend errors**
+   - Update `src/routes/_authenticated.admin.service-matches.$matchToken.tsx` so RPC errors display an admin-facing error state instead of pretending the token was not found.
+   - Keep true `status: "not_found"` only for actual missing rows.
+   - This prevents future backend regressions from being misdiagnosed as bad tokens.
 
-3. **Verify the detail route and public visitor route wiring**
-   - Confirm the admin table **Open** button still targets `/admin/service-matches/$matchToken`.
-   - Confirm the admin detail page’s **Open visitor view** button targets `/agents/match/$matchToken` only for the PII-free public visitor view.
-   - Leave `/agents/match/$matchToken` public and PII-free per the service-match privacy requirement.
+4. **Make the public `/agents/match/$matchToken` page report RPC failures separately**
+   - Capture errors from `get_service_match_summary` and `get_service_match_results`.
+   - Show “Unable to load match” for backend/RPC failures, and keep “Match not found” only for a real not-found response.
+   - Preserve the existing PII-free result rendering.
 
-4. **Check backend function calls without widening access**
-   - Keep `get_service_match_detail_for_admin(p_match_token)` admin-only.
-   - Keep `get_service_match_summary`, `get_service_match_results`, and `record_service_match_interest` behavior unchanged unless validation shows a specific failure.
-   - Do not expose visitor PII outside the admin-only route.
+5. **Re-verify the route wiring**
+   - Confirm `/admin/service-matches` renders the request table.
+   - Confirm each Open button targets `/admin/service-matches/$matchToken`.
+   - Confirm the admin detail “Open visitor view” button targets `/agents/match/$matchToken`.
+   - Confirm both known request tokens return a real detail page or a truthful “no qualifying MSPs yet” state, not a false “not found.”
 
-5. **Validation after implementation**
-   - Open `/admin/service-matches` and confirm the request table renders.
-   - Open `/admin/service-matches/40449da8-cdf8-4c1b-bf31-5524f73c8a6c` directly and confirm the admin detail component renders rather than the dashboard overview.
-   - Confirm the page calls `get_service_match_detail_for_admin` and shows either visitor details plus MSP matches or a clear “not found” state.
-   - Open `/agents/match/40449da8-cdf8-4c1b-bf31-5524f73c8a6c` and confirm it remains a separate public visitor match page with no visitor PII.
+6. **Post-fix data note**
+   - If the page loads but shows zero matched MSPs, the remaining blocker is provider directory setup: MSP rows need `is_directory_public = true`, service location fields, specialties, and slugs. I will not silently change provider directory visibility or specialties because that affects marketplace exposure.

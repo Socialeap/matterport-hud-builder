@@ -128,7 +128,11 @@ export const getPublicDemoBySlug = createServerFn({ method: "GET" })
       .eq("is_published", true)
       .maybeSingle();
 
-    return { branding, demo };
+    // Strip non-serializable PostGIS geometry columns.
+    const { service_center: _sc, service_polygon: _sp, ...safeBranding } =
+      branding as typeof branding & { service_center?: unknown; service_polygon?: unknown };
+    void _sc; void _sp;
+    return { branding: safeBranding, demo };
   });
 
 /**

@@ -68,12 +68,14 @@ const formatLabel = (s: string) =>
 function AdminServiceMatchDetail() {
   const { matchToken } = Route.useParams();
   const [data, setData] = useState<DetailPayload | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
     (async () => {
       setLoading(true);
+      setLoadError(null);
       const { data: rpc, error } = await supabase.rpc(
         "get_service_match_detail_for_admin",
         { p_match_token: matchToken },
@@ -81,7 +83,8 @@ function AdminServiceMatchDetail() {
       if (!active) return;
       if (error) {
         console.error("admin match detail load failed:", error);
-        setData({ status: "not_found" });
+        setLoadError(error.message || "Backend request failed");
+        setData(null);
       } else {
         setData(rpc as unknown as DetailPayload);
       }
@@ -104,6 +107,25 @@ function AdminServiceMatchDetail() {
     return (
       <div className="flex items-center justify-center py-24 text-muted-foreground">
         <Loader2 className="mr-2 size-5 animate-spin" /> Loading match…
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="space-y-4">
+        <Button asChild variant="outline" size="sm">
+          <Link to="/admin/service-matches">
+            <ArrowLeft className="mr-1 size-4" /> Back to Service Match Requests
+          </Link>
+        </Button>
+        <Card>
+          <CardContent className="p-8 text-center text-destructive">
+            <p className="font-semibold">Could not load match detail</p>
+            <p className="mt-2 text-sm">{loadError}</p>
+            <p className="mt-2 text-xs text-muted-foreground">Token: <code>{matchToken}</code></p>
+          </CardContent>
+        </Card>
       </div>
     );
   }
