@@ -597,6 +597,23 @@ function DirectorySection() {
     [servicePrefs],
   );
 
+  const essentialServices = useMemo(
+    () =>
+      Array.from(servicePrefs.entries())
+        .filter(([, p]) => p === "essential")
+        .map(([s]) => s),
+    [servicePrefs],
+  );
+  const preferableServices = useMemo(
+    () =>
+      Array.from(servicePrefs.entries())
+        .filter(([, p]) => p === "preferable")
+        .map(([s]) => s),
+    [servicePrefs],
+  );
+  const hasAnyServiceSelected =
+    essentialServices.length > 0 || preferableServices.length > 0;
+
 
   const reset = () => {
     setCity("");
