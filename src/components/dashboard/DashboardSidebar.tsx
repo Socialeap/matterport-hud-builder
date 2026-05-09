@@ -33,6 +33,7 @@ import {
   BarChart2,
   Shield,
   Store,
+  ClipboardCheck,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -42,6 +43,7 @@ type NavRoute =
   | "/dashboard"
   | "/dashboard/branding"
   | "/dashboard/marketplace"
+  | "/dashboard/work-orders"
   | "/dashboard/vault"
   | "/dashboard/pricing"
   | "/dashboard/orders"
@@ -64,6 +66,7 @@ const allNavItems: readonly NavItem[] = [
   { label: "Overview", to: "/dashboard", icon: LayoutDashboard, roles: ["provider", "client"] },
   { label: "Branding", to: "/dashboard/branding", icon: Palette, roles: ["provider"] },
   { label: "Marketplace", to: "/dashboard/marketplace", icon: Store, roles: ["provider"] },
+  { label: "Work Orders", to: "/dashboard/work-orders", icon: ClipboardCheck, roles: ["provider"] },
   { label: "Production Vault", to: "/dashboard/vault", icon: Archive, roles: ["provider"], requiresPaid: true },
   { label: "Pricing", to: "/dashboard/pricing", icon: DollarSign, roles: ["provider"] },
   { label: "Orders", to: "/dashboard/orders", icon: ShoppingCart, roles: ["provider", "client"] },

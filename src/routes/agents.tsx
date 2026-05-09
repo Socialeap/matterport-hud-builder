@@ -11,7 +11,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Bot,
@@ -566,6 +565,8 @@ const ZIP_RE = /^\d{5}(-\d{4})?$/;
 const STATE_RE = /^[A-Z]{2}$/;
 
 function DirectorySection() {
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const navigate = useNavigate();
   const [searchMode, setSearchMode] = useState<"city" | "zip">("city");
   const [city, setCity] = useState("");
   const [region, setRegion] = useState("");
@@ -573,6 +574,17 @@ function DirectorySection() {
   const [results, setResults] = useState<DirectoryMSP[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [notifyOpen, setNotifyOpen] = useState(false);
+
+  const requireAuthThen = (open: () => void) => {
+    if (authLoading) return;
+    if (!isAuthenticated) {
+      const next = encodeURIComponent("/agents#directory");
+      toast.message("Please sign in to submit a request.");
+      navigate({ to: `/login?next=${next}` });
+      return;
+    }
+    open();
+  };
   
   const [lastQuery, setLastQuery] = useState<{ city: string; region: string; zip: string } | null>(
     null,
@@ -823,16 +835,18 @@ function DirectorySection() {
             <div className="space-y-4">
               <div className="flex flex-wrap justify-end gap-2">
                 <Dialog open={notifyOpen} onOpenChange={setNotifyOpen}>
-                  <DialogTrigger asChild>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="gap-2 border-white/15 bg-white/5 text-white/80 hover:bg-white/10 hover:text-white"
-                    >
-                      <MailCheck className="size-4" />
-                      Notify Me When Matches Are Available
-                    </Button>
-                  </DialogTrigger>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-2 border-white/15 bg-white/5 text-white/80 hover:bg-white/10 hover:text-white"
+                    onClick={() => requireAuthThen(() => setNotifyOpen(true))}
+                    disabled={authLoading}
+                  >
+                    <MailCheck className="size-4" />
+                    {isAuthenticated
+                      ? "Notify Me When Matches Are Available"
+                      : "Sign in to request matches"}
+                  </Button>
                   <DialogContent className="border-white/10 bg-[#0a0e27] text-white sm:max-w-lg">
                     <DialogHeader>
                       <DialogTitle className="text-white">
@@ -879,17 +893,37 @@ function DirectorySection() {
                       No Pro Partner in {lastQuery!.city || lastQuery!.zip} yet.
                     </h3>
                     <p className="mt-1 text-sm text-white/70">
-                      Be first in line. Drop your details below and we'll email you the moment a
+                      Be first in line. Sign in below and we'll email you the moment a
                       local Pro Partner activates in your market.
                     </p>
                   </div>
-                  <BeaconForm
-                    defaultCity={lastQuery!.city}
-                    defaultRegion={lastQuery!.region}
-                    defaultZip={lastQuery!.zip}
-                    variant="dark"
-                    hideLocationFields
-                  />
+                  {isAuthenticated ? (
+                    <BeaconForm
+                      defaultCity={lastQuery!.city}
+                      defaultRegion={lastQuery!.region}
+                      defaultZip={lastQuery!.zip}
+                      variant="dark"
+                      hideLocationFields
+                    />
+                  ) : (
+                    <div className="rounded-md border border-white/10 bg-white/5 p-5 text-sm text-white/80">
+                      <p>
+                        We require sign-in for new requests so MSPs only receive
+                        intent-driven inquiries.
+                      </p>
+                      <Button
+                        size="sm"
+                        className="mt-3 gap-2"
+                        onClick={() =>
+                          navigate({
+                            to: `/login?next=${encodeURIComponent("/agents#directory")}`,
+                          })
+                        }
+                      >
+                        Sign in to be notified
+                      </Button>
+                    </div>
+                  )}
                   <DemoPreview mocks={visibleMocks} />
                 </div>
               )}
