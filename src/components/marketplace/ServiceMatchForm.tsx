@@ -72,7 +72,13 @@ export function ServiceMatchForm({
     });
     setSubmitting(false);
 
-    if (error) return toast.error("Could not submit. Please try again shortly.");
+    if (error) {
+      console.error("capture-service-match error:", error);
+      const msg =
+        (error as { context?: { responseJson?: { error?: string } } })?.context
+          ?.responseJson?.error ?? error.message;
+      return toast.error(msg ? `Could not submit: ${msg}` : "Could not submit. Please try again shortly.");
+    }
     const matchToken = (data as { match_token?: string })?.match_token;
     setSubmitted({ matchToken });
     toast.success("Your MSP Service Match is on its way");
