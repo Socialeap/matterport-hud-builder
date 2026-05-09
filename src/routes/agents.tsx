@@ -53,7 +53,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { BeaconForm } from "@/components/marketplace/BeaconForm";
-import { ServiceMatchForm } from "@/components/marketplace/ServiceMatchForm";
+
 import { buildStudioUrl } from "@/lib/public-url";
 import type { Database } from "@/integrations/supabase/types";
 
@@ -218,7 +218,13 @@ const MOCK_MSPS: DirectoryMSP[] = [
     slug: null,
     logo_url: null,
     tier: "starter",
-    specialties: ["scan-matterport-pro3", "scan-floor-plans", "scan-same-day-turnaround"],
+    specialties: [
+      "scan-matterport-pro3",
+      "scan-floor-plans",
+      "scan-same-day-turnaround",
+      "scan-walkthrough-video-clips" as MarketplaceSpecialty,
+      "scan-dimensional-measurements",
+    ],
     primary_city: "San Diego",
     region: "CA",
   },
@@ -241,7 +247,13 @@ const MOCK_MSPS: DirectoryMSP[] = [
     slug: null,
     logo_url: null,
     tier: "starter",
-    specialties: ["scan-matterport-pro3", "scan-drone-aerial", "vault-custom-icons"],
+    specialties: [
+      "scan-matterport-pro3",
+      "scan-drone-aerial",
+      "vault-custom-icons",
+      "scan-walkthrough-video-clips" as MarketplaceSpecialty,
+      "scan-same-day-turnaround",
+    ],
     primary_city: "Austin",
     region: "TX",
   },
@@ -256,6 +268,7 @@ const MOCK_MSPS: DirectoryMSP[] = [
       "vault-sound-library",
       "vault-property-mapper",
       "ai-lead-generation",
+      "vault-interactive-widgets",
     ],
     primary_city: "Denver",
     region: "CO",
@@ -265,7 +278,12 @@ const MOCK_MSPS: DirectoryMSP[] = [
     slug: null,
     logo_url: null,
     tier: "starter",
-    specialties: ["scan-matterport-pro3", "scan-floor-plans", "vault-portal-filters"],
+    specialties: [
+      "scan-matterport-pro3",
+      "scan-floor-plans",
+      "vault-portal-filters",
+      "vault-custom-icons",
+    ],
     primary_city: "Boston",
     region: "MA",
   },
@@ -512,7 +530,7 @@ function DirectorySection() {
   const [results, setResults] = useState<DirectoryMSP[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [notifyOpen, setNotifyOpen] = useState(false);
-  const [matchOpen, setMatchOpen] = useState(false);
+  
   const [lastQuery, setLastQuery] = useState<{ city: string; region: string; zip: string } | null>(
     null,
   );
@@ -536,15 +554,6 @@ function DirectorySection() {
     [servicePrefs],
   );
 
-  const essentialServices = useMemo(
-    () => Array.from(servicePrefs.entries()).filter(([, v]) => v === "essential").map(([k]) => k),
-    [servicePrefs],
-  );
-  const preferableServices = useMemo(
-    () => Array.from(servicePrefs.entries()).filter(([, v]) => v === "preferable").map(([k]) => k),
-    [servicePrefs],
-  );
-  const hasAnyPref = essentialServices.length > 0 || preferableServices.length > 0;
 
   const reset = () => {
     setCity("");
@@ -785,42 +794,6 @@ function DirectorySection() {
                   </DialogContent>
                 </Dialog>
 
-                <Dialog open={matchOpen} onOpenChange={setMatchOpen}>
-                  <DialogTrigger asChild>
-                    <Button
-                      size="sm"
-                      disabled={!hasAnyPref}
-                      className="gap-2 bg-cyan-400 text-[#0a0e27] hover:bg-cyan-300 disabled:opacity-50"
-                      title={
-                        hasAnyPref
-                          ? "Create your service-fit match"
-                          : "Mark at least one service Essential or Preferable to enable"
-                      }
-                    >
-                      <Sparkles className="size-4" />
-                      Create MSP Service Match
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="border-white/10 bg-[#0a0e27] text-white sm:max-w-2xl">
-                    <DialogHeader>
-                      <DialogTitle className="text-white">
-                        Create your MSP Service Match
-                      </DialogTitle>
-                      <DialogDescription className="text-white/70">
-                        We'll match studios in your area to the services you marked Essential or
-                        Preferable. For the first 24 hours, only Pro Partners are visible — after
-                        that, the match opens to all qualifying studios.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <ServiceMatchForm
-                      defaultCity={city}
-                      defaultRegion={region}
-                      defaultZip={zip}
-                      essentialServices={essentialServices}
-                      preferableServices={preferableServices}
-                    />
-                  </DialogContent>
-                </Dialog>
               </div>
 
 
