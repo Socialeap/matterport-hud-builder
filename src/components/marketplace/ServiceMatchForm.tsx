@@ -74,10 +74,18 @@ export function ServiceMatchForm({
 
     if (error) {
       console.error("capture-service-match error:", error);
-      const msg =
-        (error as { context?: { responseJson?: { error?: string } } })?.context
-          ?.responseJson?.error ?? error.message;
-      return toast.error(msg ? `Could not submit: ${msg}` : "Could not submit. Please try again shortly.");
+      const ctx = (
+        error as {
+          context?: { responseJson?: { error?: string }; status?: number };
+        }
+      ).context;
+      const status = ctx?.status;
+      const msg = ctx?.responseJson?.error ?? error.message;
+      return toast.error(
+        msg
+          ? `Could not submit${status ? ` (${status})` : ""}: ${msg}`
+          : "Could not submit. Please try again shortly.",
+      );
     }
     const matchToken = (data as { match_token?: string })?.match_token;
     setSubmitted({ matchToken });

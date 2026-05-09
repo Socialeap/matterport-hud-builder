@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -435,7 +435,32 @@ function DirectorySection() {
   const [zip, setZip] = useState("");
   const [results, setResults] = useState<DirectoryMSP[] | null>(null);
   const [searching, setSearching] = useState(false);
+  const [browseLoading, setBrowseLoading] = useState(true);
   const [notifyOpen, setNotifyOpen] = useState(false);
+
+  // Browse-all on mount: populate the directory grid with every
+  // is_directory_public MSP (no city/zip filter) so visitors immediately
+  // see the seeded studios. Searching narrows this list via the existing
+  // handleSearch flow; this effect runs once and never overrides results
+  // after the user has searched (lastQuery !== null).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase.rpc("search_msp_directory", {});
+      if (cancelled) return;
+      if (error) {
+        // Non-fatal: empty state will render. Surface in console for ops.
+        console.warn("search_msp_directory (browse-all) failed:", error);
+        setResults([]);
+      } else {
+        setResults((data ?? []) as DirectoryMSP[]);
+      }
+      setBrowseLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const requireAuthThen = (open: () => void) => {
     if (authLoading) return;
@@ -739,7 +764,37 @@ function DirectorySection() {
               </div>
 
 
-              {!hasSearched && <DirectoryEmptyState />}
+              {!hasSearched && browseLoading && (
+                <div className="flex items-center justify-center py-16 text-sm text-white/50">
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                  Loading studios…
+                </div>
+              )}
+
+              {!hasSearched && !browseLoading && hasResults && (
+                <>
+                  <p className="text-sm text-white/60">
+                    Browsing{" "}
+                    <span className="font-medium text-white">
+                      {filtered!.length}{" "}
+                      {filtered!.length === 1 ? "studio" : "studios"}
+                    </span>
+                    {selectedSpecialties.size > 0
+                      ? " matching your service filters"
+                      : " in the directory"}{" "}
+                    — search by city or ZIP to narrow.
+                  </p>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {filtered!.map((m) => (
+                      <MSPCard key={`${m.slug ?? m.brand_name}`} msp={m} />
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {!hasSearched && !browseLoading && !hasResults && (
+                <DirectoryEmptyState />
+              )}
 
               {hasSearched && !hasResults && (
                 <div className="space-y-6">

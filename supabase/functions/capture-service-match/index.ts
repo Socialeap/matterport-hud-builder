@@ -63,6 +63,7 @@ function sanitizeServices(input: unknown): string[] {
 }
 
 serve(async (req) => {
+ try {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") return json(405, { error: "Method not allowed" });
 
@@ -221,6 +222,19 @@ serve(async (req) => {
   }
 
   return json(200, { success: true, match_token: inserted?.match_token });
+ } catch (err) {
+  // Top-level safety net (see capture-beacon for rationale).
+  console.error("capture-service-match unhandled error:", err);
+  return new Response(
+    JSON.stringify({
+      error: err instanceof Error ? err.message : "Internal error",
+    }),
+    {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    },
+  );
+ }
 });
 
 async function sendVisitorReadyEmail(args: {
