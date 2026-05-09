@@ -34,7 +34,7 @@ import type { Database } from "@/integrations/supabase/types";
 
 type MarketplaceSpecialty = Database["public"]["Enums"]["marketplace_specialty"];
 
-export const Route = createFileRoute("/_authenticated/admin/service-matches")({
+export const Route = createFileRoute("/_authenticated/admin/service-matches/")({
   component: AdminServiceMatches,
 });
 
