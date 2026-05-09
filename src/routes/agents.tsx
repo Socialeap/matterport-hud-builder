@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
+
 import {
   Dialog,
   DialogContent,
@@ -53,8 +53,11 @@ import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { BeaconForm } from "@/components/marketplace/BeaconForm";
+import { ServiceMatchForm } from "@/components/marketplace/ServiceMatchForm";
 import { buildStudioUrl } from "@/lib/public-url";
 import type { Database } from "@/integrations/supabase/types";
+
+type ServicePreference = "essential" | "preferable";
 
 type MarketplaceSpecialty = Database["public"]["Enums"]["marketplace_specialty"];
 
@@ -509,28 +512,46 @@ function DirectorySection() {
   const [results, setResults] = useState<DirectoryMSP[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [notifyOpen, setNotifyOpen] = useState(false);
+  const [matchOpen, setMatchOpen] = useState(false);
   const [lastQuery, setLastQuery] = useState<{ city: string; region: string; zip: string } | null>(
     null,
   );
-  const [selectedSpecialties, setSelectedSpecialties] = useState<Set<MarketplaceSpecialty>>(
-    new Set(),
+  // Three-state preferences map. Absent = "Not Needed".
+  const [servicePrefs, setServicePrefs] = useState<Map<MarketplaceSpecialty, ServicePreference>>(
+    new Map(),
   );
 
-  const toggleSpecialty = (id: MarketplaceSpecialty) => {
-    setSelectedSpecialties((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+  const setSpecialtyPref = (id: MarketplaceSpecialty, pref: ServicePreference | null) => {
+    setServicePrefs((prev) => {
+      const next = new Map(prev);
+      if (pref === null) next.delete(id);
+      else next.set(id, pref);
       return next;
     });
   };
+
+  // Any selected preference (essential OR preferable) acts as a directory filter.
+  const selectedSpecialties = useMemo(
+    () => new Set<MarketplaceSpecialty>(servicePrefs.keys()),
+    [servicePrefs],
+  );
+
+  const essentialServices = useMemo(
+    () => Array.from(servicePrefs.entries()).filter(([, v]) => v === "essential").map(([k]) => k),
+    [servicePrefs],
+  );
+  const preferableServices = useMemo(
+    () => Array.from(servicePrefs.entries()).filter(([, v]) => v === "preferable").map(([k]) => k),
+    [servicePrefs],
+  );
+  const hasAnyPref = essentialServices.length > 0 || preferableServices.length > 0;
 
   const reset = () => {
     setCity("");
     setRegion("");
     setZip("");
     setResults(null);
-    setSelectedSpecialties(new Set());
+    setServicePrefs(new Map());
     setLastQuery(null);
   };
 
@@ -542,9 +563,6 @@ function DirectorySection() {
     );
   }, [results, selectedSpecialties]);
 
-  // Demo cards mirror the same specialty-filter behavior as live results, so
-  // visitors get an immediate sense of how filtering works before any Pros
-  // are live in their city.
   const visibleMocks = useMemo(() => {
     if (selectedSpecialties.size === 0) return MOCK_MSPS;
     return MOCK_MSPS.filter((m) =>
@@ -708,15 +726,15 @@ function DirectorySection() {
                 <FilterGroup
                   title="On-Site Scanning"
                   options={SCANNING_FILTERS}
-                  selected={selectedSpecialties}
-                  onToggle={toggleSpecialty}
+                  prefs={servicePrefs}
+                  onSetPref={setSpecialtyPref}
                 />
                 <FilterGroup
                   title="Studio Presentation"
                   subtitle="Minimum-quantity service offering"
                   options={STUDIO_FILTERS}
-                  selected={selectedSpecialties}
-                  onToggle={toggleSpecialty}
+                  prefs={servicePrefs}
+                  onSetPref={setSpecialtyPref}
                 />
               </div>
 
@@ -734,16 +752,16 @@ function DirectorySection() {
 
             {/* Results */}
             <div className="space-y-4">
-              <div className="flex justify-end">
+              <div className="flex flex-wrap justify-end gap-2">
                 <Dialog open={notifyOpen} onOpenChange={setNotifyOpen}>
                   <DialogTrigger asChild>
                     <Button
                       size="sm"
                       variant="outline"
-                      className="gap-2 border-cyan-300/40 bg-cyan-300/5 text-cyan-100 hover:bg-cyan-300/10 hover:text-white"
+                      className="gap-2 border-white/15 bg-white/5 text-white/80 hover:bg-white/10 hover:text-white"
                     >
                       <MailCheck className="size-4" />
-                      Notify me when matched
+                      Notify Me When Matches Are Available
                     </Button>
                   </DialogTrigger>
                   <DialogContent className="border-white/10 bg-[#0a0e27] text-white sm:max-w-lg">
@@ -752,9 +770,8 @@ function DirectorySection() {
                         Notify me when a Pro Partner is matched in my area
                       </DialogTitle>
                       <DialogDescription className="text-white/70">
-                        Pick the on-site scanning &amp; studio services you care about in
-                        the filter rail, and set your city or ZIP in the search — we'll
-                        email you the moment a fitting Pro Partner activates locally.
+                        Set your city or ZIP in the search — we'll email you the moment a Pro
+                        Partner activates locally.
                       </DialogDescription>
                     </DialogHeader>
                     <BeaconForm
@@ -767,7 +784,45 @@ function DirectorySection() {
                     />
                   </DialogContent>
                 </Dialog>
+
+                <Dialog open={matchOpen} onOpenChange={setMatchOpen}>
+                  <DialogTrigger asChild>
+                    <Button
+                      size="sm"
+                      disabled={!hasAnyPref}
+                      className="gap-2 bg-cyan-400 text-[#0a0e27] hover:bg-cyan-300 disabled:opacity-50"
+                      title={
+                        hasAnyPref
+                          ? "Create your service-fit match"
+                          : "Mark at least one service Essential or Preferable to enable"
+                      }
+                    >
+                      <Sparkles className="size-4" />
+                      Create MSP Service Match
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="border-white/10 bg-[#0a0e27] text-white sm:max-w-2xl">
+                    <DialogHeader>
+                      <DialogTitle className="text-white">
+                        Create your MSP Service Match
+                      </DialogTitle>
+                      <DialogDescription className="text-white/70">
+                        We'll match studios in your area to the services you marked Essential or
+                        Preferable. For the first 24 hours, only Pro Partners are visible — after
+                        that, the match opens to all qualifying studios.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <ServiceMatchForm
+                      defaultCity={city}
+                      defaultRegion={region}
+                      defaultZip={zip}
+                      essentialServices={essentialServices}
+                      preferableServices={preferableServices}
+                    />
+                  </DialogContent>
+                </Dialog>
               </div>
+
 
               {!hasSearched && <DemoPreview mocks={visibleMocks} />}
 
@@ -821,14 +876,14 @@ function FilterGroup({
   title,
   subtitle,
   options,
-  selected,
-  onToggle,
+  prefs,
+  onSetPref,
 }: {
   title: string;
   subtitle?: string;
   options: ReadonlyArray<FilterOption>;
-  selected: Set<MarketplaceSpecialty>;
-  onToggle: (id: MarketplaceSpecialty) => void;
+  prefs: Map<MarketplaceSpecialty, ServicePreference>;
+  onSetPref: (id: MarketplaceSpecialty, pref: ServicePreference | null) => void;
 }) {
   return (
     <TooltipProvider delayDuration={150}>
@@ -839,30 +894,54 @@ function FilterGroup({
         </div>
         <div className="space-y-2">
           {options.map((f) => {
-            const checked = selected.has(f.value);
+            const current = prefs.get(f.value) ?? null;
             const Icon = f.icon;
             return (
               <Tooltip key={f.value}>
                 <TooltipTrigger asChild>
-                  <label
-                    className={`flex cursor-pointer items-center gap-2.5 rounded-md border px-2.5 py-2 text-sm transition-colors ${
-                      checked
-                        ? "border-cyan-300/50 bg-cyan-300/10 text-white"
-                        : "border-white/10 bg-white/5 text-white/70 hover:border-white/20 hover:text-white"
+                  <div
+                    className={`flex flex-col gap-1.5 rounded-md border px-2.5 py-2 text-sm transition-colors ${
+                      current
+                        ? "border-cyan-300/40 bg-cyan-300/5 text-white"
+                        : "border-white/10 bg-white/5 text-white/70"
                     }`}
                   >
-                    <Checkbox
-                      checked={checked}
-                      onCheckedChange={() => onToggle(f.value)}
-                      className="border-white/30 data-[state=checked]:bg-cyan-400 data-[state=checked]:text-[#0a0e27]"
-                    />
-                    <Icon className="size-3.5 shrink-0 opacity-70" />
-                    <span className="flex-1 truncate">{f.label}</span>
-                    <Info className="size-3 shrink-0 opacity-50" aria-hidden />
-                    {f.note && (
-                      <span className="shrink-0 text-[10px] text-white/40">{f.note}</span>
-                    )}
-                  </label>
+                    <div className="flex items-center gap-2">
+                      <Icon className="size-3.5 shrink-0 opacity-70" />
+                      <span className="flex-1 truncate">{f.label}</span>
+                      <Info className="size-3 shrink-0 opacity-50" aria-hidden />
+                      {f.note && (
+                        <span className="shrink-0 text-[10px] text-white/40">{f.note}</span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-3 gap-1 rounded bg-white/5 p-0.5">
+                      {([
+                        { v: null, label: "Not Needed" },
+                        { v: "preferable", label: "Preferable" },
+                        { v: "essential", label: "Essential" },
+                      ] as const).map((opt) => {
+                        const active = current === opt.v;
+                        return (
+                          <button
+                            key={opt.label}
+                            type="button"
+                            onClick={() => onSetPref(f.value, opt.v)}
+                            className={`rounded px-1.5 py-1 text-[10px] font-medium transition-colors ${
+                              active
+                                ? opt.v === "essential"
+                                  ? "bg-amber-300 text-[#0a0e27]"
+                                  : opt.v === "preferable"
+                                    ? "bg-cyan-400 text-[#0a0e27]"
+                                    : "bg-white/20 text-white"
+                                : "text-white/60 hover:text-white"
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </TooltipTrigger>
                 <TooltipContent side="right" className="max-w-xs text-xs leading-snug">
                   {f.tooltip}
@@ -875,6 +954,7 @@ function FilterGroup({
     </TooltipProvider>
   );
 }
+
 
 function MSPCard({ msp, isSample = false }: { msp: DirectoryMSP; isSample?: boolean }) {
   const isPro = msp.tier === "pro";

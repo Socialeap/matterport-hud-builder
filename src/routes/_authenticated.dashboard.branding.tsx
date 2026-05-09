@@ -83,6 +83,9 @@ interface BrandingData {
   service_zips: string[];
   specialties: MarketplaceSpecialty[];
   service_polygon: GeoJSON.Polygon | null;
+  directory_website_url: string | null;
+  directory_contact_email: string | null;
+  directory_phone: string | null;
 }
 
 const defaultBranding: BrandingData = {
@@ -109,6 +112,9 @@ const defaultBranding: BrandingData = {
   service_zips: [],
   specialties: [],
   service_polygon: null,
+  directory_website_url: null,
+  directory_contact_email: null,
+  directory_phone: null,
 };
 
 function BrandingPage() {
@@ -189,6 +195,9 @@ function BrandingPage() {
         // Polygon is loaded separately via get_my_service_polygon RPC
         // (geometry columns aren't natively rendered by Postgrest).
         service_polygon: savedSnapshotRef.current.service_polygon,
+        directory_website_url: data.directory_website_url ?? null,
+        directory_contact_email: data.directory_contact_email ?? null,
+        directory_phone: data.directory_phone ?? null,
       };
       // Only update state if the fetched payload actually differs from
       // what we already have — prevents needless re-renders that would
@@ -357,6 +366,9 @@ function BrandingPage() {
           service_radius_miles: branding.service_radius_miles,
           service_zips: parsedZips,
           specialties: allowedSpecialties,
+          directory_website_url: branding.directory_website_url?.trim() || null,
+          directory_contact_email: branding.directory_contact_email?.trim() || null,
+          directory_phone: branding.directory_phone?.trim() || null,
         } as any,
         { onConflict: "provider_id" }
       );
@@ -826,6 +838,47 @@ function BrandingPage() {
               against this list. {parsedZips.length} valid
               {invalidZipCount > 0 ? `, ${invalidZipCount} ignored` : ""}.
             </p>
+          </div>
+
+          <div className="space-y-3 rounded-md border border-dashed border-border p-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Public Directory Contact
+            </p>
+            <p className="text-xs text-muted-foreground">
+              These details may appear on your public MSP Directory card and MSP Service Match results.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="directory_website_url">Website URL</Label>
+                <Input
+                  id="directory_website_url"
+                  type="url"
+                  value={branding.directory_website_url ?? ""}
+                  onChange={(e) => setBranding({ ...branding, directory_website_url: e.target.value })}
+                  placeholder="https://yourstudio.com"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="directory_contact_email">Contact Email</Label>
+                <Input
+                  id="directory_contact_email"
+                  type="email"
+                  value={branding.directory_contact_email ?? ""}
+                  onChange={(e) => setBranding({ ...branding, directory_contact_email: e.target.value })}
+                  placeholder="hello@yourstudio.com"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="directory_phone">Phone</Label>
+                <Input
+                  id="directory_phone"
+                  type="tel"
+                  value={branding.directory_phone ?? ""}
+                  onChange={(e) => setBranding({ ...branding, directory_phone: e.target.value })}
+                  placeholder="(555) 555-1234"
+                />
+              </div>
+            </div>
           </div>
 
           <div className="space-y-2">
