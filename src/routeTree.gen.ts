@@ -51,6 +51,7 @@ import { Route as AuthenticatedDashboardBrandingRouteImport } from './routes/_au
 import { Route as AuthenticatedDashboardAccountRouteImport } from './routes/_authenticated.dashboard.account'
 import { Route as AuthenticatedAdminServiceMatchesRouteImport } from './routes/_authenticated.admin.service-matches'
 import { Route as AuthenticatedAdminProviderIdRouteImport } from './routes/_authenticated.admin.$providerId'
+import { Route as AuthenticatedAdminServiceMatchesIndexRouteImport } from './routes/_authenticated.admin.service-matches.index'
 import { Route as LovableEmailTransactionalSendRouteImport } from './routes/lovable/email/transactional/send'
 import { Route as LovableEmailTransactionalPreviewRouteImport } from './routes/lovable/email/transactional/preview'
 import { Route as LovableEmailQueueProcessRouteImport } from './routes/lovable/email/queue/process'
@@ -282,6 +283,12 @@ const AuthenticatedAdminProviderIdRoute =
     path: '/$providerId',
     getParentRoute: () => AuthenticatedAdminRoute,
   } as any)
+const AuthenticatedAdminServiceMatchesIndexRoute =
+  AuthenticatedAdminServiceMatchesIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedAdminServiceMatchesRoute,
+  } as any)
 const LovableEmailTransactionalSendRoute =
   LovableEmailTransactionalSendRouteImport.update({
     id: '/lovable/email/transactional/send',
@@ -360,6 +367,7 @@ export interface FileRoutesByFullPath {
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
   '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
   '/lovable/email/transactional/send': typeof LovableEmailTransactionalSendRoute
+  '/admin/service-matches/': typeof AuthenticatedAdminServiceMatchesIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -380,7 +388,6 @@ export interface FileRoutesByTo {
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/invite/$token': typeof InviteTokenRoute
   '/admin/$providerId': typeof AuthenticatedAdminProviderIdRoute
-  '/admin/service-matches': typeof AuthenticatedAdminServiceMatchesRouteWithChildren
   '/dashboard/account': typeof AuthenticatedDashboardAccountRoute
   '/dashboard/branding': typeof AuthenticatedDashboardBrandingRoute
   '/dashboard/clients': typeof AuthenticatedDashboardClientsRoute
@@ -405,6 +412,7 @@ export interface FileRoutesByTo {
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
   '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
   '/lovable/email/transactional/send': typeof LovableEmailTransactionalSendRoute
+  '/admin/service-matches': typeof AuthenticatedAdminServiceMatchesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -455,6 +463,7 @@ export interface FileRoutesById {
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
   '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
   '/lovable/email/transactional/send': typeof LovableEmailTransactionalSendRoute
+  '/_authenticated/admin/service-matches/': typeof AuthenticatedAdminServiceMatchesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -505,6 +514,7 @@ export interface FileRouteTypes {
     | '/lovable/email/queue/process'
     | '/lovable/email/transactional/preview'
     | '/lovable/email/transactional/send'
+    | '/admin/service-matches/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -525,7 +535,6 @@ export interface FileRouteTypes {
     | '/email/unsubscribe'
     | '/invite/$token'
     | '/admin/$providerId'
-    | '/admin/service-matches'
     | '/dashboard/account'
     | '/dashboard/branding'
     | '/dashboard/clients'
@@ -550,6 +559,7 @@ export interface FileRouteTypes {
     | '/lovable/email/queue/process'
     | '/lovable/email/transactional/preview'
     | '/lovable/email/transactional/send'
+    | '/admin/service-matches'
   id:
     | '__root__'
     | '/'
@@ -599,6 +609,7 @@ export interface FileRouteTypes {
     | '/lovable/email/queue/process'
     | '/lovable/email/transactional/preview'
     | '/lovable/email/transactional/send'
+    | '/_authenticated/admin/service-matches/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -923,6 +934,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminProviderIdRouteImport
       parentRoute: typeof AuthenticatedAdminRoute
     }
+    '/_authenticated/admin/service-matches/': {
+      id: '/_authenticated/admin/service-matches/'
+      path: '/'
+      fullPath: '/admin/service-matches/'
+      preLoaderRoute: typeof AuthenticatedAdminServiceMatchesIndexRouteImport
+      parentRoute: typeof AuthenticatedAdminServiceMatchesRoute
+    }
     '/lovable/email/transactional/send': {
       id: '/lovable/email/transactional/send'
       path: '/lovable/email/transactional/send'
@@ -963,12 +981,15 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedAdminServiceMatchesRouteChildren {
   AuthenticatedAdminServiceMatchesMatchTokenRoute: typeof AuthenticatedAdminServiceMatchesMatchTokenRoute
+  AuthenticatedAdminServiceMatchesIndexRoute: typeof AuthenticatedAdminServiceMatchesIndexRoute
 }
 
 const AuthenticatedAdminServiceMatchesRouteChildren: AuthenticatedAdminServiceMatchesRouteChildren =
   {
     AuthenticatedAdminServiceMatchesMatchTokenRoute:
       AuthenticatedAdminServiceMatchesMatchTokenRoute,
+    AuthenticatedAdminServiceMatchesIndexRoute:
+      AuthenticatedAdminServiceMatchesIndexRoute,
   }
 
 const AuthenticatedAdminServiceMatchesRouteWithChildren =

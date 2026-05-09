@@ -1,61 +1,42 @@
-## Issues Identified
+## Findings
 
-**1. Visitor never receives a confirmation email.**
-The `service-match-ready` email template exists and is registered, but `capture-service-match` edge function never enqueues it after a successful insert. The visitor only sees the on-screen toast.
+The admin service-match detail URL is registered, but the route hierarchy is wired incorrectly:
 
-**2. Admin "Open" button points to the public visitor match page.**
-The admin table links to `/agents/match/$matchToken`, which is the agent-facing match page. That page intentionally hides visitor PII (per the recommendation spec) and only shows "no studios match yet" when the matcher returns nothing — so to an admin it looks like an empty/duplicate page with no context.
-
-We need a separate **admin-only** match-detail view that shows visitor identity AND the matched MSPs side-by-side, while leaving the public `/agents/match/$matchToken` page unchanged (it must keep following the no-PII spec).
-
----
-
-## Plan
-
-### Part 1 — Send the visitor confirmation email
-
-In `supabase/functions/capture-service-match/index.ts`, after a successful insert/upsert and before returning, enqueue the existing `service-match-ready` template via `enqueue_email`:
-
-- Skip if the email is in `suppressed_emails`.
-- Build `matchUrl` as `${SITE_URL or fallback}/agents/match/{match_token}`.
-- Pass `agentName`, `city`, `essentialServices`, `preferableServices`, `matchUrl`.
-- Stamp `agent_beacons.service_match_notified_at = now()` so we don't re-send on duplicate submissions.
-
-This keeps email delivery on the existing pgmq queue (no new infra).
-
-### Part 2 — Admin-only match detail view
-
-Create a new authenticated route:
-
-```
-src/routes/_authenticated.admin.service-matches.$matchToken.tsx
+```text
+/admin
+  /service-matches          <- table page
+    /$matchToken            <- detail page
 ```
 
-It will:
+Because `/admin/service-matches` currently renders the table directly and does not render an `<Outlet />`, the child route `/admin/service-matches/$matchToken` can match but its detail component is not mounted. That explains why clicking **Open** appears to do nothing or lands back in an existing dashboard/admin view instead of showing the match details.
 
-- Call a new admin RPC `get_service_match_detail_for_admin(p_match_token uuid)` (SECURITY DEFINER, gated by `has_role(auth.uid(),'admin')`) that returns:
-  - the beacon row (name, email, brokerage, city, region, zip, services, created_at, expires_at, pro_visibility_until, status), AND
-  - the same matched-MSP rows produced by `get_service_match_results`.
-- Render two stacked panels:
-  1. **Visitor card** — name, company, email, location/ZIP, submitted-at, expires-at, current visibility window badge ("Pro Partner Exclusive — Xh left" or "Expanded Match Window"), Essential/Preferable service chips with icons.
-  2. **Matched MSPs panel** — same card layout/quality labels as the public page (Complete / Strong / Essential), grouped/sorted exactly per the recommendation rules already implemented in `get_service_match_results` (Pro-first during 24h window; Pro then Starter after; ranked by preferable-match count). Includes an empty-state explaining no qualifying MSPs yet.
-  3. A button to open the public visitor view in a new tab for QA.
+I also found a second risk: the admin layout redirects to `/dashboard` when `roles` is still empty, even if the user session has loaded but role lookup has not completed yet. This can create intermittent false redirects to the MSP Dashboard Overview.
 
-### Part 3 — Wire it into the admin table
+## Safest fix plan
 
-In `src/routes/_authenticated.admin.service-matches.tsx`, change the row "Open" button from `/agents/match/{token}` to `/admin/service-matches/{token}` (internal `<Link>`).
+1. **Repair the admin service-match route hierarchy**
+   - Convert `src/routes/_authenticated.admin.service-matches.tsx` into a lightweight layout route that renders `<Outlet />`.
+   - Move the current request table UI into a new index child route at `src/routes/_authenticated.admin.service-matches.index.tsx`.
+   - Keep the existing detail route at `src/routes/_authenticated.admin.service-matches.$matchToken.tsx` so `/admin/service-matches/:token` renders inside the service-match layout.
+   - This is the least invasive fix because it preserves the public URL structure and avoids forcing all admin links to change again.
 
-### Part 4 — Verification
+2. **Harden admin auth-role loading**
+   - Update `useAuth()` so `isLoading` remains true until roles are fetched for the signed-in user.
+   - Update the admin layout so it does not redirect to `/dashboard` while roles are still being resolved.
+   - This prevents valid admins from being bounced to the MSP Dashboard Overview during a direct deep-link load.
 
-After approval and implementation:
-- Submit a "Notify Me" from the directory; confirm an email is enqueued in `email_send_log` with `template_name = 'service-match-ready'`.
-- Open a row from the admin table; confirm the new admin detail view shows visitor info AND the matched-MSP list (or correct empty state).
-- Public `/agents/match/$matchToken` remains unchanged and PII-free.
+3. **Verify the detail route and public visitor route wiring**
+   - Confirm the admin table **Open** button still targets `/admin/service-matches/$matchToken`.
+   - Confirm the admin detail page’s **Open visitor view** button targets `/agents/match/$matchToken` only for the PII-free public visitor view.
+   - Leave `/agents/match/$matchToken` public and PII-free per the service-match privacy requirement.
 
-### Files touched
+4. **Check backend function calls without widening access**
+   - Keep `get_service_match_detail_for_admin(p_match_token)` admin-only.
+   - Keep `get_service_match_summary`, `get_service_match_results`, and `record_service_match_interest` behavior unchanged unless validation shows a specific failure.
+   - Do not expose visitor PII outside the admin-only route.
 
-- **edit** `supabase/functions/capture-service-match/index.ts` — enqueue visitor email + stamp `service_match_notified_at`.
-- **new migration** — add `get_service_match_detail_for_admin(uuid)` RPC.
-- **new route** `src/routes/_authenticated.admin.service-matches.$matchToken.tsx`.
-- **edit** `src/routes/_authenticated.admin.service-matches.tsx` — repoint "Open" button.
-- No changes to `/agents/match/$matchToken` (spec-compliant as-is).
+5. **Validation after implementation**
+   - Open `/admin/service-matches` and confirm the request table renders.
+   - Open `/admin/service-matches/40449da8-cdf8-4c1b-bf31-5524f73c8a6c` directly and confirm the admin detail component renders rather than the dashboard overview.
+   - Confirm the page calls `get_service_match_detail_for_admin` and shows either visitor details plus MSP matches or a clear “not found” state.
+   - Open `/agents/match/40449da8-cdf8-4c1b-bf31-5524f73c8a6c` and confirm it remains a separate public visitor match page with no visitor PII.

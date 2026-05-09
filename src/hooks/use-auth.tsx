@@ -33,35 +33,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .from("user_roles")
       .select("role")
       .eq("user_id", userId);
-    if (data) {
-      setRoles(data.map((r) => r.role as UserRole));
-    }
+    setRoles(data ? data.map((r) => r.role as UserRole) : []);
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const hydrate = async (newSession: Session | null) => {
+      setSession(newSession);
+      setUser(newSession?.user ?? null);
+      if (newSession?.user) {
+        // Keep isLoading=true until roles are resolved so route guards
+        // (e.g. admin layout) don't redirect prematurely.
+        setIsLoading(true);
+        await fetchRoles(newSession.user.id);
+        if (!cancelled) setIsLoading(false);
+      } else {
+        setRoles([]);
+        if (!cancelled) setIsLoading(false);
+      }
+    };
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        if (session?.user) {
-          setTimeout(() => fetchRoles(session.user.id), 0);
-        } else {
-          setRoles([]);
-        }
-        setIsLoading(false);
+      (_event, newSession) => {
+        // defer to avoid deadlocks per supabase docs
+        setTimeout(() => { void hydrate(newSession); }, 0);
       }
     );
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchRoles(session.user.id);
-      }
-      setIsLoading(false);
+    supabase.auth.getSession().then(({ data: { session: initial } }) => {
+      void hydrate(initial);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
   }, [fetchRoles]);
 
   const hasRole = useCallback(
