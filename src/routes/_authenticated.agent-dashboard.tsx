@@ -203,6 +203,13 @@ function AgentDashboardPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate({ to: "/agent-dashboard/work-orders" })}
+            >
+              Work Orders
+            </Button>
             <Button variant="ghost" size="sm" onClick={() => navigate({ to: "/agents" })}>
               ← Back to /agents
             </Button>

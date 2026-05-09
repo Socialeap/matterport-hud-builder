@@ -1,9 +1,18 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/use-auth";
 import { buildStudioUrl } from "@/lib/public-url";
 import {
   ArrowRight, Building2, Clock, ExternalLink, Globe, Loader2, Mail,
@@ -11,6 +20,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import type { Database } from "@/integrations/supabase/types";
+import { WorkOrderForm } from "@/components/marketplace/WorkOrderForm";
 
 type MarketplaceSpecialty = Database["public"]["Enums"]["marketplace_specialty"];
 
@@ -20,6 +30,7 @@ export const Route = createFileRoute("/agents/match/$matchToken")({
 
 interface SummaryActive {
   status: "active";
+  beacon_id: string;
   city: string;
   region: string | null;
   zip: string | null;
@@ -55,12 +66,16 @@ const formatLabel = (s: string) =>
 
 function MatchPage() {
   const { matchToken } = Route.useParams();
+  const navigate = useNavigate();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [summary, setSummary] = useState<Summary | null>(null);
   const [results, setResults] = useState<ResultRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [notifyingId, setNotifyingId] = useState<string | null>(null);
   const [notifiedIds, setNotifiedIds] = useState<Set<string>>(new Set());
+  const [shortlist, setShortlist] = useState<Set<string>>(new Set());
+  const [workOrderOpen, setWorkOrderOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -126,6 +141,36 @@ function MatchPage() {
       toast.error("Could not send your interest.");
     }
   };
+
+  const toggleShortlist = (providerId: string) => {
+    setShortlist((prev) => {
+      const next = new Set(prev);
+      if (next.has(providerId)) next.delete(providerId);
+      else next.add(providerId);
+      return next;
+    });
+  };
+
+  const handleOpenWorkOrder = () => {
+    if (!isAuthenticated) {
+      const next = encodeURIComponent(`/agents/match/${matchToken}`);
+      toast.message("Please sign in to submit a work order.");
+      navigate({ to: `/login?next=${next}` });
+      return;
+    }
+    if (shortlist.size === 0) {
+      toast.error("Pick one or more MSPs to send a work order to.");
+      return;
+    }
+    setWorkOrderOpen(true);
+  };
+
+  const selectedBrandSummary = useMemo(() => {
+    return Array.from(shortlist)
+      .map((id) => results.find((r) => r.provider_id === id)?.brand_name)
+      .filter(Boolean)
+      .join(", ");
+  }, [shortlist, results]);
 
   const bg = "#0a0e27";
   const gridColor = "rgba(148,163,184,0.06)";
@@ -240,19 +285,89 @@ function MatchPage() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid gap-4 sm:grid-cols-2">
-                {results.map((r) => (
-                  <ResultCard
-                    key={r.provider_id}
-                    row={r}
-                    notified={notifiedIds.has(r.provider_id)}
-                    notifying={notifyingId === r.provider_id}
-                    onNotify={() => handleNotify(r.provider_id)}
-                    recordEvent={recordEvent}
-                  />
-                ))}
-              </div>
+              <>
+                <div className="mb-4 rounded-md border border-amber-300/20 bg-amber-300/5 p-3 text-xs leading-relaxed text-amber-100/80">
+                  <strong className="text-amber-100">Pick one or more studios</strong> below
+                  and click <strong>Send Work Order</strong>. Selected studios get an
+                  anonymized job invite and have <strong>3 hours</strong> to mark
+                  themselves Available. Your contact info is shared only after you
+                  confirm one MSP.
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {results.map((r) => (
+                    <ResultCard
+                      key={r.provider_id}
+                      row={r}
+                      notified={notifiedIds.has(r.provider_id)}
+                      notifying={notifyingId === r.provider_id}
+                      shortlisted={shortlist.has(r.provider_id)}
+                      onToggleShortlist={() => toggleShortlist(r.provider_id)}
+                      onNotify={() => handleNotify(r.provider_id)}
+                      recordEvent={recordEvent}
+                    />
+                  ))}
+                </div>
+
+                <div className="sticky bottom-4 mt-6 flex justify-center">
+                  <div className="pointer-events-auto flex w-full max-w-md items-center gap-3 rounded-full border border-white/10 bg-[#0a0e27]/90 px-4 py-3 shadow-2xl backdrop-blur-xl">
+                    <div className="flex-1 text-xs text-white/70">
+                      {shortlist.size === 0 ? (
+                        <span>Select MSPs to send a Work Order</span>
+                      ) : (
+                        <span>
+                          {shortlist.size} {shortlist.size === 1 ? "studio" : "studios"} selected
+                        </span>
+                      )}
+                    </div>
+                    <Button
+                      size="sm"
+                      disabled={shortlist.size === 0 || authLoading}
+                      onClick={handleOpenWorkOrder}
+                      className="gap-2"
+                    >
+                      Send Work Order <ArrowRight className="size-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              </>
             )}
+
+            <Dialog open={workOrderOpen} onOpenChange={setWorkOrderOpen}>
+              <DialogContent className="border-white/10 bg-[#0a0e27] text-white sm:max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle className="text-white">
+                    Send a Work Order
+                  </DialogTitle>
+                  <DialogDescription className="text-white/70">
+                    Anonymized job details go out to {shortlist.size}{" "}
+                    {shortlist.size === 1 ? "MSP" : "MSPs"}. They have 3 hours to
+                    respond Available or Not Available.
+                  </DialogDescription>
+                </DialogHeader>
+                {summary?.status === "active" && (
+                  <WorkOrderForm
+                    matchToken={matchToken}
+                    beaconId={summary.beacon_id}
+                    selectedProviderIds={Array.from(shortlist)}
+                    selectedBrandSummary={selectedBrandSummary}
+                    city={summary.city}
+                    region={summary.region}
+                    zip={summary.zip}
+                    essentialServices={summary.essential_services}
+                    preferableServices={summary.preferable_services}
+                    onSuccess={(workOrderId) => {
+                      setWorkOrderOpen(false);
+                      navigate({
+                        to: "/agent-dashboard/work-orders/$id",
+                        params: { id: workOrderId },
+                      });
+                    }}
+                    onCancel={() => setWorkOrderOpen(false)}
+                  />
+                )}
+              </DialogContent>
+            </Dialog>
 
             <div className="mt-10 rounded-md border border-white/10 bg-white/5 p-4 text-xs leading-relaxed text-white/60">
               <p className="flex items-start gap-2">
@@ -272,11 +387,13 @@ function MatchPage() {
 }
 
 function ResultCard({
-  row, notified, notifying, onNotify, recordEvent,
+  row, notified, notifying, shortlisted, onToggleShortlist, onNotify, recordEvent,
 }: {
   row: ResultRow;
   notified: boolean;
   notifying: boolean;
+  shortlisted: boolean;
+  onToggleShortlist: () => void;
   onNotify: () => void;
   recordEvent: (id: string, t: "click_studio" | "click_website" | "click_email" | "click_phone") => void;
 }) {
@@ -284,9 +401,21 @@ function ResultCard({
   const studioUrl = row.slug ? buildStudioUrl(row.slug, { tier: row.tier, customDomain: null }) : null;
 
   return (
-    <Card className="flex h-full flex-col border-white/10 bg-white/5 backdrop-blur transition-all hover:border-cyan-300/30">
+    <Card
+      className={`flex h-full flex-col border bg-white/5 backdrop-blur transition-all hover:border-cyan-300/30 ${
+        shortlisted ? "border-amber-300/60 ring-1 ring-amber-300/40" : "border-white/10"
+      }`}
+    >
       <CardContent className="flex flex-1 flex-col gap-3 p-5">
         <div className="flex items-start gap-3">
+          <button
+            type="button"
+            onClick={onToggleShortlist}
+            className="flex shrink-0 cursor-pointer items-center justify-center pt-1.5"
+            aria-label={shortlisted ? "Remove from shortlist" : "Add to shortlist"}
+          >
+            <Checkbox checked={shortlisted} onCheckedChange={onToggleShortlist} />
+          </button>
           <div className="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gradient-to-br from-cyan-500/30 to-blue-500/30 text-white">
             {row.logo_url
               ? <img src={row.logo_url} alt={`${row.brand_name} logo`} className="size-full object-contain" loading="lazy" />

@@ -126,6 +126,8 @@ serve(async (req) => {
 
   const userAgent = req.headers.get("user-agent")?.slice(0, 500) ?? null;
   const nowIso = new Date().toISOString();
+  // Optimistic 24h window. Refined to 24h/12h/null right after insert via
+  // compute_priority_window_for_beacon (Handbook §2 dynamic Priority Lane).
   const proVisibilityUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
   const expiresAt = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -184,6 +186,7 @@ serve(async (req) => {
       }
 
       void triggerMatcher();
+      void refinePriorityWindow(updated.id);
       void sendVisitorReadyEmail({
         beaconId: updated.id,
         matchToken: updated.match_token,
@@ -203,6 +206,7 @@ serve(async (req) => {
 
   void triggerMatcher();
   if (inserted?.id) void triggerGeocode(inserted.id);
+  if (inserted?.id) void refinePriorityWindow(inserted.id);
   if (inserted?.id && inserted?.match_token) {
     void sendVisitorReadyEmail({
       beaconId: inserted.id,
@@ -290,4 +294,26 @@ function triggerGeocode(beaconId: string): Promise<void> {
   }).then(() => undefined).catch((err) => {
     console.error("capture-service-match: geocode invocation failed:", err);
   });
+}
+
+// Refine `pro_visibility_until` to the dynamic window length:
+//   ≥3 eligible Pros → 24h, 1-2 → 12h, 0 → null (immediate, no Pro-only).
+// Best-effort. The optimistic 24h value set at insert is a safe upper bound;
+// this only ever shortens it.
+async function refinePriorityWindow(beaconId: string): Promise<void> {
+  try {
+    const { data, error } = await supabase
+      .rpc("compute_priority_window_for_beacon", { p_beacon_id: beaconId });
+    if (error) {
+      console.warn("capture-service-match: refine window failed:", error);
+      return;
+    }
+    const dynamicUntil: string | null = (data as string | null) ?? null;
+    await supabase
+      .from("agent_beacons")
+      .update({ pro_visibility_until: dynamicUntil })
+      .eq("id", beaconId);
+  } catch (err) {
+    console.warn("capture-service-match: refine window threw:", err);
+  }
 }

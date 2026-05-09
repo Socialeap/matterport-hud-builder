@@ -18,7 +18,6 @@ import {
   type BeaconDisposition,
   type MarketplaceLead,
 } from "@/components/marketplace/LeadCard";
-import { OutreachComposer } from "@/components/marketplace/OutreachComposer";
 import { MarketplaceStandingBadge } from "@/components/dashboard/MarketplaceStandingBadge";
 
 export const Route = createFileRoute("/_authenticated/dashboard/marketplace")({
@@ -30,7 +29,6 @@ function MarketplacePage() {
   const { user } = useAuth();
   const [rows, setRows] = useState<MarketplaceLead[] | null>(null);
   const [loading, setLoading] = useState(true);
-  const [composeFor, setComposeFor] = useState<MarketplaceLead | null>(null);
   const [pendingDispositionId, setPendingDispositionId] = useState<string | null>(null);
   const [tier, setTier] = useState<"starter" | "pro" | null>(null);
 
@@ -283,25 +281,24 @@ function MarketplacePage() {
       ) : (
         <div className="space-y-8">
           <Section
-            title="Active Leads"
-            description="Claimable right now — your exclusive Pro window or a leaked open-pool lead."
-            empty="No claimable leads right now. New ones will appear here automatically."
+            title="Active Leads (legacy)"
+            description="In-flight beacon leads from the previous outreach flow. New leads now arrive as Work Orders."
+            empty="No claimable legacy leads."
             leads={buckets.active}
-            onCompose={(lead) => setComposeFor(lead)}
             onDisposition={handleDisposition}
             pendingDispositionId={pendingDispositionId}
           />
           <Section
             title="Awaiting Your Response"
-            description="You've reached out — mark the outcome once the agent replies."
-            empty="Nothing waiting on a reply yet. Once you contact a lead, it shows up here."
+            description="Outreach you sent before the Work Order flow rolled out. Mark the outcome once resolved."
+            empty="Nothing waiting on a reply."
             leads={buckets.awaiting}
             onDisposition={handleDisposition}
             pendingDispositionId={pendingDispositionId}
           />
           <Section
             title="Past Leads"
-            description="Windows that closed without contact, or that re-pooled to another Pro."
+            description="History of legacy beacon leads."
             empty="No past leads yet."
             leads={buckets.past}
             collapsedByDefault
@@ -311,33 +308,24 @@ function MarketplacePage() {
         </div>
       )}
 
-      <Card className="border-dashed">
+      <Card className="border-dashed bg-muted/40">
         <CardHeader>
-          <CardTitle className="text-base">A note on outreach</CardTitle>
-          <CardDescription>
-            Each agent below explicitly opted in to be contacted by a local
-            partner. Outreach goes out through 3DPS so the agent can flag
-            inappropriate messages with one click — those signals affect
-            your Marketplace Standing, which is the gatekeeper for receiving
-            new leads (Starter and Pro alike).
+          <CardTitle className="text-base">New: Work Order workflow</CardTitle>
+          <CardDescription className="space-y-2">
+            <p>
+              Agents now submit anonymized <strong>Work Orders</strong> with a
+              3-hour Available/Not Available SLA — replacing the old "compose
+              outreach" flow shown here. Visit{" "}
+              <Link to="/dashboard/work-orders" className="text-primary underline">
+                Work Orders
+              </Link>{" "}
+              to see invites and respond. This page now shows legacy in-flight
+              beacons only and will retire once they finish.
+            </p>
           </CardDescription>
         </CardHeader>
       </Card>
 
-      {composeFor && (
-        <OutreachComposer
-          open
-          onOpenChange={(o) => !o && setComposeFor(null)}
-          beaconId={composeFor.id}
-          agentName={composeFor.name}
-          agentCity={composeFor.city}
-          agentRegion={composeFor.region}
-          onSent={() => {
-            setComposeFor(null);
-            void fetchRows();
-          }}
-        />
-      )}
     </div>
   );
 }

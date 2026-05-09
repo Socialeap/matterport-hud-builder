@@ -33,11 +33,13 @@ import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated.
 import { Route as PSlugIndexRouteImport } from './routes/p.$slug.index'
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated.dashboard.index'
 import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated.admin.index'
+import { Route as WorkOrdersRateTokenRouteImport } from './routes/work-orders.rate.$token'
 import { Route as PSlugDemoRouteImport } from './routes/p.$slug.demo'
 import { Route as PSlugBuilderRouteImport } from './routes/p.$slug.builder'
 import { Route as MarketplaceFeedbackTokenRouteImport } from './routes/marketplace.feedback.$token'
 import { Route as LovableEmailSuppressionRouteImport } from './routes/lovable/email/suppression'
 import { Route as AgentsMatchMatchTokenRouteImport } from './routes/agents.match.$matchToken'
+import { Route as AuthenticatedDashboardWorkOrdersRouteImport } from './routes/_authenticated.dashboard.work-orders'
 import { Route as AuthenticatedDashboardVaultRouteImport } from './routes/_authenticated.dashboard.vault'
 import { Route as AuthenticatedDashboardUpgradeRouteImport } from './routes/_authenticated.dashboard.upgrade'
 import { Route as AuthenticatedDashboardStatsRouteImport } from './routes/_authenticated.dashboard.stats'
@@ -51,11 +53,13 @@ import { Route as AuthenticatedDashboardBrandingRouteImport } from './routes/_au
 import { Route as AuthenticatedDashboardAccountRouteImport } from './routes/_authenticated.dashboard.account'
 import { Route as AuthenticatedAdminServiceMatchesRouteImport } from './routes/_authenticated.admin.service-matches'
 import { Route as AuthenticatedAdminProviderIdRouteImport } from './routes/_authenticated.admin.$providerId'
+import { Route as AuthenticatedAgentDashboardWorkOrdersIndexRouteImport } from './routes/_authenticated.agent-dashboard.work-orders.index'
 import { Route as AuthenticatedAdminServiceMatchesIndexRouteImport } from './routes/_authenticated.admin.service-matches.index'
 import { Route as LovableEmailTransactionalSendRouteImport } from './routes/lovable/email/transactional/send'
 import { Route as LovableEmailTransactionalPreviewRouteImport } from './routes/lovable/email/transactional/preview'
 import { Route as LovableEmailQueueProcessRouteImport } from './routes/lovable/email/queue/process'
 import { Route as AuthenticatedDashboardVaultTemplatesRouteImport } from './routes/_authenticated.dashboard.vault.templates'
+import { Route as AuthenticatedAgentDashboardWorkOrdersIdRouteImport } from './routes/_authenticated.agent-dashboard.work-orders.$id'
 import { Route as AuthenticatedAdminServiceMatchesMatchTokenRouteImport } from './routes/_authenticated.admin.service-matches.$matchToken'
 
 const UnsubscribeRoute = UnsubscribeRouteImport.update({
@@ -179,6 +183,11 @@ const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthenticatedAdminRoute,
 } as any)
+const WorkOrdersRateTokenRoute = WorkOrdersRateTokenRouteImport.update({
+  id: '/work-orders/rate/$token',
+  path: '/work-orders/rate/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PSlugDemoRoute = PSlugDemoRouteImport.update({
   id: '/demo',
   path: '/demo',
@@ -205,6 +214,12 @@ const AgentsMatchMatchTokenRoute = AgentsMatchMatchTokenRouteImport.update({
   path: '/match/$matchToken',
   getParentRoute: () => AgentsRoute,
 } as any)
+const AuthenticatedDashboardWorkOrdersRoute =
+  AuthenticatedDashboardWorkOrdersRouteImport.update({
+    id: '/work-orders',
+    path: '/work-orders',
+    getParentRoute: () => AuthenticatedDashboardRoute,
+  } as any)
 const AuthenticatedDashboardVaultRoute =
   AuthenticatedDashboardVaultRouteImport.update({
     id: '/vault',
@@ -283,6 +298,12 @@ const AuthenticatedAdminProviderIdRoute =
     path: '/$providerId',
     getParentRoute: () => AuthenticatedAdminRoute,
   } as any)
+const AuthenticatedAgentDashboardWorkOrdersIndexRoute =
+  AuthenticatedAgentDashboardWorkOrdersIndexRouteImport.update({
+    id: '/work-orders/',
+    path: '/work-orders/',
+    getParentRoute: () => AuthenticatedAgentDashboardRoute,
+  } as any)
 const AuthenticatedAdminServiceMatchesIndexRoute =
   AuthenticatedAdminServiceMatchesIndexRouteImport.update({
     id: '/',
@@ -313,6 +334,12 @@ const AuthenticatedDashboardVaultTemplatesRoute =
     path: '/templates',
     getParentRoute: () => AuthenticatedDashboardVaultRoute,
   } as any)
+const AuthenticatedAgentDashboardWorkOrdersIdRoute =
+  AuthenticatedAgentDashboardWorkOrdersIdRouteImport.update({
+    id: '/work-orders/$id',
+    path: '/work-orders/$id',
+    getParentRoute: () => AuthenticatedAgentDashboardRoute,
+  } as any)
 const AuthenticatedAdminServiceMatchesMatchTokenRoute =
   AuthenticatedAdminServiceMatchesMatchTokenRouteImport.update({
     id: '/$matchToken',
@@ -332,7 +359,7 @@ export interface FileRoutesByFullPath {
   '/terms': typeof TermsRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/admin': typeof AuthenticatedAdminRouteWithChildren
-  '/agent-dashboard': typeof AuthenticatedAgentDashboardRoute
+  '/agent-dashboard': typeof AuthenticatedAgentDashboardRouteWithChildren
   '/dashboard': typeof AuthenticatedDashboardRouteWithChildren
   '/api/geocode-beacon': typeof ApiGeocodeBeaconRoute
   '/api/geocode-branding': typeof ApiGeocodeBrandingRoute
@@ -354,20 +381,24 @@ export interface FileRoutesByFullPath {
   '/dashboard/stats': typeof AuthenticatedDashboardStatsRoute
   '/dashboard/upgrade': typeof AuthenticatedDashboardUpgradeRoute
   '/dashboard/vault': typeof AuthenticatedDashboardVaultRouteWithChildren
+  '/dashboard/work-orders': typeof AuthenticatedDashboardWorkOrdersRoute
   '/agents/match/$matchToken': typeof AgentsMatchMatchTokenRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/marketplace/feedback/$token': typeof MarketplaceFeedbackTokenRoute
   '/p/$slug/builder': typeof PSlugBuilderRoute
   '/p/$slug/demo': typeof PSlugDemoRoute
+  '/work-orders/rate/$token': typeof WorkOrdersRateTokenRoute
   '/admin/': typeof AuthenticatedAdminIndexRoute
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/p/$slug/': typeof PSlugIndexRoute
   '/admin/service-matches/$matchToken': typeof AuthenticatedAdminServiceMatchesMatchTokenRoute
+  '/agent-dashboard/work-orders/$id': typeof AuthenticatedAgentDashboardWorkOrdersIdRoute
   '/dashboard/vault/templates': typeof AuthenticatedDashboardVaultTemplatesRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
   '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
   '/lovable/email/transactional/send': typeof LovableEmailTransactionalSendRoute
   '/admin/service-matches/': typeof AuthenticatedAdminServiceMatchesIndexRoute
+  '/agent-dashboard/work-orders/': typeof AuthenticatedAgentDashboardWorkOrdersIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -380,7 +411,7 @@ export interface FileRoutesByTo {
   '/signup': typeof SignupRoute
   '/terms': typeof TermsRoute
   '/unsubscribe': typeof UnsubscribeRoute
-  '/agent-dashboard': typeof AuthenticatedAgentDashboardRoute
+  '/agent-dashboard': typeof AuthenticatedAgentDashboardRouteWithChildren
   '/api/geocode-beacon': typeof ApiGeocodeBeaconRoute
   '/api/geocode-branding': typeof ApiGeocodeBrandingRoute
   '/api/marketplace-feedback': typeof ApiMarketplaceFeedbackRoute
@@ -399,20 +430,24 @@ export interface FileRoutesByTo {
   '/dashboard/stats': typeof AuthenticatedDashboardStatsRoute
   '/dashboard/upgrade': typeof AuthenticatedDashboardUpgradeRoute
   '/dashboard/vault': typeof AuthenticatedDashboardVaultRouteWithChildren
+  '/dashboard/work-orders': typeof AuthenticatedDashboardWorkOrdersRoute
   '/agents/match/$matchToken': typeof AgentsMatchMatchTokenRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/marketplace/feedback/$token': typeof MarketplaceFeedbackTokenRoute
   '/p/$slug/builder': typeof PSlugBuilderRoute
   '/p/$slug/demo': typeof PSlugDemoRoute
+  '/work-orders/rate/$token': typeof WorkOrdersRateTokenRoute
   '/admin': typeof AuthenticatedAdminIndexRoute
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
   '/p/$slug': typeof PSlugIndexRoute
   '/admin/service-matches/$matchToken': typeof AuthenticatedAdminServiceMatchesMatchTokenRoute
+  '/agent-dashboard/work-orders/$id': typeof AuthenticatedAgentDashboardWorkOrdersIdRoute
   '/dashboard/vault/templates': typeof AuthenticatedDashboardVaultTemplatesRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
   '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
   '/lovable/email/transactional/send': typeof LovableEmailTransactionalSendRoute
   '/admin/service-matches': typeof AuthenticatedAdminServiceMatchesIndexRoute
+  '/agent-dashboard/work-orders': typeof AuthenticatedAgentDashboardWorkOrdersIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -428,7 +463,7 @@ export interface FileRoutesById {
   '/terms': typeof TermsRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRouteWithChildren
-  '/_authenticated/agent-dashboard': typeof AuthenticatedAgentDashboardRoute
+  '/_authenticated/agent-dashboard': typeof AuthenticatedAgentDashboardRouteWithChildren
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRouteWithChildren
   '/api/geocode-beacon': typeof ApiGeocodeBeaconRoute
   '/api/geocode-branding': typeof ApiGeocodeBrandingRoute
@@ -450,20 +485,24 @@ export interface FileRoutesById {
   '/_authenticated/dashboard/stats': typeof AuthenticatedDashboardStatsRoute
   '/_authenticated/dashboard/upgrade': typeof AuthenticatedDashboardUpgradeRoute
   '/_authenticated/dashboard/vault': typeof AuthenticatedDashboardVaultRouteWithChildren
+  '/_authenticated/dashboard/work-orders': typeof AuthenticatedDashboardWorkOrdersRoute
   '/agents/match/$matchToken': typeof AgentsMatchMatchTokenRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/marketplace/feedback/$token': typeof MarketplaceFeedbackTokenRoute
   '/p/$slug/builder': typeof PSlugBuilderRoute
   '/p/$slug/demo': typeof PSlugDemoRoute
+  '/work-orders/rate/$token': typeof WorkOrdersRateTokenRoute
   '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/p/$slug/': typeof PSlugIndexRoute
   '/_authenticated/admin/service-matches/$matchToken': typeof AuthenticatedAdminServiceMatchesMatchTokenRoute
+  '/_authenticated/agent-dashboard/work-orders/$id': typeof AuthenticatedAgentDashboardWorkOrdersIdRoute
   '/_authenticated/dashboard/vault/templates': typeof AuthenticatedDashboardVaultTemplatesRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
   '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
   '/lovable/email/transactional/send': typeof LovableEmailTransactionalSendRoute
   '/_authenticated/admin/service-matches/': typeof AuthenticatedAdminServiceMatchesIndexRoute
+  '/_authenticated/agent-dashboard/work-orders/': typeof AuthenticatedAgentDashboardWorkOrdersIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -501,20 +540,24 @@ export interface FileRouteTypes {
     | '/dashboard/stats'
     | '/dashboard/upgrade'
     | '/dashboard/vault'
+    | '/dashboard/work-orders'
     | '/agents/match/$matchToken'
     | '/lovable/email/suppression'
     | '/marketplace/feedback/$token'
     | '/p/$slug/builder'
     | '/p/$slug/demo'
+    | '/work-orders/rate/$token'
     | '/admin/'
     | '/dashboard/'
     | '/p/$slug/'
     | '/admin/service-matches/$matchToken'
+    | '/agent-dashboard/work-orders/$id'
     | '/dashboard/vault/templates'
     | '/lovable/email/queue/process'
     | '/lovable/email/transactional/preview'
     | '/lovable/email/transactional/send'
     | '/admin/service-matches/'
+    | '/agent-dashboard/work-orders/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -546,20 +589,24 @@ export interface FileRouteTypes {
     | '/dashboard/stats'
     | '/dashboard/upgrade'
     | '/dashboard/vault'
+    | '/dashboard/work-orders'
     | '/agents/match/$matchToken'
     | '/lovable/email/suppression'
     | '/marketplace/feedback/$token'
     | '/p/$slug/builder'
     | '/p/$slug/demo'
+    | '/work-orders/rate/$token'
     | '/admin'
     | '/dashboard'
     | '/p/$slug'
     | '/admin/service-matches/$matchToken'
+    | '/agent-dashboard/work-orders/$id'
     | '/dashboard/vault/templates'
     | '/lovable/email/queue/process'
     | '/lovable/email/transactional/preview'
     | '/lovable/email/transactional/send'
     | '/admin/service-matches'
+    | '/agent-dashboard/work-orders'
   id:
     | '__root__'
     | '/'
@@ -596,20 +643,24 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard/stats'
     | '/_authenticated/dashboard/upgrade'
     | '/_authenticated/dashboard/vault'
+    | '/_authenticated/dashboard/work-orders'
     | '/agents/match/$matchToken'
     | '/lovable/email/suppression'
     | '/marketplace/feedback/$token'
     | '/p/$slug/builder'
     | '/p/$slug/demo'
+    | '/work-orders/rate/$token'
     | '/_authenticated/admin/'
     | '/_authenticated/dashboard/'
     | '/p/$slug/'
     | '/_authenticated/admin/service-matches/$matchToken'
+    | '/_authenticated/agent-dashboard/work-orders/$id'
     | '/_authenticated/dashboard/vault/templates'
     | '/lovable/email/queue/process'
     | '/lovable/email/transactional/preview'
     | '/lovable/email/transactional/send'
     | '/_authenticated/admin/service-matches/'
+    | '/_authenticated/agent-dashboard/work-orders/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -633,6 +684,7 @@ export interface RootRouteChildren {
   PSlugRoute: typeof PSlugRouteWithChildren
   LovableEmailSuppressionRoute: typeof LovableEmailSuppressionRoute
   MarketplaceFeedbackTokenRoute: typeof MarketplaceFeedbackTokenRoute
+  WorkOrdersRateTokenRoute: typeof WorkOrdersRateTokenRoute
   LovableEmailQueueProcessRoute: typeof LovableEmailQueueProcessRoute
   LovableEmailTransactionalPreviewRoute: typeof LovableEmailTransactionalPreviewRoute
   LovableEmailTransactionalSendRoute: typeof LovableEmailTransactionalSendRoute
@@ -808,6 +860,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminIndexRouteImport
       parentRoute: typeof AuthenticatedAdminRoute
     }
+    '/work-orders/rate/$token': {
+      id: '/work-orders/rate/$token'
+      path: '/work-orders/rate/$token'
+      fullPath: '/work-orders/rate/$token'
+      preLoaderRoute: typeof WorkOrdersRateTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/p/$slug/demo': {
       id: '/p/$slug/demo'
       path: '/demo'
@@ -842,6 +901,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/agents/match/$matchToken'
       preLoaderRoute: typeof AgentsMatchMatchTokenRouteImport
       parentRoute: typeof AgentsRoute
+    }
+    '/_authenticated/dashboard/work-orders': {
+      id: '/_authenticated/dashboard/work-orders'
+      path: '/work-orders'
+      fullPath: '/dashboard/work-orders'
+      preLoaderRoute: typeof AuthenticatedDashboardWorkOrdersRouteImport
+      parentRoute: typeof AuthenticatedDashboardRoute
     }
     '/_authenticated/dashboard/vault': {
       id: '/_authenticated/dashboard/vault'
@@ -934,6 +1000,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminProviderIdRouteImport
       parentRoute: typeof AuthenticatedAdminRoute
     }
+    '/_authenticated/agent-dashboard/work-orders/': {
+      id: '/_authenticated/agent-dashboard/work-orders/'
+      path: '/work-orders'
+      fullPath: '/agent-dashboard/work-orders/'
+      preLoaderRoute: typeof AuthenticatedAgentDashboardWorkOrdersIndexRouteImport
+      parentRoute: typeof AuthenticatedAgentDashboardRoute
+    }
     '/_authenticated/admin/service-matches/': {
       id: '/_authenticated/admin/service-matches/'
       path: '/'
@@ -968,6 +1041,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/dashboard/vault/templates'
       preLoaderRoute: typeof AuthenticatedDashboardVaultTemplatesRouteImport
       parentRoute: typeof AuthenticatedDashboardVaultRoute
+    }
+    '/_authenticated/agent-dashboard/work-orders/$id': {
+      id: '/_authenticated/agent-dashboard/work-orders/$id'
+      path: '/work-orders/$id'
+      fullPath: '/agent-dashboard/work-orders/$id'
+      preLoaderRoute: typeof AuthenticatedAgentDashboardWorkOrdersIdRouteImport
+      parentRoute: typeof AuthenticatedAgentDashboardRoute
     }
     '/_authenticated/admin/service-matches/$matchToken': {
       id: '/_authenticated/admin/service-matches/$matchToken'
@@ -1013,6 +1093,24 @@ const AuthenticatedAdminRouteChildren: AuthenticatedAdminRouteChildren = {
 const AuthenticatedAdminRouteWithChildren =
   AuthenticatedAdminRoute._addFileChildren(AuthenticatedAdminRouteChildren)
 
+interface AuthenticatedAgentDashboardRouteChildren {
+  AuthenticatedAgentDashboardWorkOrdersIdRoute: typeof AuthenticatedAgentDashboardWorkOrdersIdRoute
+  AuthenticatedAgentDashboardWorkOrdersIndexRoute: typeof AuthenticatedAgentDashboardWorkOrdersIndexRoute
+}
+
+const AuthenticatedAgentDashboardRouteChildren: AuthenticatedAgentDashboardRouteChildren =
+  {
+    AuthenticatedAgentDashboardWorkOrdersIdRoute:
+      AuthenticatedAgentDashboardWorkOrdersIdRoute,
+    AuthenticatedAgentDashboardWorkOrdersIndexRoute:
+      AuthenticatedAgentDashboardWorkOrdersIndexRoute,
+  }
+
+const AuthenticatedAgentDashboardRouteWithChildren =
+  AuthenticatedAgentDashboardRoute._addFileChildren(
+    AuthenticatedAgentDashboardRouteChildren,
+  )
+
 interface AuthenticatedDashboardVaultRouteChildren {
   AuthenticatedDashboardVaultTemplatesRoute: typeof AuthenticatedDashboardVaultTemplatesRoute
 }
@@ -1040,6 +1138,7 @@ interface AuthenticatedDashboardRouteChildren {
   AuthenticatedDashboardStatsRoute: typeof AuthenticatedDashboardStatsRoute
   AuthenticatedDashboardUpgradeRoute: typeof AuthenticatedDashboardUpgradeRoute
   AuthenticatedDashboardVaultRoute: typeof AuthenticatedDashboardVaultRouteWithChildren
+  AuthenticatedDashboardWorkOrdersRoute: typeof AuthenticatedDashboardWorkOrdersRoute
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
 }
 
@@ -1058,6 +1157,8 @@ const AuthenticatedDashboardRouteChildren: AuthenticatedDashboardRouteChildren =
     AuthenticatedDashboardUpgradeRoute: AuthenticatedDashboardUpgradeRoute,
     AuthenticatedDashboardVaultRoute:
       AuthenticatedDashboardVaultRouteWithChildren,
+    AuthenticatedDashboardWorkOrdersRoute:
+      AuthenticatedDashboardWorkOrdersRoute,
     AuthenticatedDashboardIndexRoute: AuthenticatedDashboardIndexRoute,
   }
 
@@ -1068,13 +1169,14 @@ const AuthenticatedDashboardRouteWithChildren =
 
 interface AuthenticatedRouteChildren {
   AuthenticatedAdminRoute: typeof AuthenticatedAdminRouteWithChildren
-  AuthenticatedAgentDashboardRoute: typeof AuthenticatedAgentDashboardRoute
+  AuthenticatedAgentDashboardRoute: typeof AuthenticatedAgentDashboardRouteWithChildren
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRouteWithChildren
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAdminRoute: AuthenticatedAdminRouteWithChildren,
-  AuthenticatedAgentDashboardRoute: AuthenticatedAgentDashboardRoute,
+  AuthenticatedAgentDashboardRoute:
+    AuthenticatedAgentDashboardRouteWithChildren,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRouteWithChildren,
 }
 
@@ -1128,6 +1230,7 @@ const rootRouteChildren: RootRouteChildren = {
   PSlugRoute: PSlugRouteWithChildren,
   LovableEmailSuppressionRoute: LovableEmailSuppressionRoute,
   MarketplaceFeedbackTokenRoute: MarketplaceFeedbackTokenRoute,
+  WorkOrdersRateTokenRoute: WorkOrdersRateTokenRoute,
   LovableEmailQueueProcessRoute: LovableEmailQueueProcessRoute,
   LovableEmailTransactionalPreviewRoute: LovableEmailTransactionalPreviewRoute,
   LovableEmailTransactionalSendRoute: LovableEmailTransactionalSendRoute,
