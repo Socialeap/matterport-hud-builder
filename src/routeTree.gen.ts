@@ -49,6 +49,7 @@ import { Route as AuthenticatedDashboardDemoRouteImport } from './routes/_authen
 import { Route as AuthenticatedDashboardClientsRouteImport } from './routes/_authenticated.dashboard.clients'
 import { Route as AuthenticatedDashboardBrandingRouteImport } from './routes/_authenticated.dashboard.branding'
 import { Route as AuthenticatedDashboardAccountRouteImport } from './routes/_authenticated.dashboard.account'
+import { Route as AuthenticatedAdminServiceMatchesRouteImport } from './routes/_authenticated.admin.service-matches'
 import { Route as AuthenticatedAdminProviderIdRouteImport } from './routes/_authenticated.admin.$providerId'
 import { Route as LovableEmailTransactionalSendRouteImport } from './routes/lovable/email/transactional/send'
 import { Route as LovableEmailTransactionalPreviewRouteImport } from './routes/lovable/email/transactional/preview'
@@ -268,6 +269,12 @@ const AuthenticatedDashboardAccountRoute =
     path: '/account',
     getParentRoute: () => AuthenticatedDashboardRoute,
   } as any)
+const AuthenticatedAdminServiceMatchesRoute =
+  AuthenticatedAdminServiceMatchesRouteImport.update({
+    id: '/service-matches',
+    path: '/service-matches',
+    getParentRoute: () => AuthenticatedAdminRoute,
+  } as any)
 const AuthenticatedAdminProviderIdRoute =
   AuthenticatedAdminProviderIdRouteImport.update({
     id: '/$providerId',
@@ -321,6 +328,7 @@ export interface FileRoutesByFullPath {
   '/invite/$token': typeof InviteTokenRoute
   '/p/$slug': typeof PSlugRouteWithChildren
   '/admin/$providerId': typeof AuthenticatedAdminProviderIdRoute
+  '/admin/service-matches': typeof AuthenticatedAdminServiceMatchesRoute
   '/dashboard/account': typeof AuthenticatedDashboardAccountRoute
   '/dashboard/branding': typeof AuthenticatedDashboardBrandingRoute
   '/dashboard/clients': typeof AuthenticatedDashboardClientsRoute
@@ -364,6 +372,7 @@ export interface FileRoutesByTo {
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/invite/$token': typeof InviteTokenRoute
   '/admin/$providerId': typeof AuthenticatedAdminProviderIdRoute
+  '/admin/service-matches': typeof AuthenticatedAdminServiceMatchesRoute
   '/dashboard/account': typeof AuthenticatedDashboardAccountRoute
   '/dashboard/branding': typeof AuthenticatedDashboardBrandingRoute
   '/dashboard/clients': typeof AuthenticatedDashboardClientsRoute
@@ -412,6 +421,7 @@ export interface FileRoutesById {
   '/invite/$token': typeof InviteTokenRoute
   '/p/$slug': typeof PSlugRouteWithChildren
   '/_authenticated/admin/$providerId': typeof AuthenticatedAdminProviderIdRoute
+  '/_authenticated/admin/service-matches': typeof AuthenticatedAdminServiceMatchesRoute
   '/_authenticated/dashboard/account': typeof AuthenticatedDashboardAccountRoute
   '/_authenticated/dashboard/branding': typeof AuthenticatedDashboardBrandingRoute
   '/_authenticated/dashboard/clients': typeof AuthenticatedDashboardClientsRoute
@@ -460,6 +470,7 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/p/$slug'
     | '/admin/$providerId'
+    | '/admin/service-matches'
     | '/dashboard/account'
     | '/dashboard/branding'
     | '/dashboard/clients'
@@ -503,6 +514,7 @@ export interface FileRouteTypes {
     | '/email/unsubscribe'
     | '/invite/$token'
     | '/admin/$providerId'
+    | '/admin/service-matches'
     | '/dashboard/account'
     | '/dashboard/branding'
     | '/dashboard/clients'
@@ -550,6 +562,7 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/p/$slug'
     | '/_authenticated/admin/$providerId'
+    | '/_authenticated/admin/service-matches'
     | '/_authenticated/dashboard/account'
     | '/_authenticated/dashboard/branding'
     | '/_authenticated/dashboard/clients'
@@ -883,6 +896,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardAccountRouteImport
       parentRoute: typeof AuthenticatedDashboardRoute
     }
+    '/_authenticated/admin/service-matches': {
+      id: '/_authenticated/admin/service-matches'
+      path: '/service-matches'
+      fullPath: '/admin/service-matches'
+      preLoaderRoute: typeof AuthenticatedAdminServiceMatchesRouteImport
+      parentRoute: typeof AuthenticatedAdminRoute
+    }
     '/_authenticated/admin/$providerId': {
       id: '/_authenticated/admin/$providerId'
       path: '/$providerId'
@@ -923,11 +943,13 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedAdminRouteChildren {
   AuthenticatedAdminProviderIdRoute: typeof AuthenticatedAdminProviderIdRoute
+  AuthenticatedAdminServiceMatchesRoute: typeof AuthenticatedAdminServiceMatchesRoute
   AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
 }
 
 const AuthenticatedAdminRouteChildren: AuthenticatedAdminRouteChildren = {
   AuthenticatedAdminProviderIdRoute: AuthenticatedAdminProviderIdRoute,
+  AuthenticatedAdminServiceMatchesRoute: AuthenticatedAdminServiceMatchesRoute,
   AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
 }
 
