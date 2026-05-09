@@ -53,8 +53,11 @@ import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { BeaconForm } from "@/components/marketplace/BeaconForm";
+import { ServiceMatchForm } from "@/components/marketplace/ServiceMatchForm";
 import { buildStudioUrl } from "@/lib/public-url";
 import type { Database } from "@/integrations/supabase/types";
+
+type ServicePreference = "essential" | "preferable";
 
 type MarketplaceSpecialty = Database["public"]["Enums"]["marketplace_specialty"];
 
