@@ -193,144 +193,6 @@ interface DirectoryMSP {
   region: string;
 }
 
-// Sample MSPs shown for demonstration before the live directory is populated.
-// `slug: null` makes MSPCard render a disabled "Studio coming soon" CTA — no
-// broken links. These are clearly labeled as "Sample" in the UI.
-const MOCK_MSPS: DirectoryMSP[] = [
-  {
-    brand_name: "Skyline 3D Studios",
-    slug: null,
-    logo_url: null,
-    tier: "pro",
-    // Omits: floor-plans, custom-icons
-    specialties: [
-      "scan-matterport-pro3",
-      "scan-drone-aerial",
-      "scan-twilight-photography",
-      "scan-walkthrough-video-clips" as MarketplaceSpecialty,
-      "scan-dimensional-measurements",
-      "scan-same-day-turnaround",
-      "vault-sound-library",
-      "vault-portal-filters",
-      "vault-interactive-widgets",
-      "vault-property-mapper",
-      "ai-lead-generation",
-    ],
-    primary_city: "Atlanta",
-    region: "GA",
-  },
-  {
-    brand_name: "Coastal Tour Co.",
-    slug: null,
-    logo_url: null,
-    tier: "starter",
-    // Omits: twilight, interactive-widgets
-    specialties: [
-      "scan-matterport-pro3",
-      "scan-drone-aerial",
-      "scan-walkthrough-video-clips" as MarketplaceSpecialty,
-      "scan-floor-plans",
-      "scan-dimensional-measurements",
-      "scan-same-day-turnaround",
-      "vault-sound-library",
-      "vault-portal-filters",
-      "vault-custom-icons",
-      "vault-property-mapper",
-      "ai-lead-generation",
-    ],
-    primary_city: "San Diego",
-    region: "CA",
-  },
-  {
-    brand_name: "Lakeshore Immersive",
-    slug: null,
-    logo_url: null,
-    tier: "pro",
-    // Omits: drone, ai-lead-generation
-    specialties: [
-      "scan-matterport-pro3",
-      "scan-twilight-photography",
-      "scan-walkthrough-video-clips" as MarketplaceSpecialty,
-      "scan-floor-plans",
-      "scan-dimensional-measurements",
-      "scan-same-day-turnaround",
-      "vault-sound-library",
-      "vault-portal-filters",
-      "vault-interactive-widgets",
-      "vault-custom-icons",
-      "vault-property-mapper",
-    ],
-    primary_city: "Chicago",
-    region: "IL",
-  },
-  {
-    brand_name: "Lone Star Spaces",
-    slug: null,
-    logo_url: null,
-    tier: "starter",
-    // Omits: sound-library, property-mapper
-    specialties: [
-      "scan-matterport-pro3",
-      "scan-drone-aerial",
-      "scan-twilight-photography",
-      "scan-walkthrough-video-clips" as MarketplaceSpecialty,
-      "scan-floor-plans",
-      "scan-dimensional-measurements",
-      "scan-same-day-turnaround",
-      "vault-portal-filters",
-      "vault-interactive-widgets",
-      "vault-custom-icons",
-      "ai-lead-generation",
-    ],
-    primary_city: "Austin",
-    region: "TX",
-  },
-  {
-    brand_name: "Mile High Matterworks",
-    slug: null,
-    logo_url: null,
-    tier: "pro",
-    // Omits: walkthrough-video-clips, dimensional-measurements
-    specialties: [
-      "scan-matterport-pro3",
-      "scan-drone-aerial",
-      "scan-twilight-photography",
-      "scan-floor-plans",
-      "scan-same-day-turnaround",
-      "vault-sound-library",
-      "vault-portal-filters",
-      "vault-interactive-widgets",
-      "vault-custom-icons",
-      "vault-property-mapper",
-      "ai-lead-generation",
-    ],
-    primary_city: "Denver",
-    region: "CO",
-  },
-  {
-    brand_name: "Beacon Hill Tours",
-    slug: null,
-    logo_url: null,
-    tier: "starter",
-    // Omits: same-day-turnaround, portal-filters
-    specialties: [
-      "scan-matterport-pro3",
-      "scan-drone-aerial",
-      "scan-twilight-photography",
-      "scan-walkthrough-video-clips" as MarketplaceSpecialty,
-      "scan-floor-plans",
-      "scan-dimensional-measurements",
-      "vault-sound-library",
-      "vault-interactive-widgets",
-      "vault-custom-icons",
-      "vault-property-mapper",
-      "ai-lead-generation",
-    ],
-    primary_city: "Boston",
-    region: "MA",
-  },
-];
-
 /* ------------------------------------------------------------------ */
 /*  Page                                                               */
 /* ------------------------------------------------------------------ */
@@ -644,13 +506,6 @@ function DirectorySection() {
     );
   }, [results, selectedSpecialties]);
 
-  const visibleMocks = useMemo(() => {
-    if (selectedSpecialties.size === 0) return MOCK_MSPS;
-    return MOCK_MSPS.filter((m) =>
-      Array.from(selectedSpecialties).every((s) => m.specialties.includes(s)),
-    );
-  }, [selectedSpecialties]);
-
   const handleSearch = async (e: FormEvent) => {
     e.preventDefault();
     const cityTrim = city.trim();
@@ -884,7 +739,7 @@ function DirectorySection() {
               </div>
 
 
-              {!hasSearched && <DemoPreview mocks={visibleMocks} />}
+              {!hasSearched && <DirectoryEmptyState />}
 
               {hasSearched && !hasResults && (
                 <div className="space-y-6">
@@ -924,7 +779,6 @@ function DirectorySection() {
                       </Button>
                     </div>
                   )}
-                  <DemoPreview mocks={visibleMocks} />
                 </div>
               )}
 
@@ -1036,7 +890,7 @@ function FilterGroup({
 }
 
 
-function MSPCard({ msp, isSample = false }: { msp: DirectoryMSP; isSample?: boolean }) {
+function MSPCard({ msp }: { msp: DirectoryMSP }) {
   const isPro = msp.tier === "pro";
   const studioUrl = msp.slug
     ? buildStudioUrl(msp.slug, { tier: msp.tier, customDomain: null })
@@ -1062,11 +916,6 @@ function MSPCard({ msp, isSample = false }: { msp: DirectoryMSP; isSample?: bool
             <div className="flex items-start justify-between gap-2">
               <h3 className="truncate text-base font-semibold text-amber-300">{msp.brand_name}</h3>
               <div className="flex shrink-0 items-center gap-1.5">
-                {isSample && (
-                  <Badge className="bg-slate-400/15 text-slate-200 ring-1 ring-slate-300/30">
-                    Sample
-                  </Badge>
-                )}
                 {isPro && (
                   <Badge className="bg-cyan-400/15 text-cyan-200 ring-1 ring-cyan-300/30">
                     Pro
@@ -1130,30 +979,20 @@ function MSPCard({ msp, isSample = false }: { msp: DirectoryMSP; isSample?: bool
 }
 
 /* ------------------------------------------------------------------ */
-/*  Demo preview — sample MSP cards + waitlist form                    */
+/*  Directory empty state (pre-search)                                  */
 /* ------------------------------------------------------------------ */
 
-function DemoPreview({ mocks }: { mocks: DirectoryMSP[] }) {
+function DirectoryEmptyState() {
   return (
-    <div className="space-y-6">
-      <div>
-        <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-white/50">
-          Sample studios
-        </p>
-        {mocks.length > 0 ? (
-          <div className="grid gap-4 sm:grid-cols-2">
-            {mocks.map((m) => (
-              <MSPCard key={m.brand_name} msp={m} isSample />
-            ))}
-          </div>
-        ) : (
-          <div className="rounded-lg border border-dashed border-white/15 bg-white/[0.02] p-6 text-center">
-            <p className="text-sm text-white/60">
-              No sample studios match every selected specialty. Try removing a filter.
-            </p>
-          </div>
-        )}
-      </div>
+    <div className="rounded-lg border border-dashed border-white/15 bg-white/[0.02] p-8 text-center">
+      <Search className="mx-auto mb-3 size-6 text-white/40" />
+      <p className="text-sm font-medium text-white">
+        Search by city or ZIP to find studios in your area
+      </p>
+      <p className="mt-1 text-xs text-white/50">
+        Filter by the on-site scanning and studio services that matter for your
+        listing, then send a Work Order to your shortlisted MSPs.
+      </p>
     </div>
   );
 }
