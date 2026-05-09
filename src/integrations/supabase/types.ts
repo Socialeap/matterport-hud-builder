@@ -1209,6 +1209,24 @@ export type Database = {
           start_date: string
         }[]
       }
+      get_service_match_requests_for_admin: {
+        Args: never
+        Returns: {
+          brokerage: string
+          city: string
+          created_at: string
+          email: string
+          essential_services: Database["public"]["Enums"]["marketplace_specialty"][]
+          expires_at: string
+          id: string
+          match_token: string
+          name: string
+          preferable_services: Database["public"]["Enums"]["marketplace_specialty"][]
+          region: string
+          status: Database["public"]["Enums"]["beacon_status"]
+          zip: string
+        }[]
+      }
       get_service_match_results: {
         Args: { p_match_token: string }
         Returns: {
