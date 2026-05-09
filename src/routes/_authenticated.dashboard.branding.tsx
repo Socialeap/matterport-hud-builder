@@ -112,6 +112,9 @@ const defaultBranding: BrandingData = {
   service_zips: [],
   specialties: [],
   service_polygon: null,
+  directory_website_url: null,
+  directory_contact_email: null,
+  directory_phone: null,
 };
 
 function BrandingPage() {
