@@ -166,6 +166,15 @@ function MatchPage() {
           </div>
         )}
 
+        {!loading && loadError && (
+          <Card className="border-red-300/20 bg-red-500/5">
+            <CardContent className="p-8 text-center text-white/80">
+              <p className="text-base font-semibold text-white">Unable to load match</p>
+              <p className="mt-2 text-sm">{loadError}</p>
+            </CardContent>
+          </Card>
+        )}
+
         {!loading && summary?.status === "not_found" && (
           <Card className="border-white/10 bg-white/5">
             <CardContent className="p-8 text-center text-white/70">
