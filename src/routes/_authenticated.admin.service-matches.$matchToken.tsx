@@ -68,12 +68,14 @@ const formatLabel = (s: string) =>
 function AdminServiceMatchDetail() {
   const { matchToken } = Route.useParams();
   const [data, setData] = useState<DetailPayload | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
     (async () => {
       setLoading(true);
+      setLoadError(null);
       const { data: rpc, error } = await supabase.rpc(
         "get_service_match_detail_for_admin",
         { p_match_token: matchToken },
@@ -81,7 +83,8 @@ function AdminServiceMatchDetail() {
       if (!active) return;
       if (error) {
         console.error("admin match detail load failed:", error);
-        setData({ status: "not_found" });
+        setLoadError(error.message || "Backend request failed");
+        setData(null);
       } else {
         setData(rpc as unknown as DetailPayload);
       }
