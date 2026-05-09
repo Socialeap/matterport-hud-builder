@@ -77,7 +77,10 @@ function BuilderPage() {
 
   return (
     <IndexingProvider>
-      <HudBuilderSandbox branding={branding} slug={slug} />
+      <HudBuilderSandbox
+        branding={branding as React.ComponentProps<typeof HudBuilderSandbox>["branding"]}
+        slug={slug}
+      />
     </IndexingProvider>
   );
 }
