@@ -46,6 +46,18 @@ function AdminLayout() {
             Back to Dashboard
           </Link>
           <span className="font-semibold text-foreground">Admin Portal</span>
+          <Link
+            to="/admin"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Overview
+          </Link>
+          <Link
+            to="/admin/service-matches"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Service Match Requests
+          </Link>
         </div>
         <div className="flex items-center gap-4 text-sm text-muted-foreground">
           <span>{user?.email}</span>
