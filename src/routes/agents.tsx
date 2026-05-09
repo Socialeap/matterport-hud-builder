@@ -726,15 +726,15 @@ function DirectorySection() {
                 <FilterGroup
                   title="On-Site Scanning"
                   options={SCANNING_FILTERS}
-                  selected={selectedSpecialties}
-                  onToggle={toggleSpecialty}
+                  prefs={servicePrefs}
+                  onSetPref={setSpecialtyPref}
                 />
                 <FilterGroup
                   title="Studio Presentation"
                   subtitle="Minimum-quantity service offering"
                   options={STUDIO_FILTERS}
-                  selected={selectedSpecialties}
-                  onToggle={toggleSpecialty}
+                  prefs={servicePrefs}
+                  onSetPref={setSpecialtyPref}
                 />
               </div>
 
@@ -752,16 +752,16 @@ function DirectorySection() {
 
             {/* Results */}
             <div className="space-y-4">
-              <div className="flex justify-end">
+              <div className="flex flex-wrap justify-end gap-2">
                 <Dialog open={notifyOpen} onOpenChange={setNotifyOpen}>
                   <DialogTrigger asChild>
                     <Button
                       size="sm"
                       variant="outline"
-                      className="gap-2 border-cyan-300/40 bg-cyan-300/5 text-cyan-100 hover:bg-cyan-300/10 hover:text-white"
+                      className="gap-2 border-white/15 bg-white/5 text-white/80 hover:bg-white/10 hover:text-white"
                     >
                       <MailCheck className="size-4" />
-                      Notify me when matched
+                      Notify Me When Matches Are Available
                     </Button>
                   </DialogTrigger>
                   <DialogContent className="border-white/10 bg-[#0a0e27] text-white sm:max-w-lg">
@@ -770,9 +770,8 @@ function DirectorySection() {
                         Notify me when a Pro Partner is matched in my area
                       </DialogTitle>
                       <DialogDescription className="text-white/70">
-                        Pick the on-site scanning &amp; studio services you care about in
-                        the filter rail, and set your city or ZIP in the search — we'll
-                        email you the moment a fitting Pro Partner activates locally.
+                        Set your city or ZIP in the search — we'll email you the moment a Pro
+                        Partner activates locally.
                       </DialogDescription>
                     </DialogHeader>
                     <BeaconForm
@@ -785,7 +784,45 @@ function DirectorySection() {
                     />
                   </DialogContent>
                 </Dialog>
+
+                <Dialog open={matchOpen} onOpenChange={setMatchOpen}>
+                  <DialogTrigger asChild>
+                    <Button
+                      size="sm"
+                      disabled={!hasAnyPref}
+                      className="gap-2 bg-cyan-400 text-[#0a0e27] hover:bg-cyan-300 disabled:opacity-50"
+                      title={
+                        hasAnyPref
+                          ? "Create your service-fit match"
+                          : "Mark at least one service Essential or Preferable to enable"
+                      }
+                    >
+                      <Sparkles className="size-4" />
+                      Create MSP Service Match
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="border-white/10 bg-[#0a0e27] text-white sm:max-w-2xl">
+                    <DialogHeader>
+                      <DialogTitle className="text-white">
+                        Create your MSP Service Match
+                      </DialogTitle>
+                      <DialogDescription className="text-white/70">
+                        We'll match studios in your area to the services you marked Essential or
+                        Preferable. For the first 24 hours, only Pro Partners are visible — after
+                        that, the match opens to all qualifying studios.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <ServiceMatchForm
+                      defaultCity={city}
+                      defaultRegion={region}
+                      defaultZip={zip}
+                      essentialServices={essentialServices}
+                      preferableServices={preferableServices}
+                    />
+                  </DialogContent>
+                </Dialog>
               </div>
+
 
               {!hasSearched && <DemoPreview mocks={visibleMocks} />}
 
