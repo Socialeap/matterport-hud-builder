@@ -58,6 +58,7 @@ function MatchPage() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [results, setResults] = useState<ResultRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [notifyingId, setNotifyingId] = useState<string | null>(null);
   const [notifiedIds, setNotifiedIds] = useState<Set<string>>(new Set());
 
@@ -65,13 +66,21 @@ function MatchPage() {
     let active = true;
     (async () => {
       setLoading(true);
-      const [{ data: sumData }, { data: resData }] = await Promise.all([
+      setLoadError(null);
+      const [{ data: sumData, error: sumErr }, { data: resData, error: resErr }] = await Promise.all([
         supabase.rpc("get_service_match_summary", { p_match_token: matchToken }),
         supabase.rpc("get_service_match_results", { p_match_token: matchToken }),
       ]);
       if (!active) return;
-      setSummary((sumData as unknown as Summary) ?? { status: "not_found" });
-      setResults(((resData as unknown as ResultRow[]) ?? []));
+      if (sumErr || resErr) {
+        console.error("match page load failed:", sumErr ?? resErr);
+        setLoadError((sumErr ?? resErr)?.message || "Backend request failed");
+        setSummary(null);
+        setResults([]);
+      } else {
+        setSummary((sumData as unknown as Summary) ?? { status: "not_found" });
+        setResults(((resData as unknown as ResultRow[]) ?? []));
+      }
       setLoading(false);
     })();
     return () => { active = false; };
