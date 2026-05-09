@@ -836,21 +836,34 @@ function DirectorySection() {
                   <DialogContent className="border-white/10 bg-[#0a0e27] text-white sm:max-w-lg">
                     <DialogHeader>
                       <DialogTitle className="text-white">
-                        Notify me when a Pro Partner is matched in my area
+                        Notify me when matched MSPs are available
                       </DialogTitle>
                       <DialogDescription className="text-white/70">
-                        Set your city or ZIP in the search — we'll email you the moment a Pro
-                        Partner activates locally.
+                        We'll create your personal MSP Service Match page and email you a link
+                        — including the moment new Pro Partners activate in your area.
                       </DialogDescription>
                     </DialogHeader>
-                    <BeaconForm
-                      defaultCity={city}
-                      defaultRegion={region}
-                      defaultZip={zip}
-                      variant="dark"
-                      hideLocationFields
-                      onSuccess={() => setNotifyOpen(false)}
-                    />
+                    {hasAnyServiceSelected ? (
+                      <ServiceMatchForm
+                        defaultCity={city}
+                        defaultRegion={region}
+                        defaultZip={zip}
+                        essentialServices={essentialServices}
+                        preferableServices={preferableServices}
+                        onSuccess={() => setNotifyOpen(false)}
+                      />
+                    ) : (
+                      <div className="space-y-3 rounded-md border border-amber-300/30 bg-amber-300/5 p-4 text-sm text-amber-100">
+                        <p className="font-semibold">Select at least one service first.</p>
+                        <p className="text-amber-100/80">
+                          Mark one or more On-Site Scanning or Studio Presentation services
+                          as <span className="font-semibold">Essential</span> or{" "}
+                          <span className="font-semibold">Preferable</span> in the filter rail,
+                          then reopen this dialog. We use those choices to build your
+                          MSP Service Match.
+                        </p>
+                      </div>
+                    )}
                   </DialogContent>
                 </Dialog>
 
