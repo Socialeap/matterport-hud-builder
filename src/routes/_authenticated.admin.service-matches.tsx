@@ -84,7 +84,7 @@ function AdminServiceMatches() {
     (async () => {
       setLoading(true);
       const { data, error } = await supabase.rpc(
-        "get_service_match_requests_for_admin" as never,
+        "get_service_match_requests_for_admin",
       );
       if (error) {
         console.error("Failed to load service-match requests:", error);
