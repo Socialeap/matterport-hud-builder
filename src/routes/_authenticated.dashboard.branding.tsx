@@ -83,6 +83,9 @@ interface BrandingData {
   service_zips: string[];
   specialties: MarketplaceSpecialty[];
   service_polygon: GeoJSON.Polygon | null;
+  directory_website_url: string | null;
+  directory_contact_email: string | null;
+  directory_phone: string | null;
 }
 
 const defaultBranding: BrandingData = {
