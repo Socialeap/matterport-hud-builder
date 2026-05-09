@@ -366,6 +366,9 @@ function BrandingPage() {
           service_radius_miles: branding.service_radius_miles,
           service_zips: parsedZips,
           specialties: allowedSpecialties,
+          directory_website_url: branding.directory_website_url?.trim() || null,
+          directory_contact_email: branding.directory_contact_email?.trim() || null,
+          directory_phone: branding.directory_phone?.trim() || null,
         } as any,
         { onConflict: "provider_id" }
       );
