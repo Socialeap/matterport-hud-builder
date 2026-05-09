@@ -512,28 +512,46 @@ function DirectorySection() {
   const [results, setResults] = useState<DirectoryMSP[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [notifyOpen, setNotifyOpen] = useState(false);
+  const [matchOpen, setMatchOpen] = useState(false);
   const [lastQuery, setLastQuery] = useState<{ city: string; region: string; zip: string } | null>(
     null,
   );
-  const [selectedSpecialties, setSelectedSpecialties] = useState<Set<MarketplaceSpecialty>>(
-    new Set(),
+  // Three-state preferences map. Absent = "Not Needed".
+  const [servicePrefs, setServicePrefs] = useState<Map<MarketplaceSpecialty, ServicePreference>>(
+    new Map(),
   );
 
-  const toggleSpecialty = (id: MarketplaceSpecialty) => {
-    setSelectedSpecialties((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+  const setSpecialtyPref = (id: MarketplaceSpecialty, pref: ServicePreference | null) => {
+    setServicePrefs((prev) => {
+      const next = new Map(prev);
+      if (pref === null) next.delete(id);
+      else next.set(id, pref);
       return next;
     });
   };
+
+  // Any selected preference (essential OR preferable) acts as a directory filter.
+  const selectedSpecialties = useMemo(
+    () => new Set<MarketplaceSpecialty>(servicePrefs.keys()),
+    [servicePrefs],
+  );
+
+  const essentialServices = useMemo(
+    () => Array.from(servicePrefs.entries()).filter(([, v]) => v === "essential").map(([k]) => k),
+    [servicePrefs],
+  );
+  const preferableServices = useMemo(
+    () => Array.from(servicePrefs.entries()).filter(([, v]) => v === "preferable").map(([k]) => k),
+    [servicePrefs],
+  );
+  const hasAnyPref = essentialServices.length > 0 || preferableServices.length > 0;
 
   const reset = () => {
     setCity("");
     setRegion("");
     setZip("");
     setResults(null);
-    setSelectedSpecialties(new Set());
+    setServicePrefs(new Map());
     setLastQuery(null);
   };
 
@@ -545,9 +563,6 @@ function DirectorySection() {
     );
   }, [results, selectedSpecialties]);
 
-  // Demo cards mirror the same specialty-filter behavior as live results, so
-  // visitors get an immediate sense of how filtering works before any Pros
-  // are live in their city.
   const visibleMocks = useMemo(() => {
     if (selectedSpecialties.size === 0) return MOCK_MSPS;
     return MOCK_MSPS.filter((m) =>
