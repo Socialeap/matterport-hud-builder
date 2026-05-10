@@ -797,7 +797,7 @@ serve(async (req) => {
     try {
       const { data: byokRow } = await service
         .from("client_byok_keys")
-        .select("ciphertext, iv, active")
+        .select("ciphertext, iv, active, preferred_model")
         .eq("client_id", model.client_id)
         .eq("vendor", "gemini")
         .maybeSingle();
@@ -805,6 +805,14 @@ serve(async (req) => {
         const cipherBytes = bytesFromBytea(byokRow.ciphertext);
         const ivBytes = bytesFromBytea(byokRow.iv);
         byokKey = await decryptKey(cipherBytes, ivBytes);
+        const allowed = new Set([
+          "gemini-2.5-flash-lite",
+          "gemini-2.5-flash",
+          "gemini-2.5-pro",
+        ]);
+        if (byokRow.preferred_model && allowed.has(byokRow.preferred_model)) {
+          byokPreferredModel = byokRow.preferred_model as string;
+        }
       }
     } catch (err) {
       console.warn(
