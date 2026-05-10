@@ -63,7 +63,7 @@ function RatePage() {
     const { data, error } = await supabase.rpc("submit_work_order_rating", {
       p_rating_token: token,
       p_stars: stars,
-      p_feedback: feedback.trim() || null,
+      p_feedback: feedback.trim() || undefined,
     });
     setSubmitting(false);
     if (error) {

@@ -149,7 +149,7 @@ function MspWorkOrdersPage() {
     const { data, error } = await supabase.rpc("respond_to_work_order_invite", {
       p_invite_id: responseFor.invite_id,
       p_response: response,
-      p_provider_note: providerNote.trim() || null,
+      p_provider_note: providerNote.trim() || undefined,
     });
     setSubmitting(false);
     if (error) {
