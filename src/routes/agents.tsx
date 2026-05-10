@@ -138,7 +138,7 @@ const journeySteps = [
   {
     step: 1,
     title: "Find Your MSP",
-    description: "Search the directory by location and the studio features that matter for your listings.",
+    description: "Import your 3D Captured Tours",
   },
   {
     step: 2,
