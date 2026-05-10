@@ -793,6 +793,7 @@ serve(async (req) => {
   // The TM key is skipped on this path; the quota event is recorded
   // with outcome='byok' so the TM subsidy doesn't decrement.
   let byokKey: string | null = null;
+  let byokPreferredModel: string | null = null;
   if (model.client_id) {
     try {
       const { data: byokRow } = await service
