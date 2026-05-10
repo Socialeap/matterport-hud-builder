@@ -793,11 +793,12 @@ serve(async (req) => {
   // The TM key is skipped on this path; the quota event is recorded
   // with outcome='byok' so the TM subsidy doesn't decrement.
   let byokKey: string | null = null;
+  let byokPreferredModel: string | null = null;
   if (model.client_id) {
     try {
       const { data: byokRow } = await service
         .from("client_byok_keys")
-        .select("ciphertext, iv, active")
+        .select("ciphertext, iv, active, preferred_model")
         .eq("client_id", model.client_id)
         .eq("vendor", "gemini")
         .maybeSingle();
@@ -805,6 +806,14 @@ serve(async (req) => {
         const cipherBytes = bytesFromBytea(byokRow.ciphertext);
         const ivBytes = bytesFromBytea(byokRow.iv);
         byokKey = await decryptKey(cipherBytes, ivBytes);
+        const allowed = new Set([
+          "gemini-2.5-flash-lite",
+          "gemini-2.5-flash",
+          "gemini-2.5-pro",
+        ]);
+        if (byokRow.preferred_model && allowed.has(byokRow.preferred_model)) {
+          byokPreferredModel = byokRow.preferred_model as string;
+        }
       }
     } catch (err) {
       console.warn(
@@ -933,13 +942,19 @@ serve(async (req) => {
       );
 
       // 1. Gemini primary — uses BYOK key if present, TM key otherwise.
+      // When the client picked a preferred model in their BYOK panel,
+      // honour it (Flash-Lite | Flash | Pro). Otherwise use the system
+      // default (Flash-Lite).
+      const primaryModelName = usingByok && byokPreferredModel
+        ? byokPreferredModel
+        : GEMINI_PRIMARY_MODEL_NAME;
       if (effectiveGeminiKey) {
         const t0 = performance.now();
         console.info(
-          `[synthesize-answer] gemini_primary attempt model=${GEMINI_PRIMARY_MODEL_NAME} provenance=${provenance}`,
+          `[synthesize-answer] gemini_primary attempt model=${primaryModelName} byok_pref=${byokPreferredModel ?? "none"} provenance=${provenance}`,
         );
         success = await streamGemini(
-          GEMINI_PRIMARY_MODEL_NAME,
+          primaryModelName,
           query,
           context,
           effectiveGeminiKey,
@@ -948,11 +963,11 @@ serve(async (req) => {
         if (success) {
           provider = "gemini_primary";
           console.info(
-            `[synthesize-answer] gemini_primary ok model=${GEMINI_PRIMARY_MODEL_NAME} elapsed_ms=${Math.round(performance.now() - t0)}`,
+            `[synthesize-answer] gemini_primary ok model=${primaryModelName} elapsed_ms=${Math.round(performance.now() - t0)}`,
           );
         } else {
           console.warn(
-            `[synthesize-answer] gemini_primary failed model=${GEMINI_PRIMARY_MODEL_NAME} trying gemini_fallback`,
+            `[synthesize-answer] gemini_primary failed model=${primaryModelName} trying gemini_fallback`,
           );
         }
       }

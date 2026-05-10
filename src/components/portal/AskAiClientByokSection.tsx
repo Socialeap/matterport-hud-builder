@@ -21,8 +21,48 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
-import { GEMINI_PRICING_COPY, SYNTHESIS_MODEL_LABEL } from "@/lib/pricing-copy";
+import { GEMINI_PRICING_COPY } from "@/lib/pricing-copy";
+
+type PreferredModel =
+  | "gemini-2.5-flash-lite"
+  | "gemini-2.5-flash"
+  | "gemini-2.5-pro";
+
+const DEFAULT_MODEL: PreferredModel = "gemini-2.5-flash-lite";
+
+const MODEL_OPTIONS: Array<{
+  value: PreferredModel;
+  label: string;
+  blurb: string;
+  price: string;
+}> = [
+  {
+    value: "gemini-2.5-flash-lite",
+    label: "Gemini 2.5 Flash-Lite — Recommended",
+    blurb: "Best value. Ideal for high-volume RAG Q&A.",
+    price: "$0.10 in / $0.40 out per 1M tokens",
+  },
+  {
+    value: "gemini-2.5-flash",
+    label: "Gemini 2.5 Flash — Balanced",
+    blurb: "Stronger reasoning for nuanced visitor questions.",
+    price: "$0.30 in / $2.50 out per 1M tokens",
+  },
+  {
+    value: "gemini-2.5-pro",
+    label: "Gemini 2.5 Pro — Premium",
+    blurb: "Top-tier quality for complex, multi-step queries.",
+    price: "$1.25 in / $10.00 out per 1M tokens",
+  },
+];
 
 interface ByokStatus {
   has_key: boolean;
@@ -32,6 +72,7 @@ interface ByokStatus {
   validated_at: string | null;
   validation_error: string | null;
   created_at: string | null;
+  preferred_model: PreferredModel | null;
 }
 
 const INITIAL: ByokStatus = {
@@ -42,17 +83,9 @@ const INITIAL: ByokStatus = {
   validated_at: null,
   validation_error: null,
   created_at: null,
+  preferred_model: null,
 };
 
-/**
- * Client-facing BYOK panel — mounted inside the Builder's Property Intelligence
- * section. The first 20 visitor questions per property are funded by
- * Transcendence Media; this panel lets the property owner add their own
- * Gemini API key to keep Ask AI running past that subsidy.
- *
- * Server-side this writes to `client_byok_keys` keyed on auth.uid() (the
- * builder owner). MSPs/admins are filtered out at the parent level.
- */
 export function AskAiClientByokSection() {
   const [status, setStatus] = useState<ByokStatus>(INITIAL);
   const [loading, setLoading] = useState(true);
@@ -60,6 +93,8 @@ export function AskAiClientByokSection() {
   const [showInput, setShowInput] = useState(false);
   const [draftKey, setDraftKey] = useState("");
   const [reveal, setReveal] = useState(false);
+  const [draftModel, setDraftModel] = useState<PreferredModel>(DEFAULT_MODEL);
+  const [savingModel, setSavingModel] = useState(false);
 
   const refresh = async () => {
     setLoading(true);
@@ -76,7 +111,7 @@ export function AskAiClientByokSection() {
     }
     if (Array.isArray(data) && data.length > 0) {
       const row = data[0] as Partial<ByokStatus>;
-      setStatus({
+      const next: ByokStatus = {
         has_key: !!row.has_key,
         vendor: row.vendor ?? "gemini",
         fingerprint: row.fingerprint ?? null,
@@ -84,9 +119,13 @@ export function AskAiClientByokSection() {
         validated_at: row.validated_at ?? null,
         validation_error: row.validation_error ?? null,
         created_at: row.created_at ?? null,
-      });
+        preferred_model: (row.preferred_model as PreferredModel | null) ?? null,
+      };
+      setStatus(next);
+      setDraftModel((next.preferred_model as PreferredModel) ?? DEFAULT_MODEL);
     } else {
       setStatus(INITIAL);
+      setDraftModel(DEFAULT_MODEL);
     }
   };
 
@@ -108,7 +147,11 @@ export function AskAiClientByokSection() {
         reason?: string;
         fingerprint?: string;
       }>("validate-byok", {
-        body: { api_key: apiKey, vendor: "gemini" },
+        body: {
+          api_key: apiKey,
+          vendor: "gemini",
+          preferred_model: draftModel,
+        },
       });
       if (error) {
         toast.error(`Validation failed: ${error.message}`);
@@ -154,6 +197,36 @@ export function AskAiClientByokSection() {
     }
   };
 
+  const handleModelChange = async (next: PreferredModel) => {
+    setDraftModel(next);
+    if (!status.has_key) return; // only persist when there's a key to attach it to
+    setSavingModel(true);
+    try {
+      const { error } = await supabase.functions.invoke("validate-byok", {
+        body: {
+          vendor: "gemini",
+          update_model_only: true,
+          preferred_model: next,
+        },
+      });
+      if (error) {
+        toast.error(`Couldn't update model: ${error.message}`);
+        return;
+      }
+      toast.success(
+        `Ask AI now uses ${MODEL_OPTIONS.find((m) => m.value === next)?.label}.`,
+      );
+      await refresh();
+    } finally {
+      setSavingModel(false);
+    }
+  };
+
+  const activeModel: PreferredModel =
+    (status.preferred_model as PreferredModel) ?? DEFAULT_MODEL;
+  const activeModelLabel =
+    MODEL_OPTIONS.find((m) => m.value === activeModel)?.label ?? activeModel;
+
   return (
     <Card id="ask-ai-byok" className="border-primary/30">
       <CardHeader>
@@ -181,7 +254,7 @@ export function AskAiClientByokSection() {
             <ShieldCheck className="mt-0.5 size-4 shrink-0 text-emerald-600" />
             <div className="min-w-0 flex-1 space-y-1">
               <p className="text-sm font-medium text-foreground">
-                Active · {SYNTHESIS_MODEL_LABEL}
+                Active · {activeModelLabel}
               </p>
               <p className="text-xs text-muted-foreground">
                 Key {status.fingerprint ?? "••••••••"} ·{" "}
@@ -216,6 +289,45 @@ export function AskAiClientByokSection() {
             </p>
           </div>
         )}
+
+        {/* Model selector — controls primary model for visitor Q&A. */}
+        <div className="space-y-2 rounded-md border border-border/60 bg-muted/10 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <Label htmlFor="byok-model" className="text-xs font-medium">
+              Synthesis model
+            </Label>
+            {savingModel && (
+              <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
+            )}
+          </div>
+          <Select
+            value={draftModel}
+            onValueChange={(v) => handleModelChange(v as PreferredModel)}
+            disabled={busy || savingModel}
+          >
+            <SelectTrigger id="byok-model" className="h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {MODEL_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  <div className="flex flex-col">
+                    <span className="text-sm">{opt.label}</span>
+                    <span className="text-[11px] text-muted-foreground">
+                      {opt.blurb} · {opt.price}
+                    </span>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-[11px] text-muted-foreground">
+            Flash-Lite is the most cost-efficient choice and is the
+            recommended default for grounded RAG answers. Pick a stronger
+            model only if your visitors ask complex, multi-step questions.
+            {!status.has_key && " Saved when you add your key."}
+          </p>
+        </div>
 
         <div className="rounded-md border border-border/60 bg-muted/10 p-3 text-xs text-muted-foreground">
           <p className="leading-relaxed">{GEMINI_PRICING_COPY.short}</p>

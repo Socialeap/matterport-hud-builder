@@ -32,7 +32,16 @@ const corsHeaders = {
 interface ValidateBody {
   api_key?: string;
   vendor?: string;
+  preferred_model?: string | null;
+  /** When true, only update preferred_model — do not require api_key. */
+  update_model_only?: boolean;
 }
+
+const ALLOWED_MODELS = new Set([
+  "gemini-2.5-flash-lite",
+  "gemini-2.5-flash",
+  "gemini-2.5-pro",
+]);
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -102,10 +111,32 @@ serve(async (req) => {
   }
   const apiKey = (body.api_key ?? "").trim();
   const vendor = (body.vendor ?? "gemini").trim();
-  if (!apiKey) return jsonResponse({ error: "missing_api_key" }, 400);
+  const preferredModel =
+    body.preferred_model === undefined || body.preferred_model === null
+      ? undefined
+      : String(body.preferred_model);
+  if (preferredModel !== undefined && preferredModel !== "" &&
+      !ALLOWED_MODELS.has(preferredModel)) {
+    return jsonResponse({ error: "invalid_preferred_model" }, 400);
+  }
   if (vendor !== "gemini") {
     return jsonResponse({ error: "unsupported_vendor", vendor }, 400);
   }
+
+  // Model-only update path: no key probe, just update preferred_model.
+  if (body.update_model_only) {
+    const { error: updErr } = await service
+      .from("client_byok_keys")
+      .update({ preferred_model: preferredModel ?? null })
+      .eq("client_id", userId)
+      .eq("vendor", "gemini");
+    if (updErr) {
+      return jsonResponse({ error: "persist_failed", detail: updErr.message }, 500);
+    }
+    return jsonResponse({ ok: true, preferred_model: preferredModel ?? null });
+  }
+
+  if (!apiKey) return jsonResponse({ error: "missing_api_key" }, 400);
   // Cheap shape check before we burn a probe call.
   if (apiKey.length < 20 || apiKey.length > 256) {
     return jsonResponse({ error: "invalid_key_shape" }, 400);
@@ -159,6 +190,9 @@ serve(async (req) => {
         validated_at: new Date().toISOString(),
         validation_error: null,
         rotated_at: new Date().toISOString(),
+        ...(preferredModel !== undefined
+          ? { preferred_model: preferredModel || null }
+          : {}),
       },
       { onConflict: "client_id,vendor" },
     );
