@@ -66,6 +66,7 @@ export type Database = {
           geocoded_at: string | null
           id: string
           lat: number | null
+          leaked_at: string | null
           lng: number | null
           match_token: string
           matched_at: string | null
@@ -102,6 +103,7 @@ export type Database = {
           geocoded_at?: string | null
           id?: string
           lat?: number | null
+          leaked_at?: string | null
           lng?: number | null
           match_token?: string
           matched_at?: string | null
@@ -138,6 +140,7 @@ export type Database = {
           geocoded_at?: string | null
           id?: string
           lat?: number | null
+          leaked_at?: string | null
           lng?: number | null
           match_token?: string
           matched_at?: string | null
@@ -722,7 +725,7 @@ export type Database = {
           {
             foreignKeyName: "marketplace_outreach_beacon_id_fkey"
             columns: ["beacon_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "agent_beacons"
             referencedColumns: ["id"]
           },
@@ -1363,6 +1366,10 @@ export type Database = {
         Args: { ""?: string; att_name: string; tbl: unknown }
         Returns: string
       }
+      _provider_can_receive_leads: {
+        Args: { p_provider_id: string }
+        Returns: boolean
+      }
       _st_3dintersects: {
         Args: { geom1: unknown; geom2: unknown }
         Returns: boolean
@@ -1705,6 +1712,7 @@ export type Database = {
           has_outreach: boolean
           id: string
           is_currently_exclusive: boolean
+          is_leaked: boolean
           name: string
           region: string
           status: Database["public"]["Enums"]["beacon_status"]
@@ -1798,6 +1806,7 @@ export type Database = {
         Returns: boolean
       }
       issue_studio_preview_token: { Args: { _slug: string }; Returns: string }
+      leak_expired_pro_windows: { Args: never; Returns: number }
       longtransactionsenabled: { Args: never; Returns: boolean }
       lookup_outreach_by_token: {
         Args: { p_feedback_token: string }
