@@ -20,6 +20,11 @@ export function createStripeClient(env: StripeEnv): Stripe {
   if (!lovableApiKey) throw new Error('LOVABLE_API_KEY is not configured');
 
   return new Stripe(connectionApiKey, {
+    // Built-in retry on transient 5xx + 429 + network errors with
+    // exponential backoff. Matches the design doc's "all Stripe calls
+    // are idempotent and should retry on transient failures" intent
+    // without requiring a per-call wrapper.
+    maxNetworkRetries: 3,
     httpClient: Stripe.createFetchHttpClient((url: string | URL, init?: RequestInit) => {
       const gatewayUrl = url.toString().replace('https://api.stripe.com', GATEWAY_STRIPE_BASE);
       return fetch(gatewayUrl, {

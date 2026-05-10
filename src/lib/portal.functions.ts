@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
+import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { checkRateLimit, ipFromRequest } from "./rate-limit.server";
 import { assembleAskRuntimeJS } from "./portal/ask-runtime-assembler";
@@ -97,9 +98,136 @@ interface SavePresentationInput {
   };
 }
 
+// ── Zod input validators ──────────────────────────────────────────────────
+//
+// These schemas back the `inputValidator` calls on every server function in
+// this file. The previous `inputValidator((d: T) => d)` pattern was a TYPE
+// CAST only — no runtime validation — so malformed payloads flowed straight
+// into Postgres and either silently no-op'd, threw confusing PG errors, or
+// allowed type confusion. Each schema below mirrors the original interface
+// shape but validates at runtime.
+//
+// Design notes:
+//   - UUID fields use `.uuid()` so non-UUID inputs reject at the boundary
+//     instead of producing PG "invalid input syntax for type uuid".
+//   - Freeform JSON shapes (tour_config, brand overrides, agent metadata)
+//     use `.passthrough()` / `z.record(z.unknown())` so we don't silently
+//     strip future fields the handler hasn't been updated for.
+//   - Optional fields are `.optional()`, NOT defaulted, so the existing
+//     handler logic that distinguishes "missing" from "empty" still works.
+
+const TokenInputSchema = z.object({ token: z.string().min(1).max(256) });
+const SlugInputSchema = z.object({
+  slug: z.string().trim().toLowerCase().min(1).max(120).regex(/^[a-z0-9][a-z0-9-]*$/),
+});
+const ProviderIdInputSchema = z.object({ providerId: z.string().uuid() });
+const ModelIdInputSchema = z.object({ modelId: z.string().uuid() });
+const InvitationFreeFlagInputSchema = z.object({
+  invitationId: z.string().uuid(),
+  isFree: z.boolean(),
+});
+
+const SavePresentationMediaAssetSchema = z
+  .object({
+    id: z.string().min(1).max(120),
+    kind: z.enum(["video", "photo", "gif"]),
+    visible: z.boolean(),
+    label: z.string().max(200).optional(),
+    filename: z.string().max(300).optional(),
+    proxyUrl: z.string().max(2048).optional(),
+    embedUrl: z.string().max(2048).optional(),
+  })
+  .passthrough();
+
+const SavePresentationLiveTourStopSchema = z
+  .object({
+    id: z.string().min(1).max(120),
+    name: z.string().max(300),
+    ss: z.string().max(200),
+    sr: z.string().max(200),
+  })
+  .passthrough();
+
+const SavePresentationPropertySchema = z
+  .object({
+    id: z.string().min(1).max(120),
+    name: z.string().max(300),
+    propertyName: z.string().max(300).optional(),
+    location: z.string().max(500),
+    matterportId: z.string().max(64),
+    musicUrl: z.string().max(2048),
+    cinematicVideoUrl: z.string().max(2048).optional(),
+    enableNeighborhoodMap: z.boolean().optional(),
+    multimedia: z.array(SavePresentationMediaAssetSchema).optional(),
+    liveTourStops: z.array(SavePresentationLiveTourStopSchema).optional(),
+    isPrimary: z.boolean().optional(),
+  })
+  .passthrough();
+
+const SavePresentationBrandingOverridesSchema = z
+  .object({
+    brandName: z.string().max(200),
+    accentColor: z.string().max(40),
+    hudBgColor: z.string().max(40),
+    gateLabel: z.string().max(120),
+    logoUrl: z.string().max(2048).optional(),
+    faviconUrl: z.string().max(2048).optional(),
+  })
+  .passthrough();
+
+const SavePresentationEnhancementsValueSchema = z
+  .object({
+    spatial_audio: z.string().nullable().optional(),
+    visual_hud_filter: z.array(z.string()).optional(),
+    interactive_widget: z.array(z.string()).optional(),
+    custom_iconography: z.array(z.string()).optional(),
+    external_link: z.array(z.string()).optional(),
+  })
+  .passthrough();
+
+const SavePresentationAccessSchema = z.object({
+  passwordProtected: z.boolean(),
+  passwordHint: z.string().max(120),
+});
+
+const SavePresentationInputSchema = z.object({
+  providerId: z.string().uuid(),
+  name: z.string().max(300),
+  properties: z.array(SavePresentationPropertySchema),
+  // tourConfig + agent are intentionally freeform — generator merges them
+  // into tour_config jsonb verbatim. Validate "is an object" only.
+  tourConfig: z.record(z.unknown()),
+  agent: z.record(z.string()),
+  brandingOverrides: SavePresentationBrandingOverridesSchema,
+  enhancements: z.record(SavePresentationEnhancementsValueSchema).optional(),
+  access: SavePresentationAccessSchema.optional(),
+});
+
+const RefreshPresentationInputSchema = SavePresentationInputSchema.extend({
+  modelId: z.string().uuid(),
+});
+
+const QADatabaseEntrySchema = z.object({
+  id: z.string().min(1).max(200),
+  question: z.string(),
+  answer: z.string(),
+  source_anchor_id: z.string().max(200),
+  embedding: z.array(z.number()),
+});
+
+const GeneratePresentationInputSchema = z.object({
+  modelId: z.string().uuid(),
+  qaDatabase: z.array(QADatabaseEntrySchema).optional(),
+  // Transient password — never persisted, never logged. Bounded by
+  // PROTECTED_MIN_PASSWORD_LEN at runtime, but accept any non-empty
+  // string at the validator boundary so the existing error messaging
+  // below stays authoritative.
+  password: z.string().max(256).optional(),
+});
+
 export const savePresentationRequest = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data: SavePresentationInput) => data)
+  .inputValidator((data: unknown) => SavePresentationInputSchema.parse(data))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
 
@@ -205,7 +333,7 @@ export const savePresentationRequest = createServerFn({ method: "POST" })
  */
 export const refreshPresentationConfig = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data: SavePresentationInput & { modelId: string }) => data)
+  .inputValidator((data: unknown) => RefreshPresentationInputSchema.parse(data))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const { error } = await supabase
@@ -237,7 +365,7 @@ export const refreshPresentationConfig = createServerFn({ method: "POST" })
 
 export const checkFulfillmentStatus = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data: { modelId: string }) => data)
+  .inputValidator((data: unknown) => ModelIdInputSchema.parse(data))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
 
@@ -274,7 +402,7 @@ export const checkFulfillmentStatus = createServerFn({ method: "POST" })
 
 export const getApprovedFreePresentationDownload = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data: { providerId: string }) => data)
+  .inputValidator((data: unknown) => ProviderIdInputSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ modelId: string | null; error: string | null }> => {
     const { supabase, userId } = context;
 
@@ -804,15 +932,7 @@ function buildPropertyDocsPanel(
 export const generatePresentation = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator(
-    (data: {
-      modelId: string;
-      qaDatabase?: QADatabaseEntry[];
-      // Transient password supplied per-request when the agent has armed
-      // the password gate. Never logged, never persisted, never echoed
-      // back to the client. Stays in memory only for the duration of
-      // this handler invocation.
-      password?: string;
-    }) => data,
+    (data: unknown) => GeneratePresentationInputSchema.parse(data),
   )
   .handler(async ({ data, context }): Promise<{ success: boolean; html?: string; error?: string; askAiWarning?: string }> => {
     const { supabase, userId } = context;
@@ -3790,7 +3910,7 @@ export const getProviderOrders = createServerFn({ method: "GET" })
 
 export const grantFreePresentationDownload = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data: { modelId: string }) => data)
+  .inputValidator((data: unknown) => ModelIdInputSchema.parse(data))
   .handler(async ({ data, context }) => {
     const { userId } = context;
 
@@ -3839,7 +3959,7 @@ export const grantFreePresentationDownload = createServerFn({ method: "POST" })
  */
 export const setClientFreeFlag = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { invitationId: string; isFree: boolean }) => d)
+  .inputValidator((d: unknown) => InvitationFreeFlagInputSchema.parse(d))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
 
@@ -3898,7 +4018,7 @@ export const setClientFreeFlag = createServerFn({ method: "POST" })
  */
 export const getClientFreeStatus = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { providerId: string }) => d)
+  .inputValidator((d: unknown) => ProviderIdInputSchema.parse(d))
   .handler(async ({ data, context }) => {
     const { supabase } = context;
     const { data: rows } = await supabase.rpc("resolve_studio_access", {
@@ -3927,7 +4047,7 @@ export interface StudioAccessState {
 
 export const getStudioAccessState = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { providerId: string }) => d)
+  .inputValidator((d: unknown) => ProviderIdInputSchema.parse(d))
   .handler(async ({ data, context }): Promise<StudioAccessState> => {
     const { supabase } = context;
     const { data: rows, error } = await supabase.rpc("resolve_studio_access", {
@@ -3989,7 +4109,7 @@ const INVITATION_TOKEN_RE =
  * inviting MSP's branding so the acceptance page can match their look.
  */
 export const getInvitationByToken = createServerFn({ method: "POST" })
-  .inputValidator((d: { token: string }) => d)
+  .inputValidator((d: unknown) => TokenInputSchema.parse(d))
   .handler(async ({ data }): Promise<{
     found: boolean;
     invitation?: InvitationDetails;
@@ -4054,7 +4174,7 @@ export const getInvitationByToken = createServerFn({ method: "POST" })
  */
 export const acceptInvitationForUser = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { token: string }) => d)
+  .inputValidator((d: unknown) => TokenInputSchema.parse(d))
   .handler(async ({ data, context }) => {
     const { supabase } = context;
     const { data: rows, error } = await supabase.rpc("accept_invitation_self", {
@@ -4094,7 +4214,7 @@ export const acceptInvitationForUser = createServerFn({ method: "POST" })
 
 export const issueStudioPreviewToken = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { slug: string }) => d)
+  .inputValidator((d: unknown) => SlugInputSchema.parse(d))
   .handler(async ({ data, context }): Promise<{ token: string }> => {
     const slug = (data.slug ?? "").trim().toLowerCase();
     if (!slug) {
@@ -4162,7 +4282,7 @@ export const issueStudioPreviewToken = createServerFn({ method: "POST" })
  * Decline invitation. Public — invitee may not have an account.
  */
 export const declineInvitationByToken = createServerFn({ method: "POST" })
-  .inputValidator((d: { token: string }) => d)
+  .inputValidator((d: unknown) => TokenInputSchema.parse(d))
   .handler(async ({ data }) => {
     // Public, unauthenticated mutation — apply the same per-IP rate limit
     // as getInvitationByToken so the decline path can't be used to probe

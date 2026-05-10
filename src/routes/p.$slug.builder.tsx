@@ -1,13 +1,18 @@
 import type React from "react";
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
+import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { HudBuilderSandbox } from "@/components/portal/HudBuilderSandbox";
 import { Button } from "@/components/ui/button";
 import { IndexingProvider } from "@/lib/rag/indexing-context";
 
+const FetchBrandingForBuilderInputSchema = z.object({
+  slug: z.string().trim().toLowerCase().min(1).max(120).regex(/^[a-z0-9][a-z0-9-]*$/),
+});
+
 const fetchBrandingForBuilder = createServerFn({ method: "GET" })
-  .inputValidator((data: { slug: string }) => data)
+  .inputValidator((data: unknown) => FetchBrandingForBuilderInputSchema.parse(data))
   .handler(async ({ data }) => {
     const { data: branding, error } = await supabase
       .from("branding_settings")

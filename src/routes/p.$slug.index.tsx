@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { useEffect, useState, useCallback } from "react";
+import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { checkDemoPublished } from "@/lib/sandbox-demo.functions";
 
@@ -9,6 +10,23 @@ import { checkDemoPublished } from "@/lib/sandbox-demo.functions";
 // triggers a Postgres "invalid input syntax for type uuid" error.
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+// Slug + previewToken validators for the public Studio entry point. Slug
+// is the URL segment so it MUST be present; previewToken is optional and
+// deliberately validated permissively here (just `string`) — the handler
+// re-checks against UUID_RE and gracefully degrades when malformed
+// instead of returning a 400 to the client.
+const FetchBrandingBySlugInputSchema = z.object({
+  slug: z.string().trim().toLowerCase().min(1).max(120).regex(/^[a-z0-9][a-z0-9-]*$/),
+  previewToken: z.string().max(64).nullable().optional(),
+});
+
+const RecordPageVisitInputSchema = z.object({
+  providerId: z.string().uuid(),
+  slug: z.string().trim().toLowerCase().min(1).max(120).regex(/^[a-z0-9][a-z0-9-]*$/),
+  referrer: z.string().max(2048).nullable(),
+  userAgent: z.string().max(1024).nullable(),
+});
 import { Check, X, Link2, Palette, Download, Sparkles, Menu, LogIn, LogOut } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -27,7 +45,7 @@ import { toast } from "sonner";
 
 const fetchBrandingBySlug = createServerFn({ method: "GET" })
   .inputValidator(
-    (data: { slug: string; previewToken?: string | null }) => data,
+    (data: unknown) => FetchBrandingBySlugInputSchema.parse(data),
   )
   .handler(async ({ data }) => {
     const { data: branding, error } = await supabase
@@ -106,7 +124,7 @@ const fetchBrandingBySlug = createServerFn({ method: "GET" })
   });
 
 const recordPageVisit = createServerFn({ method: "POST" })
-  .inputValidator((data: { providerId: string; slug: string; referrer: string | null; userAgent: string | null }) => data)
+  .inputValidator((data: unknown) => RecordPageVisitInputSchema.parse(data))
   .handler(async ({ data }) => {
     await supabase.from("page_visits").insert({
       provider_id: data.providerId,

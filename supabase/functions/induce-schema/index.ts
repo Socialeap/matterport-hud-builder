@@ -21,6 +21,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.103.0";
 import { checkUploadSize } from "../_shared/upload-limits.ts";
 import { checkRateLimit, ipFromRequest } from "../_shared/rate-limit.ts";
+import { retryFetch } from "../_shared/retry.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -201,11 +202,18 @@ async function callGemini(opts: GeminiOpts): Promise<GeminiResult> {
     generationConfig,
   };
 
-  const resp = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  // retryFetch retries transient 408/429/5xx + network errors with
+  // exponential backoff + jitter (see _shared/retry.ts). 4xx responses
+  // (other than 408/429) are NOT retried — those indicate a bad
+  // request that won't get better.
+  const resp = await retryFetch(
+    () => fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+    { label: "induce-schema:gemini", maxAttempts: 3, baseDelayMs: 600 },
+  );
   if (!resp.ok) {
     const detail = await resp.text();
     throw new Error(`gemini_${resp.status}:${detail.slice(0, 400)}`);

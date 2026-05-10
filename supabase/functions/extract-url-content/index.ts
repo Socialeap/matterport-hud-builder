@@ -17,6 +17,7 @@ import {
   type IntelligenceHealth,
 } from "../_shared/intelligence-health.ts";
 import { checkRateLimit, ipFromRequest } from "../_shared/rate-limit.ts";
+import { retryFetch } from "../_shared/retry.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -388,18 +389,25 @@ async function structureFields(
     `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
   const prompt = `${SYSTEM_PROMPT}\n\n--- DOCUMENT ---\n${truncated}`;
   try {
-    const resp = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.1,
-          maxOutputTokens: 4000,
-          responseMimeType: "application/json",
-        },
+    // retryFetch retries transient 408/429/5xx + network errors with
+    // exponential backoff + jitter. 4xx (other than 408/429) propagate
+    // through as a non-OK Response which we then surface via the
+    // existing `gemini_<status>` sentinel.
+    const resp = await retryFetch(
+      () => fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.1,
+            maxOutputTokens: 4000,
+            responseMimeType: "application/json",
+          },
+        }),
       }),
-    });
+      { label: `extract-url-content:gemini:${domain}`, maxAttempts: 3, baseDelayMs: 600 },
+    );
     if (!resp.ok) {
       const body = await resp.text().catch(() => "");
       console.warn(

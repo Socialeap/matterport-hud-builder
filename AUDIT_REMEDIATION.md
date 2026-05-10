@@ -99,10 +99,21 @@ git push --force-with-lease origin <branch>
       timeouts already bound the calls)
 
 ## Phase 4 — Server-fn validation + retries
-- [ ] every `inputValidator((d:T) => d)` in `portal.functions.ts` replaced
-      with a Zod schema
-- [ ] shared retry helper (exponential backoff + jitter) wired into Stripe +
-      Gemini calls
+- [x] every `inputValidator((d:T) => d)` no-op replaced with a Zod
+      schema across:
+      - `portal.functions.ts` (12 handlers)
+      - `sandbox-demo.functions.ts` (4 handlers)
+      - `grant-expiry.functions.ts` (1 handler)
+      - `routes/p.$slug.index.tsx` (2 handlers)
+      - `routes/p.$slug.builder.tsx` (1 handler)
+- [x] Stripe SDK `maxNetworkRetries: 3` set in `_shared/stripe.ts` —
+      covers all 7 Stripe call sites with one config (handles 5xx + 429
+      + network errors with exponential backoff automatically)
+- [x] new `_shared/retry.ts` with `retryFetch` + `retryWithBackoff`,
+      wired into:
+      - `induce-schema::callGemini` (covers all 4 modes)
+      - `extract-url-content::structureFields` (Gemini structuring)
+      - Retries 408/429/5xx + network errors only; 4xx propagate.
 
 ## Phase 5 — Frontend reliability
 - [ ] `__root.tsx` defines a `defaultErrorComponent`

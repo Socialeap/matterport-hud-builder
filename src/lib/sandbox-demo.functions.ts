@@ -11,23 +11,46 @@
  * is_published flag.
  */
 import { createServerFn } from "@tanstack/react-start";
+import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
 
-interface SandboxDemoPayload {
-  brand_overrides: {
-    brandName?: string;
-    accentColor?: string;
-    hudBgColor?: string;
-    gateLabel?: string;
-    logoUrl?: string | null;
-    faviconUrl?: string | null;
-  };
-  properties: unknown[];
-  behaviors: Record<string, unknown>;
-  agent: Record<string, unknown>;
-}
+// ── Schemas ──────────────────────────────────────────────────────────
+//
+// `passthrough()` on `brand_overrides` preserves any unknown sibling
+// keys the client may add (e.g. future logoUrl variants) — we want
+// them written into Postgres jsonb without silent stripping. Same
+// reasoning for `behaviors` and `agent` which are intentionally
+// freeform `Record<string, unknown>` shapes.
+
+const SandboxDemoPayloadSchema = z.object({
+  brand_overrides: z
+    .object({
+      brandName: z.string().max(200).optional(),
+      accentColor: z.string().max(40).optional(),
+      hudBgColor: z.string().max(40).optional(),
+      gateLabel: z.string().max(120).optional(),
+      logoUrl: z.string().max(2048).optional().nullable(),
+      faviconUrl: z.string().max(2048).optional().nullable(),
+    })
+    .passthrough(),
+  properties: z.array(z.unknown()),
+  behaviors: z.record(z.unknown()),
+  agent: z.record(z.unknown()),
+});
+
+type SandboxDemoPayload = z.infer<typeof SandboxDemoPayloadSchema>;
+
+const PublishSandboxInputSchema = z.object({ publish: z.boolean() });
+
+const SlugInputSchema = z.object({
+  slug: z.string().trim().toLowerCase().min(1).max(120).regex(/^[a-z0-9][a-z0-9-]*$/),
+});
+
+const ProviderIdInputSchema = z.object({
+  providerId: z.string().uuid(),
+});
 
 export const getSandboxDemo = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -46,7 +69,7 @@ export const getSandboxDemo = createServerFn({ method: "GET" })
 
 export const saveSandboxDemo = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: SandboxDemoPayload) => input)
+  .inputValidator((input: unknown) => SandboxDemoPayloadSchema.parse(input))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const { data: existing } = await supabase
@@ -78,7 +101,7 @@ export const saveSandboxDemo = createServerFn({ method: "POST" })
 
 export const publishSandboxDemo = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { publish: boolean }) => input)
+  .inputValidator((input: unknown) => PublishSandboxInputSchema.parse(input))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
 
@@ -112,7 +135,7 @@ export const publishSandboxDemo = createServerFn({ method: "POST" })
  * the demo without an auth token. Only returns rows where is_published=true.
  */
 export const getPublicDemoBySlug = createServerFn({ method: "GET" })
-  .inputValidator((input: { slug: string }) => input)
+  .inputValidator((input: unknown) => SlugInputSchema.parse(input))
   .handler(async ({ data }) => {
     const { data: branding } = await supabase
       .from("branding_settings")
@@ -140,7 +163,7 @@ export const getPublicDemoBySlug = createServerFn({ method: "GET" })
  * "View Live Demo" CTA. Returns boolean only — no payload.
  */
 export const checkDemoPublished = createServerFn({ method: "GET" })
-  .inputValidator((input: { providerId: string }) => input)
+  .inputValidator((input: unknown) => ProviderIdInputSchema.parse(input))
   .handler(async ({ data }) => {
     const { data: row } = await supabase
       .from("sandbox_demos")
