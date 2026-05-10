@@ -55,6 +55,9 @@ export type Database = {
           contacted_at: string | null
           country: string
           created_at: string
+          disposition: Database["public"]["Enums"]["beacon_disposition"] | null
+          disposition_set_at: string | null
+          disposition_set_by: string | null
           email: string
           essential_services: Database["public"]["Enums"]["marketplace_specialty"][]
           exclusive_provider_id: string | null
@@ -88,6 +91,9 @@ export type Database = {
           contacted_at?: string | null
           country?: string
           created_at?: string
+          disposition?: Database["public"]["Enums"]["beacon_disposition"] | null
+          disposition_set_at?: string | null
+          disposition_set_by?: string | null
           email: string
           essential_services?: Database["public"]["Enums"]["marketplace_specialty"][]
           exclusive_provider_id?: string | null
@@ -121,6 +127,9 @@ export type Database = {
           contacted_at?: string | null
           country?: string
           created_at?: string
+          disposition?: Database["public"]["Enums"]["beacon_disposition"] | null
+          disposition_set_at?: string | null
+          disposition_set_by?: string | null
           email?: string
           essential_services?: Database["public"]["Enums"]["marketplace_specialty"][]
           exclusive_provider_id?: string | null
@@ -666,6 +675,66 @@ export type Database = {
         }
         Relationships: []
       }
+      marketplace_outreach: {
+        Row: {
+          agent_flagged_at: string | null
+          agent_flagged_spam: boolean
+          beacon_id: string
+          body: string | null
+          created_at: string
+          email_send_log_id: string | null
+          feedback_token: string
+          id: string
+          penalty_applied_at: string | null
+          provider_id: string
+          sent_at: string
+          subject: string
+        }
+        Insert: {
+          agent_flagged_at?: string | null
+          agent_flagged_spam?: boolean
+          beacon_id: string
+          body?: string | null
+          created_at?: string
+          email_send_log_id?: string | null
+          feedback_token?: string
+          id?: string
+          penalty_applied_at?: string | null
+          provider_id: string
+          sent_at?: string
+          subject: string
+        }
+        Update: {
+          agent_flagged_at?: string | null
+          agent_flagged_spam?: boolean
+          beacon_id?: string
+          body?: string | null
+          created_at?: string
+          email_send_log_id?: string | null
+          feedback_token?: string
+          id?: string
+          penalty_applied_at?: string | null
+          provider_id?: string
+          sent_at?: string
+          subject?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketplace_outreach_beacon_id_fkey"
+            columns: ["beacon_id"]
+            isOneToOne: false
+            referencedRelation: "agent_beacons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_outreach_email_send_log_id_fkey"
+            columns: ["email_send_log_id"]
+            isOneToOne: false
+            referencedRelation: "email_send_log"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       order_notifications: {
         Row: {
           client_id: string
@@ -854,6 +923,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      provider_responsiveness: {
+        Row: {
+          leads_contacted: number
+          leads_expired: number
+          leads_received: number
+          leads_won: number
+          provider_id: string
+          score: number
+          updated_at: string
+        }
+        Insert: {
+          leads_contacted?: number
+          leads_expired?: number
+          leads_received?: number
+          leads_won?: number
+          provider_id: string
+          score?: number
+          updated_at?: string
+        }
+        Update: {
+          leads_contacted?: number
+          leads_expired?: number
+          leads_received?: number
+          leads_won?: number
+          provider_id?: string
+          score?: number
+          updated_at?: string
+        }
+        Relationships: []
       }
       purchases: {
         Row: {
@@ -1335,6 +1434,10 @@ export type Database = {
         Returns: unknown
       }
       _st_within: { Args: { geom1: unknown; geom2: unknown }; Returns: boolean }
+      _update_responsiveness_score: {
+        Args: { p_counter?: string; p_delta: number; p_provider_id: string }
+        Returns: undefined
+      }
       accept_invitation_self: {
         Args: { _token: string }
         Returns: {
@@ -1379,6 +1482,11 @@ export type Database = {
             }
             Returns: string
           }
+      apply_no_disposition_penalties: { Args: never; Returns: number }
+      apply_outreach_feedback: {
+        Args: { p_feedback_token: string }
+        Returns: boolean
+      }
       claim_ask_exhaustion_email: {
         Args: { p_property_uuid: string; p_saved_model_id: string }
         Returns: {
@@ -1423,6 +1531,7 @@ export type Database = {
           provider_tier: Database["public"]["Enums"]["app_tier"]
         }[]
       }
+      cleanup_old_outreach_bodies: { Args: never; Returns: number }
       decline_invitation: { Args: { _token: string }; Returns: boolean }
       delete_email: {
         Args: { message_id: number; queue_name: string }
@@ -1582,6 +1691,7 @@ export type Database = {
           tier: Database["public"]["Enums"]["app_tier"]
         }[]
       }
+      get_my_marketplace_standing: { Args: never; Returns: string }
       get_my_matched_beacons: {
         Args: never
         Returns: {
@@ -1589,8 +1699,10 @@ export type Database = {
           city: string
           contacted_at: string
           created_at: string
+          disposition: Database["public"]["Enums"]["beacon_disposition"]
           email: string
           exclusive_until: string
+          has_outreach: boolean
           id: string
           is_currently_exclusive: boolean
           name: string
@@ -1687,6 +1799,14 @@ export type Database = {
       }
       issue_studio_preview_token: { Args: { _slug: string }; Returns: string }
       longtransactionsenabled: { Args: never; Returns: boolean }
+      lookup_outreach_by_token: {
+        Args: { p_feedback_token: string }
+        Returns: {
+          already_flagged: boolean
+          brand_name: string
+          sent_at: string
+        }[]
+      }
       move_to_dlq: {
         Args: {
           dlq_name: string
@@ -1828,6 +1948,20 @@ export type Database = {
           specialties: Database["public"]["Enums"]["marketplace_specialty"][]
           tier: Database["public"]["Enums"]["app_tier"]
         }[]
+      }
+      send_marketplace_outreach: {
+        Args: { p_beacon_id: string; p_body: string; p_subject: string }
+        Returns: {
+          feedback_token: string
+          outreach_id: string
+        }[]
+      }
+      set_beacon_disposition: {
+        Args: {
+          p_beacon_id: string
+          p_disposition: Database["public"]["Enums"]["beacon_disposition"]
+        }
+        Returns: boolean
       }
       set_client_byok_active: {
         Args: { p_active: boolean; p_client_id: string }
@@ -2436,6 +2570,7 @@ export type Database = {
     Enums: {
       app_role: "admin" | "provider" | "client"
       app_tier: "starter" | "pro"
+      beacon_disposition: "won" | "lost" | "unresponsive"
       beacon_status: "waiting" | "matched" | "unsubscribed" | "expired"
       invitation_status: "pending" | "accepted" | "expired" | "declined"
       license_status: "active" | "past_due" | "expired"
@@ -2598,6 +2733,7 @@ export const Constants = {
     Enums: {
       app_role: ["admin", "provider", "client"],
       app_tier: ["starter", "pro"],
+      beacon_disposition: ["won", "lost", "unresponsive"],
       beacon_status: ["waiting", "matched", "unsubscribed", "expired"],
       invitation_status: ["pending", "accepted", "expired", "declined"],
       license_status: ["active", "past_due", "expired"],
