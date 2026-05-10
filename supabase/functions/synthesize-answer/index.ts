@@ -942,13 +942,19 @@ serve(async (req) => {
       );
 
       // 1. Gemini primary — uses BYOK key if present, TM key otherwise.
+      // When the client picked a preferred model in their BYOK panel,
+      // honour it (Flash-Lite | Flash | Pro). Otherwise use the system
+      // default (Flash-Lite).
+      const primaryModelName = usingByok && byokPreferredModel
+        ? byokPreferredModel
+        : GEMINI_PRIMARY_MODEL_NAME;
       if (effectiveGeminiKey) {
         const t0 = performance.now();
         console.info(
-          `[synthesize-answer] gemini_primary attempt model=${GEMINI_PRIMARY_MODEL_NAME} provenance=${provenance}`,
+          `[synthesize-answer] gemini_primary attempt model=${primaryModelName} byok_pref=${byokPreferredModel ?? "none"} provenance=${provenance}`,
         );
         success = await streamGemini(
-          GEMINI_PRIMARY_MODEL_NAME,
+          primaryModelName,
           query,
           context,
           effectiveGeminiKey,
@@ -957,11 +963,11 @@ serve(async (req) => {
         if (success) {
           provider = "gemini_primary";
           console.info(
-            `[synthesize-answer] gemini_primary ok model=${GEMINI_PRIMARY_MODEL_NAME} elapsed_ms=${Math.round(performance.now() - t0)}`,
+            `[synthesize-answer] gemini_primary ok model=${primaryModelName} elapsed_ms=${Math.round(performance.now() - t0)}`,
           );
         } else {
           console.warn(
-            `[synthesize-answer] gemini_primary failed model=${GEMINI_PRIMARY_MODEL_NAME} trying gemini_fallback`,
+            `[synthesize-answer] gemini_primary failed model=${primaryModelName} trying gemini_fallback`,
           );
         }
       }
