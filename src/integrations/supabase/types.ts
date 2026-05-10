@@ -1365,6 +1365,21 @@ export type Database = {
           warning_email_sent_at: string
         }[]
       }
+      claim_pending_beacon_matches: {
+        Args: { p_limit?: number }
+        Returns: {
+          beacon_city: string
+          beacon_email: string
+          beacon_id: string
+          beacon_name: string
+          beacon_region: string
+          provider_brand_name: string
+          provider_custom_domain: string
+          provider_id: string
+          provider_slug: string
+          provider_tier: Database["public"]["Enums"]["app_tier"]
+        }[]
+      }
       decline_invitation: { Args: { _token: string }; Returns: boolean }
       delete_email: {
         Args: { message_id: number; queue_name: string }
@@ -1539,6 +1554,7 @@ export type Database = {
           zip: string
         }[]
       }
+      get_my_service_polygon: { Args: never; Returns: Json }
       get_provider_license: {
         Args: { client_uuid: string }
         Returns: {
@@ -1612,6 +1628,15 @@ export type Database = {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
+        }
+        Returns: boolean
+      }
+      is_provider_serving_location: {
+        Args: {
+          p_city: string
+          p_provider_id: string
+          p_region: string
+          p_zip: string
         }
         Returns: boolean
       }
@@ -1762,6 +1787,7 @@ export type Database = {
         Args: { p_active: boolean; p_client_id: string }
         Returns: number
       }
+      set_my_service_polygon: { Args: { p_geojson?: Json }; Returns: boolean }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
       st_3dclosestpoint: {
