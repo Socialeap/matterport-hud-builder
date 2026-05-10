@@ -1592,10 +1592,8 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
             <span className="hidden sm:inline">Back</span>
           </Link>
 
-          {/* MSP brand pill — sourced from saved branding (not editable client overrides) */}
-          <div
-            className="flex h-10 items-center gap-2 rounded-full border border-border bg-muted/40 px-2 pr-4 shadow-sm"
-          >
+          {/* MSP brand — sourced from saved branding (not editable client overrides) */}
+          <div className="flex items-center gap-2">
             {branding.logo_url ? (
               <img
                 src={branding.logo_url}

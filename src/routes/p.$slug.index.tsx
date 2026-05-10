@@ -795,9 +795,9 @@ function PortalHeader({
       className="sticky top-0 z-50 w-full border-b border-white/15 shadow-sm backdrop-blur-xl"
       style={{ backgroundColor: headerBg }}
     >
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
-        {/* Left: enlarged brand pill (translucent over tinted bar) */}
-        <div className="flex h-11 items-center gap-3 rounded-full border border-white/25 bg-white/15 px-3 pr-4 shadow-sm backdrop-blur-md">
+      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-2 px-4 sm:px-6 md:gap-4">
+        {/* Left: brand (no pill — borderless logo + name) */}
+        <div className="flex items-center gap-2 md:gap-3">
           {branding.logo_url ? (
             <img
               src={branding.logo_url}
@@ -812,19 +812,19 @@ function PortalHeader({
               {branding.brand_name?.[0]?.toUpperCase() ?? "S"}
             </div>
           )}
-          <span className="text-base font-semibold text-white drop-shadow">
+          <span className="whitespace-nowrap text-sm font-semibold text-white drop-shadow md:text-base">
             <span className="hidden sm:inline">{branding.brand_name} Studio</span>
             <span className="sm:hidden">{branding.brand_name}</span>
           </span>
         </div>
 
         {/* Center: View Demo CTA (desktop only) */}
-        <div className="hidden flex-1 justify-center sm:flex">
+        <div className="hidden flex-1 justify-center md:flex">
           {demoPublished && (
             <Link
               to="/p/$slug/demo"
               params={{ slug }}
-              className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white shadow-md transition-transform hover:scale-105"
+              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold text-white shadow-md transition-transform hover:scale-105 lg:gap-2 lg:px-4 lg:py-2 lg:text-sm"
               style={{ backgroundColor: accent }}
             >
               <Sparkles className="size-4" />
@@ -834,13 +834,13 @@ function PortalHeader({
         </div>
 
         {/* Right: section nav (desktop) */}
-        <nav className="hidden items-center gap-6 sm:flex">
+        <nav className="hidden items-center gap-3 md:flex lg:gap-6">
           {navLinks.map((link) => (
             <a
               key={link.id}
               href={`#${link.id}`}
               onClick={onScrollTo(link.id)}
-              className="text-sm font-medium text-white/90 drop-shadow transition-colors hover:text-white"
+              className="whitespace-nowrap text-xs font-medium text-white/90 drop-shadow transition-colors hover:text-white lg:text-sm"
               onMouseEnter={(e) => (e.currentTarget.style.color = accent)}
               onMouseLeave={(e) => (e.currentTarget.style.color = "")}
             >
@@ -850,7 +850,7 @@ function PortalHeader({
           <Link
             to="/p/$slug/builder"
             params={{ slug }}
-            className="text-sm font-medium text-white/90 drop-shadow transition-colors hover:text-white"
+            className="whitespace-nowrap text-xs font-medium text-white/90 drop-shadow transition-colors hover:text-white lg:text-sm"
             onMouseEnter={(e) => (e.currentTarget.style.color = accent)}
             onMouseLeave={(e) => (e.currentTarget.style.color = "")}
           >
@@ -859,7 +859,7 @@ function PortalHeader({
         </nav>
 
         {/* Far right: profile dropdown (signed in) or Sign In button. */}
-        <div className="hidden items-center sm:flex">
+        <div className="hidden items-center md:flex">
           {!authChecked ? (
             <div className="h-9 w-24 animate-pulse rounded-full bg-white/15" />
           ) : viewer ? (
@@ -911,7 +911,7 @@ function PortalHeader({
             <button
               type="button"
               onClick={onSignIn}
-              className="inline-flex h-9 items-center gap-1.5 rounded-full px-4 text-sm font-semibold text-white shadow-md transition-transform hover:scale-105"
+              className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-xs font-semibold text-white shadow-md transition-transform hover:scale-105 lg:h-9 lg:px-4 lg:text-sm"
               style={{ backgroundColor: accent }}
             >
               <LogIn className="size-4" />
@@ -924,7 +924,7 @@ function PortalHeader({
         <Sheet>
           <SheetTrigger asChild>
             <button
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/25 bg-white/15 text-white shadow-sm backdrop-blur-md sm:hidden"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/25 bg-white/15 text-white shadow-sm backdrop-blur-md md:hidden"
               aria-label="Open menu"
             >
               <Menu className="size-5" />
