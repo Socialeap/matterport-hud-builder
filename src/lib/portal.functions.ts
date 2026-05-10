@@ -3738,13 +3738,33 @@ export const getProviderOrders = createServerFn({ method: "GET" })
 
     const modelMap = new Map((models ?? []).map((model) => [model.id, model]));
     const profileMap = new Map((profiles ?? []).map((profile) => [profile.user_id, profile]));
-    const clientEmailEntries = await Promise.all(
-      clientIds.map(async (clientId): Promise<[string, string | null]> => {
-        const { data } = await supabaseAdmin.auth.admin.getUserById(clientId);
-        return [clientId, data.user?.email ?? null];
-      }),
-    );
-    const clientEmailMap = new Map(clientEmailEntries);
+
+    // Batch-fetch client emails in a single SQL query via a service-
+    // role-only RPC. Replaces the previous Promise.all over
+    // auth.admin.getUserById which fired N requests at the GoTrue
+    // admin API and rate-limited at scale. See
+    // supabase/migrations/20260510210500_admin_user_email_lookups.sql.
+    // The generated Supabase types don't yet include the new RPC name
+    // (will be regenerated in Phase 5); cast through unknown until then.
+    const clientEmailMap = new Map<string, string | null>();
+    if (clientIds.length > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const untyped = supabaseAdmin as unknown as any;
+      const { data: emailRows, error: emailErr } = await untyped.rpc(
+        "admin_get_user_emails_by_ids",
+        { _ids: clientIds },
+      );
+      if (emailErr) {
+        // Don't fail the whole orders view over an email lookup —
+        // surface the model/notification rows with null emails. Log so
+        // ops can correlate.
+        console.warn("admin_get_user_emails_by_ids failed:", emailErr);
+      } else if (Array.isArray(emailRows)) {
+        for (const row of emailRows as Array<{ user_id: string; email: string | null }>) {
+          if (row?.user_id) clientEmailMap.set(row.user_id, row.email ?? null);
+        }
+      }
+    }
 
     const orders = notifications.map((notification): ProviderOrderRow => {
       const model = modelMap.get(notification.model_id);
@@ -3837,22 +3857,31 @@ export const setClientFreeFlag = createServerFn({ method: "POST" })
     }
 
     // 2) If accepted, propagate to the client_providers link by looking
-    //    up the auth user that owns that email (admin lookup — bypasses RLS).
+    //    up the auth user that owns that email. Previous implementation
+    //    listed the first 200 users and scanned in memory — silently
+    //    broken once the tenant exceeded 200 users. Now uses a targeted
+    //    service-role RPC that does a case-insensitive index lookup on
+    //    auth.users. See
+    //    supabase/migrations/20260510210500_admin_user_email_lookups.sql.
     if (invRow.status === "accepted" && invRow.email) {
       try {
-        const { data: usersList } = await supabaseAdmin.auth.admin.listUsers({
-          page: 1,
-          perPage: 200,
-        });
-        const match = usersList?.users?.find(
-          (u) => u.email?.toLowerCase() === invRow.email.toLowerCase()
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const untyped = supabaseAdmin as unknown as any;
+        const { data: matchId, error: lookupErr } = await untyped.rpc(
+          "admin_get_user_id_by_email",
+          { _email: invRow.email },
         );
-        if (match) {
+        if (lookupErr) {
+          console.warn(
+            "admin_get_user_id_by_email failed:",
+            lookupErr,
+          );
+        } else if (typeof matchId === "string" && matchId) {
           await supabaseAdmin
             .from("client_providers")
             .update({ is_free: data.isFree })
             .eq("provider_id", userId)
-            .eq("client_id", match.id);
+            .eq("client_id", matchId);
         }
       } catch (e) {
         console.warn("client_providers free-flag propagation failed:", e);
