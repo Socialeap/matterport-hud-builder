@@ -52,10 +52,13 @@ export type Database = {
           consent_at: string
           consent_given: boolean
           consent_text: string
+          contacted_at: string | null
           country: string
           created_at: string
           email: string
           essential_services: Database["public"]["Enums"]["marketplace_specialty"][]
+          exclusive_provider_id: string | null
+          exclusive_until: string | null
           expires_at: string
           geocoded_at: string | null
           id: string
@@ -82,10 +85,13 @@ export type Database = {
           consent_at?: string
           consent_given: boolean
           consent_text: string
+          contacted_at?: string | null
           country?: string
           created_at?: string
           email: string
           essential_services?: Database["public"]["Enums"]["marketplace_specialty"][]
+          exclusive_provider_id?: string | null
+          exclusive_until?: string | null
           expires_at?: string
           geocoded_at?: string | null
           id?: string
@@ -112,10 +118,13 @@ export type Database = {
           consent_at?: string
           consent_given?: boolean
           consent_text?: string
+          contacted_at?: string | null
           country?: string
           created_at?: string
           email?: string
           essential_services?: Database["public"]["Enums"]["marketplace_specialty"][]
+          exclusive_provider_id?: string | null
+          exclusive_until?: string | null
           expires_at?: string
           geocoded_at?: string | null
           id?: string
@@ -207,6 +216,38 @@ export type Database = {
           saved_model_id?: string
         }
         Relationships: []
+      }
+      beacon_match_pool: {
+        Row: {
+          attempted_at: string | null
+          beacon_id: string
+          created_at: string
+          provider_id: string
+          rank: number
+        }
+        Insert: {
+          attempted_at?: string | null
+          beacon_id: string
+          created_at?: string
+          provider_id: string
+          rank: number
+        }
+        Update: {
+          attempted_at?: string | null
+          beacon_id?: string
+          created_at?: string
+          provider_id?: string
+          rank?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "beacon_match_pool_beacon_id_fkey"
+            columns: ["beacon_id"]
+            isOneToOne: false
+            referencedRelation: "agent_beacons"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       beacon_notifications: {
         Row: {
@@ -1365,6 +1406,23 @@ export type Database = {
           warning_email_sent_at: string
         }[]
       }
+      claim_pending_beacon_matches: {
+        Args: { p_limit?: number }
+        Returns: {
+          beacon_city: string
+          beacon_email: string
+          beacon_id: string
+          beacon_name: string
+          beacon_region: string
+          exclusive_until: string
+          provider_brand_name: string
+          provider_custom_domain: string
+          provider_email: string
+          provider_id: string
+          provider_slug: string
+          provider_tier: Database["public"]["Enums"]["app_tier"]
+        }[]
+      }
       decline_invitation: { Args: { _token: string }; Returns: boolean }
       delete_email: {
         Args: { message_id: number; queue_name: string }
@@ -1522,6 +1580,23 @@ export type Database = {
           license_status: Database["public"]["Enums"]["license_status"]
           studio_id: string
           tier: Database["public"]["Enums"]["app_tier"]
+        }[]
+      }
+      get_my_matched_beacons: {
+        Args: never
+        Returns: {
+          brokerage: string
+          city: string
+          contacted_at: string
+          created_at: string
+          email: string
+          exclusive_until: string
+          id: string
+          is_currently_exclusive: boolean
+          name: string
+          region: string
+          status: Database["public"]["Enums"]["beacon_status"]
+          zip: string
         }[]
       }
       get_my_service_polygon: { Args: never; Returns: Json }
@@ -1728,6 +1803,7 @@ export type Database = {
         }
         Returns: Json
       }
+      repool_expired_exclusives_and_enqueue: { Args: never; Returns: number }
       resolve_studio_access: {
         Args: { _provider_id: string }
         Returns: {
