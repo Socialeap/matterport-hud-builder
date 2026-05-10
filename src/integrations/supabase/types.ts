@@ -1563,6 +1563,10 @@ export type Database = {
       }
     }
     Functions: {
+      _count_eligible_pros_for_beacon: {
+        Args: { p_beacon_id: string }
+        Returns: number
+      }
       _count_eligible_pros_for_work_order: {
         Args: { p_work_order_id: string }
         Returns: number
@@ -1767,6 +1771,10 @@ export type Database = {
         }[]
       }
       cleanup_old_outreach_bodies: { Args: never; Returns: number }
+      compute_priority_window_for_beacon: {
+        Args: { p_beacon_id: string }
+        Returns: string
+      }
       confirm_work_order_msp: {
         Args: { p_provider_id: string; p_work_order_id: string }
         Returns: boolean
@@ -2066,6 +2074,8 @@ export type Database = {
           provider_id: string
           region: string
           slug: string
+          standing_label: string
+          standing_score: number
           tier: Database["public"]["Enums"]["app_tier"]
         }[]
       }
