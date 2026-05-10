@@ -1,88 +1,77 @@
 ## Diagnosis
 
-The "build errors" and the empty MSP directory share the **same root cause**: four migrations created in the last batch never ran on the cloud database.
-
-Confirmed via `supabase_migrations.schema_migrations`:
+The `/agents` directory grid is empty because **no `branding_settings` rows have `is_directory_public = TRUE`**. Confirmed via direct DB query:
 
 ```
-Last applied: 20260509154555   (= file 20260509154600_…)
-NEVER applied:
-  20260509200000_work_order_workflow.sql
-  20260509200010_work_order_rpcs.sql
-  20260509200020_work_order_policy_updates.sql
-  20260509210000_seed_mock_msps.sql
+SELECT count(*) FROM branding_settings;                       -- 2 (real users only)
+SELECT count(*) FROM branding_settings WHERE is_directory_public = TRUE;  -- 0
 ```
 
-Confirmed via direct DB probe:
-- `to_regclass('public.work_orders')` → `NULL` (table missing)
-- All 10 work-order RPCs (`submit_work_order`, `get_my_work_orders`, etc.) → not in `pg_proc`
-- `branding_settings WHERE is_directory_public = TRUE` → `0` rows
+The two existing rows (`Transcendence Media`, `FBIIB`) are real provider accounts and both have `is_directory_public = FALSE`.
 
-Because those RPCs don't exist in the live DB, the auto-generated `src/integrations/supabase/types.ts` doesn't list them, so every `supabase.rpc("submit_work_order", …)` etc. fails TypeScript with the "not assignable" error you see. The empty `/agents` directory is the same migration gap on the seed file.
+The page calls `supabase.rpc("search_msp_directory", {})`, which is a `SECURITY DEFINER` `STABLE` SQL function that does:
 
-Claude Code's hypothesis (Lovable's runner lacks `auth.*` privileges and silently rolled back the seed) is partly right for the seed, but the work-order trio doesn't touch `auth` at all — those simply weren't picked up by the migration runner (likely because they were authored outside the `supabase--migration` tool path).
+```sql
+SELECT … FROM branding_settings
+WHERE is_directory_public = TRUE AND primary_city IS NOT NULL …
+```
+
+So the network request returns `[]` (matches the captured `POST /rest/v1/rpc/search_msp_directory → []` in the network log) and the grid renders empty. Filtering by On-Site / Studio Presentation services is purely client-side (`filtered = results.filter(m => specialties.includes(s))`) — it has nothing to filter because `results` is `[]`.
+
+### Why is the table empty?
+
+The mock-MSP seed file exists (`supabase/migrations/20260509210000_seed_mock_msps.sql`, 362 lines, 8 studios across Atlanta/SD/Chicago/Austin/Denver/Boston) but was never applied. Confirmed against the migration ledger — versions jump from `20260509154555` straight to `20260510000840`, skipping `20260509200000`/`200010`/`200020` (work-order trio, since recovered through later resubmissions) and `20260509210000` (the seed). The seed file was authored on disk without going through the migration tool, so the runner never picked it up.
+
+The work-order tables (`work_orders`, `work_order_invites`, `work_order_ratings`) exist now, so only the seed remains outstanding.
 
 ## Plan
 
-### Step 1 — Re-run the 3 work-order migrations through the migration tool
+### Step 1 — Re-issue the seed as a fresh migration (single tool call)
 
-Re-issue the exact SQL from these three files via `supabase--migration` (one call each, in order):
+Invoke `supabase--migration` with the **entire body** of `20260509210000_seed_mock_msps.sql` (already idempotent: `ON CONFLICT (id|provider_id|user_id,role|provider_id) DO UPDATE/NOTHING`, `DELETE FROM licenses` before insert, `cleanup_seed_msps()` at the end). This inserts:
 
-1. `20260509200000_work_order_workflow.sql` — tables + enums + indexes
-2. `20260509200010_work_order_rpcs.sql` — all 10 RPCs (`submit_work_order`, `get_work_order_detail_for_agent`, `get_my_work_orders`, `respond_to_work_order_invite`, `mark_work_order_complete`, `lookup_work_order_rating_by_token`, `submit_work_order_rating`, `confirm_work_order_msp`, `cancel_work_order`, `get_my_work_order_invites`)
-3. `20260509200020_work_order_policy_updates.sql` — RLS
+- 8 `auth.users` rows (tagged `raw_app_meta_data->>'seed_source' = 'mock-msp-v1'`) + matching `auth.identities` so personas are loginable
+- 8 `profiles`, 8 `user_roles` (provider), 8 `branding_settings` (with `is_directory_public = TRUE`, full `specialties[]`, lat/lng, `service_zips[]`, tier)
+- 8 `licenses` (active) and 8 `provider_responsiveness` rows (standing scores 0.85 → 1.50)
 
-Every statement is already idempotent (`CREATE TABLE IF NOT EXISTS`, `CREATE OR REPLACE FUNCTION`, `DO $$ … duplicate_object`), so re-running on top of the leftover files is safe.
+The `branding_settings.provider_id → auth.users.id` FK forces the `auth.users` insert path; the migration tool runs with privileges sufficient for that (the same path `handle_new_user` already uses for trigger-based inserts).
 
-Once these apply:
-- `work_orders` / `work_order_invites` / `work_order_ratings` exist
-- All 10 RPCs are registered
-- `types.ts` will be regenerated automatically by the platform
-- Every TS error in `WorkOrderForm.tsx`, `agent-dashboard.work-orders.*`, `dashboard.work-orders.tsx`, and `work-orders.rate.$token.tsx` resolves with **zero source-code edits**
+**Fallback if the migration tool's role rejects the `auth.*` writes** (only used if Step 1 errors): submit a slimmer follow-up migration that drops the FK to `auth.users` for the seeded UUIDs by inserting them through a `SECURITY DEFINER` helper, but ONLY if the primary path fails. Do not preemptively split — the existing file is the canonical, idempotent shape and matches every downstream RPC's expectations (`provider_has_paid_access`, `_provider_can_receive_leads`, work-order matching).
 
-### Step 2 — Split the seed into a Lovable-safe migration + a manual auth bootstrap
+### Step 2 — Verify
 
-The current seed mixes two trust levels in one transaction:
-- `auth.users` + `auth.identities` writes (need elevated privileges)
-- `branding_settings` + `licenses` + `user_roles` + `provider_responsiveness` writes (Lovable-safe)
+After the migration applies, run three probes via `supabase--read_query`:
 
-Because the whole `DO $$ … END $$` block is one transaction, the `auth.users` failure rolls back **everything**, leaving zero directory rows. We split into two files:
-
-**2a. New migration `20260509210001_seed_mock_msps_directory.sql`** (Lovable-safe)
-- Creates 8 dedicated placeholder UUIDs in a new `seed_mock_provider_ids` CTE pattern
-- Inserts directly into `branding_settings` only — but `provider_id` has an FK to `auth.users`, so we **first** create stub rows in `auth.users` using a `SECURITY DEFINER` helper function `public._seed_create_auth_user(uuid, text, text)` that the migration tool can invoke (functions defined in a migration run as the migration's owner, which has `auth` write privilege in our project — same mechanism `handle_new_user` already uses).
-- Wraps each MSP in its own sub-block so a single failure can't roll the whole seed back.
-- Keeps `cleanup_seed_msps()` for teardown.
-
-**2b. Optional manual script `scripts/seed-msp-logins.sql`** (kept out of `supabase/migrations/`)
-- Adds `auth.identities` + bcrypt password rows so the personas are loginable.
-- Documented in a header comment as "run from Supabase SQL Editor when you need test logins" — not required for the directory to populate.
-
-### Step 3 — Verify end-to-end after both migrations apply
-
-Run probes through `supabase--read_query`:
-```
-SELECT count(*) FROM branding_settings WHERE is_directory_public = TRUE;   -- expect 8
-SELECT proname FROM pg_proc WHERE proname IN ('submit_work_order', …);     -- expect 10
-SELECT to_regclass('public.work_orders');                                   -- expect 'public.work_orders'
+```sql
+SELECT count(*) FROM branding_settings WHERE is_directory_public = TRUE;
+                                                                    -- expect 8
+SELECT brand_name, primary_city, region, tier, array_length(specialties,1)
+  FROM branding_settings WHERE is_directory_public = TRUE
+  ORDER BY tier, brand_name;                                          -- expect 8 cards, mix of pro/starter
+SELECT * FROM search_msp_directory();                                  -- expect 8 rows, Pros first
 ```
 
-Then ensure the `/agents` page renders MSP cards (on-mount RPC will now return rows) and the build passes (types.ts regenerates with the new RPC names).
+Then reload `/agents` in the preview and confirm:
+- Directory grid renders 8 cards on initial load (the on-mount `search_msp_directory({})` call now returns rows).
+- Selecting any On-Site or Studio service in the filter rail narrows the grid (client-side `Array.every(specialty)`), and clearing returns to 8.
+- Searching `Atlanta` / `GA` returns 3 cards (Skyline, Peachtree, Sweetwater); ZIP `30303` returns the two MSPs that include it in `service_zips[]`.
 
-### Step 4 — No application-code edits required
+### Step 3 — No application-code edits required
 
-Tracing the dependency graph:
-- `WorkOrderForm.tsx`, `agent-dashboard.work-orders.*.tsx`, `dashboard.work-orders.tsx`, `work-orders.rate.$token.tsx` → already call the RPCs by their final names; only `types.ts` is stale
-- `agents.tsx` directory query is unchanged; only data was missing
-- No UI/UX, route, or business-logic regressions because we are purely closing the migration gap
+Tracing the dependency graph end-to-end:
 
-If the migration tool itself rejects the `auth.users` insert in step 2a (some Lovable projects restrict the migration role from `auth` writes), we fall back to: the directory migration drops the `auth.users` insert and instead **temporarily relaxes the FK** by storing `provider_id` for the seed rows in a sibling table `mock_msp_directory` with identical columns and union-view it into `branding_settings` via the existing `get_msp_directory` RPC. We will only take that fallback if the auth insert path errors during execution; the primary path keeps `branding_settings` as the single source of truth.
+- **`agents.tsx` mount path**: `useEffect → supabase.rpc("search_msp_directory", {}) → setResults(data)` — only data was missing; nothing to change.
+- **Filter path**: `filtered = useMemo(results.filter(specialties.every))` — already correct; the seed assigns 8–11 specialties per MSP across both `scan-*` (On-Site) and `vault-*`/`ai-*` (Studio Presentation) families, so every filter chip will produce non-empty narrowing.
+- **Search path**: `handleSearch → search_msp_directory({p_city|p_zip}) → client-side region filter` — already correct; seeded `primary_city` + `service_zips[]` cover all six cities.
+- **Card link path**: each card links to `buildStudioUrl(slug)`; seeded `slug`s are unique and route resolution is unaffected.
+- **No RLS changes**: `search_msp_directory` is `SECURITY DEFINER` and bypasses RLS; existing anon/auth policies on `branding_settings` (`Anyone can view branding by slug`, `Providers can view their own branding`) are not relied on by the directory grid.
+- **No regression risk for real users**: the seed is fully namespaced under `seed_source = 'mock-msp-v1'`; the `cleanup_seed_msps()` helper (created by the same migration) gives a single-call teardown that cascades through `auth.users`'s ON DELETE CASCADE chain — no real-user rows touched.
 
-## Risks & mitigations
+## Risks & Mitigations
 
-- **Risk:** the work-order migrations partially applied last time and re-running corrupts state.
-  **Mitigation:** every DDL is `IF NOT EXISTS` / `CREATE OR REPLACE` / `duplicate_object` guarded; verified by reading each file head.
-- **Risk:** `types.ts` regeneration lags behind the migration apply.
-  **Mitigation:** the platform regenerates on migration apply; we'll re-probe with `supabase--read_query` before declaring done.
-- **Risk:** seed inserts run twice, duplicating directory rows.
-  **Mitigation:** the seed already uses `ON CONFLICT (provider_id) DO UPDATE`, so reruns are idempotent.
+| Risk | Mitigation |
+|---|---|
+| Migration tool rejects `auth.users` direct insert | Fall back to FK-relaxed variant (Step 1 fallback). Only triggered on actual error. |
+| `handle_new_user` trigger races and inserts a partial profile during the seed loop | Seed uses `INSERT … ON CONFLICT (user_id) DO UPDATE` on `profiles`, so the trigger row is harmlessly overwritten with the seed's `display_name`. |
+| Repeat seed runs duplicate cards | Every insert is `ON CONFLICT DO UPDATE/NOTHING`; `licenses` uses `DELETE … WHERE user_id = v_uid` first. Re-runs are idempotent. |
+| Tester accidentally signs in as a mock MSP | Documented inside the migration header (shared password `SeedPass!2026`); cleanup helper is one call away. |
