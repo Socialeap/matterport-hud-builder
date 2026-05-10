@@ -20,6 +20,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.103.0";
 import { checkUploadSize } from "../_shared/upload-limits.ts";
+import { checkRateLimit, ipFromRequest } from "../_shared/rate-limit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -579,6 +580,20 @@ serve(async (req) => {
   }
   if (req.method !== "POST") {
     return jsonResponse({ error: "method_not_allowed" }, 405);
+  }
+
+  // Per-IP rate limit BEFORE auth/Gemini calls. The architect_draft and
+  // architect_refine modes are interactive and can burst (the wizard
+  // calls Turn 1 then Turn 2 within a few seconds), so 10/min is more
+  // generous than the extract endpoints — but still capped against
+  // template-authoring abuse loops.
+  const ip = ipFromRequest(req);
+  const rl = checkRateLimit(ip, { perMinute: 10 });
+  if (!rl.allowed) {
+    return jsonResponse(
+      { error: "rate_limited", retry_after_seconds: rl.retryAfterSeconds },
+      429,
+    );
   }
 
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL");

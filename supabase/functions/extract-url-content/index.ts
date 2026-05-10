@@ -16,6 +16,7 @@ import {
   computeIntelligenceHealth,
   type IntelligenceHealth,
 } from "../_shared/intelligence-health.ts";
+import { checkRateLimit, ipFromRequest } from "../_shared/rate-limit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -539,7 +540,8 @@ async function ensureUrlTemplate(
 
 // ── Structured error helper ────────────────────────────────────────────
 type Stage = "auth" | "input" | "freeze" | "asset" | "ssrf" | "fetch"
-  | "parse" | "thin_content" | "template" | "llm" | "persist";
+  | "parse" | "thin_content" | "template" | "llm" | "persist"
+  | "rate_limit";
 
 function fail(
   stage: Stage,
@@ -557,6 +559,19 @@ serve(async (req) => {
   }
   if (req.method !== "POST") {
     return fail("input", "method_not_allowed", 405);
+  }
+
+  // Per-IP rate limit BEFORE auth/DB/network work. extract-url-content
+  // also performs an outbound fetch (already SSRF-guarded above), and
+  // capping request rate is the second line of defence — the SSRF guard
+  // stops cross-network traversal, the rate limit stops cost-bombing
+  // via thousands of large public URLs.
+  const ip = ipFromRequest(req);
+  const rl = checkRateLimit(ip, { perMinute: 5 });
+  if (!rl.allowed) {
+    return fail("rate_limit", "rate_limited", 429, {
+      retry_after_seconds: rl.retryAfterSeconds,
+    });
   }
 
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL");

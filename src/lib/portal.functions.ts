@@ -1,5 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
+import { getRequest } from "@tanstack/react-start/server";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { checkRateLimit, ipFromRequest } from "./rate-limit.server";
 import { assembleAskRuntimeJS } from "./portal/ask-runtime-assembler";
 import { getLiveSessionRuntimeJS } from "./portal/live-session-source";
 import { assertRuntimeRegexSafety } from "./portal/runtime-lint";
@@ -3964,6 +3966,16 @@ export const getInvitationByToken = createServerFn({ method: "POST" })
     invitation?: InvitationDetails;
     error?: string;
   }> => {
+    // Public, unauthenticated lookup — rate limit by source IP so an
+    // attacker can't burn the RPC trying to enumerate invitation tokens.
+    // The token itself is a UUID v4 (~122 bits of entropy), so brute force
+    // is computationally infeasible regardless; the rate limit is the
+    // operational guard against probe traffic.
+    const rl = checkRateLimit(ipFromRequest(getRequest()), { perMinute: 10 });
+    if (!rl.allowed) {
+      return { found: false, error: "Too many requests. Please try again later." };
+    }
+
     if (!data.token || !INVITATION_TOKEN_RE.test(data.token)) {
       return { found: false, error: "Invalid invitation token format" };
     }
@@ -4123,6 +4135,15 @@ export const issueStudioPreviewToken = createServerFn({ method: "POST" })
 export const declineInvitationByToken = createServerFn({ method: "POST" })
   .inputValidator((d: { token: string }) => d)
   .handler(async ({ data }) => {
+    // Public, unauthenticated mutation — apply the same per-IP rate limit
+    // as getInvitationByToken so the decline path can't be used to probe
+    // for valid tokens (a 200 OK from `decline_invitation` proves the
+    // token existed and was in a declinable state).
+    const rl = checkRateLimit(ipFromRequest(getRequest()), { perMinute: 10 });
+    if (!rl.allowed) {
+      throw new Error("Too many requests. Please try again later.");
+    }
+
     if (!data.token || !INVITATION_TOKEN_RE.test(data.token)) {
       throw new Error("Invalid invitation token");
     }
