@@ -3054,7 +3054,6 @@ async function __dqaInit(){
       // Step 0 — classify intent (rule-based, deterministic).
       var classification=classifyIntent(q);
       var intent=classification.intent;
-      try{console.log("[ask] intent="+intent+" q="+q);}catch(_){}
 
       // Step 1 — compose Property Brain for the current property tab.
       //          Read-only projection over injected globals; rebuilt per
@@ -3153,8 +3152,6 @@ async function __dqaInit(){
         chunkHits:chunkHits,
         canSynthesize:!!window.__SYNTHESIS_URL__
       });
-      try{console.log("[ask] path="+decision.path+" intent="+decision.intent);}catch(_){}
-
       // Step 5 — render.
       if(decision.path==="synthesis"&&decision.needsSynthesis){
         // ── Synthesis Bridge ───────────────────────────────────────────
@@ -3864,13 +3861,9 @@ export const getProviderOrders = createServerFn({ method: "GET" })
     // auth.admin.getUserById which fired N requests at the GoTrue
     // admin API and rate-limited at scale. See
     // supabase/migrations/20260510210500_admin_user_email_lookups.sql.
-    // The generated Supabase types don't yet include the new RPC name
-    // (will be regenerated in Phase 5); cast through unknown until then.
     const clientEmailMap = new Map<string, string | null>();
     if (clientIds.length > 0) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const untyped = supabaseAdmin as unknown as any;
-      const { data: emailRows, error: emailErr } = await untyped.rpc(
+      const { data: emailRows, error: emailErr } = await supabaseAdmin.rpc(
         "admin_get_user_emails_by_ids",
         { _ids: clientIds },
       );
@@ -3880,7 +3873,7 @@ export const getProviderOrders = createServerFn({ method: "GET" })
         // ops can correlate.
         console.warn("admin_get_user_emails_by_ids failed:", emailErr);
       } else if (Array.isArray(emailRows)) {
-        for (const row of emailRows as Array<{ user_id: string; email: string | null }>) {
+        for (const row of emailRows) {
           if (row?.user_id) clientEmailMap.set(row.user_id, row.email ?? null);
         }
       }
@@ -3985,9 +3978,7 @@ export const setClientFreeFlag = createServerFn({ method: "POST" })
     //    supabase/migrations/20260510210500_admin_user_email_lookups.sql.
     if (invRow.status === "accepted" && invRow.email) {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const untyped = supabaseAdmin as unknown as any;
-        const { data: matchId, error: lookupErr } = await untyped.rpc(
+        const { data: matchId, error: lookupErr } = await supabaseAdmin.rpc(
           "admin_get_user_id_by_email",
           { _email: invRow.email },
         );
@@ -4304,4 +4295,119 @@ export const declineInvitationByToken = createServerFn({ method: "POST" })
       throw new Error("Failed to decline invitation");
     }
     return { success: ok === true };
+  });
+
+// ============================================================================
+// Demo activation — replaces the client-side multi-write pattern in
+// routes/index.tsx::DemoButton. The previous flow fired four sequential
+// Supabase queries from the browser with only `maybeSingle`-based dedup,
+// which was racy on double-click and produced duplicate purchases.
+//
+// Idempotency strategy:
+//   1. user_roles uses UNIQUE (user_id, role) + UPSERT ignoreDuplicates.
+//   2. purchases.stripe_session_id is UNIQUE; we derive a deterministic
+//      session id `demo_<tier>_<userId>` so a retry just no-ops.
+//   3. branding_settings reads-then-writes (preserves brand_name /
+//      colors when a row already exists) with a 23505 fallback that
+//      degrades cleanly under concurrent inserts.
+// ============================================================================
+
+const ActivateDemoTierInputSchema = z.object({
+  tier: z.enum(["starter", "pro"]),
+});
+
+export const activateDemoTier = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => ActivateDemoTierInputSchema.parse(d))
+  .handler(async ({ data, context }): Promise<{
+    success: boolean;
+    alreadyActive: boolean;
+    error?: string;
+  }> => {
+    const { supabase, userId } = context;
+    const tier = data.tier;
+    const stripeSessionId = `demo_${tier}_${userId}`;
+    const productId = tier === "pro" ? "pro_tier" : "starter_tier";
+    const amountCents = tier === "pro" ? 29900 : 14900;
+
+    // 1) Grant the provider role. UNIQUE (user_id, role) makes this
+    //    safe to call any number of times.
+    const { error: roleErr } = await supabase
+      .from("user_roles")
+      .upsert(
+        { user_id: userId, role: "provider" },
+        { onConflict: "user_id,role", ignoreDuplicates: true },
+      );
+    if (roleErr) {
+      return { success: false, alreadyActive: false, error: roleErr.message };
+    }
+
+    // 2) Record the purchase. Deterministic stripe_session_id +
+    //    UNIQUE (stripe_session_id) + ignoreDuplicates means a retry
+    //    returns zero rows from the upsert — we treat that as
+    //    "already activated" instead of a hard error.
+    const { data: purchaseRows, error: purchaseErr } = await supabase
+      .from("purchases")
+      .upsert(
+        {
+          user_id: userId,
+          stripe_session_id: stripeSessionId,
+          product_id: productId,
+          price_id: `${tier}_onetime`,
+          amount_cents: amountCents,
+          currency: "usd",
+          status: "completed",
+          environment: "sandbox",
+        },
+        { onConflict: "stripe_session_id", ignoreDuplicates: true },
+      )
+      .select("id");
+    if (purchaseErr) {
+      return { success: false, alreadyActive: false, error: purchaseErr.message };
+    }
+    const wasNewPurchase = Array.isArray(purchaseRows) && purchaseRows.length > 0;
+
+    // 3) branding_settings. Update tier on the existing row (preserving
+    //    brand_name / colors the user may already have customised) or
+    //    insert a default row when none exists. 23505 unique-violation
+    //    on the insert path is recovered by falling through to an
+    //    update — defensive against concurrent first-time activations.
+    const { data: branding } = await supabase
+      .from("branding_settings")
+      .select("id")
+      .eq("provider_id", userId)
+      .maybeSingle();
+    if (branding) {
+      const { error: brandingErr } = await supabase
+        .from("branding_settings")
+        .update({ tier })
+        .eq("provider_id", userId);
+      if (brandingErr) {
+        return { success: false, alreadyActive: !wasNewPurchase, error: brandingErr.message };
+      }
+    } else {
+      const { error: insertErr } = await supabase
+        .from("branding_settings")
+        .insert({
+          provider_id: userId,
+          tier,
+          brand_name: "",
+          accent_color: "#3B82F6",
+          hud_bg_color: "#1a1a2e",
+          gate_label: "Enter",
+        });
+      if (insertErr && (insertErr as { code?: string }).code === "23505") {
+        const { error: fallbackErr } = await supabase
+          .from("branding_settings")
+          .update({ tier })
+          .eq("provider_id", userId);
+        if (fallbackErr) {
+          return { success: false, alreadyActive: !wasNewPurchase, error: fallbackErr.message };
+        }
+      } else if (insertErr) {
+        return { success: false, alreadyActive: !wasNewPurchase, error: insertErr.message };
+      }
+    }
+
+    return { success: true, alreadyActive: !wasNewPurchase };
   });

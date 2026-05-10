@@ -110,10 +110,11 @@ export function PrivacyAccessSection({ access, onChange, headless }: PrivacyAcce
           <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-900/90 dark:text-amber-200/90 space-y-1">
             <p className="font-medium">Where the password is stored</p>
             <p>
-              The password is saved with this draft in your browser so you
-              don't have to re-enter it. Anyone with access to this browser
-              can read it. We never send it to our servers and never persist
-              it in your saved presentations.
+              The password stays in memory in this browser tab only.
+              We do not save it to your draft or send it to our servers.
+              Reloading or closing this tab clears the password — you'll
+              need to re-enter it before downloading again. The toggle
+              and hint are saved with the rest of your draft.
             </p>
             <p>
               If you forget the password, just download the presentation

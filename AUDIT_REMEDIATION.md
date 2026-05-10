@@ -116,12 +116,28 @@ git push --force-with-lease origin <branch>
       - Retries 408/429/5xx + network errors only; 4xx propagate.
 
 ## Phase 5 — Frontend reliability
-- [ ] `__root.tsx` defines a `defaultErrorComponent`
-- [ ] demo activation server-side and idempotent (kills the double-click race)
-- [ ] `draft-storage` no longer persists plaintext password
-- [ ] `[ask] intent=… q=…` and similar user-payload `console.log` calls
-      removed or gated behind `import.meta.env.DEV`
-- [ ] Supabase types regenerated; `as any` casts removed from route loaders
+- [x] `__root.tsx` defines a global `errorComponent` (`RootErrorComponent`)
+      — no more blank-page-on-render-error. Detail panel surfaces only in
+      `import.meta.env.DEV`; prod users see "Something went wrong" + Try
+      again / Go home.
+- [x] new `activateDemoTier` server fn replaces the 4-write client flow
+      in `DemoButton`. Idempotent via deterministic `stripe_session_id`
+      (`demo_<tier>_<userId>`) + the existing `purchases UNIQUE
+      (stripe_session_id)` constraint. Race-on-double-click is dead.
+      Plus a synchronous `useRef` re-entry guard for clean UX.
+- [x] `draft-storage::sanitizeForStorage` clears `access.password`
+      before writing localStorage. Password lives in-tab memory only;
+      reload requires re-entry. UI warning copy updated to match.
+- [x] removed both `console.log("[ask] intent=…")` lines that were
+      leaking user questions to the visitor's browser console.
+- [x] type-augmented `admin_get_user_emails_by_ids` and
+      `admin_get_user_id_by_email` in `types.ts`; dropped the
+      `untyped = supabase as unknown as any` casts in `getProviderOrders`
+      and `setClientFreeFlag`.
+- [ ] Broader Supabase-types regen + remove `as any` from
+      `_authenticated.dashboard.marketplace.tsx` / `stats.tsx` /
+      `p.$slug.index.tsx` RPC loaders — DEFERRED to Phase 6
+      (requires `supabase gen types typescript` CLI run).
 
 ## Phase 6 — Cleanup & consistency
 - [ ] duplicate `lus_freezes` migration deleted

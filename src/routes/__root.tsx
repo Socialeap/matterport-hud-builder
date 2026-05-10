@@ -29,6 +29,52 @@ function NotFoundComponent() {
   );
 }
 
+/**
+ * Last-resort error boundary for the entire app. Catches anything thrown
+ * during render or by a route loader that wasn't handled by a more
+ * specific `errorComponent`. Intentionally self-contained: no auth /
+ * supabase / sonner calls, because the underlying failure may have
+ * broken those exact subsystems.
+ *
+ * Production-only behaviour: hide the raw error message from end users
+ * (it can leak internal field names / DB errors). In dev we still show
+ * it for debuggability.
+ */
+function RootErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+  const showDetail = import.meta.env.DEV;
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+      <div className="max-w-md text-center">
+        <h1 className="text-5xl font-bold text-foreground">Something went wrong</h1>
+        <p className="mt-4 text-sm text-muted-foreground">
+          We hit an unexpected error loading this page. Try again, or head
+          back home.
+        </p>
+        {showDetail && error?.message ? (
+          <pre className="mt-4 max-h-48 overflow-auto rounded-md border bg-muted/30 p-3 text-left text-xs text-muted-foreground">
+            {error.message}
+          </pre>
+        ) : null}
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+          <button
+            type="button"
+            onClick={reset}
+            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            Try again
+          </button>
+          <Link
+            to="/"
+            className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+          >
+            Go home
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export const Route = createRootRoute({
   head: () => ({
     meta: [
@@ -47,6 +93,7 @@ export const Route = createRootRoute({
   shellComponent: RootShell,
   component: RootComponent,
   notFoundComponent: NotFoundComponent,
+  errorComponent: RootErrorComponent,
 });
 
 function RootShell({ children }: { children: React.ReactNode }) {

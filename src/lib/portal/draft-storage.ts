@@ -16,10 +16,12 @@ const KEY_PREFIX = "3dps:draft:";
 export interface DraftAccessState {
   passwordProtected: boolean;
   /**
-   * Plaintext password persisted to localStorage for agent convenience.
-   * NEVER sent to the server or persisted in saved_models.tour_config.
-   * The Builder UI surfaces a warning that anyone with browser access
-   * can read this value.
+   * Plaintext password held in memory while the Builder tab is open.
+   * The Builder must NEVER persist this value: `sanitizeForStorage`
+   * clears it before writing to localStorage, and `loadDraft` therefore
+   * always restores it as empty. The user re-enters the password after
+   * a reload — the rest of the draft (models, branding, hints) keeps
+   * surviving. Not sent to the server either.
    */
   password: string;
   passwordHint: string;
@@ -68,12 +70,23 @@ function storageKey(providerSlug: string): string {
   return `${KEY_PREFIX}${providerSlug || "default"}`;
 }
 
-/** Strip transient blob: avatar URLs which won't survive a reload. */
+/**
+ * Strip values that should NOT survive serialization to localStorage:
+ *   - blob: avatar URLs — they're tied to the current document and can't
+ *     resolve after a reload anyway.
+ *   - access.password — plaintext credential. Persisting it makes anyone
+ *     with browser access (or any synced-storage extension) able to read
+ *     the gate password. We keep the rest of `access` (toggle + hint) so
+ *     the user only has to retype the password itself after a reload.
+ */
 function sanitizeForStorage(state: DraftState): DraftState {
   const cleanAgent = state.agent.avatarUrl?.startsWith("blob:")
     ? { ...state.agent, avatarUrl: "" }
     : state.agent;
-  return { ...state, agent: cleanAgent };
+  const cleanAccess = state.access
+    ? { ...state.access, password: "" }
+    : state.access;
+  return { ...state, agent: cleanAgent, access: cleanAccess };
 }
 
 export function saveDraft(providerSlug: string, state: DraftState): void {

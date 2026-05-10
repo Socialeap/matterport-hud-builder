@@ -1,8 +1,9 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { useAuth } from "@/hooks/use-auth";
-import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState, useRef } from "react";
 import { lovable } from "@/integrations/lovable/index";
+import { activateDemoTier } from "@/lib/portal.functions";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -275,72 +276,40 @@ function DemoButton({ tier }: { tier: "starter" | "pro" }) {
   const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const [activating, setActivating] = useState(false);
+  // Synchronous re-entry guard. `setActivating(true)` is asynchronous, so a
+  // fast double-click can fire two click handlers before React commits the
+  // state. The server function is idempotent on `stripe_session_id`, but
+  // the ref + disabled button keep the UX clean too.
+  const inFlightRef = useRef(false);
+  const activateDemoTierFn = useServerFn(activateDemoTier);
 
   const activateTier = async () => {
     if (!isAuthenticated || !user) {
       navigate({ to: "/login" });
       return;
     }
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     setActivating(true);
     try {
-      const { data: existingRole } = await supabase
-        .from("user_roles")
-        .select("id")
-        .eq("user_id", user.id)
-        .eq("role", "provider")
-        .maybeSingle();
-
-      if (!existingRole) {
-        await supabase
-          .from("user_roles")
-          .insert({ user_id: user.id, role: "provider" });
+      const result = await activateDemoTierFn({ data: { tier } });
+      if (!result.success) {
+        toast.error(result.error || "Failed to activate demo. Please try again.");
+        return;
       }
-
-      const productId = tier === "pro" ? "pro_tier" : "starter_tier";
-      const amount = tier === "pro" ? 29900 : 14900;
-
-      await supabase.from("purchases").insert({
-        user_id: user.id,
-        stripe_session_id: `demo_${tier}_${Date.now()}`,
-        product_id: productId,
-        price_id: `${tier}_onetime`,
-        amount_cents: amount,
-        currency: "usd",
-        status: "completed",
-        environment: "sandbox",
-      });
-
-      const { data: existingBranding } = await supabase
-        .from("branding_settings")
-        .select("id")
-        .eq("provider_id", user.id)
-        .maybeSingle();
-
-      if (!existingBranding) {
-        await supabase.from("branding_settings").insert({
-          provider_id: user.id,
-          tier: tier,
-          brand_name: "",
-          accent_color: "#3B82F6",
-          hud_bg_color: "#1a1a2e",
-          gate_label: "Enter",
-        });
-      } else {
-        await supabase
-          .from("branding_settings")
-          .update({ tier: tier })
-          .eq("provider_id", user.id);
-      }
-
       toast.success(
-        `${tier === "pro" ? "Pro" : "Starter"} demo activated! Redirecting…`
+        result.alreadyActive
+          ? `${tier === "pro" ? "Pro" : "Starter"} demo already activated. Redirecting…`
+          : `${tier === "pro" ? "Pro" : "Starter"} demo activated! Redirecting…`
       );
       setTimeout(() => navigate({ to: "/dashboard" }), 1200);
     } catch (err) {
       console.error(err);
       toast.error("Failed to activate demo. Please try again.");
+    } finally {
+      inFlightRef.current = false;
+      setActivating(false);
     }
-    setActivating(false);
   };
 
   return (
