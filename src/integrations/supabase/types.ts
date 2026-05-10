@@ -2213,6 +2213,7 @@ export type Database = {
           created_at: string
           fingerprint: string
           has_key: boolean
+          preferred_model: string
           validated_at: string
           validation_error: string
           vendor: string
