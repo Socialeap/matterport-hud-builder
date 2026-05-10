@@ -140,8 +140,38 @@ git push --force-with-lease origin <branch>
       (requires `supabase gen types typescript` CLI run).
 
 ## Phase 6 — Cleanup & consistency
-- [ ] duplicate `lus_freezes` migration deleted
-- [ ] edge-function error envelope shared via `_shared/errors.ts`
-- [ ] CORS standardised across all user-facing edge functions
-- [ ] `bunfig.toml` and `bun.lock` / `bun.lockb` mode reconciled
-- [ ] orphan root binaries (`Chaska_Commons_Coworking_*`, etc.) moved or removed
+- [x] duplicate mega-migration neutralised — content of
+      `20260418181230_99ac7ac1-…sql` replaced with a `SELECT 1 WHERE
+      FALSE;` no-op + explainer comment. File preserved so any
+      environment that already recorded it in `schema_migrations`
+      still resolves; future fresh installs no longer hit "already
+      exists" on the duplicated CREATEs.
+- [x] CORS standardised — new `supabase/functions/_shared/cors.ts`
+      with `authedCorsHeaders` + `publicCorsHeaders` + `handlePreflight`.
+      Rolled out to `synthesize-answer`, `extract-property-doc`,
+      `extract-url-content`, `induce-schema`. Every refactored function
+      now sends matching `Access-Control-Allow-Methods` + `Max-Age`
+      that previously only `synthesize-answer` had.
+- [x] explicit timeouts on the public/unauth `.rpc()` paths via new
+      `src/lib/timeout.server.ts::withTimeout`. Wired into
+      `getInvitationByToken` (8 s), `declineInvitationByToken` (8 s),
+      `fetchBrandingBySlug` parallel fan-out (10 s), and the
+      `verify_studio_preview_token` RPC (5 s).
+- [x] `bunfig.toml` → `saveTextLockfile = true` (Bun 1.2+ default).
+      Binary `bun.lockb` removed from git; `bun.lock` (text) is the
+      sole source of truth. `bun install --frozen-lockfile` verified
+      clean.
+- [x] four orphan root binaries (`Chaska Commons Coworking.pdf`,
+      `Chaska_Commons_Coworking_*.html`, `transcendencemedia-draft-*.json`,
+      `3DPS Marketplace — MSP Handbook.md`) moved to `docs/examples/`.
+      Tests reference Chaska data inline (by name), not by file path,
+      so no test changes needed.
+- [ ] edge-function error envelope standardisation — DEFERRED.
+      Existing callers parse different fields per function
+      (`{stage, detail}` for extract-*, `{code}` for create-connect-checkout,
+      etc.). Refactoring the response shape risks breaking callers and
+      is best done as its own scoped PR with each frontend caller
+      updated in lockstep.
+- [ ] broader Supabase types regen + drop `as any` casts in route
+      loaders — DEFERRED. Needs `supabase gen types typescript` CLI run
+      against the live project.

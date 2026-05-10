@@ -1,2 +1,6 @@
 [install]
-saveTextLockfile = false
+# Bun 1.2+ default — keep the text `bun.lock` as the source of truth
+# so diffs are reviewable. The legacy binary `bun.lockb` is no longer
+# committed; `.gitignore` is not required because we explicitly delete
+# the file and it isn't regenerated under this setting.
+saveTextLockfile = true

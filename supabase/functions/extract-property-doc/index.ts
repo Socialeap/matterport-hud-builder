@@ -24,12 +24,9 @@ import {
   uploadKindForMime,
 } from "../_shared/upload-limits.ts";
 import { checkRateLimit, ipFromRequest } from "../_shared/rate-limit.ts";
+import { authedCorsHeaders, handlePreflight } from "../_shared/cors.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
+const corsHeaders = authedCorsHeaders;
 
 interface RequestBody {
   vault_asset_id: string;
@@ -62,9 +59,8 @@ function fail(
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  const preflight = handlePreflight(req, corsHeaders);
+  if (preflight) return preflight;
   if (req.method !== "POST") {
     return fail("input", "method_not_allowed", 405);
   }

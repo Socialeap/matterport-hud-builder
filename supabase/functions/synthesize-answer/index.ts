@@ -39,12 +39,9 @@ import {
 } from "../_shared/rate-limit.ts";
 import { decryptKey } from "../_shared/byok-crypto.ts";
 import { intentAllows } from "../_shared/intent-compat.ts";
+import { publicCorsHeaders, handlePreflight } from "../_shared/cors.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+const corsHeaders = publicCorsHeaders;
 
 // ── Model identifiers ──────────────────────────────────────────────────────
 //
@@ -682,9 +679,8 @@ function pickTrustedChunks(
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  const preflight = handlePreflight(req, corsHeaders);
+  if (preflight) return preflight;
   if (req.method !== "POST") {
     return jsonError(405, { error: "method_not_allowed" });
   }

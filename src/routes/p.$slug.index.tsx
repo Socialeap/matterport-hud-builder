@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { checkDemoPublished } from "@/lib/sandbox-demo.functions";
+import { withTimeout, TimeoutError } from "@/lib/timeout.server";
 
 // UUID v4 (the format gen_random_uuid() emits) — pre-validated before the
 // RPC call so a malformed `?previewToken=` value fails fast and never
@@ -65,16 +66,37 @@ const fetchBrandingBySlug = createServerFn({ method: "GET" })
       };
     }
 
-    const [demoCheck, licenseRes, vaultRes, paidRes] = await Promise.all([
-      checkDemoPublished({ data: { providerId: branding.provider_id } }),
-      supabase.rpc("get_license_info", { user_uuid: branding.provider_id }),
-      supabase
-        .from("vault_templates")
-        .select("id", { count: "exact", head: true })
-        .eq("provider_id", branding.provider_id)
-        .eq("is_active", true),
-      supabase.rpc("provider_has_paid_access", { _provider_id: branding.provider_id }),
-    ]);
+    // Public, unauthenticated loader — cap the parallel fan-out at 10 s
+    // so a single slow query can't pin the Worker. On timeout we
+    // surface a degraded payload (everything false) instead of hanging
+    // the visitor's page load indefinitely.
+    let demoCheck: { published: boolean } | null = null;
+    let licenseRes: { data: Array<{ license_status?: string | null; license_expiry?: string | null }> | null } = { data: null };
+    let vaultRes: { count: number | null } = { count: null };
+    let paidRes: { data: boolean | null } = { data: null };
+    try {
+      [demoCheck, licenseRes, vaultRes, paidRes] = await withTimeout(
+        Promise.all([
+          checkDemoPublished({ data: { providerId: branding.provider_id } }),
+          supabase.rpc("get_license_info", { user_uuid: branding.provider_id }),
+          supabase
+            .from("vault_templates")
+            .select("id", { count: "exact", head: true })
+            .eq("provider_id", branding.provider_id)
+            .eq("is_active", true),
+          supabase.rpc("provider_has_paid_access", { _provider_id: branding.provider_id }),
+        ]),
+        10_000,
+        "fetchBrandingBySlug.parallel_fanout",
+      );
+    } catch (e) {
+      if (e instanceof TimeoutError) {
+        console.warn("fetchBrandingBySlug parallel fan-out timed out", e);
+      } else {
+        console.error("fetchBrandingBySlug parallel fan-out failed", e);
+      }
+      // fall through with the default-empty values above
+    }
 
     let lusActive = false;
     const lic = licenseRes.data?.[0];
@@ -97,14 +119,26 @@ const fetchBrandingBySlug = createServerFn({ method: "GET" })
     if (data.previewToken && UUID_RE.test(data.previewToken)) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const untyped = supabase as unknown as any;
-      const { data: ok, error: verifyErr } = await untyped.rpc(
-        "verify_studio_preview_token",
-        { _token: data.previewToken, _slug: data.slug },
-      );
-      if (verifyErr) {
-        console.error("verify_studio_preview_token rpc failed:", verifyErr);
-      } else {
-        embedPreviewValid = ok === true;
+      try {
+        const result = await withTimeout<{
+          data: boolean | null;
+          error: { message?: string } | null;
+        }>(
+          untyped.rpc(
+            "verify_studio_preview_token",
+            { _token: data.previewToken, _slug: data.slug },
+          ),
+          5000,
+          "verify_studio_preview_token",
+        );
+        if (result.error) {
+          console.error("verify_studio_preview_token rpc failed:", result.error);
+        } else {
+          embedPreviewValid = result.data === true;
+        }
+      } catch (e) {
+        // Timed out — fail closed (embedPreviewValid stays false).
+        console.warn("verify_studio_preview_token timed out", e);
       }
     }
 
@@ -115,7 +149,7 @@ const fetchBrandingBySlug = createServerFn({ method: "GET" })
 
     return {
       branding: safeBranding,
-      demoPublished: demoCheck.published,
+      demoPublished: demoCheck?.published === true,
       lusActive,
       vaultAssetCount: vaultRes.count ?? 0,
       providerActive,

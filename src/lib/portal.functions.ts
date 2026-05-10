@@ -3,6 +3,7 @@ import { getRequest } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { checkRateLimit, ipFromRequest } from "./rate-limit.server";
+import { withTimeout } from "./timeout.server";
 import { assembleAskRuntimeJS } from "./portal/ask-runtime-assembler";
 import { getLiveSessionRuntimeJS } from "./portal/live-session-source";
 import { assertRuntimeRegexSafety } from "./portal/runtime-lint";
@@ -4120,14 +4121,26 @@ export const getInvitationByToken = createServerFn({ method: "POST" })
       return { found: false, error: "Invalid invitation token format" };
     }
 
-    const { data: rows, error } = await supabaseAdmin.rpc(
-      "get_invitation_by_token",
-      { _token: data.token },
-    );
-    if (error) {
-      console.error("get_invitation_by_token failed:", error);
+    // 8 s timeout on the public RPC so a hung Postgres call can't pin
+    // the Worker isolate. Friendly error returned to the caller; the
+    // RPC continues running on the DB side (not cancelled) but we
+    // stop waiting.
+    let result;
+    try {
+      result = await withTimeout(
+        supabaseAdmin.rpc("get_invitation_by_token", { _token: data.token }),
+        8000,
+        "get_invitation_by_token",
+      );
+    } catch (e) {
+      console.error("get_invitation_by_token timeout:", e);
+      return { found: false, error: "Service temporarily unavailable. Please try again." };
+    }
+    if (result.error) {
+      console.error("get_invitation_by_token failed:", result.error);
       return { found: false, error: "Failed to look up invitation" };
     }
+    const rows = result.data;
     const inv = Array.isArray(rows) ? rows[0] : null;
     if (!inv) return { found: false };
 
@@ -4287,14 +4300,22 @@ export const declineInvitationByToken = createServerFn({ method: "POST" })
     if (!data.token || !INVITATION_TOKEN_RE.test(data.token)) {
       throw new Error("Invalid invitation token");
     }
-    const { data: ok, error } = await supabaseAdmin.rpc("decline_invitation", {
-      _token: data.token,
-    });
-    if (error) {
-      console.error("decline_invitation failed:", error);
+    let result;
+    try {
+      result = await withTimeout(
+        supabaseAdmin.rpc("decline_invitation", { _token: data.token }),
+        8000,
+        "decline_invitation",
+      );
+    } catch (e) {
+      console.error("decline_invitation timeout:", e);
+      throw new Error("Service temporarily unavailable. Please try again.");
+    }
+    if (result.error) {
+      console.error("decline_invitation failed:", result.error);
       throw new Error("Failed to decline invitation");
     }
-    return { success: ok === true };
+    return { success: result.data === true };
   });
 
 // ============================================================================
