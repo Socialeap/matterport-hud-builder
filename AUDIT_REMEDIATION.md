@@ -66,15 +66,24 @@ git push --force-with-lease origin <branch>
 ---
 
 ## Phase 2 — Lock the webhook + rate-limit perimeter
-- [ ] `payments-webhook` no longer reads `env` from the request URL — derived
-      from a per-deployment env var or per-route hard-coding
-- [ ] `processed_webhook_events` migration + idempotency check wraps every
-      webhook handler
-- [ ] `extract-property-doc` calls `checkRateLimit()` (5/min/IP)
-- [ ] `extract-url-content` calls `checkRateLimit()` + rejects RFC1918 /
-      link-local / metadata IPs (SSRF guard)
-- [ ] `induce-schema` calls `checkRateLimit()` (10/min/IP)
-- [ ] `getInvitationByToken` rate-limited + constant-time token compare
+- [x] `payments-webhook` no longer reads `env` from the request URL —
+      derived from which webhook secret verifies the HMAC, with
+      `event.livemode` cross-check
+- [x] `processed_webhook_events` migration + idempotency check wraps every
+      webhook handler (release-on-handler-error so Stripe retries can
+      re-enter)
+- [x] `extract-property-doc` calls `checkRateLimit()` (5/min/IP)
+- [x] `extract-url-content` calls `checkRateLimit()` (5/min/IP).
+      Note: SSRF guard already exists at `validateUrl` /
+      `isPrivateHostname` — audit overstated this one.
+- [x] `induce-schema` calls `checkRateLimit()` (10/min/IP)
+- [x] `getInvitationByToken` + `declineInvitationByToken` rate-limited
+      (10/min/IP). UUID-v4 token entropy makes constant-time compare
+      computationally unnecessary; rate limit is the operational guard.
+- [ ] **OWNER ACTION** — apply migration
+      `20260510210000_processed_webhook_events.sql` to Supabase
+- [ ] **OWNER ACTION** — switch Stripe webhook URL: drop the `?env=…`
+      query parameter (URL is now ignored by the handler)
 
 ## Phase 3 — Scale-bombs
 - [ ] `getProviderOrders` no longer N+1's `auth.admin.getUserById`

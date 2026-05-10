@@ -23,6 +23,7 @@ import {
   checkUploadSize,
   uploadKindForMime,
 } from "../_shared/upload-limits.ts";
+import { checkRateLimit, ipFromRequest } from "../_shared/rate-limit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -45,7 +46,8 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 type Stage = "auth" | "input" | "freeze" | "asset" | "no_storage_path"
-  | "template" | "download" | "size_limit" | "extraction" | "persist";
+  | "template" | "download" | "size_limit" | "extraction" | "persist"
+  | "rate_limit";
 
 function fail(
   stage: Stage,
@@ -65,6 +67,18 @@ serve(async (req) => {
   }
   if (req.method !== "POST") {
     return fail("input", "method_not_allowed", 405);
+  }
+
+  // Per-IP rate limit BEFORE auth/DB/storage work so a flood of requests
+  // can't burn the auth verifier, the storage download, or the LLM
+  // budget. Extraction is one of the most expensive paths in the system
+  // (PDF parse + Groq cleaner + prose miner) — keep this conservative.
+  const ip = ipFromRequest(req);
+  const rl = checkRateLimit(ip, { perMinute: 5 });
+  if (!rl.allowed) {
+    return fail("rate_limit", "rate_limited", 429, {
+      retry_after_seconds: rl.retryAfterSeconds,
+    });
   }
 
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL");

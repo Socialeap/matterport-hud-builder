@@ -7,53 +7,141 @@ const supabase = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 );
 
+/**
+ * Atomic idempotency claim. Inserts a row into `processed_webhook_events`
+ * keyed by the Stripe event id; returns `true` only when this is the first
+ * time we've seen the event. Subsequent retries return `false` and the
+ * caller short-circuits before mutating any application tables.
+ *
+ * Stripe retries any non-2xx response and may also retry on its own
+ * timeout heuristics, so handlers MUST be guarded by this check or risk
+ * double-applying the same payment, subscription update, or onboarding
+ * flag.
+ */
+async function claimEvent(
+  eventId: string,
+  eventType: string,
+  env: StripeEnv,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("processed_webhook_events")
+    .upsert(
+      {
+        event_id: eventId,
+        source: "stripe",
+        event_type: eventType,
+        env,
+      },
+      { onConflict: "event_id", ignoreDuplicates: true },
+    )
+    .select("event_id");
+
+  if (error) {
+    // Don't swallow real DB errors — let the caller return 500 so Stripe
+    // retries (and we get to try the idempotency claim again).
+    throw error;
+  }
+  return Array.isArray(data) && data.length > 0;
+}
+
+/**
+ * Best-effort release of the idempotency row when a downstream handler
+ * fails. Without this, the next Stripe retry would see the row, treat
+ * the event as a duplicate, and return 200 — leaving the system in a
+ * partial-update state. We swallow errors here because the caller is
+ * already on the failure path; if the delete itself fails the row will
+ * leak, but the operator can inspect `processed_webhook_events` for
+ * recently-stuck rows.
+ */
+async function releaseEvent(eventId: string): Promise<void> {
+  try {
+    await supabase
+      .from("processed_webhook_events")
+      .delete()
+      .eq("event_id", eventId);
+  } catch (err) {
+    console.error("Failed to release idempotency row for", eventId, err);
+  }
+}
+
 serve(async (req) => {
   if (req.method !== "POST") {
     return new Response("Method not allowed", { status: 405 });
   }
 
-  const url = new URL(req.url);
-  const env = (url.searchParams.get('env') || 'sandbox') as StripeEnv;
-
   try {
-    const event = await verifyWebhook(req, env);
-    console.log("Received event:", event.type, "env:", env, "account:", (event as any).account);
+    // env is derived from which webhook secret verified the signature —
+    // NOT from the request URL or body. See _shared/stripe.ts for the
+    // trust model.
+    const { event, env } = await verifyWebhook(req);
+    console.log(
+      "Received event:",
+      event.type,
+      "id:",
+      event.id,
+      "env:",
+      env,
+      "livemode:",
+      event.livemode,
+    );
 
-    const connectedAccountId = (event as any).account;
+    // Idempotency: short-circuit if this event id has been processed
+    // before. Stripe retries on timeout, on 5xx, and at its own
+    // discretion; without this guard, every retry would re-apply the
+    // tier flip / license update / order notification.
+    const isFirstDelivery = await claimEvent(event.id, event.type, env);
+    if (!isFirstDelivery) {
+      console.log("Duplicate webhook, skipping handlers:", event.id, event.type);
+      return new Response(JSON.stringify({ received: true, duplicate: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
 
-    switch (event.type) {
-      case "checkout.session.completed":
-        if (connectedAccountId) {
-          await handleConnectCheckoutCompleted(event.data.object, connectedAccountId);
-        } else {
-          await handleCheckoutCompleted(event.data.object, env);
-        }
-        break;
+    const connectedAccountId = event.account;
 
-      case "customer.subscription.created":
-        await handleSubscriptionCreated(event.data.object, env);
-        break;
+    try {
+      switch (event.type) {
+        case "checkout.session.completed":
+          if (connectedAccountId) {
+            await handleConnectCheckoutCompleted(event.data.object, connectedAccountId);
+          } else {
+            await handleCheckoutCompleted(event.data.object, env);
+          }
+          break;
 
-      case "customer.subscription.updated":
-        await handleSubscriptionUpdated(event.data.object, env);
-        break;
+        case "customer.subscription.created":
+          await handleSubscriptionCreated(event.data.object, env);
+          break;
 
-      case "customer.subscription.deleted":
-        await handleSubscriptionDeleted(event.data.object, env);
-        break;
+        case "customer.subscription.updated":
+          await handleSubscriptionUpdated(event.data.object, env);
+          break;
 
-      case "invoice.payment_succeeded":
-        await handleInvoicePaymentSucceeded(event.data.object, env);
-        break;
+        case "customer.subscription.deleted":
+          await handleSubscriptionDeleted(event.data.object, env);
+          break;
 
-      case "account.updated":
-        if (connectedAccountId) {
-          await handleAccountUpdated(event.data.object, connectedAccountId);
-        }
-        break;
+        case "invoice.payment_succeeded":
+          await handleInvoicePaymentSucceeded(event.data.object, env);
+          break;
 
-      default:
-        console.log("Unhandled event:", event.type);
+        case "account.updated":
+          if (connectedAccountId) {
+            await handleAccountUpdated(event.data.object, connectedAccountId);
+          }
+          break;
+
+        default:
+          console.log("Unhandled event:", event.type);
+      }
+    } catch (handlerErr) {
+      // Handler failed AFTER the idempotency claim succeeded. Release
+      // the claim so Stripe's retry can re-enter the handler instead of
+      // being silently bounced as a duplicate. Then re-throw so the
+      // outer catch returns 5xx.
+      await releaseEvent(event.id);
+      throw handlerErr;
     }
 
     return new Response(JSON.stringify({ received: true }), {
@@ -61,8 +149,16 @@ serve(async (req) => {
       headers: { "Content-Type": "application/json" },
     });
   } catch (e) {
+    // Any failure (signature mismatch, idempotency-table outage, handler
+    // throw) is logged and surfaced as 4xx/5xx so Stripe retries.
     console.error("Webhook error:", e);
-    return new Response("Webhook error", { status: 400 });
+    const isVerifyError =
+      e instanceof Error &&
+      /signature|livemode|webhook secret|timestamp/i.test(e.message);
+    return new Response(
+      isVerifyError ? "Webhook signature error" : "Webhook handler error",
+      { status: isVerifyError ? 400 : 500 },
+    );
   }
 });
 
