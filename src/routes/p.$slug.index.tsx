@@ -911,7 +911,7 @@ function PortalHeader({
             <button
               type="button"
               onClick={onSignIn}
-              className="inline-flex h-9 items-center gap-1.5 rounded-full px-4 text-sm font-semibold text-white shadow-md transition-transform hover:scale-105"
+              className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-xs font-semibold text-white shadow-md transition-transform hover:scale-105 lg:h-9 lg:px-4 lg:text-sm"
               style={{ backgroundColor: accent }}
             >
               <LogIn className="size-4" />
@@ -924,7 +924,7 @@ function PortalHeader({
         <Sheet>
           <SheetTrigger asChild>
             <button
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/25 bg-white/15 text-white shadow-sm backdrop-blur-md sm:hidden"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/25 bg-white/15 text-white shadow-sm backdrop-blur-md md:hidden"
               aria-label="Open menu"
             >
               <Menu className="size-5" />
