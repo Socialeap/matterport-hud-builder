@@ -86,9 +86,17 @@ git push --force-with-lease origin <branch>
       query parameter (URL is now ignored by the handler)
 
 ## Phase 3 — Scale-bombs
-- [ ] `getProviderOrders` no longer N+1's `auth.admin.getUserById`
-- [ ] `setClientFreeFlag` no longer enumerates the first 200 users to find one
-- [ ] explicit timeouts on the 5 `.rpc()` calls flagged in the audit
+- [x] `getProviderOrders` no longer N+1's `auth.admin.getUserById` —
+      single batched RPC call via `admin_get_user_emails_by_ids`
+- [x] `setClientFreeFlag` no longer enumerates the first 200 users —
+      targeted index lookup via `admin_get_user_id_by_email`
+- [ ] **OWNER ACTION** — apply migration
+      `20260510210500_admin_user_email_lookups.sql` to Supabase before
+      this phase is deployed. The N+1 fixes will return `null` emails
+      (with a `console.warn`) until the migration lands.
+- [ ] explicit timeouts on `.rpc()` calls — DEFERRED to Phase 6 cleanup
+      (defense-in-depth; current Cloudflare Worker / Supabase platform
+      timeouts already bound the calls)
 
 ## Phase 4 — Server-fn validation + retries
 - [ ] every `inputValidator((d:T) => d)` in `portal.functions.ts` replaced
