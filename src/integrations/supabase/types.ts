@@ -1365,21 +1365,6 @@ export type Database = {
           warning_email_sent_at: string
         }[]
       }
-      claim_pending_beacon_matches: {
-        Args: { p_limit?: number }
-        Returns: {
-          beacon_city: string
-          beacon_email: string
-          beacon_id: string
-          beacon_name: string
-          beacon_region: string
-          provider_brand_name: string
-          provider_custom_domain: string
-          provider_id: string
-          provider_slug: string
-          provider_tier: Database["public"]["Enums"]["app_tier"]
-        }[]
-      }
       decline_invitation: { Args: { _token: string }; Returns: boolean }
       delete_email: {
         Args: { message_id: number; queue_name: string }
@@ -1537,21 +1522,6 @@ export type Database = {
           license_status: Database["public"]["Enums"]["license_status"]
           studio_id: string
           tier: Database["public"]["Enums"]["app_tier"]
-        }[]
-      }
-      get_my_matched_beacons: {
-        Args: never
-        Returns: {
-          brokerage: string
-          city: string
-          created_at: string
-          email: string
-          id: string
-          is_first_match_with_me: boolean
-          name: string
-          region: string
-          status: Database["public"]["Enums"]["beacon_status"]
-          zip: string
         }[]
       }
       get_my_service_polygon: { Args: never; Returns: Json }
