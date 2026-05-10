@@ -1298,6 +1298,225 @@ export type Database = {
         }
         Relationships: []
       }
+      work_order_invites: {
+        Row: {
+          available_score_delta_at: string | null
+          created_at: string
+          email_sent_at: string | null
+          expired_penalty_applied_at: string | null
+          id: string
+          provider_id: string
+          provider_note: string | null
+          push_sent_at: string | null
+          rank_at_invite: number | null
+          respond_by: string
+          responded_at: string | null
+          response_status: Database["public"]["Enums"]["work_order_invite_status"]
+          updated_at: string
+          work_order_id: string
+        }
+        Insert: {
+          available_score_delta_at?: string | null
+          created_at?: string
+          email_sent_at?: string | null
+          expired_penalty_applied_at?: string | null
+          id?: string
+          provider_id: string
+          provider_note?: string | null
+          push_sent_at?: string | null
+          rank_at_invite?: number | null
+          respond_by: string
+          responded_at?: string | null
+          response_status?: Database["public"]["Enums"]["work_order_invite_status"]
+          updated_at?: string
+          work_order_id: string
+        }
+        Update: {
+          available_score_delta_at?: string | null
+          created_at?: string
+          email_sent_at?: string | null
+          expired_penalty_applied_at?: string | null
+          id?: string
+          provider_id?: string
+          provider_note?: string | null
+          push_sent_at?: string | null
+          rank_at_invite?: number | null
+          respond_by?: string
+          responded_at?: string | null
+          response_status?: Database["public"]["Enums"]["work_order_invite_status"]
+          updated_at?: string
+          work_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_order_invites_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      work_order_ratings: {
+        Row: {
+          agent_user_id: string
+          created_at: string
+          email_sent_at: string | null
+          feedback_text: string | null
+          id: string
+          provider_id: string
+          rating_token: string
+          score_delta_applied_at: string | null
+          stars: number | null
+          submitted_at: string | null
+          work_order_id: string
+        }
+        Insert: {
+          agent_user_id: string
+          created_at?: string
+          email_sent_at?: string | null
+          feedback_text?: string | null
+          id?: string
+          provider_id: string
+          rating_token?: string
+          score_delta_applied_at?: string | null
+          stars?: number | null
+          submitted_at?: string | null
+          work_order_id: string
+        }
+        Update: {
+          agent_user_id?: string
+          created_at?: string
+          email_sent_at?: string | null
+          feedback_text?: string | null
+          id?: string
+          provider_id?: string
+          rating_token?: string
+          score_delta_applied_at?: string | null
+          stars?: number | null
+          submitted_at?: string | null
+          work_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_order_ratings_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: true
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      work_orders: {
+        Row: {
+          address_line1: string
+          address_line2: string | null
+          agent_user_id: string
+          available_from: string
+          available_to: string
+          cancelled_at: string | null
+          city: string
+          completion:
+            | Database["public"]["Enums"]["work_order_completion"]
+            | null
+          completion_at: string | null
+          confirmed_at: string | null
+          confirmed_provider_id: string | null
+          created_at: string
+          essential_services: Database["public"]["Enums"]["marketplace_specialty"][]
+          expires_at: string
+          id: string
+          lat: number | null
+          lng: number | null
+          notes: string | null
+          pii_released_at: string | null
+          preferable_services: Database["public"]["Enums"]["marketplace_specialty"][]
+          priority_window_until: string | null
+          property_type: string
+          region: string | null
+          size_band: string
+          source_beacon_id: string | null
+          status: Database["public"]["Enums"]["work_order_status"]
+          updated_at: string
+          wo_point: unknown
+          zip: string | null
+        }
+        Insert: {
+          address_line1: string
+          address_line2?: string | null
+          agent_user_id: string
+          available_from: string
+          available_to: string
+          cancelled_at?: string | null
+          city: string
+          completion?:
+            | Database["public"]["Enums"]["work_order_completion"]
+            | null
+          completion_at?: string | null
+          confirmed_at?: string | null
+          confirmed_provider_id?: string | null
+          created_at?: string
+          essential_services?: Database["public"]["Enums"]["marketplace_specialty"][]
+          expires_at?: string
+          id?: string
+          lat?: number | null
+          lng?: number | null
+          notes?: string | null
+          pii_released_at?: string | null
+          preferable_services?: Database["public"]["Enums"]["marketplace_specialty"][]
+          priority_window_until?: string | null
+          property_type: string
+          region?: string | null
+          size_band: string
+          source_beacon_id?: string | null
+          status?: Database["public"]["Enums"]["work_order_status"]
+          updated_at?: string
+          wo_point?: unknown
+          zip?: string | null
+        }
+        Update: {
+          address_line1?: string
+          address_line2?: string | null
+          agent_user_id?: string
+          available_from?: string
+          available_to?: string
+          cancelled_at?: string | null
+          city?: string
+          completion?:
+            | Database["public"]["Enums"]["work_order_completion"]
+            | null
+          completion_at?: string | null
+          confirmed_at?: string | null
+          confirmed_provider_id?: string | null
+          created_at?: string
+          essential_services?: Database["public"]["Enums"]["marketplace_specialty"][]
+          expires_at?: string
+          id?: string
+          lat?: number | null
+          lng?: number | null
+          notes?: string | null
+          pii_released_at?: string | null
+          preferable_services?: Database["public"]["Enums"]["marketplace_specialty"][]
+          priority_window_until?: string | null
+          property_type?: string
+          region?: string | null
+          size_band?: string
+          source_beacon_id?: string | null
+          status?: Database["public"]["Enums"]["work_order_status"]
+          updated_at?: string
+          wo_point?: unknown
+          zip?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_orders_source_beacon_id_fkey"
+            columns: ["source_beacon_id"]
+            isOneToOne: false
+            referencedRelation: "agent_beacons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       geography_columns: {
@@ -1344,8 +1563,16 @@ export type Database = {
       }
     }
     Functions: {
+      _count_eligible_pros_for_work_order: {
+        Args: { p_work_order_id: string }
+        Returns: number
+      }
       _is_provider_serving_beacon: {
         Args: { p_beacon_id: string; p_provider_id: string }
+        Returns: boolean
+      }
+      _is_provider_serving_work_order: {
+        Args: { p_provider_id: string; p_work_order_id: string }
         Returns: boolean
       }
       _postgis_deprecate: {
@@ -2605,6 +2832,21 @@ export type Database = {
         | "custom_iconography"
         | "property_doc"
         | "external_link"
+      work_order_completion: "complete" | "incomplete"
+      work_order_invite_status:
+        | "invited"
+        | "available"
+        | "not_available"
+        | "expired"
+        | "not_selected"
+        | "withdrawn"
+      work_order_status:
+        | "pending"
+        | "confirmed"
+        | "completed"
+        | "incomplete"
+        | "cancelled"
+        | "expired"
     }
     CompositeTypes: {
       geometry_dump: {
@@ -2769,6 +3011,23 @@ export const Constants = {
         "custom_iconography",
         "property_doc",
         "external_link",
+      ],
+      work_order_completion: ["complete", "incomplete"],
+      work_order_invite_status: [
+        "invited",
+        "available",
+        "not_available",
+        "expired",
+        "not_selected",
+        "withdrawn",
+      ],
+      work_order_status: [
+        "pending",
+        "confirmed",
+        "completed",
+        "incomplete",
+        "cancelled",
+        "expired",
       ],
     },
   },
