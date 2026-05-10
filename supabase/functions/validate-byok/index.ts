@@ -32,7 +32,16 @@ const corsHeaders = {
 interface ValidateBody {
   api_key?: string;
   vendor?: string;
+  preferred_model?: string | null;
+  /** When true, only update preferred_model — do not require api_key. */
+  update_model_only?: boolean;
 }
+
+const ALLOWED_MODELS = new Set([
+  "gemini-2.5-flash-lite",
+  "gemini-2.5-flash",
+  "gemini-2.5-pro",
+]);
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
