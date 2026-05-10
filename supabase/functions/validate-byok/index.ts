@@ -190,6 +190,9 @@ serve(async (req) => {
         validated_at: new Date().toISOString(),
         validation_error: null,
         rotated_at: new Date().toISOString(),
+        ...(preferredModel !== undefined
+          ? { preferred_model: preferredModel || null }
+          : {}),
       },
       { onConflict: "client_id,vendor" },
     );
