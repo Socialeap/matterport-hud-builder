@@ -66,6 +66,7 @@ export type Database = {
           geocoded_at: string | null
           id: string
           lat: number | null
+          leaked_at: string | null
           lng: number | null
           match_token: string
           matched_at: string | null
@@ -102,6 +103,7 @@ export type Database = {
           geocoded_at?: string | null
           id?: string
           lat?: number | null
+          leaked_at?: string | null
           lng?: number | null
           match_token?: string
           matched_at?: string | null
@@ -138,6 +140,7 @@ export type Database = {
           geocoded_at?: string | null
           id?: string
           lat?: number | null
+          leaked_at?: string | null
           lng?: number | null
           match_token?: string
           matched_at?: string | null
@@ -722,7 +725,7 @@ export type Database = {
           {
             foreignKeyName: "marketplace_outreach_beacon_id_fkey"
             columns: ["beacon_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "agent_beacons"
             referencedColumns: ["id"]
           },
@@ -1295,6 +1298,225 @@ export type Database = {
         }
         Relationships: []
       }
+      work_order_invites: {
+        Row: {
+          available_score_delta_at: string | null
+          created_at: string
+          email_sent_at: string | null
+          expired_penalty_applied_at: string | null
+          id: string
+          provider_id: string
+          provider_note: string | null
+          push_sent_at: string | null
+          rank_at_invite: number | null
+          respond_by: string
+          responded_at: string | null
+          response_status: Database["public"]["Enums"]["work_order_invite_status"]
+          updated_at: string
+          work_order_id: string
+        }
+        Insert: {
+          available_score_delta_at?: string | null
+          created_at?: string
+          email_sent_at?: string | null
+          expired_penalty_applied_at?: string | null
+          id?: string
+          provider_id: string
+          provider_note?: string | null
+          push_sent_at?: string | null
+          rank_at_invite?: number | null
+          respond_by: string
+          responded_at?: string | null
+          response_status?: Database["public"]["Enums"]["work_order_invite_status"]
+          updated_at?: string
+          work_order_id: string
+        }
+        Update: {
+          available_score_delta_at?: string | null
+          created_at?: string
+          email_sent_at?: string | null
+          expired_penalty_applied_at?: string | null
+          id?: string
+          provider_id?: string
+          provider_note?: string | null
+          push_sent_at?: string | null
+          rank_at_invite?: number | null
+          respond_by?: string
+          responded_at?: string | null
+          response_status?: Database["public"]["Enums"]["work_order_invite_status"]
+          updated_at?: string
+          work_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_order_invites_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      work_order_ratings: {
+        Row: {
+          agent_user_id: string
+          created_at: string
+          email_sent_at: string | null
+          feedback_text: string | null
+          id: string
+          provider_id: string
+          rating_token: string
+          score_delta_applied_at: string | null
+          stars: number | null
+          submitted_at: string | null
+          work_order_id: string
+        }
+        Insert: {
+          agent_user_id: string
+          created_at?: string
+          email_sent_at?: string | null
+          feedback_text?: string | null
+          id?: string
+          provider_id: string
+          rating_token?: string
+          score_delta_applied_at?: string | null
+          stars?: number | null
+          submitted_at?: string | null
+          work_order_id: string
+        }
+        Update: {
+          agent_user_id?: string
+          created_at?: string
+          email_sent_at?: string | null
+          feedback_text?: string | null
+          id?: string
+          provider_id?: string
+          rating_token?: string
+          score_delta_applied_at?: string | null
+          stars?: number | null
+          submitted_at?: string | null
+          work_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_order_ratings_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: true
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      work_orders: {
+        Row: {
+          address_line1: string
+          address_line2: string | null
+          agent_user_id: string
+          available_from: string
+          available_to: string
+          cancelled_at: string | null
+          city: string
+          completion:
+            | Database["public"]["Enums"]["work_order_completion"]
+            | null
+          completion_at: string | null
+          confirmed_at: string | null
+          confirmed_provider_id: string | null
+          created_at: string
+          essential_services: Database["public"]["Enums"]["marketplace_specialty"][]
+          expires_at: string
+          id: string
+          lat: number | null
+          lng: number | null
+          notes: string | null
+          pii_released_at: string | null
+          preferable_services: Database["public"]["Enums"]["marketplace_specialty"][]
+          priority_window_until: string | null
+          property_type: string
+          region: string | null
+          size_band: string
+          source_beacon_id: string | null
+          status: Database["public"]["Enums"]["work_order_status"]
+          updated_at: string
+          wo_point: unknown
+          zip: string | null
+        }
+        Insert: {
+          address_line1: string
+          address_line2?: string | null
+          agent_user_id: string
+          available_from: string
+          available_to: string
+          cancelled_at?: string | null
+          city: string
+          completion?:
+            | Database["public"]["Enums"]["work_order_completion"]
+            | null
+          completion_at?: string | null
+          confirmed_at?: string | null
+          confirmed_provider_id?: string | null
+          created_at?: string
+          essential_services?: Database["public"]["Enums"]["marketplace_specialty"][]
+          expires_at?: string
+          id?: string
+          lat?: number | null
+          lng?: number | null
+          notes?: string | null
+          pii_released_at?: string | null
+          preferable_services?: Database["public"]["Enums"]["marketplace_specialty"][]
+          priority_window_until?: string | null
+          property_type: string
+          region?: string | null
+          size_band: string
+          source_beacon_id?: string | null
+          status?: Database["public"]["Enums"]["work_order_status"]
+          updated_at?: string
+          wo_point?: unknown
+          zip?: string | null
+        }
+        Update: {
+          address_line1?: string
+          address_line2?: string | null
+          agent_user_id?: string
+          available_from?: string
+          available_to?: string
+          cancelled_at?: string | null
+          city?: string
+          completion?:
+            | Database["public"]["Enums"]["work_order_completion"]
+            | null
+          completion_at?: string | null
+          confirmed_at?: string | null
+          confirmed_provider_id?: string | null
+          created_at?: string
+          essential_services?: Database["public"]["Enums"]["marketplace_specialty"][]
+          expires_at?: string
+          id?: string
+          lat?: number | null
+          lng?: number | null
+          notes?: string | null
+          pii_released_at?: string | null
+          preferable_services?: Database["public"]["Enums"]["marketplace_specialty"][]
+          priority_window_until?: string | null
+          property_type?: string
+          region?: string | null
+          size_band?: string
+          source_beacon_id?: string | null
+          status?: Database["public"]["Enums"]["work_order_status"]
+          updated_at?: string
+          wo_point?: unknown
+          zip?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_orders_source_beacon_id_fkey"
+            columns: ["source_beacon_id"]
+            isOneToOne: false
+            referencedRelation: "agent_beacons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       geography_columns: {
@@ -1341,8 +1563,16 @@ export type Database = {
       }
     }
     Functions: {
+      _count_eligible_pros_for_work_order: {
+        Args: { p_work_order_id: string }
+        Returns: number
+      }
       _is_provider_serving_beacon: {
         Args: { p_beacon_id: string; p_provider_id: string }
+        Returns: boolean
+      }
+      _is_provider_serving_work_order: {
+        Args: { p_provider_id: string; p_work_order_id: string }
         Returns: boolean
       }
       _postgis_deprecate: {
@@ -1362,6 +1592,10 @@ export type Database = {
       _postgis_stats: {
         Args: { ""?: string; att_name: string; tbl: unknown }
         Returns: string
+      }
+      _provider_can_receive_leads: {
+        Args: { p_provider_id: string }
+        Returns: boolean
       }
       _st_3dintersects: {
         Args: { geom1: unknown; geom2: unknown }
@@ -1487,6 +1721,7 @@ export type Database = {
         Args: { p_feedback_token: string }
         Returns: boolean
       }
+      cancel_work_order: { Args: { p_work_order_id: string }; Returns: boolean }
       claim_ask_exhaustion_email: {
         Args: { p_property_uuid: string; p_saved_model_id: string }
         Returns: {
@@ -1532,6 +1767,10 @@ export type Database = {
         }[]
       }
       cleanup_old_outreach_bodies: { Args: never; Returns: number }
+      confirm_work_order_msp: {
+        Args: { p_provider_id: string; p_work_order_id: string }
+        Returns: boolean
+      }
       decline_invitation: { Args: { _token: string }; Returns: boolean }
       delete_email: {
         Args: { message_id: number; queue_name: string }
@@ -1574,6 +1813,7 @@ export type Database = {
         Returns: number
       }
       equals: { Args: { geom1: unknown; geom2: unknown }; Returns: boolean }
+      expire_unanswered_invites: { Args: never; Returns: number }
       geometry: { Args: { "": string }; Returns: unknown }
       geometry_above: {
         Args: { geom1: unknown; geom2: unknown }
@@ -1705,6 +1945,7 @@ export type Database = {
           has_outreach: boolean
           id: string
           is_currently_exclusive: boolean
+          is_leaked: boolean
           name: string
           region: string
           status: Database["public"]["Enums"]["beacon_status"]
@@ -1712,6 +1953,62 @@ export type Database = {
         }[]
       }
       get_my_service_polygon: { Args: never; Returns: Json }
+      get_my_work_order_invites: {
+        Args: never
+        Returns: {
+          address_line1: string
+          address_line2: string
+          agent_email: string
+          agent_name: string
+          agent_phone: string
+          available_from: string
+          available_to: string
+          city: string
+          completion: Database["public"]["Enums"]["work_order_completion"]
+          completion_at: string
+          created_at: string
+          essential_services: Database["public"]["Enums"]["marketplace_specialty"][]
+          invite_id: string
+          notes: string
+          pii_released: boolean
+          preferable_services: Database["public"]["Enums"]["marketplace_specialty"][]
+          property_type: string
+          rank_at_invite: number
+          region: string
+          respond_by: string
+          responded_at: string
+          response_status: Database["public"]["Enums"]["work_order_invite_status"]
+          size_band: string
+          wo_status: Database["public"]["Enums"]["work_order_status"]
+          work_order_id: string
+          zip: string
+        }[]
+      }
+      get_my_work_orders: {
+        Args: never
+        Returns: {
+          available_count: number
+          available_from: string
+          available_to: string
+          city: string
+          completion: Database["public"]["Enums"]["work_order_completion"]
+          completion_at: string
+          confirmed_brand_name: string
+          confirmed_provider_id: string
+          created_at: string
+          essential_services: Database["public"]["Enums"]["marketplace_specialty"][]
+          expired_count: number
+          id: string
+          invite_count: number
+          preferable_services: Database["public"]["Enums"]["marketplace_specialty"][]
+          priority_window_until: string
+          property_type: string
+          region: string
+          size_band: string
+          status: Database["public"]["Enums"]["work_order_status"]
+          zip: string
+        }[]
+      }
       get_provider_license: {
         Args: { client_uuid: string }
         Returns: {
@@ -1780,6 +2077,10 @@ export type Database = {
         Args: { check_env?: string; user_uuid: string }
         Returns: string
       }
+      get_work_order_detail_for_agent: {
+        Args: { p_work_order_id: string }
+        Returns: Json
+      }
       gettransactionid: { Args: never; Returns: unknown }
       has_role: {
         Args: {
@@ -1798,6 +2099,7 @@ export type Database = {
         Returns: boolean
       }
       issue_studio_preview_token: { Args: { _slug: string }; Returns: string }
+      leak_expired_pro_windows: { Args: never; Returns: number }
       longtransactionsenabled: { Args: never; Returns: boolean }
       lookup_outreach_by_token: {
         Args: { p_feedback_token: string }
@@ -1805,6 +2107,21 @@ export type Database = {
           already_flagged: boolean
           brand_name: string
           sent_at: string
+        }[]
+      }
+      lookup_work_order_rating_by_token: {
+        Args: { p_rating_token: string }
+        Returns: {
+          already_submitted: boolean
+          completion_at: string
+          msp_brand_name: string
+        }[]
+      }
+      mark_work_order_complete: {
+        Args: { p_completion: string; p_work_order_id: string }
+        Returns: {
+          ok: boolean
+          rating_token: string
         }[]
       }
       move_to_dlq: {
@@ -1936,6 +2253,14 @@ export type Database = {
           viewer_matches_provider: boolean
           viewer_role: string
         }[]
+      }
+      respond_to_work_order_invite: {
+        Args: {
+          p_invite_id: string
+          p_provider_note?: string
+          p_response: string
+        }
+        Returns: boolean
       }
       search_msp_directory: {
         Args: { p_city?: string; p_zip?: string }
@@ -2551,6 +2876,35 @@ export type Database = {
         Args: { geom: unknown; move: number; wrap: number }
         Returns: unknown
       }
+      submit_work_order: {
+        Args: {
+          p_address_line1: string
+          p_address_line2: string
+          p_available_from: string
+          p_available_to: string
+          p_city: string
+          p_essential_services: Database["public"]["Enums"]["marketplace_specialty"][]
+          p_lat?: number
+          p_lng?: number
+          p_notes?: string
+          p_preferable_services: Database["public"]["Enums"]["marketplace_specialty"][]
+          p_property_type: string
+          p_region: string
+          p_selected_provider_ids: string[]
+          p_size_band: string
+          p_source_beacon_id?: string
+          p_zip: string
+        }
+        Returns: {
+          invite_count: number
+          priority_window_until: string
+          work_order_id: string
+        }[]
+      }
+      submit_work_order_rating: {
+        Args: { p_feedback?: string; p_rating_token: string; p_stars: number }
+        Returns: boolean
+      }
       unlockrows: { Args: { "": string }; Returns: number }
       updategeometrysrid: {
         Args: {
@@ -2596,6 +2950,21 @@ export type Database = {
         | "custom_iconography"
         | "property_doc"
         | "external_link"
+      work_order_completion: "complete" | "incomplete"
+      work_order_invite_status:
+        | "invited"
+        | "available"
+        | "not_available"
+        | "expired"
+        | "not_selected"
+        | "withdrawn"
+      work_order_status:
+        | "pending"
+        | "confirmed"
+        | "completed"
+        | "incomplete"
+        | "cancelled"
+        | "expired"
     }
     CompositeTypes: {
       geometry_dump: {
@@ -2760,6 +3129,23 @@ export const Constants = {
         "custom_iconography",
         "property_doc",
         "external_link",
+      ],
+      work_order_completion: ["complete", "incomplete"],
+      work_order_invite_status: [
+        "invited",
+        "available",
+        "not_available",
+        "expired",
+        "not_selected",
+        "withdrawn",
+      ],
+      work_order_status: [
+        "pending",
+        "confirmed",
+        "completed",
+        "incomplete",
+        "cancelled",
+        "expired",
       ],
     },
   },
