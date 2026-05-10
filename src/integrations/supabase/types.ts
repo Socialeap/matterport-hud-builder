@@ -1721,6 +1721,7 @@ export type Database = {
         Args: { p_feedback_token: string }
         Returns: boolean
       }
+      cancel_work_order: { Args: { p_work_order_id: string }; Returns: boolean }
       claim_ask_exhaustion_email: {
         Args: { p_property_uuid: string; p_saved_model_id: string }
         Returns: {
@@ -1766,6 +1767,10 @@ export type Database = {
         }[]
       }
       cleanup_old_outreach_bodies: { Args: never; Returns: number }
+      confirm_work_order_msp: {
+        Args: { p_provider_id: string; p_work_order_id: string }
+        Returns: boolean
+      }
       decline_invitation: { Args: { _token: string }; Returns: boolean }
       delete_email: {
         Args: { message_id: number; queue_name: string }
@@ -1808,6 +1813,7 @@ export type Database = {
         Returns: number
       }
       equals: { Args: { geom1: unknown; geom2: unknown }; Returns: boolean }
+      expire_unanswered_invites: { Args: never; Returns: number }
       geometry: { Args: { "": string }; Returns: unknown }
       geometry_above: {
         Args: { geom1: unknown; geom2: unknown }
@@ -1947,6 +1953,62 @@ export type Database = {
         }[]
       }
       get_my_service_polygon: { Args: never; Returns: Json }
+      get_my_work_order_invites: {
+        Args: never
+        Returns: {
+          address_line1: string
+          address_line2: string
+          agent_email: string
+          agent_name: string
+          agent_phone: string
+          available_from: string
+          available_to: string
+          city: string
+          completion: Database["public"]["Enums"]["work_order_completion"]
+          completion_at: string
+          created_at: string
+          essential_services: Database["public"]["Enums"]["marketplace_specialty"][]
+          invite_id: string
+          notes: string
+          pii_released: boolean
+          preferable_services: Database["public"]["Enums"]["marketplace_specialty"][]
+          property_type: string
+          rank_at_invite: number
+          region: string
+          respond_by: string
+          responded_at: string
+          response_status: Database["public"]["Enums"]["work_order_invite_status"]
+          size_band: string
+          wo_status: Database["public"]["Enums"]["work_order_status"]
+          work_order_id: string
+          zip: string
+        }[]
+      }
+      get_my_work_orders: {
+        Args: never
+        Returns: {
+          available_count: number
+          available_from: string
+          available_to: string
+          city: string
+          completion: Database["public"]["Enums"]["work_order_completion"]
+          completion_at: string
+          confirmed_brand_name: string
+          confirmed_provider_id: string
+          created_at: string
+          essential_services: Database["public"]["Enums"]["marketplace_specialty"][]
+          expired_count: number
+          id: string
+          invite_count: number
+          preferable_services: Database["public"]["Enums"]["marketplace_specialty"][]
+          priority_window_until: string
+          property_type: string
+          region: string
+          size_band: string
+          status: Database["public"]["Enums"]["work_order_status"]
+          zip: string
+        }[]
+      }
       get_provider_license: {
         Args: { client_uuid: string }
         Returns: {
@@ -2015,6 +2077,10 @@ export type Database = {
         Args: { check_env?: string; user_uuid: string }
         Returns: string
       }
+      get_work_order_detail_for_agent: {
+        Args: { p_work_order_id: string }
+        Returns: Json
+      }
       gettransactionid: { Args: never; Returns: unknown }
       has_role: {
         Args: {
@@ -2041,6 +2107,21 @@ export type Database = {
           already_flagged: boolean
           brand_name: string
           sent_at: string
+        }[]
+      }
+      lookup_work_order_rating_by_token: {
+        Args: { p_rating_token: string }
+        Returns: {
+          already_submitted: boolean
+          completion_at: string
+          msp_brand_name: string
+        }[]
+      }
+      mark_work_order_complete: {
+        Args: { p_completion: string; p_work_order_id: string }
+        Returns: {
+          ok: boolean
+          rating_token: string
         }[]
       }
       move_to_dlq: {
@@ -2172,6 +2253,14 @@ export type Database = {
           viewer_matches_provider: boolean
           viewer_role: string
         }[]
+      }
+      respond_to_work_order_invite: {
+        Args: {
+          p_invite_id: string
+          p_provider_note?: string
+          p_response: string
+        }
+        Returns: boolean
       }
       search_msp_directory: {
         Args: { p_city?: string; p_zip?: string }
@@ -2786,6 +2875,35 @@ export type Database = {
       st_wrapx: {
         Args: { geom: unknown; move: number; wrap: number }
         Returns: unknown
+      }
+      submit_work_order: {
+        Args: {
+          p_address_line1: string
+          p_address_line2: string
+          p_available_from: string
+          p_available_to: string
+          p_city: string
+          p_essential_services: Database["public"]["Enums"]["marketplace_specialty"][]
+          p_lat?: number
+          p_lng?: number
+          p_notes?: string
+          p_preferable_services: Database["public"]["Enums"]["marketplace_specialty"][]
+          p_property_type: string
+          p_region: string
+          p_selected_provider_ids: string[]
+          p_size_band: string
+          p_source_beacon_id?: string
+          p_zip: string
+        }
+        Returns: {
+          invite_count: number
+          priority_window_until: string
+          work_order_id: string
+        }[]
+      }
+      submit_work_order_rating: {
+        Args: { p_feedback?: string; p_rating_token: string; p_stars: number }
+        Returns: boolean
       }
       unlockrows: { Args: { "": string }; Returns: number }
       updategeometrysrid: {
