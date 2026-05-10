@@ -1771,6 +1771,7 @@ export type Database = {
         }[]
       }
       cleanup_old_outreach_bodies: { Args: never; Returns: number }
+      cleanup_seed_msps: { Args: never; Returns: number }
       compute_priority_window_for_beacon: {
         Args: { p_beacon_id: string }
         Returns: string
