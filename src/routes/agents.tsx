@@ -815,6 +815,11 @@ function DirectorySection() {
                       : " in the directory"}{" "}
                     — search by city or ZIP to narrow.
                   </p>
+                  <p className="text-xs italic text-white/50">
+                    Note: the studios shown are sample listings for demo
+                    purposes. You'll be notified as soon as real matches are
+                    found in your area.
+                  </p>
                   <div className="grid gap-4 sm:grid-cols-2">
                     {filtered!.map((m) => (
                       <MSPCard key={`${m.slug ?? m.brand_name}`} msp={m} />
