@@ -182,7 +182,7 @@ function StatsPage() {
       .maybeSingle();
 
     setSlug(branding?.slug ?? null);
-    setGaId((branding as any)?.ga_tracking_id ?? "");
+    setGaId(branding?.ga_tracking_id ?? "");
 
     const { data: visits } = await supabase
       .from("page_visits")
