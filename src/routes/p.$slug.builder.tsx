@@ -79,6 +79,9 @@ function BuilderPage() {
 
   return (
     <IndexingProvider>
+      <div className="fixed top-3 right-3 z-50">
+        <AccountMenu />
+      </div>
       <HudBuilderSandbox
         branding={branding as React.ComponentProps<typeof HudBuilderSandbox>["branding"]}
         slug={slug}
