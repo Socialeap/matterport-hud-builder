@@ -110,7 +110,9 @@ git push --force-with-lease origin <branch>
 - [ ] `draft-storage` no longer persists plaintext password
 - [ ] `[ask] intent=… q=…` and similar user-payload `console.log` calls
       removed or gated behind `import.meta.env.DEV`
-- [ ] Supabase types regenerated; `as any` casts removed from route loaders
+- [x] Supabase types regenerated; `as any` casts removed from route loaders
+      (2026-05-11 — `p.$slug.index.tsx`, `dashboard.stats.tsx`,
+      `dashboard.payouts.tsx`, `geocode-beacon.ts`, `geocode-branding.ts`)
 
 ## Phase 6 — Cleanup & consistency
 - [ ] duplicate `lus_freezes` migration deleted
