@@ -82,7 +82,7 @@ const EMPTY_FORM: FormState = {
 };
 
 function AgentDashboardPage() {
-  const { user, hasRole, signOut } = useAuth();
+  const { user, hasRole } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
