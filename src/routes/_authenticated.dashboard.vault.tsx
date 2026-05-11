@@ -258,11 +258,8 @@ function VaultPage() {
   useEffect(() => {
     if (!user) return;
     supabase
-      .from("branding_settings")
-      .select("tier")
-      .eq("provider_id", user.id)
-      .maybeSingle()
-      .then(({ data }) => setTier((data?.tier as "starter" | "pro") ?? "starter"));
+      .rpc("get_effective_tier", { _provider_id: user.id })
+      .then(({ data }) => setTier(((data as "starter" | "pro" | null) ?? "starter")));
   }, [user]);
 
   const fetchAssets = useCallback(async () => {
