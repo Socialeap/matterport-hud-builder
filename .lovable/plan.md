@@ -1,63 +1,64 @@
-## Root cause
+## Goal
 
-shakoure@TranscendenceMedia.com (`a3d9b1d1-…`) has:
-- `admin_grants`: active **pro** grant (expires 2026-07-21, not revoked)
-- `licenses`: tier=**pro**, status=active
-- `branding_settings.tier`: **starter** ← stale
+Give every visitor of the Agent Dashboard a clear visual indication of which account they're signed into — and a fast onboarding path (Google or email) when they're not. The same component will be reusable on the portal builder for consistency.
 
-Two dashboard surfaces read tier directly from `branding_settings.tier`, so they show Starter and lock Pro features:
-- `src/routes/_authenticated.dashboard.index.tsx` (line 115) — Overview banner / "starter plan" / locked Vault tile
-- `src/routes/_authenticated.dashboard.vault.tsx` (lines 262–265) — `isStarter` gate around the entire Production Vault
+## Current state
 
-The grant flow in `_authenticated.admin.$providerId.tsx` does write to all three tables today, but the original grant for this account predates the branding write (or branding was edited afterward and reset to starter), so `branding_settings.tier` drifted out of sync. The same drift can happen any time a provider edits their branding form.
+- `/agent-dashboard` lives under `_authenticated`, so unauthenticated users get bounced to `/login` before the page mounts. The header today has plain text buttons (`Work Orders`, `Back to /agents`, `Sign out`) — no avatar, no name, no email shown.
+- The portal builder (`/p/$slug/builder`) already has `PortalSignupModal` for inline Google + email signup. There's no logged‑in chip there either.
+- We already have: `useAuth()` (user, roles, signOut), `lovable.auth.signInWithOAuth("google")`, `Avatar`, `DropdownMenu`, `PortalSignupModal`.
 
-## Fix strategy
+## Plan
 
-Make tier resolution authoritative and idempotent rather than depending on whichever code path last touched `branding_settings`.
+### 1. New component: `src/components/account/AccountMenu.tsx`
 
-### 1. New SECURITY DEFINER RPC: `get_effective_tier(_provider_id uuid) returns app_tier`
+A self‑contained header widget with two states:
 
-Returns the highest currently-entitled tier for a provider, in this order:
-1. `admin_grants` row where `revoked_at IS NULL` and (`expires_at IS NULL` OR `expires_at > now()`) → use `tier`
-2. `licenses` row where `license_status='active'` and (`license_expiry IS NULL` OR `license_expiry > now()`) → use `tier`
-3. Fallback `'starter'`
+**Signed‑in state** — circular `Avatar` (uses `agent_profiles.avatar_url` if available, else initials from display name / email) inside a `DropdownMenu`:
+- Header row: display name + email (muted)
+- `My Profile` → `/agent-dashboard`
+- `Work Orders` → `/agent-dashboard/work-orders` (only if user has `client` role or any agent history; otherwise hide)
+- `MSP Dashboard` → `/dashboard` (only if `provider` role)
+- `Admin` → `/admin` (only if `admin` role)
+- Divider
+- `Sign out` → `signOut()`
 
-RLS-safe (SECURITY DEFINER, `SET search_path = public`). Mirrors the pattern already used by `provider_has_paid_access`.
+Avatar source priority: `agent_profiles.avatar_url` from `getMyAgentProfile` (already cached under `["agent-profile"]` query key — reuse via `useQuery` with `enabled: isAuthenticated`). Falls back to initials from `display_name` or `user.email`.
 
-### 2. Wire dashboard reads through the RPC
+**Signed‑out state** — two compact buttons:
+- `Sign in` (ghost) → opens an inline auth dialog
+- `Sign up` (primary) → opens the same dialog in signup mode
 
-- `dashboard.index.tsx`: replace the direct `branding_settings.tier` read with `supabase.rpc('get_effective_tier', { _provider_id: user.id })`. Keep the rest of the branding select intact (brand_name, logo, slug, accent, etc.).
-- `dashboard.vault.tsx`: replace the dedicated tier query (lines 260–266) with the same RPC.
+The dialog reuses the existing `PortalSignupModal` pattern but generalized: new file `src/components/account/AuthDialog.tsx` extracted from `PortalSignupModal` (the modal already does Google OAuth + email signup/login and wires `onAuthStateChange`). The new dialog drops the `providerId` / `brandName` / `accentColor` props and uses the app's primary color. After successful auth it just closes — `useAuth` will re-render the menu into its signed‑in state automatically. Existing `PortalSignupModal` keeps working unchanged (we don't refactor portal callers).
 
-No other consumers change. The public Studio paywall already uses `provider_has_paid_access`, which is unaffected.
+### 2. Wire `AccountMenu` into the Agent Dashboard header
 
-### 3. Repair the stale row for shakoure
+In `src/routes/_authenticated.agent-dashboard.tsx`:
+- Replace the inline `Sign out` button with `<AccountMenu />` on the right side of the header.
+- Keep `Work Orders` and `Back to /agents` as quick‑access buttons (the menu duplicates them, which is fine — discoverability + one‑click).
+- No change to the Profile card body.
 
-One-time `UPDATE branding_settings SET tier='pro' WHERE provider_id='a3d9b1d1-326d-405d-bceb-a980bebd77b6'` so the field also matches, in case any other code path still reads it.
+### 3. Wire `AccountMenu` into the portal builder header
 
-### 4. Harden the grant flow (small, no behavior change for happy path)
+In `src/routes/p.$slug.builder.tsx` (and `p.$slug.index.tsx` if it has a header strip): add `<AccountMenu />` to the top‑right of the page chrome so visitors always see whose account they're acting under. The existing `PortalSignupModal` flow stays as the per‑download gate; `AccountMenu` is purely the persistent identity affordance.
 
-In `handleGrant` / `handleRevoke` (admin provider detail page), keep the three writes but stop short-circuiting on `branding_settings` failure — the grant + license writes are the entitlement source of truth now; branding tier is only a denormalized cache. Convert the early `return` after a `branding_settings` error into a non-fatal toast so a single failed cache write can never leave a granted user without entitlement again.
+### 4. No backend changes
 
-## Files touched
+- No new tables, no migrations, no edge functions.
+- No changes to `useAuth`, OAuth wiring, or `agent_profiles` schema.
+- No changes to existing routes' auth guards.
 
-- New migration: `get_effective_tier` function + grant of EXECUTE to `authenticated`
-- Data repair via insert tool: update branding row for `a3d9b1d1-…`
-- `src/routes/_authenticated.dashboard.index.tsx` — swap tier source
-- `src/routes/_authenticated.dashboard.vault.tsx` — swap tier source
-- `src/routes/_authenticated.admin.$providerId.tsx` — soften branding error handling in grant/revoke
+## Why this is safe (ripple analysis)
 
-## Ripple check
+- `AccountMenu` is additive — it only consumes already‑exported hooks/components (`useAuth`, `supabase.auth`, `lovable.auth`, `Avatar`, `DropdownMenu`).
+- Reusing the existing `["agent-profile"]` query key piggybacks on the dashboard's existing fetch — no extra network calls when the menu is shown on the dashboard. On other pages, the query just runs once and is cached.
+- Extracting `AuthDialog` from `PortalSignupModal` is a copy, not a refactor — the original modal is untouched, so portal flows that depend on `providerId`/`brandName` keep working.
+- Sign‑out path delegates to the existing `useAuth().signOut()` which already does the hard redirect, so no new session‑clearing logic.
+- Route guards untouched: the avatar on the agent dashboard only ever renders for already‑authenticated users (the route layout still redirects). The signed‑out branch of `AccountMenu` only matters on the portal builder, which is a public route.
 
-- `useLusLicense` already reads from `licenses` and is unaffected.
-- `MspAccessProvider` uses `provider_has_paid_access` and is unaffected.
-- Public Studio (`p.$slug.*`) reads `branding_settings` for display fields but uses `provider_has_paid_access` for gating; tier-based feature flags there are unchanged.
-- Admin provider detail page still shows `detail.tier` from `branding_settings` — after the data repair this will read `pro` correctly, and future grants keep updating it.
-- No RLS changes; the new RPC is SECURITY DEFINER and only returns an enum value.
+## Files
 
-## Verification
-
-1. Run the migration; confirm `select get_effective_tier('a3d9b1d1-…')` returns `pro`.
-2. Reload `/dashboard` as shakoure — Overview shows "pro plan", Vault tile unlocked.
-3. Open `/dashboard/vault` — gate removed, Property Mapper / categories editable.
-4. Revoke the grant in admin → confirm Overview and Vault flip back to Starter.
+- **Create** `src/components/account/AccountMenu.tsx`
+- **Create** `src/components/account/AuthDialog.tsx` (generalized copy of `PortalSignupModal`)
+- **Edit** `src/routes/_authenticated.agent-dashboard.tsx` — drop the inline `Sign out` button, render `<AccountMenu />`
+- **Edit** `src/routes/p.$slug.builder.tsx` — render `<AccountMenu />` in the top bar
