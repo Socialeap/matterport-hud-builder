@@ -81,7 +81,7 @@ function ProviderOverview({ user }: { user: ReturnType<typeof useAuth>["user"] }
     if (!user) return;
     let cancelled = false;
     (async () => {
-      const [b, inv, ord] = await Promise.all([
+      const [b, inv, ord, tierRes] = await Promise.all([
         supabase
           .from("branding_settings")
           .select(
@@ -97,12 +97,14 @@ function ProviderOverview({ user }: { user: ReturnType<typeof useAuth>["user"] }
           .from("order_notifications")
           .select("id", { count: "exact", head: true })
           .eq("provider_id", user.id),
+        supabase.rpc("get_effective_tier", { _provider_id: user.id }),
       ]);
       if (cancelled) return;
       setStatus({
         branding: (b.data as Branding | null) ?? null,
         invitedCount: inv.count ?? 0,
         orderCount: ord.count ?? 0,
+        effectiveTier: ((tierRes.data as "starter" | "pro" | null) ?? "starter"),
       });
       setLoaded(true);
     })();
@@ -114,7 +116,7 @@ function ProviderOverview({ user }: { user: ReturnType<typeof useAuth>["user"] }
   const accent = status.branding?.accent_color || "#3B82F6";
   const brandName = status.branding?.brand_name || "Your Studio";
   const slug = status.branding?.slug;
-  const tier = status.branding?.tier || "starter";
+  const tier = status.effectiveTier;
   const isPro = tier === "pro";
 
   const steps: StepDef[] = [
