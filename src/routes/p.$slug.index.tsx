@@ -303,7 +303,7 @@ function PortalPage() {
 
   // Inject GA snippet when provider has configured a tracking ID
   useEffect(() => {
-    const gaId = (branding as any)?.ga_tracking_id as string | null | undefined;
+    const gaId = branding?.ga_tracking_id;
     if (!gaId || typeof document === "undefined") return;
     if (document.getElementById("ga-gtag-script")) return;
     const scriptSrc = document.createElement("script");
