@@ -213,9 +213,7 @@ function AgentDashboardPage() {
             <Button variant="ghost" size="sm" onClick={() => navigate({ to: "/agents" })}>
               ← Back to /agents
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => signOut()}>
-              Sign out
-            </Button>
+            <AccountMenu className="ml-1" />
           </div>
         </div>
       </header>
