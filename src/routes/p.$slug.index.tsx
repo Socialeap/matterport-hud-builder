@@ -378,11 +378,11 @@ function PortalPage() {
   const accent = branding.accent_color || "#3B82F6";
   const isPro = branding.tier === "pro";
   const heroBgUrl =
-    (branding as any).hero_bg_url ||
+    branding.hero_bg_url ||
     "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=2400&q=80";
   const heroBgOpacity =
-    typeof (branding as any).hero_bg_opacity === "number"
-      ? (branding as any).hero_bg_opacity
+    typeof branding.hero_bg_opacity === "number"
+      ? branding.hero_bg_opacity
       : 0.45;
 
   // Build dynamic feature list
