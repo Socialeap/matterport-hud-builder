@@ -32,6 +32,7 @@ import {
   updateMyAgentProfile,
   getMyAgentHistory,
 } from "@/lib/agent-profile.functions";
+import { AccountMenu } from "@/components/account/AccountMenu";
 
 export const Route = createFileRoute("/_authenticated/agent-dashboard")({
   head: () => ({
