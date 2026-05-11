@@ -84,16 +84,11 @@ export const Route = createFileRoute("/api/geocode-beacon")({
           .eq("id", beaconId)
           .maybeSingle();
 
-        // The lat/lng/geocoded_at columns are introduced by the
-        // 20260503180000_geospatial_matching migration but aren't in
-        // the auto-generated Database types yet. Read them via a
-        // separate untyped fetch to keep the typed select above.
         const { data: geoRaw } = await supabase
           .from("agent_beacons")
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          .select("lat, lng" as any)
+          .select("lat, lng")
           .eq("id", beaconId)
-          .maybeSingle<{ lat: number | null; lng: number | null }>();
+          .maybeSingle();
 
         if (fetchError) {
           return json(500, { error: "Lookup failed" });
