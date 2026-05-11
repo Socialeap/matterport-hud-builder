@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { HudBuilderSandbox } from "@/components/portal/HudBuilderSandbox";
 import { Button } from "@/components/ui/button";
 import { IndexingProvider } from "@/lib/rag/indexing-context";
+import { AccountMenu } from "@/components/account/AccountMenu";
 
 const fetchBrandingForBuilder = createServerFn({ method: "GET" })
   .inputValidator((data: { slug: string }) => data)
