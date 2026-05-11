@@ -303,7 +303,7 @@ function PortalPage() {
 
   // Inject GA snippet when provider has configured a tracking ID
   useEffect(() => {
-    const gaId = (branding as any)?.ga_tracking_id as string | null | undefined;
+    const gaId = branding?.ga_tracking_id;
     if (!gaId || typeof document === "undefined") return;
     if (document.getElementById("ga-gtag-script")) return;
     const scriptSrc = document.createElement("script");
@@ -316,7 +316,7 @@ function PortalPage() {
     scriptInit.textContent = `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${gaId}');`;
     document.head.appendChild(scriptInit);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [(branding as any)?.ga_tracking_id]);
+  }, [branding?.ga_tracking_id]);
 
   if (!branding) {
     return (
@@ -378,11 +378,11 @@ function PortalPage() {
   const accent = branding.accent_color || "#3B82F6";
   const isPro = branding.tier === "pro";
   const heroBgUrl =
-    (branding as any).hero_bg_url ||
+    branding.hero_bg_url ||
     "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=2400&q=80";
   const heroBgOpacity =
-    typeof (branding as any).hero_bg_opacity === "number"
-      ? (branding as any).hero_bg_opacity
+    typeof branding.hero_bg_opacity === "number"
+      ? branding.hero_bg_opacity
       : 0.45;
 
   // Build dynamic feature list

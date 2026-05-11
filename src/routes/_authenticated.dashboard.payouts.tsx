@@ -46,7 +46,7 @@ function PayoutsPage() {
       if (brandingErr) throw brandingErr;
 
       const accent = branding?.accent_color || "#2563EB";
-      setFeeBps((branding as any)?.instant_payout_fee_bps ?? 150);
+      setFeeBps(branding?.instant_payout_fee_bps ?? 150);
 
       if (!branding?.stripe_onboarding_complete) {
         setOnboardingComplete(false);

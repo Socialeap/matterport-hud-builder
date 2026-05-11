@@ -182,7 +182,7 @@ function StatsPage() {
       .maybeSingle();
 
     setSlug(branding?.slug ?? null);
-    setGaId((branding as any)?.ga_tracking_id ?? "");
+    setGaId(branding?.ga_tracking_id ?? "");
 
     const { data: visits } = await supabase
       .from("page_visits")
@@ -225,7 +225,7 @@ function StatsPage() {
     setSavingGa(true);
     const { error } = await supabase
       .from("branding_settings")
-      .update({ ga_tracking_id: gaId.trim() || null } as any)
+      .update({ ga_tracking_id: gaId.trim() || null })
       .eq("provider_id", user.id);
     setSavingGa(false);
     if (error) {

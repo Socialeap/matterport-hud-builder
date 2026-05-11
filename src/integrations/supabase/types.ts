@@ -803,6 +803,30 @@ export type Database = {
         }
         Relationships: []
       }
+      processed_webhook_events: {
+        Row: {
+          env: string
+          event_id: string
+          event_type: string
+          processed_at: string
+          source: string
+        }
+        Insert: {
+          env: string
+          event_id: string
+          event_type: string
+          processed_at?: string
+          source?: string
+        }
+        Update: {
+          env?: string
+          event_id?: string
+          event_type?: string
+          processed_at?: string
+          source?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -1720,6 +1744,14 @@ export type Database = {
             }
             Returns: string
           }
+      admin_get_user_emails_by_ids: {
+        Args: { _ids: string[] }
+        Returns: {
+          email: string
+          user_id: string
+        }[]
+      }
+      admin_get_user_id_by_email: { Args: { _email: string }; Returns: string }
       apply_no_disposition_penalties: { Args: never; Returns: number }
       apply_outreach_feedback: {
         Args: { p_feedback_token: string }
