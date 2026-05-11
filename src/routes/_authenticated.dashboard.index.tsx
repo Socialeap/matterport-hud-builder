@@ -54,6 +54,7 @@ type Status = {
   branding: Branding | null;
   invitedCount: number;
   orderCount: number;
+  effectiveTier: "starter" | "pro";
 };
 
 function DashboardOverview() {
@@ -72,6 +73,7 @@ function ProviderOverview({ user }: { user: ReturnType<typeof useAuth>["user"] }
     branding: null,
     invitedCount: 0,
     orderCount: 0,
+    effectiveTier: "starter",
   });
   const [loaded, setLoaded] = useState(false);
 
