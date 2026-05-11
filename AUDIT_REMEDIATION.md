@@ -81,20 +81,19 @@ git push --force-with-lease origin <branch>
 - [x] `getInvitationByToken` + `declineInvitationByToken` rate-limited
       (10/min/IP). UUID-v4 token entropy makes constant-time compare
       computationally unnecessary; rate limit is the operational guard.
-- [ ] **OWNER ACTION** — apply migration
-      `20260510210000_processed_webhook_events.sql` to Supabase
-- [ ] **OWNER ACTION** — switch Stripe webhook URL: drop the `?env=…`
-      query parameter (URL is now ignored by the handler)
+- [x] migration `20260510210000_processed_webhook_events.sql` applied
+      (2026-05-11)
+- [x] Stripe webhook URL `?env=…` cleanup — N/A. Handler now derives env
+      from which secret verifies the HMAC; query param is ignored. No
+      Stripe-dashboard change required.
 
 ## Phase 3 — Scale-bombs
 - [x] `getProviderOrders` no longer N+1's `auth.admin.getUserById` —
       single batched RPC call via `admin_get_user_emails_by_ids`
 - [x] `setClientFreeFlag` no longer enumerates the first 200 users —
       targeted index lookup via `admin_get_user_id_by_email`
-- [ ] **OWNER ACTION** — apply migration
-      `20260510210500_admin_user_email_lookups.sql` to Supabase before
-      this phase is deployed. The N+1 fixes will return `null` emails
-      (with a `console.warn`) until the migration lands.
+- [x] migration `20260510210500_admin_user_email_lookups.sql` applied
+      (2026-05-11)
 - [ ] explicit timeouts on `.rpc()` calls — DEFERRED to Phase 6 cleanup
       (defense-in-depth; current Cloudflare Worker / Supabase platform
       timeouts already bound the calls)
