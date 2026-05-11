@@ -128,8 +128,7 @@ export const Route = createFileRoute("/api/geocode-beacon")({
             lat: result.lat,
             lng: result.lng,
             geocoded_at: new Date().toISOString(),
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          } as any)
+          })
           .eq("id", beaconId);
 
         if (updateError) {
