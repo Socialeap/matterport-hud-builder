@@ -316,7 +316,7 @@ function PortalPage() {
     scriptInit.textContent = `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${gaId}');`;
     document.head.appendChild(scriptInit);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [(branding as any)?.ga_tracking_id]);
+  }, [branding?.ga_tracking_id]);
 
   if (!branding) {
     return (
