@@ -15,42 +15,43 @@ on this branch.
 - [ ] **OWNER ACTION** — secrets rotated in upstream consoles (see runbook below)
 - [ ] **OWNER ACTION** — `bun install` re-run locally to verify lockfile + env
 
-### Owner runbook — key rotation (do these in parallel with my Phase 2 work)
+### Owner runbook — key rotation status (2026-05-11 update)
 
-The keys below were committed to `bc09e2a` and remain valid in git history.
-Anyone who cloned the repo (or any mirror, including Lovable's snapshots) can
-read them. Rotate every one of them.
+The audit doc was originally written assuming a BYOK Stripe + bare-Supabase
+setup. After re-reading the codebase, the rotation list collapses sharply
+once you account for Lovable Cloud's gateway model:
 
-1. **Stripe — live publishable & secret keys**
-   - https://dashboard.stripe.com/apikeys → "Create restricted key" / roll the
-     existing live keys
-   - Replace `VITE_PAYMENTS_CLIENT_TOKEN` in your hosting env (Cloudflare /
-     Lovable) with the new `pk_live_…`
-   - Update `PAYMENTS_LIVE_API_KEY` (and `PAYMENTS_SANDBOX_API_KEY` if any
-     sandbox keys were also exposed) in Supabase → Settings → Edge Functions
-     → Secrets
-   - Regenerate `PAYMENTS_LIVE_WEBHOOK_SECRET` from the Stripe Webhooks page
+1. **Stripe — NOT NEEDED.** This project uses Lovable's **seamless** Stripe
+   gateway, not BYOK. The `STRIPE_*_API_KEY` env vars are gateway connection
+   identifiers — the real `sk_live_…` lives inside Lovable's connector
+   gateway and was never committed to this repo. The `pk_live_…` publishable
+   key is designed to be public. `PAYMENTS_*_WEBHOOK_SECRET` is also
+   gateway-managed. No rotation required from a leak-mitigation standpoint.
 
-2. **Supabase — anon JWT + service role JWT**
-   - Supabase dashboard → Project Settings → API → "Roll JWT secret"
-   - This invalidates **all** anon + service-role JWTs in circulation.
-   - Update `SUPABASE_PUBLISHABLE_KEY`, `VITE_SUPABASE_PUBLISHABLE_KEY`,
-     `SUPABASE_SERVICE_ROLE_KEY` everywhere they're configured (hosting +
-     Supabase Functions secrets).
-   - Sign every authenticated session out (forces clients to re-auth with the
-     new JWT secret).
+2. **Supabase — DONE.** Anon + service role JWTs rotated via Lovable's
+   `supabase--rotate_api_keys` on 2026-05-11. `.env`, integration data, and
+   generated client files updated automatically. All previously-issued
+   sessions invalidated; users sign back in normally.
 
-3. **Presentation token HMAC + internal secrets**
-   - Generate fresh values for `PRESENTATION_TOKEN_SECRET` and
-     `INTERNAL_GEOCODE_SECRET`:
-     `openssl rand -base64 48`
-   - Existing portal links signed with the old secret will stop verifying once
-     the new secret rolls. If long-lived shared portal URLs are in the wild,
-     plan a brief gap or implement a dual-secret verifier in Phase 5.
+3. **`PRESENTATION_TOKEN_SECRET` + `INTERNAL_GEOCODE_SECRET` — PENDING owner
+   action.** These HMAC secrets were in `.env` files in git history. Rotate
+   via Lovable Cloud Secrets panel. Side effect: any previously-issued portal
+   share links stop verifying — Phase 5 dual-secret verifier is the softer
+   rollout if long-lived URLs are in the wild.
 
-4. **Lovable gateway key** — `LOVABLE_API_KEY`
-   - Reissue from the Lovable dashboard. This key shows up in
-     `_shared/stripe.ts` HTTP headers and a few server functions.
+4. **`LOVABLE_API_KEY` — DONE.** Rotated via `ai_gateway--rotate_lovable_api_key`
+   on 2026-05-11. Auto-applied; invisible to users.
+
+### Why we are NOT rewriting git history (per your direction)
+The historic `.env` values remain readable in `bc09e2a`. Rotating the
+remaining secrets (item 3 above) is the actual mitigation. History rewrite
+is optional and requires force-push + re-clone for every collaborator. If
+you change your mind, run:
+
+```bash
+git filter-repo --path .env --path .env.development --path .env.production --invert-paths
+git push --force-with-lease origin <branch>
+```
 
 ### Why we are NOT rewriting git history (per your direction)
 The leaked keys remain readable in `bc09e2a` even after we untrack the files
