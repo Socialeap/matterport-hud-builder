@@ -1953,6 +1953,10 @@ export type Database = {
         Returns: boolean
       }
       geomfromewkt: { Args: { "": string }; Returns: unknown }
+      get_effective_tier: {
+        Args: { _provider_id: string }
+        Returns: Database["public"]["Enums"]["app_tier"]
+      }
       get_invitation_by_token: {
         Args: { _token: string }
         Returns: {

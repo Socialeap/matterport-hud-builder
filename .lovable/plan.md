@@ -1,49 +1,63 @@
-## Diagnosis
+## Root cause
 
-The published site is still serving `/assets/index-B_IvnPv_.js`, and that bundle contains:
+shakoure@TranscendenceMedia.com (`a3d9b1d1-…`) has:
+- `admin_grants`: active **pro** grant (expires 2026-07-21, not revoked)
+- `licenses`: tier=**pro**, status=active
+- `branding_settings.tier`: **starter** ← stale
 
-```ts
-var nC = {};
-function MF() {
-  const e = nC.SUPABASE_URL;
-  const t = nC.SUPABASE_PUBLISHABLE_KEY;
-  if (!e || !t) throw new Error("Missing Supabase environment variables...");
-}
-```
+Two dashboard surfaces read tier directly from `branding_settings.tier`, so they show Starter and lock Pro features:
+- `src/routes/_authenticated.dashboard.index.tsx` (line 115) — Overview banner / "starter plan" / locked Vault tile
+- `src/routes/_authenticated.dashboard.vault.tsx` (lines 262–265) — `isStarter` gate around the entire Production Vault
 
-That means the production bundle did not receive the backend client env values during build. The Wondershare blocked request is unrelated browser-extension noise.
+The grant flow in `_authenticated.admin.$providerId.tsx` does write to all three tables today, but the original grant for this account predates the branding write (or branding was edited afterward and reset to starter), so `branding_settings.tier` drifted out of sync. The same drift can happen any time a provider edits their branding form.
 
-The preview environment has the required variables present, and the project secrets include `PRESENTATION_TOKEN_SECRET` and `INTERNAL_GEOCODE_SECRET`, so the immediate failure is build-time env injection for the published frontend, not missing B1 secrets.
+## Fix strategy
 
-## Safest repair plan
+Make tier resolution authoritative and idempotent rather than depending on whichever code path last touched `branding_settings`.
 
-1. **Add a client-safe env adapter**
-   - Create a small module that resolves the publishable backend URL/key from `import.meta.env.VITE_SUPABASE_URL` and `import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY`.
-   - Add compatibility aliases for the managed values already known to this project if Vite’s env object is transformed unexpectedly in production.
-   - Keep only publishable client values here; do not expose service-role or private secrets.
+### 1. New SECURITY DEFINER RPC: `get_effective_tier(_provider_id uuid) returns app_tier`
 
-2. **Wire the generated client through the adapter, without changing auth behavior**
-   - Update `src/integrations/supabase/client.ts` only minimally to call the adapter for `url` and `publishableKey`.
-   - Keep the existing lazy proxy, `localStorage` guard, session persistence, and auto refresh behavior intact.
-   - Do not touch `src/integrations/supabase/types.ts`.
+Returns the highest currently-entitled tier for a provider, in this order:
+1. `admin_grants` row where `revoked_at IS NULL` and (`expires_at IS NULL` OR `expires_at > now()`) → use `tier`
+2. `licenses` row where `license_status='active'` and (`license_expiry IS NULL` OR `license_expiry > now()`) → use `tier`
+3. Fallback `'starter'`
 
-3. **Improve failure mode without masking configuration errors**
-   - Keep a clear thrown error if both normal env injection and safe fallback aliases are unavailable.
-   - This prevents silent unauthenticated or partially broken operation.
+RLS-safe (SECURITY DEFINER, `SET search_path = public`). Mirrors the pattern already used by `provider_has_paid_access`.
 
-4. **Force a new frontend bundle hash**
-   - The code change itself will create a real source delta, so the Publish button should become active.
-   - Remove or leave the previous rebuild comment only if needed; no functional logic should depend on it.
+### 2. Wire dashboard reads through the RPC
 
-5. **Validation before handing back**
-   - Confirm the local env names are present without printing values.
-   - Inspect the generated dependency path: root route → auth provider → browser auth hook → Supabase client → env adapter.
-   - Check the published HTML after you publish/update: it must no longer reference `index-B_IvnPv_.js`.
-   - Confirm the live bundle no longer contains `var nC = {};` for the Supabase client and that the homepage loads without the “Something went wrong” error.
+- `dashboard.index.tsx`: replace the direct `branding_settings.tier` read with `supabase.rpc('get_effective_tier', { _provider_id: user.id })`. Keep the rest of the branding select intact (brand_name, logo, slug, accent, etc.).
+- `dashboard.vault.tsx`: replace the dedicated tier query (lines 260–266) with the same RPC.
 
-## Why this is safer than alternatives
+No other consumers change. The public Studio paywall already uses `provider_has_paid_access`, which is unaffected.
 
-- **Not hardcoding private secrets:** only publishable frontend values can ever be bundled.
-- **Not editing backend/generated types:** avoids breaking Lovable Cloud integration and generated database typings.
-- **Not changing routing or auth flows:** the crash happens before routing finishes; changing route files would risk unrelated regressions.
-- **Not relying only on no-op comments:** the earlier marker did not produce a new published bundle, so this adds an actual durable env-resolution fix plus a rebuild trigger.
+### 3. Repair the stale row for shakoure
+
+One-time `UPDATE branding_settings SET tier='pro' WHERE provider_id='a3d9b1d1-326d-405d-bceb-a980bebd77b6'` so the field also matches, in case any other code path still reads it.
+
+### 4. Harden the grant flow (small, no behavior change for happy path)
+
+In `handleGrant` / `handleRevoke` (admin provider detail page), keep the three writes but stop short-circuiting on `branding_settings` failure — the grant + license writes are the entitlement source of truth now; branding tier is only a denormalized cache. Convert the early `return` after a `branding_settings` error into a non-fatal toast so a single failed cache write can never leave a granted user without entitlement again.
+
+## Files touched
+
+- New migration: `get_effective_tier` function + grant of EXECUTE to `authenticated`
+- Data repair via insert tool: update branding row for `a3d9b1d1-…`
+- `src/routes/_authenticated.dashboard.index.tsx` — swap tier source
+- `src/routes/_authenticated.dashboard.vault.tsx` — swap tier source
+- `src/routes/_authenticated.admin.$providerId.tsx` — soften branding error handling in grant/revoke
+
+## Ripple check
+
+- `useLusLicense` already reads from `licenses` and is unaffected.
+- `MspAccessProvider` uses `provider_has_paid_access` and is unaffected.
+- Public Studio (`p.$slug.*`) reads `branding_settings` for display fields but uses `provider_has_paid_access` for gating; tier-based feature flags there are unchanged.
+- Admin provider detail page still shows `detail.tier` from `branding_settings` — after the data repair this will read `pro` correctly, and future grants keep updating it.
+- No RLS changes; the new RPC is SECURITY DEFINER and only returns an enum value.
+
+## Verification
+
+1. Run the migration; confirm `select get_effective_tier('a3d9b1d1-…')` returns `pro`.
+2. Reload `/dashboard` as shakoure — Overview shows "pro plan", Vault tile unlocked.
+3. Open `/dashboard/vault` — gate removed, Property Mapper / categories editable.
+4. Revoke the grant in admin → confirm Overview and Vault flip back to Starter.
