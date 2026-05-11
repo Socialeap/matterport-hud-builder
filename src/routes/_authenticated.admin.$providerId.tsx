@@ -180,9 +180,8 @@ export default function AdminProviderDetail() {
       .eq("provider_id", providerId);
 
     if (bsErr) {
-      toast.error("Grant created but tier update failed: " + bsErr.message);
-      setGranting(false);
-      return;
+      // Non-fatal: branding tier is a denormalized cache; admin_grants + licenses are the source of truth.
+      toast.warning("Tier cache update failed (entitlement still applied): " + bsErr.message);
     }
 
     const { error: licErr } = await supabase
