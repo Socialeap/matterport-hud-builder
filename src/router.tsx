@@ -1,3 +1,4 @@
+// Rebuild marker: refresh published bundle after Supabase key rotation 2026-05-11
 import { createRouter, useRouter } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
 
