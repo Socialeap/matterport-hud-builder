@@ -81,9 +81,9 @@ export function AccountMenu({ className }: AccountMenuProps) {
 
   const initials = (displayName || email || "?")
     .split(/[\s@]+/)
-    .filter(Boolean)
+    .filter((s: string) => s.length > 0)
     .slice(0, 2)
-    .map((s) => s.charAt(0).toUpperCase())
+    .map((s: string) => s.charAt(0).toUpperCase())
     .join("") || "?";
 
   const isProvider = roles.includes("provider");
