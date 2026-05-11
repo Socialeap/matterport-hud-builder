@@ -225,7 +225,7 @@ function StatsPage() {
     setSavingGa(true);
     const { error } = await supabase
       .from("branding_settings")
-      .update({ ga_tracking_id: gaId.trim() || null } as any)
+      .update({ ga_tracking_id: gaId.trim() || null })
       .eq("provider_id", user.id);
     setSavingGa(false);
     if (error) {
