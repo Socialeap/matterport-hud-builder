@@ -105,8 +105,7 @@ export const Route = createFileRoute("/api/geocode-branding")({
         if (!result) {
           await admin
             .from("branding_settings")
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            .update({ geocoded_at: new Date().toISOString() } as any)
+            .update({ geocoded_at: new Date().toISOString() })
             .eq("provider_id", userId);
           return json(200, { matched: false });
         }
@@ -117,8 +116,7 @@ export const Route = createFileRoute("/api/geocode-branding")({
             latitude: result.lat,
             longitude: result.lng,
             geocoded_at: new Date().toISOString(),
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          } as any)
+          })
           .eq("provider_id", userId);
 
         if (updateError) {
