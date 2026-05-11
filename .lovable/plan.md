@@ -1,40 +1,49 @@
-## Problem
+## Diagnosis
 
-The live site (`matterport-hud-builder.lovable.app` / `3dps.transcendencemedia.com`) is serving a bundle built **before** the Supabase key rotation. Its baked-in `VITE_SUPABASE_PUBLISHABLE_KEY` is no longer valid, producing the "Missing Supabase environment variables" crash. The preview is fine because it rebuilt against the new managed `.env`.
-
-The Publish button is grayed out because Lovable's publish system compares **source code hashes**, not environment values. Since no source files have changed since the last publish, it thinks there's nothing new to deploy — even though the *build inputs* (env vars) have changed.
-
-## Fix
-
-Make a trivially small, no-op source change so the publish system sees a delta and rebuilds. The rebuild will pick up the rotated `VITE_SUPABASE_PUBLISHABLE_KEY` from the managed `.env` and produce a working bundle.
-
-### Step 1 — Touch one file with a harmless edit
-
-Add a single comment line to `src/router.tsx` (or any other source file). Example:
+The published site is still serving `/assets/index-B_IvnPv_.js`, and that bundle contains:
 
 ```ts
-// Rebuild marker: refresh published bundle after key rotation 2026-05-11
+var nC = {};
+function MF() {
+  const e = nC.SUPABASE_URL;
+  const t = nC.SUPABASE_PUBLISHABLE_KEY;
+  if (!e || !t) throw new Error("Missing Supabase environment variables...");
+}
 ```
 
-This changes the file hash without altering any runtime behavior. No logic, types, or imports are affected.
+That means the production bundle did not receive the backend client env values during build. The Wondershare blocked request is unrelated browser-extension noise.
 
-### Step 2 — Publish
+The preview environment has the required variables present, and the project secrets include `PRESENTATION_TOKEN_SECRET` and `INTERNAL_GEOCODE_SECRET`, so the immediate failure is build-time env injection for the published frontend, not missing B1 secrets.
 
-The Publish button will become active. Click **Publish → Update**. Wait for the build to finish.
+## Safest repair plan
 
-### Step 3 — Verify
+1. **Add a client-safe env adapter**
+   - Create a small module that resolves the publishable backend URL/key from `import.meta.env.VITE_SUPABASE_URL` and `import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY`.
+   - Add compatibility aliases for the managed values already known to this project if Vite’s env object is transformed unexpectedly in production.
+   - Keep only publishable client values here; do not expose service-role or private secrets.
 
-1. Hard-refresh the live site (Cmd/Ctrl+Shift+R) to bypass the cached old bundle.
-2. Open DevTools → Network and confirm the new `index-*.js` filename differs from `index-B_IvnPv_.js`.
-3. Confirm the homepage renders without the "Something went wrong" error.
-4. If you have a custom-domain visitor, do the same hard-refresh on `3dps.transcendencemedia.com`.
+2. **Wire the generated client through the adapter, without changing auth behavior**
+   - Update `src/integrations/supabase/client.ts` only minimally to call the adapter for `url` and `publishableKey`.
+   - Keep the existing lazy proxy, `localStorage` guard, session persistence, and auto refresh behavior intact.
+   - Do not touch `src/integrations/supabase/types.ts`.
 
-## Why not other approaches
+3. **Improve failure mode without masking configuration errors**
+   - Keep a clear thrown error if both normal env injection and safe fallback aliases are unavailable.
+   - This prevents silent unauthenticated or partially broken operation.
 
-- **Reconnecting the Supabase integration** would also work but is heavier and risks touching unrelated config.
-- **Editing `.env` directly** is blocked — that file is managed by the platform.
-- **Code changes to `client.ts`** are unnecessary; the file is correct, it just needs a fresh build.
+4. **Force a new frontend bundle hash**
+   - The code change itself will create a real source delta, so the Publish button should become active.
+   - Remove or leave the previous rebuild comment only if needed; no functional logic should depend on it.
 
-## Technical detail
+5. **Validation before handing back**
+   - Confirm the local env names are present without printing values.
+   - Inspect the generated dependency path: root route → auth provider → browser auth hook → Supabase client → env adapter.
+   - Check the published HTML after you publish/update: it must no longer reference `index-B_IvnPv_.js`.
+   - Confirm the live bundle no longer contains `var nC = {};` for the Supabase client and that the homepage loads without the “Something went wrong” error.
 
-`src/integrations/supabase/client.ts` reads `import.meta.env.VITE_SUPABASE_URL` and `import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY`. Vite inlines those at **build time**, so a published bundle's keys are frozen until the next build. The rotated keys are already present in the sandbox env (preview proves it) — we just need to trigger a new production build to bake them in.
+## Why this is safer than alternatives
+
+- **Not hardcoding private secrets:** only publishable frontend values can ever be bundled.
+- **Not editing backend/generated types:** avoids breaking Lovable Cloud integration and generated database typings.
+- **Not changing routing or auth flows:** the crash happens before routing finishes; changing route files would risk unrelated regressions.
+- **Not relying only on no-op comments:** the earlier marker did not produce a new published bundle, so this adds an actual durable env-resolution fix plus a rebuild trigger.
