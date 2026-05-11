@@ -803,6 +803,30 @@ export type Database = {
         }
         Relationships: []
       }
+      processed_webhook_events: {
+        Row: {
+          env: string
+          event_id: string
+          event_type: string
+          processed_at: string
+          source: string
+        }
+        Insert: {
+          env: string
+          event_id: string
+          event_type: string
+          processed_at?: string
+          source?: string
+        }
+        Update: {
+          env?: string
+          event_id?: string
+          event_type?: string
+          processed_at?: string
+          source?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
