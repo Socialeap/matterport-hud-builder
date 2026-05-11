@@ -117,8 +117,7 @@ export const Route = createFileRoute("/api/geocode-beacon")({
           // lat/lng NULL so the matcher's fallback tiers fire.
           await supabase
             .from("agent_beacons")
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            .update({ geocoded_at: new Date().toISOString() } as any)
+            .update({ geocoded_at: new Date().toISOString() })
             .eq("id", beaconId);
           return json(200, { matched: false });
         }
