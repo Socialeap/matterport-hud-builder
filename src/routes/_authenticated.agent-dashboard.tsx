@@ -32,6 +32,7 @@ import {
   updateMyAgentProfile,
   getMyAgentHistory,
 } from "@/lib/agent-profile.functions";
+import { AccountMenu } from "@/components/account/AccountMenu";
 
 export const Route = createFileRoute("/_authenticated/agent-dashboard")({
   head: () => ({
@@ -81,7 +82,7 @@ const EMPTY_FORM: FormState = {
 };
 
 function AgentDashboardPage() {
-  const { user, hasRole, signOut } = useAuth();
+  const { user, hasRole } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -213,9 +214,7 @@ function AgentDashboardPage() {
             <Button variant="ghost" size="sm" onClick={() => navigate({ to: "/agents" })}>
               ← Back to /agents
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => signOut()}>
-              Sign out
-            </Button>
+            <AccountMenu className="ml-1" />
           </div>
         </div>
       </header>
