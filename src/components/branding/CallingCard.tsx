@@ -42,7 +42,12 @@ export function CallingCard({ data, forcedFace, className }: CallingCardProps) {
   return (
     <div
       className={`relative w-full ${className ?? ""}`}
-      style={{ aspectRatio: "16 / 9", perspective: "1600px", ...styleVars }}
+      style={{
+        aspectRatio: "16 / 9",
+        perspective: "1600px",
+        containerType: "inline-size",
+        ...styleVars,
+      }}
     >
       <div
         className="relative h-full w-full transition-transform duration-700"
