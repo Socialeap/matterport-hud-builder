@@ -120,6 +120,7 @@ export function CallingCardSection({
             >
               <RotateCw className="h-4 w-4 mr-1" /> Flip
             </Button>
+          </div>
         </div>
 
         {/* Editable fields — studio name only; the rest of the card art is fixed. */}
