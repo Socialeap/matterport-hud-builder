@@ -1,13 +1,14 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Copy, ExternalLink, IdCard, RotateCw } from "lucide-react";
+import { Copy, ExternalLink, IdCard, RotateCw, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { CallingCard, type CallingCardData } from "./CallingCard";
 import { buildStudioUrl, getPublicBaseUrl } from "@/lib/public-url";
+import { optimizeBrandImage } from "@/lib/portal/image-optimizer";
 
 interface CallingCardSectionProps {
   brandName: string;
