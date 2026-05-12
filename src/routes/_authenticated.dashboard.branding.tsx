@@ -132,6 +132,7 @@ function BrandingPage() {
   const { user } = useAuth();
   const { hasPaid } = useMspAccess();
   const [branding, setBranding] = useState<BrandingData>(defaultBranding);
+  const [activeTab, setActiveTab] = useState<string>("identity");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [logoFile, setLogoFile] = useState<File | null>(null);
