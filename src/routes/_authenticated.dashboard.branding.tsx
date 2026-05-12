@@ -385,6 +385,9 @@ function BrandingPage() {
           directory_website_url: branding.directory_website_url?.trim() || null,
           directory_contact_email: branding.directory_contact_email?.trim() || null,
           directory_phone: branding.directory_phone?.trim() || null,
+          calling_card_studio_name: branding.calling_card_studio_name?.trim() || null,
+          calling_card_headline: branding.calling_card_headline?.trim() || null,
+          calling_card_cta_label: branding.calling_card_cta_label?.trim() || null,
         } as any,
         { onConflict: "provider_id" }
       );
