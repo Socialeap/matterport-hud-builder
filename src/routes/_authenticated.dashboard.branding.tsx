@@ -205,6 +205,15 @@ function BrandingPage() {
         directory_website_url: data.directory_website_url ?? null,
         directory_contact_email: data.directory_contact_email ?? null,
         directory_phone: data.directory_phone ?? null,
+        calling_card_studio_name:
+          (data as unknown as { calling_card_studio_name?: string | null })
+            .calling_card_studio_name ?? "",
+        calling_card_headline:
+          (data as unknown as { calling_card_headline?: string | null })
+            .calling_card_headline ?? "",
+        calling_card_cta_label:
+          (data as unknown as { calling_card_cta_label?: string | null })
+            .calling_card_cta_label ?? "",
       };
       // Only update state if the fetched payload actually differs from
       // what we already have — prevents needless re-renders that would
