@@ -8,6 +8,8 @@ import { Label } from "@/components/ui/label";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Separator } from "@/components/ui/separator";
 import { Lock, Copy, X, MapPin } from "lucide-react";
 
 // Lazy-loaded so the ~150 KB Leaflet bundle ships only when a Pro
