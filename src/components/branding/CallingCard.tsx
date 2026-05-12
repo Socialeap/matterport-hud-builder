@@ -110,6 +110,27 @@ function CardFront({
         draggable={false}
       />
 
+      {/* MSP logo overlay — sits on top of the grey circle placeholder on the right */}
+      {data.logoUrl && (
+        <div
+          className="absolute overflow-hidden rounded-full bg-white shadow-md ring-2 ring-white"
+          style={{
+            left: "71%",
+            top: "63%",
+            width: "28%",
+            aspectRatio: "1 / 1",
+            transform: "translate(-50%, -50%)",
+          }}
+        >
+          <img
+            src={data.logoUrl}
+            alt={`${data.brandName} logo`}
+            className="h-full w-full object-cover select-none"
+            draggable={false}
+          />
+        </div>
+      )}
+
       {/* Editable studio name — sits inside the empty light-green pill at lower-left */}
       <div
         className="absolute flex items-center text-left"
@@ -131,7 +152,7 @@ function CardFront({
             maxWidth: "100%",
           }}
         >
-          {(data.studioName || "Your Studio Name").slice(0, 20)}
+          {(data.studioName || "Your Studio Name").slice(0, 25)}
         </span>
       </div>
     </div>
