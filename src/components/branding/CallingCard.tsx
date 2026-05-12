@@ -4,12 +4,12 @@ import { Info } from "lucide-react";
 export interface CallingCardData {
   brandName: string;
   studioName: string;
+  /** Square (1:1) logo overlaid onto the grey circle placeholder on the front. */
+  logoUrl?: string | null;
   /** @deprecated kept for back-compat; no longer rendered. */
   headline?: string;
   /** @deprecated kept for back-compat; no longer rendered. */
   ctaLabel?: string;
-  /** @deprecated kept for back-compat; no longer rendered (front art has its own logo placeholder). */
-  logoUrl?: string | null;
   /** @deprecated kept for back-compat. */
   accentColor?: string;
   studioUrl: string;
