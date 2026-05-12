@@ -764,6 +764,9 @@ function BrandingPage() {
         studioName={branding.calling_card_studio_name}
         headline={branding.calling_card_headline}
         ctaLabel={branding.calling_card_cta_label}
+        callingCardLogoUrl={branding.calling_card_logo_url}
+        callingCardLogoFile={callingCardLogoFile}
+        onCallingCardLogoChange={setCallingCardLogoFile}
         onChange={(patch) =>
           setBranding((prev) => ({
             ...prev,
