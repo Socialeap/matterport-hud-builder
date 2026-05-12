@@ -132,6 +132,7 @@ function BrandingPage() {
   const { user } = useAuth();
   const { hasPaid } = useMspAccess();
   const [branding, setBranding] = useState<BrandingData>(defaultBranding);
+  const [activeTab, setActiveTab] = useState<string>("identity");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -543,20 +544,13 @@ function BrandingPage() {
         </div>
       </div>
 
-      <Tabs defaultValue="identity" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="identity" className="text-xs sm:text-sm">Identity</TabsTrigger>
           <TabsTrigger value="url" className="text-xs sm:text-sm">Studio URL</TabsTrigger>
           <TabsTrigger value="card" className="text-xs sm:text-sm">Card</TabsTrigger>
           <TabsTrigger value="market" className="text-xs sm:text-sm">Marketplace</TabsTrigger>
-          <TabsTrigger
-            value="area"
-            disabled={!branding.is_directory_public}
-            title={!branding.is_directory_public ? "Enable Marketplace Listing first" : undefined}
-            className="text-xs sm:text-sm"
-          >
-            Service Area
-          </TabsTrigger>
+          <TabsTrigger value="area" className="text-xs sm:text-sm">Service Area</TabsTrigger>
           <TabsTrigger value="preview" className="text-xs sm:text-sm">Preview</TabsTrigger>
         </TabsList>
 
@@ -1017,110 +1011,121 @@ function BrandingPage() {
         </TabsContent>
 
         <TabsContent value="area" className="mt-4">
-          {branding.is_directory_public ? (
-            <Card className={!isPro ? "opacity-95" : ""}>
-              <CardHeader>
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <MapPin className="size-4 text-muted-foreground" />
-                      <CardTitle>Service Area</CardTitle>
-                      {!isPro && <Lock className="size-4 text-muted-foreground" />}
-                    </div>
-                    <CardDescription className="mt-1">
-                      Define how the marketplace matches incoming agent leads
-                      to your listing. Polygon matches always win over radius
-                      and ZIP fallbacks.
-                    </CardDescription>
+          <Card className={!isPro ? "opacity-95" : ""}>
+            <CardHeader>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <MapPin className="size-4 text-muted-foreground" />
+                    <CardTitle>Service Area</CardTitle>
+                    {!isPro && <Lock className="size-4 text-muted-foreground" />}
                   </div>
-                  <Badge variant="outline" className="text-[10px]">Pro polygon</Badge>
+                  <CardDescription className="mt-1">
+                    Define how the marketplace matches incoming agent leads
+                    to your listing. Polygon matches always win over radius
+                    and ZIP fallbacks.
+                  </CardDescription>
                 </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
+                <Badge variant="outline" className="text-[10px]">Pro polygon</Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {!branding.is_directory_public && (
+                <div className="rounded-md border border-dashed border-primary/30 bg-primary/5 p-3 text-xs text-muted-foreground">
+                  <p className="font-medium text-foreground">Marketplace Listing is off</p>
+                  <p className="mt-1">
+                    These settings only take effect once your studio is listed.
+                    You can configure them now and publish later.
+                  </p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="mt-2"
+                    onClick={() => setActiveTab("market")}
+                  >
+                    Go to Marketplace tab
+                  </Button>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label htmlFor="service_radius">Service Radius (miles)</Label>
+                <Input
+                  id="service_radius"
+                  type="number"
+                  min={1}
+                  max={500}
+                  value={branding.service_radius_miles ?? ""}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    const next = raw === "" ? null : Math.max(1, Math.min(500, Number(raw) || 0));
+                    setBranding({ ...branding, service_radius_miles: next });
+                  }}
+                  placeholder="25"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Used for radius-based matches when no polygon is drawn.
+                  Leave blank to match by ZIP / city only.
+                </p>
+              </div>
+
+              {isPro ? (
                 <div className="space-y-2">
-                  <Label htmlFor="service_radius">Service Radius (miles)</Label>
-                  <Input
-                    id="service_radius"
-                    type="number"
-                    min={1}
-                    max={500}
-                    value={branding.service_radius_miles ?? ""}
-                    onChange={(e) => {
-                      const raw = e.target.value;
-                      const next = raw === "" ? null : Math.max(1, Math.min(500, Number(raw) || 0));
-                      setBranding({ ...branding, service_radius_miles: next });
-                    }}
-                    placeholder="25"
-                  />
+                  <div className="flex items-center justify-between">
+                    <Label>Custom Polygon</Label>
+                    {branding.service_polygon && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={() =>
+                          setBranding({ ...branding, service_polygon: null })
+                        }
+                      >
+                        <X className="h-3 w-3 mr-1" />
+                        Clear polygon
+                      </Button>
+                    )}
+                  </div>
+                  <Suspense
+                    fallback={
+                      <div className="flex h-80 w-full items-center justify-center rounded-md border border-input bg-muted/30 text-xs text-muted-foreground">
+                        Loading map editor…
+                      </div>
+                    }
+                  >
+                    <ServiceAreaMap
+                      initialPolygon={savedSnapshot.service_polygon}
+                      initialCenter={null}
+                      onPolygonChange={(p) =>
+                        setBranding((prev) => ({ ...prev, service_polygon: p }))
+                      }
+                    />
+                  </Suspense>
                   <p className="text-xs text-muted-foreground">
-                    Used for radius-based matches when no polygon is drawn.
-                    Leave blank to match by ZIP / city only.
+                    Click the polygon tool (top-right) to draw your service
+                    area. Only one polygon is stored at a time — drawing a
+                    new one replaces the old.
                   </p>
                 </div>
-
-                {isPro ? (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label>Custom Polygon</Label>
-                      {branding.service_polygon && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 px-2 text-xs"
-                          onClick={() =>
-                            setBranding({ ...branding, service_polygon: null })
-                          }
-                        >
-                          <X className="h-3 w-3 mr-1" />
-                          Clear polygon
-                        </Button>
-                      )}
-                    </div>
-                    <Suspense
-                      fallback={
-                        <div className="flex h-80 w-full items-center justify-center rounded-md border border-input bg-muted/30 text-xs text-muted-foreground">
-                          Loading map editor…
-                        </div>
-                      }
-                    >
-                      <ServiceAreaMap
-                        initialPolygon={savedSnapshot.service_polygon}
-                        initialCenter={null}
-                        onPolygonChange={(p) =>
-                          setBranding((prev) => ({ ...prev, service_polygon: p }))
-                        }
-                      />
-                    </Suspense>
-                    <p className="text-xs text-muted-foreground">
-                      Click the polygon tool (top-right) to draw your service
-                      area. Only one polygon is stored at a time — drawing a
-                      new one replaces the old.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="rounded-lg border border-dashed border-primary/30 bg-primary/5 p-4 text-center">
-                    <p className="text-sm font-medium text-foreground">
-                      Polygon service areas are a Pro feature
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Upgrade to draw the exact area where you accept jobs.
-                      Your listing still matches via radius and ZIP today.
-                    </p>
-                    <Button size="sm" className="mt-3" onClick={() => handleUpgrade()}>
-                      Upgrade to Pro
-                    </Button>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ) : (
-            <Card>
-              <CardContent className="py-10 text-center text-sm text-muted-foreground">
-                Enable Marketplace Listing to configure your service area.
-              </CardContent>
-            </Card>
-          )}
+              ) : (
+                <div className="rounded-lg border border-dashed border-primary/30 bg-primary/5 p-4 text-center">
+                  <p className="text-sm font-medium text-foreground">
+                    Polygon service areas are a Pro feature
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Upgrade to draw the exact area where you accept jobs.
+                    Your listing still matches via radius and ZIP today.
+                  </p>
+                  <Button size="sm" className="mt-3" onClick={() => handleUpgrade()}>
+                    Upgrade to Pro
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="preview" className="mt-4">
