@@ -8,6 +8,8 @@ import { Label } from "@/components/ui/label";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Separator } from "@/components/ui/separator";
 import { Lock, Copy, X, MapPin } from "lucide-react";
 
 // Lazy-loaded so the ~150 KB Leaflet bundle ships only when a Pro
@@ -519,590 +521,619 @@ function BrandingPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="mx-auto max-w-5xl space-y-6">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">Studio Branding</h1>
           <p className="text-sm text-muted-foreground">
             Configure your whitelabel settings and visual identity.
           </p>
         </div>
-        <Badge variant={isPro ? "default" : "secondary"}>
-          {isPro ? "Pro" : "Starter"} Tier
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            onClick={handleSave}
+            disabled={saving || !hasUnsavedChanges}
+          >
+            {saving ? "Saving…" : "Save Changes"}
+          </Button>
+          <Badge variant={isPro ? "default" : "secondary"}>
+            {isPro ? "Pro" : "Starter"} Tier
+          </Badge>
+        </div>
       </div>
 
-      {/* Basic branding — available to all tiers */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Brand Identity</CardTitle>
-          <CardDescription>
-            These settings are applied to your client-facing builder and generated tours.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="brand_name">Brand Name</Label>
-            <Input
-              id="brand_name"
-              value={branding.brand_name}
-              onChange={(e) => setBranding({ ...branding, brand_name: e.target.value })}
-              placeholder="Your Company Name"
-            />
-          </div>
+      <Tabs defaultValue="identity" className="w-full">
+        <TabsList className="grid w-full grid-cols-6">
+          <TabsTrigger value="identity" className="text-xs sm:text-sm">Identity</TabsTrigger>
+          <TabsTrigger value="url" className="text-xs sm:text-sm">Studio URL</TabsTrigger>
+          <TabsTrigger value="card" className="text-xs sm:text-sm">Card</TabsTrigger>
+          <TabsTrigger value="market" className="text-xs sm:text-sm">Marketplace</TabsTrigger>
+          <TabsTrigger
+            value="area"
+            disabled={!branding.is_directory_public}
+            title={!branding.is_directory_public ? "Enable Marketplace Listing first" : undefined}
+            className="text-xs sm:text-sm"
+          >
+            Service Area
+          </TabsTrigger>
+          <TabsTrigger value="preview" className="text-xs sm:text-sm">Preview</TabsTrigger>
+        </TabsList>
 
-          <div className="space-y-2">
-            <Label htmlFor="gate_label">Gate Button Label</Label>
-            <Input
-              id="gate_label"
-              value={branding.gate_label}
-              onChange={(e) => setBranding({ ...branding, gate_label: e.target.value })}
-              placeholder="Enter Tour"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="accent_color">Accent Color</Label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="color"
-                  id="accent_color"
-                  value={branding.accent_color}
-                  onChange={(e) => setBranding({ ...branding, accent_color: e.target.value })}
-                  className="h-9 w-12 cursor-pointer rounded border border-input"
-                />
-                <Input
-                  value={branding.accent_color}
-                  onChange={(e) => setBranding({ ...branding, accent_color: e.target.value })}
-                  className="flex-1"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="hud_bg_color">Portal Background</Label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="color"
-                  id="hud_bg_color"
-                  value={branding.hud_bg_color}
-                  onChange={(e) => setBranding({ ...branding, hud_bg_color: e.target.value })}
-                  className="h-9 w-12 cursor-pointer rounded border border-input"
-                />
-                <Input
-                  value={branding.hud_bg_color}
-                  onChange={(e) => setBranding({ ...branding, hud_bg_color: e.target.value })}
-                  className="flex-1"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Primary Logo</Label>
-              <Input
-                type="file"
-                accept=".png,.jpg,.jpeg,.svg,.webp"
-                onChange={(e) => setLogoFile(e.target.files?.[0] || null)}
-              />
-              {(logoFile || branding.logo_url) && (
-                <img
-                  src={logoFile ? URL.createObjectURL(logoFile) : branding.logo_url!}
-                  alt="Logo preview"
-                  className="mt-2 h-12 rounded object-contain"
-                />
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label>Favicon / Tab Icon</Label>
-              <Input
-                type="file"
-                accept=".png,.jpg,.jpeg,.svg,.webp,.ico"
-                onChange={(e) => setFaviconFile(e.target.files?.[0] || null)}
-              />
-              {(faviconFile || branding.favicon_url) && (
-                <img
-                  src={faviconFile ? URL.createObjectURL(faviconFile) : branding.favicon_url!}
-                  alt="Favicon preview"
-                  className="mt-2 h-8 rounded object-contain"
-                />
-              )}
-            </div>
-          </div>
-
-          {/* Studio hero background */}
-          <div className="space-y-3 rounded-lg border border-dashed border-border p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <Label>Studio Hero Background</Label>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  The cinematic image behind your Studio's headline. Falls back to a default residential photo.
-                </p>
-              </div>
-              {branding.hero_bg_url && !heroFile && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2 text-xs"
-                  onClick={() => setBranding({ ...branding, hero_bg_url: null })}
-                >
-                  <X className="h-3 w-3 mr-1" />
-                  Remove
-                </Button>
-              )}
-            </div>
-            <Input
-              type="file"
-              accept=".png,.jpg,.jpeg,.webp"
-              onChange={(e) => setHeroFile(e.target.files?.[0] || null)}
-            />
-            {(heroFile || branding.hero_bg_url) && (
-              <div className="relative h-32 w-full overflow-hidden rounded-md border border-border">
-                <img
-                  src={heroFile ? URL.createObjectURL(heroFile) : branding.hero_bg_url!}
-                  alt="Hero preview"
-                  className="absolute inset-0 h-full w-full object-cover"
-                />
-                <div
-                  className="absolute inset-0"
-                  style={{ backgroundColor: `rgba(0,0,0,${branding.hero_bg_opacity})` }}
-                />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="text-sm font-semibold text-white drop-shadow-lg">
-                    Headline preview
-                  </span>
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-2 pt-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="hero_opacity">Image Dimming</Label>
-                <span className="text-xs font-medium text-muted-foreground">
-                  {Math.round(branding.hero_bg_opacity * 100)}%
-                </span>
-              </div>
-              <Slider
-                id="hero_opacity"
-                min={0}
-                max={100}
-                step={1}
-                value={[Math.round(branding.hero_bg_opacity * 100)]}
-                onValueChange={([v]) =>
-                  setBranding({ ...branding, hero_bg_opacity: (v ?? 45) / 100 })
-                }
-              />
-              <p className="text-xs text-muted-foreground">
-                Increase to keep the headline readable on busy or bright images.
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Studio URL */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Studio URL</CardTitle>
-          <CardDescription>
-            Configure the public URL where clients access your Studio.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="slug">Studio URL Slug</Label>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground whitespace-nowrap">/p/</span>
-              <Input
-                id="slug"
-                value={branding.slug ?? ""}
-                onChange={(e) =>
-                  setBranding({
-                    ...branding,
-                    slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""),
-                  })
-                }
-                placeholder="your-brand"
-              />
-            </div>
-            {branding.slug && (
-              <div className="flex items-center gap-2 mt-1">
-                <p className="text-xs text-muted-foreground">
-                  Your studio: {buildStudioUrl(branding.slug, { tier: branding.tier, customDomain: branding.custom_domain })}
-                </p>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-2 text-xs"
-                  onClick={() => {
-                    navigator.clipboard.writeText(
-                      buildStudioUrl(branding.slug!, { tier: branding.tier, customDomain: branding.custom_domain })
-                    );
-                    toast.success("Studio link copied to clipboard!");
-                  }}
-                >
-                  <Copy className="h-3 w-3 mr-1" />
-                  Copy Link
-                </Button>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Calling Card — embeddable digital business card */}
-      <CallingCardSection
-        brandName={branding.brand_name}
-        accentColor={branding.accent_color}
-        logoUrl={logoFile ? URL.createObjectURL(logoFile) : branding.logo_url}
-        slug={branding.slug}
-        tier={branding.tier}
-        customDomain={branding.custom_domain}
-        studioName={branding.calling_card_studio_name}
-        headline={branding.calling_card_headline}
-        ctaLabel={branding.calling_card_cta_label}
-        callingCardLogoUrl={branding.calling_card_logo_url}
-        callingCardLogoFile={callingCardLogoFile}
-        onCallingCardLogoChange={setCallingCardLogoFile}
-        onChange={(patch) =>
-          setBranding((prev) => ({
-            ...prev,
-            ...(patch.studio_name !== undefined && { calling_card_studio_name: patch.studio_name }),
-            ...(patch.headline !== undefined && { calling_card_headline: patch.headline }),
-            ...(patch.cta_label !== undefined && { calling_card_cta_label: patch.cta_label }),
-          }))
-        }
-      />
-
-      {/* Pro-only section */}
-      <Card className={!customDomainUnlocked ? "opacity-75" : ""}>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <CardTitle>Whitelabel Settings</CardTitle>
-            {!customDomainUnlocked && <Lock className="size-4 text-muted-foreground" />}
-          </div>
-          <CardDescription>
-            {customDomainUnlocked
-              ? "Full whitelabel — all Transcendence Media branding removed."
-              : !hasPaid
-                ? "Purchase a plan to enable a custom domain and full whitelabel."
-                : "Upgrade to Pro ($199) to unlock full whitelabel capabilities."}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="custom_domain">Custom Domain</Label>
-            <Input
-              id="custom_domain"
-              value={branding.custom_domain ?? ""}
-              onChange={(e) => setBranding({ ...branding, custom_domain: e.target.value })}
-              placeholder="tours.yourcompany.com"
-              disabled={!customDomainUnlocked}
-            />
-          </div>
-
-          {!customDomainUnlocked && (
-            <div className="rounded-lg border border-dashed border-primary/30 bg-primary/5 p-4 text-center">
-              <p className="text-sm font-medium text-foreground">
-                {!hasPaid
-                  ? "Activate your Studio to unlock custom domains"
-                  : "Remove all co-branding and unlock custom domains"}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {!hasPaid
-                  ? "Custom domains are available on Pro plans after purchase."
-                  : "Starter tier includes \"Powered by Transcendence Media\" on all output."}
-              </p>
-              <Button size="sm" className="mt-3" onClick={() => handleUpgrade()}>
-                {!hasPaid ? "Choose a plan" : "Upgrade to Pro — $199"}
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Marketplace listing — opt-in directory presence for the
-          agent-facing /find-a-studio search (rolls out in a follow-up PR). */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <MapPin className="size-4 text-muted-foreground" />
-                <CardTitle>Marketplace Listing</CardTitle>
-              </div>
-              <CardDescription className="mt-1">
-                List your Studio in our agent-facing directory. This is a
-                supplemental marketing channel — it does not change your
-                personal branding or existing workflow.
+        <TabsContent value="identity" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Brand Identity</CardTitle>
+              <CardDescription>
+                These settings are applied to your client-facing builder and generated tours.
               </CardDescription>
-            </div>
-            <div className="flex items-center gap-2">
-              <Switch
-                id="is_directory_public"
-                checked={branding.is_directory_public}
-                onCheckedChange={(checked) =>
-                  setBranding({ ...branding, is_directory_public: checked })
-                }
-              />
-              <Label htmlFor="is_directory_public" className="text-sm">
-                {branding.is_directory_public ? "Listed" : "Hidden"}
-              </Label>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="primary_city">Primary City</Label>
-              <Input
-                id="primary_city"
-                value={branding.primary_city ?? ""}
-                onChange={(e) =>
-                  setBranding({ ...branding, primary_city: e.target.value })
-                }
-                placeholder="Atlanta"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="region">State</Label>
-              <Input
-                id="region"
-                maxLength={2}
-                value={branding.region ?? ""}
-                onChange={(e) =>
-                  setBranding({
-                    ...branding,
-                    region: e.target.value.toUpperCase().replace(/[^A-Z]/g, ""),
-                  })
-                }
-                placeholder="GA"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="service_zips">Service ZIP Codes</Label>
-            <Input
-              id="service_zips"
-              value={zipsInput}
-              onChange={(e) => setZipsInput(e.target.value)}
-              placeholder="30303, 30308, 30312"
-            />
-            <p className="text-xs text-muted-foreground">
-              Comma- or space-separated. Agents searching by ZIP will match
-              against this list. {parsedZips.length} valid
-              {invalidZipCount > 0 ? `, ${invalidZipCount} ignored` : ""}.
-            </p>
-          </div>
-
-          <div className="space-y-3 rounded-md border border-dashed border-border p-3">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Public Directory Contact
-            </p>
-            <p className="text-xs text-muted-foreground">
-              These details may appear on your public MSP Directory card and MSP Service Match results.
-            </p>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="directory_website_url">Website URL</Label>
-                <Input
-                  id="directory_website_url"
-                  type="url"
-                  value={branding.directory_website_url ?? ""}
-                  onChange={(e) => setBranding({ ...branding, directory_website_url: e.target.value })}
-                  placeholder="https://yourstudio.com"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="directory_contact_email">Contact Email</Label>
-                <Input
-                  id="directory_contact_email"
-                  type="email"
-                  value={branding.directory_contact_email ?? ""}
-                  onChange={(e) => setBranding({ ...branding, directory_contact_email: e.target.value })}
-                  placeholder="hello@yourstudio.com"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="directory_phone">Phone</Label>
-                <Input
-                  id="directory_phone"
-                  type="tel"
-                  value={branding.directory_phone ?? ""}
-                  onChange={(e) => setBranding({ ...branding, directory_phone: e.target.value })}
-                  placeholder="(555) 555-1234"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Specialties</Label>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {SPECIALTY_OPTIONS.map((opt) => {
-                const checked = branding.specialties.includes(opt.value);
-                const disabled = opt.proOnly && !isPro;
-                return (
-                  <label
-                    key={opt.value}
-                    className={`flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm ${
-                      disabled
-                        ? "cursor-not-allowed opacity-50"
-                        : "cursor-pointer hover:bg-muted/50"
-                    }`}
-                  >
-                    <Checkbox
-                      checked={checked}
-                      disabled={disabled}
-                      onCheckedChange={() =>
-                        toggleSpecialty(opt.value, opt.proOnly)
-                      }
-                    />
-                    <span className="flex-1">{opt.label}</span>
-                    {opt.proOnly && (
-                      <Badge variant="outline" className="text-[10px]">
-                        Pro
-                      </Badge>
-                    )}
-                  </label>
-                );
-              })}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Pro-only tags require an active Pro license to claim.
-            </p>
-          </div>
-
-          {branding.is_directory_public && (
-            <div className="rounded-md border border-dashed border-primary/30 bg-primary/5 p-3 text-xs text-muted-foreground">
-              Your studio will appear in agent search results once the
-              Marketplace launches. Save your changes to publish.
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Service Area — geospatial matching layer.
-          Pro draws a polygon (most precise match tier).
-          Starter sees an upgrade prompt; their listing still
-          matches via the radius / ZIP / fuzzy-city fallbacks. */}
-      {branding.is_directory_public && (
-        <Card className={!isPro ? "opacity-95" : ""}>
-          <CardHeader>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <MapPin className="size-4 text-muted-foreground" />
-                  <CardTitle>Service Area</CardTitle>
-                  {!isPro && <Lock className="size-4 text-muted-foreground" />}
-                </div>
-                <CardDescription className="mt-1">
-                  Define how the marketplace matches incoming agent leads
-                  to your listing. Polygon matches always win over radius
-                  and ZIP fallbacks.
-                </CardDescription>
-              </div>
-              <Badge variant="outline" className="text-[10px]">Pro polygon</Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="service_radius">Service Radius (miles)</Label>
-              <Input
-                id="service_radius"
-                type="number"
-                min={1}
-                max={500}
-                value={branding.service_radius_miles ?? ""}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  const next = raw === "" ? null : Math.max(1, Math.min(500, Number(raw) || 0));
-                  setBranding({ ...branding, service_radius_miles: next });
-                }}
-                placeholder="25"
-              />
-              <p className="text-xs text-muted-foreground">
-                Used for radius-based matches when no polygon is drawn.
-                Leave blank to match by ZIP / city only.
-              </p>
-            </div>
-
-            {isPro ? (
+            </CardHeader>
+            <CardContent className="space-y-4">
               <div className="space-y-2">
+                <Label htmlFor="brand_name">Brand Name</Label>
+                <Input
+                  id="brand_name"
+                  value={branding.brand_name}
+                  onChange={(e) => setBranding({ ...branding, brand_name: e.target.value })}
+                  placeholder="Your Company Name"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="gate_label">Gate Button Label</Label>
+                <Input
+                  id="gate_label"
+                  value={branding.gate_label}
+                  onChange={(e) => setBranding({ ...branding, gate_label: e.target.value })}
+                  placeholder="Enter Tour"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="accent_color">Accent Color</Label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      id="accent_color"
+                      value={branding.accent_color}
+                      onChange={(e) => setBranding({ ...branding, accent_color: e.target.value })}
+                      className="h-9 w-12 cursor-pointer rounded border border-input"
+                    />
+                    <Input
+                      value={branding.accent_color}
+                      onChange={(e) => setBranding({ ...branding, accent_color: e.target.value })}
+                      className="flex-1"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="hud_bg_color">Portal Background</Label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      id="hud_bg_color"
+                      value={branding.hud_bg_color}
+                      onChange={(e) => setBranding({ ...branding, hud_bg_color: e.target.value })}
+                      className="h-9 w-12 cursor-pointer rounded border border-input"
+                    />
+                    <Input
+                      value={branding.hud_bg_color}
+                      onChange={(e) => setBranding({ ...branding, hud_bg_color: e.target.value })}
+                      className="flex-1"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Primary Logo</Label>
+                  <Input
+                    type="file"
+                    accept=".png,.jpg,.jpeg,.svg,.webp"
+                    onChange={(e) => setLogoFile(e.target.files?.[0] || null)}
+                  />
+                  {(logoFile || branding.logo_url) && (
+                    <img
+                      src={logoFile ? URL.createObjectURL(logoFile) : branding.logo_url!}
+                      alt="Logo preview"
+                      className="mt-2 h-12 rounded object-contain"
+                    />
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label>Favicon / Tab Icon</Label>
+                  <Input
+                    type="file"
+                    accept=".png,.jpg,.jpeg,.svg,.webp,.ico"
+                    onChange={(e) => setFaviconFile(e.target.files?.[0] || null)}
+                  />
+                  {(faviconFile || branding.favicon_url) && (
+                    <img
+                      src={faviconFile ? URL.createObjectURL(faviconFile) : branding.favicon_url!}
+                      alt="Favicon preview"
+                      className="mt-2 h-8 rounded object-contain"
+                    />
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-3 rounded-lg border border-dashed border-border p-4">
                 <div className="flex items-center justify-between">
-                  <Label>Custom Polygon</Label>
-                  {branding.service_polygon && (
+                  <div>
+                    <Label>Studio Hero Background</Label>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      The cinematic image behind your Studio's headline. Falls back to a default residential photo.
+                    </p>
+                  </div>
+                  {branding.hero_bg_url && !heroFile && (
                     <Button
                       type="button"
                       variant="ghost"
                       size="sm"
                       className="h-7 px-2 text-xs"
-                      onClick={() =>
-                        setBranding({ ...branding, service_polygon: null })
-                      }
+                      onClick={() => setBranding({ ...branding, hero_bg_url: null })}
                     >
                       <X className="h-3 w-3 mr-1" />
-                      Clear polygon
+                      Remove
                     </Button>
                   )}
                 </div>
-                <Suspense
-                  fallback={
-                    <div className="flex h-80 w-full items-center justify-center rounded-md border border-input bg-muted/30 text-xs text-muted-foreground">
-                      Loading map editor…
+                <Input
+                  type="file"
+                  accept=".png,.jpg,.jpeg,.webp"
+                  onChange={(e) => setHeroFile(e.target.files?.[0] || null)}
+                />
+                {(heroFile || branding.hero_bg_url) && (
+                  <div className="relative h-32 w-full overflow-hidden rounded-md border border-border">
+                    <img
+                      src={heroFile ? URL.createObjectURL(heroFile) : branding.hero_bg_url!}
+                      alt="Hero preview"
+                      className="absolute inset-0 h-full w-full object-cover"
+                    />
+                    <div
+                      className="absolute inset-0"
+                      style={{ backgroundColor: `rgba(0,0,0,${branding.hero_bg_opacity})` }}
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="text-sm font-semibold text-white drop-shadow-lg">
+                        Headline preview
+                      </span>
                     </div>
-                  }
-                >
-                  <ServiceAreaMap
-                    initialPolygon={savedSnapshot.service_polygon}
-                    initialCenter={null}
-                    onPolygonChange={(p) =>
-                      setBranding((prev) => ({ ...prev, service_polygon: p }))
+                  </div>
+                )}
+
+                <div className="space-y-2 pt-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="hero_opacity">Image Dimming</Label>
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {Math.round(branding.hero_bg_opacity * 100)}%
+                    </span>
+                  </div>
+                  <Slider
+                    id="hero_opacity"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={[Math.round(branding.hero_bg_opacity * 100)]}
+                    onValueChange={([v]) =>
+                      setBranding({ ...branding, hero_bg_opacity: (v ?? 45) / 100 })
                     }
                   />
-                </Suspense>
+                  <p className="text-xs text-muted-foreground">
+                    Increase to keep the headline readable on busy or bright images.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="url" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Studio URL & Whitelabel</CardTitle>
+              <CardDescription>
+                Configure your public Studio URL and (on Pro) connect a custom domain.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-3">
+                <h4 className="text-sm font-semibold text-foreground">Public URL Slug</h4>
+                <div className="space-y-2">
+                  <Label htmlFor="slug">Studio URL Slug</Label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground whitespace-nowrap">/p/</span>
+                    <Input
+                      id="slug"
+                      value={branding.slug ?? ""}
+                      onChange={(e) =>
+                        setBranding({
+                          ...branding,
+                          slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""),
+                        })
+                      }
+                      placeholder="your-brand"
+                    />
+                  </div>
+                  {branding.slug && (
+                    <div className="flex items-center gap-2 mt-1">
+                      <p className="text-xs text-muted-foreground">
+                        Your studio: {buildStudioUrl(branding.slug, { tier: branding.tier, customDomain: branding.custom_domain })}
+                      </p>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => {
+                          navigator.clipboard.writeText(
+                            buildStudioUrl(branding.slug!, { tier: branding.tier, customDomain: branding.custom_domain })
+                          );
+                          toast.success("Studio link copied to clipboard!");
+                        }}
+                      >
+                        <Copy className="h-3 w-3 mr-1" />
+                        Copy Link
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className={`space-y-3 ${!customDomainUnlocked ? "opacity-75" : ""}`}>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-sm font-semibold text-foreground">Custom Domain / Whitelabel</h4>
+                  {!customDomainUnlocked && <Lock className="size-4 text-muted-foreground" />}
+                </div>
                 <p className="text-xs text-muted-foreground">
-                  Click the polygon tool (top-right) to draw your service
-                  area. Only one polygon is stored at a time — drawing a
-                  new one replaces the old.
+                  {customDomainUnlocked
+                    ? "Full whitelabel — all Transcendence Media branding removed."
+                    : !hasPaid
+                      ? "Purchase a plan to enable a custom domain and full whitelabel."
+                      : "Upgrade to Pro ($199) to unlock full whitelabel capabilities."}
+                </p>
+                <div className="space-y-2">
+                  <Label htmlFor="custom_domain">Custom Domain</Label>
+                  <Input
+                    id="custom_domain"
+                    value={branding.custom_domain ?? ""}
+                    onChange={(e) => setBranding({ ...branding, custom_domain: e.target.value })}
+                    placeholder="tours.yourcompany.com"
+                    disabled={!customDomainUnlocked}
+                  />
+                </div>
+
+                {!customDomainUnlocked && (
+                  <div className="rounded-lg border border-dashed border-primary/30 bg-primary/5 p-4 text-center">
+                    <p className="text-sm font-medium text-foreground">
+                      {!hasPaid
+                        ? "Activate your Studio to unlock custom domains"
+                        : "Remove all co-branding and unlock custom domains"}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {!hasPaid
+                        ? "Custom domains are available on Pro plans after purchase."
+                        : "Starter tier includes \"Powered by Transcendence Media\" on all output."}
+                    </p>
+                    <Button size="sm" className="mt-3" onClick={() => handleUpgrade()}>
+                      {!hasPaid ? "Choose a plan" : "Upgrade to Pro — $199"}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="card" className="mt-4">
+          <CallingCardSection
+            brandName={branding.brand_name}
+            accentColor={branding.accent_color}
+            logoUrl={logoFile ? URL.createObjectURL(logoFile) : branding.logo_url}
+            slug={branding.slug}
+            tier={branding.tier}
+            customDomain={branding.custom_domain}
+            studioName={branding.calling_card_studio_name}
+            headline={branding.calling_card_headline}
+            ctaLabel={branding.calling_card_cta_label}
+            callingCardLogoUrl={branding.calling_card_logo_url}
+            callingCardLogoFile={callingCardLogoFile}
+            onCallingCardLogoChange={setCallingCardLogoFile}
+            onChange={(patch) =>
+              setBranding((prev) => ({
+                ...prev,
+                ...(patch.studio_name !== undefined && { calling_card_studio_name: patch.studio_name }),
+                ...(patch.headline !== undefined && { calling_card_headline: patch.headline }),
+                ...(patch.cta_label !== undefined && { calling_card_cta_label: patch.cta_label }),
+              }))
+            }
+          />
+        </TabsContent>
+
+        <TabsContent value="market" className="mt-4">
+          <Card>
+            <CardHeader>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <MapPin className="size-4 text-muted-foreground" />
+                    <CardTitle>Marketplace Listing</CardTitle>
+                  </div>
+                  <CardDescription className="mt-1">
+                    List your Studio in our agent-facing directory. This is a
+                    supplemental marketing channel — it does not change your
+                    personal branding or existing workflow.
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="is_directory_public"
+                    checked={branding.is_directory_public}
+                    onCheckedChange={(checked) =>
+                      setBranding({ ...branding, is_directory_public: checked })
+                    }
+                  />
+                  <Label htmlFor="is_directory_public" className="text-sm">
+                    {branding.is_directory_public ? "Listed" : "Hidden"}
+                  </Label>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="primary_city">Primary City</Label>
+                  <Input
+                    id="primary_city"
+                    value={branding.primary_city ?? ""}
+                    onChange={(e) =>
+                      setBranding({ ...branding, primary_city: e.target.value })
+                    }
+                    placeholder="Atlanta"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="region">State</Label>
+                  <Input
+                    id="region"
+                    maxLength={2}
+                    value={branding.region ?? ""}
+                    onChange={(e) =>
+                      setBranding({
+                        ...branding,
+                        region: e.target.value.toUpperCase().replace(/[^A-Z]/g, ""),
+                      })
+                    }
+                    placeholder="GA"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="service_zips">Service ZIP Codes</Label>
+                <Input
+                  id="service_zips"
+                  value={zipsInput}
+                  onChange={(e) => setZipsInput(e.target.value)}
+                  placeholder="30303, 30308, 30312"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Comma- or space-separated. Agents searching by ZIP will match
+                  against this list. {parsedZips.length} valid
+                  {invalidZipCount > 0 ? `, ${invalidZipCount} ignored` : ""}.
                 </p>
               </div>
-            ) : (
-              <div className="rounded-lg border border-dashed border-primary/30 bg-primary/5 p-4 text-center">
-                <p className="text-sm font-medium text-foreground">
-                  Polygon service areas are a Pro feature
+
+              <div className="space-y-3 rounded-md border border-dashed border-border p-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Public Directory Contact
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Upgrade to draw the exact area where you accept jobs.
-                  Your listing still matches via radius and ZIP today.
+                <p className="text-xs text-muted-foreground">
+                  These details may appear on your public MSP Directory card and MSP Service Match results.
                 </p>
-                <Button size="sm" className="mt-3" onClick={() => handleUpgrade()}>
-                  Upgrade to Pro
-                </Button>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="directory_website_url">Website URL</Label>
+                    <Input
+                      id="directory_website_url"
+                      type="url"
+                      value={branding.directory_website_url ?? ""}
+                      onChange={(e) => setBranding({ ...branding, directory_website_url: e.target.value })}
+                      placeholder="https://yourstudio.com"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="directory_contact_email">Contact Email</Label>
+                    <Input
+                      id="directory_contact_email"
+                      type="email"
+                      value={branding.directory_contact_email ?? ""}
+                      onChange={(e) => setBranding({ ...branding, directory_contact_email: e.target.value })}
+                      placeholder="hello@yourstudio.com"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="directory_phone">Phone</Label>
+                    <Input
+                      id="directory_phone"
+                      type="tel"
+                      value={branding.directory_phone ?? ""}
+                      onChange={(e) => setBranding({ ...branding, directory_phone: e.target.value })}
+                      placeholder="(555) 555-1234"
+                    />
+                  </div>
+                </div>
               </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
 
-      <StudioPreviewPanel
-        slug={savedSnapshot.slug}
-        tier={savedSnapshot.tier}
-        customDomain={savedSnapshot.custom_domain}
-        hasPaid={hasPaid}
-        hasUnsavedChanges={hasUnsavedChanges}
-        refreshKey={previewVersion}
-      />
+              <div className="space-y-2">
+                <Label>Specialties</Label>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {SPECIALTY_OPTIONS.map((opt) => {
+                    const checked = branding.specialties.includes(opt.value);
+                    const disabled = opt.proOnly && !isPro;
+                    return (
+                      <label
+                        key={opt.value}
+                        className={`flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm ${
+                          disabled
+                            ? "cursor-not-allowed opacity-50"
+                            : "cursor-pointer hover:bg-muted/50"
+                        }`}
+                      >
+                        <Checkbox
+                          checked={checked}
+                          disabled={disabled}
+                          onCheckedChange={() =>
+                            toggleSpecialty(opt.value, opt.proOnly)
+                          }
+                        />
+                        <span className="flex-1">{opt.label}</span>
+                        {opt.proOnly && (
+                          <Badge variant="outline" className="text-[10px]">
+                            Pro
+                          </Badge>
+                        )}
+                      </label>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Pro-only tags require an active Pro license to claim.
+                </p>
+              </div>
 
-      <div className="flex justify-end">
-        <Button onClick={handleSave} disabled={saving}>
-          {saving ? "Saving…" : "Save Changes"}
-        </Button>
-      </div>
+              {branding.is_directory_public && (
+                <div className="rounded-md border border-dashed border-primary/30 bg-primary/5 p-3 text-xs text-muted-foreground">
+                  Your studio will appear in agent search results once the
+                  Marketplace launches. Save your changes to publish.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="area" className="mt-4">
+          {branding.is_directory_public ? (
+            <Card className={!isPro ? "opacity-95" : ""}>
+              <CardHeader>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <MapPin className="size-4 text-muted-foreground" />
+                      <CardTitle>Service Area</CardTitle>
+                      {!isPro && <Lock className="size-4 text-muted-foreground" />}
+                    </div>
+                    <CardDescription className="mt-1">
+                      Define how the marketplace matches incoming agent leads
+                      to your listing. Polygon matches always win over radius
+                      and ZIP fallbacks.
+                    </CardDescription>
+                  </div>
+                  <Badge variant="outline" className="text-[10px]">Pro polygon</Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="service_radius">Service Radius (miles)</Label>
+                  <Input
+                    id="service_radius"
+                    type="number"
+                    min={1}
+                    max={500}
+                    value={branding.service_radius_miles ?? ""}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      const next = raw === "" ? null : Math.max(1, Math.min(500, Number(raw) || 0));
+                      setBranding({ ...branding, service_radius_miles: next });
+                    }}
+                    placeholder="25"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Used for radius-based matches when no polygon is drawn.
+                    Leave blank to match by ZIP / city only.
+                  </p>
+                </div>
+
+                {isPro ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Custom Polygon</Label>
+                      {branding.service_polygon && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs"
+                          onClick={() =>
+                            setBranding({ ...branding, service_polygon: null })
+                          }
+                        >
+                          <X className="h-3 w-3 mr-1" />
+                          Clear polygon
+                        </Button>
+                      )}
+                    </div>
+                    <Suspense
+                      fallback={
+                        <div className="flex h-80 w-full items-center justify-center rounded-md border border-input bg-muted/30 text-xs text-muted-foreground">
+                          Loading map editor…
+                        </div>
+                      }
+                    >
+                      <ServiceAreaMap
+                        initialPolygon={savedSnapshot.service_polygon}
+                        initialCenter={null}
+                        onPolygonChange={(p) =>
+                          setBranding((prev) => ({ ...prev, service_polygon: p }))
+                        }
+                      />
+                    </Suspense>
+                    <p className="text-xs text-muted-foreground">
+                      Click the polygon tool (top-right) to draw your service
+                      area. Only one polygon is stored at a time — drawing a
+                      new one replaces the old.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed border-primary/30 bg-primary/5 p-4 text-center">
+                    <p className="text-sm font-medium text-foreground">
+                      Polygon service areas are a Pro feature
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Upgrade to draw the exact area where you accept jobs.
+                      Your listing still matches via radius and ZIP today.
+                    </p>
+                    <Button size="sm" className="mt-3" onClick={() => handleUpgrade()}>
+                      Upgrade to Pro
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="py-10 text-center text-sm text-muted-foreground">
+                Enable Marketplace Listing to configure your service area.
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="preview" className="mt-4">
+          <StudioPreviewPanel
+            slug={savedSnapshot.slug}
+            tier={savedSnapshot.tier}
+            customDomain={savedSnapshot.custom_domain}
+            hasPaid={hasPaid}
+            hasUnsavedChanges={hasUnsavedChanges}
+            refreshKey={previewVersion}
+          />
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={isOpen} onOpenChange={(open) => !open && closeCheckout()}>
         <DialogContent className="max-w-2xl">

@@ -223,7 +223,7 @@ function CardFront({
 
       {/* Editable studio name — sits inside the empty light-green pill at lower-left */}
       <div
-        className="absolute flex items-center text-left"
+        className="absolute flex items-center justify-center"
         style={{
           left: "12%",
           top: "80.5%",
@@ -232,7 +232,7 @@ function CardFront({
         }}
       >
         <span
-          className="font-normal leading-none text-slate-700"
+          className="font-normal leading-none text-slate-700 text-center"
           style={{
             fontSize: "2.05cqw",
             textShadow: "0 1px 2px rgba(255,255,255,0.6)",
@@ -242,7 +242,7 @@ function CardFront({
             maxWidth: "100%",
           }}
         >
-          {(data.studioName || "Your Studio Name").slice(0, 25)}
+          {(data.studioName || "Your Studio Name").slice(0, 30)}
         </span>
       </div>
     </div>
