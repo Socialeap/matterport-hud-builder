@@ -123,6 +123,7 @@ const defaultBranding: BrandingData = {
   calling_card_studio_name: "",
   calling_card_headline: "",
   calling_card_cta_label: "",
+  calling_card_logo_url: null,
 };
 
 function BrandingPage() {
