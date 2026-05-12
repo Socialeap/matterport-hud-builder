@@ -26,9 +26,9 @@ export interface LogoPlacement {
 
 /** Production defaults — tuned via the in-dashboard "Adjust logo position" tool. */
 export const DEFAULT_LOGO_PLACEMENT: LogoPlacement = {
-  left: 71,
-  top: 63,
-  width: 28,
+  left: 69.27,
+  top: 67.81,
+  width: 29,
 };
 
 interface CallingCardProps {
