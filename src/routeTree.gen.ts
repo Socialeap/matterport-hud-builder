@@ -23,6 +23,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as PSlugRouteImport } from './routes/p.$slug'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as EmailUnsubscribeRouteImport } from './routes/email/unsubscribe'
+import { Route as CardSlugRouteImport } from './routes/card.$slug'
 import { Route as ApiMpImageRouteImport } from './routes/api/mp-image'
 import { Route as ApiMarketplaceFeedbackRouteImport } from './routes/api/marketplace-feedback'
 import { Route as ApiGeocodeBrandingRouteImport } from './routes/api/geocode-branding'
@@ -129,6 +130,11 @@ const InviteTokenRoute = InviteTokenRouteImport.update({
 const EmailUnsubscribeRoute = EmailUnsubscribeRouteImport.update({
   id: '/email/unsubscribe',
   path: '/email/unsubscribe',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CardSlugRoute = CardSlugRouteImport.update({
+  id: '/card/$slug',
+  path: '/card/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiMpImageRoute = ApiMpImageRouteImport.update({
@@ -365,6 +371,7 @@ export interface FileRoutesByFullPath {
   '/api/geocode-branding': typeof ApiGeocodeBrandingRoute
   '/api/marketplace-feedback': typeof ApiMarketplaceFeedbackRoute
   '/api/mp-image': typeof ApiMpImageRoute
+  '/card/$slug': typeof CardSlugRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/invite/$token': typeof InviteTokenRoute
   '/p/$slug': typeof PSlugRouteWithChildren
@@ -416,6 +423,7 @@ export interface FileRoutesByTo {
   '/api/geocode-branding': typeof ApiGeocodeBrandingRoute
   '/api/marketplace-feedback': typeof ApiMarketplaceFeedbackRoute
   '/api/mp-image': typeof ApiMpImageRoute
+  '/card/$slug': typeof CardSlugRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/invite/$token': typeof InviteTokenRoute
   '/admin/$providerId': typeof AuthenticatedAdminProviderIdRoute
@@ -469,6 +477,7 @@ export interface FileRoutesById {
   '/api/geocode-branding': typeof ApiGeocodeBrandingRoute
   '/api/marketplace-feedback': typeof ApiMarketplaceFeedbackRoute
   '/api/mp-image': typeof ApiMpImageRoute
+  '/card/$slug': typeof CardSlugRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/invite/$token': typeof InviteTokenRoute
   '/p/$slug': typeof PSlugRouteWithChildren
@@ -524,6 +533,7 @@ export interface FileRouteTypes {
     | '/api/geocode-branding'
     | '/api/marketplace-feedback'
     | '/api/mp-image'
+    | '/card/$slug'
     | '/email/unsubscribe'
     | '/invite/$token'
     | '/p/$slug'
@@ -575,6 +585,7 @@ export interface FileRouteTypes {
     | '/api/geocode-branding'
     | '/api/marketplace-feedback'
     | '/api/mp-image'
+    | '/card/$slug'
     | '/email/unsubscribe'
     | '/invite/$token'
     | '/admin/$providerId'
@@ -627,6 +638,7 @@ export interface FileRouteTypes {
     | '/api/geocode-branding'
     | '/api/marketplace-feedback'
     | '/api/mp-image'
+    | '/card/$slug'
     | '/email/unsubscribe'
     | '/invite/$token'
     | '/p/$slug'
@@ -679,6 +691,7 @@ export interface RootRouteChildren {
   ApiGeocodeBrandingRoute: typeof ApiGeocodeBrandingRoute
   ApiMarketplaceFeedbackRoute: typeof ApiMarketplaceFeedbackRoute
   ApiMpImageRoute: typeof ApiMpImageRoute
+  CardSlugRoute: typeof CardSlugRoute
   EmailUnsubscribeRoute: typeof EmailUnsubscribeRoute
   InviteTokenRoute: typeof InviteTokenRoute
   PSlugRoute: typeof PSlugRouteWithChildren
@@ -788,6 +801,13 @@ declare module '@tanstack/react-router' {
       path: '/email/unsubscribe'
       fullPath: '/email/unsubscribe'
       preLoaderRoute: typeof EmailUnsubscribeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/card/$slug': {
+      id: '/card/$slug'
+      path: '/card/$slug'
+      fullPath: '/card/$slug'
+      preLoaderRoute: typeof CardSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/mp-image': {
@@ -1225,6 +1245,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiGeocodeBrandingRoute: ApiGeocodeBrandingRoute,
   ApiMarketplaceFeedbackRoute: ApiMarketplaceFeedbackRoute,
   ApiMpImageRoute: ApiMpImageRoute,
+  CardSlugRoute: CardSlugRoute,
   EmailUnsubscribeRoute: EmailUnsubscribeRoute,
   InviteTokenRoute: InviteTokenRoute,
   PSlugRoute: PSlugRouteWithChildren,
