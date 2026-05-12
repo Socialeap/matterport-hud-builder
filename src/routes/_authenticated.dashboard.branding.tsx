@@ -119,6 +119,9 @@ const defaultBranding: BrandingData = {
   directory_website_url: null,
   directory_contact_email: null,
   directory_phone: null,
+  calling_card_studio_name: "",
+  calling_card_headline: "",
+  calling_card_cta_label: "",
 };
 
 function BrandingPage() {
