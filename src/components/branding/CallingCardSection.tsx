@@ -20,6 +20,9 @@ interface CallingCardSectionProps {
   studioName: string;
   headline: string;
   ctaLabel: string;
+  callingCardLogoUrl: string | null;
+  callingCardLogoFile: File | null;
+  onCallingCardLogoChange: (file: File | null) => void;
   onChange: (patch: {
     studio_name?: string;
     headline?: string;
@@ -37,9 +40,14 @@ export function CallingCardSection({
   studioName,
   headline,
   ctaLabel,
+  callingCardLogoUrl,
+  callingCardLogoFile,
+  onCallingCardLogoChange,
   onChange,
 }: CallingCardSectionProps) {
   const [face, setFace] = useState<"front" | "back">("front");
+  const [logoBusy, setLogoBusy] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const studioUrl = useMemo(
     () => (slug ? buildStudioUrl(slug, { tier, customDomain }) : "#"),
@@ -55,13 +63,71 @@ export function CallingCardSection({
 
   const iframeSnippet = useMemo(() => {
     if (!cardUrl) return "";
-    return `<iframe src="${cardUrl}" width="600" height="338" frameborder="0" style="border:0;max-width:100%;" allowfullscreen></iframe>`;
+    // Tighter container: matches the card's 1920:1065 aspect at 600×333,
+    // rounded corners, transparent background so the soft 90%-opacity
+    // edge band rendered by /card/$slug shows through.
+    return `<iframe src="${cardUrl}" width="600" height="333" frameborder="0" style="border:0;max-width:100%;border-radius:18px;background:transparent;" allowfullscreen></iframe>`;
   }, [cardUrl]);
+
+  // Live preview source: pending upload (object URL) > saved URL.
+  const livePreviewLogoUrl = useMemo(() => {
+    if (callingCardLogoFile) return URL.createObjectURL(callingCardLogoFile);
+    return callingCardLogoUrl;
+  }, [callingCardLogoFile, callingCardLogoUrl]);
 
   const data: CallingCardData = {
     brandName: brandName || "Your Studio",
     studioName: studioName || brandName || "",
+    logoUrl: livePreviewLogoUrl,
     studioUrl,
+  };
+
+  const handleLogoFile = async (file: File | null) => {
+    if (!file) {
+      onCallingCardLogoChange(null);
+      return;
+    }
+    setLogoBusy(true);
+    try {
+      // Enforce 1:1 — read native dimensions before optimizing.
+      const dims = await new Promise<{ w: number; h: number }>((resolve, reject) => {
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+          resolve({ w: img.naturalWidth, h: img.naturalHeight });
+          URL.revokeObjectURL(url);
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(url);
+          reject(new Error("Could not read image dimensions."));
+        };
+        img.src = url;
+      });
+      // Allow ±2% tolerance for users exporting "almost square" assets.
+      const ratio = dims.w / dims.h;
+      if (ratio < 0.98 || ratio > 1.02) {
+        toast.error(
+          `Logo must be square (1:1). Yours is ${dims.w}×${dims.h}. Crop it to a square first.`,
+        );
+        return;
+      }
+      const result = await optimizeBrandImage(file, {
+        maxWidth: 512,
+        targetBytes: 120 * 1024,
+        kind: "logo",
+      });
+      onCallingCardLogoChange(result.file);
+      toast.success(
+        result.wasOptimized
+          ? `Logo optimized to ${(result.finalBytes / 1024).toFixed(0)} KB (WebP)`
+          : "Logo ready",
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not process logo");
+    } finally {
+      setLogoBusy(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   };
 
   const copy = async (text: string, label: string) => {
