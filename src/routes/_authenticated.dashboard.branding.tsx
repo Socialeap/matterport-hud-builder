@@ -340,6 +340,7 @@ function BrandingPage() {
     let logoUrl = branding.logo_url;
     let faviconUrl = branding.favicon_url;
     let heroUrl = branding.hero_bg_url;
+    let callingCardLogoUrl = branding.calling_card_logo_url;
 
     // Upload files if changed
     if (logoFile) {
@@ -356,6 +357,11 @@ function BrandingPage() {
       const url = await uploadBrandAsset(user.id, heroFile, "hero");
       if (url) heroUrl = url;
       else toast.error("Failed to upload hero background");
+    }
+    if (callingCardLogoFile) {
+      const url = await uploadBrandAsset(user.id, callingCardLogoFile, "logo");
+      if (url) callingCardLogoUrl = url;
+      else toast.error("Failed to upload calling-card logo");
     }
 
     // Strip Pro-only specialty tags if the MSP is on Starter — defense
