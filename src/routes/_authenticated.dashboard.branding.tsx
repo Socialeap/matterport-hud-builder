@@ -543,20 +543,13 @@ function BrandingPage() {
         </div>
       </div>
 
-      <Tabs defaultValue="identity" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="identity" className="text-xs sm:text-sm">Identity</TabsTrigger>
           <TabsTrigger value="url" className="text-xs sm:text-sm">Studio URL</TabsTrigger>
           <TabsTrigger value="card" className="text-xs sm:text-sm">Card</TabsTrigger>
           <TabsTrigger value="market" className="text-xs sm:text-sm">Marketplace</TabsTrigger>
-          <TabsTrigger
-            value="area"
-            disabled={!branding.is_directory_public}
-            title={!branding.is_directory_public ? "Enable Marketplace Listing first" : undefined}
-            className="text-xs sm:text-sm"
-          >
-            Service Area
-          </TabsTrigger>
+          <TabsTrigger value="area" className="text-xs sm:text-sm">Service Area</TabsTrigger>
           <TabsTrigger value="preview" className="text-xs sm:text-sm">Preview</TabsTrigger>
         </TabsList>
 
