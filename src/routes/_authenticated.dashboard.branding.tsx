@@ -87,6 +87,9 @@ interface BrandingData {
   directory_website_url: string | null;
   directory_contact_email: string | null;
   directory_phone: string | null;
+  calling_card_studio_name: string;
+  calling_card_headline: string;
+  calling_card_cta_label: string;
 }
 
 const defaultBranding: BrandingData = {
