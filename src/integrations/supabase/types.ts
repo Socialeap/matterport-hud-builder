@@ -309,6 +309,9 @@ export type Database = {
           additional_model_fee_cents: number | null
           base_price_cents: number | null
           brand_name: string
+          calling_card_cta_label: string | null
+          calling_card_headline: string | null
+          calling_card_studio_name: string | null
           country: string
           created_at: string
           custom_domain: string | null
@@ -351,6 +354,9 @@ export type Database = {
           additional_model_fee_cents?: number | null
           base_price_cents?: number | null
           brand_name?: string
+          calling_card_cta_label?: string | null
+          calling_card_headline?: string | null
+          calling_card_studio_name?: string | null
           country?: string
           created_at?: string
           custom_domain?: string | null
@@ -393,6 +399,9 @@ export type Database = {
           additional_model_fee_cents?: number | null
           base_price_cents?: number | null
           brand_name?: string
+          calling_card_cta_label?: string | null
+          calling_card_headline?: string | null
+          calling_card_studio_name?: string | null
           country?: string
           created_at?: string
           custom_domain?: string | null

@@ -1,64 +1,89 @@
-## Goal
 
-Give every visitor of the Agent Dashboard a clear visual indication of which account they're signed into — and a fast onboarding path (Google or email) when they're not. The same component will be reusable on the portal builder for consistency.
+# Calling Card Generator
 
-## Current state
+A new section on **/dashboard/branding** lets MSPs configure a flippable, embeddable Calling Card matching the provided front/back reference art, then copy an `<iframe>` snippet OR a standalone share URL.
 
-- `/agent-dashboard` lives under `_authenticated`, so unauthenticated users get bounced to `/login` before the page mounts. The header today has plain text buttons (`Work Orders`, `Back to /agents`, `Sign out`) — no avatar, no name, no email shown.
-- The portal builder (`/p/$slug/builder`) already has `PortalSignupModal` for inline Google + email signup. There's no logged‑in chip there either.
-- We already have: `useAuth()` (user, roles, signOut), `lovable.auth.signInWithOAuth("google")`, `Avatar`, `DropdownMenu`, `PortalSignupModal`.
+## What the MSP sees
 
-## Plan
+A new collapsible card on the branding page titled **"Calling Card (Embeddable)"** with:
 
-### 1. New component: `src/components/account/AccountMenu.tsx`
+1. **Live flippable preview** — clicking the card flips between front and back (CSS 3D transform), so the MSP sees exactly what visitors will see.
+2. **Three editable fields**:
+   - **Studio name** — fills the "Visit *{our 3D Presentation}* Studio" CTA pill on the front.
+   - **Headline** — defaults to "Your Custom 3D Presentation Starts Here…"
+   - **CTA button label** — defaults to "Visit our 3D Presentation Studio"
+3. **Logo source** — automatically reuses the MSP's existing primary logo (already uploaded in the Branding section above), replacing the round photo on the front. No new upload needed.
+4. **Generate / Copy panel** — two read-only fields with copy buttons:
+   - `<iframe src="https://3dps.transcendencemedia.com/card/{slug}" width="600" height="340" frameborder="0"></iframe>`
+   - `https://3dps.transcendencemedia.com/card/{slug}` (good for email signatures, QR codes, social posts)
+5. **Open preview in new tab** link.
 
-A self‑contained header widget with two states:
+The back of the card is **fixed marketing copy** (White Label / Smart Chat / End Digital Rent / Live Guided Tours), exactly as in the reference image — no per-MSP editing.
 
-**Signed‑in state** — circular `Avatar` (uses `agent_profiles.avatar_url` if available, else initials from display name / email) inside a `DropdownMenu`:
-- Header row: display name + email (muted)
-- `My Profile` → `/agent-dashboard`
-- `Work Orders` → `/agent-dashboard/work-orders` (only if user has `client` role or any agent history; otherwise hide)
-- `MSP Dashboard` → `/dashboard` (only if `provider` role)
-- `Admin` → `/admin` (only if `admin` role)
-- Divider
-- `Sign out` → `signOut()`
+## CTA behavior
 
-Avatar source priority: `agent_profiles.avatar_url` from `getMyAgentProfile` (already cached under `["agent-profile"]` query key — reuse via `useQuery` with `enabled: isAuthenticated`). Falls back to initials from `display_name` or `user.email`.
+The "Start" button on the card and the "Visit our 3D Presentation Studio" pill both link to the MSP's public studio: `https://3dps.../p/{slug}` (opens in `_blank` with `rel="noopener"`). Uses the existing `buildStudioUrl(slug)` helper.
 
-**Signed‑out state** — two compact buttons:
-- `Sign in` (ghost) → opens an inline auth dialog
-- `Sign up` (primary) → opens the same dialog in signup mode
+## Technical Section
 
-The dialog reuses the existing `PortalSignupModal` pattern but generalized: new file `src/components/account/AuthDialog.tsx` extracted from `PortalSignupModal` (the modal already does Google OAuth + email signup/login and wires `onAuthStateChange`). The new dialog drops the `providerId` / `brandName` / `accentColor` props and uses the app's primary color. After successful auth it just closes — `useAuth` will re-render the menu into its signed‑in state automatically. Existing `PortalSignupModal` keeps working unchanged (we don't refactor portal callers).
+### Files added
 
-### 2. Wire `AccountMenu` into the Agent Dashboard header
+```text
+src/components/branding/CallingCard.tsx          // pure presentational, props-driven
+src/components/branding/CallingCardSection.tsx   // editor + preview + copy panel (mounted on /dashboard/branding)
+src/routes/card.$slug.tsx                        // public route that renders CallingCard from DB lookup
+public/card-assets/matterport-service-partner.png  // copied from user-uploads
+```
 
-In `src/routes/_authenticated.agent-dashboard.tsx`:
-- Replace the inline `Sign out` button with `<AccountMenu />` on the right side of the header.
-- Keep `Work Orders` and `Back to /agents` as quick‑access buttons (the menu duplicates them, which is fine — discoverability + one‑click).
-- No change to the Profile card body.
+### Files edited
 
-### 3. Wire `AccountMenu` into the portal builder header
+- `src/routes/_authenticated.dashboard.branding.tsx` — mount `<CallingCardSection branding={branding} onChange={...} />` between existing Branding and Marketplace sections; add three new fields to `BrandingData` and the upsert payload.
+- `src/routes/__root.tsx` (only if needed) — no change expected; route auto-registers.
 
-In `src/routes/p.$slug.builder.tsx` (and `p.$slug.index.tsx` if it has a header strip): add `<AccountMenu />` to the top‑right of the page chrome so visitors always see whose account they're acting under. The existing `PortalSignupModal` flow stays as the per‑download gate; `AccountMenu` is purely the persistent identity affordance.
+### Database (one migration)
 
-### 4. No backend changes
+Add three nullable columns to `branding_settings`:
 
-- No new tables, no migrations, no edge functions.
-- No changes to `useAuth`, OAuth wiring, or `agent_profiles` schema.
-- No changes to existing routes' auth guards.
+```sql
+ALTER TABLE public.branding_settings
+  ADD COLUMN calling_card_studio_name text,
+  ADD COLUMN calling_card_headline text,
+  ADD COLUMN calling_card_cta_label text;
+```
 
-## Why this is safe (ripple analysis)
+No new RLS policies needed — existing `branding_settings` policies cover read/write by `provider_id`.
 
-- `AccountMenu` is additive — it only consumes already‑exported hooks/components (`useAuth`, `supabase.auth`, `lovable.auth`, `Avatar`, `DropdownMenu`).
-- Reusing the existing `["agent-profile"]` query key piggybacks on the dashboard's existing fetch — no extra network calls when the menu is shown on the dashboard. On other pages, the query just runs once and is cached.
-- Extracting `AuthDialog` from `PortalSignupModal` is a copy, not a refactor — the original modal is untouched, so portal flows that depend on `providerId`/`brandName` keep working.
-- Sign‑out path delegates to the existing `useAuth().signOut()` which already does the hard redirect, so no new session‑clearing logic.
-- Route guards untouched: the avatar on the agent dashboard only ever renders for already‑authenticated users (the route layout still redirects). The signed‑out branch of `AccountMenu` only matters on the portal builder, which is a public route.
+The public `/card/{slug}` route reads via the **existing** public-readable view path used by `/p/{slug}` (anon SELECT on `branding_settings` for the public-facing fields by `slug`). I'll verify the existing policy covers these new columns (it should, since it's a row-level grant). If not, the migration will extend it.
 
-## Files
+### Public route (`/card/$slug`)
 
-- **Create** `src/components/account/AccountMenu.tsx`
-- **Create** `src/components/account/AuthDialog.tsx` (generalized copy of `PortalSignupModal`)
-- **Edit** `src/routes/_authenticated.agent-dashboard.tsx` — drop the inline `Sign out` button, render `<AccountMenu />`
-- **Edit** `src/routes/p.$slug.builder.tsx` — render `<AccountMenu />` in the top bar
+- Server loader: `supabase.from("branding_settings").select("brand_name, slug, logo_url, accent_color, calling_card_*").eq("slug", slug).maybeSingle()`.
+- Renders `<CallingCard ... />` full-bleed, no app chrome, with `<head>` meta for embedding (`X-Frame-Options` removed — TanStack default already permits embedding; no CSP frame-ancestors restriction in this project).
+- 404 via `notFoundComponent` if slug not found.
+- Card width 100% / height 100vh, designed to fit an iframe of any size while preserving 16:9 aspect.
+
+### CallingCard component
+
+- Pure CSS flip (`perspective` + `transform-style: preserve-3d` + `rotateY`), no JS state needed beyond a `flipped` boolean.
+- Front: brand-painted SVG/CSS reproduction of the reference art (green speech bubbles, asterisk shape, Matterport badge top-right, headline + green pill + studio CTA pill, circular logo slot on the right showing `logo_url`).
+- Back: hardcoded 4-column feature grid matching the reference, with the back-arrow circle in the top-left that flips back to front. "Start" button bottom-right links to `buildStudioUrl(slug)`.
+- All colors derive from MSP's `accent_color` for the green-family tints (HSL shifts) so it adapts to brand palette while keeping the reference layout.
+
+### Copy-to-clipboard
+
+Reuse existing `Copy` icon + `navigator.clipboard.writeText` + `toast.success` pattern already used elsewhere in the file.
+
+### Why iframe + URL (not a script widget)
+
+- Works in every CMS (Wix, Squarespace, WordPress, Webflow) with zero JS execution permissions.
+- No CSP/CORS surprises.
+- Standalone URL doubles as a shareable landing page for emails, QR codes, business cards.
+- Self-contained route — matches the project's "no phone-home from end product" philosophy at the embed boundary.
+
+### Risk / regression analysis
+
+- **Branding page state**: new fields plumbed through the same `branding` state object and `handleSave` upsert — no parallel save path.
+- **Public anon read**: `/card/{slug}` uses the same access pattern as the existing `/p/{slug}` route, so RLS exposure is identical to today.
+- **No tier gating** — calling card is available to Starter and Pro (it actively promotes the platform).
+- **No edge function**, no new secrets, no Stripe touch.
+- Auto-generated Supabase types regenerate after the migration; the upsert uses `as any` already (line 372) so no type break in the interim.
