@@ -1,89 +1,48 @@
+## Goal
+Let you visually drag the circular logo placeholder on the Calling Card front to its perfect spot, read out the exact coordinates, then bake those numbers into the component as the new permanent values.
 
-# Calling Card Generator
+## Approach
 
-A new section on **/dashboard/branding** lets MSPs configure a flippable, embeddable Calling Card matching the provided front/back reference art, then copy an `<iframe>` snippet OR a standalone share URL.
+### Step 1 — Add a temporary "Position Logo" mode (dev-only UI)
+In `CallingCardSection.tsx` (the branding dashboard preview), add a small toggle button labeled **"Adjust logo position"** that appears only above the live card preview. When enabled:
 
-## What the MSP sees
+- The logo overlay on `CallingCard` becomes draggable via mouse/touch.
+- A small floating readout in the corner of the card shows the live values:
+  - `left: XX.XX%`
+  - `top: XX.XX%`
+  - `width: XX.XX%` (with `+ / –` buttons to nudge size in 0.5% steps)
+- Arrow keys nudge position in 0.1% steps for fine alignment.
+- A **"Copy coordinates"** button copies the three numbers to your clipboard.
 
-A new collapsible card on the branding page titled **"Calling Card (Embeddable)"** with:
+This mode is purely a positioning aid — it does NOT persist to the database. It only updates the local preview so you can see the result immediately.
 
-1. **Live flippable preview** — clicking the card flips between front and back (CSS 3D transform), so the MSP sees exactly what visitors will see.
-2. **Three editable fields**:
-   - **Studio name** — fills the "Visit *{our 3D Presentation}* Studio" CTA pill on the front.
-   - **Headline** — defaults to "Your Custom 3D Presentation Starts Here…"
-   - **CTA button label** — defaults to "Visit our 3D Presentation Studio"
-3. **Logo source** — automatically reuses the MSP's existing primary logo (already uploaded in the Branding section above), replacing the round photo on the front. No new upload needed.
-4. **Generate / Copy panel** — two read-only fields with copy buttons:
-   - `<iframe src="https://3dps.transcendencemedia.com/card/{slug}" width="600" height="340" frameborder="0"></iframe>`
-   - `https://3dps.transcendencemedia.com/card/{slug}` (good for email signatures, QR codes, social posts)
-5. **Open preview in new tab** link.
+### Step 2 — Wire the override into `CallingCard`
+Extend `CallingCard` with an optional `logoPlacement?: { left: number; top: number; width: number }` prop. When provided, it overrides the current hardcoded `71% / 63% / 28%` constants. When omitted (the published `card.$slug` route, embeds, etc.), the component falls back to whatever the hardcoded defaults are at that moment.
 
-The back of the card is **fixed marketing copy** (White Label / Smart Chat / End Digital Rent / Live Guided Tours), exactly as in the reference image — no per-MSP editing.
+This means the public card never changes behavior during the tuning session — only your dashboard preview reflects the live drag.
 
-## CTA behavior
+### Step 3 — You drag, I hardcode
+Once you've positioned it, paste the three numbers back to me (or just tell me "lock it in"). I'll then:
 
-The "Start" button on the card and the "Visit our 3D Presentation Studio" pill both link to the MSP's public studio: `https://3dps.../p/{slug}` (opens in `_blank` with `rel="noopener"`). Uses the existing `buildStudioUrl(slug)` helper.
+1. Replace the hardcoded `left: "71%"`, `top: "63%"`, `width: "28%"` in `CardFront` inside `CallingCard.tsx` with your final values.
+2. Remove the `logoPlacement` prop, the "Adjust logo position" toggle, the drag handlers, the readout overlay, and the keyboard nudging code.
+3. Leave the component back in its clean, production state — just with the new correct coordinates.
 
-## Technical Section
+## Technical details
 
-### Files added
+- Drag math uses the card's bounding rect; pointer position is converted to percentages of the card's width/height so it remains accurate regardless of preview size.
+- Pointer events (`pointerdown` / `pointermove` / `pointerup` with `setPointerCapture`) handle mouse + touch in one path.
+- Arrow-key nudging is gated on the overlay being focused, so it doesn't interfere with form inputs elsewhere on the page.
+- The readout overlay uses `cqw`-based sizing so it's legible at any preview width.
+- No DB migration, no schema change, no new dependencies.
 
-```text
-src/components/branding/CallingCard.tsx          // pure presentational, props-driven
-src/components/branding/CallingCardSection.tsx   // editor + preview + copy panel (mounted on /dashboard/branding)
-src/routes/card.$slug.tsx                        // public route that renders CallingCard from DB lookup
-public/card-assets/matterport-service-partner.png  // copied from user-uploads
-```
+## Files touched (Step 1+2, temporary)
+- `src/components/branding/CallingCard.tsx` — accept optional `logoPlacement`, render draggable wrapper when in adjust mode.
+- `src/components/branding/CallingCardSection.tsx` — add toggle, local state for live placement, readout + copy button.
 
-### Files edited
+## Files touched (Step 3, cleanup)
+- `src/components/branding/CallingCard.tsx` — bake final numbers, remove adjust-mode code.
+- `src/components/branding/CallingCardSection.tsx` — remove the toggle and readout UI.
 
-- `src/routes/_authenticated.dashboard.branding.tsx` — mount `<CallingCardSection branding={branding} onChange={...} />` between existing Branding and Marketplace sections; add three new fields to `BrandingData` and the upsert payload.
-- `src/routes/__root.tsx` (only if needed) — no change expected; route auto-registers.
-
-### Database (one migration)
-
-Add three nullable columns to `branding_settings`:
-
-```sql
-ALTER TABLE public.branding_settings
-  ADD COLUMN calling_card_studio_name text,
-  ADD COLUMN calling_card_headline text,
-  ADD COLUMN calling_card_cta_label text;
-```
-
-No new RLS policies needed — existing `branding_settings` policies cover read/write by `provider_id`.
-
-The public `/card/{slug}` route reads via the **existing** public-readable view path used by `/p/{slug}` (anon SELECT on `branding_settings` for the public-facing fields by `slug`). I'll verify the existing policy covers these new columns (it should, since it's a row-level grant). If not, the migration will extend it.
-
-### Public route (`/card/$slug`)
-
-- Server loader: `supabase.from("branding_settings").select("brand_name, slug, logo_url, accent_color, calling_card_*").eq("slug", slug).maybeSingle()`.
-- Renders `<CallingCard ... />` full-bleed, no app chrome, with `<head>` meta for embedding (`X-Frame-Options` removed — TanStack default already permits embedding; no CSP frame-ancestors restriction in this project).
-- 404 via `notFoundComponent` if slug not found.
-- Card width 100% / height 100vh, designed to fit an iframe of any size while preserving 16:9 aspect.
-
-### CallingCard component
-
-- Pure CSS flip (`perspective` + `transform-style: preserve-3d` + `rotateY`), no JS state needed beyond a `flipped` boolean.
-- Front: brand-painted SVG/CSS reproduction of the reference art (green speech bubbles, asterisk shape, Matterport badge top-right, headline + green pill + studio CTA pill, circular logo slot on the right showing `logo_url`).
-- Back: hardcoded 4-column feature grid matching the reference, with the back-arrow circle in the top-left that flips back to front. "Start" button bottom-right links to `buildStudioUrl(slug)`.
-- All colors derive from MSP's `accent_color` for the green-family tints (HSL shifts) so it adapts to brand palette while keeping the reference layout.
-
-### Copy-to-clipboard
-
-Reuse existing `Copy` icon + `navigator.clipboard.writeText` + `toast.success` pattern already used elsewhere in the file.
-
-### Why iframe + URL (not a script widget)
-
-- Works in every CMS (Wix, Squarespace, WordPress, Webflow) with zero JS execution permissions.
-- No CSP/CORS surprises.
-- Standalone URL doubles as a shareable landing page for emails, QR codes, business cards.
-- Self-contained route — matches the project's "no phone-home from end product" philosophy at the embed boundary.
-
-### Risk / regression analysis
-
-- **Branding page state**: new fields plumbed through the same `branding` state object and `handleSave` upsert — no parallel save path.
-- **Public anon read**: `/card/{slug}` uses the same access pattern as the existing `/p/{slug}` route, so RLS exposure is identical to today.
-- **No tier gating** — calling card is available to Starter and Pro (it actively promotes the platform).
-- **No edge function**, no new secrets, no Stripe touch.
-- Auto-generated Supabase types regenerate after the migration; the upsert uses `as any` already (line 372) so no type break in the interim.
+## What I need from you after Step 1+2 ships
+Just drag the circle into place in the dashboard preview, click **Copy coordinates**, and paste them back. I'll lock them in and tear out the scaffolding.
