@@ -216,6 +216,9 @@ function BrandingPage() {
         calling_card_cta_label:
           (data as unknown as { calling_card_cta_label?: string | null })
             .calling_card_cta_label ?? "",
+        calling_card_logo_url:
+          (data as unknown as { calling_card_logo_url?: string | null })
+            .calling_card_logo_url ?? null,
       };
       // Only update state if the fetched payload actually differs from
       // what we already have — prevents needless re-renders that would
