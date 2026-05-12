@@ -129,9 +129,11 @@ export function CallingCardSection({
           <Input
             id="cc_studio_name"
             value={studioName}
-            onChange={(e) => onChange({ studio_name: e.target.value })}
+            maxLength={20}
+            onChange={(e) => onChange({ studio_name: e.target.value.slice(0, 20) })}
             placeholder={brandName || "Acme 3D Tours"}
           />
+          <p className="text-[11px] text-muted-foreground text-right">{studioName.length}/20</p>
           <p className="text-xs text-muted-foreground">
             Appears inside the green pill on the front of the card.
           </p>
