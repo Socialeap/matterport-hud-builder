@@ -59,11 +59,7 @@ export function CallingCardSection({
 
   const data: CallingCardData = {
     brandName: brandName || "Your Studio",
-    studioName: studioName || brandName || "our 3D Presentation",
-    headline: headline || DEFAULT_HEADLINE,
-    ctaLabel: ctaLabel || DEFAULT_CTA,
-    logoUrl,
-    accentColor: accentColor || "#2d6a4f",
+    studioName: studioName || brandName || "",
     studioUrl,
   };
 
