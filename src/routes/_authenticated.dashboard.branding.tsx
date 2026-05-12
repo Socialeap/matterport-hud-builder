@@ -481,6 +481,7 @@ function BrandingPage() {
     setLogoFile(null);
     setFaviconFile(null);
     setHeroFile(null);
+    setCallingCardLogoFile(null);
     setZipsInput(parsedZips.join(", "));
     setPreviewVersion((n) => n + 1);
     toast.success("Branding settings saved");
