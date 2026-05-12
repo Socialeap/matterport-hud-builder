@@ -47,8 +47,6 @@ export function CallingCardSection({
 }: CallingCardSectionProps) {
   const [face, setFace] = useState<"front" | "back">("front");
   const [logoBusy, setLogoBusy] = useState(false);
-  const [adjustLogo, setAdjustLogo] = useState(false);
-  const [placement, setPlacement] = useState<LogoPlacement>(DEFAULT_LOGO_PLACEMENT);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const studioUrl = useMemo(
