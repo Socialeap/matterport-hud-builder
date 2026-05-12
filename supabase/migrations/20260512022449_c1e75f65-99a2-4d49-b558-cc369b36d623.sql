@@ -1,0 +1,1 @@
+ALTER TABLE public.branding_settings ADD COLUMN IF NOT EXISTS calling_card_logo_url text;

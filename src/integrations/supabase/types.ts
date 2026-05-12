@@ -311,6 +311,7 @@ export type Database = {
           brand_name: string
           calling_card_cta_label: string | null
           calling_card_headline: string | null
+          calling_card_logo_url: string | null
           calling_card_studio_name: string | null
           country: string
           created_at: string
@@ -356,6 +357,7 @@ export type Database = {
           brand_name?: string
           calling_card_cta_label?: string | null
           calling_card_headline?: string | null
+          calling_card_logo_url?: string | null
           calling_card_studio_name?: string | null
           country?: string
           created_at?: string
@@ -401,6 +403,7 @@ export type Database = {
           brand_name?: string
           calling_card_cta_label?: string | null
           calling_card_headline?: string | null
+          calling_card_logo_url?: string | null
           calling_card_studio_name?: string | null
           country?: string
           created_at?: string
