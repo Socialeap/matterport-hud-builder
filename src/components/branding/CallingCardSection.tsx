@@ -190,19 +190,71 @@ export function CallingCardSection({
           </div>
         </div>
 
-        {/* Editable fields — studio name only; the rest of the card art is fixed. */}
+        {/* Editable fields — studio name + logo. The rest of the card art is fixed. */}
         <div className="space-y-2">
           <Label htmlFor="cc_studio_name">Studio Name</Label>
           <Input
             id="cc_studio_name"
             value={studioName}
-            maxLength={20}
-            onChange={(e) => onChange({ studio_name: e.target.value.slice(0, 20) })}
+            maxLength={25}
+            onChange={(e) => onChange({ studio_name: e.target.value.slice(0, 25) })}
             placeholder={brandName || "Acme 3D Tours"}
           />
-          <p className="text-[11px] text-muted-foreground text-right">{studioName.length}/20</p>
+          <p className="text-[11px] text-muted-foreground text-right">{studioName.length}/25</p>
           <p className="text-xs text-muted-foreground">
             Appears inside the green pill on the front of the card.
+          </p>
+        </div>
+
+        {/* Logo upload — square (1:1), auto-converted to WebP under 120 KB */}
+        <div className="space-y-2">
+          <Label htmlFor="cc_logo">Studio Logo (square)</Label>
+          <div className="flex items-center gap-3">
+            <div className="h-16 w-16 flex-none overflow-hidden rounded-full border border-border bg-muted">
+              {livePreviewLogoUrl ? (
+                <img
+                  src={livePreviewLogoUrl}
+                  alt="Calling card logo preview"
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-[10px] text-muted-foreground">
+                  No logo
+                </div>
+              )}
+            </div>
+            <input
+              ref={fileInputRef}
+              id="cc_logo"
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/svg+xml"
+              className="hidden"
+              onChange={(e) => handleLogoFile(e.target.files?.[0] ?? null)}
+            />
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={logoBusy}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Upload className="h-4 w-4 mr-1" />
+              {logoBusy ? "Processing…" : livePreviewLogoUrl ? "Replace" : "Upload"}
+            </Button>
+            {(livePreviewLogoUrl) && (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={logoBusy}
+                onClick={() => handleLogoFile(null)}
+              >
+                <X className="h-4 w-4 mr-1" /> Remove
+              </Button>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Must be a square image (1:1). Automatically converted to WebP and shrunk under 120 KB.
           </p>
         </div>
 
