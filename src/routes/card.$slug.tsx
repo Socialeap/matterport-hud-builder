@@ -72,10 +72,15 @@ function CardPage() {
   return (
     <div className="flex min-h-screen w-full items-center justify-center bg-transparent p-0">
       <div
-        className="w-full overflow-hidden rounded-[18px] bg-white/90 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.25)]"
+        className="relative w-full overflow-hidden rounded-[14px] bg-white/90 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.25)]"
         style={{ aspectRatio: "1920 / 1065" }}
       >
         <CallingCard data={cardData} />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 rounded-[14px] border border-white/20"
+          style={{ boxShadow: "inset 0 0 30px rgba(0,0,0,0.15)" }}
+        />
       </div>
     </div>
   );
