@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Info } from "lucide-react";
 
 export interface CallingCardData {
@@ -15,33 +15,52 @@ export interface CallingCardData {
   studioUrl: string;
 }
 
+export interface LogoPlacement {
+  /** Center-X as a % of card width. */
+  left: number;
+  /** Center-Y as a % of card height. */
+  top: number;
+  /** Diameter as a % of card width (aspect 1:1). */
+  width: number;
+}
+
+/** Production defaults — tuned via the in-dashboard "Adjust logo position" tool. */
+export const DEFAULT_LOGO_PLACEMENT: LogoPlacement = {
+  left: 71,
+  top: 63,
+  width: 28,
+};
+
 interface CallingCardProps {
   data: CallingCardData;
   /** Force a specific face (for editor preview controls). If undefined, click toggles. */
   forcedFace?: "front" | "back";
   className?: string;
+  /** Override the baked-in logo placement (used by the dashboard adjuster). */
+  logoPlacement?: LogoPlacement;
+  /** When true, the logo overlay becomes draggable and a placeholder is shown if no logoUrl. */
+  adjustLogo?: boolean;
+  /** Drag callback — emits new placement as %s. */
+  onLogoPlacementChange?: (p: LogoPlacement) => void;
 }
 
 const FRONT_SRC = "/card-assets/calling-card-front.png";
 const BACK_SRC = "/card-assets/calling-card-back.png";
 
-/**
- * Flippable Calling Card. The front and back faces are pre-designed
- * artwork (PNG); this component only:
- *   1. composes the flip container,
- *   2. overlays the editable studio name on the front,
- *   3. wires the back-button, Smart-Chat info tooltip, and Start CTA on the back.
- *
- * The card uses the front image's native aspect ratio (1920:1065) so the
- * artwork is never distorted. The back image (1920:1049) is letterboxed to
- * the same aspect via object-contain — visually indistinguishable.
- */
-export function CallingCard({ data, forcedFace, className }: CallingCardProps) {
+export function CallingCard({
+  data,
+  forcedFace,
+  className,
+  logoPlacement,
+  adjustLogo = false,
+  onLogoPlacementChange,
+}: CallingCardProps) {
   const [flipped, setFlipped] = useState(false);
   const isFlipped = forcedFace ? forcedFace === "back" : flipped;
+  const placement = logoPlacement ?? DEFAULT_LOGO_PLACEMENT;
 
   const flipToBack = () => {
-    if (!forcedFace) setFlipped(true);
+    if (!forcedFace && !adjustLogo) setFlipped(true);
   };
   const flipToFront = () => {
     if (!forcedFace) setFlipped(false);
@@ -68,7 +87,14 @@ export function CallingCard({ data, forcedFace, className }: CallingCardProps) {
           className="absolute inset-0 overflow-hidden rounded-2xl bg-white"
           style={{ backfaceVisibility: "hidden" }}
         >
-          <CardFront data={data} onFlip={flipToBack} interactive={!forcedFace} />
+          <CardFront
+            data={data}
+            onFlip={flipToBack}
+            interactive={!forcedFace && !adjustLogo}
+            placement={placement}
+            adjustLogo={adjustLogo}
+            onLogoPlacementChange={onLogoPlacementChange}
+          />
         </div>
 
         {/* BACK */}
@@ -90,13 +116,63 @@ function CardFront({
   data,
   onFlip,
   interactive,
+  placement,
+  adjustLogo,
+  onLogoPlacementChange,
 }: {
   data: CallingCardData;
   onFlip: () => void;
   interactive: boolean;
+  placement: LogoPlacement;
+  adjustLogo: boolean;
+  onLogoPlacementChange?: (p: LogoPlacement) => void;
 }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const dragOffsetRef = useRef<{ dx: number; dy: number } | null>(null);
+
+  const beginDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!adjustLogo || !cardRef.current) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const rect = cardRef.current.getBoundingClientRect();
+    const pointerLeftPct = ((e.clientX - rect.left) / rect.width) * 100;
+    const pointerTopPct = ((e.clientY - rect.top) / rect.height) * 100;
+    dragOffsetRef.current = {
+      dx: pointerLeftPct - placement.left,
+      dy: pointerTopPct - placement.top,
+    };
+    (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+  };
+
+  const onDragMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!adjustLogo || !cardRef.current || !dragOffsetRef.current) return;
+    const rect = cardRef.current.getBoundingClientRect();
+    const pointerLeftPct = ((e.clientX - rect.left) / rect.width) * 100;
+    const pointerTopPct = ((e.clientY - rect.top) / rect.height) * 100;
+    const next: LogoPlacement = {
+      left: clamp(pointerLeftPct - dragOffsetRef.current.dx, 0, 100),
+      top: clamp(pointerTopPct - dragOffsetRef.current.dy, 0, 100),
+      width: placement.width,
+    };
+    onLogoPlacementChange?.(next);
+  };
+
+  const endDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (dragOffsetRef.current) {
+      dragOffsetRef.current = null;
+      try {
+        (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId);
+      } catch {
+        /* noop */
+      }
+    }
+  };
+
+  const showLogoBox = adjustLogo || !!data.logoUrl;
+
   return (
     <div
+      ref={cardRef}
       className="relative h-full w-full"
       onClick={interactive ? onFlip : undefined}
       role={interactive ? "button" : undefined}
@@ -111,23 +187,37 @@ function CardFront({
       />
 
       {/* MSP logo overlay — sits on top of the grey circle placeholder on the right */}
-      {data.logoUrl && (
+      {showLogoBox && (
         <div
-          className="absolute overflow-hidden rounded-full bg-white shadow-md ring-2 ring-white"
+          className={`absolute overflow-hidden rounded-full bg-white shadow-md ring-2 ring-white ${
+            adjustLogo ? "outline outline-2 outline-dashed outline-emerald-500/80" : ""
+          }`}
           style={{
-            left: "71%",
-            top: "63%",
-            width: "28%",
+            left: `${placement.left}%`,
+            top: `${placement.top}%`,
+            width: `${placement.width}%`,
             aspectRatio: "1 / 1",
             transform: "translate(-50%, -50%)",
+            cursor: adjustLogo ? "grab" : "default",
+            touchAction: adjustLogo ? "none" : undefined,
           }}
+          onPointerDown={beginDrag}
+          onPointerMove={onDragMove}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
         >
-          <img
-            src={data.logoUrl}
-            alt={`${data.brandName} logo`}
-            className="h-full w-full object-cover select-none"
-            draggable={false}
-          />
+          {data.logoUrl ? (
+            <img
+              src={data.logoUrl}
+              alt={`${data.brandName} logo`}
+              className="h-full w-full object-cover select-none pointer-events-none"
+              draggable={false}
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-emerald-100/40 text-emerald-700 select-none pointer-events-none">
+              <span style={{ fontSize: "2cqw" }}>Logo</span>
+            </div>
+          )}
         </div>
       )}
 
@@ -157,6 +247,10 @@ function CardFront({
       </div>
     </div>
   );
+}
+
+function clamp(n: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, n));
 }
 
 function CardBack({
