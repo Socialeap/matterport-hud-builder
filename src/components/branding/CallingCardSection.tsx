@@ -160,13 +160,7 @@ export function CallingCardSection({
         {/* Live preview */}
         <div className="rounded-lg border border-border bg-muted/30 p-4">
           <div className="mx-auto max-w-2xl">
-            <CallingCard
-              data={data}
-              forcedFace={adjustLogo ? "front" : face}
-              logoPlacement={placement}
-              adjustLogo={adjustLogo}
-              onLogoPlacementChange={setPlacement}
-            />
+            <CallingCard data={data} forcedFace={face} />
           </div>
           <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
             <Button
@@ -174,7 +168,6 @@ export function CallingCardSection({
               size="sm"
               variant={face === "front" ? "default" : "outline"}
               onClick={() => setFace("front")}
-              disabled={adjustLogo}
             >
               Front
             </Button>
@@ -183,7 +176,6 @@ export function CallingCardSection({
               size="sm"
               variant={face === "back" ? "default" : "outline"}
               onClick={() => setFace("back")}
-              disabled={adjustLogo}
             >
               Back
             </Button>
@@ -192,82 +184,10 @@ export function CallingCardSection({
               size="sm"
               variant="ghost"
               onClick={() => setFace((f) => (f === "front" ? "back" : "front"))}
-              disabled={adjustLogo}
             >
               <RotateCw className="h-4 w-4 mr-1" /> Flip
             </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={adjustLogo ? "default" : "outline"}
-              onClick={() => setAdjustLogo((v) => !v)}
-            >
-              <Move className="h-4 w-4 mr-1" />
-              {adjustLogo ? "Done" : "Adjust logo position"}
-            </Button>
           </div>
-
-          {adjustLogo && (
-            <div className="mt-3 rounded-md border border-emerald-500/40 bg-emerald-50/60 p-3 text-xs">
-              <div className="mb-2 font-semibold text-emerald-900">
-                Drag the dashed circle into place. Use the buttons to resize.
-              </div>
-              <div className="flex flex-wrap items-center gap-3">
-                <span className="font-mono">
-                  left: {placement.left.toFixed(2)}% · top: {placement.top.toFixed(2)}% · width: {placement.width.toFixed(2)}%
-                </span>
-                <div className="flex items-center gap-1">
-                  <span className="text-muted-foreground">Size:</span>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="h-6 px-2"
-                    onClick={() =>
-                      setPlacement((p) => ({ ...p, width: Math.max(2, +(p.width - 0.5).toFixed(2)) }))
-                    }
-                  >
-                    −
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="h-6 px-2"
-                    onClick={() =>
-                      setPlacement((p) => ({ ...p, width: Math.min(100, +(p.width + 0.5).toFixed(2)) }))
-                    }
-                  >
-                    +
-                  </Button>
-                </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() =>
-                    copy(
-                      `left: ${placement.left.toFixed(2)}%, top: ${placement.top.toFixed(2)}%, width: ${placement.width.toFixed(2)}%`,
-                      "Coordinates",
-                    )
-                  }
-                >
-                  <Copy className="h-3.5 w-3.5 mr-1" /> Copy coordinates
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setPlacement(DEFAULT_LOGO_PLACEMENT)}
-                >
-                  Reset
-                </Button>
-              </div>
-              <p className="mt-2 text-muted-foreground">
-                Positioning here is preview-only. Send me the coordinates to bake them in permanently.
-              </p>
-            </div>
-          )}
         </div>
 
         {/* Editable fields — studio name + logo. The rest of the card art is fixed. */}
