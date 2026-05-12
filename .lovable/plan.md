@@ -1,53 +1,45 @@
-## Changes to `/dashboard/branding`
+## Fix: Service Area tab is dead when Marketplace Listing is off
 
-### 1. Calling Card pill: center the studio name + raise limit to 30
+### Root cause
+In `src/routes/_authenticated.dashboard.branding.tsx`, the `TabsTrigger` for `value="area"` is hard-disabled whenever `branding.is_directory_public` is `false`. The tab content also short-circuits with `branding.is_directory_public ? (...editor...) : null`. Result: a permanently grayed-out tab with no actionable path, and users can't pre-configure their service radius / polygon before going live.
 
-**File:** `src/components/branding/CallingCard.tsx` (CardFront)
-- Change the studio-name overlay from left-aligned to **horizontally centered** so any name length sits dead-center inside the green pill. Wrap the `<span>` in a `flex items-center justify-center` container (text-align center, no `text-left`).
-- Replace `slice(0, 25)` with `slice(0, 30)`.
+### Tab purpose (for context)
+Controls how the marketplace matcher assigns inbound agent leads to your studio:
+- **Service Radius (miles)** — fallback radius (Starter + Pro)
+- **Custom Polygon** — exact-shape match, Pro-only, drawn with the lazy-loaded Leaflet editor (`ServiceAreaMap`)
 
-**File:** `src/components/branding/CallingCardSection.tsx`
-- Studio Name `<Input maxLength={25}>` → `maxLength={30}`.
-- `e.target.value.slice(0, 25)` → `slice(0, 30)`.
-- Counter `{studioName.length}/25` → `/30`.
+These values are only *consumed* by the matcher when `is_directory_public = true`, so gating them was an attempt to avoid "knobs with no effect" — but it backfired UX-wise.
 
-### 2. Convert sections to horizontal tabs sharing one container
+### Changes (UI/presentation only — no business logic, no schema, no matcher changes)
 
 **File:** `src/routes/_authenticated.dashboard.branding.tsx`
 
-Use the existing shadcn `Tabs` primitive (`@/components/ui/tabs`). Replace the current vertical stack of `<Card>` sections with a single tabbed container. Each tab body keeps its current contents — no business logic changes, no field renames, no removal of any feature.
+1. **Un-disable the tab trigger** (line ~552–559)
+   - Remove `disabled={!branding.is_directory_public}` and the conditional `title`.
+   - Keep label "Service Area" with same `text-xs sm:text-sm` styling so the 6-col grid stays balanced.
 
-**Tab order (left → right):**
+2. **Replace the `branding.is_directory_public ? (...) : null` gate** in the `TabsContent value="area"` block (line ~1019–1020) with an always-rendered `<Card>`. Inside the `CardContent`, prepend a conditional banner shown only when `!branding.is_directory_public`:
+   ```
+   ┌──────────────────────────────────────────────┐
+   │ ⓘ Marketplace Listing is off                 │
+   │ These settings only take effect once your    │
+   │ studio is listed. You can configure them now │
+   │ and publish later.                           │
+   │            [ Go to Marketplace tab ]         │
+   └──────────────────────────────────────────────┘
+   ```
+   - Use the existing dashed-primary banner pattern already used at line ~1010 for visual consistency.
+   - The button uses local React state to switch the active tab. To support that, lift `Tabs` from uncontrolled (`defaultValue`) to controlled (`value` + `onValueChange`) with a `useState<string>("identity")`. This is a minimal, contained refactor.
 
-| Tab | Short label | Contains |
-|---|---|---|
-| 1 | Identity | Current "Brand Identity" card body (brand name, gate label, accent/HUD colors, logo/favicon, hero background + dimming) |
-| 2 | Studio URL | "Studio URL" card body **merged with** "Whitelabel Settings" card body (slug + custom domain + locked-state upgrade prompt) |
-| 3 | Card | Current `CallingCardSection` |
-| 4 | Marketplace | "Marketplace Listing" card body (toggle, city/state, ZIPs, contact, specialties) |
-| 5 | Service Area | The existing conditional Service Area card. Tab is disabled (greyed) when `branding.is_directory_public` is false, with a hint tooltip "Enable Marketplace Listing first." |
-| 6 | Preview | `StudioPreviewPanel` |
+3. **Leave the rest of the area-tab body unchanged**: Service Radius input, Pro polygon editor (with its existing `Lock` icon and Starter upgrade CTA) all render exactly as today. The matcher still ignores the values until `is_directory_public` flips on, so there is zero behavioral risk.
 
-Labels are kept short (≤11 chars) so the `TabsList` with `grid grid-cols-6 w-full` distributes them evenly across the page width. Use `text-xs sm:text-sm` for responsive fit on small viewports.
+### Out of scope
+- No changes to `is_directory_public` save semantics, geocoding, polygon RPC, marketplace matcher edge function, RLS, or schema.
+- No changes to `CallingCard.tsx`, `CallingCardSection.tsx`, `ServiceAreaMap.tsx`.
+- No tab reordering, label changes, or container-width changes.
 
-The Whitelabel merge inside the Studio URL tab renders as two stacked subsections separated by a `<Separator />` with their own H4 headers ("Public URL Slug" and "Custom Domain / Whitelabel"), preserving the lock state and upgrade CTA exactly as today.
-
-### 3. Move Save button to the page header
-
-- Remove the bottom `<div className="flex justify-end"><Button>Save Changes</Button></div>`.
-- In the top header row (where the `Tier` badge lives), restructure to:
-  ```
-  [Title + subtitle]      [Save Changes]  [Tier pill]
-  ```
-  Save button uses `size="sm"`, sits immediately to the left of the Tier badge, shows "Saving…" while in flight, and is disabled when `!hasUnsavedChanges` to give visual feedback that there's nothing to save.
-
-### Out of scope (not touched)
-- Save handler logic, validation, geocoding, polygon RPC, marketplace matcher trigger.
-- Database schema, RLS, edge functions.
-- The CallingCard's logo overlay coordinates and back-face hotspots.
-- Container-width container (`max-w-3xl`) is kept so the tabbed view sits at the same page width.
-
-### Files edited
-1. `src/components/branding/CallingCard.tsx` — pill centering + 30-char slice.
-2. `src/components/branding/CallingCardSection.tsx` — 30-char input limit/counter.
-3. `src/routes/_authenticated.dashboard.branding.tsx` — Tabs refactor, Whitelabel merge into Studio URL tab, Save button relocation.
+### Verification
+- Open `/dashboard/branding` with Marketplace Listing **off** → Service Area tab is clickable, shows the banner + radius input + (Pro) polygon editor or (Starter) upgrade CTA.
+- Click "Go to Marketplace tab" → switches to Marketplace tab; toggling on Marketplace Listing and returning to Service Area hides the banner.
+- Open with Marketplace Listing **on** → identical to today (no banner, full editor).
+- Confirm 6-tab grid layout still fits at 922px viewport.
