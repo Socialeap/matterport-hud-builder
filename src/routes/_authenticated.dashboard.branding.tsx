@@ -401,6 +401,7 @@ function BrandingPage() {
           calling_card_studio_name: branding.calling_card_studio_name?.trim() || null,
           calling_card_headline: branding.calling_card_headline?.trim() || null,
           calling_card_cta_label: branding.calling_card_cta_label?.trim() || null,
+          calling_card_logo_url: callingCardLogoUrl,
         } as any,
         { onConflict: "provider_id" }
       );
