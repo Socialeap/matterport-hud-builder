@@ -26,9 +26,6 @@ interface CallingCardSectionProps {
   }) => void;
 }
 
-const DEFAULT_HEADLINE = "Your Custom 3D Presentation Starts Here…";
-const DEFAULT_CTA = "Visit our 3D Presentation Studio";
-
 export function CallingCardSection({
   brandName,
   accentColor,
