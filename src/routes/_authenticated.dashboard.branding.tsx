@@ -443,6 +443,7 @@ function BrandingPage() {
       logo_url: logoUrl,
       favicon_url: faviconUrl,
       hero_bg_url: heroUrl,
+      calling_card_logo_url: callingCardLogoUrl,
       service_zips: parsedZips,
       specialties: allowedSpecialties,
     };
