@@ -135,6 +135,7 @@ function BrandingPage() {
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [faviconFile, setFaviconFile] = useState<File | null>(null);
   const [heroFile, setHeroFile] = useState<File | null>(null);
+  const [callingCardLogoFile, setCallingCardLogoFile] = useState<File | null>(null);
   const [savedSnapshot, setSavedSnapshot] = useState<BrandingData>(defaultBranding);
   const savedSnapshotRef = useRef<BrandingData>(defaultBranding);
   const [previewVersion, setPreviewVersion] = useState(0);
