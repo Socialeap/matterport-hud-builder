@@ -737,6 +737,27 @@ function BrandingPage() {
         </CardContent>
       </Card>
 
+      {/* Calling Card — embeddable digital business card */}
+      <CallingCardSection
+        brandName={branding.brand_name}
+        accentColor={branding.accent_color}
+        logoUrl={logoFile ? URL.createObjectURL(logoFile) : branding.logo_url}
+        slug={branding.slug}
+        tier={branding.tier}
+        customDomain={branding.custom_domain}
+        studioName={branding.calling_card_studio_name}
+        headline={branding.calling_card_headline}
+        ctaLabel={branding.calling_card_cta_label}
+        onChange={(patch) =>
+          setBranding((prev) => ({
+            ...prev,
+            ...(patch.studio_name !== undefined && { calling_card_studio_name: patch.studio_name }),
+            ...(patch.headline !== undefined && { calling_card_headline: patch.headline }),
+            ...(patch.cta_label !== undefined && { calling_card_cta_label: patch.cta_label }),
+          }))
+        }
+      />
+
       {/* Pro-only section */}
       <Card className={!customDomainUnlocked ? "opacity-75" : ""}>
         <CardHeader>
