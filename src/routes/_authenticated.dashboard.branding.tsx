@@ -90,6 +90,7 @@ interface BrandingData {
   calling_card_studio_name: string;
   calling_card_headline: string;
   calling_card_cta_label: string;
+  calling_card_logo_url: string | null;
 }
 
 const defaultBranding: BrandingData = {
@@ -122,6 +123,7 @@ const defaultBranding: BrandingData = {
   calling_card_studio_name: "",
   calling_card_headline: "",
   calling_card_cta_label: "",
+  calling_card_logo_url: null,
 };
 
 function BrandingPage() {
@@ -133,6 +135,7 @@ function BrandingPage() {
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [faviconFile, setFaviconFile] = useState<File | null>(null);
   const [heroFile, setHeroFile] = useState<File | null>(null);
+  const [callingCardLogoFile, setCallingCardLogoFile] = useState<File | null>(null);
   const [savedSnapshot, setSavedSnapshot] = useState<BrandingData>(defaultBranding);
   const savedSnapshotRef = useRef<BrandingData>(defaultBranding);
   const [previewVersion, setPreviewVersion] = useState(0);
@@ -146,8 +149,9 @@ function BrandingPage() {
       !!logoFile ||
       !!faviconFile ||
       !!heroFile ||
+      !!callingCardLogoFile ||
       zipsInput !== savedSnapshot.service_zips.join(", "),
-    [branding, savedSnapshot, logoFile, faviconFile, heroFile, zipsInput],
+    [branding, savedSnapshot, logoFile, faviconFile, heroFile, callingCardLogoFile, zipsInput],
   );
 
   const isPro = branding.tier === "pro";
@@ -214,6 +218,9 @@ function BrandingPage() {
         calling_card_cta_label:
           (data as unknown as { calling_card_cta_label?: string | null })
             .calling_card_cta_label ?? "",
+        calling_card_logo_url:
+          (data as unknown as { calling_card_logo_url?: string | null })
+            .calling_card_logo_url ?? null,
       };
       // Only update state if the fetched payload actually differs from
       // what we already have — prevents needless re-renders that would
@@ -333,6 +340,7 @@ function BrandingPage() {
     let logoUrl = branding.logo_url;
     let faviconUrl = branding.favicon_url;
     let heroUrl = branding.hero_bg_url;
+    let callingCardLogoUrl = branding.calling_card_logo_url;
 
     // Upload files if changed
     if (logoFile) {
@@ -349,6 +357,11 @@ function BrandingPage() {
       const url = await uploadBrandAsset(user.id, heroFile, "hero");
       if (url) heroUrl = url;
       else toast.error("Failed to upload hero background");
+    }
+    if (callingCardLogoFile) {
+      const url = await uploadBrandAsset(user.id, callingCardLogoFile, "logo");
+      if (url) callingCardLogoUrl = url;
+      else toast.error("Failed to upload calling-card logo");
     }
 
     // Strip Pro-only specialty tags if the MSP is on Starter — defense
@@ -388,6 +401,7 @@ function BrandingPage() {
           calling_card_studio_name: branding.calling_card_studio_name?.trim() || null,
           calling_card_headline: branding.calling_card_headline?.trim() || null,
           calling_card_cta_label: branding.calling_card_cta_label?.trim() || null,
+          calling_card_logo_url: callingCardLogoUrl,
         } as any,
         { onConflict: "provider_id" }
       );
@@ -429,6 +443,7 @@ function BrandingPage() {
       logo_url: logoUrl,
       favicon_url: faviconUrl,
       hero_bg_url: heroUrl,
+      calling_card_logo_url: callingCardLogoUrl,
       service_zips: parsedZips,
       specialties: allowedSpecialties,
     };
@@ -466,6 +481,7 @@ function BrandingPage() {
     setLogoFile(null);
     setFaviconFile(null);
     setHeroFile(null);
+    setCallingCardLogoFile(null);
     setZipsInput(parsedZips.join(", "));
     setPreviewVersion((n) => n + 1);
     toast.success("Branding settings saved");
@@ -748,6 +764,9 @@ function BrandingPage() {
         studioName={branding.calling_card_studio_name}
         headline={branding.calling_card_headline}
         ctaLabel={branding.calling_card_cta_label}
+        callingCardLogoUrl={branding.calling_card_logo_url}
+        callingCardLogoFile={callingCardLogoFile}
+        onCallingCardLogoChange={setCallingCardLogoFile}
         onChange={(patch) =>
           setBranding((prev) => ({
             ...prev,
