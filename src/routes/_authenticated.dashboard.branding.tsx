@@ -90,6 +90,7 @@ interface BrandingData {
   calling_card_studio_name: string;
   calling_card_headline: string;
   calling_card_cta_label: string;
+  calling_card_logo_url: string | null;
 }
 
 const defaultBranding: BrandingData = {
