@@ -4,14 +4,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Copy, ExternalLink, IdCard, Move, RotateCw, Upload, X } from "lucide-react";
+import { Copy, ExternalLink, IdCard, RotateCw, Upload, X } from "lucide-react";
 import { toast } from "sonner";
-import {
-  CallingCard,
-  DEFAULT_LOGO_PLACEMENT,
-  type CallingCardData,
-  type LogoPlacement,
-} from "./CallingCard";
+import { CallingCard, type CallingCardData } from "./CallingCard";
 import { buildStudioUrl, getPublicBaseUrl } from "@/lib/public-url";
 import { optimizeBrandImage } from "@/lib/portal/image-optimizer";
 
