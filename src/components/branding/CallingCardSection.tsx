@@ -66,7 +66,7 @@ export function CallingCardSection({
     // Tighter container: matches the card's 1920:1065 aspect at 600×333,
     // rounded corners, transparent background so the soft 90%-opacity
     // edge band rendered by /card/$slug shows through.
-    return `<div style="position:relative;width:600px;max-width:100%;aspect-ratio:1920/1065;border-radius:18px;overflow:hidden;box-shadow:0 20px 40px -12px rgba(0,0,0,0.25);"><iframe src="${cardUrl}" style="width:100%;height:100%;border:0;display:block;background:transparent;" allowfullscreen></iframe><div style="position:absolute;inset:0;pointer-events:none;border-radius:18px;box-shadow:inset 0 0 30px rgba(0,0,0,0.15);border:1px solid rgba(255,255,255,0.2);"></div></div>`;
+    return `<div style="position:relative;width:600px;max-width:100%;aspect-ratio:1920/1065;border-radius:14px;overflow:hidden;box-shadow:0 20px 40px -12px rgba(0,0,0,0.25);"><iframe src="${cardUrl}" style="width:100%;height:100%;border:0;display:block;background:transparent;" allowfullscreen></iframe><div style="position:absolute;inset:0;pointer-events:none;border-radius:14px;box-shadow:inset 0 0 30px rgba(0,0,0,0.15);border:1px solid rgba(255,255,255,0.2);"></div></div>`;
   }, [cardUrl]);
 
   // Live preview source: pending upload (object URL) > saved URL.
