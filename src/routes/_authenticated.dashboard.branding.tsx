@@ -149,8 +149,9 @@ function BrandingPage() {
       !!logoFile ||
       !!faviconFile ||
       !!heroFile ||
+      !!callingCardLogoFile ||
       zipsInput !== savedSnapshot.service_zips.join(", "),
-    [branding, savedSnapshot, logoFile, faviconFile, heroFile, zipsInput],
+    [branding, savedSnapshot, logoFile, faviconFile, heroFile, callingCardLogoFile, zipsInput],
   );
 
   const isPro = branding.tier === "pro";
