@@ -24,6 +24,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { buildStudioUrl } from "@/lib/public-url";
 import { useMspAccess } from "@/hooks/use-msp-access";
 import { StudioPreviewPanel } from "@/components/dashboard/StudioPreviewPanel";
+import { CallingCardSection } from "@/components/branding/CallingCardSection";
 import type { Database } from "@/integrations/supabase/types";
 
 type MarketplaceSpecialty = Database["public"]["Enums"]["marketplace_specialty"];
