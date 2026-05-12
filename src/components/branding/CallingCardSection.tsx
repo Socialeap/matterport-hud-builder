@@ -26,9 +26,6 @@ interface CallingCardSectionProps {
   }) => void;
 }
 
-const DEFAULT_HEADLINE = "Your Custom 3D Presentation Starts Here…";
-const DEFAULT_CTA = "Visit our 3D Presentation Studio";
-
 export function CallingCardSection({
   brandName,
   accentColor,
@@ -62,11 +59,7 @@ export function CallingCardSection({
 
   const data: CallingCardData = {
     brandName: brandName || "Your Studio",
-    studioName: studioName || brandName || "our 3D Presentation",
-    headline: headline || DEFAULT_HEADLINE,
-    ctaLabel: ctaLabel || DEFAULT_CTA,
-    logoUrl,
-    accentColor: accentColor || "#2d6a4f",
+    studioName: studioName || brandName || "",
     studioUrl,
   };
 
@@ -130,46 +123,18 @@ export function CallingCardSection({
           </div>
         </div>
 
-        {/* Editable fields */}
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="cc_studio_name">Studio Name</Label>
-            <Input
-              id="cc_studio_name"
-              value={studioName}
-              onChange={(e) => onChange({ studio_name: e.target.value })}
-              placeholder={brandName || "Acme 3D Tours"}
-            />
-            <p className="text-xs text-muted-foreground">
-              Used in the call-to-action when the label contains <code className="rounded bg-muted px-1">{"{studio}"}</code>.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="cc_headline">Headline</Label>
-            <Input
-              id="cc_headline"
-              value={headline}
-              onChange={(e) => onChange({ headline: e.target.value })}
-              placeholder={DEFAULT_HEADLINE}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="cc_cta">CTA Button Label</Label>
-            <Input
-              id="cc_cta"
-              value={ctaLabel}
-              onChange={(e) => onChange({ cta_label: e.target.value })}
-              placeholder={DEFAULT_CTA}
-            />
-          </div>
-        </div>
-
-        {/* Logo source note */}
-        <div className="rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground">
-          The circular logo on the front uses your <strong>Primary Logo</strong> from the Brand
-          Identity section above. Update it there to update the card.
+        {/* Editable fields — studio name only; the rest of the card art is fixed. */}
+        <div className="space-y-2">
+          <Label htmlFor="cc_studio_name">Studio Name</Label>
+          <Input
+            id="cc_studio_name"
+            value={studioName}
+            onChange={(e) => onChange({ studio_name: e.target.value })}
+            placeholder={brandName || "Acme 3D Tours"}
+          />
+          <p className="text-xs text-muted-foreground">
+            Appears inside the green pill on the front of the card.
+          </p>
         </div>
 
         {/* Embed / share panel */}
