@@ -123,8 +123,9 @@ interface PortalSearch {
 }
 
 export const Route = createFileRoute("/p/$slug/")({
-  head: ({ params, loaderData }) => {
-    const b = loaderData?.branding as
+  head: (ctx: { params: { slug: string }; loaderData?: unknown }) => {
+    const ld = ctx.loaderData as { branding?: Record<string, unknown> | null } | undefined;
+    const b = (ld?.branding ?? null) as
       | (Record<string, unknown> & {
           brand_name?: string | null;
           tagline?: string | null;
@@ -137,8 +138,7 @@ export const Route = createFileRoute("/p/$slug/")({
           service_city?: string | null;
           service_region?: string | null;
         })
-      | null
-      | undefined;
+      | null;
     const brandName = (b?.brand_name && b.brand_name.trim()) || "3D Presentation Studio";
     const title = `${brandName} — Branded 3D Property Tours`;
     const tagline = (b?.tagline && b.tagline.trim()) || null;
