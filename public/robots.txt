@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /admin
+Disallow: /agent-dashboard
+Disallow: /invite/
+Disallow: /reset-password
+Disallow: /forgot-password
+Disallow: /unsubscribe
+Disallow: /work-orders/
+Disallow: /marketplace/
+
+Sitemap: https://3dps.transcendencemedia.com/sitemap.xml
