@@ -21,7 +21,32 @@
  * (single Polygon column / RPC payload).
  */
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { CheckCircle2, MapPin, Pencil } from "lucide-react";
+
+/**
+ * Approximate area of a lat/lng polygon ring in square miles using the
+ * spherical excess formula. Ring should be an array of [lng, lat] or
+ * Leaflet LatLngs; we pass LatLngs from the editor below.
+ */
+function polygonAreaSqMi(latlngs: { lat: number; lng: number }[]): number {
+  if (latlngs.length < 3) return 0;
+  const R = 6378137; // earth radius (m)
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  let area = 0;
+  for (let i = 0; i < latlngs.length; i++) {
+    const p1 = latlngs[i];
+    const p2 = latlngs[(i + 1) % latlngs.length];
+    area +=
+      toRad(p2.lng - p1.lng) *
+      (2 + Math.sin(toRad(p1.lat)) + Math.sin(toRad(p2.lat)));
+  }
+  area = Math.abs((area * R * R) / 2); // m²
+  const sqMi = area / 2_589_988.11;
+  return Math.round(sqMi);
+}
 
 interface Props {
   initialPolygon: GeoJSON.Polygon | null;
@@ -57,6 +82,20 @@ export function ServiceAreaMap({
   const [mode, setMode] = useState<Mode>("idle");
   const [vertexCount, setVertexCount] = useState(0);
   const [hasPolygon, setHasPolygon] = useState(false);
+  const [areaSqMi, setAreaSqMi] = useState(0);
+  const [polyVertexCount, setPolyVertexCount] = useState(0);
+
+  const recomputeStats = () => {
+    const poly = polygonRef.current;
+    if (!poly) {
+      setAreaSqMi(0);
+      setPolyVertexCount(0);
+      return;
+    }
+    const ring = (poly.getLatLngs()[0] as { lat: number; lng: number }[]) ?? [];
+    setPolyVertexCount(ring.length);
+    setAreaSqMi(polygonAreaSqMi(ring));
+  };
 
   // ---- helpers (defined inside effect closure via refs) ----
   const helpersRef = useRef<{
@@ -199,6 +238,7 @@ export function ServiceAreaMap({
             const updated = editMarkersRef.current.map((mm) => mm.getLatLng());
             poly.setLatLngs([updated]);
             emitPolygon();
+            recomputeStats();
           });
           // Right-click a vertex to delete it (min 3 retained).
           marker.on("contextmenu", (ev) => {
@@ -211,6 +251,7 @@ export function ServiceAreaMap({
             // Rebuild so indices stay correct.
             buildEditMarkers();
             emitPolygon();
+            recomputeStats();
           });
           editMarkersRef.current.push(marker);
         });
@@ -223,6 +264,7 @@ export function ServiceAreaMap({
         buildEditMarkers();
         setHasPolygon(true);
         emitPolygon();
+        recomputeStats();
         return true;
       };
 
@@ -231,6 +273,8 @@ export function ServiceAreaMap({
           removePolygon();
           removeDrawing();
           setHasPolygon(false);
+          setAreaSqMi(0);
+          setPolyVertexCount(0);
           map.getContainer().dataset.mode = "drawing";
           map.getContainer().style.cursor = "crosshair";
           setMode("drawing");
@@ -241,15 +285,27 @@ export function ServiceAreaMap({
           map.getContainer().dataset.mode = ok ? "editing" : "idle";
           map.getContainer().style.cursor = "";
           setMode(ok ? "editing" : "idle");
+          if (ok) {
+            toast.success("Service area captured", {
+              description:
+                "Click Save Branding to publish it to the MSP Directory.",
+            });
+          } else {
+            toast.error("Need at least 3 points to form an area.");
+          }
         },
         clearAll: () => {
+          const had = !!polygonRef.current || drawLatLngsRef.current.length > 0;
           removeDrawing();
           removePolygon();
           setHasPolygon(false);
+          setAreaSqMi(0);
+          setPolyVertexCount(0);
           map.getContainer().dataset.mode = "idle";
           map.getContainer().style.cursor = "";
           setMode("idle");
           onChangeRef.current(null);
+          if (had) toast("Service area cleared");
         },
       };
 
@@ -275,6 +331,7 @@ export function ServiceAreaMap({
               setHasPolygon(true);
               setMode("editing");
               map.getContainer().dataset.mode = "editing";
+              recomputeStats();
               const bounds = polygonRef.current.getBounds();
               if (bounds.isValid()) {
                 map.fitBounds(bounds, { maxZoom: 12, padding: [16, 16] });
@@ -317,7 +374,8 @@ export function ServiceAreaMap({
             variant="default"
             onClick={() => helpersRef.current?.startDrawing()}
           >
-            {hasPolygon ? "Redraw polygon" : "Draw polygon"}
+            <Pencil className="h-3.5 w-3.5 mr-1.5" />
+            {hasPolygon ? "Redraw service area" : "Draw service area"}
           </Button>
         ) : (
           <>
@@ -328,6 +386,7 @@ export function ServiceAreaMap({
               disabled={vertexCount < 3}
               onClick={() => helpersRef.current?.finishDrawing()}
             >
+              <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />
               Finish ({vertexCount} {vertexCount === 1 ? "point" : "points"})
             </Button>
             <Button
@@ -350,14 +409,31 @@ export function ServiceAreaMap({
             Clear
           </Button>
         )}
-        <span className="text-xs text-muted-foreground">
-          {mode === "drawing"
-            ? "Click the map to add boundary points. Click the first point or double-click to finish."
-            : hasPolygon
-            ? "Drag any vertex to adjust. Right-click a vertex to remove it."
-            : "Click \u201CDraw polygon\u201D, then click on the map to outline your service area."}
-        </span>
+        {mode === "drawing" ? (
+          <Badge variant="secondary" className="gap-1">
+            <MapPin className="h-3 w-3" />
+            Drawing… {vertexCount} {vertexCount === 1 ? "point" : "points"}
+          </Badge>
+        ) : hasPolygon ? (
+          <Badge className="gap-1 bg-emerald-600 hover:bg-emerald-600 text-white">
+            <CheckCircle2 className="h-3 w-3" />
+            Captured · {polyVertexCount} pts
+            {areaSqMi > 0 ? ` · ~${areaSqMi.toLocaleString()} sq mi` : ""}
+          </Badge>
+        ) : (
+          <Badge variant="outline" className="gap-1 text-muted-foreground">
+            <MapPin className="h-3 w-3" />
+            No service area set
+          </Badge>
+        )}
       </div>
+      <p className="text-xs text-muted-foreground">
+        {mode === "drawing"
+          ? "Click the map to add boundary points. Click the first point, double-click, or press Finish to close the area."
+          : hasPolygon
+          ? "Area captured. Drag any vertex to adjust, right-click a vertex to remove it, then Save Branding to publish to the MSP Directory."
+          : "Click \u201CDraw service area\u201D, then click on the map to outline where you accept jobs."}
+      </p>
       <div
         ref={containerRef}
         className="h-80 w-full overflow-hidden rounded-md border border-input"
