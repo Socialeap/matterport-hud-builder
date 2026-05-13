@@ -866,8 +866,12 @@ function DirectorySection() {
                       {filtered!.length}{" "}
                       {filtered!.length === 1 ? "studio" : "studios"}
                     </span>
-                    {selectedSpecialties.size > 0
-                      ? " matching your service filters"
+                    {essentialServices.length > 0 && preferableServices.length > 0
+                      ? " matching your essential services, ranked by preferred"
+                      : essentialServices.length > 0
+                      ? " matching your essential services"
+                      : preferableServices.length > 0
+                      ? ", ranked by your preferred services"
                       : " in the directory"}{" "}
                     — search by city or ZIP to narrow.
                   </p>
