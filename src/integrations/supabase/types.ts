@@ -2323,10 +2323,17 @@ export type Database = {
         Returns: boolean
       }
       search_msp_directory: {
-        Args: { p_city?: string; p_zip?: string }
+        Args: {
+          p_city?: string
+          p_lat?: number
+          p_lng?: number
+          p_region?: string
+          p_zip?: string
+        }
         Returns: {
           brand_name: string
           logo_url: string
+          match_reason: string
           primary_city: string
           region: string
           slug: string
