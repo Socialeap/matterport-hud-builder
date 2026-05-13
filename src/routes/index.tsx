@@ -50,10 +50,10 @@ import { HeroSlideshow } from "@/components/HeroSlideshow";
 import tmLogo from "@/assets/tm-logo-landscape.png";
 import { toast } from "sonner";
 
-const SITE_URL = "https://matterport-hud-builder.lovable.app";
-const OG_TITLE = "3D Presentation Studio — Branded Matterport Tour Presentations";
+const SITE_URL = "https://3dps.transcendencemedia.com";
+const OG_TITLE = "White-Label Matterport Tour Studio for MSPs";
 const OG_DESC =
-  "Launch your own white-label studio where clients customize and download a single HTML Matterport 3D tour presentation file they own and can host anywhere. One-time purchase — no subscriptions, no per-tour fees.";
+  "Spin up your own white-label studio. Clients customize and download a single self-contained HTML Matterport 3D tour file — one-time purchase, no subscriptions.";
 const OG_IMAGE = `${SITE_URL}/og-3d-presentation-studio.png`;
 
 export const Route = createFileRoute("/")({
@@ -560,6 +560,7 @@ function Index() {
         )}
       </header>
 
+      <main>
       {/* ---- Hero ---- */}
       <section className="relative z-10 px-4 pt-20 pb-16 sm:pt-28 sm:pb-24 py-[80px]">
         <div className="mx-auto max-w-4xl text-center">
@@ -938,6 +939,7 @@ function Index() {
           </p>
         </div>
       </section>
+      </main>
 
       {/* ---- Footer ---- */}
       <footer className={`relative z-10 border-t ${borderFooter} ${footerBg} backdrop-blur-lg px-4 py-10 transition-colors duration-500`}>

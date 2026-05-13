@@ -1,0 +1,20 @@
+# 3D Presentation Studio
+
+> White-label SaaS platform by Transcendence Media that lets managed service
+> providers (MSPs) build, brand, and distribute interactive 3D Matterport
+> property tour presentations. Clients customize and download a single
+> self-contained HTML presentation file they own and can host anywhere.
+> One-time purchase — no subscriptions, no per-tour fees.
+
+## Pages
+
+- [Home](/): Product overview, features, and pricing for MSPs.
+- [For Agents](/agents): Directory of MSPs serving real estate agents, with location-based search.
+- [Opportunities](/opportunities): Local Demand Board showing markets where agents are waiting for an MSP.
+- [Privacy Policy](/privacy): How 3DPS collects, uses, and protects data.
+- [Terms of Service](/terms): License terms, payment terms, IP, and acceptable use.
+
+## Optional
+
+- [Sign In](/login): Account sign-in.
+- [Activate Studio](/signup): MSP account creation.

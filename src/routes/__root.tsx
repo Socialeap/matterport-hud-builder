@@ -37,11 +37,40 @@ export const Route = createRootRoute({
       { title: "3D Presentation Studio" },
       { name: "description", content: "White-label Matterport 3D tour presentation platform by Transcendence Media." },
       { name: "author", content: "Transcendence Media" },
+      { property: "og:type", content: "website" },
+      { property: "og:site_name", content: "3D Presentation Studio" },
+      { property: "og:title", content: "3D Presentation Studio" },
+      { property: "og:description", content: "White-label Matterport 3D tour presentation platform by Transcendence Media." },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
       { rel: "icon", type: "image/png", href: "/favicon.png" },
       { rel: "apple-touch-icon", href: "/favicon.png" },
+    ],
+    scripts: [
+      {
+        type: "application/ld+json",
+        children: JSON.stringify({
+          "@context": "https://schema.org",
+          "@graph": [
+            {
+              "@type": "Organization",
+              "@id": "https://3dps.transcendencemedia.com/#organization",
+              name: "Transcendence Media",
+              url: "https://3dps.transcendencemedia.com",
+              logo: "https://3dps.transcendencemedia.com/favicon.png",
+            },
+            {
+              "@type": "WebSite",
+              "@id": "https://3dps.transcendencemedia.com/#website",
+              name: "3D Presentation Studio",
+              url: "https://3dps.transcendencemedia.com",
+              publisher: { "@id": "https://3dps.transcendencemedia.com/#organization" },
+            },
+          ],
+        }),
+      },
     ],
   }),
   shellComponent: RootShell,
