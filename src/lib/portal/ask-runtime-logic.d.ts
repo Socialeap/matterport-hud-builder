@@ -107,7 +107,14 @@ export function rescoreChunksByIntent(
   chunks: ChunkHit[],
   intent: IntentLabel | string,
   intentAllows: (field: string, intent: string) => boolean,
-): Array<ChunkHit & { _intentAllowed?: boolean; _intentMatched?: boolean }>;
+  queryText?: string,
+): Array<
+  ChunkHit & {
+    _intentAllowed?: boolean;
+    _intentMatched?: boolean;
+    _keywordPinned?: boolean;
+  }
+>;
 
 export function assembleSynthChunks(
   tier3: ChunkHit[],
