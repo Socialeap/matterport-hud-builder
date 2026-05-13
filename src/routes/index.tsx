@@ -53,7 +53,7 @@ import { toast } from "sonner";
 const SITE_URL = "https://3dps.transcendencemedia.com";
 const OG_TITLE = "White-Label Matterport Tour Studio for MSPs";
 const OG_DESC =
-  "Spin up your own white-label studio. Clients customize and download a single self-contained HTML Matterport 3D tour file — one-time purchase, no subscriptions.";
+  "Spin up your white-label Matterport studio. Clients customize and download a self-contained 3D tour HTML — one-time, no subscriptions.";
 const OG_IMAGE = `${SITE_URL}/og-3d-presentation-studio.png`;
 
 export const Route = createFileRoute("/")({
