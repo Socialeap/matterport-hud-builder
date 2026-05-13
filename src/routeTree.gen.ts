@@ -26,6 +26,7 @@ import { Route as EmailUnsubscribeRouteImport } from './routes/email/unsubscribe
 import { Route as CardSlugRouteImport } from './routes/card.$slug'
 import { Route as ApiMpImageRouteImport } from './routes/api/mp-image'
 import { Route as ApiMarketplaceFeedbackRouteImport } from './routes/api/marketplace-feedback'
+import { Route as ApiGeocodeDirectoryQueryRouteImport } from './routes/api/geocode-directory-query'
 import { Route as ApiGeocodeBrandingRouteImport } from './routes/api/geocode-branding'
 import { Route as ApiGeocodeBeaconRouteImport } from './routes/api/geocode-beacon'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated.dashboard'
@@ -147,6 +148,12 @@ const ApiMarketplaceFeedbackRoute = ApiMarketplaceFeedbackRouteImport.update({
   path: '/api/marketplace-feedback',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiGeocodeDirectoryQueryRoute =
+  ApiGeocodeDirectoryQueryRouteImport.update({
+    id: '/api/geocode-directory-query',
+    path: '/api/geocode-directory-query',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiGeocodeBrandingRoute = ApiGeocodeBrandingRouteImport.update({
   id: '/api/geocode-branding',
   path: '/api/geocode-branding',
@@ -369,6 +376,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof AuthenticatedDashboardRouteWithChildren
   '/api/geocode-beacon': typeof ApiGeocodeBeaconRoute
   '/api/geocode-branding': typeof ApiGeocodeBrandingRoute
+  '/api/geocode-directory-query': typeof ApiGeocodeDirectoryQueryRoute
   '/api/marketplace-feedback': typeof ApiMarketplaceFeedbackRoute
   '/api/mp-image': typeof ApiMpImageRoute
   '/card/$slug': typeof CardSlugRoute
@@ -421,6 +429,7 @@ export interface FileRoutesByTo {
   '/agent-dashboard': typeof AuthenticatedAgentDashboardRouteWithChildren
   '/api/geocode-beacon': typeof ApiGeocodeBeaconRoute
   '/api/geocode-branding': typeof ApiGeocodeBrandingRoute
+  '/api/geocode-directory-query': typeof ApiGeocodeDirectoryQueryRoute
   '/api/marketplace-feedback': typeof ApiMarketplaceFeedbackRoute
   '/api/mp-image': typeof ApiMpImageRoute
   '/card/$slug': typeof CardSlugRoute
@@ -475,6 +484,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRouteWithChildren
   '/api/geocode-beacon': typeof ApiGeocodeBeaconRoute
   '/api/geocode-branding': typeof ApiGeocodeBrandingRoute
+  '/api/geocode-directory-query': typeof ApiGeocodeDirectoryQueryRoute
   '/api/marketplace-feedback': typeof ApiMarketplaceFeedbackRoute
   '/api/mp-image': typeof ApiMpImageRoute
   '/card/$slug': typeof CardSlugRoute
@@ -531,6 +541,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/api/geocode-beacon'
     | '/api/geocode-branding'
+    | '/api/geocode-directory-query'
     | '/api/marketplace-feedback'
     | '/api/mp-image'
     | '/card/$slug'
@@ -583,6 +594,7 @@ export interface FileRouteTypes {
     | '/agent-dashboard'
     | '/api/geocode-beacon'
     | '/api/geocode-branding'
+    | '/api/geocode-directory-query'
     | '/api/marketplace-feedback'
     | '/api/mp-image'
     | '/card/$slug'
@@ -636,6 +648,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard'
     | '/api/geocode-beacon'
     | '/api/geocode-branding'
+    | '/api/geocode-directory-query'
     | '/api/marketplace-feedback'
     | '/api/mp-image'
     | '/card/$slug'
@@ -689,6 +702,7 @@ export interface RootRouteChildren {
   UnsubscribeRoute: typeof UnsubscribeRoute
   ApiGeocodeBeaconRoute: typeof ApiGeocodeBeaconRoute
   ApiGeocodeBrandingRoute: typeof ApiGeocodeBrandingRoute
+  ApiGeocodeDirectoryQueryRoute: typeof ApiGeocodeDirectoryQueryRoute
   ApiMarketplaceFeedbackRoute: typeof ApiMarketplaceFeedbackRoute
   ApiMpImageRoute: typeof ApiMpImageRoute
   CardSlugRoute: typeof CardSlugRoute
@@ -822,6 +836,13 @@ declare module '@tanstack/react-router' {
       path: '/api/marketplace-feedback'
       fullPath: '/api/marketplace-feedback'
       preLoaderRoute: typeof ApiMarketplaceFeedbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/geocode-directory-query': {
+      id: '/api/geocode-directory-query'
+      path: '/api/geocode-directory-query'
+      fullPath: '/api/geocode-directory-query'
+      preLoaderRoute: typeof ApiGeocodeDirectoryQueryRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/geocode-branding': {
@@ -1243,6 +1264,7 @@ const rootRouteChildren: RootRouteChildren = {
   UnsubscribeRoute: UnsubscribeRoute,
   ApiGeocodeBeaconRoute: ApiGeocodeBeaconRoute,
   ApiGeocodeBrandingRoute: ApiGeocodeBrandingRoute,
+  ApiGeocodeDirectoryQueryRoute: ApiGeocodeDirectoryQueryRoute,
   ApiMarketplaceFeedbackRoute: ApiMarketplaceFeedbackRoute,
   ApiMpImageRoute: ApiMpImageRoute,
   CardSlugRoute: CardSlugRoute,

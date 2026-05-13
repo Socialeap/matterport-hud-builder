@@ -197,6 +197,9 @@ interface DirectoryMSP {
   specialties: MarketplaceSpecialty[];
   primary_city: string;
   region: string;
+  // 'polygon' | 'radius' | 'zip' | 'city' | null — set by search_msp_directory.
+  // Null on the browse-all (no-input) path.
+  match_reason?: string | null;
 }
 
 /* ------------------------------------------------------------------ */
