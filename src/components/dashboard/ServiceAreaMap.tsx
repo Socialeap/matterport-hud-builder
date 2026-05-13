@@ -21,7 +21,32 @@
  * (single Polygon column / RPC payload).
  */
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { CheckCircle2, MapPin, Pencil } from "lucide-react";
+
+/**
+ * Approximate area of a lat/lng polygon ring in square miles using the
+ * spherical excess formula. Ring should be an array of [lng, lat] or
+ * Leaflet LatLngs; we pass LatLngs from the editor below.
+ */
+function polygonAreaSqMi(latlngs: { lat: number; lng: number }[]): number {
+  if (latlngs.length < 3) return 0;
+  const R = 6378137; // earth radius (m)
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  let area = 0;
+  for (let i = 0; i < latlngs.length; i++) {
+    const p1 = latlngs[i];
+    const p2 = latlngs[(i + 1) % latlngs.length];
+    area +=
+      toRad(p2.lng - p1.lng) *
+      (2 + Math.sin(toRad(p1.lat)) + Math.sin(toRad(p2.lat)));
+  }
+  area = Math.abs((area * R * R) / 2); // m²
+  const sqMi = area / 2_589_988.11;
+  return Math.round(sqMi);
+}
 
 interface Props {
   initialPolygon: GeoJSON.Polygon | null;
