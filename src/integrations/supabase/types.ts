@@ -510,6 +510,42 @@ export type Database = {
         }
         Relationships: []
       }
+      custom_qas: {
+        Row: {
+          answer: string
+          created_at: string
+          embedding: string | null
+          id: string
+          property_uuid: string
+          provider_id: string
+          question: string
+          saved_model_id: string
+          updated_at: string
+        }
+        Insert: {
+          answer: string
+          created_at?: string
+          embedding?: string | null
+          id?: string
+          property_uuid: string
+          provider_id: string
+          question: string
+          saved_model_id: string
+          updated_at?: string
+        }
+        Update: {
+          answer?: string
+          created_at?: string
+          embedding?: string | null
+          id?: string
+          property_uuid?: string
+          provider_id?: string
+          question?: string
+          saved_model_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       email_send_log: {
         Row: {
           created_at: string
