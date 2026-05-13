@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
-import { Lock, Copy, X, MapPin } from "lucide-react";
+import { Lock, Copy, X, MapPin, CheckCircle2, AlertCircle } from "lucide-react";
 
 // Lazy-loaded so the ~150 KB Leaflet bundle ships only when a Pro
 // MSP actually opens the Service Area editor.
