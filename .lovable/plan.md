@@ -1,46 +1,30 @@
-## Diagnosis
+## Problem
+The polygon editor captures geometry but gives no visible confirmation that (1) the area was registered, (2) it's been saved, or (3) it's what will appear in the MSP Directory. The Finish button exists only during drawing mode, so once a user finishes there's no signal anything happened.
 
-The polygon tool is not intentionally limited to three points.
+## Changes
 
-Current findings:
-- The app uses `leaflet@1.9.4` and `leaflet-draw@1.0.4`.
-- `leaflet-draw@1.0.4` is still the latest official npm release.
-- The library default for polylines/polygons is `maxPoints: 0`, meaning no point limit.
-- Our `ServiceAreaMap` config does not set `maxPoints`, so we are not deliberately capping the polygon.
-- The docs confirm polygons inherit `addVertex()` and `completeShape()` from `L.Draw.Polyline`, and a polygon is only considered valid once it has at least 3 markers.
+**`src/components/dashboard/ServiceAreaMap.tsx`**
+- Add a live status badge next to the controls:
+  - Idle: "No service area set"
+  - Drawing: "Drawing… N points"
+  - Editing: "Service area captured · N points · ~X sq mi"
+- Fire `toast.success(...)` on finish, `toast(...)` on clear.
+- Compute approximate area (spherical polygon, sq mi) for the badge so users can sanity-check the size.
+- Rename idle button to "Draw service area" for clarity. Keep Finish / Cancel / Clear behavior unchanged.
 
-The likely cause is a known `leaflet-draw` touch/pointer compatibility issue: on touch-capable browsers or high-DPI environments, the library can treat the same click/tap that creates the third valid vertex as a finish/close event. After that, drawing mode ends, so no additional vertices can be added. This matches the reported behavior exactly.
+**`src/routes/_authenticated.dashboard.branding.tsx`**
+- Add a confirmation block below the map:
+  - "Service area is live in the MSP Directory" when current polygon matches the last-saved value
+  - "Service area ready to save" when polygon is set but form is dirty
+  - "No service area defined yet" otherwise
+- After a successful Save Branding submit, toast "Service area updated in MSP Directory."
+- Update helper text: "Click **Finish** (or double-click the map / click your first point) to capture the area, then click **Save Branding** to publish it to the Directory."
 
-## Safest fix
+## Out of scope
+- Matcher, geocoder, and DB schema unchanged.
+- No redesign of map controls beyond the additions above.
 
-Patch only `src/components/dashboard/ServiceAreaMap.tsx` with a small compatibility shim after `leaflet-draw` loads and before the draw control is created.
-
-1. Keep the existing library versions.
-   - No dependency churn.
-   - `leaflet-draw` has no newer official npm release to upgrade to.
-
-2. Explicitly set polygon drawing options for our use case:
-   - `maxPoints: 0` to make the unlimited-point intent explicit.
-   - `repeatMode: false` to keep the existing single-polygon workflow.
-   - Preserve `allowIntersection: false`, `showArea: true`, and existing visual styling.
-
-3. Add a local compatibility override for polygon finish behavior:
-   - Require finishing by clicking/tapping the first vertex or using the toolbar Finish action.
-   - Prevent the third point from being treated as an automatic finish.
-   - Keep double-click finish available only when it does not interfere with normal vertex placement.
-
-4. Improve the helper copy under the map:
-   - Clarify that users can keep clicking to add more boundary points.
-   - Clarify how to finish: click the first point or use Finish.
-
-## Validation path
-
-After implementation:
-- Inspect the patched component for JSX/import/type correctness.
-- Verify no backend, matcher, RPC, RLS, save semantics, tier logic, or database schema is changed.
-- Confirm the map still emits one GeoJSON Polygon through `onPolygonChange` and still replaces the previous polygon when a new one is completed.
-
-## Files to change
-
-- `src/components/dashboard/ServiceAreaMap.tsx`
-- `src/routes/_authenticated.dashboard.branding.tsx` only for the map instruction text, if needed
+## Technical notes
+- Area: spherical-excess formula on the polygon ring, rounded to whole sq mi.
+- Live-in-directory check: shallow GeoJSON compare against the value loaded at form mount; flips to "ready to save" on any edit.
+- Toasts use the existing `sonner` Toaster already mounted in the root layout.
