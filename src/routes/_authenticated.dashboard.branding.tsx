@@ -1105,9 +1105,11 @@ function BrandingPage() {
                     />
                   </Suspense>
                   <p className="text-xs text-muted-foreground">
-                    Click the polygon tool (top-right) to draw your service
-                    area. Only one polygon is stored at a time — drawing a
-                    new one replaces the old.
+                    Click the polygon tool (top-right), then click points on
+                    the map to outline your service area. Add as many points
+                    as you need. To finish, click the first point again or
+                    use the Finish action in the toolbar. Drawing a new
+                    polygon replaces the previous one.
                   </p>
                 </div>
               ) : (
