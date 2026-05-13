@@ -331,6 +331,7 @@ export function ServiceAreaMap({
               setHasPolygon(true);
               setMode("editing");
               map.getContainer().dataset.mode = "editing";
+              recomputeStats();
               const bounds = polygonRef.current.getBounds();
               if (bounds.isValid()) {
                 map.fitBounds(bounds, { maxZoom: 12, padding: [16, 16] });
