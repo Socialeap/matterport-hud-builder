@@ -273,6 +273,8 @@ export function ServiceAreaMap({
           removePolygon();
           removeDrawing();
           setHasPolygon(false);
+          setAreaSqMi(0);
+          setPolyVertexCount(0);
           map.getContainer().dataset.mode = "drawing";
           map.getContainer().style.cursor = "crosshair";
           setMode("drawing");
@@ -283,15 +285,27 @@ export function ServiceAreaMap({
           map.getContainer().dataset.mode = ok ? "editing" : "idle";
           map.getContainer().style.cursor = "";
           setMode(ok ? "editing" : "idle");
+          if (ok) {
+            toast.success("Service area captured", {
+              description:
+                "Click Save Branding to publish it to the MSP Directory.",
+            });
+          } else {
+            toast.error("Need at least 3 points to form an area.");
+          }
         },
         clearAll: () => {
+          const had = !!polygonRef.current || drawLatLngsRef.current.length > 0;
           removeDrawing();
           removePolygon();
           setHasPolygon(false);
+          setAreaSqMi(0);
+          setPolyVertexCount(0);
           map.getContainer().dataset.mode = "idle";
           map.getContainer().style.cursor = "";
           setMode("idle");
           onChangeRef.current(null);
+          if (had) toast("Service area cleared");
         },
       };
 
