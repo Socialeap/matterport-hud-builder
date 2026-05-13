@@ -450,22 +450,66 @@ function _normalizeEvidenceSection(section) {
 // source is a specific structured field. Raw chunks are broad document
 // evidence; generic labels like "AI Profile -> coworking_brochure" must
 // stay eligible for Gemini even when they don't look like a field name.
-function rescoreChunksByIntent(chunks, intent, intentAllowsFn) {
+//
+// Phase 4 (retrieval weight tuning):
+//   - Apply a small base score multiplier (FIELD_CHUNK_BASE_BOOST) to
+//     all field_chunks so structured data tends to outrank prose when
+//     scores are otherwise close. Tuned conservatively to avoid evicting
+//     a high-confidence raw chunk.
+//   - Keyword-pin: tokens parsed from a field_chunk's section/source key
+//     (e.g. "hoa_fee" -> ["hoa", "fee"]) are matched against the user's
+//     query. Any hit force-promotes the chunk via FIELD_CHUNK_KEYWORD_BOOST
+//     so that "what's the HOA fee?" surfaces the HOA field even when the
+//     embedding ranks a marketing paragraph higher.
+var FIELD_CHUNK_BASE_BOOST = 0.08;
+var FIELD_CHUNK_KEYWORD_BOOST = 0.35;
+
+function _queryTokens(q) {
+  var s = String(q || "").toLowerCase();
+  var raw = s.split(/[^a-z0-9]+/);
+  var out = [];
+  for (var i = 0; i < raw.length; i++) {
+    var t = raw[i];
+    if (t && t.length >= 3) out.push(t);
+  }
+  return out;
+}
+
+function _sectionKeywordMatch(section, queryTokenSet) {
+  var s = String(section || "").toLowerCase();
+  var raw = s.split(/[^a-z0-9]+/);
+  for (var i = 0; i < raw.length; i++) {
+    var t = raw[i];
+    if (t && t.length >= 3 && queryTokenSet[t]) return true;
+  }
+  return false;
+}
+
+function rescoreChunksByIntent(chunks, intent, intentAllowsFn, queryText) {
   if (!chunks || !chunks.length) return [];
-  if (!intent || intent === "unknown" || !intentAllowsFn) return chunks.slice();
-  var evidenceTerms = _INTENT_EVIDENCE_TERMS[intent] || [];
+  var hasIntentArg = intent && intent !== "unknown" && intentAllowsFn;
+  var evidenceTerms = hasIntentArg ? (_INTENT_EVIDENCE_TERMS[intent] || []) : [];
+  var qTokens = _queryTokens(queryText);
+  var qSet = {};
+  for (var qi = 0; qi < qTokens.length; qi++) qSet[qTokens[qi]] = true;
+  var hasQueryTokens = qTokens.length > 0;
+
   var out = [];
   for (var i = 0; i < chunks.length; i++) {
     var c = chunks[i];
     var hitKind = c.kind || "raw_chunk";
     var section = _normalizeEvidenceSection(c.source || c.section || "");
-    var allowed = hitKind === "field_chunk" ? intentAllowsFn(section, intent) : true;
-    var sectionMatches = section ? intentAllowsFn(section, intent) : false;
+    var allowed = hasIntentArg
+      ? (hitKind === "field_chunk" ? intentAllowsFn(section, intent) : true)
+      : true;
+    var sectionMatches = (hasIntentArg && section)
+      ? intentAllowsFn(section, intent)
+      : false;
     // Content-based rescue: for raw chunks where the section label is
     // generic (template names like "coworking_brochure"), test the chunk
     // content against the intent's evidence terms. 2+ hits flips the
     // chunk to "intent matched" so it survives downstream gates.
-    if (!sectionMatches && hitKind !== "field_chunk" && evidenceTerms.length) {
+    if (hasIntentArg && !sectionMatches && hitKind !== "field_chunk" && evidenceTerms.length) {
       var body = String(c.content || "").toLowerCase();
       var hits = 0;
       for (var t = 0; t < evidenceTerms.length; t++) {
@@ -477,7 +521,19 @@ function rescoreChunksByIntent(chunks, intent, intentAllowsFn) {
     }
     var newScore = Number(c.score || 0);
     if (sectionMatches) newScore += 0.05;
-    else if (hitKind === "field_chunk" && !allowed) newScore -= 0.10;
+    else if (hasIntentArg && hitKind === "field_chunk" && !allowed) newScore -= 0.10;
+
+    // Phase 4: structured-data preference. Apply only when the field
+    // chunk wasn't already disallowed by the intent gate.
+    var keywordPinned = false;
+    if (hitKind === "field_chunk" && allowed !== false) {
+      newScore += FIELD_CHUNK_BASE_BOOST;
+      if (hasQueryTokens && _sectionKeywordMatch(section, qSet)) {
+        newScore += FIELD_CHUNK_KEYWORD_BOOST;
+        keywordPinned = true;
+      }
+    }
+
     out.push({
       id: c.id,
       parentId: c.parentId,
@@ -489,6 +545,7 @@ function rescoreChunksByIntent(chunks, intent, intentAllowsFn) {
       score: newScore,
       _intentAllowed: allowed,
       _intentMatched: sectionMatches,
+      _keywordPinned: keywordPinned,
     });
   }
   out.sort(function (a, b) { return b.score - a.score; });
@@ -669,7 +726,7 @@ function decideAnswer(inputs) {
   }
 
   // Step 5 — Tier 3 chunk rescoring.
-  var chunksRescored = rescoreChunksByIntent(chunkHits, intent, intentAllowsFn);
+  var chunksRescored = rescoreChunksByIntent(chunkHits, intent, intentAllowsFn, query);
 
   var hasIntent = intent && intent !== "unknown";
   var allowedChunks = [];

@@ -68,11 +68,13 @@ const geminiUrl = (modelName: string, apiKey: string) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:streamGenerateContent?key=${apiKey}&alt=sse`;
 
 const SYSTEM_PROMPT =
-  "You are a helpful real-estate / property assistant. Answer the visitor's question using ONLY the context below. " +
-  "You may quote, paraphrase, and combine multiple context items. Be specific — include numbers, names, prices, " +
-  "capacities, dates, scores, and proper nouns when present in context. Prefer 3–5 sentences when the context " +
-  "supports it. Only say \"I don't have that information in the provided documents.\" when the answer is genuinely " +
-  "absent. Do not invent facts beyond what is in the context.";
+  "You are a strict property concierge. You ONLY answer based on the provided JSON fields and Document Chunks below — treat them as the single source of truth. " +
+  "Be specific: include exact numbers, names, prices, capacities, dates, and proper nouns when present in context. " +
+  "State facts directly. Never use hedging meta-language like \"Based on the documents…\", \"It appears that…\", " +
+  "\"According to the context…\", or \"The information provided shows…\". Do not summarize what the documents contain — just answer the question. " +
+  "If the user asks about something that is not explicitly stated in the context (even if it is common knowledge or a reasonable inference), " +
+  "you MUST refuse with exactly: \"I'm sorry, I don't have the specific details on that for this property. Please contact the listing agent for more info.\" " +
+  "Do not invent, infer, estimate, or extrapolate beyond what the context literally states.";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -152,7 +154,7 @@ async function streamGemini(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.3, maxOutputTokens: 600 },
+        generationConfig: { temperature: 0.1, maxOutputTokens: 600 },
       }),
     });
   } catch (err) {
@@ -241,7 +243,7 @@ async function streamGroq(
             { role: "user", content: userMessage },
           ],
           stream: true,
-          temperature: 0.3,
+          temperature: 0.1,
           max_tokens: 600,
         }),
       });
