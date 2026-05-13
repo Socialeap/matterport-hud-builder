@@ -488,6 +488,13 @@ function BrandingPage() {
     setZipsInput(parsedZips.join(", "));
     setPreviewVersion((n) => n + 1);
     toast.success("Branding settings saved");
+    if (isPro && polygonChanged) {
+      toast.success(
+        updated.service_polygon
+          ? "Service area updated in MSP Directory."
+          : "Service area removed from MSP Directory.",
+      );
+    }
   };
 
   /**
