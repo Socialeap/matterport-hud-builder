@@ -1111,13 +1111,56 @@ function BrandingPage() {
                       }
                     />
                   </Suspense>
+                  {(() => {
+                    const current = JSON.stringify(branding.service_polygon ?? null);
+                    const saved = JSON.stringify(savedSnapshot.service_polygon ?? null);
+                    const hasCurrent = !!branding.service_polygon;
+                    const inSync = current === saved;
+                    if (hasCurrent && inSync) {
+                      return (
+                        <div className="flex items-center gap-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-400">
+                          <CheckCircle2 className="h-4 w-4" />
+                          <span>
+                            <strong>Live in MSP Directory.</strong> This service area is what
+                            agents see in your listing.
+                          </span>
+                        </div>
+                      );
+                    }
+                    if (hasCurrent && !inSync) {
+                      return (
+                        <div className="flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+                          <AlertCircle className="h-4 w-4" />
+                          <span>
+                            <strong>Ready to publish.</strong> Click <em>Save Changes</em> at
+                            the top to push this area to the MSP Directory.
+                          </span>
+                        </div>
+                      );
+                    }
+                    if (!hasCurrent && saved !== "null") {
+                      return (
+                        <div className="flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+                          <AlertCircle className="h-4 w-4" />
+                          <span>
+                            Service area cleared — Save Changes to remove it from the Directory.
+                          </span>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="flex items-center gap-2 rounded-md border border-input bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                        <MapPin className="h-4 w-4" />
+                        <span>No service area defined yet. Listings without a polygon match by ZIP and radius only.</span>
+                      </div>
+                    );
+                  })()}
                   <p className="text-xs text-muted-foreground">
-                    Use <strong>Draw polygon</strong>, then click on the map
-                    to add as many boundary points as you need. Finish by
-                    clicking the first point, double-clicking, or pressing
-                    <strong> Finish</strong>. Drag vertices to adjust;
-                    right-click a vertex to remove it. Drawing a new polygon
-                    replaces the previous one.
+                    Click <strong>Draw service area</strong>, outline the area
+                    on the map, then press <strong>Finish</strong> (or
+                    double-click / click your first point) to capture it.
+                    Finally, click <strong>Save Changes</strong> at the top of
+                    the page to publish it to the MSP Directory.
                   </p>
                 </div>
               ) : (
