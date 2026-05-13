@@ -17,11 +17,11 @@ import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
-const SITE_URL = "https://matterport-hud-builder.lovable.app";
+const SITE_URL = "https://3dps.transcendencemedia.com";
 const PAGE_URL = `${SITE_URL}/opportunities`;
 const OG_TITLE = "Local Demand Board for Matterport Service Providers";
 const OG_DESC =
-  "See where real estate agents are actively looking for a 3D Presentation Studio Pro Partner. Activate your Studio to start receiving local leads in markets with confirmed demand.";
+  "See where real estate agents are seeking a 3D Presentation Studio Pro Partner. Activate your Studio to receive local leads in markets with confirmed demand.";
 const OG_IMAGE = `${SITE_URL}/og-3d-presentation-studio.png`;
 
 export const Route = createFileRoute("/opportunities")({
