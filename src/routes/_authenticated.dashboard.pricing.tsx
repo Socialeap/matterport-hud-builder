@@ -329,7 +329,7 @@ function ClientPricingPage() {
                 <CardTitle className="text-base">Per Model over 3</CardTitle>
               </div>
               <CardDescription>
-                For more than 3 models, each model is:
+                For 3-5 models, each model is:
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
@@ -354,7 +354,7 @@ function ClientPricingPage() {
                 />
               </div>
               <p className="text-xs text-muted-foreground">
-                Per-model fee for Presentations that have more than 3 models.
+                Per-model fee for Presentations that have 4 or 5 models.
               </p>
             </CardContent>
           </Card>
