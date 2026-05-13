@@ -374,7 +374,8 @@ export function ServiceAreaMap({
             variant="default"
             onClick={() => helpersRef.current?.startDrawing()}
           >
-            {hasPolygon ? "Redraw polygon" : "Draw polygon"}
+            <Pencil className="h-3.5 w-3.5 mr-1.5" />
+            {hasPolygon ? "Redraw service area" : "Draw service area"}
           </Button>
         ) : (
           <>
@@ -385,6 +386,7 @@ export function ServiceAreaMap({
               disabled={vertexCount < 3}
               onClick={() => helpersRef.current?.finishDrawing()}
             >
+              <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />
               Finish ({vertexCount} {vertexCount === 1 ? "point" : "points"})
             </Button>
             <Button
@@ -407,14 +409,31 @@ export function ServiceAreaMap({
             Clear
           </Button>
         )}
-        <span className="text-xs text-muted-foreground">
-          {mode === "drawing"
-            ? "Click the map to add boundary points. Click the first point or double-click to finish."
-            : hasPolygon
-            ? "Drag any vertex to adjust. Right-click a vertex to remove it."
-            : "Click \u201CDraw polygon\u201D, then click on the map to outline your service area."}
-        </span>
+        {mode === "drawing" ? (
+          <Badge variant="secondary" className="gap-1">
+            <MapPin className="h-3 w-3" />
+            Drawing… {vertexCount} {vertexCount === 1 ? "point" : "points"}
+          </Badge>
+        ) : hasPolygon ? (
+          <Badge className="gap-1 bg-emerald-600 hover:bg-emerald-600 text-white">
+            <CheckCircle2 className="h-3 w-3" />
+            Captured · {polyVertexCount} pts
+            {areaSqMi > 0 ? ` · ~${areaSqMi.toLocaleString()} sq mi` : ""}
+          </Badge>
+        ) : (
+          <Badge variant="outline" className="gap-1 text-muted-foreground">
+            <MapPin className="h-3 w-3" />
+            No service area set
+          </Badge>
+        )}
       </div>
+      <p className="text-xs text-muted-foreground">
+        {mode === "drawing"
+          ? "Click the map to add boundary points. Click the first point, double-click, or press Finish to close the area."
+          : hasPolygon
+          ? "Area captured. Drag any vertex to adjust, right-click a vertex to remove it, then Save Branding to publish to the MSP Directory."
+          : "Click \u201CDraw service area\u201D, then click on the map to outline where you accept jobs."}
+      </p>
       <div
         ref={containerRef}
         className="h-80 w-full overflow-hidden rounded-md border border-input"
