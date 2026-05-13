@@ -82,6 +82,20 @@ export function ServiceAreaMap({
   const [mode, setMode] = useState<Mode>("idle");
   const [vertexCount, setVertexCount] = useState(0);
   const [hasPolygon, setHasPolygon] = useState(false);
+  const [areaSqMi, setAreaSqMi] = useState(0);
+  const [polyVertexCount, setPolyVertexCount] = useState(0);
+
+  const recomputeStats = () => {
+    const poly = polygonRef.current;
+    if (!poly) {
+      setAreaSqMi(0);
+      setPolyVertexCount(0);
+      return;
+    }
+    const ring = (poly.getLatLngs()[0] as { lat: number; lng: number }[]) ?? [];
+    setPolyVertexCount(ring.length);
+    setAreaSqMi(polygonAreaSqMi(ring));
+  };
 
   // ---- helpers (defined inside effect closure via refs) ----
   const helpersRef = useRef<{
