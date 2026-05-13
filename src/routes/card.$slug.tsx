@@ -28,15 +28,19 @@ export const Route = createFileRoute("/card/$slug")({
     if (error || !data) throw notFound();
     return data as unknown as CardLoaderData;
   },
-  head: ({ loaderData }) => {
+  head: ({ params, loaderData }) => {
     const name = loaderData?.brand_name || "3D Presentation";
+    const url = `https://3dps.transcendencemedia.com/card/${params.slug}`;
     return {
       meta: [
         { title: `${name} — Calling Card` },
         { name: "description", content: `Custom 3D presentations by ${name}.` },
         { property: "og:title", content: `${name} — Custom 3D Presentations` },
         { property: "og:description", content: `Interactive overlays with ${name}'s branding.` },
+        { property: "og:url", content: url },
+        { property: "og:type", content: "website" },
       ],
+      links: [{ rel: "canonical", href: url }],
     };
   },
   component: CardPage,

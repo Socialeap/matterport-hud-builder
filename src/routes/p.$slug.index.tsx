@@ -123,12 +123,72 @@ interface PortalSearch {
 }
 
 export const Route = createFileRoute("/p/$slug/")({
-  head: () => ({
-    meta: [
-      { title: "3D Property Presentations" },
-      { name: "description", content: "Create stunning 3D property tour presentations" },
-    ],
-  }),
+  head: ({ params, loaderData }) => {
+    const b = loaderData?.branding as
+      | (Record<string, unknown> & {
+          brand_name?: string | null;
+          tagline?: string | null;
+          logo_url?: string | null;
+          hero_bg_url?: string | null;
+          accent_color?: string | null;
+          contact_email?: string | null;
+          contact_phone?: string | null;
+          custom_domain?: string | null;
+          service_city?: string | null;
+          service_region?: string | null;
+        })
+      | null
+      | undefined;
+    const brandName = (b?.brand_name && b.brand_name.trim()) || "3D Presentation Studio";
+    const title = `${brandName} — Branded 3D Property Tours`;
+    const tagline = (b?.tagline && b.tagline.trim()) || null;
+    const description =
+      tagline ??
+      `Explore branded interactive Matterport 3D property tour presentations by ${brandName}.`;
+    const url = `https://3dps.transcendencemedia.com/p/${params.slug}`;
+    const image = b?.hero_bg_url || b?.logo_url || "https://3dps.transcendencemedia.com/og-3d-presentation-studio.png";
+
+    const localBusiness: Record<string, unknown> = {
+      "@context": "https://schema.org",
+      "@type": "LocalBusiness",
+      name: brandName,
+      url,
+      image,
+      description,
+    };
+    if (b?.contact_email) localBusiness.email = b.contact_email;
+    if (b?.contact_phone) localBusiness.telephone = b.contact_phone;
+    if (b?.service_city || b?.service_region) {
+      localBusiness.address = {
+        "@type": "PostalAddress",
+        ...(b.service_city ? { addressLocality: b.service_city } : {}),
+        ...(b.service_region ? { addressRegion: b.service_region } : {}),
+      };
+    }
+
+    return {
+      meta: [
+        { title },
+        { name: "description", content: description.slice(0, 160) },
+        { property: "og:type", content: "website" },
+        { property: "og:url", content: url },
+        { property: "og:title", content: title },
+        { property: "og:description", content: description.slice(0, 160) },
+        { property: "og:image", content: image },
+        { name: "twitter:card", content: "summary_large_image" },
+        { name: "twitter:title", content: title },
+        { name: "twitter:description", content: description.slice(0, 160) },
+        { name: "twitter:image", content: image },
+      ],
+      links: [{ rel: "canonical", href: url }],
+      scripts: [
+        {
+          type: "application/ld+json",
+          children: JSON.stringify(localBusiness),
+        },
+      ],
+    };
+  },
   validateSearch: (raw: Record<string, unknown>): PortalSearch => {
     const out: PortalSearch = {};
     if (raw.preview === "studio") out.preview = "studio";
