@@ -1,61 +1,61 @@
-# Why Bellmore returns zero results
+## What is still disconnected
 
-I traced the full path end-to-end. The **SQL matcher is correct** — calling `search_msp_directory('Bellmore','NY',NULL,40.6687,-73.5251)` directly against the database returns Socialeap with `match_reason = polygon`. Socialeap's drawn polygon does contain Bellmore (verified with `ST_Contains`).
+The polygon matcher itself is working: when the search includes real coordinates for Bellmore/Bellerose, the database returns **Socialeap** with `match_reason = polygon`.
 
-The break is one step earlier: **the geocoder never produces a lat/lng for "Bellmore, NY"**, so the frontend sends `p_lat=null, p_lng=null` to the RPC and only the ZIP / fuzzy-city fallbacks run. Neither matches:
+The remaining failure is before the database match:
 
-- Socialeap's `primary_city` is **Queens**, not Bellmore (no trigram hit).
-- Bellmore's ZIP **11710** is not in Socialeap's `service_zips` array.
+1. The Directory UI lets the user type only `Bellmore` or `Bellrose/Bellerose` while the State field is optional.
+2. The geocode API currently refuses to geocode city-only input without a 2-letter state, so it returns `{ lat: null, lng: null }`.
+3. The Directory then calls `search_msp_directory` with only `p_city: "Bellmore"`.
+4. Socialeap’s profile city is `Queens`, so the city-name fallback does not match, even though the drawn polygon covers Bellmore.
+5. ZIP works only because those ZIPs were manually added, which confirms the issue is not the card visibility or public listing status.
 
-Result: zero matches, even though the polygon clearly covers Bellmore.
+There is one more likely issue: the published custom domain appears to still return `lat:null,lng:null` even for `Bellmore, NY`, so the latest geocoder behavior may not be active there yet or is not robust enough for published runtime.
 
-## Root cause
+## Safe comprehensive fix
 
-`src/server/geocode.server.ts` uses the **US Census onelineaddress** endpoint. Census is tuned for street addresses; bare "City, State" queries return `addressMatches: []`. I confirmed this live — Census returns nothing for "Bellmore, NY". The previous design assumed the SQL fallbacks would catch this, but they only work when the MSP's own city/ZIPs happen to overlap, which defeats the entire point of polygon-based service areas.
+### 1. Make geography search state-aware by default
+- Change the Directory state field from “optional” to a practical default for this launch market: default `NY` when searching by city.
+- If the user clears the state, show a clear prompt instead of silently falling back to weak city-name matching.
+- This prevents ambiguous searches like `Bellmore` from bypassing polygon matching.
 
-## Fix: add a Nominatim (OpenStreetMap) fallback
+### 2. Harden the geocoder for real town searches
+- Update `geocodeAddress()` so Nominatim checks more than only the first result.
+- Accept valid locality/boundary results such as `boundary/census` as well as `place/town`, since Bellmore can appear as either.
+- Keep strict filtering to avoid POIs/streets poisoning the search.
+- Add a safe fallback using full-text query `"City, State, USA"` when structured city/state returns no valid locality.
+- Keep timeout, rate limit, User-Agent, and cache behavior.
 
-Nominatim resolves "Bellmore, NY" trivially (verified: returns 40.6602, -73.5266). It's free, no API key, and our volume — a single call per directory search — is well inside their usage policy as long as we send a proper `User-Agent` and don't hammer it.
+### 3. Add a backend fallback when city-only searches slip through
+- Update `search_msp_directory` to allow a conservative city-only fallback against provider service coverage data, not just provider `primary_city`.
+- The safest version is: city name can match only if the MSP has explicitly listed that city/ZIP-equivalent service data or the query was geocoded; otherwise do not over-broaden results.
+- Prefer requiring coordinates for polygon/radius matches, because polygons cannot be tested without a point.
 
-### Changes
+### 4. Improve UI feedback so this cannot fail silently again
+- When a city search cannot be geocoded, show a small inline message: “Add a state to search drawn service areas.”
+- If coordinates are resolved, continue showing the match chip: “Matched: Service area.”
+- Keep ZIP search behavior unchanged.
 
-**1. `src/server/geocode.server.ts`** — extend `geocodeAddress()` with a two-tier strategy:
+### 5. Verify the complete path
+After implementation, test these cases end-to-end:
+- `Bellmore` with default `NY` returns Socialeap via `polygon`.
+- `Bellmore, NY` / City=`Bellmore`, State=`NY` returns Socialeap via `polygon`.
+- `Bellerose`, State=`NY` returns Socialeap via `polygon` if inside the drawn area.
+- Misspelled `Bellrose`, State=`NY` should not falsely match a street/POI; either resolve safely or show no match with guidance.
+- Existing ZIP search still returns Socialeap when ZIP is listed.
 
-```text
-Tier 1: Census onelineaddress (fast, great for ZIP + street)
-        ↓ returns null
-Tier 2: Nominatim structured query (city=…&state=…&country=USA)
-        - Required header: User-Agent: "3DPS-MSP-Directory/1.0 (contact@…)"
-        - 5s timeout, AbortController
-        - Accept only results with class=place or type∈{town,city,village,hamlet,suburb}
-        - Return null on any failure → SQL fallbacks still run
-```
+## Files/functions to change
 
-No change to the function signature, so the API route and all other callers keep working unchanged.
+- `src/routes/agents.tsx`
+  - default/require state for city search
+  - surface geocoding status to the user
+  - keep coordinates wired into `search_msp_directory`
 
-**2. Light in-memory cache** in `geocode.server.ts` — keep the last ~200 `{city,region,zip}` lookups for 24 h. Cuts Nominatim load to near-zero for repeated searches and keeps us well-mannered.
+- `src/server/geocode.server.ts`
+  - improve Nominatim result selection and fallback query logic
 
-**3. No DB / no schema / no UI changes.** The RPC, the directory page, and `src/routes/api/geocode-directory-query.ts` are already correct — they just need the geocoder to actually return coordinates.
+- `src/routes/api/geocode-directory-query.ts`
+  - keep the route public/read-only and rate-limited, but return enough failure context for the UI to guide the user
 
-### Verification plan
-
-After the change I will:
-1. Hit `/api/geocode-directory-query` with `{city:"Bellmore",region:"NY"}` and confirm it returns `{lat:~40.66, lng:~-73.53}`.
-2. Re-run the live `search_msp_directory` RPC with those coords (already proven to return Socialeap with `match_reason='polygon'`).
-3. Walk through the `/agents` page handler to confirm the lat/lng is forwarded as `p_lat`/`p_lng` (already wired — I re-read `agents.tsx` during diagnosis).
-
-## What I am NOT changing
-
-- The SQL matcher (working correctly).
-- `search_msp_directory` signature, RLS, or `is_directory_public` filter.
-- Socialeap's `service_zips` (backfilling ZIPs from polygons is out of scope and would mask the real bug).
-- The match-beacons edge function (uses its own correct path via `claim_pending_beacon_matches`).
-- Any UI on `/agents` or the branding page.
-
-## Why not a different provider
-
-- **Google / Mapbox**: require API key + billing; overkill for one geocode per search.
-- **Census Gazetteer table**: would work but requires importing ~30k rows and maintaining them — heavier than a fallback HTTP call.
-- **Census alone**: already proven insufficient — this is exactly the bug.
-
-Nominatim with Census as the first-try is the smallest, lowest-risk change that closes the gap.
+- Database migration
+  - update `search_msp_directory` only if needed after the stronger geocode path; avoid broadening matches in a way that could show MSPs outside their service area.

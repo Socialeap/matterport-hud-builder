@@ -551,8 +551,11 @@ function DirectorySection() {
         toast.error("Please enter a city");
         return;
       }
-      if (regionTrim && !STATE_RE.test(regionTrim)) {
-        toast.error("Please enter a 2-letter state code (e.g. GA)");
+      if (!STATE_RE.test(regionTrim)) {
+        // Required so we can geocode the town and test it against
+        // each MSP's drawn service area. Without a state, "Bellmore"
+        // is ambiguous (NY vs OH) and polygon matching can't run.
+        toast.error("Please add a 2-letter state (e.g. NY) so we can match drawn service areas.");
         return;
       }
     } else {
@@ -565,10 +568,7 @@ function DirectorySection() {
     setSearching(true);
 
     // Geocode the query first so the RPC can test polygon containment
-    // and radius coverage against each MSP's drawn service area. The
-    // route returns { lat: null, lng: null } when geocoding isn't
-    // possible (e.g. ZIP-only, or city without state) — the SQL
-    // function then falls back to ZIP-array and trigram-city matching.
+    // and radius coverage against each MSP's drawn service area.
     let lat: number | null = null;
     let lng: number | null = null;
     try {
@@ -588,6 +588,17 @@ function DirectorySection() {
       }
     } catch {
       // Non-fatal: degrade to ZIP/city fallbacks in SQL.
+    }
+
+    // For city searches, if geocoding failed we cannot test drawn
+    // service areas. Tell the user instead of silently returning the
+    // (likely empty) trigram-only result set.
+    if (searchMode === "city" && (lat === null || lng === null)) {
+      setSearching(false);
+      toast.error(
+        `We couldn't locate "${cityTrim}, ${regionTrim}". Check the spelling and state, or search by ZIP.`,
+      );
+      return;
     }
 
     const { data, error } = await supabase.rpc("search_msp_directory", {
@@ -680,7 +691,7 @@ function DirectorySection() {
                       />
                     </div>
                     <Input
-                      placeholder="State (optional, e.g. GA)"
+                      placeholder="State (required, e.g. NY)"
                       value={region}
                       maxLength={2}
                       onChange={(e) =>

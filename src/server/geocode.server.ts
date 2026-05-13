@@ -194,26 +194,58 @@ async function tryNominatim(
     });
     if (!res.ok) return null;
     const arr = (await res.json()) as NominatimMatch[];
-    const m = Array.isArray(arr) ? arr[0] : null;
-    if (!m) return null;
-
-    // Only accept locality-class results so a stray POI can't poison
-    // the geocode.
-    const cls = (m.class || "").toLowerCase();
-    const typ = (m.type || "").toLowerCase();
-    if (cls !== "place" && cls !== "boundary") return null;
-    if (!ACCEPTED_OSM_TYPES.has(typ)) return null;
-
-    const lat = m.lat ? Number(m.lat) : NaN;
-    const lng = m.lon ? Number(m.lon) : NaN;
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
-    return { lat: round6(lat), lng: round6(lng) };
+    const picked = pickLocality(arr);
+    if (picked) return picked;
   } catch {
-    return null;
+    // fall through to free-text fallback
   } finally {
     clearTimeout(timeout);
   }
+
+  // Fallback: free-text "City, State, USA" query — Nominatim's
+  // structured endpoint occasionally misses census-designated
+  // places that the q= endpoint resolves cleanly.
+  const fallback = new URL(NOMINATIM_URL);
+  fallback.searchParams.set("q", `${city}, ${region}, USA`);
+  fallback.searchParams.set("format", "json");
+  fallback.searchParams.set("limit", "5");
+  fallback.searchParams.set("addressdetails", "0");
+  fallback.searchParams.set("countrycodes", "us");
+  const c2 = new AbortController();
+  const t2 = setTimeout(() => c2.abort(), 5_000);
+  try {
+    const res = await fetch(fallback.toString(), {
+      headers: { Accept: "application/json", "User-Agent": NOMINATIM_UA },
+      signal: c2.signal,
+    });
+    if (!res.ok) return null;
+    const arr = (await res.json()) as NominatimMatch[];
+    return pickLocality(arr);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(t2);
+  }
+}
+
+function pickLocality(arr: unknown): GeocodeResult | null {
+  if (!Array.isArray(arr)) return null;
+  for (const m of arr as NominatimMatch[]) {
+    const cls = (m.class || "").toLowerCase();
+    const typ = (m.type || "").toLowerCase();
+    // Accept place/* localities and boundary/{administrative,census}.
+    const okClass =
+      cls === "place" ||
+      (cls === "boundary" && (typ === "administrative" || typ === "census"));
+    if (!okClass) continue;
+    if (cls === "place" && !ACCEPTED_OSM_TYPES.has(typ)) continue;
+    const lat = m.lat ? Number(m.lat) : NaN;
+    const lng = m.lon ? Number(m.lon) : NaN;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) continue;
+    return { lat: round6(lat), lng: round6(lng) };
+  }
+  return null;
 }
 
 function round6(n: number): number {
