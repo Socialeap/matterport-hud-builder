@@ -691,7 +691,7 @@ function DirectorySection() {
                       />
                     </div>
                     <Input
-                      placeholder="State (optional, e.g. GA)"
+                      placeholder="State (required, e.g. NY)"
                       value={region}
                       maxLength={2}
                       onChange={(e) =>
