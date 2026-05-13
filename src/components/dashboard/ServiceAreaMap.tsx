@@ -238,6 +238,7 @@ export function ServiceAreaMap({
             const updated = editMarkersRef.current.map((mm) => mm.getLatLng());
             poly.setLatLngs([updated]);
             emitPolygon();
+            recomputeStats();
           });
           // Right-click a vertex to delete it (min 3 retained).
           marker.on("contextmenu", (ev) => {
@@ -250,6 +251,7 @@ export function ServiceAreaMap({
             // Rebuild so indices stay correct.
             buildEditMarkers();
             emitPolygon();
+            recomputeStats();
           });
           editMarkersRef.current.push(marker);
         });
@@ -262,6 +264,7 @@ export function ServiceAreaMap({
         buildEditMarkers();
         setHasPolygon(true);
         emitPolygon();
+        recomputeStats();
         return true;
       };
 
