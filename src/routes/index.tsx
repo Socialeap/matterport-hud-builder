@@ -560,6 +560,7 @@ function Index() {
         )}
       </header>
 
+      <main>
       {/* ---- Hero ---- */}
       <section className="relative z-10 px-4 pt-20 pb-16 sm:pt-28 sm:pb-24 py-[80px]">
         <div className="mx-auto max-w-4xl text-center">
@@ -938,6 +939,7 @@ function Index() {
           </p>
         </div>
       </section>
+      </main>
 
       {/* ---- Footer ---- */}
       <footer className={`relative z-10 border-t ${borderFooter} ${footerBg} backdrop-blur-lg px-4 py-10 transition-colors duration-500`}>
