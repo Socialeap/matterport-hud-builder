@@ -40,8 +40,12 @@ export function HeroSlideshow() {
           <img
             src={s.src}
             alt={s.caption}
+            width={1250}
+            height={690}
             className="h-full w-full object-contain"
             loading={i === 0 ? "eager" : "lazy"}
+            fetchPriority={i === 0 ? "high" : "auto"}
+            decoding={i === 0 ? "sync" : "async"}
           />
           <div className="absolute inset-0 flex items-center justify-center">
             <p
