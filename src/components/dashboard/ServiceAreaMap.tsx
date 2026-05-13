@@ -189,7 +189,10 @@ export function ServiceAreaMap({
       map.on(LDraw.Draw.Event.EDITED, emitCurrent);
       map.on(LDraw.Draw.Event.DELETED, emitCurrent);
 
-      cleanup = () => map.remove();
+      cleanup = () => {
+        restoreUpdateFinish();
+        map.remove();
+      };
     })();
 
     return () => {
