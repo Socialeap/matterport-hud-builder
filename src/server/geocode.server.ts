@@ -1,26 +1,39 @@
 /**
- * US Census Geocoder wrapper.
+ * US locality geocoder.
  *
- * The Census Geocoder is the cheapest viable provider — no API key,
- * no rate limit at our volume, public-API. Its weakness is that it
- * is tuned for street addresses; bare "City, State" queries often
- * return zero matches. Our marketplace inputs are typically
- * "City, State" (with optional ZIP), so the failure mode is
- * common-but-tolerated:
+ * Two-tier strategy:
+ *   Tier 1 — US Census onelineaddress (no key, fast, great for ZIP +
+ *            street). Returns nothing for bare "City, State" queries,
+ *            which is the common Directory input.
+ *   Tier 2 — Nominatim (OpenStreetMap) structured query. Resolves
+ *            "Bellmore, NY" trivially. Free, no key, but requires a
+ *            descriptive User-Agent and reasonable rate.
  *
- *   * If ZIP is provided, we pass "{city}, {state} {zip}" — Census
- *     resolves these reliably via ZIP centroid logic.
- *   * If only City+State is provided, the call may return zero
- *     matches. We return null in that case; the SQL matcher's
- *     Tier 3 (ZIP) and Tier 4 (trigram fuzzy city) fallbacks
- *     pick up the slack.
+ * Both tiers swallow errors and return null — callers degrade
+ * gracefully (the SQL matcher has ZIP / fuzzy-city fallbacks).
  *
- * Reference: https://geocoding.geo.census.gov/geocoder/Geocoding_Services_API.pdf
+ * A small in-memory LRU cache (24h TTL) keeps Nominatim load near
+ * zero for repeated Directory searches.
  */
 
 const CENSUS_GEOCODER_URL =
   "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress";
 const CENSUS_BENCHMARK = "Public_AR_Current";
+
+const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
+const NOMINATIM_UA =
+  "3DPS-MSP-Directory/1.0 (admin@3dps.transcendencemedia.com)";
+
+const ACCEPTED_OSM_TYPES = new Set([
+  "city",
+  "town",
+  "village",
+  "hamlet",
+  "suburb",
+  "neighbourhood",
+  "municipality",
+  "administrative",
+]);
 
 export interface GeocodeInput {
   city: string;
@@ -36,20 +49,46 @@ export interface GeocodeResult {
 interface CensusMatch {
   coordinates?: { x?: number; y?: number };
 }
-
 interface CensusResponse {
   result?: { addressMatches?: CensusMatch[] };
 }
 
-/**
- * Attempts to geocode a US locality. Returns null on:
- *  - invalid input (missing city/region)
- *  - network/HTTP failure
- *  - zero matches from Census
- *
- * Never throws — callers are expected to treat null as "geocode
- * unavailable" and degrade gracefully.
- */
+interface NominatimMatch {
+  lat?: string;
+  lon?: string;
+  class?: string;
+  type?: string;
+}
+
+// ---------- cache ----------
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const CACHE_MAX = 200;
+const CACHE = new Map<string, { value: GeocodeResult | null; ts: number }>();
+
+function cacheKey(i: GeocodeInput): string {
+  return `${(i.city || "").trim().toLowerCase()}|${(i.region || "").trim().toUpperCase()}|${(i.zip || "").trim()}`;
+}
+function cacheGet(k: string): GeocodeResult | null | undefined {
+  const hit = CACHE.get(k);
+  if (!hit) return undefined;
+  if (Date.now() - hit.ts > CACHE_TTL_MS) {
+    CACHE.delete(k);
+    return undefined;
+  }
+  // refresh LRU position
+  CACHE.delete(k);
+  CACHE.set(k, hit);
+  return hit.value;
+}
+function cacheSet(k: string, value: GeocodeResult | null): void {
+  if (CACHE.size >= CACHE_MAX) {
+    const oldest = CACHE.keys().next().value;
+    if (oldest) CACHE.delete(oldest);
+  }
+  CACHE.set(k, { value, ts: Date.now() });
+}
+
+// ---------- public ----------
 export async function geocodeAddress(
   input: GeocodeInput,
 ): Promise<GeocodeResult | null> {
@@ -57,14 +96,52 @@ export async function geocodeAddress(
   const region = input.region?.trim().toUpperCase();
   const zip = input.zip?.trim();
 
-  if (!city || !region || !/^[A-Z]{2}$/.test(region)) {
-    return null;
+  // Need either (city + 2-letter region) or a ZIP.
+  const haveCity = !!city && /^[A-Z]{2}$/.test(region || "");
+  const haveZip = !!zip && /^\d{5}(-\d{4})?$/.test(zip);
+  if (!haveCity && !haveZip) return null;
+
+  const key = cacheKey({ city: city || "", region: region || "", zip });
+  const cached = cacheGet(key);
+  if (cached !== undefined) return cached;
+
+  // Tier 1: Census
+  const census = await tryCensus({ city, region, zip, haveCity, haveZip });
+  if (census) {
+    cacheSet(key, census);
+    return census;
   }
 
+  // Tier 2: Nominatim — only useful when we have a city+state
+  if (haveCity) {
+    const osm = await tryNominatim(city!, region!);
+    if (osm) {
+      cacheSet(key, osm);
+      return osm;
+    }
+  }
+
+  cacheSet(key, null);
+  return null;
+}
+
+// ---------- providers ----------
+async function tryCensus(args: {
+  city?: string;
+  region?: string;
+  zip?: string;
+  haveCity: boolean;
+  haveZip: boolean;
+}): Promise<GeocodeResult | null> {
+  const { city, region, zip, haveCity, haveZip } = args;
+  if (!haveCity && !haveZip) return null;
+
   const oneLine =
-    zip && /^\d{5}(-\d{4})?$/.test(zip)
+    haveCity && haveZip
       ? `${city}, ${region} ${zip}`
-      : `${city}, ${region}`;
+      : haveCity
+        ? `${city}, ${region}`
+        : `${zip}`;
 
   const url = new URL(CENSUS_GEOCODER_URL);
   url.searchParams.set("address", oneLine);
@@ -73,25 +150,65 @@ export async function geocodeAddress(
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 5_000);
-
   try {
     const res = await fetch(url.toString(), {
-      method: "GET",
       headers: { Accept: "application/json" },
       signal: controller.signal,
     });
     if (!res.ok) return null;
-
     const json = (await res.json()) as CensusResponse;
-    const match = json?.result?.addressMatches?.[0];
-    const x = match?.coordinates?.x;
-    const y = match?.coordinates?.y;
-
+    const m = json?.result?.addressMatches?.[0];
+    const x = m?.coordinates?.x;
+    const y = m?.coordinates?.y;
     if (typeof x !== "number" || typeof y !== "number") return null;
     if (x < -180 || x > 180 || y < -90 || y > 90) return null;
-
-    // Census x = longitude, y = latitude.
     return { lat: round6(y), lng: round6(x) };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function tryNominatim(
+  city: string,
+  region: string,
+): Promise<GeocodeResult | null> {
+  const url = new URL(NOMINATIM_URL);
+  url.searchParams.set("city", city);
+  url.searchParams.set("state", region);
+  url.searchParams.set("country", "USA");
+  url.searchParams.set("format", "json");
+  url.searchParams.set("limit", "1");
+  url.searchParams.set("addressdetails", "0");
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5_000);
+  try {
+    const res = await fetch(url.toString(), {
+      headers: {
+        Accept: "application/json",
+        "User-Agent": NOMINATIM_UA,
+      },
+      signal: controller.signal,
+    });
+    if (!res.ok) return null;
+    const arr = (await res.json()) as NominatimMatch[];
+    const m = Array.isArray(arr) ? arr[0] : null;
+    if (!m) return null;
+
+    // Only accept locality-class results so a stray POI can't poison
+    // the geocode.
+    const cls = (m.class || "").toLowerCase();
+    const typ = (m.type || "").toLowerCase();
+    if (cls !== "place" && cls !== "boundary") return null;
+    if (!ACCEPTED_OSM_TYPES.has(typ)) return null;
+
+    const lat = m.lat ? Number(m.lat) : NaN;
+    const lng = m.lon ? Number(m.lon) : NaN;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+    return { lat: round6(lat), lng: round6(lng) };
   } catch {
     return null;
   } finally {
