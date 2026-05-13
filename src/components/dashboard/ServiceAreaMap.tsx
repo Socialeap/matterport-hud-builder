@@ -1,25 +1,27 @@
 /**
  * Pro-only polygon editor for Marketplace service areas.
  *
- * Implementation notes:
- *  - Pure Leaflet + leaflet-draw, no react-leaflet wrapper. Less
- *    indirection, smaller bundle, fewer version-skew traps.
- *  - Leaflet and its CSS are dynamically imported inside the
- *    effect so the page can render server-side and the ~150 KB
- *    bundle ships only when this file is reached. Parent gates
- *    on Pro tier *and* lazy-loads this component, so Starter
- *    users never pay the cost.
- *  - Only one polygon is allowed at a time. The "Draw" tool
- *    replaces any existing shape rather than letting the MSP
- *    accumulate multiple service areas — keeps the matcher
- *    contract simple (single Polygon column).
- *  - The component is uncontrolled after mount: it seeds from
- *    `initialPolygon` once and emits changes via
- *    `onPolygonChange`. The parent never pushes new geometry in
- *    after initialization, which avoids re-mounting the map on
- *    every save.
+ * Custom Leaflet implementation (no leaflet-draw). The upstream
+ * leaflet-draw plugin proved unreliable in our embedded context —
+ * its pointer/dblclick coalescing terminated polygons at three
+ * vertices in multiple browsers regardless of compatibility shims.
+ *
+ * This editor uses pure Leaflet primitives and a small custom UI:
+ *   - "Draw" puts the map in vertex-add mode. Each map click adds
+ *     a vertex. There is no upper bound; the polygon is only ever
+ *     finalized by an explicit user action.
+ *   - "Finish" closes the working polyline into a polygon and
+ *     switches to edit mode (vertices become draggable).
+ *   - "Clear" removes the current polygon entirely.
+ *   - In edit mode, dragging any vertex updates the geometry
+ *     and emits the new GeoJSON Polygon.
+ *
+ * Only one polygon is allowed at a time — drawing a new one
+ * replaces the previous one, preserving the matcher contract
+ * (single Polygon column / RPC payload).
  */
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
 
 interface Props {
   initialPolygon: GeoJSON.Polygon | null;
@@ -28,6 +30,10 @@ interface Props {
 }
 
 const DEFAULT_CENTER: [number, number] = [39.8283, -98.5795]; // continental US
+const POLY_STYLE = { color: "#2563EB", weight: 2, fillOpacity: 0.15 };
+
+type LeafletNS = typeof import("leaflet");
+type Mode = "idle" | "drawing" | "editing";
 
 export function ServiceAreaMap({
   initialPolygon,
@@ -38,10 +44,29 @@ export function ServiceAreaMap({
   const onChangeRef = useRef(onPolygonChange);
   onChangeRef.current = onPolygonChange;
 
-  useEffect(() => {
-    let cleanup: (() => void) | undefined;
-    let cancelled = false;
+  const LRef = useRef<LeafletNS | null>(null);
+  const mapRef = useRef<import("leaflet").Map | null>(null);
+  // Working polyline (drawing mode) + its vertex markers.
+  const drawLineRef = useRef<import("leaflet").Polyline | null>(null);
+  const drawMarkersRef = useRef<import("leaflet").Marker[]>([]);
+  const drawLatLngsRef = useRef<import("leaflet").LatLng[]>([]);
+  // Finalized polygon (editing mode) + its draggable vertex markers.
+  const polygonRef = useRef<import("leaflet").Polygon | null>(null);
+  const editMarkersRef = useRef<import("leaflet").Marker[]>([]);
 
+  const [mode, setMode] = useState<Mode>("idle");
+  const [vertexCount, setVertexCount] = useState(0);
+  const [hasPolygon, setHasPolygon] = useState(false);
+
+  // ---- helpers (defined inside effect closure via refs) ----
+  const helpersRef = useRef<{
+    startDrawing: () => void;
+    finishDrawing: () => void;
+    clearAll: () => void;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
     const container = containerRef.current;
     if (!container) return;
 
@@ -50,18 +75,17 @@ export function ServiceAreaMap({
         import("leaflet"),
         import("leaflet/dist/leaflet.css"),
       ]);
-      await Promise.all([
-        import("leaflet-draw"),
-        import("leaflet-draw/dist/leaflet.draw.css"),
-      ]);
       if (cancelled) return;
 
+      LRef.current = L;
       const center = initialCenter ?? DEFAULT_CENTER;
       const map = L.map(container, {
         center,
         zoom: initialCenter ? 10 : 4,
         scrollWheelZoom: true,
+        doubleClickZoom: false, // we use dblclick to finish drawing
       });
+      mapRef.current = map;
 
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
@@ -69,147 +93,278 @@ export function ServiceAreaMap({
           '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       }).addTo(map);
 
-      const drawnItems = new L.FeatureGroup();
-      map.addLayer(drawnItems);
+      // Small numbered/round vertex marker. divIcon avoids the
+      // default marker image asset that Leaflet otherwise tries
+      // to resolve from a relative URL.
+      const vertexIcon = (color: string) =>
+        L.divIcon({
+          className: "service-area-vertex",
+          html: `<span style="display:block;width:12px;height:12px;border-radius:9999px;background:${color};border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,0.3);"></span>`,
+          iconSize: [12, 12],
+          iconAnchor: [6, 6],
+        });
 
-      if (initialPolygon) {
-        try {
-          const layers = L.geoJSON(initialPolygon).getLayers();
-          const layer = layers[0];
-          if (layer) {
-            drawnItems.addLayer(layer);
-            const bounds = (layer as L.Polygon).getBounds();
-            if (bounds.isValid()) {
-              map.fitBounds(bounds, { maxZoom: 12, padding: [16, 16] });
-            }
-          }
-        } catch {
-          // Stored polygon was malformed; ignore and let the user
-          // redraw. Better than crashing the editor.
-        }
-      }
-
-      // leaflet-draw extends L at runtime; the bundled types don't
-      // express the Control.Draw constructor, so we narrow with a
-      // local cast.
-      const LDraw = L as unknown as {
-        Control: { Draw: new (opts: unknown) => L.Control };
-        Draw: {
-          Event: { CREATED: string; EDITED: string; DELETED: string };
-          Polygon: {
-            prototype: {
-              _updateFinishHandler: (this: {
-                _markers: Array<{
-                  on: (ev: string, fn: unknown, ctx: unknown) => void;
-                  off: (ev: string, fn: unknown, ctx: unknown) => void;
-                }>;
-                _finishShape: () => void;
-              }) => void;
-            };
-          };
-        };
-      };
-
-      // ---- leaflet-draw polygon compatibility shim ----
-      // Upstream leaflet-draw@1.0.4 binds a `dblclick` finish handler
-      // to the most recently placed vertex once the polygon has 3+
-      // markers. On high-DPI / touch-emulating browsers the click
-      // that places the 3rd vertex can be coalesced into a dblclick,
-      // which immediately closes the shape and disables the tool —
-      // making it look like the polygon is hard-capped at 3 points.
-      //
-      // We override `_updateFinishHandler` to ONLY bind the
-      // "click first marker to close" behavior. Users still finish
-      // the polygon via:
-      //   1. Click the first vertex, OR
-      //   2. The "Finish" action in the draw toolbar.
-      // This removes the spurious 3-point termination without
-      // changing the matcher contract or the GeoJSON output.
-      const PolygonProto = LDraw.Draw.Polygon.prototype;
-      const originalUpdateFinish = PolygonProto._updateFinishHandler;
-      PolygonProto._updateFinishHandler = function () {
-        const markers = this._markers;
-        if (!markers || markers.length === 0) return;
-        // Always (re)bind click-on-first-marker = finish. Idempotent
-        // off→on is safe even if the handler isn't currently bound.
-        markers[0].off("click", this._finishShape, this);
-        markers[0].on("click", this._finishShape, this);
-        // Intentionally skip the dblclick-on-last-marker binding
-        // that the upstream implementation adds for markerCount > 2.
-      };
-
-      const drawControl = new LDraw.Control.Draw({
-        position: "topright",
-        draw: {
-          polygon: {
-            allowIntersection: false,
-            showArea: true,
-            repeatMode: false,
-            maxPoints: 0, // explicit: no upper bound on vertices
-            shapeOptions: { color: "#2563EB", weight: 2, fillOpacity: 0.15 },
-          },
-          marker: false,
-          polyline: false,
-          rectangle: false,
-          circle: false,
-          circlemarker: false,
-        },
-        edit: { featureGroup: drawnItems },
-      });
-      map.addControl(drawControl);
-
-      // Restore the upstream behavior on unmount so we don't leak
-      // the override into other Leaflet instances on the page.
-      const restoreUpdateFinish = () => {
-        PolygonProto._updateFinishHandler = originalUpdateFinish;
-      };
-
-      const emitCurrent = () => {
-        const layers = drawnItems.getLayers();
-        if (layers.length === 0) {
+      const emitPolygon = () => {
+        const poly = polygonRef.current;
+        if (!poly) {
           onChangeRef.current(null);
           return;
         }
-        const layer = layers[layers.length - 1] as unknown as {
-          toGeoJSON: () => GeoJSON.Feature<GeoJSON.Polygon>;
-        };
-        const feature = layer.toGeoJSON();
+        const feature = poly.toGeoJSON() as GeoJSON.Feature<GeoJSON.Polygon>;
         if (feature?.geometry?.type === "Polygon") {
           onChangeRef.current(feature.geometry);
         }
       };
 
-      map.on(LDraw.Draw.Event.CREATED, (e: unknown) => {
-        // Single-polygon contract: replace any prior shape.
-        drawnItems.clearLayers();
-        const ev = e as { layer: L.Layer };
-        drawnItems.addLayer(ev.layer);
-        emitCurrent();
-      });
-      map.on(LDraw.Draw.Event.EDITED, emitCurrent);
-      map.on(LDraw.Draw.Event.DELETED, emitCurrent);
-
-      cleanup = () => {
-        restoreUpdateFinish();
-        map.remove();
+      const removeDrawing = () => {
+        if (drawLineRef.current) {
+          map.removeLayer(drawLineRef.current);
+          drawLineRef.current = null;
+        }
+        for (const m of drawMarkersRef.current) map.removeLayer(m);
+        drawMarkersRef.current = [];
+        drawLatLngsRef.current = [];
       };
+
+      const removePolygon = () => {
+        if (polygonRef.current) {
+          map.removeLayer(polygonRef.current);
+          polygonRef.current = null;
+        }
+        for (const m of editMarkersRef.current) map.removeLayer(m);
+        editMarkersRef.current = [];
+      };
+
+      const refreshDrawLine = () => {
+        const latlngs = drawLatLngsRef.current;
+        if (!drawLineRef.current) {
+          drawLineRef.current = L.polyline(latlngs, {
+            ...POLY_STYLE,
+            dashArray: "4 4",
+          }).addTo(map);
+        } else {
+          drawLineRef.current.setLatLngs(latlngs);
+        }
+        setVertexCount(latlngs.length);
+      };
+
+      const onMapClick = (e: import("leaflet").LeafletMouseEvent) => {
+        // Only react in drawing mode.
+        if (mapRef.current?.getContainer().dataset.mode !== "drawing") return;
+        const latlng = e.latlng;
+        drawLatLngsRef.current.push(latlng);
+        const idx = drawLatLngsRef.current.length - 1;
+        const marker = L.marker(latlng, {
+          icon: vertexIcon("#2563EB"),
+          draggable: false,
+          keyboard: false,
+        }).addTo(map);
+        // Click on first marker = finish.
+        if (idx === 0) {
+          marker.on("click", (ev) => {
+            // Stop the click from bubbling and adding a duplicate vertex.
+            (ev.originalEvent as MouseEvent | undefined)?.stopPropagation?.();
+            helpersRef.current?.finishDrawing();
+          });
+        }
+        drawMarkersRef.current.push(marker);
+        refreshDrawLine();
+      };
+
+      const onMapDblClick = () => {
+        if (mapRef.current?.getContainer().dataset.mode !== "drawing") return;
+        helpersRef.current?.finishDrawing();
+      };
+
+      map.on("click", onMapClick);
+      map.on("dblclick", onMapDblClick);
+
+      const buildEditMarkers = () => {
+        const poly = polygonRef.current;
+        if (!poly) return;
+        for (const m of editMarkersRef.current) map.removeLayer(m);
+        editMarkersRef.current = [];
+        const ring = (poly.getLatLngs()[0] as import("leaflet").LatLng[]) ?? [];
+        ring.forEach((latlng, i) => {
+          const marker = L.marker(latlng, {
+            icon: vertexIcon("#1d4ed8"),
+            draggable: true,
+            keyboard: false,
+          }).addTo(map);
+          marker.on("drag", () => {
+            const updated = editMarkersRef.current.map((mm) => mm.getLatLng());
+            poly.setLatLngs([updated]);
+          });
+          marker.on("dragend", () => {
+            const updated = editMarkersRef.current.map((mm) => mm.getLatLng());
+            poly.setLatLngs([updated]);
+            emitPolygon();
+          });
+          // Right-click a vertex to delete it (min 3 retained).
+          marker.on("contextmenu", (ev) => {
+            (ev.originalEvent as MouseEvent | undefined)?.preventDefault?.();
+            if (editMarkersRef.current.length <= 3) return;
+            map.removeLayer(marker);
+            editMarkersRef.current.splice(i, 1);
+            const updated = editMarkersRef.current.map((mm) => mm.getLatLng());
+            poly.setLatLngs([updated]);
+            // Rebuild so indices stay correct.
+            buildEditMarkers();
+            emitPolygon();
+          });
+          editMarkersRef.current.push(marker);
+        });
+      };
+
+      const finalizeFromLatLngs = (latlngs: import("leaflet").LatLng[]) => {
+        if (latlngs.length < 3) return false;
+        removePolygon();
+        polygonRef.current = L.polygon(latlngs, POLY_STYLE).addTo(map);
+        buildEditMarkers();
+        setHasPolygon(true);
+        emitPolygon();
+        return true;
+      };
+
+      helpersRef.current = {
+        startDrawing: () => {
+          removePolygon();
+          removeDrawing();
+          setHasPolygon(false);
+          map.getContainer().dataset.mode = "drawing";
+          map.getContainer().style.cursor = "crosshair";
+          setMode("drawing");
+        },
+        finishDrawing: () => {
+          const ok = finalizeFromLatLngs([...drawLatLngsRef.current]);
+          removeDrawing();
+          map.getContainer().dataset.mode = ok ? "editing" : "idle";
+          map.getContainer().style.cursor = "";
+          setMode(ok ? "editing" : "idle");
+        },
+        clearAll: () => {
+          removeDrawing();
+          removePolygon();
+          setHasPolygon(false);
+          map.getContainer().dataset.mode = "idle";
+          map.getContainer().style.cursor = "";
+          setMode("idle");
+          onChangeRef.current(null);
+        },
+      };
+
+      // Seed from saved polygon, if any.
+      if (initialPolygon) {
+        try {
+          const ring = initialPolygon.coordinates?.[0];
+          if (Array.isArray(ring) && ring.length >= 3) {
+            const latlngs = ring
+              .filter((c) => Array.isArray(c) && c.length >= 2)
+              .map((c) => L.latLng(c[1] as number, c[0] as number));
+            // Drop trailing closing point if present.
+            if (
+              latlngs.length > 1 &&
+              latlngs[0].lat === latlngs[latlngs.length - 1].lat &&
+              latlngs[0].lng === latlngs[latlngs.length - 1].lng
+            ) {
+              latlngs.pop();
+            }
+            if (latlngs.length >= 3) {
+              polygonRef.current = L.polygon(latlngs, POLY_STYLE).addTo(map);
+              buildEditMarkers();
+              setHasPolygon(true);
+              setMode("editing");
+              map.getContainer().dataset.mode = "editing";
+              const bounds = polygonRef.current.getBounds();
+              if (bounds.isValid()) {
+                map.fitBounds(bounds, { maxZoom: 12, padding: [16, 16] });
+              }
+            }
+          }
+        } catch {
+          // Malformed stored polygon — ignore and let the user redraw.
+        }
+      }
     })();
 
     return () => {
       cancelled = true;
-      if (cleanup) cleanup();
+      const map = mapRef.current;
+      if (map) {
+        map.off();
+        map.remove();
+      }
+      mapRef.current = null;
+      LRef.current = null;
+      drawLineRef.current = null;
+      drawMarkersRef.current = [];
+      drawLatLngsRef.current = [];
+      polygonRef.current = null;
+      editMarkersRef.current = [];
+      helpersRef.current = null;
     };
-    // Intentionally run once: the editor is uncontrolled after mount.
+    // Intentionally run once: editor is uncontrolled after mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
-    <div
-      ref={containerRef}
-      className="h-80 w-full overflow-hidden rounded-md border border-input"
-      role="application"
-      aria-label="Service area polygon editor"
-    />
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        {mode !== "drawing" ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="default"
+            onClick={() => helpersRef.current?.startDrawing()}
+          >
+            {hasPolygon ? "Redraw polygon" : "Draw polygon"}
+          </Button>
+        ) : (
+          <>
+            <Button
+              type="button"
+              size="sm"
+              variant="default"
+              disabled={vertexCount < 3}
+              onClick={() => helpersRef.current?.finishDrawing()}
+            >
+              Finish ({vertexCount} {vertexCount === 1 ? "point" : "points"})
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => helpersRef.current?.clearAll()}
+            >
+              Cancel
+            </Button>
+          </>
+        )}
+        {hasPolygon && mode !== "drawing" && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => helpersRef.current?.clearAll()}
+          >
+            Clear
+          </Button>
+        )}
+        <span className="text-xs text-muted-foreground">
+          {mode === "drawing"
+            ? "Click the map to add boundary points. Click the first point or double-click to finish."
+            : hasPolygon
+            ? "Drag any vertex to adjust. Right-click a vertex to remove it."
+            : "Click \u201CDraw polygon\u201D, then click on the map to outline your service area."}
+        </span>
+      </div>
+      <div
+        ref={containerRef}
+        className="h-80 w-full overflow-hidden rounded-md border border-input"
+        role="application"
+        aria-label="Service area polygon editor"
+      />
+    </div>
   );
 }
 
