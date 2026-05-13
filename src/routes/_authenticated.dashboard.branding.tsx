@@ -1105,11 +1105,12 @@ function BrandingPage() {
                     />
                   </Suspense>
                   <p className="text-xs text-muted-foreground">
-                    Click the polygon tool (top-right), then click points on
-                    the map to outline your service area. Add as many points
-                    as you need. To finish, click the first point again or
-                    use the Finish action in the toolbar. Drawing a new
-                    polygon replaces the previous one.
+                    Use <strong>Draw polygon</strong>, then click on the map
+                    to add as many boundary points as you need. Finish by
+                    clicking the first point, double-clicking, or pressing
+                    <strong> Finish</strong>. Drag vertices to adjust;
+                    right-click a vertex to remove it. Drawing a new polygon
+                    replaces the previous one.
                   </p>
                 </div>
               ) : (
