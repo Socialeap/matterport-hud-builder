@@ -1047,6 +1047,14 @@ function MSPCard({ msp }: { msp: DirectoryMSP }) {
               <MapPin className="size-3" />
               {msp.primary_city}, {msp.region}
             </p>
+            {msp.match_reason && (
+              <p className="mt-1 text-[10px] uppercase tracking-wider text-cyan-300/80">
+                {msp.match_reason === "polygon" && "Matched: Service area"}
+                {msp.match_reason === "radius" && "Matched: Service radius"}
+                {msp.match_reason === "zip" && "Matched: Service ZIP"}
+                {msp.match_reason === "city" && "Matched: City"}
+              </p>
+            )}
           </div>
         </div>
 
