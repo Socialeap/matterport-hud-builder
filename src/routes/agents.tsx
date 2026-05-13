@@ -197,6 +197,9 @@ interface DirectoryMSP {
   specialties: MarketplaceSpecialty[];
   primary_city: string;
   region: string;
+  // 'polygon' | 'radius' | 'zip' | 'city' | null — set by search_msp_directory.
+  // Null on the browse-all (no-input) path.
+  match_reason?: string | null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -560,9 +563,39 @@ function DirectorySection() {
     }
 
     setSearching(true);
+
+    // Geocode the query first so the RPC can test polygon containment
+    // and radius coverage against each MSP's drawn service area. The
+    // route returns { lat: null, lng: null } when geocoding isn't
+    // possible (e.g. ZIP-only, or city without state) — the SQL
+    // function then falls back to ZIP-array and trigram-city matching.
+    let lat: number | null = null;
+    let lng: number | null = null;
+    try {
+      const geoRes = await fetch("/api/geocode-directory-query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          city: searchMode === "city" ? cityTrim : "",
+          region: searchMode === "city" ? regionTrim : "",
+          zip: searchMode === "zip" ? zipTrim : "",
+        }),
+      });
+      if (geoRes.ok) {
+        const j = (await geoRes.json()) as { lat: number | null; lng: number | null };
+        lat = typeof j.lat === "number" ? j.lat : null;
+        lng = typeof j.lng === "number" ? j.lng : null;
+      }
+    } catch {
+      // Non-fatal: degrade to ZIP/city fallbacks in SQL.
+    }
+
     const { data, error } = await supabase.rpc("search_msp_directory", {
       p_city: searchMode === "city" ? cityTrim : undefined,
+      p_region: searchMode === "city" && regionTrim ? regionTrim : undefined,
       p_zip: searchMode === "zip" ? zipTrim : undefined,
+      p_lat: lat ?? undefined,
+      p_lng: lng ?? undefined,
     });
     setSearching(false);
 
@@ -571,13 +604,9 @@ function DirectorySection() {
       return;
     }
 
-    // We only filter by region client-side — the RPC is city-only by design
-    // (zip is ANY-of-array). This keeps the SQL simple and lets us surface
-    // results from MSPs serving multiple states with the same city name.
-    const rows = (data ?? []) as DirectoryMSP[];
-    const finalRows = regionTrim
-      ? rows.filter((r) => r.region === regionTrim)
-      : rows;
+    // Region narrowing now happens server-side via p_region (when present).
+    // No client-side region filter needed.
+    const finalRows = (data ?? []) as DirectoryMSP[];
     setResults(finalRows);
     setLastQuery({ city: cityTrim, region: regionTrim, zip: zipTrim });
   };
@@ -1018,6 +1047,14 @@ function MSPCard({ msp }: { msp: DirectoryMSP }) {
               <MapPin className="size-3" />
               {msp.primary_city}, {msp.region}
             </p>
+            {msp.match_reason && (
+              <p className="mt-1 text-[10px] uppercase tracking-wider text-cyan-300/80">
+                {msp.match_reason === "polygon" && "Matched: Service area"}
+                {msp.match_reason === "radius" && "Matched: Service radius"}
+                {msp.match_reason === "zip" && "Matched: Service ZIP"}
+                {msp.match_reason === "city" && "Matched: City"}
+              </p>
+            )}
           </div>
         </div>
 
