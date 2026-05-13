@@ -7,7 +7,7 @@ export const Route = createFileRoute("/terms")({
       {
         name: "description",
         content:
-          "Terms governing use of the 3D Presentation Studio (3DPS) platform, including license restrictions, payment terms, acceptable use, and prohibitions on copying or modifying our software.",
+          "Terms governing the 3D Presentation Studio platform: license restrictions, payment terms, IP protections, and acceptable use rules.",
       },
       { property: "og:title", content: "Terms of Service — 3D Presentation Studio" },
       {

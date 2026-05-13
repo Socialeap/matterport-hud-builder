@@ -7,7 +7,7 @@ export const Route = createFileRoute("/privacy")({
       {
         name: "description",
         content:
-          "How 3D Presentation Studio (3DPS) collects, uses, and protects information from MSPs, their clients, and end viewers of branded 3D property tour presentations.",
+          "How 3D Presentation Studio collects, uses, and protects data from MSPs, clients, and viewers of branded 3D Matterport tour presentations.",
       },
       { property: "og:title", content: "Privacy Policy — 3D Presentation Studio" },
       {
@@ -22,7 +22,7 @@ export const Route = createFileRoute("/privacy")({
       {
         name: "twitter:description",
         content:
-          "How 3DPS handles account data, branding assets, payment metadata, lead capture, and third-party integrations.",
+          "How 3DPS handles account data, branding assets, payments, lead capture, and third-party integrations.",
       },
     ],
     links: [{ rel: "canonical", href: "https://3dps.transcendencemedia.com/privacy" }],
