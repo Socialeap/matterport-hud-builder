@@ -243,7 +243,7 @@ async function streamGroq(
             { role: "user", content: userMessage },
           ],
           stream: true,
-          temperature: 0.3,
+          temperature: 0.1,
           max_tokens: 600,
         }),
       });
