@@ -534,11 +534,27 @@ function DirectorySection() {
 
   const filtered = useMemo(() => {
     if (!results) return null;
-    if (selectedSpecialties.size === 0) return results;
-    return results.filter((m) =>
-      Array.from(selectedSpecialties).every((s) => m.specialties.includes(s)),
-    );
-  }, [results, selectedSpecialties]);
+    // Essentials = hard filter. Drop MSPs missing any essential service.
+    const essentialFiltered =
+      essentialServices.length === 0
+        ? results
+        : results.filter((m) =>
+            essentialServices.every((s) => m.specialties.includes(s)),
+          );
+    // Preferables = soft rank. Sort by match count desc, stable on ties.
+    if (preferableServices.length === 0) return essentialFiltered;
+    return essentialFiltered
+      .map((m, i) => ({
+        m,
+        i,
+        score: preferableServices.reduce(
+          (n, s) => n + (m.specialties.includes(s) ? 1 : 0),
+          0,
+        ),
+      }))
+      .sort((a, b) => (b.score - a.score) || (a.i - b.i))
+      .map((x) => x.m);
+  }, [results, essentialServices, preferableServices]);
 
   const handleSearch = async (e: FormEvent) => {
     e.preventDefault();
