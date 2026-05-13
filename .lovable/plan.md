@@ -1,45 +1,46 @@
-## Fix: Service Area tab is dead when Marketplace Listing is off
+## Diagnosis
 
-### Root cause
-In `src/routes/_authenticated.dashboard.branding.tsx`, the `TabsTrigger` for `value="area"` is hard-disabled whenever `branding.is_directory_public` is `false`. The tab content also short-circuits with `branding.is_directory_public ? (...editor...) : null`. Result: a permanently grayed-out tab with no actionable path, and users can't pre-configure their service radius / polygon before going live.
+The polygon tool is not intentionally limited to three points.
 
-### Tab purpose (for context)
-Controls how the marketplace matcher assigns inbound agent leads to your studio:
-- **Service Radius (miles)** — fallback radius (Starter + Pro)
-- **Custom Polygon** — exact-shape match, Pro-only, drawn with the lazy-loaded Leaflet editor (`ServiceAreaMap`)
+Current findings:
+- The app uses `leaflet@1.9.4` and `leaflet-draw@1.0.4`.
+- `leaflet-draw@1.0.4` is still the latest official npm release.
+- The library default for polylines/polygons is `maxPoints: 0`, meaning no point limit.
+- Our `ServiceAreaMap` config does not set `maxPoints`, so we are not deliberately capping the polygon.
+- The docs confirm polygons inherit `addVertex()` and `completeShape()` from `L.Draw.Polyline`, and a polygon is only considered valid once it has at least 3 markers.
 
-These values are only *consumed* by the matcher when `is_directory_public = true`, so gating them was an attempt to avoid "knobs with no effect" — but it backfired UX-wise.
+The likely cause is a known `leaflet-draw` touch/pointer compatibility issue: on touch-capable browsers or high-DPI environments, the library can treat the same click/tap that creates the third valid vertex as a finish/close event. After that, drawing mode ends, so no additional vertices can be added. This matches the reported behavior exactly.
 
-### Changes (UI/presentation only — no business logic, no schema, no matcher changes)
+## Safest fix
 
-**File:** `src/routes/_authenticated.dashboard.branding.tsx`
+Patch only `src/components/dashboard/ServiceAreaMap.tsx` with a small compatibility shim after `leaflet-draw` loads and before the draw control is created.
 
-1. **Un-disable the tab trigger** (line ~552–559)
-   - Remove `disabled={!branding.is_directory_public}` and the conditional `title`.
-   - Keep label "Service Area" with same `text-xs sm:text-sm` styling so the 6-col grid stays balanced.
+1. Keep the existing library versions.
+   - No dependency churn.
+   - `leaflet-draw` has no newer official npm release to upgrade to.
 
-2. **Replace the `branding.is_directory_public ? (...) : null` gate** in the `TabsContent value="area"` block (line ~1019–1020) with an always-rendered `<Card>`. Inside the `CardContent`, prepend a conditional banner shown only when `!branding.is_directory_public`:
-   ```
-   ┌──────────────────────────────────────────────┐
-   │ ⓘ Marketplace Listing is off                 │
-   │ These settings only take effect once your    │
-   │ studio is listed. You can configure them now │
-   │ and publish later.                           │
-   │            [ Go to Marketplace tab ]         │
-   └──────────────────────────────────────────────┘
-   ```
-   - Use the existing dashed-primary banner pattern already used at line ~1010 for visual consistency.
-   - The button uses local React state to switch the active tab. To support that, lift `Tabs` from uncontrolled (`defaultValue`) to controlled (`value` + `onValueChange`) with a `useState<string>("identity")`. This is a minimal, contained refactor.
+2. Explicitly set polygon drawing options for our use case:
+   - `maxPoints: 0` to make the unlimited-point intent explicit.
+   - `repeatMode: false` to keep the existing single-polygon workflow.
+   - Preserve `allowIntersection: false`, `showArea: true`, and existing visual styling.
 
-3. **Leave the rest of the area-tab body unchanged**: Service Radius input, Pro polygon editor (with its existing `Lock` icon and Starter upgrade CTA) all render exactly as today. The matcher still ignores the values until `is_directory_public` flips on, so there is zero behavioral risk.
+3. Add a local compatibility override for polygon finish behavior:
+   - Require finishing by clicking/tapping the first vertex or using the toolbar Finish action.
+   - Prevent the third point from being treated as an automatic finish.
+   - Keep double-click finish available only when it does not interfere with normal vertex placement.
 
-### Out of scope
-- No changes to `is_directory_public` save semantics, geocoding, polygon RPC, marketplace matcher edge function, RLS, or schema.
-- No changes to `CallingCard.tsx`, `CallingCardSection.tsx`, `ServiceAreaMap.tsx`.
-- No tab reordering, label changes, or container-width changes.
+4. Improve the helper copy under the map:
+   - Clarify that users can keep clicking to add more boundary points.
+   - Clarify how to finish: click the first point or use Finish.
 
-### Verification
-- Open `/dashboard/branding` with Marketplace Listing **off** → Service Area tab is clickable, shows the banner + radius input + (Pro) polygon editor or (Starter) upgrade CTA.
-- Click "Go to Marketplace tab" → switches to Marketplace tab; toggling on Marketplace Listing and returning to Service Area hides the banner.
-- Open with Marketplace Listing **on** → identical to today (no banner, full editor).
-- Confirm 6-tab grid layout still fits at 922px viewport.
+## Validation path
+
+After implementation:
+- Inspect the patched component for JSX/import/type correctness.
+- Verify no backend, matcher, RPC, RLS, save semantics, tier logic, or database schema is changed.
+- Confirm the map still emits one GeoJSON Polygon through `onPolygonChange` and still replaces the previous polygon when a new one is completed.
+
+## Files to change
+
+- `src/components/dashboard/ServiceAreaMap.tsx`
+- `src/routes/_authenticated.dashboard.branding.tsx` only for the map instruction text, if needed

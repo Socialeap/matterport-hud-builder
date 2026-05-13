@@ -94,7 +94,48 @@ export function ServiceAreaMap({
       // local cast.
       const LDraw = L as unknown as {
         Control: { Draw: new (opts: unknown) => L.Control };
-        Draw: { Event: { CREATED: string; EDITED: string; DELETED: string } };
+        Draw: {
+          Event: { CREATED: string; EDITED: string; DELETED: string };
+          Polygon: {
+            prototype: {
+              _updateFinishHandler: (this: {
+                _markers: Array<{
+                  on: (ev: string, fn: unknown, ctx: unknown) => void;
+                  off: (ev: string, fn: unknown, ctx: unknown) => void;
+                }>;
+                _finishShape: () => void;
+              }) => void;
+            };
+          };
+        };
+      };
+
+      // ---- leaflet-draw polygon compatibility shim ----
+      // Upstream leaflet-draw@1.0.4 binds a `dblclick` finish handler
+      // to the most recently placed vertex once the polygon has 3+
+      // markers. On high-DPI / touch-emulating browsers the click
+      // that places the 3rd vertex can be coalesced into a dblclick,
+      // which immediately closes the shape and disables the tool —
+      // making it look like the polygon is hard-capped at 3 points.
+      //
+      // We override `_updateFinishHandler` to ONLY bind the
+      // "click first marker to close" behavior. Users still finish
+      // the polygon via:
+      //   1. Click the first vertex, OR
+      //   2. The "Finish" action in the draw toolbar.
+      // This removes the spurious 3-point termination without
+      // changing the matcher contract or the GeoJSON output.
+      const PolygonProto = LDraw.Draw.Polygon.prototype;
+      const originalUpdateFinish = PolygonProto._updateFinishHandler;
+      PolygonProto._updateFinishHandler = function () {
+        const markers = this._markers;
+        if (!markers || markers.length === 0) return;
+        // Always (re)bind click-on-first-marker = finish. Idempotent
+        // off→on is safe even if the handler isn't currently bound.
+        markers[0].off("click", this._finishShape, this);
+        markers[0].on("click", this._finishShape, this);
+        // Intentionally skip the dblclick-on-last-marker binding
+        // that the upstream implementation adds for markerCount > 2.
       };
 
       const drawControl = new LDraw.Control.Draw({
@@ -103,6 +144,8 @@ export function ServiceAreaMap({
           polygon: {
             allowIntersection: false,
             showArea: true,
+            repeatMode: false,
+            maxPoints: 0, // explicit: no upper bound on vertices
             shapeOptions: { color: "#2563EB", weight: 2, fillOpacity: 0.15 },
           },
           marker: false,
@@ -114,6 +157,12 @@ export function ServiceAreaMap({
         edit: { featureGroup: drawnItems },
       });
       map.addControl(drawControl);
+
+      // Restore the upstream behavior on unmount so we don't leak
+      // the override into other Leaflet instances on the page.
+      const restoreUpdateFinish = () => {
+        PolygonProto._updateFinishHandler = originalUpdateFinish;
+      };
 
       const emitCurrent = () => {
         const layers = drawnItems.getLayers();
@@ -140,7 +189,10 @@ export function ServiceAreaMap({
       map.on(LDraw.Draw.Event.EDITED, emitCurrent);
       map.on(LDraw.Draw.Event.DELETED, emitCurrent);
 
-      cleanup = () => map.remove();
+      cleanup = () => {
+        restoreUpdateFinish();
+        map.remove();
+      };
     })();
 
     return () => {
