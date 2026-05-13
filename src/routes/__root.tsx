@@ -42,6 +42,7 @@ export const Route = createRootRoute({
       { property: "og:title", content: "3D Presentation Studio" },
       { property: "og:description", content: "White-label Matterport 3D tour presentation platform by Transcendence Media." },
       { name: "twitter:card", content: "summary_large_image" },
+      { name: "google-site-verification", content: "jjiVIwqcuUy5j_XMvbPFCMGBaNtSUGGQT5PGrcVZXDo" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
