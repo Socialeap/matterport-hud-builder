@@ -726,7 +726,7 @@ function decideAnswer(inputs) {
   }
 
   // Step 5 — Tier 3 chunk rescoring.
-  var chunksRescored = rescoreChunksByIntent(chunkHits, intent, intentAllowsFn);
+  var chunksRescored = rescoreChunksByIntent(chunkHits, intent, intentAllowsFn, query);
 
   var hasIntent = intent && intent !== "unknown";
   var allowedChunks = [];
