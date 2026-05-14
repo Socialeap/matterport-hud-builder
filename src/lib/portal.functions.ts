@@ -83,6 +83,8 @@ interface SavePresentationInput {
       interactive_widget?: string[];
       custom_iconography?: string[];
       external_link?: string[];
+      /** Pro-only interactive floor map for this property. */
+      floor_map?: FloorMapPersistShape | null;
     }
   >;
   /**
@@ -95,6 +97,28 @@ interface SavePresentationInput {
     passwordProtected: boolean;
     passwordHint: string;
   };
+}
+
+/**
+ * Persisted floor-map shape (server-side mirror of the client's
+ * `FloorMapData`). Kept structural — we don't import the client type
+ * to avoid pulling React types into the server module.
+ */
+interface FloorMapPin {
+  id: string;
+  x: number;
+  y: number;
+  label: string;
+  description: string;
+}
+interface FloorMapPersistShape {
+  svg: string;
+  viewBox: string;
+  width: number;
+  height: number;
+  pins: FloorMapPin[];
+  ephemeralAssetId?: string | null;
+  storagePath?: string | null;
 }
 
 export const savePresentationRequest = createServerFn({ method: "POST" })
@@ -345,6 +369,7 @@ interface TourConfigData {
       interactive_widget?: string[];
       custom_iconography?: string[];
       external_link?: string[];
+      floor_map?: FloorMapPersistShape | null;
     }
   >;
   /**
@@ -386,6 +411,70 @@ function buildMatterportUrlServer(modelId: string, behavior: Record<string, unkn
 
 function escapeHtml(str: string): string {
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/**
+ * Defense-in-depth scrubber for the persisted Floor Map payload.
+ *
+ * The `vectorize-floorplan` Edge Function already strips script
+ * tags / event handlers / foreignObject / javascript: URIs from
+ * the SVG it returns, but the draft round-trips through localStorage
+ * and saved_models.tour_config (both controlled by the user) before
+ * reaching this point. Re-applying the same scrub here guarantees the
+ * exported HTML never embeds a tampered SVG, even if a malicious
+ * client crafted the persisted JSON by hand.
+ */
+function sanitizeFloorMapSvg(svg: string): string {
+  if (typeof svg !== "string") return "";
+  return svg
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+    .replace(/\son\w+\s*=\s*"[^"]*"/gi, "")
+    .replace(/\son\w+\s*=\s*'[^']*'/gi, "")
+    .replace(/javascript:/gi, "")
+    .replace(/<foreignObject\b[\s\S]*?<\/foreignObject>/gi, "");
+}
+
+interface ExportedFloorMap {
+  svg: string;
+  viewBox: string;
+  width: number;
+  height: number;
+  pins: Array<{ id: string; x: number; y: number; label: string; description: string }>;
+}
+
+function sanitizeFloorMapForExport(
+  raw: FloorMapPersistShape | null | undefined,
+): ExportedFloorMap | null {
+  if (!raw || typeof raw !== "object") return null;
+  const svg = sanitizeFloorMapSvg(String(raw.svg ?? ""));
+  if (!svg.includes("<svg")) return null;
+  const width = Number.isFinite(raw.width) ? Math.max(1, Math.floor(raw.width)) : 0;
+  const height = Number.isFinite(raw.height) ? Math.max(1, Math.floor(raw.height)) : 0;
+  if (width === 0 || height === 0) return null;
+  const viewBox = typeof raw.viewBox === "string" && /^[-\d.\s]+$/.test(raw.viewBox)
+    ? raw.viewBox
+    : `0 0 ${width} ${height}`;
+  const pins = Array.isArray(raw.pins)
+    ? raw.pins
+        .filter((p): p is FloorMapPin => !!p && typeof p === "object")
+        .slice(0, 50) // hard cap; the Builder enforces FLOOR_MAP_MAX_PINS=25
+        .map((p) => ({
+          id: String(p.id || "").slice(0, 64),
+          x: clampPct(p.x),
+          y: clampPct(p.y),
+          label: String(p.label || "").slice(0, 60),
+          description: String(p.description || "").slice(0, 600),
+        }))
+        .filter((p) => p.id.length > 0)
+    : [];
+  return { svg, viewBox, width, height, pins };
+}
+
+function clampPct(n: unknown): number {
+  const v = typeof n === "number" && Number.isFinite(n) ? n : 0;
+  if (v < 0) return 0;
+  if (v > 100) return 100;
+  return Math.round(v * 100) / 100;
 }
 
 function normalizeEmailForMailto(value: unknown): string {
@@ -990,6 +1079,14 @@ export const generatePresentation = createServerFn({ method: "POST" })
             sr: String(s.sr || "").trim(),
           }));
 
+        // Interactive Floor Map (Pro-only). Pass through the
+        // sanitized SVG + pins so the runtime can render the modal
+        // entirely offline. Drop anything that doesn't parse as a
+        // FloorMapPersistShape so a malformed draft can't corrupt
+        // the export — the modal simply won't render in that case.
+        const enhFloorMap = enhancements[p.id]?.floor_map;
+        const floorMap = sanitizeFloorMapForExport(enhFloorMap);
+
         return {
           name: p.name || "Untitled",
           propertyName: p.propertyName || "",
@@ -1000,6 +1097,7 @@ export const generatePresentation = createServerFn({ method: "POST" })
           enableNeighborhoodMap: !!(p.enableNeighborhoodMap && (p.location || "").trim()),
           multimedia,
           liveTourStops,
+          floorMap,
         };
       });
 
@@ -1483,6 +1581,25 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .carousel-thumb img{width:100%;height:100%;object-fit:cover}
 .carousel-thumb-play{width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#333}
 
+/* ── Interactive Floor Map modal (Pro MSP Studios) ────────────────── */
+/* The SVG layer carries preserveAspectRatio="xMidYMid meet" so pin
+   percentages remain stable as the modal resizes. Locking the
+   container aspect-ratio to the original raster prevents drift even
+   when the viewport's aspect ratio differs from the floor plan's. */
+#floormap-modal .modal-box{width:min(80vw,1080px)}
+#floormap-stage{position:relative;width:100%;background:rgba(255,255,255,0.96);border-radius:10px;overflow:hidden;color:#111827}
+#floormap-svg-host{position:absolute;inset:0}
+#floormap-svg-host svg{width:100%;height:100%;display:block}
+.floormap-pin{position:absolute;transform:translate(-50%,-100%);cursor:pointer;background:none;border:none;padding:0;color:inherit;font-family:inherit;z-index:2}
+.floormap-pin-dot{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:${escapeHtml(accentColor)};border:2px solid #fff;box-shadow:0 4px 10px rgba(0,0,0,0.35);transition:transform 0.15s}
+.floormap-pin:hover .floormap-pin-dot,.floormap-pin[aria-expanded="true"] .floormap-pin-dot{transform:scale(1.12)}
+.floormap-pin-dot svg{width:14px;height:14px;color:#fff}
+.floormap-pin-label{display:block;max-width:130px;margin:2px auto 0;padding:2px 6px;border-radius:4px;background:rgba(255,255,255,0.96);color:#0f172a;font-size:11px;font-weight:600;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 3px rgba(0,0,0,0.18);pointer-events:none}
+.floormap-popover{position:absolute;z-index:3;min-width:200px;max-width:260px;padding:10px 12px;border-radius:10px;background:rgba(15,23,42,0.95);color:#f8fafc;box-shadow:0 12px 32px rgba(0,0,0,0.4);transform:translate(-50%,calc(-100% - 38px));border:1px solid rgba(255,255,255,0.08)}
+.floormap-popover-title{font-size:13px;font-weight:600;margin-bottom:4px;color:#fff;line-height:1.3}
+.floormap-popover-desc{font-size:12px;line-height:1.5;color:rgba(255,255,255,0.82);white-space:pre-wrap}
+.floormap-empty{padding:32px 24px;text-align:center;color:rgba(255,255,255,0.55);font-size:13px}
+
 /* ── Powered-by footer ────────────────────────────────────────────── */
 #powered-by{position:fixed;bottom:0;left:0;right:0;height:34px;display:flex;align-items:center;justify-content:center;font-size:11px;color:rgba(255,255,255,0.4);border-top:1px solid rgba(255,255,255,0.06);background:${escapeHtml(hudBgColor)}cc;z-index:499}
 /* "Powered by" footer removed — viewer fills the full screen. */
@@ -1565,6 +1682,9 @@ ${askAssets.css}
       </button>
       <button id="hud-media-btn" class="hud-icon-btn" style="display:none" aria-label="Media gallery" title="View Media Gallery" onclick="window.__openModal&&window.__openModal('carousel',0)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      </button>
+      <button id="hud-floormap-btn" class="hud-icon-btn" style="display:none" aria-label="Interactive floor map" title="Interactive Floor Map" onclick="window.__openModal&&window.__openModal('floormap')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3V6z"/><path d="M9 3v15"/><path d="M15 6v15"/></svg>
       </button>
       ${askAssets.toggleBtn}
       
@@ -1729,6 +1849,23 @@ ${hasAgentContact ? `<div id="agent-drawer">
         <button class="carousel-arrow" id="carousel-next" onclick="window.__carouselNav(1)">&#8250;</button>
       </div>
       <div class="carousel-thumbs" id="carousel-thumbs"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Interactive Floor Map modal ───────────────────────────────── -->
+<div id="floormap-modal" class="modal-backdrop" onclick="if(event.target===this)window.__closeModal('floormap')">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div class="modal-top-bar">
+      <span class="modal-title" id="floormap-modal-title">Floor Map</span>
+      <button class="modal-close-btn" onclick="window.__closeModal('floormap')">&times;</button>
+    </div>
+    <div class="modal-body" style="padding:12px">
+      <div id="floormap-stage" aria-live="polite">
+        <div id="floormap-svg-host"></div>
+        <div id="floormap-pins"></div>
+        <div id="floormap-popover-host"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -2078,6 +2215,8 @@ function updateHud(i){
   if(cinBtn) cinBtn.style.display=(p.cinematicVideoUrl&&parseCinematicUrl(p.cinematicVideoUrl))?"":"none";
   var mediaBtn=document.getElementById("hud-media-btn");
   if(mediaBtn) mediaBtn.style.display=(p.multimedia&&p.multimedia.length>0)?"":"none";
+  var fmBtn=document.getElementById("hud-floormap-btn");
+  if(fmBtn) fmBtn.style.display=(p.floorMap&&p.floorMap.svg)?"":"none";
   if(p.musicUrl){initAudio(p.musicUrl,soundEnabled);}
   else if(audioEl){audioEl.pause();audioEl.src="";updateMuteBtn();}
 }
@@ -2506,6 +2645,15 @@ window.__openModal=function(name,idx){
     carouselIndex=typeof idx==="number"?idx:0;
     renderCarousel();
   }
+  if(name==="floormap"){
+    var p4=props[current];
+    renderFloorMap(p4);
+    var titleEl2=document.getElementById("floormap-modal-title");
+    if(titleEl2&&p4){
+      var fmName=(p4.propertyName||p4.name||"Floor Map");
+      titleEl2.textContent=fmName+" — Floor Map";
+    }
+  }
   el.classList.add("open");
 };
 window.__closeModal=function(name){
@@ -2514,6 +2662,10 @@ window.__closeModal=function(name){
   el.classList.remove("open");
   if(name==="map"){var mf=document.getElementById("map-frame");if(mf)mf.src="";}
   if(name==="cinema"){var cc=document.getElementById("cinema-content");if(cc)cc.innerHTML="";}
+  if(name==="floormap"){
+    var ph=document.getElementById("floormap-popover-host");
+    if(ph) ph.innerHTML="";
+  }
 };
 
 // \u2500\u2500 Carousel render
@@ -2573,10 +2725,90 @@ window.__carouselNav=function(delta){
   renderCarousel();
 };
 
+// \u2500\u2500 Interactive Floor Map renderer
+//    Builds a stage that mirrors the source raster's aspect ratio so
+//    percentage-based pin coordinates land on the correct pixels even
+//    when the viewer resizes the modal. The pin DOM is rebuilt on
+//    each open so a property switch can never show stale pins.
+function renderFloorMap(p){
+  var stage=document.getElementById("floormap-stage");
+  var host=document.getElementById("floormap-svg-host");
+  var pinsHost=document.getElementById("floormap-pins");
+  var popHost=document.getElementById("floormap-popover-host");
+  if(!stage||!host||!pinsHost||!popHost) return;
+  popHost.innerHTML="";
+  pinsHost.innerHTML="";
+  host.innerHTML="";
+  if(!p||!p.floorMap||!p.floorMap.svg){
+    stage.style.aspectRatio="16/9";
+    pinsHost.innerHTML='<div class="floormap-empty">No floor map for this property.</div>';
+    return;
+  }
+  var fm=p.floorMap;
+  var w=Number(fm.width)||1024;
+  var h=Number(fm.height)||768;
+  stage.style.aspectRatio=w+" / "+h;
+  // SVG is server-sanitized (script/event handlers stripped before
+  // it reached the export bundle). Embedding as-is preserves the
+  // viewBox + preserveAspectRatio attributes that lock pin
+  // coordinates.
+  host.innerHTML=String(fm.svg||"");
+  var pins=Array.isArray(fm.pins)?fm.pins:[];
+  for(var i=0;i<pins.length;i++){
+    (function(pin){
+      var btn=document.createElement("button");
+      btn.type="button";
+      btn.className="floormap-pin";
+      btn.style.left=Number(pin.x||0)+"%";
+      btn.style.top=Number(pin.y||0)+"%";
+      btn.setAttribute("aria-expanded","false");
+      btn.setAttribute("aria-label",(pin.label||"Pin")+(pin.description?": "+pin.description:""));
+      btn.innerHTML='<span class="floormap-pin-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 1 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></span><span class="floormap-pin-label"></span>';
+      var lbl=btn.querySelector(".floormap-pin-label");
+      if(lbl) lbl.textContent=pin.label||"Pin "+(i+1);
+      btn.addEventListener("click",function(ev){
+        ev.stopPropagation();
+        showFloorMapPopover(pin,btn);
+      });
+      pinsHost.appendChild(btn);
+    })(pins[i]);
+  }
+  // Close the popover when the visitor clicks the SVG itself.
+  stage.addEventListener("click",function(){ closeFloorMapPopover(); });
+}
+function closeFloorMapPopover(){
+  var popHost=document.getElementById("floormap-popover-host");
+  if(popHost) popHost.innerHTML="";
+  var prevPins=document.querySelectorAll('.floormap-pin[aria-expanded="true"]');
+  for(var k=0;k<prevPins.length;k++) prevPins[k].setAttribute("aria-expanded","false");
+}
+function showFloorMapPopover(pin,sourceBtn){
+  closeFloorMapPopover();
+  var popHost=document.getElementById("floormap-popover-host");
+  if(!popHost||!pin) return;
+  var pop=document.createElement("div");
+  pop.className="floormap-popover";
+  pop.style.left=Number(pin.x||0)+"%";
+  pop.style.top=Number(pin.y||0)+"%";
+  pop.setAttribute("role","dialog");
+  var title=document.createElement("div");
+  title.className="floormap-popover-title";
+  title.textContent=pin.label||"Pin";
+  pop.appendChild(title);
+  if(pin.description){
+    var desc=document.createElement("div");
+    desc.className="floormap-popover-desc";
+    desc.textContent=pin.description;
+    pop.appendChild(desc);
+  }
+  popHost.appendChild(pop);
+  if(sourceBtn) sourceBtn.setAttribute("aria-expanded","true");
+}
+
 // \u2500\u2500 Keyboard shortcuts
 document.addEventListener("keydown",function(e){
   if(e.key!=="Escape") return;
-  ["map","cinema","carousel"].forEach(function(n){
+  ["map","cinema","carousel","floormap"].forEach(function(n){
     var el=document.getElementById(n+"-modal");
     if(el&&el.classList.contains("open")) window.__closeModal(n);
   });
@@ -3312,6 +3544,12 @@ function load(i){
   try { localStorage.setItem(__propStorageKey,String(i)); } catch(_e){}
   try { renderPropertyDocs(i); } catch(_e){}
   try { updateHud(i); } catch(_e){}
+  // Close the floor-map modal on property switch so pins from the
+  // previous property can't bleed in.
+  try {
+    var fmEl=document.getElementById("floormap-modal");
+    if(fmEl&&fmEl.classList.contains("open")) window.__closeModal("floormap");
+  } catch(_e){}
   try { if(typeof window.__lgOnPropertyChange==="function") window.__lgOnPropertyChange(i); } catch(_e){}
   // Reset carousel context for new property
   carouselMedia=(props[i]&&props[i].multimedia)||[];

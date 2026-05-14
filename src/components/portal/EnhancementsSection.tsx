@@ -23,8 +23,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PropertyIntelligenceSection } from "./PropertyIntelligenceSection";
 import { SoundLibraryPicker } from "./enhancements/SoundLibraryPicker";
 import { VaultCatalogList } from "./enhancements/VaultCatalogList";
+import { InteractiveFloorMap } from "./enhancements/InteractiveFloorMap";
 import { AskAiClientByokSection } from "./AskAiClientByokSection";
 import type { PropertyModel } from "./types";
+import type { FloorMapData } from "@/lib/portal/floor-map";
 
 /**
  * Per-property map of which vault assets the client has chosen to apply.
@@ -40,6 +42,13 @@ export interface PropertyEnhancements {
   interactive_widget?: string[];
   custom_iconography?: string[];
   external_link?: string[];
+  /**
+   * Interactive SVG floor map for this property (Pro MSP Studios only).
+   * Generated from a raster upload via the `vectorize-floorplan` Edge
+   * Function and embedded directly into the exported standalone HTML —
+   * no external storage dependency at viewing time.
+   */
+  floor_map?: FloorMapData | null;
 }
 
 export type EnhancementsByProperty = Record<string, PropertyEnhancements>;
@@ -52,6 +61,11 @@ interface Props {
   onExtractionSuccess: () => void;
   /** Builder viewer role — only `client` sees the BYOK panel. */
   viewerRole?: "client" | "provider" | "admin" | "unknown";
+  /**
+   * Whether the linked MSP is on the Pro tier. Pro-only enhancements
+   * (currently: Interactive Floor Map) are hidden when false.
+   */
+  isPro?: boolean;
 }
 
 /**
@@ -66,6 +80,7 @@ export function EnhancementsSection({
   onEnhancementsChange,
   onExtractionSuccess,
   viewerRole = "unknown",
+  isPro = false,
 }: Props) {
   // Active property tab. Defaults to the first model and self-corrects if the
   // user removes the property currently selected.
@@ -198,6 +213,35 @@ export function EnhancementsSection({
             </Tabs>
           </AccordionContent>
         </AccordionItem>
+
+        {/* Interactive Floor Map — Pro MSP Studios only. Placed directly
+            beneath Property Intelligence & Docs per the product spec. */}
+        {isPro && (
+          <AccordionItem value="floor-map" className="rounded-md border bg-card">
+            <AccordionTrigger className="px-3 py-2 hover:no-underline">
+              <span className="flex items-center gap-2 text-sm font-semibold">
+                <Layers className="size-4 text-primary" />
+                Interactive Floor Map
+                <Badge variant="secondary" className="ml-1">Pro</Badge>
+                {activeEnhancements.floor_map?.svg && (
+                  <Badge variant="outline" className="ml-1 border-emerald-300 text-emerald-700">
+                    Applied
+                  </Badge>
+                )}
+              </span>
+            </AccordionTrigger>
+            <AccordionContent className="px-3 pb-3">
+              <InteractiveFloorMap
+                propertyId={activeId}
+                propertyLabel={
+                  activeModel.propertyName || activeModel.name || "this property"
+                }
+                value={activeEnhancements.floor_map ?? null}
+                onChange={(next) => updateActive({ floor_map: next })}
+              />
+            </AccordionContent>
+          </AccordionItem>
+        )}
 
         {/* Sound Library — wired */}
         <AccordionItem value="sound" className="rounded-md border bg-card">

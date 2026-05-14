@@ -1900,6 +1900,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
                       setExtractionDirtyDismissed(false);
                     }}
                     viewerRole={accessState.viewerRole}
+                    isPro={isPro}
                   />
                 </AccordionContent>
               </AccordionItem>
