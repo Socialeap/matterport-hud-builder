@@ -40,12 +40,12 @@ interface WorkOrderRow {
 }
 
 const STATUS_LABELS: Record<WorkOrderRow["status"], { label: string; color: string }> = {
-  pending: { label: "Awaiting responses", color: "bg-amber-300/15 text-amber-200 ring-amber-300/30" },
-  confirmed: { label: "Confirmed", color: "bg-cyan-400/15 text-cyan-200 ring-cyan-300/30" },
+  pending: { label: "Awaiting MSP Responses", color: "bg-amber-300/15 text-amber-200 ring-amber-300/30" },
+  confirmed: { label: "MSP Confirmed", color: "bg-cyan-400/15 text-cyan-200 ring-cyan-300/30" },
   completed: { label: "Completed", color: "bg-emerald-400/15 text-emerald-200 ring-emerald-300/30" },
   incomplete: { label: "Incomplete", color: "bg-orange-400/15 text-orange-200 ring-orange-300/30" },
   cancelled: { label: "Cancelled", color: "bg-slate-400/15 text-slate-200 ring-slate-300/30" },
-  expired: { label: "Expired", color: "bg-red-400/15 text-red-200 ring-red-300/30" },
+  expired: { label: "No Availability", color: "bg-red-400/15 text-red-200 ring-red-300/30" },
 };
 
 export const Route = createFileRoute("/_authenticated/agent-dashboard/work-orders/")({
@@ -84,10 +84,10 @@ function WorkOrdersIndexPage() {
     <div className="mx-auto w-full max-w-5xl px-4 py-8">
       <header className="mb-6 flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Work Orders</h1>
+          <h1 className="text-2xl font-semibold">Availability Requests</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Anonymized job requests sent to qualifying MSPs. Track responses and
-            confirm one to release contact info.
+            Anonymized requests sent to qualified MSPs. Your contact info and
+            full address are shared only after you confirm an MSP.
           </p>
         </div>
         <Link to="/agents">
@@ -107,10 +107,10 @@ function WorkOrdersIndexPage() {
         <Card>
           <CardContent className="flex flex-col items-center gap-3 p-12 text-center">
             <Inbox className="size-10 text-muted-foreground/50" />
-            <p className="text-base font-semibold">No work orders yet</p>
+            <p className="text-base font-semibold">No availability requests yet</p>
             <p className="text-sm text-muted-foreground">
-              Browse the MSP directory, shortlist qualifying studios, and send a
-              Work Order to get availability within 3 hours.
+              Browse the MSP directory and request availability from qualified
+              studios. They respond by the next business window.
             </p>
             <Link to="/agents" className="mt-2">
               <Button size="sm" className="gap-2">
@@ -124,7 +124,15 @@ function WorkOrdersIndexPage() {
       {!loading && (rows?.length ?? 0) > 0 && (
         <div className="grid gap-3">
           {rows!.map((wo) => {
-            const status = STATUS_LABELS[wo.status];
+            // Promote "Awaiting MSP Responses" -> "MSPs Available" once any
+            // invited MSP marks themselves Available. The underlying DB status
+            // stays 'pending'; this is purely a UI affordance prompting the
+            // agent to confirm or decline.
+            const showAsAvailable =
+              wo.status === "pending" && wo.available_count > 0;
+            const status = showAsAvailable
+              ? { label: "MSPs Available", color: "bg-emerald-400/15 text-emerald-200 ring-emerald-300/30" }
+              : STATUS_LABELS[wo.status];
             const showAvailableCount =
               wo.status === "pending" || wo.status === "confirmed";
             return (

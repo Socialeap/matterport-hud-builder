@@ -16,11 +16,13 @@ import { useAuth } from "@/hooks/use-auth";
 import { buildStudioUrl } from "@/lib/public-url";
 import {
   ArrowRight, Building2, Clock, ExternalLink, Globe, Loader2, Mail,
-  MapPin, Phone, Sparkles, Star,
+  MapPin, Phone, Sparkles, Star, Wand2,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { Database } from "@/integrations/supabase/types";
 import { WorkOrderForm } from "@/components/marketplace/WorkOrderForm";
+
+const TOP_MATCH_AUTOSELECT_LIMIT = 5;
 
 type MarketplaceSpecialty = Database["public"]["Enums"]["marketplace_specialty"];
 
@@ -154,15 +156,33 @@ function MatchPage() {
   const handleOpenWorkOrder = () => {
     if (!isAuthenticated) {
       const next = encodeURIComponent(`/agents/match/${matchToken}`);
-      toast.message("Please sign in to submit a work order.");
+      toast.message("Please sign in to request availability.");
       navigate({ to: `/login?next=${next}` });
       return;
     }
     if (shortlist.size === 0) {
-      toast.error("Pick one or more MSPs to send a work order to.");
+      toast.error("Choose at least one qualified studio to request availability from.");
       return;
     }
     setWorkOrderOpen(true);
+  };
+
+  // Auto-select the strongest matches so agents don't have to understand
+  // shortlisting mechanics. Ordering already reflects Pro-priority, match
+  // score, responsiveness etc. — picking the top N preserves that ranking.
+  const handleAutoSelectTop = () => {
+    if (results.length === 0) {
+      toast.error("No qualified studios are available to request from yet.");
+      return;
+    }
+    const top = results
+      .slice(0, TOP_MATCH_AUTOSELECT_LIMIT)
+      .map((r) => r.provider_id);
+    setShortlist(new Set(top));
+    toast.success(
+      `Selected ${top.length} top ${top.length === 1 ? "match" : "matches"}. ` +
+      `You can adjust before requesting availability.`,
+    );
   };
 
   const selectedBrandSummary = useMemo(() => {
@@ -287,11 +307,30 @@ function MatchPage() {
             ) : (
               <>
                 <div className="mb-4 rounded-md border border-amber-300/20 bg-amber-300/5 p-3 text-xs leading-relaxed text-amber-100/80">
-                  <strong className="text-amber-100">Pick one or more studios</strong> below
-                  and click <strong>Send Work Order</strong>. Selected studios get an
-                  anonymized job invite and have <strong>3 hours</strong> to mark
-                  themselves Available. Your contact info is shared only after you
-                  confirm one MSP.
+                  We'll send your <strong>availability request</strong> to your
+                  selected studios. They respond <strong>Available</strong> or{" "}
+                  <strong>Not Available</strong> by the next business window.
+                  Your contact info and full property address are shared only
+                  after you confirm one MSP — pricing and final scheduling are
+                  handled directly with the studio you choose.
+                </div>
+
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-xs text-white/60">
+                    Showing {results.length}{" "}
+                    {results.length === 1 ? "qualified studio" : "qualified studios"},
+                    ranked by service area, Pro priority, and responsiveness.
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={handleAutoSelectTop}
+                    className="gap-2 border-amber-300/30 bg-amber-300/10 text-amber-100 hover:bg-amber-300/20"
+                  >
+                    <Wand2 className="size-3.5" />
+                    Auto-select Top Matches
+                  </Button>
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -313,7 +352,7 @@ function MatchPage() {
                   <div className="pointer-events-auto flex w-full max-w-md items-center gap-3 rounded-full border border-white/10 bg-[#0a0e27]/90 px-4 py-3 shadow-2xl backdrop-blur-xl">
                     <div className="flex-1 text-xs text-white/70">
                       {shortlist.size === 0 ? (
-                        <span>Select MSPs to send a Work Order</span>
+                        <span>Choose qualified studios to request availability</span>
                       ) : (
                         <span>
                           {shortlist.size} {shortlist.size === 1 ? "studio" : "studios"} selected
@@ -326,7 +365,7 @@ function MatchPage() {
                       onClick={handleOpenWorkOrder}
                       className="gap-2"
                     >
-                      Send Work Order <ArrowRight className="size-3.5" />
+                      Request Availability <ArrowRight className="size-3.5" />
                     </Button>
                   </div>
                 </div>
@@ -337,12 +376,14 @@ function MatchPage() {
               <DialogContent className="border-white/10 bg-[#0a0e27] text-white sm:max-w-2xl">
                 <DialogHeader>
                   <DialogTitle className="text-white">
-                    Send a Work Order
+                    Request Availability
                   </DialogTitle>
                   <DialogDescription className="text-white/70">
-                    Anonymized job details go out to {shortlist.size}{" "}
-                    {shortlist.size === 1 ? "MSP" : "MSPs"}. They have 3 hours to
-                    respond Available or Not Available.
+                    Anonymized request goes out to {shortlist.size}{" "}
+                    qualified {shortlist.size === 1 ? "studio" : "studios"}.
+                    They respond Available or Not Available by the next
+                    business window. Your contact info and full address are
+                    shared only after you confirm one.
                   </DialogDescription>
                 </DialogHeader>
                 {summary?.status === "active" && (
