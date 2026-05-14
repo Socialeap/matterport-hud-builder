@@ -6,6 +6,7 @@ import {
   FileText,
   Loader2,
   Lock,
+  MessageSquare,
   RefreshCw,
   Snowflake,
   Sparkles,
