@@ -187,8 +187,7 @@ export function InteractiveFloorMap({
             "vectorize-floorplan",
             {
               body: { storage_path: storagePath },
-              // @ts-expect-error supabase-js forwards this to the underlying fetch
-              signal: controller.signal,
+              ...({ signal: controller.signal } as Record<string, unknown>),
             },
           );
           data = res.data ?? null;
