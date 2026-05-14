@@ -49,6 +49,9 @@ import {
 import { HeroSlideshow } from "@/components/HeroSlideshow";
 import tmLogo from "@/assets/tm-logo-landscape.png";
 import { toast } from "sonner";
+import { useStripeCheckout } from "@/hooks/useStripeCheckout";
+import { PaymentTestModeBanner } from "@/components/PaymentTestModeBanner";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
 const SITE_URL = "https://3dps.transcendencemedia.com";
 const OG_TITLE = "White-Label Matterport Tour Studio for MSPs";
