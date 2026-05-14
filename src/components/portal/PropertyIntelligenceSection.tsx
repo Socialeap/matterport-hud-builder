@@ -29,6 +29,7 @@ import { useIndexing } from "@/lib/rag/indexing-context";
 import { IndexingStatusBadge } from "@/components/portal/IndexingStatusBadge";
 import { AiTrainingWizard } from "@/components/portal/ai-training-wizard/AiTrainingWizard";
 import { CustomQAManager } from "@/components/portal/CustomQAManager";
+import { IntelligenceReviewPanel } from "@/components/portal/IntelligenceReviewPanel";
 import { PropertyInfoSheetTipsDialog } from "@/components/portal/PropertyInfoSheetTipsDialog";
 import type { PropertyModel } from "./types";
 
