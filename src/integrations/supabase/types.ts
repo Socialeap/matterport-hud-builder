@@ -633,6 +633,42 @@ export type Database = {
         }
         Relationships: []
       }
+      ephemeral_assets: {
+        Row: {
+          bucket_id: string
+          created_at: string
+          expires_at: string
+          file_path: string
+          file_size_bytes: number | null
+          id: string
+          mime_type: string | null
+          purpose: string
+          user_id: string
+        }
+        Insert: {
+          bucket_id: string
+          created_at?: string
+          expires_at?: string
+          file_path: string
+          file_size_bytes?: number | null
+          id?: string
+          mime_type?: string | null
+          purpose?: string
+          user_id: string
+        }
+        Update: {
+          bucket_id?: string
+          created_at?: string
+          expires_at?: string
+          file_path?: string
+          file_size_bytes?: number | null
+          id?: string
+          mime_type?: string | null
+          purpose?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       invitations: {
         Row: {
           created_at: string
@@ -2280,6 +2316,7 @@ export type Database = {
           waiting_count: number
         }[]
       }
+      purge_expired_ephemeral_assets: { Args: never; Returns: number }
       read_ask_quota_counter: {
         Args: { p_property_uuid: string; p_saved_model_id: string }
         Returns: {
