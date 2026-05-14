@@ -67,6 +67,12 @@ export interface PropertyBrain {
   agent: BrainAgent;
   actions: BrainActions;
   canonicalQAs: BrainCanonicalQA[];
+  customQAs: Array<{
+    id: string;
+    question: string;
+    answer: string;
+    questionNormalized: string;
+  }>;
   fields: Record<string, unknown>;
   fieldProvenance: Array<Record<string, unknown>>;
   entities: BrainEntities;
@@ -109,6 +115,11 @@ export interface BuildPropertyBrainInputs {
     answer: string;
     source_anchor_id: string;
     embedding: number[];
+  }>;
+  customQAs?: Array<{
+    id?: string;
+    question?: string;
+    answer?: string;
   }>;
   hasDocs?: boolean;
   hasQA?: boolean;

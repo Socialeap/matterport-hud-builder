@@ -553,6 +553,63 @@ async function loadExtractionsByProperty(
   }
 }
 
+interface CustomQAExport {
+  id: string;
+  question: string;
+  answer: string;
+  property_uuid: string;
+}
+
+async function loadCustomQAsByProperty(
+  supabase: unknown,
+  savedModelId: string,
+  providerId: string,
+  propertyUuids: string[],
+): Promise<Record<string, CustomQAExport[]>> {
+  if (propertyUuids.length === 0) return {};
+  try {
+    const sb = supabase as {
+      from: (t: "custom_qas") => {
+        select: (cols: string) => {
+          eq: (col: string, val: string) => {
+            eq: (col: string, val: string) => {
+              in: (col: string, vals: string[]) => PromiseLike<{
+                data: Array<Record<string, unknown>> | null;
+                error: unknown;
+              }>;
+            };
+          };
+        };
+      };
+    };
+    const { data, error } = await sb
+      .from("custom_qas")
+      .select("id, question, answer, property_uuid")
+      .eq("saved_model_id", savedModelId)
+      .eq("provider_id", providerId)
+      .in("property_uuid", propertyUuids);
+    if (error || !data) {
+      if (error) console.warn("custom_qas fetch failed:", error);
+      return {};
+    }
+    const out: Record<string, CustomQAExport[]> = {};
+    for (const row of data) {
+      const uuid = String(row.property_uuid ?? "");
+      if (!uuid) continue;
+      (out[uuid] ??= []).push({
+        id: String(row.id ?? ""),
+        question: String(row.question ?? ""),
+        answer: String(row.answer ?? ""),
+        property_uuid: uuid,
+      });
+    }
+    return out;
+  } catch (err) {
+    console.warn("loadCustomQAsByProperty threw:", err);
+    return {};
+  }
+}
+
 /**
  * Pack embeddings out of extractions + qaDatabase into a shared base64
  * pool keyed by stable refs (source_anchor_id for canonical QAs,
@@ -961,6 +1018,17 @@ export const generatePresentation = createServerFn({ method: "POST" })
       supabase as unknown as PropertyDocsSupabase,
       propertyUuids,
     );
+
+    // Phase 3 — pull provider-authored custom Q&As for this saved model.
+    // These are deterministic overrides that win over Gemini synthesis at
+    // runtime (see ask-runtime-logic.mjs `decideAnswer`).
+    const customQAsByProperty = await loadCustomQAsByProperty(
+      supabase,
+      model.id,
+      model.provider_id,
+      propertyUuids,
+    );
+
     // propertyUuidByIndex mirrors the filtered propertyEntries order so the
     // runtime tab-switcher can look up extractions by current tab index.
     const propertyUuidByIndex = properties
@@ -1681,6 +1749,11 @@ ${
       })()
     : (hasQA ? `<script>window.__QA_DATABASE__=${safeJsonScriptLiteral(qaDatabase)};</script>` : "")
 }
+${(() => {
+  const hasCustom = Object.values(customQAsByProperty).some((a) => a.length > 0);
+  if (!hasCustom) return "";
+  return `<script>window.__CUSTOM_QAS__=${safeJsonScriptLiteral(customQAsByProperty)};</script>`;
+})()}
 ${synthesisUrl ? `<script>window.__SYNTHESIS_URL__=${JSON.stringify(synthesisUrl)};</script>` : ""}
 ${presentationToken ? `<script>window.__PRESENTATION_TOKEN__=${JSON.stringify(presentationToken)};window.__SAVED_MODEL_ID__=${JSON.stringify(model.id)};</script>` : ""}
 ${protectionArmed ? `<script>window.__PROTECTED__=true;window.__PROTECTED_BLOB__=${safeJsonScriptLiteral(protectedBlob)};${passwordHint ? `window.__PROTECTED_HINT__=${JSON.stringify(passwordHint)};` : ""}</script>` : ""}
@@ -2949,6 +3022,7 @@ async function __dqaInit(){
         brandName:C.brandName||"",
         extractionEntries:entries,
         curatedQAs:window.__QA_DATABASE__||[],
+        customQAs:((window.__CUSTOM_QAS__||{})[uuidByIndex[current]||""]||[]),
         hasDocs:!!window.__ASK_HAS_DOCS__,
         hasQA:!!window.__ASK_HAS_QA__,
         tagIntents:tagQAIntents
