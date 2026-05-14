@@ -613,6 +613,63 @@ function assembleSynthChunks(tier3, tier1) {
 //   anchorId,          // optional (curated wins)
 //   href,              // optional (action hits)
 // }
+function _normalizeQuery(s) {
+  return String(s || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Token Jaccard similarity over normalized strings. Cheap, deterministic,
+// and good enough for the "did the visitor ask the same question?" check
+// that drives Phase-3 custom-Q&A short-circuiting. No embeddings needed.
+function _jaccardSim(a, b) {
+  if (!a || !b) return 0;
+  var ta = a.split(" ").filter(Boolean);
+  var tb = b.split(" ").filter(Boolean);
+  if (!ta.length || !tb.length) return 0;
+  var setB = {};
+  for (var i = 0; i < tb.length; i++) setB[tb[i]] = true;
+  var inter = 0, seen = {};
+  for (var j = 0; j < ta.length; j++) {
+    var t = ta[j];
+    if (seen[t]) continue;
+    seen[t] = true;
+    if (setB[t]) inter++;
+  }
+  var unionCount = 0, u = {};
+  for (var x = 0; x < ta.length; x++) u[ta[x]] = true;
+  for (var y = 0; y < tb.length; y++) u[tb[y]] = true;
+  for (var k in u) if (Object.prototype.hasOwnProperty.call(u, k)) unionCount++;
+  return unionCount ? inter / unionCount : 0;
+}
+
+// Phase 3 — match a visitor query against provider-authored Q&As.
+// Returns the best entry above the lexical floor, or null. Custom Q&As
+// are deterministic overrides: if one matches, the answer is rendered
+// verbatim without going through Gemini synthesis or chunk fallback.
+var CUSTOM_QA_MATCH_FLOOR = 0.62;
+function matchCustomQA(query, customQAs) {
+  if (!customQAs || !customQAs.length) return null;
+  var nq = _normalizeQuery(query);
+  if (!nq) return null;
+  var best = null;
+  for (var i = 0; i < customQAs.length; i++) {
+    var c = customQAs[i];
+    if (!c || !c.questionNormalized) continue;
+    if (c.questionNormalized === nq) {
+      // Exact normalized match always wins.
+      return { qa: c, score: 1 };
+    }
+    var s = _jaccardSim(nq, c.questionNormalized);
+    if (s >= CUSTOM_QA_MATCH_FLOOR && (!best || s > best.score)) {
+      best = { qa: c, score: s };
+    }
+  }
+  return best;
+}
+
 function decideAnswer(inputs) {
   var brain = inputs.brain || {};
   var query = inputs.query || "";
@@ -622,6 +679,21 @@ function decideAnswer(inputs) {
   var curatedHits = inputs.curatedHits || [];
   var chunkHits = inputs.chunkHits || [];
   var canSynthesize = !!inputs.canSynthesize;
+
+  // Step 0 — provider-authored Q&A short-circuit. Always wins; never
+  // routed through synthesis. See _jaccardSim above for the matcher.
+  var customHit = matchCustomQA(query, brain.customQAs || []);
+  if (customHit) {
+    return {
+      path: "custom",
+      text: customHit.qa.answer,
+      intent: intent,
+      strictUnknown: false,
+      needsSynthesis: false,
+      synthChunks: [],
+      sourceLabel: "custom_qa",
+    };
+  }
 
   // Step 1 — exact/action path (pre-embedding).
   if (intent === "booking" || intent === "contact_agent" || intent === "location" || intent === "neighborhood" || intent === "property_name") {
