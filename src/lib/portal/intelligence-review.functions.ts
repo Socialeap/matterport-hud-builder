@@ -64,7 +64,7 @@ function coerceCandidates(raw: unknown): CandidateField[] {
     if (typeof obj.key !== "string" || obj.key.length === 0) continue;
     out.push({
       key: obj.key,
-      value: obj.value,
+      value: (obj.value ?? null) as CandidateValue,
       confidence:
         typeof obj.confidence === "number" ? obj.confidence : 0,
       evidence:
