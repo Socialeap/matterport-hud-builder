@@ -214,8 +214,7 @@ function MspWorkOrdersPage() {
             <Inbox className="size-10 text-muted-foreground/50" />
             <p className="text-base font-semibold">No work orders yet</p>
             <p className="text-sm text-muted-foreground">
-              When a qualifying agent in your service area shortlists your studio
-              and submits a work order, it'll show up here.
+              New job invites will appear here as soon as they're matched to your service area.
             </p>
           </CardContent>
         </Card>
