@@ -67,6 +67,12 @@ export interface PropertyBrain {
   agent: BrainAgent;
   actions: BrainActions;
   canonicalQAs: BrainCanonicalQA[];
+  customQAs: Array<{
+    id: string;
+    question: string;
+    answer: string;
+    questionNormalized: string;
+  }>;
   fields: Record<string, unknown>;
   fieldProvenance: Array<Record<string, unknown>>;
   entities: BrainEntities;
