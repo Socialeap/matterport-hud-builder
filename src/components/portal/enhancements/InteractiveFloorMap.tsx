@@ -173,13 +173,40 @@ export function InteractiveFloorMap({
         }
 
         setBusyStage("Vectorizing…");
-        const { data, error: fnErr } = await supabase.functions.invoke<VectorizeResponse>(
-          "vectorize-floorplan",
-          { body: { storage_path: storagePath } },
-        );
-        if (fnErr || !data?.ok || !data.svg) {
-          const detail = data?.detail || data?.error || fnErr?.message || "vectorization_failed";
-          toast.error(`Vectorization failed: ${detail}`);
+        // Guard against the supabase-js fetch hanging on a slow cold start
+        // or a heavy raster. 55 s sits just under the platform's hard
+        // 60 s ceiling so we surface a friendly message instead of the
+        // generic "Failed to send a request to the Edge Function".
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 55_000);
+        let data: VectorizeResponse | null = null;
+        let fnErr: { message?: string } | null = null;
+        let timedOut = false;
+        try {
+          const res = await supabase.functions.invoke<VectorizeResponse>(
+            "vectorize-floorplan",
+            {
+              body: { storage_path: storagePath },
+              // @ts-expect-error supabase-js forwards this to the underlying fetch
+              signal: controller.signal,
+            },
+          );
+          data = res.data ?? null;
+          fnErr = res.error ?? null;
+        } catch (err: unknown) {
+          if ((err as { name?: string })?.name === "AbortError") {
+            timedOut = true;
+          } else {
+            fnErr = { message: (err as Error)?.message ?? "network_error" };
+          }
+        } finally {
+          clearTimeout(timeoutId);
+        }
+        if (timedOut || fnErr || !data?.ok || !data.svg) {
+          const detail = timedOut
+            ? "Vectorization took too long — try a smaller or cleaner scan."
+            : data?.detail || data?.error || fnErr?.message || "vectorization_failed";
+          toast.error(timedOut ? detail : `Vectorization failed: ${detail}`);
           // Best-effort cleanup of the orphan upload + row.
           await sbAny.from("ephemeral_assets").delete().eq("id", tracking.id);
           await supabase.storage.from(TEMP_BUCKET).remove([storagePath]);
