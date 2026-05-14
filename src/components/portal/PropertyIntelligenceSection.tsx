@@ -8,6 +8,7 @@ import {
   Lock,
   MessageSquare,
   RefreshCw,
+  ShieldCheck,
   Snowflake,
   Sparkles,
   Trash2,
