@@ -609,6 +609,8 @@ async function loadCustomQAsByProperty(
     return {};
   }
 }
+
+/**
  * Pack embeddings out of extractions + qaDatabase into a shared base64
  * pool keyed by stable refs (source_anchor_id for canonical QAs,
  * template_id+chunk_id for chunks). Each unique vector is serialised
