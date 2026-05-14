@@ -148,30 +148,31 @@ export const reviewIntelligenceCandidate = createServerFn({ method: "POST" })
     // points at the same key; otherwise fall back to the first
     // candidate with a matching key. This makes the call resilient to
     // concurrent reviews on the same row.
-    let target = candidates[data.index];
+    let target: CandidateField | undefined = candidates[data.index];
     if (!target || target.key !== data.key) {
-      target = candidates.find((c) => c.key === data.key) as
-        | CandidateField
-        | undefined;
+      target = candidates.find((c) => c.key === data.key);
     }
     if (!target) {
       // Already reviewed by a parallel call — treat as a no-op success.
       return { ok: true, alreadyReviewed: true } as const;
     }
+    const found: CandidateField = target;
 
-    const nextCandidates = candidates.filter((c) => c !== target);
+    const nextCandidates = candidates.filter((c) => c !== found);
 
     if (data.action === "approve") {
       const value =
-        typeof data.value !== "undefined" ? data.value : target.value;
-      fields[target.key] = value;
+        typeof data.value !== "undefined" ? data.value : found.value;
+      fields[found.key] = value;
     }
 
     const { error: writeErr } = await supabase
       .from("property_extractions")
       .update({
-        fields,
-        candidate_fields: nextCandidates.length > 0 ? nextCandidates : null,
+        fields: fields as never,
+        candidate_fields: (nextCandidates.length > 0
+          ? nextCandidates
+          : null) as never,
       })
       .eq("id", data.extractionId);
     if (writeErr) throw new Error(writeErr.message);
