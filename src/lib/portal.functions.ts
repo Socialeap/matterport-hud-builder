@@ -2485,6 +2485,7 @@ window.__closeEmailOptions=function(){
     {label:"Pricing", subject:"Pricing question — {P}", body:"Hi, could you share the asking price and any recent price changes for {P}?"},
     {label:"Availability", subject:"Availability — {P}", body:"Is {P} still available? When can I view it?"},
     {label:"Schedule a tour", subject:"Tour request — {P}", body:"I'd like to schedule a tour of {P}. What times work this week?"},
+    {label:"Available for Live Tour?", subject:"Live Guided Tour — {P}", body:"I'd like to do a Live Guided Tour, are you available at the moment or can we schedule something soon?"},
     {label:"HOA / fees", subject:"HOA & fees — {P}", body:"Could you share HOA dues and any other recurring fees for {P}?"},
     {label:"Square footage", subject:"Square footage — {P}", body:"Could you confirm the total square footage and room dimensions for {P}?"},
     {label:"Pet policy", subject:"Pet policy — {P}", body:"What's the pet policy for {P}?"},
