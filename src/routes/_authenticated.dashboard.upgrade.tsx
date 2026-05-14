@@ -10,7 +10,11 @@ import { Check, X } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
 export const Route = createFileRoute("/_authenticated/dashboard/upgrade")({
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (search: Record<string, unknown>): {
+    autostart?: "starter" | "pro";
+    checkout?: string;
+    session_id?: string;
+  } => ({
     autostart: (search.autostart === "starter" || search.autostart === "pro")
       ? (search.autostart as "starter" | "pro")
       : undefined,
