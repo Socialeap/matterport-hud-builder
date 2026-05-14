@@ -157,6 +157,7 @@ function ModelRow({
 
   const [trackedAssets, setTrackedAssets] = useState<AssetMeta[]>([]);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [customQAOpen, setCustomQAOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
   // Hydrate trackedAssets from existing extractions for this property.
