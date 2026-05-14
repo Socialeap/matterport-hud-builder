@@ -935,14 +935,12 @@ function Index() {
                   ))}
                 </ul>
                 <div className="flex flex-col gap-2">
-                  {!isAuthenticated && (
-                    <Button
-                      className="w-full"
-                      onClick={() => navigate({ to: "/signup", search: { token: "", email: "" } })}
-                    >
-                      Get Pro Studio
-                    </Button>
-                  )}
+                  <Button
+                    className="w-full"
+                    onClick={() => handleTierCta("pro")}
+                  >
+                    Get Pro Studio
+                  </Button>
                   <DemoButton tier="pro" />
                 </div>
               </CardContent>
