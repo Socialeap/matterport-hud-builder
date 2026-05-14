@@ -160,7 +160,19 @@ function ModelRow({
   const [trackedAssets, setTrackedAssets] = useState<AssetMeta[]>([]);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [customQAOpen, setCustomQAOpen] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  const candidateCount = useMemo(
+    () =>
+      extractions.reduce(
+        (acc, e) =>
+          acc +
+          (Array.isArray(e.candidate_fields) ? e.candidate_fields.length : 0),
+        0,
+      ),
+    [extractions],
+  );
 
   // Hydrate trackedAssets from existing extractions for this property.
   useEffect(() => {
