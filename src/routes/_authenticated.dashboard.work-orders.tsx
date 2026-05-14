@@ -196,8 +196,7 @@ function MspWorkOrdersPage() {
         <div>
           <h1 className="text-2xl font-semibold">Work Orders</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Anonymized job invites from agents. Respond Available within{" "}
-            <strong>3 hours</strong> to stay in good standing.
+            When a qualifying agent in your service area shortlists your studio and submits a 3D capture work order, it'll show up here. Responding in the affirmative only conveys your availability, not acceptance of an outstanding order.
           </p>
         </div>
         <MarketplaceStandingBadge />
