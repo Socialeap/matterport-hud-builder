@@ -422,11 +422,31 @@ function HeaderSignInMenu({ variant = "desktop" }: { variant?: "desktop" | "mobi
 /* ------------------------------------------------------------------ */
 
 function Index() {
-  const { isAuthenticated } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isDark, setIsDark] = useState(true);
   const [hoveredStep, setHoveredStep] = useState(0);
+  const { openCheckout, closeCheckout, isOpen: checkoutOpen, CheckoutForm } = useStripeCheckout();
+
+  // Pricing card CTA: launch Stripe checkout for logged-in users; otherwise
+  // route through signup with intent so checkout auto-launches afterward.
+  const handleTierCta = (tier: "starter" | "pro") => {
+    if (isAuthenticated && user) {
+      openCheckout({
+        priceId: tier === "pro" ? "pro_annual" : "starter_annual",
+        customerEmail: user.email ?? undefined,
+        userId: user.id,
+        returnUrl: `${window.location.origin}/dashboard/upgrade?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+      });
+    } else {
+      navigate({
+        to: "/signup",
+        search: { token: "", email: "", intent: "checkout", tier },
+      });
+    }
+  };
+
 
   /* No loading gate — all static content renders on the server for SEO.
      Auth-dependent buttons simply hide during the brief loading window. */
