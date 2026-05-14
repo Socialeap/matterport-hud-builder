@@ -399,6 +399,19 @@ function ModelRow({
         propertyUuid={model.id}
         propertyName={displayName}
       />
+
+      <IntelligenceReviewPanel
+        open={reviewOpen}
+        onOpenChange={setReviewOpen}
+        propertyUuid={model.id}
+        propertyName={displayName}
+        onChanged={() => {
+          // Re-pull extractions so candidate counts and field counts
+          // both reflect the reviewer's decisions.
+          void refresh();
+          onExtractionSuccess?.();
+        }}
+      />
     </li>
   );
 }
