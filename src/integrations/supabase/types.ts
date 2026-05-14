@@ -2367,7 +2367,6 @@ export type Database = {
           p_zip?: string
         }
         Returns: {
-          provider_id: string
           brand_name: string
           logo_url: string
           match_reason: string
