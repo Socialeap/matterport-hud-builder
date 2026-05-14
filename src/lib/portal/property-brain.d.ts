@@ -116,6 +116,11 @@ export interface BuildPropertyBrainInputs {
     source_anchor_id: string;
     embedding: number[];
   }>;
+  customQAs?: Array<{
+    id?: string;
+    question?: string;
+    answer?: string;
+  }>;
   hasDocs?: boolean;
   hasQA?: boolean;
   tagIntents?: (qa: { field?: string }) => IntentLabel[];
