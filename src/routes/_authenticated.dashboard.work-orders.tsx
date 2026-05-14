@@ -30,6 +30,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { MarketplaceStandingBadge } from "@/components/dashboard/MarketplaceStandingBadge";
+import { formatRespondByLabel } from "@/lib/marketplace/business-window";
 
 type MarketplaceSpecialty = Database["public"]["Enums"]["marketplace_specialty"];
 
@@ -194,9 +195,12 @@ function MspWorkOrdersPage() {
     <div className="mx-auto w-full max-w-5xl px-4 py-8">
       <header className="mb-6 flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Work Orders</h1>
+          <h1 className="text-2xl font-semibold">Availability Requests</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            When a qualifying agent in your service area shortlists your studio and submits a 3D capture work order, it'll show up here. Responding in the affirmative only conveys your availability, not acceptance of an outstanding order.
+            When a qualified agent in your service area requests availability,
+            it shows up here. Marking <strong>Available</strong> only confirms
+            your availability — pricing and final scheduling are arranged
+            directly after the agent confirms you.
           </p>
         </div>
         <MarketplaceStandingBadge />
@@ -212,9 +216,10 @@ function MspWorkOrdersPage() {
         <Card>
           <CardContent className="flex flex-col items-center gap-3 p-12 text-center">
             <Inbox className="size-10 text-muted-foreground/50" />
-            <p className="text-base font-semibold">No work orders yet</p>
+            <p className="text-base font-semibold">No availability requests yet</p>
             <p className="text-sm text-muted-foreground">
-              New job invites will appear here as soon as they're matched to your service area.
+              New requests will appear here as soon as a qualified agent
+              in your service area sends one.
             </p>
           </CardContent>
         </Card>
@@ -223,7 +228,7 @@ function MspWorkOrdersPage() {
       {!loading && groups.action.length > 0 && (
         <Section
           title="Action required"
-          description="Respond within 3 hours to earn +0.10 to your Standing. Missing the window costs −0.50."
+          description="Respond by the displayed deadline to improve your standing. Missing availability requests may reduce marketplace standing."
         >
           {groups.action.map((row) => (
             <InviteCard
@@ -276,7 +281,7 @@ function MspWorkOrdersPage() {
             </DialogTitle>
             <DialogDescription>
               {response === "available"
-                ? "The agent will see you as Available and may select you. +0.10 to Standing."
+                ? "The agent will see you as Available and may confirm you. Responding only confirms availability — pricing and final scheduling are arranged directly with the agent if confirmed."
                 : "No penalty. The agent will see you marked Not Available."}
             </DialogDescription>
           </DialogHeader>
@@ -352,8 +357,7 @@ function InviteCard({
 }) {
   const respondBy = new Date(row.respond_by);
   const remainingMs = respondBy.getTime() - Date.now();
-  const hoursRemaining = Math.max(0, Math.floor(remainingMs / 3_600_000));
-  const minutesRemaining = Math.max(0, Math.floor((remainingMs % 3_600_000) / 60_000));
+  const deadlineLabel = formatRespondByLabel(respondBy);
 
   return (
     <Card>
@@ -373,7 +377,7 @@ function InviteCard({
         {row.response_status === "invited" && remainingMs > 0 && (
           <CardDescription className="flex items-center gap-1 text-amber-700 dark:text-amber-300">
             <Hourglass className="size-3.5" />
-            Respond in {hoursRemaining}h {minutesRemaining}m
+            Respond by {deadlineLabel}
           </CardDescription>
         )}
       </CardHeader>
@@ -511,7 +515,7 @@ function ResponseBadge({ status }: { status: InviteRow["response_status"] }) {
     invited: { label: "New", color: "bg-amber-300/15 text-amber-700 ring-amber-300/30 dark:text-amber-200", icon: Clock },
     available: { label: "Available", color: "bg-emerald-400/15 text-emerald-700 ring-emerald-300/30 dark:text-emerald-200", icon: CheckCircle2 },
     not_available: { label: "Not Available", color: "bg-slate-400/15 text-slate-700 ring-slate-300/30 dark:text-slate-200", icon: XCircle },
-    expired: { label: "Missed window", color: "bg-red-400/15 text-red-700 ring-red-300/30 dark:text-red-200", icon: XCircle },
+    expired: { label: "Missed deadline", color: "bg-red-400/15 text-red-700 ring-red-300/30 dark:text-red-200", icon: XCircle },
     not_selected: { label: "Not selected", color: "bg-slate-400/10 text-slate-600 ring-slate-300/20 dark:text-slate-300", icon: XCircle },
     withdrawn: { label: "Withdrawn", color: "bg-slate-400/10 text-slate-600 ring-slate-300/20 dark:text-slate-300", icon: XCircle },
   };

@@ -59,6 +59,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { BeaconForm } from "@/components/marketplace/BeaconForm";
 import { ServiceMatchForm } from "@/components/marketplace/ServiceMatchForm";
+import { WorkOrderForm } from "@/components/marketplace/WorkOrderForm";
 
 import { buildStudioUrl } from "@/lib/public-url";
 import type { Database } from "@/integrations/supabase/types";
@@ -190,6 +191,7 @@ const SPECIALTY_LABEL: Record<MarketplaceSpecialty, string> = Object.fromEntries
 ) as Record<MarketplaceSpecialty, string>;
 
 interface DirectoryMSP {
+  provider_id: string;
   brand_name: string;
   slug: string | null;
   logo_url: string | null;
@@ -882,7 +884,15 @@ function DirectorySection() {
                   </p>
                   <div className="grid gap-4 sm:grid-cols-2">
                     {filtered!.map((m) => (
-                      <MSPCard key={`${m.slug ?? m.brand_name}`} msp={m} />
+                      <MSPCard
+                        key={`${m.slug ?? m.brand_name}`}
+                        msp={m}
+                        searchLocation={lastQuery}
+                        essentialServices={essentialServices}
+                        preferableServices={preferableServices}
+                        isAuthenticated={isAuthenticated}
+                        onRequireAuth={() => requireAuthThen(() => undefined)}
+                      />
                     ))}
                   </div>
                 </>
@@ -944,7 +954,15 @@ function DirectorySection() {
                   </p>
                   <div className="grid gap-4 sm:grid-cols-2">
                     {filtered!.map((m) => (
-                      <MSPCard key={`${m.slug ?? m.brand_name}`} msp={m} />
+                      <MSPCard
+                        key={`${m.slug ?? m.brand_name}`}
+                        msp={m}
+                        searchLocation={lastQuery}
+                        essentialServices={essentialServices}
+                        preferableServices={preferableServices}
+                        isAuthenticated={isAuthenticated}
+                        onRequireAuth={() => requireAuthThen(() => undefined)}
+                      />
                     ))}
                   </div>
                 </>
@@ -1041,11 +1059,41 @@ function FilterGroup({
 }
 
 
-function MSPCard({ msp }: { msp: DirectoryMSP }) {
+function MSPCard({
+  msp,
+  searchLocation,
+  essentialServices,
+  preferableServices,
+  isAuthenticated,
+  onRequireAuth,
+}: {
+  msp: DirectoryMSP;
+  searchLocation: { city: string; region: string; zip: string } | null;
+  essentialServices: MarketplaceSpecialty[];
+  preferableServices: MarketplaceSpecialty[];
+  isAuthenticated: boolean;
+  onRequireAuth: () => void;
+}) {
   const isPro = msp.tier === "pro";
   const studioUrl = msp.slug
     ? buildStudioUrl(msp.slug, { tier: msp.tier, customDomain: null })
     : null;
+  const [requestOpen, setRequestOpen] = useState(false);
+  const navigate = useNavigate();
+
+  const handleRequestAvailability = () => {
+    if (!isAuthenticated) {
+      onRequireAuth();
+      return;
+    }
+    if (!searchLocation || (!searchLocation.city && !searchLocation.zip)) {
+      toast.message(
+        "Set the property location first — search by city or ZIP to enable a Request Availability flow.",
+      );
+      return;
+    }
+    setRequestOpen(true);
+  };
 
   return (
     <Card className="flex h-full flex-col border-white/10 bg-white/5 transition-all hover:-translate-y-0.5 hover:border-cyan-300/30">
@@ -1109,15 +1157,24 @@ function MSPCard({ msp }: { msp: DirectoryMSP }) {
           </div>
         )}
 
-        <div className="mt-auto flex items-center gap-2 pt-3">
+        {/* Primary CTA: Request Availability (on-platform). Secondary: Studio. */}
+        <div className="mt-auto flex flex-col gap-2 pt-3">
+          <Button
+            size="sm"
+            onClick={handleRequestAvailability}
+            className="w-full gap-2"
+          >
+            <MailCheck className="size-3.5" />
+            Request Availability
+          </Button>
           {studioUrl ? (
-            <a href={studioUrl} target="_blank" rel="noreferrer" className="flex-1">
+            <a href={studioUrl} target="_blank" rel="noreferrer">
               <Button
                 size="sm"
                 variant="outline"
                 className="w-full border-white/15 bg-white/5 text-white hover:bg-white/10"
               >
-                Visit Studio
+                View Studio
                 <ArrowRight className="ml-1 size-3.5" />
               </Button>
             </a>
@@ -1126,13 +1183,49 @@ function MSPCard({ msp }: { msp: DirectoryMSP }) {
               size="sm"
               variant="outline"
               disabled
-              className="w-full flex-1 cursor-not-allowed border-white/15 bg-white/5 text-white/50"
+              className="w-full cursor-not-allowed border-white/15 bg-white/5 text-white/50"
             >
               Studio coming soon
             </Button>
           )}
         </div>
       </CardContent>
+
+      <Dialog open={requestOpen} onOpenChange={setRequestOpen}>
+        <DialogContent className="border-white/10 bg-[#0a0e27] text-white sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-white">
+              Request Availability from {msp.brand_name}
+            </DialogTitle>
+            <DialogDescription className="text-white/70">
+              We'll send {msp.brand_name} an anonymized request to mark themselves
+              Available or Not Available by the next business window. Your
+              contact info and full address are shared only after you confirm
+              this MSP.
+            </DialogDescription>
+          </DialogHeader>
+          {searchLocation && (
+            <WorkOrderForm
+              variant="direct"
+              selectedProviderIds={[msp.provider_id]}
+              selectedBrandSummary={msp.brand_name}
+              city={searchLocation.city || msp.primary_city}
+              region={searchLocation.region || msp.region}
+              zip={searchLocation.zip}
+              essentialServices={essentialServices}
+              preferableServices={preferableServices}
+              onSuccess={(workOrderId) => {
+                setRequestOpen(false);
+                navigate({
+                  to: "/agent-dashboard/work-orders/$id",
+                  params: { id: workOrderId },
+                });
+              }}
+              onCancel={() => setRequestOpen(false)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
@@ -1150,7 +1243,7 @@ function DirectoryEmptyState() {
       </p>
       <p className="mt-1 text-xs text-white/50">
         Filter by the on-site scanning and studio services that matter for your
-        listing, then send a Work Order to your shortlisted MSPs.
+        listing, then request availability from qualified MSPs.
       </p>
     </div>
   );

@@ -20,6 +20,7 @@ import {
   CheckCircle2,
   Clock,
   Globe,
+  Lock,
   Loader2,
   Mail,
   MapPin,
@@ -31,6 +32,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { buildStudioUrl } from "@/lib/public-url";
 import type { Database } from "@/integrations/supabase/types";
+import { formatRespondByLabel } from "@/lib/marketplace/business-window";
 
 type MarketplaceSpecialty = Database["public"]["Enums"]["marketplace_specialty"];
 
@@ -218,26 +220,28 @@ function WorkOrderDetailPage() {
     <div className="mx-auto w-full max-w-4xl px-4 py-8">
       <header className="mb-5 flex items-center justify-between gap-3">
         <Link to="/agent-dashboard/work-orders" className="inline-flex items-center text-sm text-muted-foreground hover:underline">
-          <ArrowLeft className="mr-1 size-4" /> Back to Work Orders
+          <ArrowLeft className="mr-1 size-4" /> Back to Availability Requests
         </Link>
         {isPending && (
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button variant="outline" size="sm" disabled={cancelling}>
-                Cancel work order
+                Decline all & close request
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Cancel this work order?</AlertDialogTitle>
+                <AlertDialogTitle>Close this availability request?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  All pending invites will be withdrawn. This cannot be undone.
+                  All open invites will be withdrawn and any "Available"
+                  responses will be declined. No contact info or address is
+                  released. This cannot be undone.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Keep open</AlertDialogCancel>
                 <AlertDialogAction onClick={handleCancel}>
-                  Cancel work order
+                  Close request
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
@@ -316,6 +320,17 @@ function WorkOrderDetailPage() {
             : "Invite history"}
       </h2>
 
+      {isPending && (
+        <div className="mb-3 flex items-start gap-2 rounded-md border border-cyan-300/20 bg-cyan-300/5 p-3 text-xs leading-relaxed text-cyan-700 dark:text-cyan-200">
+          <Lock className="mt-0.5 size-3.5 shrink-0" />
+          <span>
+            Your contact info and full address are shared only after you
+            confirm an MSP. Pricing and final scheduling are arranged directly
+            with the studio you confirm.
+          </span>
+        </div>
+      )}
+
       <div className="grid gap-3">
         {sortedInvites.map((inv) => (
           <InviteCard
@@ -390,12 +405,12 @@ function Detail({ label, value }: { label: string; value: React.ReactNode }) {
 
 function StatusPill({ status }: { status: WorkOrderDetail["status"] }) {
   const map: Record<WorkOrderDetail["status"], { label: string; color: string }> = {
-    pending: { label: "Awaiting responses", color: "bg-amber-300/15 text-amber-700 ring-amber-300/30 dark:text-amber-200" },
-    confirmed: { label: "Confirmed", color: "bg-cyan-400/15 text-cyan-700 ring-cyan-300/30 dark:text-cyan-200" },
+    pending: { label: "Awaiting MSP Responses", color: "bg-amber-300/15 text-amber-700 ring-amber-300/30 dark:text-amber-200" },
+    confirmed: { label: "MSP Confirmed", color: "bg-cyan-400/15 text-cyan-700 ring-cyan-300/30 dark:text-cyan-200" },
     completed: { label: "Completed", color: "bg-emerald-400/15 text-emerald-700 ring-emerald-300/30 dark:text-emerald-200" },
     incomplete: { label: "Incomplete", color: "bg-orange-400/15 text-orange-700 ring-orange-300/30 dark:text-orange-200" },
     cancelled: { label: "Cancelled", color: "bg-slate-400/15 text-slate-700 ring-slate-300/30 dark:text-slate-200" },
-    expired: { label: "Expired", color: "bg-red-400/15 text-red-700 ring-red-300/30 dark:text-red-200" },
+    expired: { label: "No Availability", color: "bg-red-400/15 text-red-700 ring-red-300/30 dark:text-red-200" },
   };
   const v = map[status];
   return <Badge className={`ring-1 ${v.color}`}>{v.label}</Badge>;
@@ -452,10 +467,7 @@ function InviteCard({
           {inv.response_status === "invited" && (
             <p className="text-xs text-muted-foreground">
               <Clock className="mr-0.5 inline size-3" /> Responds by{" "}
-              {respondsByDt.toLocaleString(undefined, {
-                dateStyle: "short",
-                timeStyle: "short",
-              })}
+              {formatRespondByLabel(respondsByDt)}
             </p>
           )}
           {respondedDt && (

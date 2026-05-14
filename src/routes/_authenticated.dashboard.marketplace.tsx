@@ -310,14 +310,16 @@ function MarketplacePage() {
 
       <Card className="border-dashed bg-muted/40">
         <CardHeader>
-          <CardTitle className="text-base">New: Work Order workflow</CardTitle>
+          <CardTitle className="text-base">New: Availability Requests</CardTitle>
           <CardDescription className="space-y-2">
             <p>
-              Agents now submit anonymized <strong>Work Orders</strong> with a
-              3-hour Available/Not Available SLA — replacing the old "compose
-              outreach" flow shown here. Visit{" "}
+              Agents now send anonymized <strong>Availability Requests</strong>{" "}
+              to qualified MSPs in their area. You mark{" "}
+              <strong>Available</strong> or <strong>Not Available</strong> by
+              the next business window — pricing and final scheduling are
+              arranged directly after the agent confirms you. Visit{" "}
               <Link to="/dashboard/work-orders" className="text-primary underline">
-                Work Orders
+                Availability Requests
               </Link>{" "}
               to see invites and respond. This page now shows legacy in-flight
               beacons only and will retire once they finish.
