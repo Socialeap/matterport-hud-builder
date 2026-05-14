@@ -307,6 +307,25 @@ function ModelRow({
           />
         </div>
         <div className="flex shrink-0 items-center gap-1">
+          {candidateCount > 0 && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 gap-1 text-xs text-amber-700 hover:text-amber-800 dark:text-amber-300"
+              onClick={() => setReviewOpen(true)}
+              disabled={!user}
+              title="Review low-confidence facts the AI extracted"
+            >
+              <ShieldCheck className="size-3" />
+              Review
+              <Badge
+                variant="outline"
+                className="ml-0.5 h-4 border-amber-500/40 bg-amber-500/10 px-1 text-[10px]"
+              >
+                {candidateCount}
+              </Badge>
+            </Button>
+          )}
           <Button
             size="sm"
             variant="ghost"
