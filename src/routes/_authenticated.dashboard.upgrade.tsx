@@ -38,7 +38,7 @@ const tiers = [
     id: "pro",
     name: "Pro Studio",
     setupPrice: "$299",
-    annualPrice: "$49",
+    annualPrice: "$79",
     priceId: "pro_annual",
     popular: true,
     description: "Full whitelabel studio and more.",

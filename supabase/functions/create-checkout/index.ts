@@ -70,7 +70,7 @@ serve(async (req) => {
       const tierLabel = priceId === 'pro_annual' ? 'Pro' : 'Starter';
       sessionParams.subscription_data = {
         metadata: { userId: userId || "", priceId, tier: tierLabel.toLowerCase() },
-        trial_period_days: 365, // First year free — $49/yr upkeep starts Year 2
+        trial_period_days: 365, // First year free — $49 Starter / $79 Pro upkeep starts Year 2
       };
       // Add one-time setup fee as a line item alongside the subscription
       if (setupFeeCents > 0) {
