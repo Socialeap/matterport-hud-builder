@@ -27,6 +27,7 @@ export interface PropertyExtraction {
   property_uuid: string;
   fields: Record<string, unknown>;
   chunks: PropertyChunk[];
+  candidate_fields: unknown[] | null;
   extractor: string;
   extractor_version: string;
   extracted_at: string;
