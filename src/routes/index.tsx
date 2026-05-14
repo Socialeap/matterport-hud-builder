@@ -468,6 +468,13 @@ function Index() {
 
   return (
     <div className={`${isDark ? 'dark' : ''} relative min-h-screen text-foreground transition-colors duration-500`} style={{ backgroundColor: bg }}>
+      <PaymentTestModeBanner />
+      <Dialog open={checkoutOpen} onOpenChange={(open) => !open && closeCheckout()}>
+        <DialogContent className="max-w-2xl">
+          <DialogTitle>Complete Your Purchase</DialogTitle>
+          {CheckoutForm && <CheckoutForm />}
+        </DialogContent>
+      </Dialog>
       {/* ---- Notebook grid overlay ---- */}
       <div
         className="pointer-events-none fixed inset-0 z-0"
