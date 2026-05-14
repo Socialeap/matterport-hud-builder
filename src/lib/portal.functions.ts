@@ -961,6 +961,17 @@ export const generatePresentation = createServerFn({ method: "POST" })
       supabase as unknown as PropertyDocsSupabase,
       propertyUuids,
     );
+
+    // Phase 3 — pull provider-authored custom Q&As for this saved model.
+    // These are deterministic overrides that win over Gemini synthesis at
+    // runtime (see ask-runtime-logic.mjs `decideAnswer`).
+    const customQAsByProperty = await loadCustomQAsByProperty(
+      supabase,
+      model.id,
+      model.provider_id,
+      propertyUuids,
+    );
+
     // propertyUuidByIndex mirrors the filtered propertyEntries order so the
     // runtime tab-switcher can look up extractions by current tab index.
     const propertyUuidByIndex = properties
