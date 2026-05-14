@@ -553,7 +553,62 @@ async function loadExtractionsByProperty(
   }
 }
 
-/**
+interface CustomQAExport {
+  id: string;
+  question: string;
+  answer: string;
+  property_uuid: string;
+}
+
+async function loadCustomQAsByProperty(
+  supabase: unknown,
+  savedModelId: string,
+  providerId: string,
+  propertyUuids: string[],
+): Promise<Record<string, CustomQAExport[]>> {
+  if (propertyUuids.length === 0) return {};
+  try {
+    const sb = supabase as {
+      from: (t: "custom_qas") => {
+        select: (cols: string) => {
+          eq: (col: string, val: string) => {
+            eq: (col: string, val: string) => {
+              in: (col: string, vals: string[]) => PromiseLike<{
+                data: Array<Record<string, unknown>> | null;
+                error: unknown;
+              }>;
+            };
+          };
+        };
+      };
+    };
+    const { data, error } = await sb
+      .from("custom_qas")
+      .select("id, question, answer, property_uuid")
+      .eq("saved_model_id", savedModelId)
+      .eq("provider_id", providerId)
+      .in("property_uuid", propertyUuids);
+    if (error || !data) {
+      if (error) console.warn("custom_qas fetch failed:", error);
+      return {};
+    }
+    const out: Record<string, CustomQAExport[]> = {};
+    for (const row of data) {
+      const uuid = String(row.property_uuid ?? "");
+      if (!uuid) continue;
+      (out[uuid] ??= []).push({
+        id: String(row.id ?? ""),
+        question: String(row.question ?? ""),
+        answer: String(row.answer ?? ""),
+        property_uuid: uuid,
+      });
+    }
+    return out;
+  } catch (err) {
+    console.warn("loadCustomQAsByProperty threw:", err);
+    return {};
+  }
+}
  * Pack embeddings out of extractions + qaDatabase into a shared base64
  * pool keyed by stable refs (source_anchor_id for canonical QAs,
  * template_id+chunk_id for chunks). Each unique vector is serialised
