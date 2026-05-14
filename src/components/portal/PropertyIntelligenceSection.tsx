@@ -153,6 +153,7 @@ function ModelRow({
     running,
     failuresByAsset,
     extractFromUrl,
+    refresh,
     remove,
   } = usePropertyExtractions(model.id);
   const { isFrozen, freeze: freezeRow } = useLusFreeze(model.id);
