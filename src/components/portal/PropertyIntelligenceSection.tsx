@@ -358,6 +358,14 @@ function ModelRow({
         savedModelId={savedModelId}
         onComplete={onExtractionSuccess}
       />
+
+      <CustomQAManager
+        open={customQAOpen}
+        onOpenChange={setCustomQAOpen}
+        savedModelId={savedModelId}
+        propertyUuid={model.id}
+        propertyName={displayName}
+      />
     </li>
   );
 }
