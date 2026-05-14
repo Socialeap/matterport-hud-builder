@@ -19,9 +19,16 @@ interface SignupFormProps {
   mode?: "invite" | "open";
   inviteToken?: string;
   inviteEmail?: string;
+  /**
+   * If set to "checkout" with a tier, the user is redirected to
+   * /dashboard/upgrade?autostart=<tier> after signup so Stripe checkout
+   * launches immediately. Used by the landing-page pricing CTAs.
+   */
+  intent?: "checkout";
+  tier?: "starter" | "pro";
 }
 
-export function SignupForm({ mode = "invite", inviteToken, inviteEmail }: SignupFormProps) {
+export function SignupForm({ mode = "invite", inviteToken, inviteEmail, intent, tier }: SignupFormProps) {
   const isInvite = mode === "invite";
   const [email, setEmail] = useState(inviteEmail ?? "");
   const [password, setPassword] = useState("");
@@ -32,11 +39,16 @@ export function SignupForm({ mode = "invite", inviteToken, inviteEmail }: Signup
   // Where the user should land after auth completes.
   // - Invite flow: bounce back to /invite/{token} so it auto-finalizes the
   //   invitation and routes the client into the MSP's Studio.
+  // - Checkout intent: land on /dashboard/upgrade?autostart=<tier> so Stripe
+  //   checkout launches immediately.
   // - Open MSP flow: land on /dashboard so the new MSP can pick a tier.
   const postAuthRedirect =
     isInvite && inviteToken
       ? `${window.location.origin}/invite/${inviteToken}`
-      : `${window.location.origin}/dashboard`;
+      : intent === "checkout" && tier
+        ? `${window.location.origin}/dashboard/upgrade?autostart=${tier}`
+        : `${window.location.origin}/dashboard`;
+
 
   const handleSignup = async (e: FormEvent) => {
     e.preventDefault();

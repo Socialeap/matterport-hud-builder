@@ -1,4 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useEffect, useRef } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useStripeCheckout } from "@/hooks/useStripeCheckout";
 import { PaymentTestModeBanner } from "@/components/PaymentTestModeBanner";
@@ -9,6 +10,17 @@ import { Check, X } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
 export const Route = createFileRoute("/_authenticated/dashboard/upgrade")({
+  validateSearch: (search: Record<string, unknown>): {
+    autostart?: "starter" | "pro";
+    checkout?: string;
+    session_id?: string;
+  } => ({
+    autostart: (search.autostart === "starter" || search.autostart === "pro")
+      ? (search.autostart as "starter" | "pro")
+      : undefined,
+    checkout: typeof search.checkout === "string" ? (search.checkout as string) : undefined,
+    session_id: typeof search.session_id === "string" ? (search.session_id as string) : undefined,
+  }),
   component: PricingPage,
 });
 
@@ -72,6 +84,9 @@ type Tier = {
 function PricingPage() {
   const { user } = useAuth();
   const { openCheckout, closeCheckout, isOpen, CheckoutForm } = useStripeCheckout();
+  const { autostart } = Route.useSearch();
+  const navigate = useNavigate();
+  const autostartedRef = useRef(false);
 
   const handlePurchase = (priceId: string) => {
     openCheckout({
@@ -82,6 +97,19 @@ function PricingPage() {
     });
   };
 
+  // Auto-launch checkout when redirected here from the landing page
+  // signup-with-intent flow (e.g. /dashboard/upgrade?autostart=pro).
+  useEffect(() => {
+    if (!autostart || autostartedRef.current || !user) return;
+    const tier = (tiers as unknown as Tier[]).find((t) => t.id === autostart);
+    if (!tier) return;
+    autostartedRef.current = true;
+    handlePurchase(tier.priceId);
+    // Clear the param so a refresh doesn't re-trigger checkout.
+    navigate({ to: "/dashboard/upgrade", search: {}, replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autostart, user]);
+
   return (
     <div className="mx-auto max-w-4xl space-y-8">
       <PaymentTestModeBanner />
@@ -91,7 +119,7 @@ function PricingPage() {
           Purchase Your Studio
         </h1>
         <p className="mt-2 text-muted-foreground">
-          One-time setup fee · then $49/year upkeep license (first year free).
+          One-time setup fee · then $49–$79/year upkeep license (first year free).
         </p>
       </div>
 

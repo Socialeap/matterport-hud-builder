@@ -49,6 +49,9 @@ import {
 import { HeroSlideshow } from "@/components/HeroSlideshow";
 import tmLogo from "@/assets/tm-logo-landscape.png";
 import { toast } from "sonner";
+import { useStripeCheckout } from "@/hooks/useStripeCheckout";
+import { PaymentTestModeBanner } from "@/components/PaymentTestModeBanner";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
 const SITE_URL = "https://3dps.transcendencemedia.com";
 const OG_TITLE = "White-Label Matterport Tour Studio for MSPs";
@@ -419,11 +422,31 @@ function HeaderSignInMenu({ variant = "desktop" }: { variant?: "desktop" | "mobi
 /* ------------------------------------------------------------------ */
 
 function Index() {
-  const { isAuthenticated } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isDark, setIsDark] = useState(true);
   const [hoveredStep, setHoveredStep] = useState(0);
+  const { openCheckout, closeCheckout, isOpen: checkoutOpen, CheckoutForm } = useStripeCheckout();
+
+  // Pricing card CTA: launch Stripe checkout for logged-in users; otherwise
+  // route through signup with intent so checkout auto-launches afterward.
+  const handleTierCta = (tier: "starter" | "pro") => {
+    if (isAuthenticated && user) {
+      openCheckout({
+        priceId: tier === "pro" ? "pro_annual" : "starter_annual",
+        customerEmail: user.email ?? undefined,
+        userId: user.id,
+        returnUrl: `${window.location.origin}/dashboard/upgrade?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+      });
+    } else {
+      navigate({
+        to: "/signup",
+        search: { token: "", email: "", intent: "checkout", tier },
+      });
+    }
+  };
+
 
   /* No loading gate — all static content renders on the server for SEO.
      Auth-dependent buttons simply hide during the brief loading window. */
@@ -445,6 +468,13 @@ function Index() {
 
   return (
     <div className={`${isDark ? 'dark' : ''} relative min-h-screen text-foreground transition-colors duration-500`} style={{ backgroundColor: bg }}>
+      <PaymentTestModeBanner />
+      <Dialog open={checkoutOpen} onOpenChange={(open) => !open && closeCheckout()}>
+        <DialogContent className="max-w-2xl">
+          <DialogTitle>Complete Your Purchase</DialogTitle>
+          {CheckoutForm && <CheckoutForm />}
+        </DialogContent>
+      </Dialog>
       {/* ---- Notebook grid overlay ---- */}
       <div
         className="pointer-events-none fixed inset-0 z-0"
@@ -866,15 +896,13 @@ function Index() {
                   Upgrade to Pro Studio later for just $199 — not the full $299.
                 </p>
                 <div className="flex flex-col gap-2">
-                  {!isAuthenticated && (
-                    <Button
-                      variant="outline"
-                      className="w-full"
-                      onClick={() => navigate({ to: "/signup", search: { token: "", email: "" } })}
-                    >
-                      Get Starter Studio
-                    </Button>
-                  )}
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => handleTierCta("starter")}
+                  >
+                    Get Starter Studio
+                  </Button>
                   <DemoButton tier="starter" />
                 </div>
               </CardContent>
@@ -914,14 +942,12 @@ function Index() {
                   ))}
                 </ul>
                 <div className="flex flex-col gap-2">
-                  {!isAuthenticated && (
-                    <Button
-                      className="w-full"
-                      onClick={() => navigate({ to: "/signup", search: { token: "", email: "" } })}
-                    >
-                      Get Pro Studio
-                    </Button>
-                  )}
+                  <Button
+                    className="w-full"
+                    onClick={() => handleTierCta("pro")}
+                  >
+                    Get Pro Studio
+                  </Button>
                   <DemoButton tier="pro" />
                 </div>
               </CardContent>
