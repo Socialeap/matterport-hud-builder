@@ -347,6 +347,33 @@ function _buildEntities(fields) {
   };
 }
 
+function _normalizeForMatch(s) {
+  return String(s || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function _collectCustomQAs(rawList) {
+  if (!Array.isArray(rawList)) return [];
+  var out = [];
+  for (var i = 0; i < rawList.length; i++) {
+    var c = rawList[i];
+    if (!c || typeof c !== "object") continue;
+    var question = String(c.question || "").trim();
+    var answer = String(c.answer || "").trim();
+    if (!question || !answer) continue;
+    out.push({
+      id: String(c.id || ("custom-" + i)),
+      question: question,
+      answer: answer,
+      questionNormalized: _normalizeForMatch(question),
+    });
+  }
+  return out;
+}
+
 function buildPropertyBrain(inputs) {
   // inputs = {
   //   propertyIndex: number,
@@ -356,6 +383,7 @@ function buildPropertyBrain(inputs) {
   //   brandName: string,
   //   extractionEntries: array,          // extractions filtered to this property
   //   curatedQAs: array,                 // window.__QA_DATABASE__
+  //   customQAs: array,                  // window.__CUSTOM_QAS__[propertyUuid]
   //   hasDocs: boolean,
   //   hasQA: boolean,
   //   tagIntents: function               // ask-intents.tagQAIntents
@@ -367,6 +395,7 @@ function buildPropertyBrain(inputs) {
   var fieldProvenance = _mergeProvenance(extractionEntries);
   var canonicalQAs = _collectCanonicalQAs(extractionEntries, inputs.tagIntents);
   var chunks = _collectChunks(extractionEntries);
+  var customQAs = _collectCustomQAs(inputs.customQAs);
 
   var address = _resolveAddress(cp, fields);
   var directionsUrl = _directionsUrl(address);
@@ -426,6 +455,7 @@ function buildPropertyBrain(inputs) {
       neighborhoodMapUrl: (cp.enableNeighborhoodMap && address) ? directionsUrl : null,
     },
     canonicalQAs: canonicalQAs,
+    customQAs: customQAs,
     fields: fields,
     fieldProvenance: fieldProvenance,
     entities: _buildEntities(fields),
