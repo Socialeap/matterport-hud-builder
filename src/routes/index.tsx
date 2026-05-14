@@ -889,15 +889,13 @@ function Index() {
                   Upgrade to Pro Studio later for just $199 — not the full $299.
                 </p>
                 <div className="flex flex-col gap-2">
-                  {!isAuthenticated && (
-                    <Button
-                      variant="outline"
-                      className="w-full"
-                      onClick={() => navigate({ to: "/signup", search: { token: "", email: "" } })}
-                    >
-                      Get Starter Studio
-                    </Button>
-                  )}
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => handleTierCta("starter")}
+                  >
+                    Get Starter Studio
+                  </Button>
                   <DemoButton tier="starter" />
                 </div>
               </CardContent>
