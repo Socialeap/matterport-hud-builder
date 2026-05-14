@@ -295,6 +295,21 @@ function ModelRow({
         <div className="flex shrink-0 items-center gap-1">
           <Button
             size="sm"
+            variant="ghost"
+            className="h-7 gap-1 text-xs"
+            onClick={() => setCustomQAOpen(true)}
+            disabled={!user || !savedModelId}
+            title={
+              savedModelId
+                ? "Add hand-authored Q&As that override the AI"
+                : "Save the presentation to enable custom Q&As"
+            }
+          >
+            <MessageSquare className="size-3" />
+            Q&A
+          </Button>
+          <Button
+            size="sm"
             variant={mergedAssets.length === 0 ? "default" : "outline"}
             className="h-7 gap-1 text-xs"
             onClick={() => setWizardOpen(true)}
