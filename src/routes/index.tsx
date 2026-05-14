@@ -828,7 +828,7 @@ function Index() {
             Purchase Your Studio
           </h2>
           <p className={`mx-auto mt-3 max-w-lg text-center text-white/60`}>
-            One-time setup fee · then $49/year upkeep license (first year free).
+            One-time setup fee · then $49–$79/year upkeep license (first year free).
           </p>
 
           <div className="mt-12 grid gap-6 sm:grid-cols-2">
@@ -894,7 +894,7 @@ function Index() {
 <span className="text-sm text-white/50"> setup</span>
                   </div>
                   <div className="text-sm text-white/60">
-                    <span className="font-semibold text-white">$49</span>/year upkeep license - First year <span className="font-bold text-primary">FREE!</span>
+                    <span className="font-semibold text-white">$79</span>/year upkeep license - First year <span className="font-bold text-primary">FREE!</span>
                   </div>
                 </div>
               </CardHeader>
