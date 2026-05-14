@@ -1749,6 +1749,11 @@ ${
       })()
     : (hasQA ? `<script>window.__QA_DATABASE__=${safeJsonScriptLiteral(qaDatabase)};</script>` : "")
 }
+${(() => {
+  const hasCustom = Object.values(customQAsByProperty).some((a) => a.length > 0);
+  if (!hasCustom) return "";
+  return `<script>window.__CUSTOM_QAS__=${safeJsonScriptLiteral(customQAsByProperty)};</script>`;
+})()}
 ${synthesisUrl ? `<script>window.__SYNTHESIS_URL__=${JSON.stringify(synthesisUrl)};</script>` : ""}
 ${presentationToken ? `<script>window.__PRESENTATION_TOKEN__=${JSON.stringify(presentationToken)};window.__SAVED_MODEL_ID__=${JSON.stringify(model.id)};</script>` : ""}
 ${protectionArmed ? `<script>window.__PROTECTED__=true;window.__PROTECTED_BLOB__=${safeJsonScriptLiteral(protectedBlob)};${passwordHint ? `window.__PROTECTED_HINT__=${JSON.stringify(passwordHint)};` : ""}</script>` : ""}
