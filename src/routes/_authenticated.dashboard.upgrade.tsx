@@ -1,4 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useEffect, useRef } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useStripeCheckout } from "@/hooks/useStripeCheckout";
 import { PaymentTestModeBanner } from "@/components/PaymentTestModeBanner";
