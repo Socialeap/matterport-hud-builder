@@ -88,7 +88,7 @@ const BG_SAMPLE_RING_PX = 8;
 /** RGB Euclidean distance above which a pixel is "foreground". */
 const BG_DISTANCE_THRESHOLD = 55;
 /** Square-kernel half-size for the dilate+erode close pass. */
-const MORPH_CLOSE_RADIUS = 4;
+const MORPH_CLOSE_RADIUS = 6;
 /** Drop connected components smaller than this fraction of the image area. */
 const MIN_COMPONENT_AREA_PCT = 0.004;
 /** Cap on rendered components — extra ones become noise. */
@@ -103,6 +103,23 @@ const MIN_CONTOUR_LENGTH = 8;
 const SILHOUETTE_FILL = "#dbeafe";
 /** Outline stroke for filled silhouette paths. */
 const SILHOUETTE_STROKE = "#1f2937";
+/**
+ * If the foreground mask covers more than this fraction of the image,
+ * the BG detection almost certainly latched onto a foreground tone
+ * (e.g. the building fills the frame and the corner ring overlapped
+ * a carpet edge). Inverting the mask flips the FG/BG assignment and
+ * usually rescues the silhouette.
+ */
+const INVERT_MASK_COVERAGE_THRESHOLD = 0.85;
+/**
+ * Discoverable build marker embedded in the emitted SVG and the JSON
+ * response. Bump this when the pipeline changes so operators can
+ * verify in DevTools (network response → JSON; or view-source the
+ * SVG → data-pipeline attribute) which version of the function
+ * actually produced the output they're looking at. This is the
+ * single source of truth that proves "is my code deployed?".
+ */
+const PIPELINE_VERSION = "silhouette-v2";
 
 interface Pt { x: number; y: number; }
 interface RGB { r: number; g: number; b: number; }
@@ -503,6 +520,20 @@ function traceImage(img: Image): TraceResult {
   // Silhouette pipeline (canonical path for Matterport dollhouse views)
   const bg = detectBackground(working);
   const mask = buildForegroundMask(working, bg, BG_DISTANCE_THRESHOLD);
+
+  // Sanity check: if the border-detected "background" turned out to be
+  // a foreground tone (e.g. the building extends right to the edge of
+  // the frame and the corner ring overlapped its carpet), the mask is
+  // inverted — most pixels will read as foreground. Flipping the mask
+  // recovers the silhouette. Without this safeguard the silhouette
+  // pipeline silently collapses on building-fills-frame uploads and
+  // (pre-fix) fell through to the broken legacy edge tracer.
+  let fgCoverage = countCoverage(mask);
+  if (fgCoverage > INVERT_MASK_COVERAGE_THRESHOLD) {
+    invertMaskInPlace(mask);
+    fgCoverage = 1 - fgCoverage;
+  }
+
   morphCloseInPlace(mask, w, h, MORPH_CLOSE_RADIUS);
   const { labels, areas } = labelConnectedComponents(mask, w, h);
   const minArea = Math.max(20, Math.floor(w * h * MIN_COMPONENT_AREA_PCT));
@@ -512,6 +543,15 @@ function traceImage(img: Image): TraceResult {
     .slice(0, MAX_COMPONENTS)
     .map(([label]) => label);
 
+  // Log to the function's stderr so operators have a per-call paper
+  // trail in the Supabase Functions log viewer. Helps confirm at a
+  // glance which BG colour we picked + how many components made it.
+  console.log(
+    `[vectorize-floorplan] pipeline=${PIPELINE_VERSION} bg=rgb(${bg.r},${bg.g},${bg.b}) ` +
+    `fg_cov=${fgCoverage.toFixed(3)} components=${survivors.length} ` +
+    `dims=${w}x${h}`,
+  );
+
   if (survivors.length > 0) {
     const components: Pt[][][] = survivors.map((label) =>
       traceComponentBoundary(labels, label, w, h),
@@ -519,8 +559,11 @@ function traceImage(img: Image): TraceResult {
     return { mode: "silhouette", components, paths: [], width: w, height: h };
   }
 
-  // Empty silhouette → fall back to the legacy edge tracer so a
-  // line-art blueprint upload still produces something usable.
+  // True empty silhouette → fall back to the legacy edge tracer so a
+  // thin-line blueprint upload still produces SOMETHING. We log
+  // `mode=edge` here so a stuck "looks like the old sketch" complaint
+  // is debuggable from logs alone — without this marker, operators
+  // can't tell whether the deployed function is the new code at all.
   const bin = binarize(working, 160);
   const contours = traceContours(bin, w, h);
   const paths: string[] = [];
@@ -530,6 +573,16 @@ function traceImage(img: Image): TraceResult {
     paths.push(pointsToPathData(simplified));
   }
   return { mode: "edge", paths, components: [], width: w, height: h };
+}
+
+function countCoverage(mask: Uint8Array): number {
+  let on = 0;
+  for (let i = 0; i < mask.length; i++) if (mask[i]) on++;
+  return on / Math.max(1, mask.length);
+}
+
+function invertMaskInPlace(mask: Uint8Array): void {
+  for (let i = 0; i < mask.length; i++) mask[i] = mask[i] ? 0 : 1;
 }
 
 // ── SVG assembly + sanitization ──────────────────────────────────
@@ -567,10 +620,13 @@ function emitSilhouetteSvg(width: number, height: number, components: Pt[][][]):
   // `preserveAspectRatio="xMidYMid meet"` is mandatory: pin
   // coordinates are stored as percentages of the SVG viewBox, so
   // the runtime relies on the aspect ratio staying locked even as
-  // the modal resizes.
+  // the modal resizes. The `data-pipeline` attribute is a
+  // discoverable marker — open DevTools → view-source on the
+  // rendered SVG to confirm which pipeline version actually ran.
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" ` +
-    `preserveAspectRatio="xMidYMid meet" fill="${SILHOUETTE_FILL}" ` +
+    `preserveAspectRatio="xMidYMid meet" data-pipeline="${PIPELINE_VERSION}" ` +
+    `data-mode="silhouette" fill="${SILHOUETTE_FILL}" ` +
     `stroke="${SILHOUETTE_STROKE}" stroke-width="1.5" stroke-linejoin="round" ` +
     `stroke-linecap="round">` +
     pathEls.join("") +
@@ -582,7 +638,8 @@ function emitEdgeSvg(width: number, height: number, paths: string[]): string {
   const pathEls = paths.map((d) => `<path d="${d}"/>`).join("");
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" ` +
-    `preserveAspectRatio="xMidYMid meet" fill="none" stroke="currentColor" ` +
+    `preserveAspectRatio="xMidYMid meet" data-pipeline="${PIPELINE_VERSION}" ` +
+    `data-mode="edge" fill="none" stroke="currentColor" ` +
     `stroke-width="2" stroke-linejoin="round" stroke-linecap="round">` +
     pathEls +
     `</svg>`
@@ -739,5 +796,6 @@ serve(async (req) => {
     path_count: pathCount,
     bytes: svg.length,
     mode: trace.mode,
+    pipeline: PIPELINE_VERSION,
   });
 });

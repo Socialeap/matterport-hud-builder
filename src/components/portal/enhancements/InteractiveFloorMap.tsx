@@ -55,6 +55,13 @@ interface VectorizeResponse {
   height?: number;
   detail?: string;
   error?: string;
+  /** Server-side pipeline build marker. When this is missing or stale, the
+   *  Edge Function in production hasn't been redeployed since the last
+   *  pipeline change — bumped via `PIPELINE_VERSION` in
+   *  `supabase/functions/vectorize-floorplan/index.ts`. */
+  pipeline?: string;
+  /** "silhouette" (canonical) or "edge" (legacy fallback for blueprints). */
+  mode?: "silhouette" | "edge";
 }
 
 const TEMP_BUCKET = "temporary-floorplans";
@@ -222,12 +229,19 @@ export function InteractiveFloorMap({
           storagePath,
         };
         onChange(next);
+        // Surface the server-side pipeline marker in the success toast.
+        // If the toast says `pipeline=legacy` or omits the marker, the
+        // Edge Function in production is older than the source on main
+        // and needs to be redeployed (`supabase functions deploy
+        // vectorize-floorplan`).
+        const pipelineLabel = data.pipeline ?? "legacy";
+        const modeLabel = data.mode ?? "edge";
         if (data.svg.length > FLOOR_MAP_SVG_WARN_BYTES) {
           toast.warning(
-            `Floor map vectorized but the SVG is ${(data.svg.length / 1024).toFixed(0)} KB. Consider a cleaner scan to shrink the export.`,
+            `Floor map vectorized (${modeLabel}, ${pipelineLabel}) but the SVG is ${(data.svg.length / 1024).toFixed(0)} KB. Consider a cleaner scan to shrink the export.`,
           );
         } else {
-          toast.success("Floor map vectorized.");
+          toast.success(`Floor map vectorized (${modeLabel}, ${pipelineLabel}).`);
         }
       } finally {
         setBusy(false);
