@@ -29,9 +29,19 @@ const ReviewInput = z.object({
   value: z.unknown().optional(),
 });
 
+// JSON-safe value carried over the RPC boundary. The candidate value
+// from extraction is always JSON.parse-roundtrippable.
+export type CandidateValue =
+  | string
+  | number
+  | boolean
+  | null
+  | CandidateValue[]
+  | { [key: string]: CandidateValue };
+
 export interface CandidateField {
   key: string;
-  value: unknown;
+  value: CandidateValue;
   confidence: number;
   evidence?: string;
 }
