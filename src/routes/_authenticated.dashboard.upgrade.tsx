@@ -10,6 +10,13 @@ import { Check, X } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
 export const Route = createFileRoute("/_authenticated/dashboard/upgrade")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    autostart: (search.autostart === "starter" || search.autostart === "pro")
+      ? (search.autostart as "starter" | "pro")
+      : undefined,
+    checkout: typeof search.checkout === "string" ? (search.checkout as string) : undefined,
+    session_id: typeof search.session_id === "string" ? (search.session_id as string) : undefined,
+  }),
   component: PricingPage,
 });
 
