@@ -3022,6 +3022,7 @@ async function __dqaInit(){
         brandName:C.brandName||"",
         extractionEntries:entries,
         curatedQAs:window.__QA_DATABASE__||[],
+        customQAs:((window.__CUSTOM_QAS__||{})[uuidByIndex[current]||""]||[]),
         hasDocs:!!window.__ASK_HAS_DOCS__,
         hasQA:!!window.__ASK_HAS_QA__,
         tagIntents:tagQAIntents
