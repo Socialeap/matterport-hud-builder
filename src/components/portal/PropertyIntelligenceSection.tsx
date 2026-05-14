@@ -8,6 +8,7 @@ import {
   Lock,
   MessageSquare,
   RefreshCw,
+  ShieldCheck,
   Snowflake,
   Sparkles,
   Trash2,
@@ -28,6 +29,7 @@ import { useIndexing } from "@/lib/rag/indexing-context";
 import { IndexingStatusBadge } from "@/components/portal/IndexingStatusBadge";
 import { AiTrainingWizard } from "@/components/portal/ai-training-wizard/AiTrainingWizard";
 import { CustomQAManager } from "@/components/portal/CustomQAManager";
+import { IntelligenceReviewPanel } from "@/components/portal/IntelligenceReviewPanel";
 import { PropertyInfoSheetTipsDialog } from "@/components/portal/PropertyInfoSheetTipsDialog";
 import type { PropertyModel } from "./types";
 
@@ -151,6 +153,7 @@ function ModelRow({
     running,
     failuresByAsset,
     extractFromUrl,
+    refresh,
     remove,
   } = usePropertyExtractions(model.id);
   const { isFrozen, freeze: freezeRow } = useLusFreeze(model.id);
@@ -158,7 +161,19 @@ function ModelRow({
   const [trackedAssets, setTrackedAssets] = useState<AssetMeta[]>([]);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [customQAOpen, setCustomQAOpen] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  const candidateCount = useMemo(
+    () =>
+      extractions.reduce(
+        (acc, e) =>
+          acc +
+          (Array.isArray(e.candidate_fields) ? e.candidate_fields.length : 0),
+        0,
+      ),
+    [extractions],
+  );
 
   // Hydrate trackedAssets from existing extractions for this property.
   useEffect(() => {
@@ -293,6 +308,25 @@ function ModelRow({
           />
         </div>
         <div className="flex shrink-0 items-center gap-1">
+          {candidateCount > 0 && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 gap-1 text-xs text-amber-700 hover:text-amber-800 dark:text-amber-300"
+              onClick={() => setReviewOpen(true)}
+              disabled={!user}
+              title="Review low-confidence facts the AI extracted"
+            >
+              <ShieldCheck className="size-3" />
+              Review
+              <Badge
+                variant="outline"
+                className="ml-0.5 h-4 border-amber-500/40 bg-amber-500/10 px-1 text-[10px]"
+              >
+                {candidateCount}
+              </Badge>
+            </Button>
+          )}
           <Button
             size="sm"
             variant="ghost"
@@ -365,6 +399,19 @@ function ModelRow({
         savedModelId={savedModelId}
         propertyUuid={model.id}
         propertyName={displayName}
+      />
+
+      <IntelligenceReviewPanel
+        open={reviewOpen}
+        onOpenChange={setReviewOpen}
+        propertyUuid={model.id}
+        propertyName={displayName}
+        onChanged={() => {
+          // Re-pull extractions so candidate counts and field counts
+          // both reflect the reviewer's decisions.
+          void refresh();
+          onExtractionSuccess?.();
+        }}
       />
     </li>
   );
