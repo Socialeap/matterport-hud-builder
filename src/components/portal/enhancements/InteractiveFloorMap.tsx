@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Trash2, Upload, Wand2, MapPin, X, Key, AlertTriangle } from "lucide-react";
+import { Loader2, Trash2, Upload, Wand2, MapPin, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,12 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import {
   FLOOR_MAP_MAX_PINS,
-  FLOOR_MAP_SVG_WARN_BYTES,
   type FloorMapData,
   type FloorMapPin,
 } from "@/lib/portal/floor-map";
 import { UPLOAD_LIMITS, uploadLimitDescription } from "@/lib/limits";
-import { AskAiClientByokSection } from "@/components/portal/AskAiClientByokSection";
 import { toast } from "sonner";
 
 // `ephemeral_assets` is added by migration
@@ -50,37 +48,23 @@ interface Props {
 
 interface VectorizeResponse {
   ok: boolean;
+  /** Empty string for the current raster pipeline. Kept in the response
+   *  shape so previously-saved floor maps (with real SVG) still round-
+   *  trip cleanly through the type. */
   svg?: string;
-  /** Raster fallback (base64-encoded JPEG/PNG/WebP) when the AI
-   *  pipeline failed after retry. Mutually exclusive with `svg`. */
+  /** Base64-encoded JPEG of the resized source image. Renders via
+   *  <img src="data:image/jpeg;base64,…">. */
   raster?: { mime: string; data: string } | null;
   viewBox?: string;
   width?: number;
   height?: number;
   detail?: string;
   error?: string;
-  /** Server-side pipeline build marker — bumped via `PIPELINE_VERSION`
-   *  in supabase/functions/vectorize-floorplan/index.ts whenever the
-   *  pipeline changes. If a deploy looks stale this is the first thing
-   *  to verify in DevTools (network → response JSON). */
+  /** Server-side build marker — bumped via `PIPELINE_VERSION` in
+   *  supabase/functions/vectorize-floorplan/index.ts whenever the
+   *  pipeline changes. Current value: "raster-v1". */
   pipeline?: string;
-  /** "ai-vector" on AI success, "raster-fallback" when the AI failed
-   *  after retry and we returned the original raster. */
-  mode?: "ai-vector" | "raster-fallback";
-  /** Lifetime-pass quota state after this call. `byok_active=true`
-   *  means the call was billed to the user's own Gemini key and the
-   *  counter was not touched. */
-  quota?: { used: number; limit: number; byok_active: boolean };
-  /** Diagnostics surfaced by `fail()` on the edge. We surface
-   *  `floor_map_quota_exhausted` (402) specifically. */
-  diagnostics?: Record<string, unknown>;
-  stage?: string;
-}
-
-interface FloorMapPassStatus {
-  used: number;
-  lifetime_limit: number;
-  byok_active: boolean;
+  mode?: "raster" | "ai-vector" | "raster-fallback";
 }
 
 const TEMP_BUCKET = "temporary-floorplans";
@@ -123,49 +107,12 @@ export function InteractiveFloorMap({
   const [busy, setBusy] = useState(false);
   const [busyStage, setBusyStage] = useState<string>("");
   const [editingPinId, setEditingPinId] = useState<string | null>(null);
-  const [passStatus, setPassStatus] = useState<FloorMapPassStatus | null>(null);
-  const [showByokInline, setShowByokInline] = useState(false);
 
   // Reset the edit popover when the active property changes so a
   // pin from property A can't bleed into property B's view.
   useEffect(() => {
     setEditingPinId(null);
   }, [propertyId]);
-
-  // Fetch the user's pass status on mount and after each
-  // vectorization. Drives the badge ("X passes remaining") and
-  // the BYOK upgrade prompt that appears when passes are exhausted.
-  const refreshPassStatus = useCallback(async () => {
-    const { data, error } = await (
-      supabase.rpc as unknown as (
-        name: string,
-        args?: Record<string, unknown>,
-      ) => Promise<{ data: unknown; error: unknown }>
-    )("read_floor_plan_pass_status");
-    if (error) {
-      console.warn("[floor-map] read_floor_plan_pass_status failed:", error);
-      return;
-    }
-    if (Array.isArray(data) && data.length > 0) {
-      const row = data[0] as Partial<FloorMapPassStatus>;
-      setPassStatus({
-        used: Number(row.used ?? 0),
-        lifetime_limit: Number(row.lifetime_limit ?? 3),
-        byok_active: !!row.byok_active,
-      });
-    }
-  }, []);
-
-  useEffect(() => {
-    refreshPassStatus();
-  }, [refreshPassStatus]);
-
-  const passesRemaining = passStatus
-    ? Math.max(0, passStatus.lifetime_limit - passStatus.used)
-    : null;
-  const canVectorize = passStatus
-    ? passStatus.byok_active || passesRemaining! > 0
-    : true; // Pre-load, optimistically allow — the edge enforces the real gate.
 
   const editingPin = useMemo(
     () => value?.pins.find((p) => p.id === editingPinId) ?? null,
@@ -174,15 +121,6 @@ export function InteractiveFloorMap({
 
   const handleUploadAndVectorize = useCallback(
     async (file: File) => {
-      // Pre-flight quota gate so the user isn't surprised after an
-      // upload completes. The edge function still re-checks server-side.
-      if (passStatus && !passStatus.byok_active && passesRemaining === 0) {
-        toast.error(
-          "You've used your 3 free AI floor-plan passes. Add your own Gemini API key to keep going.",
-        );
-        setShowByokInline(true);
-        return;
-      }
       // Strict client-side limit BEFORE upload — the Edge Function
       // also enforces it but we want to fail fast to keep storage
       // clean.
@@ -244,15 +182,13 @@ export function InteractiveFloorMap({
           return;
         }
 
-        // AI vectorization typically lands in 4-8 s; surface that
-        // up front so the user doesn't think the tab has frozen.
-        setBusyStage("AI drafting (4–8s)…");
-        // Guard against the supabase-js fetch hanging on a slow cold start
-        // or a heavy raster. 55 s sits just under the platform's hard
-        // 60 s ceiling so we surface a friendly message instead of the
-        // generic "Failed to send a request to the Edge Function".
+        setBusyStage("Compressing image…");
+        // Guard against the supabase-js fetch hanging on a slow cold
+        // start. 30 s is generous for a download + JPEG re-encode and
+        // sits well under the platform's hard 60 s ceiling so we
+        // surface a friendly message rather than a connection drop.
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 55_000);
+        const timeoutId = setTimeout(() => controller.abort(), 30_000);
         let data: VectorizeResponse | null = null;
         let fnErr: { message?: string } | null = null;
         let timedOut = false;
@@ -276,38 +212,18 @@ export function InteractiveFloorMap({
           clearTimeout(timeoutId);
         }
 
-        // Quota exhausted (402) gets its own UI treatment: keep the
-        // upload around so the user can hit "Replace" again after
-        // adding a BYOK key, but surface the BYOK prompt inline.
-        if (data?.stage === "quota" || data?.error === "floor_map_quota_exhausted") {
-          toast.error(
-            "You've used your 3 free AI floor-plan passes. Add your own Gemini API key below to keep going.",
-          );
-          setShowByokInline(true);
-          await sbAny.from("ephemeral_assets").delete().eq("id", tracking.id);
-          await supabase.storage.from(TEMP_BUCKET).remove([storagePath]);
-          await refreshPassStatus();
-          return;
-        }
-
         const hasSvg = !!data?.svg;
         const hasRaster = !!(data?.raster && data.raster.data && data.raster.mime);
         if (timedOut || fnErr || !data?.ok || (!hasSvg && !hasRaster)) {
           const detail = timedOut
-            ? "Vectorization took too long — try a smaller or cleaner scan."
-            : data?.detail || data?.error || fnErr?.message || "vectorization_failed";
-          toast.error(timedOut ? detail : `Vectorization failed: ${detail}`);
+            ? "Compression took too long — try a smaller image."
+            : data?.detail || data?.error || fnErr?.message || "compression_failed";
+          toast.error(timedOut ? detail : `Couldn't process the floor plan: ${detail}`);
           // Best-effort cleanup of the orphan upload + row.
           await sbAny.from("ephemeral_assets").delete().eq("id", tracking.id);
           await supabase.storage.from(TEMP_BUCKET).remove([storagePath]);
           return;
         }
-
-        // Brief "Tracing…" indicator before the state write — the
-        // AI work is done at this point but the user perceives the
-        // step as continuous, and the label makes the pipeline
-        // legible.
-        setBusyStage("Tracing…");
 
         // Constrain raster mime to the allowlist on the client side
         // too — the edge function enforces it but we want a clean
@@ -331,37 +247,20 @@ export function InteractiveFloorMap({
         };
         onChange(next);
 
-        // Refresh the badge so the count drops immediately.
-        await refreshPassStatus();
-
-        // Surface the server-side pipeline marker + quota state so a
-        // stale deploy or BYOK confusion is visible in the toast.
-        const pipelineLabel = data.pipeline ?? "legacy";
-        const modeLabel = data.mode ?? "ai-vector";
-        const quotaSuffix = data.quota
-          ? data.quota.byok_active
-            ? " · BYOK"
-            : ` · ${data.quota.used}/${data.quota.limit} free passes used`
-          : "";
-
-        if (modeLabel === "raster-fallback") {
-          toast.warning(
-            `Floor map saved as image (AI unavailable, ${pipelineLabel}${quotaSuffix}). Pins still work — the original photo is shown instead of a vectorized plan.`,
-          );
-        } else if (hasSvg && (data.svg?.length ?? 0) > FLOOR_MAP_SVG_WARN_BYTES) {
-          toast.warning(
-            `Floor map vectorized (${modeLabel}, ${pipelineLabel}${quotaSuffix}) but the SVG is ${((data.svg?.length ?? 0) / 1024).toFixed(0)} KB. Consider a cleaner scan to shrink the export.`,
-          );
-        } else {
-          toast.success(`Floor map vectorized (${modeLabel}, ${pipelineLabel}${quotaSuffix}).`);
-        }
+        const pipelineLabel = data.pipeline ?? "raster-v1";
+        const sizeKb = hasRaster
+          ? ((data!.raster!.data.length * 0.75) / 1024).toFixed(0)
+          : "0";
+        toast.success(
+          `Floor plan ready (${pipelineLabel} · ${sizeKb} KB). Click anywhere on the image to add a pin.`,
+        );
       } finally {
         setBusy(false);
         setBusyStage("");
         if (fileInputRef.current) fileInputRef.current.value = "";
       }
     },
-    [onChange, value, passStatus, passesRemaining, refreshPassStatus],
+    [onChange, value],
   );
 
   const handleFileChange = useCallback(
@@ -437,62 +336,16 @@ export function InteractiveFloorMap({
     [value, onChange],
   );
 
-  // Status pill text: BYOK takes precedence (passes are irrelevant
-  // when the user is on their own key), otherwise show the
-  // remaining-pass count. Falls back to `null` while we're still
-  // loading so the chrome doesn't flash.
-  const passBadge = useMemo(() => {
-    if (!passStatus) return null;
-    if (passStatus.byok_active) {
-      return { tone: "emerald" as const, text: "Using your Gemini key" };
-    }
-    if (passesRemaining === 0) {
-      return { tone: "destructive" as const, text: "Free passes exhausted" };
-    }
-    return {
-      tone: "neutral" as const,
-      text: `${passesRemaining} of ${passStatus.lifetime_limit} free passes remaining`,
-    };
-  }, [passStatus, passesRemaining]);
-
   return (
     <div className="space-y-3">
       <div className="rounded-md border border-primary/20 bg-primary/5 p-3 text-xs leading-snug text-foreground/80">
-        Upload a raster floor plan for{" "}
-        <strong>{propertyLabel}</strong>. Gemini 2.5 Pro Vision identifies the
-        building's wall segments and returns them as structured coordinates,
-        which are composed into a tiny SVG (typically &lt;10 KB) and embedded
+        Upload a top-down floor plan for{" "}
+        <strong>{propertyLabel}</strong>. The image is downsized and
+        compressed to a small JPEG (typically 150–400 KB), then embedded
         directly in your exported presentation — no external hosting. Click
-        anywhere on the map to drop an interactive pin with a label and
+        anywhere on the image to drop an interactive pin with a label and
         description. Originals auto-delete after 30 days for privacy.
       </div>
-
-      {passBadge && (
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <Badge
-            variant={passBadge.tone === "destructive" ? "destructive" : "outline"}
-            className={
-              passBadge.tone === "emerald"
-                ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                : passBadge.tone === "destructive"
-                  ? ""
-                  : "border-primary/30"
-            }
-          >
-            <Key className="mr-1 size-3" />
-            {passBadge.text}
-          </Badge>
-          {!passStatus?.byok_active && passesRemaining !== null && passesRemaining <= 1 && (
-            <button
-              type="button"
-              onClick={() => setShowByokInline((s) => !s)}
-              className="text-xs font-medium text-primary hover:underline"
-            >
-              {showByokInline ? "Hide" : "Add"} your own Gemini key
-            </button>
-          )}
-        </div>
-      )}
 
       {!value && (
         <div className="flex flex-col items-center gap-2 rounded-md border border-dashed bg-muted/30 px-4 py-8 text-center">
@@ -500,7 +353,7 @@ export function InteractiveFloorMap({
           <p className="text-sm font-medium">No floor map yet</p>
           <p className="text-xs text-muted-foreground">
             PNG or JPG · {uploadLimitDescription("image_bytes")} · {" "}
-            high-contrast scans vectorize best.
+            top-down Matterport renders work great.
           </p>
           <input
             ref={fileInputRef}
@@ -508,40 +361,18 @@ export function InteractiveFloorMap({
             accept="image/png,image/jpeg,image/jpg"
             className="hidden"
             onChange={handleFileChange}
-            disabled={busy || !canVectorize}
+            disabled={busy}
           />
-          {!canVectorize ? (
-            <div className="flex flex-col items-center gap-2">
-              <div className="flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                <AlertTriangle className="size-4 shrink-0" />
-                <span>
-                  You've used all 3 free AI passes. Add your own Gemini API
-                  key below to keep generating floor maps.
-                </span>
-              </div>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => setShowByokInline(true)}
-                className="gap-2"
-              >
-                <Key className="size-4" />
-                Add Gemini key
-              </Button>
-            </div>
-          ) : (
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={busy}
-              className="gap-2"
-            >
-              {busy ? <Loader2 className="size-4 animate-spin" /> : <Wand2 className="size-4" />}
-              {busy ? busyStage || "Working…" : "Upload & vectorize"}
-            </Button>
-          )}
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={busy}
+            className="gap-2"
+          >
+            {busy ? <Loader2 className="size-4 animate-spin" /> : <Wand2 className="size-4" />}
+            {busy ? busyStage || "Working…" : "Upload floor plan"}
+          </Button>
         </div>
       )}
 
@@ -553,19 +384,9 @@ export function InteractiveFloorMap({
               <span>
                 {value.pins.length} pin{value.pins.length === 1 ? "" : "s"} ·{" "}
                 {value.raster
-                  ? `${(value.raster.data.length / 1024).toFixed(0)} KB image`
+                  ? `${((value.raster.data.length * 0.75) / 1024).toFixed(0)} KB image`
                   : `${(value.svg.length / 1024).toFixed(1)} KB SVG`}
               </span>
-              {!value.raster && value.svg.length > FLOOR_MAP_SVG_WARN_BYTES && (
-                <Badge variant="outline" className="border-amber-300 text-amber-700">
-                  Large
-                </Badge>
-              )}
-              {value.raster && (
-                <Badge variant="outline" className="border-amber-300 text-amber-700">
-                  Raster fallback
-                </Badge>
-              )}
             </div>
             <div className="flex items-center gap-2">
               <input
@@ -661,15 +482,6 @@ export function InteractiveFloorMap({
             ))}
           </div>
 
-          {!value.raster && value.pins.length === 0 && (
-            <p className="text-[11px] leading-snug text-muted-foreground">
-              <span className="font-medium text-foreground">Tip:</span>{" "}
-              AI-extracted walls aren't always perfect — if the layout looks
-              off, click <strong>Replace</strong> above to upload the same
-              image again for a fresh attempt. Each retry uses one free pass.
-            </p>
-          )}
-
           {editingPin && (
             <div className="rounded-md border bg-card p-3 shadow-sm">
               <div className="mb-2 flex items-center justify-between">
@@ -738,35 +550,6 @@ export function InteractiveFloorMap({
               </div>
             </div>
           )}
-        </div>
-      )}
-
-      {showByokInline && (
-        // Inline BYOK form — once the user adds a key it lands in
-        // client_byok_keys (keyed by auth.uid()), which both Ask AI
-        // and vectorize-floorplan read on their next call. We refresh
-        // the local pass status from the AskAiClientByokSection's
-        // own refresh trigger via the unmount/remount cycle below.
-        <div className="rounded-md border border-primary/20 bg-primary/5 p-3">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Bring your own Gemini key
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                setShowByokInline(false);
-                // Pick up any key the user just saved so the gate
-                // updates without a page reload.
-                refreshPassStatus();
-              }}
-              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-              aria-label="Hide BYOK form"
-            >
-              <X className="size-4" />
-            </button>
-          </div>
-          <AskAiClientByokSection />
         </div>
       )}
     </div>
