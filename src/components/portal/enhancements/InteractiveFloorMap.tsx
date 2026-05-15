@@ -1,17 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Trash2, Upload, Wand2, MapPin, X } from "lucide-react";
+import { Info, Loader2, Trash2, Upload, Wand2, MapPin, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { supabase } from "@/integrations/supabase/client";
 import {
   FLOOR_MAP_MAX_PINS,
   type FloorMapData,
   type FloorMapPin,
 } from "@/lib/portal/floor-map";
+import { compressFloorPlan } from "@/lib/portal/floor-map-compress";
 import { UPLOAD_LIMITS, uploadLimitDescription } from "@/lib/limits";
 import { toast } from "sonner";
 
