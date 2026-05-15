@@ -150,15 +150,35 @@ export function InteractiveFloorMap({
       }
       const userId = session.user.id;
       setBusy(true);
-      setBusyStage("Uploading…");
+      setBusyStage("Compressing image…");
 
-      const storagePath = `${userId}/${Date.now()}-${sanitizeFileName(file.name)}`;
+      // Resize + JPEG-encode in the browser. Eliminates the Edge
+      // Function CPU-budget failure mode and shrinks the upload
+      // (and the embedded data URI in the final HTML) by ~10×.
+      let compressed;
       try {
+        compressed = await compressFloorPlan(file);
+      } catch (err) {
+        setBusy(false);
+        setBusyStage("");
+        toast.error(
+          err instanceof Error ? err.message : "Couldn't process that image.",
+        );
+        return;
+      }
+
+      const baseName = sanitizeFileName(file.name).replace(/\.[^.]+$/, "");
+      const storagePath = `${userId}/${Date.now()}-${baseName}.jpg`;
+      const uploadFile = new File([compressed.blob], `${baseName}.jpg`, {
+        type: "image/jpeg",
+      });
+      try {
+        setBusyStage("Uploading…");
         const { error: upErr } = await supabase.storage
           .from(TEMP_BUCKET)
-          .upload(storagePath, file, {
+          .upload(storagePath, uploadFile, {
             upsert: false,
-            contentType: file.type || "image/png",
+            contentType: "image/jpeg",
           });
         if (upErr) {
           toast.error(`Upload failed: ${upErr.message}`);
@@ -174,8 +194,8 @@ export function InteractiveFloorMap({
             user_id: userId,
             bucket_id: TEMP_BUCKET,
             file_path: storagePath,
-            mime_type: file.type || "image/png",
-            file_size_bytes: file.size,
+            mime_type: "image/jpeg",
+            file_size_bytes: compressed.compressedBytes,
             purpose: "floorplan_vectorize",
           })
           .select("id")
