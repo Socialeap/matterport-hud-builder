@@ -459,12 +459,12 @@ export function InteractiveFloorMap({
     <div className="space-y-3">
       <div className="rounded-md border border-primary/20 bg-primary/5 p-3 text-xs leading-snug text-foreground/80">
         Upload a raster floor plan for{" "}
-        <strong>{propertyLabel}</strong>. Gemini 3 Pro Image redraws the
-        dollhouse as a clean architectural schematic, which is then
-        vectorized into a tiny SVG (typically &lt;25 KB) and embedded
-        directly in your exported presentation — no external hosting.
-        Click anywhere on the map to drop an interactive pin with a label
-        and description. Originals auto-delete after 30 days for privacy.
+        <strong>{propertyLabel}</strong>. Gemini 2.5 Pro Vision identifies the
+        building's wall segments and returns them as structured coordinates,
+        which are composed into a tiny SVG (typically &lt;10 KB) and embedded
+        directly in your exported presentation — no external hosting. Click
+        anywhere on the map to drop an interactive pin with a label and
+        description. Originals auto-delete after 30 days for privacy.
       </div>
 
       {passBadge && (
@@ -660,6 +660,15 @@ export function InteractiveFloorMap({
               </button>
             ))}
           </div>
+
+          {!value.raster && value.pins.length === 0 && (
+            <p className="text-[11px] leading-snug text-muted-foreground">
+              <span className="font-medium text-foreground">Tip:</span>{" "}
+              AI-extracted walls aren't always perfect — if the layout looks
+              off, click <strong>Replace</strong> above to upload the same
+              image again for a fresh attempt. Each retry uses one free pass.
+            </p>
+          )}
 
           {editingPin && (
             <div className="rounded-md border bg-card p-3 shadow-sm">
