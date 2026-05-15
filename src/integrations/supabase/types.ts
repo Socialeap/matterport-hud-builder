@@ -887,6 +887,54 @@ export type Database = {
         }
         Relationships: []
       }
+      presentation_tokens: {
+        Row: {
+          created_at: string
+          id: string
+          issued_at: string
+          payload: Json
+          revoked_at: string | null
+          rotated_from: string | null
+          saved_model_id: string
+          token_hash: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          issued_at?: string
+          payload: Json
+          revoked_at?: string | null
+          rotated_from?: string | null
+          saved_model_id: string
+          token_hash: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          issued_at?: string
+          payload?: Json
+          revoked_at?: string | null
+          rotated_from?: string | null
+          saved_model_id?: string
+          token_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "presentation_tokens_rotated_from_fkey"
+            columns: ["rotated_from"]
+            isOneToOne: false
+            referencedRelation: "presentation_tokens"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "presentation_tokens_saved_model_id_fkey"
+            columns: ["saved_model_id"]
+            isOneToOne: false
+            referencedRelation: "saved_models"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       processed_webhook_events: {
         Row: {
           env: string
