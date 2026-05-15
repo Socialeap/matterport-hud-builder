@@ -1,17 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Trash2, Upload, Wand2, MapPin, X } from "lucide-react";
+import { Info, Loader2, Trash2, Upload, Wand2, MapPin, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { supabase } from "@/integrations/supabase/client";
 import {
   FLOOR_MAP_MAX_PINS,
   type FloorMapData,
   type FloorMapPin,
 } from "@/lib/portal/floor-map";
+import { compressFloorPlan } from "@/lib/portal/floor-map-compress";
 import { UPLOAD_LIMITS, uploadLimitDescription } from "@/lib/limits";
 import { toast } from "sonner";
 
@@ -144,15 +150,35 @@ export function InteractiveFloorMap({
       }
       const userId = session.user.id;
       setBusy(true);
-      setBusyStage("Uploading…");
+      setBusyStage("Compressing image…");
 
-      const storagePath = `${userId}/${Date.now()}-${sanitizeFileName(file.name)}`;
+      // Resize + JPEG-encode in the browser. Eliminates the Edge
+      // Function CPU-budget failure mode and shrinks the upload
+      // (and the embedded data URI in the final HTML) by ~10×.
+      let compressed;
       try {
+        compressed = await compressFloorPlan(file);
+      } catch (err) {
+        setBusy(false);
+        setBusyStage("");
+        toast.error(
+          err instanceof Error ? err.message : "Couldn't process that image.",
+        );
+        return;
+      }
+
+      const baseName = sanitizeFileName(file.name).replace(/\.[^.]+$/, "");
+      const storagePath = `${userId}/${Date.now()}-${baseName}.jpg`;
+      const uploadFile = new File([compressed.blob], `${baseName}.jpg`, {
+        type: "image/jpeg",
+      });
+      try {
+        setBusyStage("Uploading…");
         const { error: upErr } = await supabase.storage
           .from(TEMP_BUCKET)
-          .upload(storagePath, file, {
+          .upload(storagePath, uploadFile, {
             upsert: false,
-            contentType: file.type || "image/png",
+            contentType: "image/jpeg",
           });
         if (upErr) {
           toast.error(`Upload failed: ${upErr.message}`);
@@ -168,8 +194,8 @@ export function InteractiveFloorMap({
             user_id: userId,
             bucket_id: TEMP_BUCKET,
             file_path: storagePath,
-            mime_type: file.type || "image/png",
-            file_size_bytes: file.size,
+            mime_type: "image/jpeg",
+            file_size_bytes: compressed.compressedBytes,
             purpose: "floorplan_vectorize",
           })
           .select("id")
@@ -182,11 +208,10 @@ export function InteractiveFloorMap({
           return;
         }
 
-        setBusyStage("Compressing image…");
+        setBusyStage("Embedding floor plan…");
         // Guard against the supabase-js fetch hanging on a slow cold
-        // start. 30 s is generous for a download + JPEG re-encode and
-        // sits well under the platform's hard 60 s ceiling so we
-        // surface a friendly message rather than a connection drop.
+        // start. The server now just downloads + base64-encodes a
+        // pre-resized JPEG, so 30 s is more than enough.
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30_000);
         let data: VectorizeResponse | null = null;
@@ -196,7 +221,11 @@ export function InteractiveFloorMap({
           const res = await supabase.functions.invoke<VectorizeResponse>(
             "vectorize-floorplan",
             {
-              body: { storage_path: storagePath },
+              body: {
+                storage_path: storagePath,
+                width: compressed.width,
+                height: compressed.height,
+              },
               ...({ signal: controller.signal } as Record<string, unknown>),
             },
           );
@@ -363,16 +392,24 @@ export function InteractiveFloorMap({
             onChange={handleFileChange}
             disabled={busy}
           />
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={busy}
-            className="gap-2"
-          >
-            {busy ? <Loader2 className="size-4 animate-spin" /> : <Wand2 className="size-4" />}
-            {busy ? busyStage || "Working…" : "Upload floor plan"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={busy}
+              className="gap-2"
+            >
+              {busy ? <Loader2 className="size-4 animate-spin" /> : <Wand2 className="size-4" />}
+              {busy ? busyStage || "Working…" : "Upload floor plan"}
+            </Button>
+            <FloorPlanCaptureHelp />
+          </div>
+          <p className="text-[11px] leading-snug text-muted-foreground max-w-sm">
+            Works with both Matterport <strong>Schematic Floor Plans</strong>{" "}
+            and <strong>dollhouse screenshots</strong> — tap the info icon for
+            capture tips.
+          </p>
         </div>
       )}
 
@@ -553,5 +590,74 @@ export function InteractiveFloorMap({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Info-button popover explaining the two supported Matterport
+ * upload paths: the polished Schematic Floor Plan add-on (best),
+ * and a dollhouse screenshot captured from the Matterport editor.
+ */
+function FloorPlanCaptureHelp() {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="gap-1.5"
+          aria-label="Floor plan upload help"
+        >
+          <Info className="size-3.5" />
+          What to upload
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-96 text-xs">
+        <div className="space-y-3">
+          <div>
+            <p className="text-sm font-semibold text-foreground">
+              Option A — Matterport Schematic Floor Plan{" "}
+              <span className="text-[10px] font-normal text-primary">
+                (recommended)
+              </span>
+            </p>
+            <p className="mt-1 text-muted-foreground">
+              If you've purchased Matterport's Schematic Floor Plan add-on,
+              upload that PDF or PNG export. It's already a clean, top-down
+              floor plan — no extra work required.
+            </p>
+          </div>
+          <div className="border-t pt-3">
+            <p className="text-sm font-semibold text-foreground">
+              Option B — Dollhouse screenshot
+            </p>
+            <p className="mt-1 text-muted-foreground">
+              From the Matterport editor:
+            </p>
+            <ol className="mt-1.5 list-decimal space-y-1 pl-4 text-muted-foreground">
+              <li>
+                Click <strong>View Floor Plan</strong> (bottom-left).
+              </li>
+              <li>Resize the floor map to fill the screen.</li>
+              <li>
+                Click <strong>Photos</strong> on the right-side panel.
+              </li>
+              <li>
+                Click the <strong>camera</strong> button (bottom-center) to
+                screenshot.
+              </li>
+              <li>
+                Click <strong>View</strong> (bottom-right).
+              </li>
+              <li>
+                Open the <strong>⋯ menu</strong> and choose{" "}
+                <strong>Download</strong>.
+              </li>
+            </ol>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
