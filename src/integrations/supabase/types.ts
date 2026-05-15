@@ -917,6 +917,7 @@ export type Database = {
           company: string | null
           created_at: string
           display_name: string | null
+          floor_plan_free_passes_used: number
           ga_tracking_id: string | null
           id: string
           phone: string | null
@@ -932,6 +933,7 @@ export type Database = {
           company?: string | null
           created_at?: string
           display_name?: string | null
+          floor_plan_free_passes_used?: number
           ga_tracking_id?: string | null
           id?: string
           phone?: string | null
@@ -947,6 +949,7 @@ export type Database = {
           company?: string | null
           created_at?: string
           display_name?: string | null
+          floor_plan_free_passes_used?: number
           ga_tracking_id?: string | null
           id?: string
           phone?: string | null
@@ -1896,6 +1899,14 @@ export type Database = {
         Args: { p_provider_id: string; p_work_order_id: string }
         Returns: boolean
       }
+      consume_floor_plan_pass: {
+        Args: { p_limit?: number; p_user_id: string }
+        Returns: {
+          allowed: boolean
+          lifetime_limit: number
+          used: number
+        }[]
+      }
       decline_invitation: { Args: { _token: string }; Returns: boolean }
       delete_email: {
         Args: { message_id: number; queue_name: string }
@@ -2346,6 +2357,14 @@ export type Database = {
           message: Json
           msg_id: number
           read_ct: number
+        }[]
+      }
+      read_floor_plan_pass_status: {
+        Args: never
+        Returns: {
+          byok_active: boolean
+          lifetime_limit: number
+          used: number
         }[]
       }
       record_ask_quota_event: {
