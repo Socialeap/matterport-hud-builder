@@ -1,57 +1,68 @@
-## Fix floor-plan upload + add upload guidance
+# Fix: "token issuance failed" on Presentation export
 
-### Problem
+## Root cause (verified)
 
-The `vectorize-floorplan` Edge Function is hitting the Worker CPU limit (`EarlyDrop` at 400ms) because it decodes and resizes images server-side with `imagescript`. Every upload returns "Edge Function returned a non-2xx status code".
+Server log from the failed export:
 
-Separately, users don't know that **two** kinds of Matterport image work here, and that the dollhouse screenshot needs a specific capture flow to look good.
+```
+[generatePresentation] token mint failed despite env being set:
+presentation-token: insert failed: Could not find the table
+'public.presentation_tokens' in the schema cache
+```
 
-### Fix
+`select to_regclass('public.presentation_tokens')` returns NULL — the table is not in the live database.
 
-**1. Move image processing to the browser**
+The migration file `supabase/migrations/20260427000010_presentation_tokens.sql` already exists in the repo and defines the table, indexes, RLS, and service-only policies correctly, but it was never applied to this Cloud project. Every other piece of the pipeline is wired correctly:
 
-New helper `src/lib/portal/floor-map-compress.ts`:
-- Read the `File` into an `Image` via `createImageBitmap`.
-- Downscale so the longest edge ≤ 1600 px (preserves aspect ratio; no upscaling).
-- Draw to an `OffscreenCanvas` and encode JPEG @ quality 0.85.
-- Return `{ blob, base64, mime: "image/jpeg", width, height }`.
+- `src/lib/portal.functions.ts` (≈line 1335) reads `PRESENTATION_TOKEN_SECRET` + `SUPABASE_SERVICE_ROLE_KEY`, both present, then calls `ensurePresentationToken(model.id)`.
+- `src/lib/presentation-token-server.ts` does `service.from('presentation_tokens').insert(...)` → fails because the relation is missing → throws → caller surfaces the friendly error.
+- `supabase/functions/_shared/presentation-token.ts` reads from the same table at verify time (would also fail once tokens existed).
 
-**2. Slim the Edge Function** (`supabase/functions/vectorize-floorplan/index.ts`):
-- Bump `PIPELINE_VERSION = "raster-v2"`.
-- Drop `imagescript` import + all decode/resize logic.
-- Keep: auth check, ownership check against `ephemeral_assets`, size guard, mime allowlist.
-- Download the (already-small) object from the bucket, base64-encode, return `{ ok, raster: { mime, data }, width, height, viewBox, pipeline: "raster-v2" }`. `width`/`height` come from the request body.
+## Execution path traced
 
-**3. Update `InteractiveFloorMap.tsx`**:
-- Before upload, run the compressor; upload the resulting JPEG (not the original).
-- Pass `width` + `height` in the function-invoke body.
-- Update the `"Compressing image…"` stage label to fire around the canvas pass.
-- Leave pin logic, ephemeral cleanup, and SVG fallback render path untouched.
+```
+Builder → generatePresentation (serverFn)
+   → ensurePresentationToken(savedModelId)
+      → service.from('presentation_tokens').update(...).eq(...)   ← schema cache miss
+      → service.from('presentation_tokens').insert(...).select()  ← never reached
+   → throws "Ask AI couldn't be set up… token issuance failed."
+```
 
-**4. Add upload guidance UI** (the new piece you just asked for)
+After the table exists, the same path completes, the HMAC + sha256(hash) row inserts, the token value is folded into the exported HTML, and the visitor's Ask AI runtime can verify it via `synthesize-answer` (which reads the same table).
 
-In the empty-state card of `InteractiveFloorMap.tsx`, add an **info button** (Lucide `Info` icon) next to the "Upload floor plan" button. Clicking it opens a `Popover` (already in the design system) with two short sections:
+## Solutions considered
 
-- **Option A — Matterport Schematic Floor Plan** (recommended): "If you've purchased Matterport's Schematic Floor Plan add-on, upload that PDF/PNG export. It's already a clean, top-down floor plan."
-- **Option B — Dollhouse screenshot**: numbered steps from your message:
-  1. Open the Matterport editor and click **View Floor Plan** (bottom-left).
-  2. Resize the floor map to fill the screen.
-  3. Click **Photos** on the right-side panel.
-  4. Click the **camera** button (bottom-center) to screenshot.
-  5. Click **View** (bottom-right).
-  6. Open the **⋯ menu** and choose **Download**.
+1. **Apply the existing migration as-is via a new migration call** — safest. The SQL is already idempotent (`CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`) and the RLS policies use unique names. Re-running it on a project where it somehow partially landed will not error or duplicate. **Chosen.**
+2. Drop and recreate the table — unnecessary and destructive. Rejected.
+3. Skip token mint entirely (degrade to deterministic-only mode) — already happens when env is missing, but here env IS configured, so silently degrading would mask the bug and disable Ask AI synthesis on every export. Rejected.
+4. Catch the schema-cache error in `presentation-token-server.ts` and degrade — hides the real fix and leaves Ask AI broken indefinitely. Rejected.
 
-Also add a one-line caption below the upload button: *"Works with both Matterport Schematic Floor Plans and dollhouse screenshots — see the info button for capture tips."*
+## Change set (single migration, no code changes)
 
-### Out of scope
+Create `supabase/migrations/<new-timestamp>_presentation_tokens_apply.sql` containing the exact body of `20260427000010_presentation_tokens.sql`. Because every statement is `IF NOT EXISTS` / uniquely-named policy, this is a safe no-op on any environment that already has the table and a clean install on this one.
 
-- No source-level vector tracing, OpenCV.js, or model calls. Browser-side cosmetic transforms were evaluated and rejected — they don't produce honest floor plans (see prior message).
-- No DB schema changes (`ephemeral_assets` already exists).
-- No changes to pin model, export pipeline, or saved-draft shape — `FloorMapData.raster` already supports the JPEG path; old SVG-mode drafts keep rendering.
+Specifically the migration will (re)assert:
 
-### Verification
+- `public.presentation_tokens` table with PK + FK to `saved_models(id) ON DELETE CASCADE`
+- partial indexes `presentation_tokens_model_active_idx` and `presentation_tokens_revoked_idx`
+- `ENABLE ROW LEVEL SECURITY`
+- four `service_only` policies (select/insert/update/delete all `false` for non-service callers)
 
-After deploy:
-1. Upload a 4 MB dollhouse PNG → expect <1s response, ~150–400 KB JPEG embedded, no CPU error in `vectorize-floorplan` logs.
-2. Re-open a previously saved SVG-mode floor map → still renders via the SVG branch.
-3. Click the info button → popover shows both options with the 6-step capture flow.
+No frontend, server-fn, or edge-function code is touched. The existing token issuer, verifier, and the parity test (`tests/presentation-token-parity.test.mjs`) already line up with this schema.
+
+## Ripple-effect check
+
+- **Builder export** — fixed; mint succeeds, `__PRESENTATION_TOKEN__` and `__SYNTHESIS_URL__` get injected, downloaded HTML works.
+- **Visitor Ask AI** — `synthesize-answer` (`supabase/functions/synthesize-answer/index.ts`) calls `verifyPresentationToken`, which reads the new table via service role; previously would have 401-looped, now verifies cleanly.
+- **RLS** — service-only policies; no client-readable surface, no data exposed.
+- **Idempotency** — re-applying on a project that already has the table is a no-op (every DDL guarded).
+- **Existing exports** — any HTML built before this fix shipped without a token (deterministic-only mode) and remains valid; no migration of stored data needed.
+- **Tests** — none rely on the table being absent; `presentation-token-parity.test.mjs` only exercises the canonicalisation bytes.
+
+## Verification after apply
+
+1. `select to_regclass('public.presentation_tokens')` → returns `presentation_tokens`.
+2. From the builder, click Download Presentation → file downloads, no error toast.
+3. Worker logs show no `[generatePresentation] token mint failed` lines.
+4. `select count(*) from public.presentation_tokens` increments by 1 per export.
+5. Open the downloaded HTML, ask Ask AI a question → `synthesize-answer` returns 200 (token verifies).
