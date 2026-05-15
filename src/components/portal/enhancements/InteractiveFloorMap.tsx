@@ -208,11 +208,10 @@ export function InteractiveFloorMap({
           return;
         }
 
-        setBusyStage("Compressing image…");
+        setBusyStage("Embedding floor plan…");
         // Guard against the supabase-js fetch hanging on a slow cold
-        // start. 30 s is generous for a download + JPEG re-encode and
-        // sits well under the platform's hard 60 s ceiling so we
-        // surface a friendly message rather than a connection drop.
+        // start. The server now just downloads + base64-encodes a
+        // pre-resized JPEG, so 30 s is more than enough.
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30_000);
         let data: VectorizeResponse | null = null;
@@ -222,7 +221,11 @@ export function InteractiveFloorMap({
           const res = await supabase.functions.invoke<VectorizeResponse>(
             "vectorize-floorplan",
             {
-              body: { storage_path: storagePath },
+              body: {
+                storage_path: storagePath,
+                width: compressed.width,
+                height: compressed.height,
+              },
               ...({ signal: controller.signal } as Record<string, unknown>),
             },
           );
