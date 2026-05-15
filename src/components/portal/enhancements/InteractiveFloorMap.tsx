@@ -592,3 +592,72 @@ export function InteractiveFloorMap({
     </div>
   );
 }
+
+/**
+ * Info-button popover explaining the two supported Matterport
+ * upload paths: the polished Schematic Floor Plan add-on (best),
+ * and a dollhouse screenshot captured from the Matterport editor.
+ */
+function FloorPlanCaptureHelp() {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="gap-1.5"
+          aria-label="Floor plan upload help"
+        >
+          <Info className="size-3.5" />
+          What to upload
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-96 text-xs">
+        <div className="space-y-3">
+          <div>
+            <p className="text-sm font-semibold text-foreground">
+              Option A — Matterport Schematic Floor Plan{" "}
+              <span className="text-[10px] font-normal text-primary">
+                (recommended)
+              </span>
+            </p>
+            <p className="mt-1 text-muted-foreground">
+              If you've purchased Matterport's Schematic Floor Plan add-on,
+              upload that PDF or PNG export. It's already a clean, top-down
+              floor plan — no extra work required.
+            </p>
+          </div>
+          <div className="border-t pt-3">
+            <p className="text-sm font-semibold text-foreground">
+              Option B — Dollhouse screenshot
+            </p>
+            <p className="mt-1 text-muted-foreground">
+              From the Matterport editor:
+            </p>
+            <ol className="mt-1.5 list-decimal space-y-1 pl-4 text-muted-foreground">
+              <li>
+                Click <strong>View Floor Plan</strong> (bottom-left).
+              </li>
+              <li>Resize the floor map to fill the screen.</li>
+              <li>
+                Click <strong>Photos</strong> on the right-side panel.
+              </li>
+              <li>
+                Click the <strong>camera</strong> button (bottom-center) to
+                screenshot.
+              </li>
+              <li>
+                Click <strong>View</strong> (bottom-right).
+              </li>
+              <li>
+                Open the <strong>⋯ menu</strong> and choose{" "}
+                <strong>Download</strong>.
+              </li>
+            </ol>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
