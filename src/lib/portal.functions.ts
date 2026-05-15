@@ -119,6 +119,13 @@ interface FloorMapPersistShape {
   pins: FloorMapPin[];
   ephemeralAssetId?: string | null;
   storagePath?: string | null;
+  /**
+   * Raster fallback from vectorize-floorplan when the AI pipeline
+   * failed. Carries a base64-encoded JPEG/PNG/WebP that the runtime
+   * renders as <img>. Pin overlays still resolve correctly because
+   * they're percentage-positioned over the stage element.
+   */
+  raster?: { mime: string; data: string } | null;
 }
 
 export const savePresentationRequest = createServerFn({ method: "POST" })
@@ -435,25 +442,65 @@ function sanitizeFloorMapSvg(svg: string): string {
 }
 
 interface ExportedFloorMap {
+  /** Sanitized SVG markup. Empty string when the AI pipeline failed
+   *  and `raster` carries the fallback payload. */
   svg: string;
+  /** Raster fallback (base64-encoded image) for when AI vectorization
+   *  failed in vectorize-floorplan. Mutually exclusive with a
+   *  non-empty `svg`. Validated against an allowlist of MIME types
+   *  + base64 charset + size cap before being inlined in the
+   *  generated HTML's data URI. */
+  raster?: { mime: string; data: string };
   viewBox: string;
   width: number;
   height: number;
   pins: Array<{ id: string; x: number; y: number; label: string; description: string }>;
 }
 
+/** Allowlist of MIME types we'll inline as data: URIs. Excludes
+ *  text/* and application/* on purpose — only raster image formats
+ *  the browser can render via <img>. */
+const FLOOR_MAP_RASTER_MIME_ALLOWLIST = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+/** Base64 length cap (~6 MB binary). Anything larger almost certainly
+ *  indicates a corrupted payload — Gemini outputs land at ~50-150 KB
+ *  and the JPEG fallback is similar. */
+const FLOOR_MAP_RASTER_MAX_B64_LEN = 8_000_000;
+
 function sanitizeFloorMapForExport(
   raw: FloorMapPersistShape | null | undefined,
 ): ExportedFloorMap | null {
   if (!raw || typeof raw !== "object") return null;
-  const svg = sanitizeFloorMapSvg(String(raw.svg ?? ""));
-  if (!svg.includes("<svg")) return null;
   const width = Number.isFinite(raw.width) ? Math.max(1, Math.floor(raw.width)) : 0;
   const height = Number.isFinite(raw.height) ? Math.max(1, Math.floor(raw.height)) : 0;
   if (width === 0 || height === 0) return null;
   const viewBox = typeof raw.viewBox === "string" && /^[-\d.\s]+$/.test(raw.viewBox)
     ? raw.viewBox
     : `0 0 ${width} ${height}`;
+
+  const sanitizedSvg = sanitizeFloorMapSvg(String(raw.svg ?? ""));
+  const hasSvg = sanitizedSvg.includes("<svg");
+
+  let raster: ExportedFloorMap["raster"];
+  if (!hasSvg && raw.raster && typeof raw.raster === "object") {
+    const mime = String(raw.raster.mime || "");
+    const data = String(raw.raster.data || "");
+    if (
+      FLOOR_MAP_RASTER_MIME_ALLOWLIST.has(mime) &&
+      /^[A-Za-z0-9+/=]+$/.test(data) &&
+      data.length > 0 &&
+      data.length <= FLOOR_MAP_RASTER_MAX_B64_LEN
+    ) {
+      raster = { mime, data };
+    }
+  }
+
+  // Drop the map entirely if neither path produced a usable payload.
+  if (!hasSvg && !raster) return null;
+
   const pins = Array.isArray(raw.pins)
     ? raw.pins
         .filter((p): p is FloorMapPin => !!p && typeof p === "object")
@@ -467,7 +514,14 @@ function sanitizeFloorMapForExport(
         }))
         .filter((p) => p.id.length > 0)
     : [];
-  return { svg, viewBox, width, height, pins };
+  return {
+    svg: hasSvg ? sanitizedSvg : "",
+    ...(raster ? { raster } : {}),
+    viewBox,
+    width,
+    height,
+    pins,
+  };
 }
 
 function clampPct(n: unknown): number {
@@ -2216,7 +2270,7 @@ function updateHud(i){
   var mediaBtn=document.getElementById("hud-media-btn");
   if(mediaBtn) mediaBtn.style.display=(p.multimedia&&p.multimedia.length>0)?"":"none";
   var fmBtn=document.getElementById("hud-floormap-btn");
-  if(fmBtn) fmBtn.style.display=(p.floorMap&&p.floorMap.svg)?"":"none";
+  if(fmBtn) fmBtn.style.display=(p.floorMap&&(p.floorMap.svg||(p.floorMap.raster&&p.floorMap.raster.data)))?"":"none";
   if(p.musicUrl){initAudio(p.musicUrl,soundEnabled);}
   else if(audioEl){audioEl.pause();audioEl.src="";updateMuteBtn();}
 }
@@ -2740,7 +2794,9 @@ function renderFloorMap(p){
   popHost.innerHTML="";
   pinsHost.innerHTML="";
   host.innerHTML="";
-  if(!p||!p.floorMap||!p.floorMap.svg){
+  var hasSvg=p&&p.floorMap&&p.floorMap.svg;
+  var hasRaster=p&&p.floorMap&&p.floorMap.raster&&p.floorMap.raster.data&&p.floorMap.raster.mime;
+  if(!p||!p.floorMap||(!hasSvg&&!hasRaster)){
     stage.style.aspectRatio="16/9";
     pinsHost.innerHTML='<div class="floormap-empty">No floor map for this property.</div>';
     return;
@@ -2749,11 +2805,29 @@ function renderFloorMap(p){
   var w=Number(fm.width)||1024;
   var h=Number(fm.height)||768;
   stage.style.aspectRatio=w+" / "+h;
-  // SVG is server-sanitized (script/event handlers stripped before
-  // it reached the export bundle). Embedding as-is preserves the
-  // viewBox + preserveAspectRatio attributes that lock pin
-  // coordinates.
-  host.innerHTML=String(fm.svg||"");
+  if(hasRaster){
+    // Raster fallback path: the AI vectorization didn't produce a
+    // usable SVG, so we render the original (sanitized) image and
+    // overlay pins by percentage. Both mime and data are re-scrubbed
+    // here as defense in depth — the export-time sanitizer already
+    // validated them against the allowlist.
+    var mime=String(fm.raster.mime).replace(/[^a-z0-9/+-]/gi,"");
+    var data=String(fm.raster.data).replace(/[^A-Za-z0-9+/=]/g,"");
+    var img=document.createElement("img");
+    img.src="data:"+mime+";base64,"+data;
+    img.alt="Floor plan";
+    img.style.width="100%";
+    img.style.height="100%";
+    img.style.display="block";
+    img.style.objectFit="contain";
+    host.appendChild(img);
+  } else {
+    // SVG is server-sanitized (script/event handlers stripped before
+    // it reached the export bundle). Embedding as-is preserves the
+    // viewBox + preserveAspectRatio attributes that lock pin
+    // coordinates.
+    host.innerHTML=String(fm.svg||"");
+  }
   var pins=Array.isArray(fm.pins)?fm.pins:[];
   for(var i=0;i<pins.length;i++){
     (function(pin){

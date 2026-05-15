@@ -7,22 +7,29 @@
 //      (path prefix === auth.uid()).
 //   2. Verify a matching ephemeral_assets row exists for that user.
 //   3. Download the raster from storage via the service-role client.
-//   4. Decode → silhouette pipeline (BG detect → FG mask → morph
-//      close → connected-components → per-component boundary trace
-//      → Douglas-Peucker simplify → filled SVG paths). Falls back
-//      to a legacy binarize+marching-squares path when the
-//      silhouette pipeline finds nothing (e.g. a thin-line
-//      blueprint upload).
-//   5. Sanitize the resulting SVG (defense in depth — we generate
-//      every byte ourselves, but strip script/event handlers
-//      anyway so a future change can't accidentally introduce XSS).
-//   6. Return { ok, svg, viewBox, width, height, path_count, bytes,
-//      mode } to the client, which embeds it in the builder draft
-//      and ultimately in the exported standalone HTML.
+//   4. Resolve the Gemini API key:
+//        a. If the user has an active key in client_byok_keys, decrypt
+//           and use it (BYOK — skip quota).
+//        b. Otherwise check profiles.floor_plan_free_passes_used. If
+//           below the lifetime cap (3), use the platform master key
+//           (Deno.env GEMINI_API_KEY). If saturated, return 402.
+//   5. Ask Gemini 3 Pro Image to redraw the dollhouse as a clean
+//      black-on-white architectural schematic (the AI does the work
+//      of separating walls from furniture/shadows/rugs that no
+//      deterministic algorithm could reliably handle).
+//   6. Run the cleaned image through the marching-squares tracer →
+//      Douglas-Peucker simplify → SVG paths.
+//   7. On AI failure (network, malformed output, zero/absurd path
+//      counts after one retry with a stronger-contrast prompt),
+//      return the original raster as a JPEG fallback so the Builder
+//      remains usable — pins still work over the raster.
+//   8. On success without BYOK, atomically increment the user's
+//      lifetime pass counter via consume_floor_plan_pass RPC.
+//   9. Return { ok, svg | raster, viewBox, width, height, mode,
+//      pipeline, path_count, bytes, quota } to the client.
 //
-// The original raster is left in place — `pg_cron` will purge it
-// 30 days after upload (see migration
-// 20260514130000_ephemeral_floorplan_assets.sql).
+// The original raster is left in place — `pg_cron` purges it 30 days
+// after upload (see migration 20260514130000_ephemeral_floorplan_assets.sql).
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.103.0";
@@ -33,6 +40,7 @@ import {
   uploadKindForMime,
 } from "../_shared/upload-limits.ts";
 import { checkRateLimit, ipFromRequest } from "../_shared/rate-limit.ts";
+import { decryptKey } from "../_shared/byok-crypto.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -59,6 +67,8 @@ type Stage =
   | "download"
   | "decode"
   | "size_limit"
+  | "byok"
+  | "quota"
   | "trace"
   | "rate_limit";
 
@@ -75,273 +85,70 @@ function fail(
 }
 
 // ── Tunable constants ─────────────────────────────────────────────
-//
-// All thresholds live here (instead of inline) so future tuning is
-// a one-line change and the defaults stay legible. Defaults are
-// optimised for Matterport dollhouse top-down views (the canonical
-// input) and degrade gracefully for high-contrast architectural
-// blueprints via the legacy fallback path.
 
+/** Cap on the longest source dimension before tracing. Keeps the
+ *  per-pixel passes bounded regardless of upload resolution. */
 const MAX_DIMENSION = 2048;
-/** Border thickness sampled when guessing the background colour. */
-const BG_SAMPLE_RING_PX = 8;
-/** RGB Euclidean distance above which a pixel is "foreground". */
-const BG_DISTANCE_THRESHOLD = 55;
-/** Square-kernel half-size for the dilate+erode close pass. */
-const MORPH_CLOSE_RADIUS = 6;
-/** Drop connected components smaller than this fraction of the image area. */
-const MIN_COMPONENT_AREA_PCT = 0.004;
-/** Cap on rendered components — extra ones become noise. */
-const MAX_COMPONENTS = 8;
-/** Douglas-Peucker tolerance for silhouette outlines (coarser → smaller SVG). */
-const SIMPLIFY_EPSILON_SILHOUETTE = 1.0;
-/** Douglas-Peucker tolerance for the legacy edge-trace fallback. */
-const SIMPLIFY_EPSILON_LEGACY = 0.75;
+/** Luminance threshold for binarising Gemini's near-pure-B&W output. */
+const BINARIZE_THRESHOLD = 200;
+/** Douglas-Peucker tolerance for the AI-cleaned trace. */
+const SIMPLIFY_EPSILON = 0.75;
 /** Minimum vertices before a contour is worth emitting as a path. */
 const MIN_CONTOUR_LENGTH = 8;
-/** Light architectural tint for filled silhouette paths. */
-const SILHOUETTE_FILL = "#dbeafe";
-/** Outline stroke for filled silhouette paths. */
-const SILHOUETTE_STROKE = "#1f2937";
-/**
- * If the foreground mask covers more than this fraction of the image,
- * the BG detection almost certainly latched onto a foreground tone
- * (e.g. the building fills the frame and the corner ring overlapped
- * a carpet edge). Inverting the mask flips the FG/BG assignment and
- * usually rescues the silhouette.
- */
-const INVERT_MASK_COVERAGE_THRESHOLD = 0.85;
-/**
- * Discoverable build marker embedded in the emitted SVG and the JSON
- * response. Bump this when the pipeline changes so operators can
- * verify in DevTools (network response → JSON; or view-source the
- * SVG → data-pipeline attribute) which version of the function
- * actually produced the output they're looking at. This is the
- * single source of truth that proves "is my code deployed?".
- */
-const PIPELINE_VERSION = "silhouette-v2";
+/** Aspect-ratio tolerance between source and AI output. Beyond this
+ *  we resize/letterbox to the source dims so pin coordinates stay
+ *  anchored across re-vectorizations. */
+const ASPECT_TOLERANCE = 0.05;
+/** Pipeline build marker — bump whenever the function changes so
+ *  operators can verify in DevTools (network response → JSON, or
+ *  view-source the rendered SVG → data-pipeline attribute) which
+ *  version is actually deployed. */
+const PIPELINE_VERSION = "ai-v1";
+/** Lifetime free-pass cap for non-BYOK users. Must match the default
+ *  in the consume_floor_plan_pass RPC. */
+const LIFETIME_PASS_LIMIT = 3;
+/** Gemini model id — overridable via env for forward compat (e.g.
+ *  switching to a successor model or A/B testing). */
+const GEMINI_MODEL =
+  Deno.env.get("GEMINI_FLOORPLAN_MODEL") ?? "gemini-3-pro-image-preview";
+/** Hard timeout on the Gemini call. Keeps us well under the platform's
+ *  60s edge function ceiling so the client gets a clean error rather
+ *  than a connection drop. */
+const GEMINI_TIMEOUT_MS = 40_000;
+/** Path-count quality gate. Below the lower bound the AI returned an
+ *  empty/almost-empty image; above the upper bound it returned noise.
+ *  Either condition triggers a retry; if the retry also fails we fall
+ *  back to the raster. */
+const MIN_PATH_COUNT = 1;
+const MAX_PATH_COUNT = 500;
+
+const DRAFTSMAN_PROMPT = `You are an expert Architectural Draftsman specializing in 2D schematic conversion.
+
+Task: Analyze the provided 3D dollhouse view of a building. Redraw the building footprint as a clean 2D high-contrast architectural schematic.
+
+Strict requirements:
+1. Pure black walls (#000000) on a pure white background (#FFFFFF). No grays, no anti-aliasing, no gradients, no shadows.
+2. Ignore ALL furniture, rugs, plants, people, lighting, decorative textures, and color fills inside rooms.
+3. Maintain 1:1 spatial proportions and orientation. Do not add rooms or reshape the layout.
+4. Show only structural walls. Include clear gaps for doors and openings; mark windows with a thin gap where appropriate.
+5. Do not include text labels, dimensions, north arrows, compasses, scale bars, or watermarks.
+
+Output a high-resolution PNG image only. No commentary, no captions.`;
+
+const RETRY_PROMPT_SUFFIX = `
+
+NOTE: The previous attempt was too noisy or empty. Increase contrast further: thicker pure-black wall strokes, larger gaps between rooms, fewer decorative detail lines. Output ONLY the wall outlines.`;
 
 interface Pt { x: number; y: number; }
-interface RGB { r: number; g: number; b: number; }
-
-interface TraceResult {
-  mode: "silhouette" | "edge";
-  width: number;
-  height: number;
-  /** Silhouette mode: one entry per connected component, each containing its outer + inner contours. */
-  components: Pt[][][];
-  /** Edge mode (legacy fallback): raw SVG path-data strings already in `M…L…Z` form. */
-  paths: string[];
-}
-
-// ── Background detection ─────────────────────────────────────────
-//
-// Matterport dollhouse top-down renders use a uniform dark-gray
-// background (~RGB 50,50,50). Sampling a thin ring around all four
-// edges and taking the per-channel median gives us a robust BG
-// estimate even when corners contain a sliver of building. The
-// median (not the mean) is intentional — one outlier corner pixel
-// can't shift the result.
-function detectBackground(img: Image): RGB {
-  const w = img.width;
-  const h = img.height;
-  const ring = Math.min(BG_SAMPLE_RING_PX, Math.max(1, Math.floor(Math.min(w, h) / 32)));
-  const bm = img.bitmap;
-  const rs: number[] = [];
-  const gs: number[] = [];
-  const bs: number[] = [];
-  // Step rate keeps the sample count bounded (~200 pixels) regardless
-  // of image size, so detection stays O(1) wrt resolution.
-  const stepX = Math.max(1, Math.floor(w / 50));
-  const stepY = Math.max(1, Math.floor(h / 50));
-  function add(x: number, y: number) {
-    if (x < 0 || y < 0 || x >= w || y >= h) return;
-    const off = (y * w + x) * 4;
-    if (bm[off + 3] < 128) return; // ignore transparent
-    rs.push(bm[off]);
-    gs.push(bm[off + 1]);
-    bs.push(bm[off + 2]);
-  }
-  for (let x = 0; x < w; x += stepX) {
-    for (let r = 0; r < ring; r++) {
-      add(x, r);
-      add(x, h - 1 - r);
-    }
-  }
-  for (let y = 0; y < h; y += stepY) {
-    for (let r = 0; r < ring; r++) {
-      add(r, y);
-      add(w - 1 - r, y);
-    }
-  }
-  if (rs.length === 0) return { r: 0, g: 0, b: 0 };
-  rs.sort((a, b) => a - b);
-  gs.sort((a, b) => a - b);
-  bs.sort((a, b) => a - b);
-  const mid = rs.length >> 1;
-  return { r: rs[mid], g: gs[mid], b: bs[mid] };
-}
-
-// ── Foreground mask ──────────────────────────────────────────────
-//
-// A pixel is "foreground" (mask = 1) if its RGB Euclidean distance
-// from the detected background colour exceeds the threshold. Compares
-// the squared distance directly to avoid a sqrt per pixel.
-function buildForegroundMask(img: Image, bg: RGB, threshold: number): Uint8Array {
-  const out = new Uint8Array(img.width * img.height);
-  const bm = img.bitmap;
-  const t2 = threshold * threshold;
-  for (let i = 0; i < out.length; i++) {
-    const off = i * 4;
-    if (bm[off + 3] < 128) { out[i] = 0; continue; }
-    const dr = bm[off] - bg.r;
-    const dg = bm[off + 1] - bg.g;
-    const db = bm[off + 2] - bg.b;
-    out[i] = (dr * dr + dg * dg + db * db) > t2 ? 1 : 0;
-  }
-  return out;
-}
-
-// ── Morphological close (separable dilate then erode) ────────────
-//
-// Fills small interior gaps in the foreground mask caused by
-// foreground regions that happen to land near the BG colour (e.g.
-// dark wood floor that almost matches a dark BG). Dilate-then-
-// erode preserves overall shape while plugging holes up to ~2r px
-// across. Implemented as two 1D passes per direction (horizontal
-// then vertical) for O(W·H·r) instead of the naïve O(W·H·r²).
-//
-// We use early-break optimisation in both directions: dilate stops
-// as soon as it finds a 1; erode stops as soon as it finds a 0.
-// Worst case (uniform mask) approaches the unoptimised cost, but
-// real-world floor-plan masks finish in well under a second on a
-// 2048x2048 image.
-function morphCloseInPlace(mask: Uint8Array, w: number, h: number, r: number) {
-  if (r <= 0) return;
-  const tmp = new Uint8Array(w * h);
-  // Horizontal dilate: tmp[y][x] = 1 if any mask[y][x±k] is 1
-  for (let y = 0; y < h; y++) {
-    const row = y * w;
-    for (let x = 0; x < w; x++) {
-      let v = 0;
-      const lo = Math.max(0, x - r);
-      const hi = Math.min(w - 1, x + r);
-      for (let k = lo; k <= hi; k++) {
-        if (mask[row + k]) { v = 1; break; }
-      }
-      tmp[row + x] = v;
-    }
-  }
-  // Vertical dilate (writes back to `mask`)
-  for (let x = 0; x < w; x++) {
-    for (let y = 0; y < h; y++) {
-      let v = 0;
-      const lo = Math.max(0, y - r);
-      const hi = Math.min(h - 1, y + r);
-      for (let k = lo; k <= hi; k++) {
-        if (tmp[k * w + x]) { v = 1; break; }
-      }
-      mask[y * w + x] = v;
-    }
-  }
-  // Horizontal erode
-  for (let y = 0; y < h; y++) {
-    const row = y * w;
-    for (let x = 0; x < w; x++) {
-      let v = 1;
-      const lo = Math.max(0, x - r);
-      const hi = Math.min(w - 1, x + r);
-      for (let k = lo; k <= hi; k++) {
-        if (!mask[row + k]) { v = 0; break; }
-      }
-      tmp[row + x] = v;
-    }
-  }
-  // Vertical erode
-  for (let x = 0; x < w; x++) {
-    for (let y = 0; y < h; y++) {
-      let v = 1;
-      const lo = Math.max(0, y - r);
-      const hi = Math.min(h - 1, y + r);
-      for (let k = lo; k <= hi; k++) {
-        if (!tmp[k * w + x]) { v = 0; break; }
-      }
-      mask[y * w + x] = v;
-    }
-  }
-}
-
-// ── Connected-components labelling (two-pass union-find) ─────────
-//
-// First pass assigns a provisional label to every foreground pixel
-// based on its left and up neighbours, recording equivalences in a
-// disjoint-set forest. Second pass replaces every label with its
-// canonical root and tallies area per root. Returns the resolved
-// label map plus a Map of root → pixel count.
-function labelConnectedComponents(
-  mask: Uint8Array,
-  w: number,
-  h: number,
-): { labels: Int32Array; areas: Map<number, number> } {
-  const labels = new Int32Array(w * h);
-  // parent[i] === i means i is a root. Index 0 is sentinel for "no label".
-  const parent: number[] = [0];
-  function find(a: number): number {
-    while (parent[a] !== a) {
-      parent[a] = parent[parent[a]];
-      a = parent[a];
-    }
-    return a;
-  }
-  function union(a: number, b: number) {
-    const ra = find(a);
-    const rb = find(b);
-    if (ra === rb) return;
-    if (ra < rb) parent[rb] = ra;
-    else parent[ra] = rb;
-  }
-  let nextLabel = 1;
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const i = y * w + x;
-      if (!mask[i]) continue;
-      const left = x > 0 ? labels[i - 1] : 0;
-      const up = y > 0 ? labels[i - w] : 0;
-      if (left && up) {
-        labels[i] = left < up ? left : up;
-        union(left, up);
-      } else if (left) {
-        labels[i] = left;
-      } else if (up) {
-        labels[i] = up;
-      } else {
-        labels[i] = nextLabel;
-        parent.push(nextLabel);
-        nextLabel++;
-      }
-    }
-  }
-  const areas = new Map<number, number>();
-  for (let i = 0; i < labels.length; i++) {
-    if (!labels[i]) continue;
-    const root = find(labels[i]);
-    labels[i] = root;
-    areas.set(root, (areas.get(root) ?? 0) + 1);
-  }
-  return { labels, areas };
-}
 
 // ── Marching-squares contour tracer ──────────────────────────────
 //
 // Walks 2×2 cells over a binary mask. For each cell it computes a
 // 4-bit code describing which of the four surrounding pixels are
 // foreground; the code drives a direction lookup that follows the
-// boundary segment. Continues until the walk hits a visited cell
-// or the image border. Used in two places:
-//   1. Per-component when the silhouette pipeline produces real
-//      components (most of the time).
-//   2. Whole-image as the legacy fallback when no components
-//      survive area filtering (e.g. thin-line blueprint uploads).
+// boundary segment until the walk hits a visited cell or the image
+// border. With Gemini's clean B&W output the binarized mask matches
+// the wall geometry exactly so the tracer's output is the final SVG.
 function traceContours(bin: Uint8Array, width: number, height: number): Pt[][] {
   const at = (x: number, y: number): number => {
     if (x < 0 || y < 0 || x >= width || y >= height) return 0;
@@ -411,30 +218,11 @@ function traceContours(bin: Uint8Array, width: number, height: number): Pt[][] {
   return contours;
 }
 
-// Build a binary mask containing only pixels that match the given
-// label, then trace its outer + inner contours. Holes inside a
-// component naturally produce additional inner contours, which the
-// silhouette emitter combines under fill-rule="evenodd" so courtyards
-// punch through the fill correctly.
-function traceComponentBoundary(
-  labels: Int32Array,
-  targetLabel: number,
-  w: number,
-  h: number,
-): Pt[][] {
-  const bin = new Uint8Array(w * h);
-  for (let i = 0; i < bin.length; i++) {
-    bin[i] = labels[i] === targetLabel ? 1 : 0;
-  }
-  return traceContours(bin, w, h);
-}
-
 // ── Douglas-Peucker line simplification ──────────────────────────
 //
-// Drops points that are within `epsilon` pixels of the line
-// connecting their neighbours. Run iteratively (with an explicit
-// stack) instead of recursively to avoid stack overflow on very
-// long contours that span an entire building wall.
+// Drops points within `epsilon` pixels of the line connecting their
+// neighbours. Iterative (explicit stack) to avoid recursion overflow
+// on long wall-spanning contours.
 function simplify(points: Pt[], epsilon: number): Pt[] {
   if (points.length < 3) return points;
   const keep = new Uint8Array(points.length);
@@ -479,12 +267,11 @@ function pointsToPathData(points: Pt[]): string {
   return d + "Z";
 }
 
-// ── Legacy binarize for the edge-mode fallback ──────────────────
+// ── Binarize ─────────────────────────────────────────────────────
 //
-// Only invoked when the silhouette pipeline produces zero
-// components (thin-line blueprints uploaded as the spec originally
-// envisaged). Keeps the original behaviour byte-for-byte so users
-// who relied on it before this change still get a result.
+// Gemini's "pure black on pure white" output is already near-binary,
+// so a high luminance threshold (200) cleanly separates walls from
+// background without latching onto the residual anti-aliasing fringe.
 function binarize(img: Image, threshold: number): Uint8Array {
   const out = new Uint8Array(img.width * img.height);
   const bitmap = img.bitmap;
@@ -500,98 +287,12 @@ function binarize(img: Image, threshold: number): Uint8Array {
   return out;
 }
 
-// ── Main pipeline ────────────────────────────────────────────────
-function traceImage(img: Image): TraceResult {
-  // Downscale very large images so the per-pixel passes stay
-  // bounded regardless of upload resolution. Aspect ratio is
-  // preserved so percentage-based pin coordinates remain stable.
-  let working = img;
-  const longest = Math.max(img.width, img.height);
-  if (longest > MAX_DIMENSION) {
-    const scale = MAX_DIMENSION / longest;
-    working = img.resize(
-      Math.round(img.width * scale),
-      Math.round(img.height * scale),
-    );
-  }
-  const w = working.width;
-  const h = working.height;
-
-  // Silhouette pipeline (canonical path for Matterport dollhouse views)
-  const bg = detectBackground(working);
-  const mask = buildForegroundMask(working, bg, BG_DISTANCE_THRESHOLD);
-
-  // Sanity check: if the border-detected "background" turned out to be
-  // a foreground tone (e.g. the building extends right to the edge of
-  // the frame and the corner ring overlapped its carpet), the mask is
-  // inverted — most pixels will read as foreground. Flipping the mask
-  // recovers the silhouette. Without this safeguard the silhouette
-  // pipeline silently collapses on building-fills-frame uploads and
-  // (pre-fix) fell through to the broken legacy edge tracer.
-  let fgCoverage = countCoverage(mask);
-  if (fgCoverage > INVERT_MASK_COVERAGE_THRESHOLD) {
-    invertMaskInPlace(mask);
-    fgCoverage = 1 - fgCoverage;
-  }
-
-  morphCloseInPlace(mask, w, h, MORPH_CLOSE_RADIUS);
-  const { labels, areas } = labelConnectedComponents(mask, w, h);
-  const minArea = Math.max(20, Math.floor(w * h * MIN_COMPONENT_AREA_PCT));
-  const survivors = [...areas.entries()]
-    .filter(([, area]) => area >= minArea)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, MAX_COMPONENTS)
-    .map(([label]) => label);
-
-  // Log to the function's stderr so operators have a per-call paper
-  // trail in the Supabase Functions log viewer. Helps confirm at a
-  // glance which BG colour we picked + how many components made it.
-  console.log(
-    `[vectorize-floorplan] pipeline=${PIPELINE_VERSION} bg=rgb(${bg.r},${bg.g},${bg.b}) ` +
-    `fg_cov=${fgCoverage.toFixed(3)} components=${survivors.length} ` +
-    `dims=${w}x${h}`,
-  );
-
-  if (survivors.length > 0) {
-    const components: Pt[][][] = survivors.map((label) =>
-      traceComponentBoundary(labels, label, w, h),
-    );
-    return { mode: "silhouette", components, paths: [], width: w, height: h };
-  }
-
-  // True empty silhouette → fall back to the legacy edge tracer so a
-  // thin-line blueprint upload still produces SOMETHING. We log
-  // `mode=edge` here so a stuck "looks like the old sketch" complaint
-  // is debuggable from logs alone — without this marker, operators
-  // can't tell whether the deployed function is the new code at all.
-  const bin = binarize(working, 160);
-  const contours = traceContours(bin, w, h);
-  const paths: string[] = [];
-  for (const c of contours) {
-    const simplified = simplify(c, SIMPLIFY_EPSILON_LEGACY);
-    if (simplified.length < 3) continue;
-    paths.push(pointsToPathData(simplified));
-  }
-  return { mode: "edge", paths, components: [], width: w, height: h };
-}
-
-function countCoverage(mask: Uint8Array): number {
-  let on = 0;
-  for (let i = 0; i < mask.length; i++) if (mask[i]) on++;
-  return on / Math.max(1, mask.length);
-}
-
-function invertMaskInPlace(mask: Uint8Array): void {
-  for (let i = 0; i < mask.length; i++) mask[i] = mask[i] ? 0 : 1;
-}
-
 // ── SVG assembly + sanitization ──────────────────────────────────
 //
-// We generate every byte of the SVG ourselves so there's no real
-// XSS vector — but the sanitizer is here as a defense-in-depth
-// measure called out by the spec. If a future refactor ever lets
-// untrusted data into the path string this stays the last line of
-// defense.
+// We generate every byte ourselves so there's no real XSS vector,
+// but the sanitizer is here as defense in depth (called out by the
+// spec). If a future refactor ever lets untrusted data into the
+// path string this remains the last line of defense.
 function sanitizeSvg(svg: string): string {
   return svg
     .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
@@ -601,56 +302,223 @@ function sanitizeSvg(svg: string): string {
     .replace(/<foreignObject\b[\s\S]*?<\/foreignObject>/gi, "");
 }
 
-function emitSilhouetteSvg(width: number, height: number, components: Pt[][][]): string {
-  // Each component becomes one <path> with all its outer + inner
-  // contours concatenated into a single `d` attribute. With
-  // fill-rule="evenodd", stacked subpaths cleanly carve interior
-  // courtyards/atriums out of the filled silhouette.
-  const pathEls: string[] = [];
-  for (const contours of components) {
-    const dParts: string[] = [];
-    for (const c of contours) {
-      const simplified = simplify(c, SIMPLIFY_EPSILON_SILHOUETTE);
-      if (simplified.length < 3) continue;
-      dParts.push(pointsToPathData(simplified));
-    }
-    if (dParts.length === 0) continue;
-    pathEls.push(`<path d="${dParts.join("")}" fill-rule="evenodd"/>`);
-  }
-  // `preserveAspectRatio="xMidYMid meet"` is mandatory: pin
-  // coordinates are stored as percentages of the SVG viewBox, so
-  // the runtime relies on the aspect ratio staying locked even as
-  // the modal resizes. The `data-pipeline` attribute is a
-  // discoverable marker — open DevTools → view-source on the
-  // rendered SVG to confirm which pipeline version actually ran.
-  return (
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" ` +
-    `preserveAspectRatio="xMidYMid meet" data-pipeline="${PIPELINE_VERSION}" ` +
-    `data-mode="silhouette" fill="${SILHOUETTE_FILL}" ` +
-    `stroke="${SILHOUETTE_STROKE}" stroke-width="1.5" stroke-linejoin="round" ` +
-    `stroke-linecap="round">` +
-    pathEls.join("") +
-    `</svg>`
-  );
-}
-
-function emitEdgeSvg(width: number, height: number, paths: string[]): string {
+function emitSvg(width: number, height: number, paths: string[]): string {
   const pathEls = paths.map((d) => `<path d="${d}"/>`).join("");
+  // preserveAspectRatio="xMidYMid meet" is mandatory: pin coordinates
+  // are stored as percentages of the SVG viewBox, so the runtime
+  // relies on the aspect ratio staying locked even as the modal
+  // resizes.
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" ` +
     `preserveAspectRatio="xMidYMid meet" data-pipeline="${PIPELINE_VERSION}" ` +
-    `data-mode="edge" fill="none" stroke="currentColor" ` +
+    `data-mode="ai-vector" fill="none" stroke="currentColor" ` +
     `stroke-width="2" stroke-linejoin="round" stroke-linecap="round">` +
     pathEls +
     `</svg>`
   );
 }
 
-function buildSvg(trace: TraceResult): string {
-  const raw = trace.mode === "silhouette"
-    ? emitSilhouetteSvg(trace.width, trace.height, trace.components)
-    : emitEdgeSvg(trace.width, trace.height, trace.paths);
-  return sanitizeSvg(raw);
+// ── BYOK ciphertext helpers (mirrors synthesize-answer) ──────────
+//
+// The Postgres bytea column can come back as a Uint8Array, a
+// `\xHEX` string, or a base64 string depending on supabase-js's
+// internal format flag for the request. Handle all three so a
+// transport upgrade doesn't silently break decryption.
+function bytesFromBytea(value: unknown): Uint8Array {
+  if (value instanceof Uint8Array) return value;
+  if (typeof value === "string") {
+    const s = value;
+    if (s.startsWith("\\x") || s.startsWith("\\\\x")) {
+      const hex = s.startsWith("\\\\x") ? s.slice(3) : s.slice(2);
+      const out = new Uint8Array(hex.length / 2);
+      for (let i = 0; i < out.length; i++) {
+        out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+      }
+      return out;
+    }
+    try {
+      const bin = atob(s);
+      const out = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+      return out;
+    } catch {
+      throw new Error("bytesFromBytea: unrecognized string encoding");
+    }
+  }
+  throw new Error("bytesFromBytea: unsupported value type");
+}
+
+// ── API key resolution ───────────────────────────────────────────
+//
+// Preference order: caller's own active Gemini key (BYOK, bypasses
+// quota) → platform master key gated by the lifetime pass counter
+// → hard fail. The quota state is read but NOT incremented here —
+// the increment happens only after a successful SVG is produced,
+// so a Gemini failure doesn't waste the user's pass.
+interface KeyResolution {
+  apiKey: string;
+  byok: boolean;
+  quotaUsed: number;
+}
+
+class QuotaExhausted extends Error {
+  used: number;
+  limit: number;
+  constructor(used: number, limit: number) {
+    super("floor_map_quota_exhausted");
+    this.used = used;
+    this.limit = limit;
+  }
+}
+
+type ServiceClient = ReturnType<typeof createClient>;
+
+async function resolveApiKey(
+  service: ServiceClient,
+  userId: string,
+): Promise<KeyResolution> {
+  const { data: byokRow } = await service
+    .from("client_byok_keys")
+    .select("ciphertext, iv, active")
+    .eq("client_id", userId)
+    .eq("vendor", "gemini")
+    .maybeSingle();
+
+  if (byokRow && byokRow.active) {
+    const cipherBytes = bytesFromBytea(byokRow.ciphertext);
+    const ivBytes = bytesFromBytea(byokRow.iv);
+    const plaintext = await decryptKey(cipherBytes, ivBytes);
+    return { apiKey: plaintext, byok: true, quotaUsed: 0 };
+  }
+
+  // No BYOK — check the lifetime free-pass counter.
+  const { data: profileRow } = await service
+    .from("profiles")
+    .select("floor_plan_free_passes_used")
+    .eq("user_id", userId)
+    .maybeSingle();
+  const used = profileRow?.floor_plan_free_passes_used ?? 0;
+  if (used >= LIFETIME_PASS_LIMIT) {
+    throw new QuotaExhausted(used, LIFETIME_PASS_LIMIT);
+  }
+
+  const masterKey = Deno.env.get("GEMINI_API_KEY");
+  if (!masterKey) {
+    throw new Error("gemini_master_key_missing");
+  }
+  return { apiKey: masterKey, byok: false, quotaUsed: used };
+}
+
+// ── Gemini image-out call ────────────────────────────────────────
+//
+// POSTs the source PNG (as inlineData) plus the Draftsman prompt to
+// gemini-3-pro-image-preview and returns the AI's PNG bytes. Throws
+// on timeout, non-200, missing inlineData, or invalid base64. The
+// caller's retry/fallback policy handles all of those uniformly.
+async function callGemini(
+  apiKey: string,
+  srcImg: Image,
+  retry: boolean,
+): Promise<Uint8Array> {
+  const srcBytes = await srcImg.encode();
+  const srcB64 = uint8ToBase64(srcBytes);
+
+  const promptText = retry
+    ? DRAFTSMAN_PROMPT + RETRY_PROMPT_SUFFIX
+    : DRAFTSMAN_PROMPT;
+
+  const url =
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
+  let resp: Response;
+  try {
+    resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { inlineData: { mimeType: "image/png", data: srcB64 } },
+              { text: promptText },
+            ],
+          },
+        ],
+        generationConfig: {
+          responseModalities: ["IMAGE"],
+          temperature: 0.0,
+        },
+      }),
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  if (!resp.ok) {
+    const errBody = await resp.text().catch(() => "");
+    throw new Error(`gemini_http_${resp.status}:${errBody.slice(0, 200)}`);
+  }
+
+  const body = await resp.json() as {
+    candidates?: Array<{
+      content?: { parts?: Array<{ inlineData?: { mimeType?: string; data?: string } }> };
+    }>;
+  };
+
+  const parts = body.candidates?.[0]?.content?.parts ?? [];
+  for (const part of parts) {
+    const data = part.inlineData?.data;
+    if (data && typeof data === "string") {
+      return base64ToUint8(data);
+    }
+  }
+  throw new Error("gemini_no_image_part");
+}
+
+function uint8ToBase64(bytes: Uint8Array): string {
+  let bin = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(bin);
+}
+
+function base64ToUint8(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+// ── Aspect-ratio normalization ───────────────────────────────────
+//
+// Gemini doesn't guarantee an output aspect that matches the input.
+// Pin coordinates are percentages of the viewBox, so a 3-5% aspect
+// drift would walk every existing pin off the wall it was anchored
+// to. Resizing the AI output to the source dims keeps the viewBox
+// constant across re-vectorizations and preserves pin stability.
+function normalizeAspect(aiImg: Image, targetW: number, targetH: number): Image {
+  if (aiImg.width === targetW && aiImg.height === targetH) return aiImg;
+  return aiImg.resize(targetW, targetH);
+}
+
+// ── Raster fallback ──────────────────────────────────────────────
+//
+// When the AI fails after retry, return the source image as a JPEG
+// so the Builder still has something to overlay pins on. imagescript
+// supports JPEG encoding but not WebP encoding (as of 1.2.17), so we
+// pick JPEG@80 — small enough for transport, universally supported,
+// and far better than a "vectorization failed" dead end.
+async function encodeJpegFallback(
+  srcImg: Image,
+): Promise<{ mime: string; data: string }> {
+  const bytes = await srcImg.encodeJPEG(80);
+  return { mime: "image/jpeg", data: uint8ToBase64(bytes) };
 }
 
 // ── Entry point ──────────────────────────────────────────────────
@@ -702,8 +570,8 @@ serve(async (req) => {
   if (!storagePath) return fail("input", "missing_storage_path", 400);
 
   // Path must begin with the caller's user id so a leaked function
-  // URL can never be coerced into vectorizing someone else's
-  // upload. This mirrors the RLS check on storage.objects.
+  // URL can never be coerced into vectorizing someone else's upload.
+  // Mirrors the RLS check on storage.objects.
   const firstSegment = storagePath.split("/")[0] ?? "";
   if (firstSegment !== userId) {
     return fail("ownership", "path_owner_mismatch", 403, {
@@ -711,10 +579,8 @@ serve(async (req) => {
     });
   }
 
-  // Confirm the upload was registered. The Builder always inserts
-  // an `ephemeral_assets` row immediately after upload so the
-  // 30-day purge can find it. A missing row means the upload was
-  // tampered with or the row was already purged.
+  // Confirm the upload was registered. Missing row → upload was
+  // tampered with or already purged.
   const { data: tracking, error: trackingErr } = await serviceClient
     .from("ephemeral_assets")
     .select("id, expires_at, file_size_bytes, mime_type")
@@ -731,8 +597,25 @@ serve(async (req) => {
     return fail("tracking", "no_tracking_row", 404);
   }
 
-  // Download the raster via the service role so it works whether
-  // or not the user client has fresh storage permissions.
+  // Resolve which key to use BEFORE downloading the image — saves
+  // bandwidth + storage churn when a user's quota is already
+  // exhausted.
+  let keyRes: KeyResolution;
+  try {
+    keyRes = await resolveApiKey(serviceClient, userId);
+  } catch (err) {
+    if (err instanceof QuotaExhausted) {
+      return fail("quota", "floor_map_quota_exhausted", 402, {
+        used: err.used,
+        limit: err.limit,
+        hint: "Add your own Gemini API key to continue.",
+      });
+    }
+    const msg = err instanceof Error ? err.message : String(err);
+    return fail("byok", "byok_resolution_failed", 500, { err: msg });
+  }
+
+  // Download the raster via the service role.
   const { data: dl, error: dlErr } = await serviceClient.storage
     .from("temporary-floorplans")
     .download(storagePath);
@@ -742,9 +625,7 @@ serve(async (req) => {
     });
   }
 
-  // Belt-and-braces size cap. The Builder enforces the limit before
-  // upload; we re-check here so a direct-to-storage upload can't
-  // smuggle a giant image past us.
+  // Belt-and-braces size cap.
   const fileSize = dl.size ?? tracking.file_size_bytes ?? 0;
   const kind = uploadKindForMime(tracking.mime_type ?? dl.type) ?? "image_bytes";
   const sizeCheck = checkUploadSize(fileSize, kind);
@@ -766,36 +647,118 @@ serve(async (req) => {
     });
   }
 
-  let trace: TraceResult;
-  try {
-    trace = traceImage(image);
-  } catch (err) {
-    return fail("trace", "contour_trace_failed", 500, {
-      err: err instanceof Error ? err.message : String(err),
-    });
+  // Downscale very large sources before sending to the AI so the
+  // round-trip stays under the timeout budget.
+  const longest = Math.max(image.width, image.height);
+  if (longest > MAX_DIMENSION) {
+    const scale = MAX_DIMENSION / longest;
+    image = image.resize(
+      Math.round(image.width * scale),
+      Math.round(image.height * scale),
+    );
+  }
+  const sourceW = image.width;
+  const sourceH = image.height;
+
+  // Try AI vectorization (1 attempt + 1 retry on quality failure or
+  // network error). On total failure, fall back to a JPEG raster of
+  // the source so the Builder remains usable.
+  let svg: string | null = null;
+  let pathCount = 0;
+  let usedRetry = false;
+  let lastErr: string | null = null;
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const isRetry = attempt === 1;
+    try {
+      const aiBytes = await callGemini(keyRes.apiKey, image, isRetry);
+      const aiDecoded = await decodeImage(aiBytes);
+      if (!(aiDecoded instanceof Image)) {
+        throw new Error("ai_decode_not_image");
+      }
+      const aiImg = normalizeAspect(aiDecoded, sourceW, sourceH);
+      const mask = binarize(aiImg, BINARIZE_THRESHOLD);
+      const contours = traceContours(mask, sourceW, sourceH);
+      const paths: string[] = [];
+      for (const c of contours) {
+        const simplified = simplify(c, SIMPLIFY_EPSILON);
+        if (simplified.length < 3) continue;
+        paths.push(pointsToPathData(simplified));
+      }
+      console.log(
+        `[vectorize-floorplan] attempt=${attempt} model=${GEMINI_MODEL} byok=${keyRes.byok} ` +
+        `paths=${paths.length} dims=${sourceW}x${sourceH}`,
+      );
+      if (paths.length >= MIN_PATH_COUNT && paths.length <= MAX_PATH_COUNT) {
+        svg = sanitizeSvg(emitSvg(sourceW, sourceH, paths));
+        pathCount = paths.length;
+        usedRetry = isRetry;
+        break;
+      }
+      lastErr = `path_count_out_of_range:${paths.length}`;
+    } catch (err) {
+      lastErr = err instanceof Error ? err.message : String(err);
+      console.warn(
+        `[vectorize-floorplan] attempt=${attempt} failed: ${lastErr}`,
+      );
+    }
   }
 
-  const isEmpty = trace.mode === "silhouette"
-    ? trace.components.length === 0
-    : trace.paths.length === 0;
-  if (isEmpty) {
-    return fail("trace", "no_contours_detected", 422, {
-      hint: "Image appears to be all one tone. Try a higher-contrast scan.",
-    });
+  // Raster fallback path: encode the source as JPEG and skip the
+  // quota increment (the user's pass would be wasted on a failure).
+  let raster: { mime: string; data: string } | null = null;
+  let mode: "ai-vector" | "raster-fallback" = "ai-vector";
+  if (!svg) {
+    try {
+      raster = await encodeJpegFallback(image);
+      mode = "raster-fallback";
+      console.warn(
+        `[vectorize-floorplan] raster fallback engaged after both AI attempts. last_err=${lastErr}`,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return fail("trace", "raster_fallback_failed", 500, {
+        err: msg,
+        ai_err: lastErr,
+      });
+    }
   }
 
-  const svg = buildSvg(trace);
-  const pathCount = trace.mode === "silhouette" ? trace.components.length : trace.paths.length;
+  // Atomic increment ONLY on AI success AND non-BYOK. The RPC is a
+  // conditional UPDATE so concurrent requests can't overshoot the
+  // limit by more than the natural race width.
+  let quotaUsed = keyRes.quotaUsed;
+  if (svg && !keyRes.byok) {
+    const { data: consumeData } = await serviceClient.rpc(
+      "consume_floor_plan_pass",
+      { p_user_id: userId, p_limit: LIFETIME_PASS_LIMIT },
+    );
+    const row = Array.isArray(consumeData) ? consumeData[0] : consumeData;
+    if (row && typeof row === "object" && "used" in row) {
+      quotaUsed = (row as { used: number }).used;
+    } else {
+      // Defensive: if the RPC didn't return a row (shouldn't happen),
+      // estimate the post-state so the UI doesn't lie to the user.
+      quotaUsed = Math.min(LIFETIME_PASS_LIMIT, keyRes.quotaUsed + 1);
+    }
+  }
 
   return jsonResponse({
     ok: true,
-    svg,
-    viewBox: `0 0 ${trace.width} ${trace.height}`,
-    width: trace.width,
-    height: trace.height,
+    svg: svg ?? "",
+    raster,
+    viewBox: `0 0 ${sourceW} ${sourceH}`,
+    width: sourceW,
+    height: sourceH,
     path_count: pathCount,
-    bytes: svg.length,
-    mode: trace.mode,
+    bytes: (svg ?? raster?.data ?? "").length,
+    mode,
     pipeline: PIPELINE_VERSION,
+    retry: usedRetry,
+    quota: {
+      used: quotaUsed,
+      limit: LIFETIME_PASS_LIMIT,
+      byok_active: keyRes.byok,
+    },
   });
 });

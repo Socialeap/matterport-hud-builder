@@ -25,9 +25,13 @@ export interface FloorMapPin {
 }
 
 export interface FloorMapData {
-  /** Raw SVG XML string returned by the vectorize-floorplan Edge Function. */
+  /** Raw SVG XML string returned by the vectorize-floorplan Edge Function.
+   *  Empty string when the AI pipeline failed and `raster` carries the
+   *  fallback payload instead. */
   svg: string;
-  /** SVG viewBox string, e.g. "0 0 1024 768". */
+  /** SVG viewBox string, e.g. "0 0 1024 768". Always set so pin
+   *  coordinates (percentages of viewBox) resolve consistently
+   *  whether the renderer uses `svg` or `raster`. */
   viewBox: string;
   /** Source raster width (px) — kept for diagnostics + aspect-ratio sanity. */
   width: number;
@@ -43,6 +47,14 @@ export interface FloorMapData {
   ephemeralAssetId?: string | null;
   /** Storage path of the original raster (within `temporary-floorplans`). */
   storagePath?: string | null;
+  /**
+   * Raster fallback returned by vectorize-floorplan when the AI
+   * pipeline failed (network/quality/timeout). When present, the
+   * Builder + exported runtime render this as an <img> instead of
+   * embedding the (empty) `svg`. Pin overlays still work because
+   * they're absolutely positioned by percentage.
+   */
+  raster?: { mime: "image/jpeg" | "image/png" | "image/webp"; data: string } | null;
 }
 
 /**
