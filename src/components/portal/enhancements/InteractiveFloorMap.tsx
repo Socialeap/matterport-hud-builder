@@ -392,16 +392,24 @@ export function InteractiveFloorMap({
             onChange={handleFileChange}
             disabled={busy}
           />
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={busy}
-            className="gap-2"
-          >
-            {busy ? <Loader2 className="size-4 animate-spin" /> : <Wand2 className="size-4" />}
-            {busy ? busyStage || "Working…" : "Upload floor plan"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={busy}
+              className="gap-2"
+            >
+              {busy ? <Loader2 className="size-4 animate-spin" /> : <Wand2 className="size-4" />}
+              {busy ? busyStage || "Working…" : "Upload floor plan"}
+            </Button>
+            <FloorPlanCaptureHelp />
+          </div>
+          <p className="text-[11px] leading-snug text-muted-foreground max-w-sm">
+            Works with both Matterport <strong>Schematic Floor Plans</strong>{" "}
+            and <strong>dollhouse screenshots</strong> — tap the info icon for
+            capture tips.
+          </p>
         </div>
       )}
 
