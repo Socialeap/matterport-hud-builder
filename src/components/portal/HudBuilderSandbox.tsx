@@ -1644,9 +1644,55 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
             </span>
           </div>
 
-          {/* Import + Export buttons */}
+          {/* Setup + Import + Export buttons */}
           <TooltipProvider delayDuration={150}>
             <div className="flex items-center gap-2">
+              <DropdownMenu>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <DropdownMenuTrigger asChild>
+                      <Button type="button" variant="outline" size="sm">
+                        <UserCircle className="size-4" />
+                        Setup
+                      </Button>
+                    </DropdownMenuTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-xs text-center">
+                    Choose how to start this presentation: prefill from your saved Agent Profile, or leave the form blank for a draft import / fresh build.
+                  </TooltipContent>
+                </Tooltip>
+                <DropdownMenuContent align="end" className="w-72">
+                  <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                    Start this presentation by…
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onSelect={() => { void applyProfileToAgent({ force: true, notify: true }); }}
+                    className="cursor-pointer"
+                    disabled={!userId}
+                  >
+                    <Sparkles className="size-4" />
+                    <div className="flex flex-col">
+                      <span className="text-sm font-medium">Prefill from My Profile</span>
+                      <span className="text-xs text-muted-foreground">
+                        {userId ? "Use saved name, photo, contact & socials." : "Sign in to enable."}
+                      </span>
+                    </div>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={handleClearAgentFields}
+                    className="cursor-pointer"
+                  >
+                    <Eraser className="size-4" />
+                    <div className="flex flex-col">
+                      <span className="text-sm font-medium">Start Blank</span>
+                      <span className="text-xs text-muted-foreground">
+                        Clear agent fields — ready for draft import or fresh entry.
+                      </span>
+                    </div>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <input
                 ref={importInputRef}
                 type="file"
