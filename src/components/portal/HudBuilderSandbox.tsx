@@ -22,7 +22,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { Palette, Home, UserCircle, Sparkles, Lock, Eye, EyeOff, Rocket } from "lucide-react";
+import { Palette, Home, UserCircle, Sparkles, Lock, Eye, EyeOff, Rocket, Eraser } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
