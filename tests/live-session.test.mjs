@@ -312,6 +312,329 @@ test("inbound teleport packet on visitor side patches incomingTeleportEvent", ()
   });
 });
 
+// ── Annotation channel tests ─────────────────────────────────────────
+//
+// Helper: stand up a connected agent session with a captured outbound
+// DataConnection so the test can inspect `_sentPackets` and drive an
+// inbound `data` event. Returns { session, sentPackets, fireData,
+// runScheduled }.
+
+function makeConnectedAgent(extraOpts) {
+  const peers = [];
+  const FakePeer = makeFakePeerCtor();
+  function CapturingPeer(id) {
+    FakePeer.call(this, id);
+    peers.push(this);
+  }
+  CapturingPeer.prototype = FakePeer.prototype;
+  CapturingPeer.log = FakePeer.log;
+
+  const scheduled = [];
+  const opts = Object.assign(
+    {
+      PeerCtor: CapturingPeer,
+      schedule: (cb) => {
+        scheduled.push(cb);
+      },
+    },
+    extraOpts || {},
+  );
+  const session = createLiveSession(opts);
+  return session.initializeAsAgent().then(() => {
+    const agentPeer = peers[0];
+    const inboundConn = new FakeEmitter();
+    const sentPackets = [];
+    inboundConn.send = (p) => sentPackets.push(p);
+    // Default bufferedAmount = 0 unless a test overrides it.
+    inboundConn.bufferedAmount = 0;
+    agentPeer._fire("connection", inboundConn);
+    inboundConn._fire("open");
+    return {
+      session,
+      conn: inboundConn,
+      sentPackets,
+      fireData: (payload) => inboundConn._fire("data", payload),
+      runScheduled: () => {
+        const drained = scheduled.splice(0);
+        drained.forEach((cb) => cb());
+      },
+      pendingScheduled: scheduled,
+    };
+  });
+}
+
+test("annotation senders all return false when role is not agent", () => {
+  const session = createLiveSession({ PeerCtor: makeFakePeerCtor() });
+  // Idle — no role at all.
+  assert.equal(session.sendPointer("v|", 0.5, 0.5), false);
+  assert.equal(session.sendStrokeBegin("v|", "s1", "#fff", 0.004, [[0, 0]]), false);
+  assert.equal(session.sendStrokePatch("v|", "s1", [[0.1, 0.1]]), false);
+  assert.equal(session.sendStrokeCommit("v|", "s1"), false);
+  assert.equal(session.sendClear("v|"), false);
+  // Visitor role — also false even when connected (sender is agent-only).
+  return session.joinAsVisitor("4242").then(() => {
+    assert.equal(session.sendPointer("v|", 0.5, 0.5), false);
+    assert.equal(session.sendStrokeBegin("v|", "s1", "#fff", 0.004, [[0, 0]]), false);
+    assert.equal(session.sendStrokePatch("v|", "s1", [[0.1, 0.1]]), false);
+    assert.equal(session.sendStrokeCommit("v|", "s1"), false);
+    assert.equal(session.sendClear("v|"), false);
+    session.dispose();
+  });
+});
+
+test("annotation senders return false when agent is not yet connected", () => {
+  const session = createLiveSession({ PeerCtor: makeFakePeerCtor() });
+  return session.initializeAsAgent().then(() => {
+    // Status is "waiting" — no inbound conn yet.
+    assert.equal(session.getState().isConnected, false);
+    assert.equal(session.sendPointer("v|", 0.5, 0.5), false);
+    assert.equal(session.sendStrokeBegin("v|", "s1", "#fff", 0.004, [[0, 0]]), false);
+    assert.equal(session.sendStrokePatch("v|", "s1", [[0.1, 0.1]]), false);
+    assert.equal(session.sendStrokeCommit("v|", "s1"), false);
+    assert.equal(session.sendClear("v|"), false);
+    session.dispose();
+  });
+});
+
+test("sendStroke* reject empty strokeId without touching the channel", () => {
+  return makeConnectedAgent().then(({ session, sentPackets }) => {
+    assert.equal(session.sendStrokeBegin("v|", "", "#fff", 0.004, [[0, 0]]), false);
+    assert.equal(session.sendStrokePatch("v|", "", [[0.1, 0.1]]), false);
+    assert.equal(session.sendStrokeCommit("v|", ""), false);
+    assert.equal(sentPackets.length, 0);
+    session.dispose();
+  });
+});
+
+test("sendStrokePatch rejects empty point arrays", () => {
+  return makeConnectedAgent().then(({ session, sentPackets }) => {
+    assert.equal(session.sendStrokePatch("v|", "s1", []), false);
+    assert.equal(sentPackets.length, 0);
+    session.dispose();
+  });
+});
+
+test("teleportVisitor updates _currentViewKey so subsequent annotations are accepted by the receiver-style filter", () => {
+  // Drive both ends inside one process by stitching the agent's
+  // outbound packets into a visitor session's `data` event.
+  return makeConnectedAgent().then(({ session, sentPackets, runScheduled }) => {
+    // Agent teleports — _currentViewKey becomes "42|0,0".
+    assert.equal(session.teleportVisitor("42", "0,0"), true);
+    // Agent emits a pointer at the new view.
+    session.sendPointer("42|0,0", 0.5, 0.5);
+    runScheduled();
+    assert.equal(sentPackets.length, 2);
+    assert.equal(sentPackets[0].type, "teleport");
+    assert.equal(sentPackets[1].type, "pointer");
+    assert.equal(sentPackets[1].viewKey, "42|0,0");
+    session.dispose();
+  });
+});
+
+test("incoming annotation packets with stale viewKey are dropped after teleport", () => {
+  return makeConnectedAgent().then(({ session, fireData }) => {
+    // Establish current view via inbound teleport packet (this updates
+    // the controller's _currentViewKey).
+    fireData({ type: "teleport", ss: "42", sr: "0,0" });
+    assert.equal(session.getState().incomingTeleportEvent.ss, "42");
+
+    // Stroke from the OLD view — should be dropped.
+    fireData({
+      type: "stroke_begin",
+      viewKey: "17|0,0",
+      seq: 1,
+      strokeId: "s-old",
+      color: "#fff",
+      width: 0.004,
+      points: [[0.1, 0.1]],
+      ts: 1,
+    });
+    assert.equal(
+      session.getState().incomingStrokeEvent,
+      null,
+      "stroke with mismatched viewKey should not patch state",
+    );
+
+    // Stroke from the matching view — accepted.
+    fireData({
+      type: "stroke_begin",
+      viewKey: "42|0,0",
+      seq: 2,
+      strokeId: "s-new",
+      color: "#fff",
+      width: 0.004,
+      points: [[0.2, 0.2]],
+      ts: 2,
+    });
+    const ev = session.getState().incomingStrokeEvent;
+    assert.ok(ev, "matching viewKey should patch state");
+    assert.equal(ev.strokeId, "s-new");
+    assert.equal(ev.kind, "begin");
+    session.dispose();
+  });
+});
+
+test("incoming annotation packets with non-monotonic seq are dropped", () => {
+  return makeConnectedAgent().then(({ session, fireData }) => {
+    // First pointer at seq=5 — accepted.
+    fireData({
+      type: "pointer",
+      viewKey: "",
+      seq: 5,
+      x: 0.3,
+      y: 0.4,
+      ts: 1,
+    });
+    assert.equal(session.getState().incomingPointerEvent.seq, 5);
+
+    // Replayed/older pointer at seq=3 — dropped.
+    fireData({
+      type: "pointer",
+      viewKey: "",
+      seq: 3,
+      x: 0.7,
+      y: 0.8,
+      ts: 2,
+    });
+    assert.equal(
+      session.getState().incomingPointerEvent.seq,
+      5,
+      "older seq should not overwrite the latest pointer",
+    );
+    assert.equal(session.getState().incomingPointerEvent.x, 0.3);
+
+    // Same seq=5 — also dropped (strict greater-than).
+    fireData({
+      type: "pointer",
+      viewKey: "",
+      seq: 5,
+      x: 0.9,
+      y: 0.9,
+      ts: 3,
+    });
+    assert.equal(session.getState().incomingPointerEvent.x, 0.3);
+
+    // Newer seq=6 — accepted.
+    fireData({
+      type: "pointer",
+      viewKey: "",
+      seq: 6,
+      x: 0.1,
+      y: 0.2,
+      ts: 4,
+    });
+    assert.equal(session.getState().incomingPointerEvent.seq, 6);
+    assert.equal(session.getState().incomingPointerEvent.x, 0.1);
+    session.dispose();
+  });
+});
+
+test("inbound stroke/clear packets surface as kind-tagged events", () => {
+  return makeConnectedAgent().then(({ session, fireData }) => {
+    fireData({
+      type: "stroke_patch",
+      viewKey: "",
+      seq: 10,
+      strokeId: "s1",
+      points: [
+        [0.1, 0.1],
+        [0.2, 0.2],
+      ],
+      ts: 1,
+    });
+    let ev = session.getState().incomingStrokeEvent;
+    assert.equal(ev.kind, "patch");
+    assert.deepEqual(ev.points, [
+      [0.1, 0.1],
+      [0.2, 0.2],
+    ]);
+
+    fireData({ type: "stroke_commit", viewKey: "", seq: 11, strokeId: "s1", ts: 2 });
+    ev = session.getState().incomingStrokeEvent;
+    assert.equal(ev.kind, "commit");
+    assert.equal(ev.strokeId, "s1");
+
+    fireData({ type: "clear", viewKey: "", seq: 12, ts: 3 });
+    assert.equal(session.getState().incomingClearEvent.seq, 12);
+    session.dispose();
+  });
+});
+
+test("pointer coalescer flushes at most one packet per scheduler tick under flood", () => {
+  return makeConnectedAgent().then(
+    ({ session, sentPackets, runScheduled, pendingScheduled }) => {
+      // Flood 200 sendPointer calls before any scheduler tick.
+      for (let i = 0; i < 200; i++) {
+        session.sendPointer("", i / 200, i / 200);
+      }
+      // Scheduler has been asked exactly once despite 200 sends.
+      assert.equal(
+        pendingScheduled.length,
+        1,
+        "coalescer should request the scheduler at most once between ticks",
+      );
+      assert.equal(sentPackets.length, 0, "nothing sent until scheduler ticks");
+
+      runScheduled();
+      assert.equal(sentPackets.length, 1, "exactly one packet per tick");
+      // Latest position wins.
+      assert.equal(sentPackets[0].type, "pointer");
+      assert.equal(sentPackets[0].x, 199 / 200);
+
+      // Next tick: no new sendPointer calls → no new packet.
+      runScheduled();
+      assert.equal(sentPackets.length, 1);
+
+      // A single new send → one more packet on the next tick.
+      session.sendPointer("", 0.42, 0.42);
+      runScheduled();
+      assert.equal(sentPackets.length, 2);
+      assert.equal(sentPackets[1].x, 0.42);
+      session.dispose();
+    },
+  );
+});
+
+test("pointer flush is skipped when dataConn.bufferedAmount exceeds the backpressure cap", () => {
+  return makeConnectedAgent().then(
+    ({ session, conn, sentPackets, runScheduled }) => {
+      conn.bufferedAmount = 65537; // one byte over the 64 KiB cap
+      session.sendPointer("", 0.5, 0.5);
+      runScheduled();
+      assert.equal(
+        sentPackets.length,
+        0,
+        "pointer drop expected when channel is congested",
+      );
+
+      // Once the channel drains, the next sendPointer flows normally.
+      conn.bufferedAmount = 0;
+      session.sendPointer("", 0.6, 0.6);
+      runScheduled();
+      assert.equal(sentPackets.length, 1);
+      assert.equal(sentPackets[0].x, 0.6);
+      session.dispose();
+    },
+  );
+});
+
+test("sendStroke* and sendClear stamp monotonically increasing seq numbers", () => {
+  return makeConnectedAgent().then(({ session, sentPackets, runScheduled }) => {
+    session.sendStrokeBegin("v|", "s1", "#fff", 0.004, [[0, 0]]);
+    session.sendStrokePatch("v|", "s1", [[0.1, 0.1]]);
+    session.sendPointer("v|", 0.2, 0.2);
+    runScheduled();
+    session.sendStrokeCommit("v|", "s1");
+    session.sendClear("v|");
+    const seqs = sentPackets.map((p) => p.seq);
+    assert.equal(seqs.length, 5);
+    for (let i = 1; i < seqs.length; i++) {
+      assert.ok(seqs[i] > seqs[i - 1], `seq must strictly increase (#${i})`);
+    }
+    session.dispose();
+  });
+});
+
 test("dispose tears down listeners and resets state to idle", () => {
   const session = createLiveSession({ PeerCtor: makeFakePeerCtor() });
   let fires = 0;

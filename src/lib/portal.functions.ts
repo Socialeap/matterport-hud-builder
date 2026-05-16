@@ -1590,6 +1590,36 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   #live-tour-drawer{max-height:70vh}
 }
 
+/* ── Live Tour annotation overlay ─────────────────────────────────── */
+/* The wrap is a full-size pass-through container in idle mode. When a
+   live tour is connected, body.live-tour-active flips the wrap into a
+   16:9 letterbox so pointer / stroke coordinates are stable on both
+   ends regardless of viewport aspect ratio. Canvas + remote pointer
+   sit absolutely over the iframe inside the wrap. */
+#anno-letterbox-wrap{position:absolute;inset:0}
+#anno-letterbox-wrap iframe{width:100%;height:100%;border:none;display:block}
+#anno-canvas{position:absolute;inset:0;display:block;width:100%;height:100%;pointer-events:none;z-index:5;touch-action:none}
+#anno-canvas.pointer-mode,#anno-canvas.draw-mode{pointer-events:auto;cursor:crosshair}
+#remote-pointer{position:absolute;left:0;top:0;width:18px;height:18px;border-radius:50%;background:${escapeHtml(accentColor)}cc;border:2px solid #fff;box-shadow:0 1px 6px rgba(0,0,0,0.45);pointer-events:none;transform:translate(-50%,-50%);z-index:6;display:none}
+#anno-toolbar{position:absolute;left:50%;top:14px;transform:translateX(-50%);display:none;gap:6px;z-index:10;background:rgba(10,12,20,0.7);backdrop-filter:blur(14px) saturate(160%);-webkit-backdrop-filter:blur(14px) saturate(160%);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:6px;box-shadow:0 6px 24px rgba(0,0,0,0.35)}
+.anno-tool-btn{appearance:none;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.85);border-radius:6px;padding:6px 10px;font:600 12px/1 inherit;cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:background 0.15s,border-color 0.15s,color 0.15s;font-family:inherit}
+.anno-tool-btn:hover{background:rgba(255,255,255,0.14);color:#fff}
+.anno-tool-btn.active{background:${escapeHtml(accentColor)};border-color:${escapeHtml(accentColor)};color:#fff}
+.anno-tool-btn.primary{background:${escapeHtml(accentColor)};border-color:${escapeHtml(accentColor)};color:#fff}
+#anno-capture-panel{position:absolute;left:50%;top:64px;transform:translateX(-50%);display:flex;flex-direction:column;gap:8px;z-index:10;background:rgba(10,12,20,0.82);backdrop-filter:blur(14px) saturate(160%);-webkit-backdrop-filter:blur(14px) saturate(160%);border:1px solid rgba(255,255,255,0.14);border-radius:10px;padding:10px;min-width:280px;box-shadow:0 8px 32px rgba(0,0,0,0.45)}
+#anno-capture-panel[hidden]{display:none}
+#anno-capture-note{width:100%;min-height:60px;background:rgba(0,0,0,0.35);color:#fff;border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:8px;font:13px/1.4 inherit;resize:vertical;outline:none;font-family:inherit;box-sizing:border-box}
+#anno-capture-note:focus{border-color:${escapeHtml(accentColor)}}
+.anno-capture-actions{display:flex;gap:6px;justify-content:flex-end}
+
+/* Engage 16:9 letterboxing once the WebRTC session is live. Black
+   bars come from #viewer's background while the wrap is centered
+   inside it. The agent gets a toolbar; the visitor only sees the
+   pointer / strokes that arrive over the channel. */
+body.live-tour-active #viewer{display:flex;align-items:center;justify-content:center;background:#000}
+body.live-tour-active #anno-letterbox-wrap{position:relative;inset:auto;aspect-ratio:16/9;width:min(100vw,calc(100vh * 16 / 9));height:auto;max-height:100vh}
+body.live-tour-active.live-tour-agent #anno-toolbar{display:flex}
+
 /* ── Shared modal backdrop ────────────────────────────────────────── */
 .modal-backdrop{position:fixed;inset:0;z-index:2500;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.65);backdrop-filter:blur(14px) brightness(0.55);-webkit-backdrop-filter:blur(14px) brightness(0.55);padding:16px}
 .modal-backdrop.open{display:flex}
@@ -1699,7 +1729,30 @@ ${askAssets.css}
 </div>
 
 <!-- ── Matterport iframe ─────────────────────────────────────────── -->
-<div id="viewer"><iframe id="matterport-frame" allowfullscreen allow="xr-spatial-tracking; fullscreen"></iframe></div>
+<!-- The iframe + annotation overlay share one positioned wrap so a
+     16:9 letterbox can engage during a live tour without re-layout
+     in idle viewing. Canvas, remote pointer, and toolbar all live
+     inside the wrap so their coordinates stay locked to the iframe. -->
+<div id="viewer">
+  <div id="anno-letterbox-wrap">
+    <iframe id="matterport-frame" allowfullscreen allow="xr-spatial-tracking; fullscreen"></iframe>
+    <canvas id="anno-canvas"></canvas>
+    <div id="remote-pointer" aria-hidden="true"></div>
+    <div id="anno-toolbar" role="toolbar" aria-label="Live tour annotations">
+      <button type="button" class="anno-tool-btn" data-tool="pointer" title="Pointer (P)" aria-keyshortcuts="P">Pointer</button>
+      <button type="button" class="anno-tool-btn" data-tool="draw" title="Draw (D)" aria-keyshortcuts="D">Draw</button>
+      <button type="button" class="anno-tool-btn" id="anno-clear-btn" title="Clear annotations (C)" aria-keyshortcuts="C">Clear</button>
+      <button type="button" class="anno-tool-btn" id="anno-capture-btn" title="Capture spec (S)" aria-keyshortcuts="S">Capture</button>
+    </div>
+    <div id="anno-capture-panel" hidden>
+      <textarea id="anno-capture-note" placeholder="Optional note for this spec..." rows="3"></textarea>
+      <div class="anno-capture-actions">
+        <button type="button" class="anno-tool-btn" id="anno-capture-cancel">Cancel</button>
+        <button type="button" class="anno-tool-btn primary" id="anno-capture-save">Save JSON</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- ── HUD toggle button ─────────────────────────────────────────── -->
 <button id="hud-leave-btn" hidden aria-label="Leave live tour" title="Leave Live Tour">Leave</button>
@@ -3756,6 +3809,40 @@ if(frame){
   var lastTeleportTs=0;
   var wasConnected=false;
 
+  // ── Annotation overlay state (Phase 1) ─────────────────────────────
+  // currentViewKey mirrors the controller's _currentViewKey on this
+  // side; we keep a local copy so agent senders can stamp every
+  // outbound packet with the active view. Stays in lock-step because
+  // we update it in applyTeleport (the single point that changes the
+  // visible Matterport sweep on either end).
+  var letterboxWrap=document.getElementById("anno-letterbox-wrap");
+  var annoCanvas=document.getElementById("anno-canvas");
+  var annoCtx=annoCanvas?annoCanvas.getContext("2d"):null;
+  var annoToolbar=document.getElementById("anno-toolbar");
+  var remotePointer=document.getElementById("remote-pointer");
+  var capturePanel=document.getElementById("anno-capture-panel");
+  var captureNoteEl=document.getElementById("anno-capture-note");
+  var captureSaveBtn=document.getElementById("anno-capture-save");
+  var captureCancelBtn=document.getElementById("anno-capture-cancel");
+  var captureOpenBtn=document.getElementById("anno-capture-btn");
+  var clearBtn=document.getElementById("anno-clear-btn");
+
+  var ANNO_STROKE_COLOR="#ff3b30";
+  var ANNO_STROKE_WIDTH=0.004;
+  var ANNO_REMOTE_POINTER_TIMEOUT_MS=2500;
+
+  var toolMode="none";
+  var currentViewKey="";
+  var localStrokes=[];
+  var activeStroke=null;
+  var pendingStrokePoints=null;
+  var pendingStrokeId=null;
+  var strokeFlushScheduled=false;
+  var lastPointerSeq=0;
+  var lastStrokeSeq=0;
+  var lastClearSeq=0;
+  var remotePointerHideTimer=null;
+
   // After a visitor connects, auto-close the Live Tour drawer so the
   // tour fills the screen. The HUD header (and the Live Tour button)
   // remains visible so the visitor can reopen the panel anytime.
@@ -3790,10 +3877,335 @@ if(frame){
     if(audioEl){ try { audioEl.srcObject=null; } catch(_e){} }
   }
 
+  // ── Annotation helpers ─────────────────────────────────────────────
+  // All math is in normalized [0,1] space relative to the letterbox
+  // wrap. Both ends store the same numbers on the wire; the renderer
+  // multiplies by current canvas pixels at draw time so a viewport
+  // resize on either side stays consistent.
+  function setBodyLetterboxClass(active,isAgent){
+    if(!document||!document.body) return;
+    if(active){
+      document.body.classList.add("live-tour-active");
+      if(isAgent) document.body.classList.add("live-tour-agent");
+      else document.body.classList.remove("live-tour-agent");
+    } else {
+      document.body.classList.remove("live-tour-active");
+      document.body.classList.remove("live-tour-agent");
+    }
+  }
+
+  function setToolMode(mode){
+    var prev=toolMode;
+    toolMode=mode;
+    if(annoCanvas){
+      annoCanvas.classList.remove("pointer-mode","draw-mode");
+      if(mode==="pointer") annoCanvas.classList.add("pointer-mode");
+      else if(mode==="draw") annoCanvas.classList.add("draw-mode");
+    }
+    if(annoToolbar){
+      var btns=annoToolbar.querySelectorAll(".anno-tool-btn[data-tool]");
+      for(var i=0;i<btns.length;i++){
+        var b=btns[i];
+        if(b.getAttribute("data-tool")===mode) b.classList.add("active");
+        else b.classList.remove("active");
+      }
+    }
+    if(prev==="pointer"&&mode!=="pointer"){
+      // Leaving pointer tool while connected: hide the remote dot on
+      // the visitor by sending a null-position pointer event.
+      var s=session.getState();
+      if(s.role==="agent"&&s.isConnected){
+        session.sendPointer(currentViewKey,null,null);
+      }
+    }
+  }
+
+  function resizeAnnoCanvas(){
+    if(!annoCanvas||!letterboxWrap||!annoCtx) return;
+    var rect=letterboxWrap.getBoundingClientRect();
+    var w=Math.max(1,Math.round(rect.width));
+    var h=Math.max(1,Math.round(rect.height));
+    var dpr=window.devicePixelRatio||1;
+    annoCanvas.width=Math.max(1,Math.round(w*dpr));
+    annoCanvas.height=Math.max(1,Math.round(h*dpr));
+    annoCanvas.style.width=w+"px";
+    annoCanvas.style.height=h+"px";
+    try { annoCtx.setTransform(dpr,0,0,dpr,0,0); } catch(_e){}
+    redrawAllStrokes();
+  }
+
+  function redrawAllStrokes(){
+    if(!annoCtx||!annoCanvas) return;
+    var dpr=window.devicePixelRatio||1;
+    var w=annoCanvas.width/dpr;
+    var h=annoCanvas.height/dpr;
+    annoCtx.clearRect(0,0,w,h);
+    for(var i=0;i<localStrokes.length;i++) drawStroke(localStrokes[i],w,h);
+    if(activeStroke) drawStroke(activeStroke,w,h);
+  }
+
+  function drawStroke(stroke,w,h){
+    if(!stroke||!stroke.points||stroke.points.length===0) return;
+    var color=stroke.color||ANNO_STROKE_COLOR;
+    var width=typeof stroke.width==="number"?stroke.width:ANNO_STROKE_WIDTH;
+    annoCtx.strokeStyle=color;
+    annoCtx.lineWidth=Math.max(1,width*w);
+    annoCtx.lineCap="round";
+    annoCtx.lineJoin="round";
+    annoCtx.beginPath();
+    var p0=stroke.points[0];
+    annoCtx.moveTo(p0[0]*w,p0[1]*h);
+    if(stroke.points.length===1){
+      annoCtx.lineTo(p0[0]*w+0.01,p0[1]*h+0.01);
+    } else {
+      for(var i=1;i<stroke.points.length;i++){
+        var p=stroke.points[i];
+        annoCtx.lineTo(p[0]*w,p[1]*h);
+      }
+    }
+    annoCtx.stroke();
+  }
+
+  function findLocalStroke(id){
+    for(var i=0;i<localStrokes.length;i++){
+      if(localStrokes[i].strokeId===id) return localStrokes[i];
+    }
+    return null;
+  }
+
+  function clientToNorm(e){
+    if(!letterboxWrap) return {x:0,y:0};
+    var rect=letterboxWrap.getBoundingClientRect();
+    var w=rect.width||1;
+    var h=rect.height||1;
+    var x=(e.clientX-rect.left)/w;
+    var y=(e.clientY-rect.top)/h;
+    if(x<0) x=0; else if(x>1) x=1;
+    if(y<0) y=0; else if(y>1) y=1;
+    return {x:x,y:y};
+  }
+
+  function scheduleStrokeFlush(){
+    if(strokeFlushScheduled) return;
+    strokeFlushScheduled=true;
+    var raf=window.requestAnimationFrame||function(cb){ return setTimeout(cb,16); };
+    raf(function(){
+      strokeFlushScheduled=false;
+      if(!pendingStrokeId||!pendingStrokePoints||pendingStrokePoints.length===0) return;
+      var batch=pendingStrokePoints;
+      pendingStrokePoints=[];
+      session.sendStrokePatch(currentViewKey,pendingStrokeId,batch);
+    });
+  }
+
+  function wipeAnnotations(){
+    localStrokes=[];
+    activeStroke=null;
+    pendingStrokeId=null;
+    pendingStrokePoints=null;
+    if(remotePointer){
+      remotePointer.style.display="none";
+    }
+    if(remotePointerHideTimer){
+      try { clearTimeout(remotePointerHideTimer); } catch(_e){}
+      remotePointerHideTimer=null;
+    }
+    redrawAllStrokes();
+  }
+
+  function handleClearLocallyAndBroadcast(){
+    wipeAnnotations();
+    var s=session.getState();
+    if(s.role==="agent"&&s.isConnected){
+      session.sendClear(currentViewKey);
+    }
+  }
+
+  function showCapturePanel(){
+    if(!capturePanel) return;
+    capturePanel.hidden=false;
+    if(captureNoteEl){
+      try { captureNoteEl.focus(); } catch(_e){}
+    }
+  }
+
+  function hideCapturePanel(){
+    if(!capturePanel) return;
+    capturePanel.hidden=true;
+  }
+
+  function downloadCaptureSpec(){
+    var p=props[current]||{};
+    var ss="";
+    var sr="";
+    if(currentViewKey){
+      var parts=currentViewKey.split("|");
+      ss=parts[0]||"";
+      sr=parts[1]||"";
+    }
+    var note=captureNoteEl?(captureNoteEl.value||""):"";
+    var stroked=[];
+    for(var i=0;i<localStrokes.length;i++){
+      var sObj=localStrokes[i];
+      stroked.push({
+        strokeId:sObj.strokeId,
+        color:sObj.color,
+        width:sObj.width,
+        points:sObj.points,
+      });
+    }
+    var spec={
+      type:"live-tour-spec",
+      version:1,
+      capturedAt:new Date().toISOString(),
+      propertyName:p.name||"",
+      iframeUrl:p.iframeUrl||"",
+      viewKey:currentViewKey,
+      ss:ss,
+      sr:sr,
+      note:note,
+      strokes:stroked,
+    };
+    var json=JSON.stringify(spec,null,2);
+    try {
+      var blob=new Blob([json],{type:"application/json"});
+      var url=URL.createObjectURL(blob);
+      var a=document.createElement("a");
+      a.href=url;
+      a.download="live-tour-spec-"+Date.now()+".json";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function(){ try { URL.revokeObjectURL(url); } catch(_e){} },500);
+    } catch(_e){}
+    if(captureNoteEl) captureNoteEl.value="";
+    hideCapturePanel();
+  }
+
+  // Canvas pointer wiring (agent only — toolMode is forced "none" on
+  // the visitor side so these handlers are no-ops).
+  if(annoCanvas){
+    annoCanvas.addEventListener("pointerdown",function(e){
+      if(session.getState().role!=="agent") return;
+      if(toolMode!=="draw") return;
+      var pt=clientToNorm(e);
+      var sid=String(Date.now())+"_"+Math.random().toString(36).slice(2,8);
+      activeStroke={
+        strokeId:sid,
+        color:ANNO_STROKE_COLOR,
+        width:ANNO_STROKE_WIDTH,
+        points:[[pt.x,pt.y]],
+      };
+      pendingStrokeId=sid;
+      pendingStrokePoints=[];
+      session.sendStrokeBegin(currentViewKey,sid,activeStroke.color,activeStroke.width,[[pt.x,pt.y]]);
+      redrawAllStrokes();
+      try { annoCanvas.setPointerCapture(e.pointerId); } catch(_e){}
+      e.preventDefault();
+    });
+    annoCanvas.addEventListener("pointermove",function(e){
+      if(session.getState().role!=="agent") return;
+      var pt=clientToNorm(e);
+      if(toolMode==="pointer"){
+        session.sendPointer(currentViewKey,pt.x,pt.y);
+      } else if(toolMode==="draw"&&activeStroke){
+        activeStroke.points.push([pt.x,pt.y]);
+        if(!pendingStrokePoints) pendingStrokePoints=[];
+        pendingStrokePoints.push([pt.x,pt.y]);
+        scheduleStrokeFlush();
+        redrawAllStrokes();
+      }
+    });
+    annoCanvas.addEventListener("pointerup",function(e){
+      if(session.getState().role!=="agent") return;
+      if(toolMode==="draw"&&activeStroke){
+        if(pendingStrokePoints&&pendingStrokePoints.length>0){
+          session.sendStrokePatch(currentViewKey,pendingStrokeId,pendingStrokePoints);
+          pendingStrokePoints=null;
+        }
+        session.sendStrokeCommit(currentViewKey,activeStroke.strokeId);
+        localStrokes.push(activeStroke);
+        activeStroke=null;
+        pendingStrokeId=null;
+        try { annoCanvas.releasePointerCapture(e.pointerId); } catch(_e){}
+      }
+    });
+    annoCanvas.addEventListener("pointerleave",function(){
+      if(session.getState().role!=="agent") return;
+      if(toolMode==="pointer"){
+        session.sendPointer(currentViewKey,null,null);
+      }
+    });
+  }
+
+  // Toolbar buttons (agent only — they're hidden via CSS for visitors).
+  if(annoToolbar){
+    annoToolbar.addEventListener("click",function(e){
+      var btn=e.target&&e.target.closest?e.target.closest(".anno-tool-btn"):null;
+      if(!btn) return;
+      var t=btn.getAttribute("data-tool");
+      if(t==="pointer"||t==="draw"){ setToolMode(t); return; }
+      if(btn===clearBtn){ handleClearLocallyAndBroadcast(); return; }
+      if(btn===captureOpenBtn){ showCapturePanel(); return; }
+    });
+  }
+  if(captureSaveBtn) captureSaveBtn.addEventListener("click",downloadCaptureSpec);
+  if(captureCancelBtn) captureCancelBtn.addEventListener("click",hideCapturePanel);
+
+  // Global hotkeys: only fire when an active agent session exists and
+  // the user isn't typing in a form field. Esc closes the capture
+  // panel first, then deselects the tool.
+  document.addEventListener("keydown",function(e){
+    var s=session.getState();
+    if(s.role!=="agent"||!s.isConnected) return;
+    var tgt=e.target;
+    if(tgt&&(tgt.tagName==="INPUT"||tgt.tagName==="TEXTAREA"||tgt.isContentEditable)){
+      if(e.key==="Escape"&&capturePanel&&!capturePanel.hidden){
+        hideCapturePanel();
+        e.preventDefault();
+      }
+      return;
+    }
+    var k=(e.key||"").toLowerCase();
+    if(k==="p"){ setToolMode("pointer"); e.preventDefault(); }
+    else if(k==="d"){ setToolMode("draw"); e.preventDefault(); }
+    else if(k==="c"){ handleClearLocallyAndBroadcast(); e.preventDefault(); }
+    else if(k==="s"){ showCapturePanel(); e.preventDefault(); }
+    else if(e.key==="Escape"){
+      if(capturePanel&&!capturePanel.hidden) hideCapturePanel();
+      else setToolMode("none");
+      e.preventDefault();
+    }
+  });
+
+  // ResizeObserver re-renders strokes when the letterbox box changes
+  // (window resize, devtools open, fullscreen toggle). Normalized
+  // coords stay valid; we only need to rebake the pixel projection.
+  if(typeof ResizeObserver==="function"&&letterboxWrap){
+    try {
+      var ro=new ResizeObserver(function(){ resizeAnnoCanvas(); });
+      ro.observe(letterboxWrap);
+    } catch(_e){
+      window.addEventListener("resize",resizeAnnoCanvas);
+    }
+  } else if(letterboxWrap){
+    window.addEventListener("resize",resizeAnnoCanvas);
+  }
+
   function teardownSession(){
     try { session.dispose(); } catch(_e){}
     if(leaveBtn) leaveBtn.hidden=true;
     wasConnected=false;
+    // Strip the letterbox + agent class so idle viewing returns to a
+    // full-screen iframe and the toolbar disappears.
+    setBodyLetterboxClass(false,false);
+    setToolMode("none");
+    wipeAnnotations();
+    currentViewKey="";
+    lastPointerSeq=0;
+    lastStrokeSeq=0;
+    lastClearSeq=0;
+    hideCapturePanel();
     resetUiToIdle();
     // Re-create the controller so a fresh session can be started
     // without reloading the page. Re-attach the same subscriber.
@@ -3835,6 +4247,13 @@ if(frame){
     if(!frame) return;
     var p=props[current];
     if(!p||!p.iframeUrl) return;
+    // Auto-clear all annotations on every teleport — agents and
+    // visitors both wipe their canvas so strokes never bleed across
+    // the new Matterport sweep. The viewKey also rolls so any late
+    // packets from the previous sweep get dropped by the receiver's
+    // viewKey filter in live-session.mjs.
+    currentViewKey=(ss||"")+"|"+(sr||"");
+    wipeAnnotations();
     try { frame.src=rewriteIframeForTeleport(p.iframeUrl,ss,sr); } catch(_e){}
   }
 
@@ -3960,6 +4379,11 @@ if(frame){
     if(!wasConnected && state.isConnected && state.status==="connected"){
       wasConnected=true;
       if(leaveBtn) leaveBtn.hidden=false;
+      // Engage the 16:9 letterbox + agent toolbar (if applicable) once
+      // the channel is live. Resize the canvas backing store so
+      // strokes received before the first redraw appear correctly.
+      setBodyLetterboxClass(true,state.role==="agent");
+      resizeAnnoCanvas();
       // Visitor: auto-close the Live Tour drawer so the tour fills the
       // screen. Agent stays in the drawer to manage stops.
       if(state.role==="visitor") hideOverlaysForLiveTour();
@@ -3996,6 +4420,70 @@ if(frame){
     if(state.role==="visitor"&&state.incomingTeleportEvent&&state.incomingTeleportEvent.ts!==lastTeleportTs){
       lastTeleportTs=state.incomingTeleportEvent.ts;
       applyTeleport(state.incomingTeleportEvent.ss,state.incomingTeleportEvent.sr);
+    }
+
+    // ── Annotation receive paths ─────────────────────────────────
+    // Controller's seq filter guarantees monotonicity in state; we
+    // de-dupe locally by seq so the same patch-tick doesn't re-render
+    // the same event. Agent and visitor BOTH receive (agent only
+    // emits, but the agent's own canvas is updated by the local
+    // pointerdown/move handlers, not by inbound events — strictly
+    // speaking the agent has nothing to receive, but the dedup is
+    // cheap and keeps the handler symmetric).
+    var pev=state.incomingPointerEvent;
+    if(pev&&pev.seq!==lastPointerSeq){
+      lastPointerSeq=pev.seq;
+      if(state.role==="visitor"&&remotePointer&&letterboxWrap){
+        if(pev.x==null||pev.y==null){
+          remotePointer.style.display="none";
+          if(remotePointerHideTimer){ try { clearTimeout(remotePointerHideTimer); } catch(_e){} remotePointerHideTimer=null; }
+        } else {
+          // #remote-pointer is a child of the wrap; absolute coords
+          // are relative to the wrap so plain fraction * wrap size
+          // is the correct projection.
+          var rect=letterboxWrap.getBoundingClientRect();
+          remotePointer.style.left=(pev.x*rect.width)+"px";
+          remotePointer.style.top=(pev.y*rect.height)+"px";
+          remotePointer.style.display="block";
+          if(remotePointerHideTimer){ try { clearTimeout(remotePointerHideTimer); } catch(_e){} }
+          // Idle-hide so a stuck pointer doesn't linger forever if
+          // the agent disconnects without a clean leave event.
+          remotePointerHideTimer=setTimeout(function(){
+            if(remotePointer) remotePointer.style.display="none";
+          },ANNO_REMOTE_POINTER_TIMEOUT_MS);
+        }
+      }
+    }
+
+    var sev=state.incomingStrokeEvent;
+    if(sev&&sev.seq!==lastStrokeSeq){
+      lastStrokeSeq=sev.seq;
+      if(state.role==="visitor"){
+        if(sev.kind==="begin"){
+          var nstroke={
+            strokeId:sev.strokeId,
+            color:sev.color||ANNO_STROKE_COLOR,
+            width:typeof sev.width==="number"?sev.width:ANNO_STROKE_WIDTH,
+            points:sev.points?sev.points.slice():[],
+          };
+          localStrokes.push(nstroke);
+          redrawAllStrokes();
+        } else if(sev.kind==="patch"){
+          var existing=findLocalStroke(sev.strokeId);
+          if(existing&&sev.points){
+            for(var pi=0;pi<sev.points.length;pi++) existing.points.push(sev.points[pi]);
+            redrawAllStrokes();
+          }
+        }
+        // commit is a no-op on the visitor — the stroke is already
+        // visible; commit just signals the agent finished it.
+      }
+    }
+
+    var cev=state.incomingClearEvent;
+    if(cev&&cev.seq!==lastClearSeq){
+      lastClearSeq=cev.seq;
+      if(state.role==="visitor") wipeAnnotations();
     }
   }
 
