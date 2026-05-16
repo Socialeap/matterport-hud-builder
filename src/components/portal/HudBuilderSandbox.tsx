@@ -22,7 +22,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { Palette, Home, UserCircle, Sparkles, Lock, Eye, EyeOff, Rocket } from "lucide-react";
+import { Palette, Home, UserCircle, Sparkles, Lock, Eye, EyeOff, Rocket, Eraser } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -221,27 +221,38 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     };
   }, []);
 
-  // Autofill the Agent/Manager Contact form from the signed-in user's saved
-  // Agent Profile — only when the form is still empty. If a draft restore
-  // happens later, applyDraft will overwrite these fields, which is correct.
+  // Agent Profile prefill. Auto-runs once when fields are still empty so
+  // first-time agents get instant prefill; a manual button in the header
+  // (Setup → Prefill from My Profile / Start Blank) lets the user re-trigger
+  // or clear the form afterwards (e.g. before importing a draft.json).
   const agentAutofilledRef = useRef(false);
   const fetchAgentProfile = useServerFn(getMyAgentProfile);
-  useEffect(() => {
-    if (!userId || agentAutofilledRef.current) return;
-    let cancelled = false;
-    (async () => {
+
+  const applyProfileToAgent = useCallback(
+    async (opts: { force: boolean; notify?: boolean }) => {
+      if (!userId) {
+        if (opts.notify) toast.error("Sign in first to use your saved profile.");
+        return false;
+      }
       try {
         const { profile } = await fetchAgentProfile();
-        if (cancelled || !profile || agentAutofilledRef.current) return;
-        agentAutofilledRef.current = true;
+        if (!profile) {
+          if (opts.notify)
+            toast.message("No saved profile found yet.", {
+              description: "Fill out your Agent Profile to enable one-click prefill.",
+            });
+          return false;
+        }
         const social = (profile.social_links as Record<string, string>) ?? {};
+        let applied = false;
         setAgent((prev) => {
           const isEmpty =
             !prev.name && !prev.titleRole && !prev.email && !prev.phone &&
             !prev.welcomeNote && !prev.avatarUrl && !prev.linkedin && !prev.twitter &&
             !prev.instagram && !prev.facebook && !prev.tiktok && !prev.other &&
             !prev.website && !prev.gaTrackingId;
-          if (!isEmpty) return prev;
+          if (!opts.force && !isEmpty) return prev;
+          applied = true;
           return {
             ...prev,
             name: profile.display_name ?? prev.name,
@@ -260,15 +271,35 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
             website: social.website ?? prev.website,
           };
         });
+        agentAutofilledRef.current = true;
+        if (opts.notify && applied) toast.success("Filled from your Agent Profile.");
+        if (opts.notify && !applied)
+          toast.message("Form already has entries.", {
+            description: "Use Start Blank first to overwrite.",
+          });
+        return applied;
       } catch {
-        // Silent fallback — keep manual entry working.
+        if (opts.notify) toast.error("Couldn't load your Agent Profile.");
+        return false;
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, viewer?.email]);
+    [userId, viewer?.email],
+  );
+
+  const handleClearAgentFields = useCallback(() => {
+    setAgent({ ...DEFAULT_AGENT });
+    setAgentAvatarFile(null);
+    agentAutofilledRef.current = true; // prevent auto-prefill from refilling
+    toast.success("Agent fields cleared.", {
+      description: "Import a draft or fill them in manually.",
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!userId || agentAutofilledRef.current) return;
+    void applyProfileToAgent({ force: false });
+  }, [userId, applyProfileToAgent]);
 
   // Check license status — for clients, check the provider's license
   useEffect(() => {
@@ -1613,9 +1644,55 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
             </span>
           </div>
 
-          {/* Import + Export buttons */}
+          {/* Setup + Import + Export buttons */}
           <TooltipProvider delayDuration={150}>
             <div className="flex items-center gap-2">
+              <DropdownMenu>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <DropdownMenuTrigger asChild>
+                      <Button type="button" variant="outline" size="sm">
+                        <UserCircle className="size-4" />
+                        Setup
+                      </Button>
+                    </DropdownMenuTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-xs text-center">
+                    Choose how to start this presentation: prefill from your saved Agent Profile, or leave the form blank for a draft import / fresh build.
+                  </TooltipContent>
+                </Tooltip>
+                <DropdownMenuContent align="end" className="w-72">
+                  <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                    Start this presentation by…
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onSelect={() => { void applyProfileToAgent({ force: true, notify: true }); }}
+                    className="cursor-pointer"
+                    disabled={!userId}
+                  >
+                    <Sparkles className="size-4" />
+                    <div className="flex flex-col">
+                      <span className="text-sm font-medium">Prefill from My Profile</span>
+                      <span className="text-xs text-muted-foreground">
+                        {userId ? "Use saved name, photo, contact & socials." : "Sign in to enable."}
+                      </span>
+                    </div>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={handleClearAgentFields}
+                    className="cursor-pointer"
+                  >
+                    <Eraser className="size-4" />
+                    <div className="flex flex-col">
+                      <span className="text-sm font-medium">Start Blank</span>
+                      <span className="text-xs text-muted-foreground">
+                        Clear agent fields — ready for draft import or fresh entry.
+                      </span>
+                    </div>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <input
                 ref={importInputRef}
                 type="file"

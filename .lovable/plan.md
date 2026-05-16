@@ -66,3 +66,48 @@ No frontend, server-fn, or edge-function code is touched. The existing token iss
 3. Worker logs show no `[generatePresentation] token mint failed` lines.
 4. `select count(*) from public.presentation_tokens` increments by 1 per export.
 5. Open the downloaded HTML, ask Ask AI a question → `synthesize-answer` returns 200 (token verifies).
+
+---
+
+# Addendum — Agent Profile as Presentation Starter Kit
+
+(Full plan in chat; capturing scope here for the build queue.)
+
+Promote `public.profiles` into a real **Agent Profile** page so the agent's
+identity + preferences become a reusable seed for every new presentation.
+
+## Scope
+1. New route `/_authenticated/dashboard/profile` with sections:
+   - Identity & Contact (display_name, title_role, company, phone, avatar, bio)
+   - Voice & Messaging (default welcome note, saved welcome variants, AI persona tone, signature CTA)
+   - Default Presentation Preferences (starter template, tour behavior, enhancement toggles, branding overrides for Pro, privacy mode, GA4 ID)
+   - Reusable Property Brain (links to Vault templates the agent uses)
+2. DB additions to `profiles`: `bio`, `signature_cta`, `ai_persona_tone`, `welcome_variants jsonb`, `presentation_defaults jsonb`, `default_starter_template`.
+3. Server fns in `src/lib/agent-profile.functions.ts`: extend `getMyAgentProfile`, add `updateMyAgentProfile`, add `hydratePresentationFromProfile({ starterTemplate })`.
+4. Builder hydration: replace hard-coded empty defaults with `hydratePresentationFromProfile`.
+5. UI affordances: "Reset section to my profile defaults" links inside Agent / Branding / Enhancements sections.
+
+## Builder Top-Right "Setup" Button (NEW)
+Add a header control next to Import/Export on `/p/$slug/builder` so the
+agent explicitly chooses the start mode for each new presentation:
+
+- **Prefill from My Profile** — force-applies saved profile data to the
+  Agent/Manager Contact form (overwrites current values).
+- **Start Blank** — clears agent fields and disables auto-prefill, so the
+  agent can immediately Import a `.3dps-draft.json` or hand-fill from scratch.
+
+Implementation notes:
+- Refactor existing auto-prefill `useEffect` into a callable
+  `applyProfileToAgent({ force, notify })` so the button and the
+  first-load auto-prefill share one code path.
+- Add `handleClearAgentFields()` that resets to `DEFAULT_AGENT`, drops any
+  staged avatar file, and sets `agentAutofilledRef.current = true` to
+  prevent auto-prefill from clobbering the cleared state.
+- Render a `DropdownMenu` (Sparkles / Eraser icons) — disabled "Prefill"
+  item when no `userId`.
+- Existing auto-prefill on first empty load is preserved (non-breaking).
+
+## Out of scope (this addendum)
+- Cloning a finished saved presentation as a template (handled by existing
+  draft Export/Import for now).
+- Per-agent profile presets beyond a single default set.
