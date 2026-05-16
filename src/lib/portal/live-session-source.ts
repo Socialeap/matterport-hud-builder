@@ -48,6 +48,47 @@ export interface LiveSessionTeleportEvent {
   ts: number;
 }
 
+/**
+ * Normalized [0,1] cursor position from the agent. `x` / `y` are
+ * `null` when the agent's pointer leaves the annotation surface —
+ * the visitor hides its remote-pointer indicator in that case.
+ */
+export interface LiveSessionPointerEvent {
+  viewKey: string;
+  seq: number;
+  x: number | null;
+  y: number | null;
+  ts: number;
+}
+
+/**
+ * Incremental stroke update from the agent. `kind` is the lifecycle
+ * stage: `begin` opens a stroke (carrying color/width and the first
+ * point), `patch` appends more points, `commit` seals the stroke.
+ * All points are normalized [0,1] tuples relative to the letterbox.
+ */
+export interface LiveSessionStrokeEvent {
+  kind: "begin" | "patch" | "commit";
+  viewKey: string;
+  seq: number;
+  strokeId: string;
+  ts: number;
+  color?: string;
+  width?: number;
+  points?: Array<[number, number]>;
+}
+
+/**
+ * Agent → Visitor "wipe the canvas" event. Visitor drops all stored
+ * strokes whose viewKey matches. Distinct from teleport-triggered
+ * auto-clear (handled locally on both sides).
+ */
+export interface LiveSessionClearEvent {
+  viewKey: string;
+  seq: number;
+  ts: number;
+}
+
 export type LiveSessionRole = "agent" | "visitor" | null;
 export type LiveSessionStatus =
   | "idle"
@@ -67,6 +108,9 @@ export interface LiveSessionState {
   isConnected: boolean;
   remoteStream: MediaStream | null;
   incomingTeleportEvent: LiveSessionTeleportEvent | null;
+  incomingPointerEvent: LiveSessionPointerEvent | null;
+  incomingStrokeEvent: LiveSessionStrokeEvent | null;
+  incomingClearEvent: LiveSessionClearEvent | null;
 }
 
 /** Public API surface of the controller returned by `createLiveSession`. */
@@ -76,6 +120,21 @@ export interface LiveSessionController {
   initializeAsAgent(): Promise<{ pin: string; peerId: string }>;
   joinAsVisitor(pin: string): Promise<{ pin: string; peerId: string }>;
   teleportVisitor(ss: string, sr: string): boolean;
+  sendPointer(viewKey: string, x: number | null, y: number | null): boolean;
+  sendStrokeBegin(
+    viewKey: string,
+    strokeId: string,
+    color: string,
+    width: number,
+    points: Array<[number, number]>,
+  ): boolean;
+  sendStrokePatch(
+    viewKey: string,
+    strokeId: string,
+    points: Array<[number, number]>,
+  ): boolean;
+  sendStrokeCommit(viewKey: string, strokeId: string): boolean;
+  sendClear(viewKey: string): boolean;
   dispose(): void;
 }
 

@@ -1,11 +1,25 @@
 // Live Guided Tour P2P controller. Loaded into the exported HTML
 // runtime. Wraps the global `Peer` constructor (PeerJS UMD bundle,
 // loaded via CDN <script> tag) to drive a single Agent <-> Visitor
-// session: a reliable WebRTC DataChannel for "teleport" packets and a
-// MediaConnection for two-way voice.
+// session: a reliable WebRTC DataChannel for teleport + annotation
+// packets and a MediaConnection for two-way voice.
 //
-// Wire format (DataChannel JSON):
-//   { type: "teleport", ss: string, sr: string }
+// Wire format (DataChannel JSON, all packets share the channel):
+//   { type: "teleport", ss, sr }
+//   { type: "pointer", viewKey, seq, x, y, ts }
+//   { type: "stroke_begin", viewKey, seq, strokeId, color, width, points, ts }
+//   { type: "stroke_patch", viewKey, seq, strokeId, points, ts }
+//   { type: "stroke_commit", viewKey, seq, strokeId, ts }
+//   { type: "clear", viewKey, seq, ts }
+//
+// `viewKey` is derived from the most recent teleport (ss + "|" + sr)
+// on both ends; receivers drop annotation packets whose viewKey
+// differs from their current one — kills late-arriving frames from a
+// previous Matterport sweep. `seq` is a single monotonic counter per
+// sender; receivers drop any packet with seq <= last seen. Pointer
+// sends are coalesced through a frame-rate scheduler (rAF in the
+// browser) and are additionally guarded by dataConn.bufferedAmount so
+// the channel never backs up under a flood of mousemove events.
 //
 // Same constraints as the other .mjs runtime modules in this folder:
 // no imports, no TypeScript syntax, no single-quote string literals,
@@ -101,6 +115,13 @@ function _makeLogger(debug) {
   };
 }
 
+// Drop a pointer send when the DataChannel has more than this many
+// bytes already queued. 64 KiB is well below the SCTP send buffer cap
+// in every browser PeerJS supports — staying under it keeps latency
+// low enough for live cursor tracking. Stroke packets ignore this
+// guard so we never lose ink.
+var LIVE_SESSION_POINTER_BACKPRESSURE_BYTES = 65536;
+
 // Factory for a single live-session controller. Each call returns an
 // independent state machine; the page is expected to keep at most one
 // alive at a time.
@@ -111,6 +132,10 @@ function _makeLogger(debug) {
 //     reports the id is taken (default 5)
 //   PeerCtor: function — dependency injection seam used by tests; in
 //     the browser we read `window.Peer` if not provided.
+//   schedule: function(cb) — frame scheduler for the pointer
+//     coalescer. Defaults to `requestAnimationFrame` in the browser,
+//     `setTimeout(cb, 16)` otherwise. Tests pass a manual scheduler
+//     to drive coalescing deterministically.
 function createLiveSession(options) {
   var opts = options || {};
   var log = _makeLogger(!!opts.debug);
@@ -121,6 +146,16 @@ function createLiveSession(options) {
       : typeof Peer === "function"
         ? Peer
         : null;
+  var scheduler =
+    typeof opts.schedule === "function"
+      ? opts.schedule
+      : typeof requestAnimationFrame === "function"
+        ? function (cb) {
+            requestAnimationFrame(cb);
+          }
+        : function (cb) {
+            setTimeout(cb, 16);
+          };
 
   var state = {
     role: null,
@@ -131,6 +166,9 @@ function createLiveSession(options) {
     isConnected: false,
     remoteStream: null,
     incomingTeleportEvent: null,
+    incomingPointerEvent: null,
+    incomingStrokeEvent: null,
+    incomingClearEvent: null,
   };
 
   var listeners = [];
@@ -139,6 +177,24 @@ function createLiveSession(options) {
   var mediaCall = null;
   var localMicStream = null;
   var disposed = false;
+
+  // Annotation channel bookkeeping. _sendSeq is the agent's monotonic
+  // counter stamped on every outbound annotation packet. _lastRecvSeq
+  // is the receiver's watermark — any packet whose seq doesn't exceed
+  // it is dropped (out-of-order arrival under a reliable channel
+  // shouldn't happen, but we guard so a buggy peer can't replay).
+  // _currentViewKey is updated automatically from teleport packets on
+  // both ends; annotation packets whose viewKey diverges are dropped
+  // so late frames from a stale Matterport sweep don't leak through.
+  var _sendSeq = 0;
+  var _lastRecvSeq = 0;
+  var _currentViewKey = "";
+
+  // Pointer coalescer. The runtime can call sendPointer many times
+  // per frame (mousemove fires at the input device's poll rate); we
+  // only flush the latest position on the next scheduler tick.
+  var _pendingPointer = null;
+  var _flushScheduled = false;
 
   function _patch(next) {
     var merged = {};
@@ -434,13 +490,67 @@ function createLiveSession(options) {
   // ── Shared ─────────────────────────────────────────────────────────
   function _handleIncomingData(payload) {
     if (!_isPlainObject(payload)) return;
-    if (payload.type === "teleport") {
+    var type = payload.type;
+    if (type === "teleport") {
       var ss = _coerceString(payload.ss).trim();
       var sr = _coerceString(payload.sr).trim();
       if (!ss) return;
+      _currentViewKey = ss + "|" + sr;
       _patch({
         incomingTeleportEvent: { ss: ss, sr: sr, ts: Date.now() },
       });
+      return;
+    }
+    if (
+      type === "pointer" ||
+      type === "stroke_begin" ||
+      type === "stroke_patch" ||
+      type === "stroke_commit" ||
+      type === "clear"
+    ) {
+      var seq = +payload.seq || 0;
+      if (seq <= _lastRecvSeq) return;
+      var vk = _coerceString(payload.viewKey);
+      // Empty viewKey on either end means "no teleport yet" — accept;
+      // mismatch when both sides have a key means stale frame, drop.
+      if (vk && _currentViewKey && vk !== _currentViewKey) return;
+      _lastRecvSeq = seq;
+      var ts = +payload.ts || Date.now();
+      if (type === "pointer") {
+        _patch({
+          incomingPointerEvent: {
+            viewKey: vk,
+            seq: seq,
+            x: typeof payload.x === "number" ? payload.x : null,
+            y: typeof payload.y === "number" ? payload.y : null,
+            ts: ts,
+          },
+        });
+        return;
+      }
+      if (type === "clear") {
+        _patch({
+          incomingClearEvent: { viewKey: vk, seq: seq, ts: ts },
+        });
+        return;
+      }
+      var kind =
+        type === "stroke_begin"
+          ? "begin"
+          : type === "stroke_patch"
+            ? "patch"
+            : "commit";
+      var ev = {
+        kind: kind,
+        viewKey: vk,
+        seq: seq,
+        strokeId: _coerceString(payload.strokeId),
+        ts: ts,
+      };
+      if (typeof payload.color === "string") ev.color = payload.color;
+      if (typeof payload.width === "number") ev.width = payload.width;
+      if (Array.isArray(payload.points)) ev.points = payload.points;
+      _patch({ incomingStrokeEvent: ev });
     }
   }
 
@@ -452,17 +562,132 @@ function createLiveSession(options) {
   function teleportVisitor(ss, sr) {
     if (state.role !== "agent") return false;
     if (!dataConn || !state.isConnected) return false;
+    var ssClean = _coerceString(ss).trim();
+    var srClean = _coerceString(sr).trim();
+    if (!ssClean) return false;
+    var packet = { type: "teleport", ss: ssClean, sr: srClean };
+    try {
+      dataConn.send(packet);
+      _currentViewKey = ssClean + "|" + srClean;
+      return true;
+    } catch (e) {
+      log("send failed", e);
+      return false;
+    }
+  }
+
+  function _canSendAnnotation() {
+    return state.role === "agent" && !!dataConn && state.isConnected;
+  }
+
+  function _bufferedAmount() {
+    if (!dataConn) return 0;
+    var ba = dataConn.bufferedAmount;
+    return typeof ba === "number" ? ba : 0;
+  }
+
+  function _scheduleFlush() {
+    if (_flushScheduled) return;
+    _flushScheduled = true;
+    try {
+      scheduler(_flushPendingPointer);
+    } catch (e) {
+      _flushScheduled = false;
+      log("scheduler threw", e);
+    }
+  }
+
+  function _flushPendingPointer() {
+    _flushScheduled = false;
+    var p = _pendingPointer;
+    _pendingPointer = null;
+    if (!p) return;
+    if (!_canSendAnnotation()) return;
+    if (_bufferedAmount() > LIVE_SESSION_POINTER_BACKPRESSURE_BYTES) return;
+    var seq = ++_sendSeq;
     var packet = {
-      type: "teleport",
-      ss: _coerceString(ss).trim(),
-      sr: _coerceString(sr).trim(),
+      type: "pointer",
+      viewKey: _coerceString(p.viewKey),
+      seq: seq,
+      x: typeof p.x === "number" ? p.x : null,
+      y: typeof p.y === "number" ? p.y : null,
+      ts: Date.now(),
     };
-    if (!packet.ss) return false;
+    try {
+      dataConn.send(packet);
+    } catch (e) {
+      log("pointer send failed", e);
+    }
+  }
+
+  // Agent-only: queue a pointer update. Coalesced through `scheduler`
+  // so a flood of mousemove events still produces at most one packet
+  // per frame. Returns true if the call was queued, false if the
+  // session isn't in a position to send (wrong role, no channel).
+  function sendPointer(viewKey, x, y) {
+    if (!_canSendAnnotation()) return false;
+    _pendingPointer = { viewKey: viewKey, x: x, y: y };
+    _scheduleFlush();
+    return true;
+  }
+
+  function _sendStroke(type, viewKey, strokeId, extra) {
+    if (!_canSendAnnotation()) return false;
+    var sid = _coerceString(strokeId);
+    if (!sid) return false;
+    var seq = ++_sendSeq;
+    var packet = {
+      type: type,
+      viewKey: _coerceString(viewKey),
+      seq: seq,
+      strokeId: sid,
+      ts: Date.now(),
+    };
+    if (extra) {
+      for (var k in extra) {
+        if (Object.prototype.hasOwnProperty.call(extra, k)) packet[k] = extra[k];
+      }
+    }
     try {
       dataConn.send(packet);
       return true;
     } catch (e) {
-      log("send failed", e);
+      log("stroke send failed", e);
+      return false;
+    }
+  }
+
+  function sendStrokeBegin(viewKey, strokeId, color, width, points) {
+    var extra = {};
+    if (typeof color === "string") extra.color = color;
+    if (typeof width === "number") extra.width = width;
+    if (Array.isArray(points) && points.length > 0) extra.points = points;
+    return _sendStroke("stroke_begin", viewKey, strokeId, extra);
+  }
+
+  function sendStrokePatch(viewKey, strokeId, points) {
+    if (!Array.isArray(points) || points.length === 0) return false;
+    return _sendStroke("stroke_patch", viewKey, strokeId, { points: points });
+  }
+
+  function sendStrokeCommit(viewKey, strokeId) {
+    return _sendStroke("stroke_commit", viewKey, strokeId, null);
+  }
+
+  function sendClear(viewKey) {
+    if (!_canSendAnnotation()) return false;
+    var seq = ++_sendSeq;
+    var packet = {
+      type: "clear",
+      viewKey: _coerceString(viewKey),
+      seq: seq,
+      ts: Date.now(),
+    };
+    try {
+      dataConn.send(packet);
+      return true;
+    } catch (e) {
+      log("clear send failed", e);
       return false;
     }
   }
@@ -510,6 +735,11 @@ function createLiveSession(options) {
     dataConn = null;
     mediaCall = null;
     localMicStream = null;
+    _sendSeq = 0;
+    _lastRecvSeq = 0;
+    _currentViewKey = "";
+    _pendingPointer = null;
+    _flushScheduled = false;
     state = {
       role: null,
       status: "idle",
@@ -519,6 +749,9 @@ function createLiveSession(options) {
       isConnected: false,
       remoteStream: null,
       incomingTeleportEvent: null,
+      incomingPointerEvent: null,
+      incomingStrokeEvent: null,
+      incomingClearEvent: null,
     };
   }
 
@@ -528,6 +761,11 @@ function createLiveSession(options) {
     initializeAsAgent: initializeAsAgent,
     joinAsVisitor: joinAsVisitor,
     teleportVisitor: teleportVisitor,
+    sendPointer: sendPointer,
+    sendStrokeBegin: sendStrokeBegin,
+    sendStrokePatch: sendStrokePatch,
+    sendStrokeCommit: sendStrokeCommit,
+    sendClear: sendClear,
     dispose: dispose,
   };
 }
