@@ -3841,11 +3841,6 @@ if(frame){
   var annoCtx=annoCanvas?annoCanvas.getContext("2d"):null;
   var annoToolbar=document.getElementById("anno-toolbar");
   var remotePointer=document.getElementById("remote-pointer");
-  var capturePanel=document.getElementById("anno-capture-panel");
-  var captureNoteEl=document.getElementById("anno-capture-note");
-  var captureSaveBtn=document.getElementById("anno-capture-save");
-  var captureCancelBtn=document.getElementById("anno-capture-cancel");
-  var captureOpenBtn=document.getElementById("anno-capture-btn");
   var clearBtn=document.getElementById("anno-clear-btn");
 
   var ANNO_STROKE_COLOR="#ff3b30";
