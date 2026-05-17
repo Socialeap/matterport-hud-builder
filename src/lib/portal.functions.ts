@@ -3935,11 +3935,17 @@ if(frame){
     if(!document||!document.body) return;
     if(active){
       document.body.classList.add("live-tour-active");
-      if(isAgent) document.body.classList.add("live-tour-agent");
-      else document.body.classList.remove("live-tour-agent");
+      if(isAgent){
+        document.body.classList.add("live-tour-agent");
+        document.body.classList.remove("live-tour-visitor");
+      } else {
+        document.body.classList.add("live-tour-visitor");
+        document.body.classList.remove("live-tour-agent");
+      }
     } else {
       document.body.classList.remove("live-tour-active");
       document.body.classList.remove("live-tour-agent");
+      document.body.classList.remove("live-tour-visitor");
     }
   }
 
