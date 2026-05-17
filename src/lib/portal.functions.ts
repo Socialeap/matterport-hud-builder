@@ -1770,15 +1770,7 @@ ${askAssets.css}
         </label>
       </span>
       <button type="button" class="anno-tool-btn" id="anno-clear-btn" title="Clear annotations (C)" aria-keyshortcuts="C">Clear</button>
-      <button type="button" class="anno-tool-btn" id="anno-capture-btn" title="Capture spec (S)" aria-keyshortcuts="S">Capture</button>
       <button type="button" class="anno-tool-btn anno-exit-btn" id="anno-exit-btn" title="Exit annotation mode (clears drawings &amp; unfreezes visitor)" aria-label="Exit annotation mode">&times;</button>
-    </div>
-    <div id="anno-capture-panel" hidden>
-      <textarea id="anno-capture-note" placeholder="Optional note for this spec..." rows="3"></textarea>
-      <div class="anno-capture-actions">
-        <button type="button" class="anno-tool-btn" id="anno-capture-cancel">Cancel</button>
-        <button type="button" class="anno-tool-btn primary" id="anno-capture-save">Save JSON</button>
-      </div>
     </div>
   </div>
 </div>
