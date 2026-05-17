@@ -1629,24 +1629,41 @@ body.live-tour-active #viewer{display:flex;align-items:center;justify-content:ce
 body.live-tour-active #anno-letterbox-wrap{position:relative;inset:auto;aspect-ratio:16/9;width:min(100vw,calc(100vh * 16 / 9));height:auto;max-height:100vh}
 body.live-tour-active.live-tour-agent #anno-toolbar{display:flex}
 
-/* ── Location Sync — visitor's "Share my view" UI ────────────────── */
-/* Two stacked cards at the top-center column. We hard-cap the width
-   AND position the pill below the typical Matterport "Link to location"
-   popup band (which Matterport renders top-right, roughly y=10..110)
-   so even on narrower viewports the two UIs cannot collide. The pill
-   is centered horizontally in a narrow column so its right edge never
-   reaches the Matterport popup's left edge. CSS-gated to visitor role. */
-#loc-sync{position:fixed;top:120px;left:50%;transform:translateX(-50%);z-index:1300;display:none;flex-direction:column;align-items:center;gap:8px;width:min(440px,calc(100vw - 24px));pointer-events:none}
-body.live-tour-active.live-tour-visitor #loc-sync{display:flex}
-#loc-sync-instructions{display:flex;align-items:center;flex-wrap:wrap;justify-content:center;gap:6px 12px;padding:8px 14px;border-radius:12px;background:rgba(0,0,0,0.62);border:1px solid rgba(255,255,255,0.16);color:#fff;font:600 12px/1.3 system-ui,-apple-system,sans-serif;-webkit-backdrop-filter:blur(16px) saturate(160%);backdrop-filter:blur(16px) saturate(160%);box-shadow:0 8px 24px rgba(0,0,0,0.32);pointer-events:auto;text-align:center;width:100%;box-sizing:border-box}
-#loc-sync-instructions-label{display:inline-flex;align-items:center;gap:6px;color:rgba(255,255,255,0.92);white-space:nowrap;width:100%;justify-content:center;font-weight:700;padding-bottom:4px;border-bottom:1px solid rgba(255,255,255,0.08);margin-bottom:4px}
-#loc-sync-instructions-label svg{width:13px;height:13px;color:${escapeHtml(accentColor)}}
-.loc-sync-step{display:inline-flex;align-items:center;gap:5px;color:rgba(255,255,255,0.82);white-space:nowrap}
+/* ── Live Tour HUD (separate header that replaces the regular HUD
+   while body.live-tour-active is set). Keeps the 3D tour unobstructed:
+   it stays collapsed until the chevron is clicked. The visitor sees
+   Sync My View + Leave; the agent sees Leave only (their annotation
+   toolbar already lives inside the letterbox). The standalone floating
+   "Share your view" card was removed — instructions now slide down
+   from this header on demand. */
+body.live-tour-active #hud-header{display:none !important}
+#hud-header-livetour{display:none;position:fixed;top:0;left:0;right:0;z-index:1200;transform:translateY(-100%);opacity:0;pointer-events:none;transition:transform 0.3s ease,opacity 0.3s ease;will-change:transform,opacity}
+body.live-tour-active #hud-header-livetour{display:block}
+#hud-header-livetour.visible{transform:translateY(0);opacity:1;pointer-events:auto}
+#lt-hud-inner{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;background:${escapeHtml(hudBgColor)}ee;-webkit-backdrop-filter:blur(16px) saturate(160%);backdrop-filter:blur(16px) saturate(160%);border-bottom:1px solid rgba(255,255,255,0.08);box-shadow:0 4px 16px rgba(0,0,0,0.25)}
+#lt-hud-center{display:flex;align-items:center;gap:10px;min-width:0;color:#fff;flex:1}
+#lt-hud-logo{height:22px;width:auto;flex-shrink:0}
+#lt-hud-brand{font:700 14px/1 system-ui,-apple-system,sans-serif;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#lt-hud-status{font:600 11px/1 system-ui,-apple-system,sans-serif;color:rgba(255,255,255,0.7);padding:3px 8px;border-radius:999px;background:rgba(34,197,94,0.18);border:1px solid rgba(34,197,94,0.4);flex-shrink:0}
+#lt-hud-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.lt-action-btn{appearance:none;border:none;cursor:pointer;height:32px;padding:0 14px;border-radius:999px;background:${escapeHtml(accentColor)};color:#fff;font:700 12px/1 system-ui,-apple-system,sans-serif;letter-spacing:0.02em;display:inline-flex;align-items:center;justify-content:center;gap:6px;transition:background 0.2s,transform 0.1s,box-shadow 0.2s,opacity 0.15s;box-shadow:0 4px 12px ${escapeHtml(accentColor)}44}
+.lt-action-btn:hover{transform:translateY(-1px);box-shadow:0 6px 16px ${escapeHtml(accentColor)}66}
+.lt-action-btn:active{transform:scale(0.97)}
+.lt-action-btn.lt-leave{background:rgba(255,255,255,0.18);color:#fff;box-shadow:none}
+.lt-action-btn.lt-leave:hover{background:rgba(220,38,38,0.85);transform:translateY(-1px);box-shadow:0 6px 16px rgba(220,38,38,0.4)}
+body.live-tour-agent #lt-sync-btn{display:none}
+#lt-sync-panel{display:none;flex-direction:column;align-items:center;gap:10px;padding:12px 16px 14px;background:rgba(0,0,0,0.78);-webkit-backdrop-filter:blur(16px) saturate(160%);backdrop-filter:blur(16px) saturate(160%);border-bottom:1px solid rgba(255,255,255,0.08);box-shadow:0 4px 16px rgba(0,0,0,0.32)}
+#hud-header-livetour.show-sync #lt-sync-panel{display:flex}
+body.live-tour-agent #lt-sync-panel{display:none !important}
+#lt-sync-steps{display:flex;flex-wrap:wrap;justify-content:center;gap:6px 14px;color:#fff;font:600 12px/1.4 system-ui,-apple-system,sans-serif;max-width:560px}
+.loc-sync-step{display:inline-flex;align-items:center;gap:5px;color:rgba(255,255,255,0.92);white-space:nowrap}
 .loc-sync-step-num{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:${escapeHtml(accentColor)};color:#fff;font:700 10px/1 inherit;flex-shrink:0}
 .loc-sync-step kbd{display:inline-block;padding:1px 6px;border-radius:4px;background:rgba(255,255,255,0.18);border:1px solid rgba(255,255,255,0.24);font:700 11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:#fff}
 @media(max-width:560px){
-  #loc-sync{top:96px;width:calc(100vw - 24px)}
-  #loc-sync-instructions{padding:8px 12px;gap:4px 10px;font-size:11px}
+  #lt-hud-inner{padding:8px 12px;gap:8px}
+  #lt-hud-brand{font-size:12px}
+  .lt-action-btn{height:28px;padding:0 10px;font-size:11px}
+  #lt-sync-steps{font-size:11px;gap:4px 10px}
   .loc-sync-step{font-size:11px}
 }
 
