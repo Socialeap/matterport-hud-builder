@@ -5077,6 +5077,15 @@ if(frame){
       }
       joinBtn.disabled=true;
       if(visitorStatus) visitorStatus.textContent="Connecting…";
+      // Pre-grant clipboard permission in the same user gesture as the
+      // Join click — browser prompts once now, then silent reads power
+      // the auto-share pill for the rest of the session.
+      try {
+        if(navigator&&navigator.clipboard&&typeof navigator.clipboard.readText==="function"){
+          var __pgp=navigator.clipboard.readText();
+          if(__pgp&&typeof __pgp.catch==="function") __pgp.catch(function(){});
+        }
+      } catch(_e){}
       session.joinAsVisitor(pin).catch(function(){
         // error state surfaced via subscribe()
       });
