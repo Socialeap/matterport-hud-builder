@@ -371,6 +371,7 @@ test("annotation senders all return false when role is not agent", () => {
   assert.equal(session.sendStrokePatch("v|", "s1", [[0.1, 0.1]]), false);
   assert.equal(session.sendStrokeCommit("v|", "s1"), false);
   assert.equal(session.sendClear("v|"), false);
+  assert.equal(session.sendNavLock("v|", true), false);
   // Visitor role — also false even when connected (sender is agent-only).
   return session.joinAsVisitor("4242").then(() => {
     assert.equal(session.sendPointer("v|", 0.5, 0.5), false);
@@ -378,6 +379,7 @@ test("annotation senders all return false when role is not agent", () => {
     assert.equal(session.sendStrokePatch("v|", "s1", [[0.1, 0.1]]), false);
     assert.equal(session.sendStrokeCommit("v|", "s1"), false);
     assert.equal(session.sendClear("v|"), false);
+    assert.equal(session.sendNavLock("v|", true), false);
     session.dispose();
   });
 });
