@@ -151,6 +151,7 @@ export interface LiveSessionController {
   ): boolean;
   sendStrokeCommit(viewKey: string, strokeId: string): boolean;
   sendClear(viewKey: string): boolean;
+  sendNavLock(viewKey: string, locked: boolean): boolean;
   dispose(): void;
 }
 
