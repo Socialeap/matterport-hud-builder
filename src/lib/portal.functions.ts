@@ -4358,9 +4358,24 @@ if(frame){
       var btn=e.target&&e.target.closest?e.target.closest(".anno-tool-btn"):null;
       if(!btn) return;
       var t=btn.getAttribute("data-tool");
-      if(t==="pointer"||t==="draw"){ setToolMode(t); return; }
+      if(t==="pointer"||t==="draw"||t==="rope"){ setToolMode(t); return; }
       if(btn===clearBtn){ handleClearLocallyAndBroadcast(); return; }
       if(btn===captureOpenBtn){ showCapturePanel(); return; }
+      if(btn.id==="anno-exit-btn"){
+        // Hard exit: wipe local + remote annotations, drop the tool
+        // mode (which also releases the visitor nav-lock via the
+        // setToolMode side-effect), and broadcast an explicit
+        // nav_lock:false as a belt-and-suspenders safety net.
+        handleClearLocallyAndBroadcast();
+        setToolMode("none");
+        try {
+          var st=session.getState();
+          if(st.role==="agent"&&st.isConnected){
+            session.sendNavLock(currentViewKey,false);
+          }
+        } catch(_e){}
+        return;
+      }
     });
   }
   if(captureSaveBtn) captureSaveBtn.addEventListener("click",downloadCaptureSpec);
