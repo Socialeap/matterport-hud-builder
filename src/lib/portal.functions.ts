@@ -1629,65 +1629,38 @@ body.live-tour-active #viewer{display:flex;align-items:center;justify-content:ce
 body.live-tour-active #anno-letterbox-wrap{position:relative;inset:auto;aspect-ratio:16/9;width:min(100vw,calc(100vh * 16 / 9));height:auto;max-height:100vh}
 body.live-tour-active.live-tour-agent #anno-toolbar{display:flex}
 
-/* ── Location Sync — visitor's "Share my view" UI ────────────────── */
-/* Two stacked cards at the top-center column. We hard-cap the width
-   AND position the pill below the typical Matterport "Link to location"
-   popup band (which Matterport renders top-right, roughly y=10..110)
-   so even on narrower viewports the two UIs cannot collide. The pill
-   is centered horizontally in a narrow column so its right edge never
-   reaches the Matterport popup's left edge. CSS-gated to visitor role. */
-#loc-sync{position:fixed;top:120px;left:50%;transform:translateX(-50%);z-index:1300;display:none;flex-direction:column;align-items:center;gap:8px;width:min(440px,calc(100vw - 24px));pointer-events:none}
-body.live-tour-active.live-tour-visitor #loc-sync{display:flex}
-#loc-sync-instructions{display:flex;align-items:center;flex-wrap:wrap;justify-content:center;gap:6px 12px;padding:8px 14px;border-radius:12px;background:rgba(0,0,0,0.62);border:1px solid rgba(255,255,255,0.16);color:#fff;font:600 12px/1.3 system-ui,-apple-system,sans-serif;-webkit-backdrop-filter:blur(16px) saturate(160%);backdrop-filter:blur(16px) saturate(160%);box-shadow:0 8px 24px rgba(0,0,0,0.32);pointer-events:auto;text-align:center;width:100%;box-sizing:border-box}
-#loc-sync-instructions-label{display:inline-flex;align-items:center;gap:6px;color:rgba(255,255,255,0.92);white-space:nowrap;width:100%;justify-content:center;font-weight:700;padding-bottom:4px;border-bottom:1px solid rgba(255,255,255,0.08);margin-bottom:4px}
-#loc-sync-instructions-label svg{width:13px;height:13px;color:${escapeHtml(accentColor)}}
-.loc-sync-step{display:inline-flex;align-items:center;gap:5px;color:rgba(255,255,255,0.82);white-space:nowrap}
-.loc-sync-step-num{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:${escapeHtml(accentColor)};color:#fff;font:700 10px/1 inherit;flex-shrink:0}
-.loc-sync-step kbd{display:inline-block;padding:1px 6px;border-radius:4px;background:rgba(255,255,255,0.18);border:1px solid rgba(255,255,255,0.24);font:700 11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:#fff}
-@media(max-width:560px){
-  #loc-sync{top:96px;width:calc(100vw - 24px)}
-  #loc-sync-instructions{padding:8px 12px;gap:4px 10px;font-size:11px}
-  .loc-sync-step{font-size:11px}
-}
+/* ── Location Sync — visitor's ambient pulse pill ──────────────────── */
+/* Single ambient status pill, top-left. The clipboard is read silently
+   on focus/visibilitychange/pointerenter events; the pill just reflects
+   state via data-state. Also clickable as a user-gesture fallback for
+   browsers that block ambient readText (Firefox/Safari). Top-left so it
+   never collides with Matterport's "Link to location" popup which renders
+   in the top-right band. */
+#loc-sync{position:fixed;top:8px;left:8px;z-index:1300;display:none;align-items:center;gap:8px;padding:6px 14px 6px 10px;border-radius:999px;background:rgba(0,0,0,0.58);border:1px solid rgba(255,255,255,0.18);color:#fff;font:600 12px/1 system-ui,-apple-system,sans-serif;-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%);box-shadow:0 6px 20px rgba(0,0,0,0.32);cursor:pointer;user-select:none;transition:background 0.2s,opacity 0.2s,transform 0.1s;pointer-events:auto}
+body.live-tour-active.live-tour-visitor #loc-sync{display:inline-flex}
+#loc-sync:hover{background:rgba(0,0,0,0.7);transform:translateY(-1px)}
+#loc-sync:active{transform:scale(0.97)}
+#loc-sync:focus-visible{outline:2px solid ${escapeHtml(accentColor)};outline-offset:2px}
+.loc-sync-dot{position:relative;display:inline-flex;align-items:center;justify-content:center;width:10px;height:10px;border-radius:50%;background:${escapeHtml(accentColor)};flex-shrink:0;animation:loc-sync-breath 2.2s ease-in-out infinite}
+.loc-sync-label{color:rgba(255,255,255,0.94);letter-spacing:0.01em;white-space:nowrap}
+@keyframes loc-sync-breath{0%,100%{box-shadow:0 0 0 0 ${escapeHtml(accentColor)}66}50%{box-shadow:0 0 0 6px ${escapeHtml(accentColor)}00}}
 
-/* Action card — the Sync button + status. Visually distinct from the
-   instruction card above so the user clearly sees the action vs. the
-   how-to. */
-#loc-sync-action{display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:auto;width:100%}
-#loc-sync-btn{appearance:none;border:none;cursor:pointer;min-height:36px;padding:0 22px;border-radius:999px;background:${escapeHtml(accentColor)};color:#fff;font:700 13px/1 system-ui,-apple-system,sans-serif;letter-spacing:0.02em;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:opacity 0.15s,background 0.2s,transform 0.1s,box-shadow 0.2s;box-shadow:0 8px 20px ${escapeHtml(accentColor)}33,0 2px 6px rgba(0,0,0,0.25)}
-#loc-sync-btn:hover{opacity:0.95;transform:translateY(-1px);box-shadow:0 10px 24px ${escapeHtml(accentColor)}55,0 3px 8px rgba(0,0,0,0.3)}
-#loc-sync-btn:active{transform:scale(0.97)}
-#loc-sync-btn[disabled]{opacity:0.55;cursor:default;transform:none;box-shadow:0 2px 6px rgba(0,0,0,0.2)}
-#loc-sync-btn.is-reading{background:rgba(255,255,255,0.22);color:rgba(255,255,255,0.95);box-shadow:0 4px 12px rgba(0,0,0,0.2)}
-#loc-sync-btn.is-success{background:#16a34a;color:#fff;box-shadow:0 8px 20px rgba(22,163,74,0.4)}
-#loc-sync-btn.is-error{background:#b45309;color:#fff;box-shadow:0 8px 20px rgba(180,83,9,0.4)}
-#loc-sync-spinner{display:none;width:12px;height:12px;border:2px solid rgba(255,255,255,0.4);border-top-color:#fff;border-radius:50%;animation:loc-sync-spin 0.7s linear infinite}
-#loc-sync-btn.is-reading #loc-sync-spinner{display:inline-block}
+/* State variants — all driven by data-state on #loc-sync. */
+#loc-sync[data-state="syncing"] .loc-sync-dot{background:transparent;border:2px solid rgba(255,255,255,0.35);border-top-color:#fff;animation:loc-sync-spin 0.7s linear infinite;box-shadow:none}
+#loc-sync[data-state="success"]{background:rgba(22,163,74,0.85);border-color:rgba(22,163,74,0.95)}
+#loc-sync[data-state="success"] .loc-sync-dot{background:#fff;animation:none;box-shadow:none}
+#loc-sync[data-state="success"] .loc-sync-dot::after{content:"";position:absolute;width:6px;height:3px;border-left:2px solid #16a34a;border-bottom:2px solid #16a34a;transform:rotate(-45deg) translate(0.5px,-1px)}
+#loc-sync[data-state="denied"]{background:rgba(180,83,9,0.78);border-color:rgba(180,83,9,0.9)}
+#loc-sync[data-state="denied"] .loc-sync-dot{background:rgba(255,255,255,0.95);animation:none;box-shadow:none}
+#loc-sync[data-state="denied"] .loc-sync-dot::after{content:"";position:absolute;width:4px;height:3px;border:1.5px solid #b45309;border-bottom:none;border-radius:2px 2px 0 0;top:1px}
+#loc-sync[data-state="waiting"]{opacity:0.65}
+#loc-sync[data-state="waiting"] .loc-sync-dot{background:rgba(255,255,255,0.5);animation:loc-sync-breath 3s ease-in-out infinite;--accentColor:rgba(255,255,255,0.3)}
 @keyframes loc-sync-spin{to{transform:rotate(360deg)}}
-#loc-sync-status{font-size:11px;line-height:1.4;color:rgba(255,255,255,0.95);padding:6px 12px;border-radius:8px;background:rgba(0,0,0,0.6);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.14);max-width:min(420px,calc(100vw - 40px));text-align:center;pointer-events:auto}
-#loc-sync-status:empty{display:none}
-#loc-sync-fallback{display:flex;gap:6px;background:rgba(0,0,0,0.6);padding:6px;border-radius:10px;border:1px solid rgba(255,255,255,0.14);pointer-events:auto;width:min(420px,calc(100vw - 40px))}
-#loc-sync-fallback[hidden]{display:none}
-#loc-sync-fallback-input{flex:1;min-width:0;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.18);color:#fff;border-radius:6px;padding:6px 8px;font:500 11px/1.4 inherit;outline:none}
-#loc-sync-fallback-input::placeholder{color:rgba(255,255,255,0.45)}
-#loc-sync-fallback-input:focus{border-color:${escapeHtml(accentColor)}}
-#loc-sync-fallback-submit{appearance:none;border:none;cursor:pointer;background:${escapeHtml(accentColor)};color:#fff;border-radius:6px;padding:0 12px;font:700 11px/1 inherit}
+@media(max-width:560px){#loc-sync{padding:5px 12px 5px 8px;font-size:11px}}
 
-/* ── Location Sync — agent's "Visitor shared location" pill ──────── */
-#loc-share-pill{position:fixed;top:42px;right:12px;z-index:1300;display:none;align-items:center;gap:8px;padding:6px 6px 6px 14px;border-radius:999px;background:rgba(0,0,0,0.55);border:1px solid rgba(255,255,255,0.2);color:#fff;font:600 12px/1 system-ui,-apple-system,sans-serif;-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%);box-shadow:0 8px 24px rgba(0,0,0,0.32);max-width:min(360px,calc(100vw - 24px));animation:loc-share-slide 0.25s ease-out}
-body.live-tour-active.live-tour-agent #loc-share-pill.is-visible{display:inline-flex}
-#loc-share-pill-dot{width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 0 rgba(34,197,94,0.6);animation:loc-share-pulse 1.6s ease-in-out infinite;flex-shrink:0}
-#loc-share-pill-text{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:rgba(255,255,255,0.92)}
-#loc-share-follow{appearance:none;border:none;cursor:pointer;background:${escapeHtml(accentColor)};color:#fff;font:700 11px/1 inherit;letter-spacing:0.02em;padding:0 12px;height:24px;border-radius:999px;display:inline-flex;align-items:center;gap:4px;transition:opacity 0.15s,transform 0.1s}
-#loc-share-follow:hover{opacity:0.92}
-#loc-share-follow:active{transform:scale(0.97)}
-#loc-share-dismiss{appearance:none;border:none;cursor:pointer;background:rgba(255,255,255,0.12);color:rgba(255,255,255,0.75);font-size:14px;line-height:1;width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;transition:background 0.15s,color 0.15s}
-#loc-share-dismiss:hover{background:rgba(255,255,255,0.22);color:#fff}
-@keyframes loc-share-slide{from{transform:translateY(-8px);opacity:0}to{transform:translateY(0);opacity:1}}
-@keyframes loc-share-pulse{0%,100%{box-shadow:0 0 0 0 rgba(34,197,94,0.6)}50%{box-shadow:0 0 0 6px rgba(34,197,94,0)}}
-/* Brief outline pulse on the agent's iframe wrap when they tap Follow,
-   so they have a clear visual that the view they're now seeing is the
-   visitor's location, not their own navigation. */
+/* Agent's auto-follow visual cue — brief outline pulse on the iframe
+   wrap when a visitor's location_share arrives. No agent UI; the
+   teleport is silent except for this pulse. */
 body.live-tour-active.live-tour-agent #anno-letterbox-wrap.follow-pulse{box-shadow:0 0 0 3px ${escapeHtml(accentColor)},0 0 0 6px ${escapeHtml(accentColor)}33;transition:box-shadow 1.5s ease-out}
 
 /* ── Shared modal backdrop ────────────────────────────────────────── */
@@ -1839,36 +1812,15 @@ ${askAssets.css}
 <!-- ── HUD toggle button ─────────────────────────────────────────── -->
 <button id="hud-leave-btn" hidden aria-label="Leave live tour" title="Leave Live Tour">Leave</button>
 
-<!-- ── Location Sync: visitor pill (CSS-gated to visitor role) ────── -->
-<div id="loc-sync" role="region" aria-label="Share your location with the agent">
-  <!-- Read-only instructions card. Always visible during a live tour so
-       the visitor never has to hunt for the steps. -->
-  <div id="loc-sync-instructions">
-    <span id="loc-sync-instructions-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 22s-7-7.58-7-13a7 7 0 1 1 14 0c0 5.42-7 13-7 13z"/><circle cx="12" cy="9" r="2.5"/></svg>Share your view:</span>
-    <span class="loc-sync-step"><span class="loc-sync-step-num">1</span>Press <kbd>U</kbd> in the tour</span>
-    <span class="loc-sync-step"><span class="loc-sync-step-num">2</span>Click <strong>Copy to clipboard</strong></span>
-    <span class="loc-sync-step"><span class="loc-sync-step-num">3</span>Tap the button below</span>
-  </div>
-  <!-- Action card — the only thing that triggers the clipboard read. -->
-  <div id="loc-sync-action">
-    <button type="button" id="loc-sync-btn" aria-describedby="loc-sync-status">
-      <span id="loc-sync-spinner" aria-hidden="true"></span>
-      <span id="loc-sync-btn-text">Sync My View</span>
-    </button>
-    <div id="loc-sync-status" aria-live="polite"></div>
-    <div id="loc-sync-fallback" hidden>
-      <input type="text" id="loc-sync-fallback-input" placeholder="Paste tour link here" aria-label="Paste Matterport tour link" autocomplete="off" spellcheck="false">
-      <button type="button" id="loc-sync-fallback-submit">Send</button>
-    </div>
-  </div>
-</div>
-
-<!-- ── Location Sync: agent's incoming-share pill (CSS-gated to agent) -->
-<div id="loc-share-pill" role="status" aria-live="polite" hidden>
-  <span id="loc-share-pill-dot" aria-hidden="true"></span>
-  <span id="loc-share-pill-text">Visitor shared their location</span>
-  <button type="button" id="loc-share-follow" aria-label="Teleport to the visitor's location">Follow</button>
-  <button type="button" id="loc-share-dismiss" aria-label="Dismiss">&times;</button>
+<!-- ── Location Sync: visitor ambient pulse pill (CSS-gated to visitor) -->
+<!-- Single ambient status pill. Clipboard is read silently on focus /
+     visibilitychange / pointerenter once the visitor grants permission
+     at join time. The pill is also clickable as a user-gesture fallback
+     for browsers that block ambient readText. Data-state attribute
+     drives the visual; aria-live announces label changes. -->
+<div id="loc-sync" data-state="waiting" role="button" tabindex="0" aria-label="Sync your view with the agent">
+  <span class="loc-sync-dot" aria-hidden="true"></span>
+  <span class="loc-sync-label" aria-live="polite">Connecting…</span>
 </div>
 
 <button id="hud-toggle" aria-label="Show or hide the top toolbar" title="Show / hide header" aria-keyshortcuts="H">
@@ -4508,99 +4460,65 @@ if(frame){
     window.addEventListener("resize",resizeAnnoCanvas);
   }
 
-  // ── Location Sync (visitor → agent, clipboard bridge) ─────────────
+  // ── Location Sync (visitor → agent, ambient clipboard bridge) ────
   // The Matterport iframe is fully cross-origin and we have no SDK
-  // budget, so we use the user as the secure data bridge: they press
-  // U inside the tour, click "Copy to clipboard" in Matterport's
-  // native popup, then tap our Sync button. We parse the URL out of
-  // the clipboard and send {ss, sr} over the existing data channel.
-  // The agent never auto-teleports — they get a "Follow" pill.
-  var syncBtn=document.getElementById("loc-sync-btn");
-  var syncBtnText=document.getElementById("loc-sync-btn-text");
-  var syncStatusEl=document.getElementById("loc-sync-status");
-  var syncFallback=document.getElementById("loc-sync-fallback");
-  var syncFallbackInput=document.getElementById("loc-sync-fallback-input");
-  var syncFallbackSubmit=document.getElementById("loc-sync-fallback-submit");
-  var sharePill=document.getElementById("loc-share-pill");
-  var sharePillText=document.getElementById("loc-share-pill-text");
-  var shareFollowBtn=document.getElementById("loc-share-follow");
-  var shareDismissBtn=document.getElementById("loc-share-dismiss");
+  // budget. The user is the secure data bridge: they press U inside
+  // the tour, click "Copy to clipboard" in Matterport's native popup;
+  // we then silently read the clipboard on focus/visibilitychange/
+  // pointerenter events (no Sync button needed) and send {ss, sr}
+  // over the existing data channel. The agent auto-follows on
+  // receive — no Follow pill. The pulse pill stays clickable as a
+  // user-gesture fallback for browsers that block ambient readText
+  // (Firefox/Safari prompt every call) or for when permission is
+  // denied at join time.
+  // Note: Chromium scopes the clipboard-read grant to origin; an
+  // exported .html opened from file:// won't carry the grant.
+  var syncBtn=document.getElementById("loc-sync");
+  var syncLabelEl=syncBtn?syncBtn.querySelector(".loc-sync-label"):null;
 
-  var LOC_SYNC_RATE_LIMIT_MS=1500;
-  var LOC_SYNC_SUCCESS_RESET_MS=2200;
-  var LOC_SYNC_PILL_AUTODISMISS_MS=30000;
-  var SYNC_LABEL_AUTO="Sync My View";
-  var SYNC_LABEL_PASTE="Send Pasted Link";
-  // locSyncMode controls the click handler's behavior:
-  //   "auto"  → try navigator.clipboard.readText() (default).
-  //   "paste" → read from the visible paste input only. We switch to
-  //             this mode for the rest of the session as soon as the
-  //             clipboard API rejects or is unavailable, which breaks
-  //             the "deny → re-prompt → deny → …" loop that Firefox
-  //             and Safari trigger on every readText() call.
-  var locSyncMode="auto";
+  var LOC_SYNC_POLL_THROTTLE_MS=800;
+  var LOC_SYNC_SUCCESS_RESET_MS=1800;
+  // locSyncGranted is a hint, not a hard gate — every poll attempts
+  // readText() inside try/catch and degrades gracefully on rejection.
+  var locSyncGranted=false;
+  var locSyncLastPollTs=0;
   var lastSentLocationKey="";
   var lastSentLocationTs=0;
   var lastShareTs=0;
-  var pendingShare=null; // {ss, sr}
-  var shareAutoDismissTimer=null;
   var syncResetTimer=null;
 
-  function setSyncBtnState(stateName,btnLabel,statusMsg){
-    if(syncBtn){
-      syncBtn.classList.remove("is-reading","is-success","is-error");
-      if(stateName==="reading"){ syncBtn.classList.add("is-reading"); syncBtn.disabled=true; }
-      else if(stateName==="success"){ syncBtn.classList.add("is-success"); syncBtn.disabled=false; }
-      else if(stateName==="error"){ syncBtn.classList.add("is-error"); syncBtn.disabled=false; }
-      else if(stateName==="disabled"){ syncBtn.disabled=true; }
-      else { syncBtn.disabled=false; }
-    }
-    if(syncBtnText&&typeof btnLabel==="string") syncBtnText.textContent=btnLabel;
-    if(syncStatusEl) syncStatusEl.textContent=statusMsg||"";
-    if(syncResetTimer){ try { clearTimeout(syncResetTimer); } catch(_e){} syncResetTimer=null; }
-  }
+  var LOC_SYNC_LABELS={
+    idle:"Live with agent",
+    syncing:"Aligning agent’s view…",
+    success:"Views synced",
+    denied:"Tap to enable sync",
+    waiting:"Connecting…"
+  };
 
-  function defaultSyncLabel(){
-    return locSyncMode==="paste"?SYNC_LABEL_PASTE:SYNC_LABEL_AUTO;
+  function setPulseState(name){
+    if(!syncBtn) return;
+    var state=LOC_SYNC_LABELS[name]?name:"idle";
+    syncBtn.setAttribute("data-state",state);
+    if(syncLabelEl) syncLabelEl.textContent=LOC_SYNC_LABELS[state];
+    if(syncResetTimer){ try { clearTimeout(syncResetTimer); } catch(_e){} syncResetTimer=null; }
   }
 
   function scheduleSyncIdleReset(){
     if(syncResetTimer){ try { clearTimeout(syncResetTimer); } catch(_e){} }
     syncResetTimer=setTimeout(function(){
-      setSyncBtnState("idle",defaultSyncLabel(),"");
+      // Don't clobber a denied/waiting state established by onState.
+      var cur=syncBtn?syncBtn.getAttribute("data-state"):"idle";
+      if(cur==="success") setPulseState("idle");
     },LOC_SYNC_SUCCESS_RESET_MS);
   }
 
-  function showSyncFallback(focusInput){
-    if(syncFallback) syncFallback.hidden=false;
-    if(focusInput&&syncFallbackInput){
-      try { syncFallbackInput.focus(); } catch(_e){}
-    }
-  }
-
-  function hideSyncFallback(){
-    if(syncFallback) syncFallback.hidden=true;
-    if(syncFallbackInput) syncFallbackInput.value="";
-  }
-
-  // Switch to paste-only mode for the rest of the session. The big
-  // primary button now sends from the paste input instead of calling
-  // readText(), so the visitor never sees the clipboard permission
-  // prompt again until they reload the page. Idempotent.
-  function enterPasteMode(reason){
-    locSyncMode="paste";
-    showSyncFallback(true);
-    setSyncBtnState("error",SYNC_LABEL_PASTE,reason||"Paste your tour link below — we won’t ask for clipboard access again this session.");
-  }
-
   function resetLocationSyncUi(){
-    locSyncMode="auto";
-    setSyncBtnState("idle",SYNC_LABEL_AUTO,"");
-    hideSyncFallback();
-    hideAgentSharePill();
+    locSyncGranted=false;
+    locSyncLastPollTs=0;
     lastSentLocationKey="";
     lastSentLocationTs=0;
-    pendingShare=null;
+    lastShareTs=0;
+    setPulseState("waiting");
   }
 
   // Parse a Matterport "Link to location" URL. Returns {ss, sr} or null.
@@ -4626,12 +4544,12 @@ if(frame){
     if(!parsed) return false;
     var key=parsed.ss+"|"+parsed.sr;
     var now=Date.now();
-    // Dedupe: if the visitor mashes Sync repeatedly with the same coords,
-    // flash success without re-sending — saves an iframe reload on the
-    // agent side and matches user expectation that "nothing new = nothing
-    // happens."
+    // Content-level dedupe: if the clipboard repeats the same coords,
+    // flash success without re-sending. Saves an iframe reload on the
+    // agent side and matches user expectation that "nothing new =
+    // nothing happens."
     if(key===lastSentLocationKey&&(now-lastSentLocationTs)<5000){
-      setSyncBtnState("success","Sent ✓","Same view as last send.");
+      setPulseState("success");
       scheduleSyncIdleReset();
       return true;
     }
@@ -4640,21 +4558,20 @@ if(frame){
     if(ok){
       lastSentLocationKey=key;
       lastSentLocationTs=now;
-      setSyncBtnState("success","Sent ✓","Your agent can now follow your view.");
+      setPulseState("success");
       scheduleSyncIdleReset();
       return true;
     }
-    setSyncBtnState("error","Try Again","Couldn’t reach your agent. Check the connection.");
+    // Channel not ready — stay silent (no error pulse). Next poll
+    // naturally retries because we didn't update the dedupe key.
     return false;
   }
 
   // Pre-flight the clipboard permission via the Permissions API where
   // it's supported (Chromium-family). If it's already "denied" we skip
-  // the readText() call entirely, which means no permission popup —
-  // the visitor goes straight to paste mode. Browsers without the
-  // Permissions API (Safari/Firefox for clipboard-read) just fall
-  // through to the readText() attempt as before.
-  // Returns a Promise<"granted"|"denied"|"prompt"|"unknown">.
+  // the readText() call entirely so the visitor never sees an extra
+  // popup. Browsers without the Permissions API for clipboard-read
+  // (Safari/Firefox) return "unknown" and fall through to readText.
   function queryClipboardPermission(){
     try {
       if(!navigator||!navigator.permissions||typeof navigator.permissions.query!=="function"){
@@ -4668,12 +4585,15 @@ if(frame){
     }
   }
 
-  function readClipboardAndSend(){
-    setSyncBtnState("reading","Reading…","");
-    // The user just clicked our button, but if they were inside the
-    // Matterport popup a moment ago the iframe may still hold focus —
-    // clipboard.readText() will reject NotAllowedError in that case.
-    // Pull focus back to the parent document before the API call.
+  // The single workhorse — used by both ambient triggers and the
+  // pulse-pill click fallback. `gestureBound` is true when the caller
+  // is a user gesture (click), which is the path Firefox/Safari need.
+  function readClipboardAndSend(gestureBound){
+    var s=session.getState();
+    if(s.role!=="visitor"||!s.isConnected) return;
+    setPulseState("syncing");
+    // Pull focus back to the parent doc — clipboard.readText() rejects
+    // NotAllowedError when the iframe holds focus.
     try { window.focus(); } catch(_e){}
     try {
       if(document.documentElement&&typeof document.documentElement.focus==="function"){
@@ -4681,136 +4601,98 @@ if(frame){
       }
     } catch(_e){}
     if(!navigator||!navigator.clipboard||typeof navigator.clipboard.readText!=="function"){
-      enterPasteMode("Your browser can’t read the clipboard automatically. Paste your tour link below — we won’t ask again this session.");
+      setPulseState("denied");
       return;
     }
     queryClipboardPermission().then(function(permState){
-      // Already-denied: never call readText() (which would re-prompt or
-      // reject silently). Permanently switch this session to paste mode.
       if(permState==="denied"){
-        enterPasteMode("Clipboard access is blocked. Paste your tour link below — we won’t ask again this session.");
+        setPulseState("denied");
         return;
       }
       var p;
       try { p=navigator.clipboard.readText(); } catch(_e){
-        enterPasteMode("Browser blocked the clipboard. Paste your tour link below — we won’t ask again this session.");
+        setPulseState(gestureBound?"denied":"idle");
         return;
       }
       if(!p||typeof p.then!=="function"){
-        enterPasteMode("Browser blocked the clipboard. Paste your tour link below — we won’t ask again this session.");
+        setPulseState(gestureBound?"denied":"idle");
         return;
       }
       p.then(function(text){
         var parsed=parseMatterportLocationUrl(text);
         if(!parsed){
-          // Clipboard reachable but contents weren't a tour link. This
-          // is a content problem (user forgot to press Copy), NOT a
-          // permission problem — stay in auto mode so the next click
-          // doesn't need a fresh prompt.
-          setSyncBtnState("error",SYNC_LABEL_AUTO,"Clipboard doesn’t have a tour link yet. Press U in the tour, then click Copy to clipboard, then tap here.");
+          // Clipboard reachable but no tour link. Don't nag —
+          // silently revert to idle. Ambient triggers fire often;
+          // flashing an error every alt-tab would be a nag.
+          setPulseState("idle");
           return;
         }
+        locSyncGranted=true;
         attemptSendLocation(parsed);
       },function(err){
         var name=err&&err.name?err.name:"";
         if(name==="NotAllowedError"||name==="SecurityError"){
-          enterPasteMode("Permission denied. Paste your tour link below — we won’t ask again this session.");
+          setPulseState("denied");
         } else {
-          enterPasteMode("Couldn’t read the clipboard. Paste your tour link below — we won’t ask again this session.");
+          setPulseState("idle");
         }
       });
     });
   }
 
-  // Send from the visible paste input. Used in paste mode (after
-  // denial / unsupported) and as the keyboard-Enter handler on the
-  // input itself.
-  function readPasteInputAndSend(){
-    var text=(syncFallbackInput&&syncFallbackInput.value||"").trim();
-    if(!text){
-      setSyncBtnState("error",SYNC_LABEL_PASTE,"Paste your tour link in the box first.");
-      if(syncFallbackInput){ try { syncFallbackInput.focus(); } catch(_e){} }
-      return;
-    }
-    var parsed=parseMatterportLocationUrl(text);
-    if(!parsed){
-      setSyncBtnState("error",SYNC_LABEL_PASTE,"That doesn’t look like a Matterport link. Copy the full URL from the popup.");
-      return;
-    }
-    attemptSendLocation(parsed);
+  // schedulePoll: ambient throttled entrypoint for focus / visibility
+  // / pointerenter events. Bails on hidden tab, wrong role, recent
+  // poll. Calls readClipboardAndSend without a user gesture — only
+  // works silently on Chromium with a persistent grant.
+  function schedulePoll(){
+    if(document.hidden) return;
+    var s=session.getState();
+    if(s.role!=="visitor"||!s.isConnected) return;
+    var now=Date.now();
+    if(now-locSyncLastPollTs<LOC_SYNC_POLL_THROTTLE_MS) return;
+    locSyncLastPollTs=now;
+    readClipboardAndSend(false);
   }
 
   if(syncBtn){
+    // Click: user-gesture fallback. Always available — handles the
+    // permission-denied → re-prompt path on FF/Safari and any case
+    // where ambient triggers didn't fire (e.g., visitor pressed U,
+    // copied, never moved the mouse out of the iframe).
     syncBtn.addEventListener("click",function(){
-      var s=session.getState();
-      if(s.role!=="visitor"||!s.isConnected) return;
-      var now=Date.now();
-      if(now-lastSentLocationTs<LOC_SYNC_RATE_LIMIT_MS&&!syncBtn.classList.contains("is-error")) return;
-      if(locSyncMode==="paste") readPasteInputAndSend();
-      else readClipboardAndSend();
+      readClipboardAndSend(true);
+    });
+    // Keyboard a11y — Enter/Space activates the role="button" pill.
+    syncBtn.addEventListener("keydown",function(e){
+      if(e.key==="Enter"||e.key===" "){ e.preventDefault(); readClipboardAndSend(true); }
     });
   }
 
-  if(syncFallbackSubmit&&syncFallbackInput){
-    syncFallbackSubmit.addEventListener("click",readPasteInputAndSend);
-    syncFallbackInput.addEventListener("keydown",function(e){
-      if(e.key==="Enter"){ e.preventDefault(); readPasteInputAndSend(); }
-    });
+  // Ambient polling triggers. Battery-friendly: NO setInterval, only
+  // event-driven. All three call schedulePoll which dedupes / throttles.
+  window.addEventListener("focus",schedulePoll);
+  document.addEventListener("visibilitychange",function(){ if(!document.hidden) schedulePoll(); });
+  if(letterboxWrap){
+    letterboxWrap.addEventListener("pointerenter",schedulePoll);
   }
 
-  // Agent-side: receive + Follow
-  function showAgentSharePill(ss,sr){
-    pendingShare={ ss: ss, sr: sr };
-    if(!sharePill) return;
-    sharePill.hidden=false;
-    sharePill.classList.add("is-visible");
-    if(sharePillText){
-      var srSummary=sr?" · view "+sr:"";
-      sharePillText.textContent="Visitor shared their location"+srSummary;
-    }
-    if(shareAutoDismissTimer){ try { clearTimeout(shareAutoDismissTimer); } catch(_e){} }
-    shareAutoDismissTimer=setTimeout(function(){
-      hideAgentSharePill();
-    },LOC_SYNC_PILL_AUTODISMISS_MS);
-  }
-
-  function hideAgentSharePill(){
-    pendingShare=null;
-    if(sharePill){
-      sharePill.hidden=true;
-      sharePill.classList.remove("is-visible");
-    }
-    if(shareAutoDismissTimer){
-      try { clearTimeout(shareAutoDismissTimer); } catch(_e){}
-      shareAutoDismissTimer=null;
-    }
-  }
-
-  if(shareFollowBtn){
-    shareFollowBtn.addEventListener("click",function(){
-      if(!pendingShare){ hideAgentSharePill(); return; }
-      var ss=pendingShare.ss;
-      var sr=pendingShare.sr;
-      hideAgentSharePill();
-      // Reuse the existing teleport primitive: wipes annotations, rolls
-      // currentViewKey, rewrites the iframe src with the safe url flags.
-      // Also broadcasts a teleport packet to the visitor so both sides
-      // stay in lock-step on the shared view — without this the visitor
-      // could keep navigating away while the agent's iframe is frozen
-      // on the shared point.
-      try { session.teleportVisitor(ss,sr); } catch(_e){}
-      applyTeleport(ss,sr);
-      if(letterboxWrap){
-        try {
-          letterboxWrap.classList.add("follow-pulse");
-          setTimeout(function(){ if(letterboxWrap) letterboxWrap.classList.remove("follow-pulse"); },1500);
-        } catch(_e){}
+  // Pillar C — Hover focus injection. On mouseenter into the iframe
+  // wrap, force the iframe to take keyboard focus so pressing U works
+  // on the first try. Guarded against (a) non-visitor roles and (b)
+  // active focus in a parent INPUT/TEXTAREA so we never steal focus
+  // mid-typing in a side-drawer text field.
+  if(letterboxWrap){
+    letterboxWrap.addEventListener("pointerenter",function(){
+      var st=session.getState();
+      if(st.role!=="visitor") return;
+      var ae=document.activeElement;
+      if(ae&&(ae.tagName==="INPUT"||ae.tagName==="TEXTAREA"||ae.isContentEditable)) return;
+      if(frame){
+        try { frame.focus({ preventScroll: true }); } catch(_e){
+          try { frame.focus(); } catch(_e2){}
+        }
       }
     });
-  }
-
-  if(shareDismissBtn){
-    shareDismissBtn.addEventListener("click",hideAgentSharePill);
   }
 
   function teardownSession(){
@@ -4939,6 +4821,24 @@ if(frame){
       }
       joinBtn.disabled=true;
       if(visitorStatus) visitorStatus.textContent="Connecting…";
+      // Pillar B — one-time clipboard permission handshake bound to
+      // the join click. This is the only synchronous user-gesture
+      // point we have before the live tour begins. On Chromium with
+      // a "prompt" state, this primes a persistent grant so all
+      // subsequent ambient readText() calls are silent. On FF/Safari
+      // the priming readText() prompts once now; further reads still
+      // prompt, but the pulse-pill click fallback handles those.
+      try {
+        if(navigator&&navigator.permissions&&typeof navigator.permissions.query==="function"){
+          navigator.permissions.query({ name: "clipboard-read" }).then(function(r){
+            locSyncGranted=!!(r&&r.state==="granted");
+          },function(){});
+        }
+        if(navigator&&navigator.clipboard&&typeof navigator.clipboard.readText==="function"){
+          navigator.clipboard.readText().then(function(){ locSyncGranted=true; },
+                                              function(){ locSyncGranted=false; });
+        }
+      } catch(_e){}
       session.joinAsVisitor(pin).catch(function(){
         // error state surfaced via subscribe()
       });
@@ -5047,25 +4947,32 @@ if(frame){
       applyTeleport(state.incomingTeleportEvent.ss,state.incomingTeleportEvent.sr);
     }
 
-    // Agent receive: visitor's clipboard-shared location surfaces as a
-    // non-blocking "Follow" pill rather than auto-teleporting. ts is
-    // the de-dupe key (controller stamps a fresh one per inbound packet)
-    // so re-shares of the same coords replace the prior pill.
+    // Agent auto-follow: visitor's location_share patches the state with
+    // a fresh ts on each inbound packet. We dedupe by ts so the same
+    // share doesn't re-fire applyTeleport. Pure local action — we do
+    // NOT broadcast back to the visitor (their iframe must never reload
+    // from auto-sync, per Pillar A's role-isolation rule).
     if(state.role==="agent"&&state.incomingLocationShareEvent&&state.incomingLocationShareEvent.ts!==lastShareTs){
       lastShareTs=state.incomingLocationShareEvent.ts;
-      showAgentSharePill(state.incomingLocationShareEvent.ss,state.incomingLocationShareEvent.sr);
+      applyTeleport(state.incomingLocationShareEvent.ss,state.incomingLocationShareEvent.sr);
+      if(letterboxWrap){
+        try {
+          letterboxWrap.classList.add("follow-pulse");
+          setTimeout(function(){ if(letterboxWrap) letterboxWrap.classList.remove("follow-pulse"); },1500);
+        } catch(_e){}
+      }
     }
 
-    // Visitor's Sync button: disable when the channel isn't live so a
-    // tap doesn't read the clipboard for nothing. Idle-text reset only
-    // when we're not mid-flow (preserves the success/error message).
+    // Visitor's pulse pill: reflects connection state. When connected,
+    // settle into idle (breathing pulse). When disconnected, dim to
+    // waiting. Don't clobber transient syncing/success/denied states —
+    // those are owned by readClipboardAndSend's state machine.
     if(state.role==="visitor"&&syncBtn){
+      var curState=syncBtn.getAttribute("data-state");
       if(!state.isConnected){
-        if(!syncBtn.classList.contains("is-reading")&&!syncBtn.classList.contains("is-error")){
-          setSyncBtnState("disabled","Waiting…","Waiting for your agent…");
-        }
-      } else if(syncBtn.disabled&&!syncBtn.classList.contains("is-reading")&&!syncBtn.classList.contains("is-success")&&!syncBtn.classList.contains("is-error")){
-        setSyncBtnState("idle",defaultSyncLabel(),"");
+        if(curState!=="syncing"&&curState!=="denied") setPulseState("waiting");
+      } else if(curState==="waiting"){
+        setPulseState("idle");
       }
     }
 
