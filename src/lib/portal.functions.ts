@@ -4661,6 +4661,7 @@ if(frame){
     lastSentLocationKey="";
     lastSentLocationTs=0;
     pendingShare=null;
+    try { closeLtSyncPanel(); } catch(_e){}
   }
 
   // Parse a Matterport "Link to location" URL. Returns {ss, sr} or null.
