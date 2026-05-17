@@ -1655,37 +1655,39 @@ body.live-tour-active #live-tour-control-drawer{display:flex;flex-direction:colu
 .lt-action-btn:active{transform:scale(0.98)}
 .lt-action-btn.lt-leave{background:rgba(255,255,255,0.14);color:#fff;box-shadow:none;border:1px solid rgba(255,255,255,0.18)}
 .lt-action-btn.lt-leave:hover{background:rgba(220,38,38,0.85);transform:translateY(-1px);box-shadow:0 6px 16px rgba(220,38,38,0.4)}
-body.live-tour-agent #lt-sync-btn{display:none}
-#lt-sync-panel{display:none;flex-direction:column;align-items:stretch;gap:10px;padding:12px;background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.08);border-radius:10px;margin-top:4px}
-#live-tour-control-drawer.show-sync #lt-sync-panel{display:flex}
-body.live-tour-agent #lt-sync-panel{display:none !important}
-#lt-sync-steps{display:flex;flex-direction:column;gap:6px;color:#fff;font:600 12px/1.4 system-ui,-apple-system,sans-serif}
-.loc-sync-step{display:flex;align-items:flex-start;gap:6px;color:rgba(255,255,255,0.92)}
-.loc-sync-step-num{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:${escapeHtml(accentColor)};color:#fff;font:700 10px/1 inherit;flex-shrink:0;margin-top:1px}
-.loc-sync-step kbd{display:inline-block;padding:1px 6px;border-radius:4px;background:rgba(255,255,255,0.18);border:1px solid rgba(255,255,255,0.24);font:700 11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:#fff}
 
-/* Action card — the Sync button + status. Visually distinct from the
-   instruction card above so the user clearly sees the action vs. the
-   how-to. */
-#loc-sync-action{display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:auto;width:100%}
-#loc-sync-btn{appearance:none;border:none;cursor:pointer;min-height:36px;padding:0 22px;border-radius:999px;background:${escapeHtml(accentColor)};color:#fff;font:700 13px/1 system-ui,-apple-system,sans-serif;letter-spacing:0.02em;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:opacity 0.15s,background 0.2s,transform 0.1s,box-shadow 0.2s;box-shadow:0 8px 20px ${escapeHtml(accentColor)}33,0 2px 6px rgba(0,0,0,0.25)}
-#loc-sync-btn:hover{opacity:0.95;transform:translateY(-1px);box-shadow:0 10px 24px ${escapeHtml(accentColor)}55,0 3px 8px rgba(0,0,0,0.3)}
-#loc-sync-btn:active{transform:scale(0.97)}
-#loc-sync-btn[disabled]{opacity:0.55;cursor:default;transform:none;box-shadow:0 2px 6px rgba(0,0,0,0.2)}
-#loc-sync-btn.is-reading{background:rgba(255,255,255,0.22);color:rgba(255,255,255,0.95);box-shadow:0 4px 12px rgba(0,0,0,0.2)}
-#loc-sync-btn.is-success{background:#16a34a;color:#fff;box-shadow:0 8px 20px rgba(22,163,74,0.4)}
-#loc-sync-btn.is-error{background:#b45309;color:#fff;box-shadow:0 8px 20px rgba(180,83,9,0.4)}
-#loc-sync-spinner{display:none;width:12px;height:12px;border:2px solid rgba(255,255,255,0.4);border-top-color:#fff;border-radius:50%;animation:loc-sync-spin 0.7s linear infinite}
-#loc-sync-btn.is-reading #loc-sync-spinner{display:inline-block}
-@keyframes loc-sync-spin{to{transform:rotate(360deg)}}
-#loc-sync-status{font-size:11px;line-height:1.4;color:rgba(255,255,255,0.95);padding:6px 12px;border-radius:8px;background:rgba(0,0,0,0.6);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.14);width:100%;box-sizing:border-box;text-align:center;pointer-events:auto}
-#loc-sync-status:empty{display:none}
-#loc-sync-fallback{display:flex;gap:6px;background:rgba(0,0,0,0.6);padding:6px;border-radius:10px;border:1px solid rgba(255,255,255,0.14);pointer-events:auto;width:100%;box-sizing:border-box}
-#loc-sync-fallback[hidden]{display:none}
+/* ── Auto-share pill (visitor only). Pinned top-left below the chevron
+   so it never overlaps Matterport's URL/Copy popup (top area) or the
+   bottom controls. Compact by default, doesn't steal iframe focus. */
+#auto-share-pill{position:fixed;top:50px;left:8px;z-index:1240;display:none;align-items:center;gap:8px;padding:6px 10px 6px 12px;border-radius:999px;background:rgba(0,0,0,0.62);border:1px solid rgba(255,255,255,0.18);color:#fff;font:600 11px/1 system-ui,-apple-system,sans-serif;-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%);box-shadow:0 6px 18px rgba(0,0,0,0.28);max-width:min(280px,calc(100vw - 16px));pointer-events:auto;cursor:default;transition:background 0.2s,transform 0.1s,box-shadow 0.2s}
+body.live-tour-active.live-tour-visitor #auto-share-pill:not([hidden]){display:inline-flex}
+#auto-share-pill.is-tap{cursor:pointer;background:${escapeHtml(accentColor)}cc;border-color:${escapeHtml(accentColor)}}
+#auto-share-pill.is-tap:hover{transform:translateY(-1px);box-shadow:0 8px 20px ${escapeHtml(accentColor)}55}
+#auto-share-pill.is-reading{background:rgba(255,255,255,0.22)}
+#auto-share-pill.is-success{background:#16a34a;border-color:rgba(34,197,94,0.6);box-shadow:0 6px 18px rgba(22,163,74,0.4)}
+#auto-share-pill.is-error{background:#b45309;border-color:rgba(180,83,9,0.6)}
+#auto-share-pill-dot{width:8px;height:8px;border-radius:50%;background:#22c55e;flex-shrink:0;animation:auto-share-pulse 1.8s ease-in-out infinite}
+#auto-share-pill.is-reading #auto-share-pill-dot{animation:auto-share-spin 0.7s linear infinite;background:transparent;border:2px solid rgba(255,255,255,0.4);border-top-color:#fff;width:10px;height:10px}
+#auto-share-pill.is-success #auto-share-pill-dot,#auto-share-pill.is-error #auto-share-pill-dot{animation:none;background:#fff}
+#auto-share-pill-text{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:0.01em}
+#auto-share-pill-help{appearance:none;border:none;cursor:pointer;background:rgba(255,255,255,0.18);color:#fff;width:18px;height:18px;border-radius:50%;font:700 11px/1 inherit;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+#auto-share-pill-help:hover{background:rgba(255,255,255,0.32)}
+@keyframes auto-share-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.55;transform:scale(0.85)}}
+@keyframes auto-share-spin{to{transform:rotate(360deg)}}
+
+/* Coach mark — one-time onboarding tooltip pinned near the pill. */
+#auto-share-coach{position:fixed;top:78px;left:8px;z-index:1245;display:none;flex-direction:column;gap:10px;width:min(300px,calc(100vw - 16px));padding:12px 14px;border-radius:12px;background:rgba(0,0,0,0.78);border:1px solid rgba(255,255,255,0.16);color:#fff;font:500 12px/1.45 system-ui,-apple-system,sans-serif;-webkit-backdrop-filter:blur(16px) saturate(170%);backdrop-filter:blur(16px) saturate(170%);box-shadow:0 12px 28px rgba(0,0,0,0.4)}
+body.live-tour-active.live-tour-visitor #auto-share-coach:not([hidden]){display:flex}
+#auto-share-coach kbd{display:inline-block;padding:1px 6px;border-radius:4px;background:rgba(255,255,255,0.18);border:1px solid rgba(255,255,255,0.24);font:700 11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:#fff}
+#auto-share-coach-fallback{display:flex;gap:6px}
+#auto-share-coach-fallback[hidden]{display:none}
 #loc-sync-fallback-input{flex:1;min-width:0;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.18);color:#fff;border-radius:6px;padding:6px 8px;font:500 11px/1.4 inherit;outline:none}
 #loc-sync-fallback-input::placeholder{color:rgba(255,255,255,0.45)}
 #loc-sync-fallback-input:focus{border-color:${escapeHtml(accentColor)}}
 #loc-sync-fallback-submit{appearance:none;border:none;cursor:pointer;background:${escapeHtml(accentColor)};color:#fff;border-radius:6px;padding:0 12px;font:700 11px/1 inherit}
+#auto-share-coach-dismiss{appearance:none;border:none;cursor:pointer;background:rgba(255,255,255,0.14);color:#fff;border-radius:6px;padding:6px 10px;font:700 11px/1 inherit;align-self:flex-end}
+#auto-share-coach-dismiss:hover{background:rgba(255,255,255,0.24)}
+
 
 /* ── Location Sync — agent's "Visitor shared location" pill ──────── */
 #loc-share-pill{position:fixed;top:42px;right:12px;z-index:1300;display:none;align-items:center;gap:8px;padding:6px 6px 6px 14px;border-radius:999px;background:rgba(0,0,0,0.55);border:1px solid rgba(255,255,255,0.2);color:#fff;font:600 12px/1 system-ui,-apple-system,sans-serif;-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%);box-shadow:0 8px 24px rgba(0,0,0,0.32);max-width:min(360px,calc(100vw - 24px));animation:loc-share-slide 0.25s ease-out}
@@ -1863,27 +1865,30 @@ ${askAssets.css}
       <div id="ltcd-brand">${escapeHtml(brandName)}</div>
       <span id="ltcd-status">Live Tour</span>
     </div>
-    <button type="button" id="lt-leave-btn" class="lt-action-btn lt-leave" aria-label="Leave live tour">Leave</button>
-    <button type="button" id="lt-sync-btn" class="lt-action-btn" aria-expanded="false" aria-controls="lt-sync-panel">Sync My View</button>
-    <div id="lt-sync-panel" role="region" aria-label="Sync your view instructions">
-      <div id="lt-sync-steps">
-        <span class="loc-sync-step"><span class="loc-sync-step-num">1</span><span>Position to the exact viewpoint you want the agent to see</span></span>
-        <span class="loc-sync-step"><span class="loc-sync-step-num">2</span><span>Press the <kbd>U</kbd> key on your keyboard + click <strong>Copy to clipboard</strong></span></span>
-        <span class="loc-sync-step"><span class="loc-sync-step-num">3</span><span>Click the <strong>Sync</strong> button below</span></span>
-      </div>
-      <div id="loc-sync-action">
-        <button type="button" id="loc-sync-btn" aria-describedby="loc-sync-status">
-          <span id="loc-sync-spinner" aria-hidden="true"></span>
-          <span id="loc-sync-btn-text">Sync My View</span>
-        </button>
-        <div id="loc-sync-status" aria-live="polite"></div>
-        <div id="loc-sync-fallback" hidden>
-          <input type="text" id="loc-sync-fallback-input" placeholder="Paste tour link here" aria-label="Paste Matterport tour link" autocomplete="off" spellcheck="false">
-          <button type="button" id="loc-sync-fallback-submit">Send</button>
-        </div>
-      </div>
-    </div>
+     <button type="button" id="lt-leave-btn" class="lt-action-btn lt-leave" aria-label="Leave live tour">Leave</button>
   </div>
+</div>
+
+<!-- ── Auto-share pill: visitor-only, fixed top-left under the chevron.
+     Stays out of the iframe entirely (small pill, never covers Matterport
+     popups). Visitor never needs to click it in the happy path —
+     clipboard is auto-polled while connected. In denied-permission mode
+     it becomes a single tap target (read+send on click). The legacy
+     paste field is kept as a deep fallback when readText() is missing. -->
+<div id="auto-share-pill" role="status" aria-live="polite" hidden>
+  <span id="auto-share-pill-dot" aria-hidden="true"></span>
+  <span id="auto-share-pill-text">Auto-share on</span>
+  <button type="button" id="auto-share-pill-help" aria-label="How sharing works" title="How sharing works">?</button>
+</div>
+<div id="auto-share-coach" role="dialog" aria-label="How to share your view" hidden>
+  <div id="auto-share-coach-body">
+    Share what you're looking at anytime: press <kbd>U</kbd> in the tour, then click <strong>Copy to clipboard</strong>. We'll send it to your agent automatically — no extra clicks here.
+  </div>
+  <div id="auto-share-coach-fallback" hidden>
+    <input type="text" id="loc-sync-fallback-input" placeholder="Or paste tour link here" aria-label="Paste Matterport tour link" autocomplete="off" spellcheck="false">
+    <button type="button" id="loc-sync-fallback-submit">Send</button>
+  </div>
+  <button type="button" id="auto-share-coach-dismiss" aria-label="Dismiss">Got it</button>
 </div>
 
 <!-- ── Location Sync: agent's incoming-share pill (CSS-gated to agent) -->
@@ -3957,29 +3962,12 @@ if(frame){
   var audioEl=document.getElementById("lg-audio");
   var leaveBtn=document.getElementById("lt-leave-btn");
   var ltDrawer=document.getElementById("live-tour-control-drawer");
-  var ltSyncBtn=document.getElementById("lt-sync-btn");
-  function openLtSyncPanel(){
-    if(!ltDrawer) return;
-    // Force the left drawer open via the shared setter so the chevron
-    // icon flips and the regular HUD stays hidden, then reveal the
-    // instructions sub-panel inside the drawer.
-    try { if(typeof window.__setHudVisible==="function") window.__setHudVisible(true); } catch(_e){}
-    ltDrawer.classList.add("show-sync");
-    if(ltSyncBtn) ltSyncBtn.setAttribute("aria-expanded","true");
-  }
-  function closeLtSyncPanel(){
-    if(!ltDrawer) return;
-    ltDrawer.classList.remove("show-sync");
-    if(ltSyncBtn) ltSyncBtn.setAttribute("aria-expanded","false");
-    // Collapse the whole drawer so the 3D tour is unobstructed again.
-    try { if(typeof window.__setHudVisible==="function") window.__setHudVisible(false); } catch(_e){}
-  }
-  if(ltSyncBtn){
-    ltSyncBtn.addEventListener("click",function(){
-      if(ltDrawer && ltDrawer.classList.contains("show-sync")) closeLtSyncPanel();
-      else openLtSyncPanel();
-    });
-  }
+  // Sync My View button + instruction panel removed. The visitor now
+  // shares views via clipboard auto-polling (see auto-share pill below)
+  // so opening any drawer/panel — which would steal iframe focus and
+  // break the U key — is no longer required for the main flow.
+  function closeLtSyncPanel(){ /* retained as no-op for legacy callers */ }
+
 
   var session=createLiveSession({});
   var lastTeleportTs=0;
@@ -4573,107 +4561,137 @@ if(frame){
     window.addEventListener("resize",resizeAnnoCanvas);
   }
 
-  // ── Location Sync (visitor → agent, clipboard bridge) ─────────────
-  // The Matterport iframe is fully cross-origin and we have no SDK
-  // budget, so we use the user as the secure data bridge: they press
-  // U inside the tour, click "Copy to clipboard" in Matterport's
-  // native popup, then tap our Sync button. We parse the URL out of
-  // the clipboard and send {ss, sr} over the existing data channel.
-  // The agent never auto-teleports — they get a "Follow" pill.
-  var syncBtn=document.getElementById("loc-sync-btn");
-  var syncBtnText=document.getElementById("loc-sync-btn-text");
-  var syncStatusEl=document.getElementById("loc-sync-status");
-  var syncFallback=document.getElementById("loc-sync-fallback");
-  var syncFallbackInput=document.getElementById("loc-sync-fallback-input");
-  var syncFallbackSubmit=document.getElementById("loc-sync-fallback-submit");
+  // ── Location Sync (visitor → agent, clipboard auto-share) ────────
+  // True one-action sync: the visitor positions their view, presses U
+  // inside Matterport, and clicks "Copy to clipboard" in Matterport's
+  // native popup. That's it. We auto-poll the clipboard while
+  // connected as a visitor and push any new ss/sr to the agent over
+  // the data channel. No drawer click, no paste, no focus juggling —
+  // so the U key never breaks because we never overlay the iframe.
+  //
+  // Permission strategy: we pre-fire navigator.clipboard.readText()
+  // inside the visitor's Join click handler so the browser permission
+  // prompt appears once, at the natural opt-in moment. Chrome/Edge
+  // remember the grant for the rest of the page session, after which
+  // readText() runs silently forever. Safari/Firefox don't expose
+  // clipboard-read at all; they degrade to a single-tap pill, then to
+  // a paste field as a deep fallback. The agent-side "Follow" pill
+  // is untouched.
   var sharePill=document.getElementById("loc-share-pill");
   var sharePillText=document.getElementById("loc-share-pill-text");
   var shareFollowBtn=document.getElementById("loc-share-follow");
   var shareDismissBtn=document.getElementById("loc-share-dismiss");
+  var autoPill=document.getElementById("auto-share-pill");
+  var autoPillText=document.getElementById("auto-share-pill-text");
+  var autoPillHelp=document.getElementById("auto-share-pill-help");
+  var autoCoach=document.getElementById("auto-share-coach");
+  var autoCoachFallback=document.getElementById("auto-share-coach-fallback");
+  var autoCoachDismiss=document.getElementById("auto-share-coach-dismiss");
+  var syncFallbackInput=document.getElementById("loc-sync-fallback-input");
+  var syncFallbackSubmit=document.getElementById("loc-sync-fallback-submit");
 
-  var LOC_SYNC_RATE_LIMIT_MS=1500;
-  var LOC_SYNC_SUCCESS_RESET_MS=2200;
   var LOC_SYNC_PILL_AUTODISMISS_MS=30000;
-  var SYNC_LABEL_AUTO="Sync My View";
-  var SYNC_LABEL_PASTE="Send Pasted Link";
-  // locSyncMode controls the click handler's behavior:
-  //   "auto"  → try navigator.clipboard.readText() (default).
-  //   "paste" → read from the visible paste input only. We switch to
-  //             this mode for the rest of the session as soon as the
-  //             clipboard API rejects or is unavailable, which breaks
-  //             the "deny → re-prompt → deny → …" loop that Firefox
-  //             and Safari trigger on every readText() call.
-  var locSyncMode="auto";
+  var AUTO_SHARE_POLL_MS=700;
+  var AUTO_SHARE_MIN_GAP_MS=400;
+  var AUTO_SHARE_SUCCESS_RESET_MS=2400;
+  var COACH_STORAGE_KEY="__lvb_autoshare_coach_seen";
+
   var lastSentLocationKey="";
   var lastSentLocationTs=0;
   var lastShareTs=0;
   var pendingShare=null; // {ss, sr}
   var shareAutoDismissTimer=null;
-  var syncResetTimer=null;
+  var autoShareMode="auto"; // "auto" | "tap" | "paste"
+  var autoSharePollTimer=null;
+  var autoShareListenersBound=false;
+  var autoShareLastReadTs=0;
+  var autoShareLastClipText="";
+  var autoSharePillResetTimer=null;
+  var autoShareStarted=false;
 
-  function setSyncBtnState(stateName,btnLabel,statusMsg){
-    if(syncBtn){
-      syncBtn.classList.remove("is-reading","is-success","is-error");
-      if(stateName==="reading"){ syncBtn.classList.add("is-reading"); syncBtn.disabled=true; }
-      else if(stateName==="success"){ syncBtn.classList.add("is-success"); syncBtn.disabled=false; }
-      else if(stateName==="error"){ syncBtn.classList.add("is-error"); syncBtn.disabled=false; }
-      else if(stateName==="disabled"){ syncBtn.disabled=true; }
-      else { syncBtn.disabled=false; }
-    }
-    if(syncBtnText&&typeof btnLabel==="string") syncBtnText.textContent=btnLabel;
-    if(syncStatusEl) syncStatusEl.textContent=statusMsg||"";
-    if(syncResetTimer){ try { clearTimeout(syncResetTimer); } catch(_e){} syncResetTimer=null; }
+  function setAutoPillState(stateName,msg){
+    if(!autoPill) return;
+    autoPill.classList.remove("is-tap","is-reading","is-success","is-error");
+    if(stateName==="tap") autoPill.classList.add("is-tap");
+    else if(stateName==="reading") autoPill.classList.add("is-reading");
+    else if(stateName==="success") autoPill.classList.add("is-success");
+    else if(stateName==="error") autoPill.classList.add("is-error");
+    if(autoPillText&&typeof msg==="string") autoPillText.textContent=msg;
+    if(autoSharePillResetTimer){ try { clearTimeout(autoSharePillResetTimer); } catch(_e){} autoSharePillResetTimer=null; }
   }
 
-  function defaultSyncLabel(){
-    return locSyncMode==="paste"?SYNC_LABEL_PASTE:SYNC_LABEL_AUTO;
+  function defaultPillMsg(){
+    if(autoShareMode==="paste") return "Tap ? to paste your link";
+    if(autoShareMode==="tap") return "Tap after Copy to clipboard";
+    return "Auto-share on";
   }
 
-  function scheduleSyncIdleReset(){
-    if(syncResetTimer){ try { clearTimeout(syncResetTimer); } catch(_e){} }
-    syncResetTimer=setTimeout(function(){
-      setSyncBtnState("idle",defaultSyncLabel(),"");
-    },LOC_SYNC_SUCCESS_RESET_MS);
+  function scheduleAutoPillIdle(){
+    if(autoSharePillResetTimer){ try { clearTimeout(autoSharePillResetTimer); } catch(_e){} }
+    autoSharePillResetTimer=setTimeout(function(){
+      var s=autoShareMode==="auto"?"idle":(autoShareMode==="tap"?"tap":"error");
+      setAutoPillState(s,defaultPillMsg());
+    },AUTO_SHARE_SUCCESS_RESET_MS);
   }
 
-  function showSyncFallback(focusInput){
-    if(syncFallback) syncFallback.hidden=false;
-    if(focusInput&&syncFallbackInput){
-      try { syncFallbackInput.focus(); } catch(_e){}
-    }
+  function showAutoPill(){
+    if(!autoPill) return;
+    autoPill.hidden=false;
+    setAutoPillState(autoShareMode==="auto"?"idle":(autoShareMode==="tap"?"tap":"error"),defaultPillMsg());
   }
 
-  function hideSyncFallback(){
-    if(syncFallback) syncFallback.hidden=true;
-    if(syncFallbackInput) syncFallbackInput.value="";
+  function hideAutoPill(){
+    if(autoPill) autoPill.hidden=true;
+    if(autoCoach) autoCoach.hidden=true;
   }
 
-  // Switch to paste-only mode for the rest of the session. The big
-  // primary button now sends from the paste input instead of calling
-  // readText(), so the visitor never sees the clipboard permission
-  // prompt again until they reload the page. Idempotent.
+  function showCoachIfFirstTime(){
+    if(!autoCoach) return;
+    try {
+      if(sessionStorage.getItem(COACH_STORAGE_KEY)==="1") return;
+    } catch(_e){}
+    autoCoach.hidden=false;
+    setTimeout(function(){ if(autoCoach) autoCoach.hidden=true; },10000);
+  }
+
+  function dismissCoach(){
+    if(autoCoach) autoCoach.hidden=true;
+    try { sessionStorage.setItem(COACH_STORAGE_KEY,"1"); } catch(_e){}
+  }
+
+  function showFallbackInput(){
+    if(autoCoachFallback) autoCoachFallback.hidden=false;
+    if(autoCoach) autoCoach.hidden=false;
+    if(syncFallbackInput){ try { syncFallbackInput.focus(); } catch(_e){} }
+  }
+
+  function enterTapMode(reason){
+    autoShareMode="tap";
+    stopAutoSharePolling();
+    setAutoPillState("tap",reason||"Tap after Copy to clipboard");
+  }
+
   function enterPasteMode(reason){
-    locSyncMode="paste";
-    showSyncFallback(true);
-    setSyncBtnState("error",SYNC_LABEL_PASTE,reason||"Paste your tour link below — we won’t ask for clipboard access again this session.");
+    autoShareMode="paste";
+    stopAutoSharePolling();
+    showFallbackInput();
+    setAutoPillState("error",reason||"Paste your link in the popup");
   }
 
   function resetLocationSyncUi(){
-    locSyncMode="auto";
-    setSyncBtnState("idle",SYNC_LABEL_AUTO,"");
-    hideSyncFallback();
+    autoShareMode="auto";
+    stopAutoSharePolling();
+    hideAutoPill();
+    if(autoCoachFallback) autoCoachFallback.hidden=true;
+    if(syncFallbackInput) syncFallbackInput.value="";
     hideAgentSharePill();
     lastSentLocationKey="";
     lastSentLocationTs=0;
-    pendingShare=null;
-    try { closeLtSyncPanel(); } catch(_e){}
+    autoShareLastClipText="";
+    autoShareStarted=false;
   }
 
   // Parse a Matterport "Link to location" URL. Returns {ss, sr} or null.
-  // We require the URL to be on matterport.com (any subdomain), to carry
-  // an "ss" integer sweep id, and (if present) a well-formed "sr" pair.
-  // Hard 2KB ceiling so a clipboard packed with garbage can't OOM the
-  // parser.
   function parseMatterportLocationUrl(text){
     if(!text||typeof text!=="string") return null;
     var trimmed=text.trim();
@@ -4692,14 +4710,11 @@ if(frame){
     if(!parsed) return false;
     var key=parsed.ss+"|"+parsed.sr;
     var now=Date.now();
-    // Dedupe: if the visitor mashes Sync repeatedly with the same coords,
-    // flash success without re-sending — saves an iframe reload on the
-    // agent side and matches user expectation that "nothing new = nothing
-    // happens."
+    // Same-view dedupe: visitor pressing Copy twice on the same view
+    // shouldn't re-fire to the agent.
     if(key===lastSentLocationKey&&(now-lastSentLocationTs)<5000){
-      setSyncBtnState("success","Sent ✓","Same view as last send.");
-      scheduleSyncIdleReset();
-      setTimeout(function(){ try { closeLtSyncPanel(); } catch(_e){} },900);
+      setAutoPillState("success","Already shared ✓");
+      scheduleAutoPillIdle();
       return true;
     }
     var ok=false;
@@ -4707,118 +4722,133 @@ if(frame){
     if(ok){
       lastSentLocationKey=key;
       lastSentLocationTs=now;
-      setSyncBtnState("success","Sent ✓","Your agent can now follow your view.");
-      scheduleSyncIdleReset();
-      // Auto-close the inline instructions + the LT header so the 3D
-      // tour returns to a fully unobstructed view.
-      setTimeout(function(){ try { closeLtSyncPanel(); } catch(_e){} },900);
+      setAutoPillState("success","Shared ✓ — agent can follow");
+      scheduleAutoPillIdle();
       return true;
     }
-    setSyncBtnState("error","Try Again","Couldn’t reach your agent. Check the connection.");
+    setAutoPillState("error","Couldn't reach agent");
+    scheduleAutoPillIdle();
     return false;
   }
 
-  // Pre-flight the clipboard permission via the Permissions API where
-  // it's supported (Chromium-family). If it's already "denied" we skip
-  // the readText() call entirely, which means no permission popup —
-  // the visitor goes straight to paste mode. Browsers without the
-  // Permissions API (Safari/Firefox for clipboard-read) just fall
-  // through to the readText() attempt as before.
-  // Returns a Promise<"granted"|"denied"|"prompt"|"unknown">.
-  function queryClipboardPermission(){
-    try {
-      if(!navigator||!navigator.permissions||typeof navigator.permissions.query!=="function"){
-        return Promise.resolve("unknown");
-      }
-      return navigator.permissions.query({ name: "clipboard-read" }).then(function(result){
-        return (result&&result.state)||"unknown";
-      },function(){ return "unknown"; });
-    } catch(_e){
-      return Promise.resolve("unknown");
-    }
-  }
-
-  function readClipboardAndSend(){
-    setSyncBtnState("reading","Reading…","");
-    // The user just clicked our button, but if they were inside the
-    // Matterport popup a moment ago the iframe may still hold focus —
-    // clipboard.readText() will reject NotAllowedError in that case.
-    // Pull focus back to the parent document before the API call.
-    try { window.focus(); } catch(_e){}
-    try {
-      if(document.documentElement&&typeof document.documentElement.focus==="function"){
-        document.documentElement.focus();
-      }
-    } catch(_e){}
+  // Single read attempt — used by both the auto-poll and the tap-mode
+  // pill click. Silent on no-op; surfaces denied/unavailable by
+  // downgrading the mode for the rest of the session.
+  function tryReadAndShare(opts){
     if(!navigator||!navigator.clipboard||typeof navigator.clipboard.readText!=="function"){
-      enterPasteMode("Your browser can’t read the clipboard automatically. Paste your tour link below — we won’t ask again this session.");
+      enterPasteMode("Clipboard read not supported — use paste");
       return;
     }
-    queryClipboardPermission().then(function(permState){
-      // Already-denied: never call readText() (which would re-prompt or
-      // reject silently). Permanently switch this session to paste mode.
-      if(permState==="denied"){
-        enterPasteMode("Clipboard access is blocked. Paste your tour link below — we won’t ask again this session.");
-        return;
-      }
-      var p;
-      try { p=navigator.clipboard.readText(); } catch(_e){
-        enterPasteMode("Browser blocked the clipboard. Paste your tour link below — we won’t ask again this session.");
-        return;
-      }
-      if(!p||typeof p.then!=="function"){
-        enterPasteMode("Browser blocked the clipboard. Paste your tour link below — we won’t ask again this session.");
-        return;
-      }
-      p.then(function(text){
-        var parsed=parseMatterportLocationUrl(text);
-        if(!parsed){
-          // Clipboard reachable but contents weren't a tour link. This
-          // is a content problem (user forgot to press Copy), NOT a
-          // permission problem — stay in auto mode so the next click
-          // doesn't need a fresh prompt.
-          setSyncBtnState("error",SYNC_LABEL_AUTO,"Clipboard doesn’t have a tour link yet. Press U in the tour, then click Copy to clipboard, then tap here.");
-          return;
+    var now=Date.now();
+    if(!opts||!opts.force){
+      if(now-autoShareLastReadTs<AUTO_SHARE_MIN_GAP_MS) return;
+    }
+    autoShareLastReadTs=now;
+    if(opts&&opts.showReading) setAutoPillState("reading","Sharing view…");
+    var p;
+    try { p=navigator.clipboard.readText(); } catch(_e){
+      enterTapMode("Tap to share (clipboard blocked)");
+      return;
+    }
+    if(!p||typeof p.then!=="function"){
+      enterTapMode("Tap to share (clipboard blocked)");
+      return;
+    }
+    p.then(function(text){
+      if(typeof text!=="string") return;
+      // Silent skip when clipboard hasn't changed since our last poll —
+      // avoids replaying the same URL endlessly.
+      if(text===autoShareLastClipText) return;
+      autoShareLastClipText=text;
+      var parsed=parseMatterportLocationUrl(text);
+      if(!parsed){
+        // Only the explicit click path shows a "not a tour link" hint;
+        // background polling stays quiet.
+        if(opts&&opts.showReading){
+          setAutoPillState("error","Press U then Copy in tour first");
+          scheduleAutoPillIdle();
         }
-        attemptSendLocation(parsed);
-      },function(err){
-        var name=err&&err.name?err.name:"";
-        if(name==="NotAllowedError"||name==="SecurityError"){
-          enterPasteMode("Permission denied. Paste your tour link below — we won’t ask again this session.");
-        } else {
-          enterPasteMode("Couldn’t read the clipboard. Paste your tour link below — we won’t ask again this session.");
-        }
-      });
+        return;
+      }
+      attemptSendLocation(parsed);
+    },function(err){
+      var name=err&&err.name?err.name:"";
+      if(name==="NotAllowedError"||name==="SecurityError"){
+        enterTapMode("Tap to share (allow clipboard once)");
+      } else if(opts&&opts.showReading){
+        setAutoPillState("error","Couldn't read clipboard");
+        scheduleAutoPillIdle();
+      }
     });
   }
 
-  // Send from the visible paste input. Used in paste mode (after
-  // denial / unsupported) and as the keyboard-Enter handler on the
-  // input itself.
+  function startAutoSharePolling(){
+    if(autoShareListenersBound) return;
+    autoShareListenersBound=true;
+    // Refresh on every signal that the user just returned from the
+    // iframe / Matterport popup: focus, visibility change, plus a
+    // lightweight interval as a backstop. All three funnel through
+    // the same throttled tryReadAndShare().
+    window.addEventListener("focus",autoShareSignal);
+    document.addEventListener("visibilitychange",autoShareSignal);
+    autoSharePollTimer=setInterval(autoShareSignal,AUTO_SHARE_POLL_MS);
+  }
+
+  function stopAutoSharePolling(){
+    if(!autoShareListenersBound) return;
+    autoShareListenersBound=false;
+    try { window.removeEventListener("focus",autoShareSignal); } catch(_e){}
+    try { document.removeEventListener("visibilitychange",autoShareSignal); } catch(_e){}
+    if(autoSharePollTimer){ try { clearInterval(autoSharePollTimer); } catch(_e){} autoSharePollTimer=null; }
+  }
+
+  function autoShareSignal(){
+    if(autoShareMode!=="auto") return;
+    if(document.hidden) return;
+    tryReadAndShare({});
+  }
+
+  // Visitor pill click — used in tap mode (after permission denial).
+  // Marked as a user-gesture read so browsers that allow gated
+  // readText() (Safari with prior user activation) will honour it.
+  if(autoPill){
+    autoPill.addEventListener("click",function(e){
+      // Help button clicks shouldn't trigger a read.
+      if(e.target&&e.target.id==="auto-share-pill-help") return;
+      if(autoShareMode==="paste"){ showFallbackInput(); return; }
+      // Force a read even when we're in auto mode — gives the visitor
+      // a manual escape hatch if the poll missed something.
+      tryReadAndShare({ force: true, showReading: true });
+    });
+  }
+
+  if(autoPillHelp){
+    autoPillHelp.addEventListener("click",function(e){
+      e.stopPropagation();
+      if(!autoCoach) return;
+      autoCoach.hidden=!autoCoach.hidden;
+    });
+  }
+
+  if(autoCoachDismiss){
+    autoCoachDismiss.addEventListener("click",dismissCoach);
+  }
+
   function readPasteInputAndSend(){
     var text=(syncFallbackInput&&syncFallbackInput.value||"").trim();
     if(!text){
-      setSyncBtnState("error",SYNC_LABEL_PASTE,"Paste your tour link in the box first.");
+      setAutoPillState("error","Paste your tour link first");
       if(syncFallbackInput){ try { syncFallbackInput.focus(); } catch(_e){} }
       return;
     }
     var parsed=parseMatterportLocationUrl(text);
     if(!parsed){
-      setSyncBtnState("error",SYNC_LABEL_PASTE,"That doesn’t look like a Matterport link. Copy the full URL from the popup.");
+      setAutoPillState("error","That's not a Matterport link");
       return;
     }
-    attemptSendLocation(parsed);
-  }
-
-  if(syncBtn){
-    syncBtn.addEventListener("click",function(){
-      var s=session.getState();
-      if(s.role!=="visitor"||!s.isConnected) return;
-      var now=Date.now();
-      if(now-lastSentLocationTs<LOC_SYNC_RATE_LIMIT_MS&&!syncBtn.classList.contains("is-error")) return;
-      if(locSyncMode==="paste") readPasteInputAndSend();
-      else readClipboardAndSend();
-    });
+    if(attemptSendLocation(parsed)){
+      if(syncFallbackInput) syncFallbackInput.value="";
+    }
   }
 
   if(syncFallbackSubmit&&syncFallbackInput){
@@ -4826,6 +4856,44 @@ if(frame){
     syncFallbackInput.addEventListener("keydown",function(e){
       if(e.key==="Enter"){ e.preventDefault(); readPasteInputAndSend(); }
     });
+    // Auto-send the moment a valid URL is pasted, so the visitor
+    // doesn't have to click Send afterward.
+    syncFallbackInput.addEventListener("paste",function(){
+      setTimeout(function(){
+        var t=(syncFallbackInput.value||"").trim();
+        var parsed=parseMatterportLocationUrl(t);
+        if(parsed&&attemptSendLocation(parsed)){
+          syncFallbackInput.value="";
+        }
+      },0);
+    });
+  }
+
+  // Called once per session, the first time the visitor's data channel
+  // opens. Reveals the pill, kicks off polling, and shows the one-time
+  // coach mark if the visitor has never seen it.
+  function activateVisitorAutoShare(){
+    if(autoShareStarted) return;
+    autoShareStarted=true;
+    showAutoPill();
+    showCoachIfFirstTime();
+    if(!navigator||!navigator.clipboard||typeof navigator.clipboard.readText!=="function"){
+      enterPasteMode("Clipboard read not supported — use paste");
+      return;
+    }
+    // If the Permissions API has already told us the grant is denied,
+    // skip auto-polling entirely and go straight to tap mode.
+    try {
+      if(navigator.permissions&&typeof navigator.permissions.query==="function"){
+        navigator.permissions.query({ name: "clipboard-read" }).then(function(r){
+          var st=(r&&r.state)||"unknown";
+          if(st==="denied") enterTapMode("Tap to share (clipboard blocked)");
+          else startAutoSharePolling();
+        },function(){ startAutoSharePolling(); });
+        return;
+      }
+    } catch(_e){}
+    startAutoSharePolling();
   }
 
   // Agent-side: receive + Follow
@@ -5009,6 +5077,15 @@ if(frame){
       }
       joinBtn.disabled=true;
       if(visitorStatus) visitorStatus.textContent="Connecting…";
+      // Pre-grant clipboard permission in the same user gesture as the
+      // Join click — browser prompts once now, then silent reads power
+      // the auto-share pill for the rest of the session.
+      try {
+        if(navigator&&navigator.clipboard&&typeof navigator.clipboard.readText==="function"){
+          var __pgp=navigator.clipboard.readText();
+          if(__pgp&&typeof __pgp.catch==="function") __pgp.catch(function(){});
+        }
+      } catch(_e){}
       session.joinAsVisitor(pin).catch(function(){
         // error state surfaced via subscribe()
       });
@@ -5126,17 +5203,12 @@ if(frame){
       showAgentSharePill(state.incomingLocationShareEvent.ss,state.incomingLocationShareEvent.sr);
     }
 
-    // Visitor's Sync button: disable when the channel isn't live so a
-    // tap doesn't read the clipboard for nothing. Idle-text reset only
-    // when we're not mid-flow (preserves the success/error message).
-    if(state.role==="visitor"&&syncBtn){
-      if(!state.isConnected){
-        if(!syncBtn.classList.contains("is-reading")&&!syncBtn.classList.contains("is-error")){
-          setSyncBtnState("disabled","Waiting…","Waiting for your agent…");
-        }
-      } else if(syncBtn.disabled&&!syncBtn.classList.contains("is-reading")&&!syncBtn.classList.contains("is-success")&&!syncBtn.classList.contains("is-error")){
-        setSyncBtnState("idle",defaultSyncLabel(),"");
-      }
+    // Visitor auto-share activation. The first time the channel goes
+    // live we reveal the auto-share pill and start clipboard polling.
+    // If the channel later drops we leave the pill visible until the
+    // session is fully torn down (resetLocationSyncUi handles cleanup).
+    if(state.role==="visitor"&&state.isConnected){
+      activateVisitorAutoShare();
     }
 
     // ── Annotation receive paths ─────────────────────────────────
