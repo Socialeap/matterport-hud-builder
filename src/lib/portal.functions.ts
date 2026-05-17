@@ -4402,6 +4402,7 @@ if(frame){
     var k=(e.key||"").toLowerCase();
     if(k==="p"){ setToolMode("pointer"); e.preventDefault(); }
     else if(k==="d"){ setToolMode("draw"); e.preventDefault(); }
+    else if(k==="r"){ setToolMode("rope"); e.preventDefault(); }
     else if(k==="c"){ handleClearLocallyAndBroadcast(); e.preventDefault(); }
     else if(k==="s"){ showCapturePanel(); e.preventDefault(); }
     else if(e.key==="Escape"){
