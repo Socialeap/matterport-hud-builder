@@ -1750,6 +1750,7 @@ ${askAssets.css}
 <div id="viewer">
   <div id="anno-letterbox-wrap">
     <iframe id="matterport-frame" allowfullscreen allow="xr-spatial-tracking; fullscreen"></iframe>
+    <div id="live-tour-navlock" aria-hidden="true"></div>
     <canvas id="anno-canvas"></canvas>
     <div id="remote-pointer" aria-hidden="true"></div>
     <div id="anno-toolbar" role="toolbar" aria-label="Live tour annotations">
