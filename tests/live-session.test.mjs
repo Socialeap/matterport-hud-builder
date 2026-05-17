@@ -394,6 +394,7 @@ test("annotation senders return false when agent is not yet connected", () => {
     assert.equal(session.sendStrokePatch("v|", "s1", [[0.1, 0.1]]), false);
     assert.equal(session.sendStrokeCommit("v|", "s1"), false);
     assert.equal(session.sendClear("v|"), false);
+    assert.equal(session.sendNavLock("v|", true), false);
     session.dispose();
   });
 });
