@@ -1863,27 +1863,30 @@ ${askAssets.css}
       <div id="ltcd-brand">${escapeHtml(brandName)}</div>
       <span id="ltcd-status">Live Tour</span>
     </div>
-    <button type="button" id="lt-leave-btn" class="lt-action-btn lt-leave" aria-label="Leave live tour">Leave</button>
-    <button type="button" id="lt-sync-btn" class="lt-action-btn" aria-expanded="false" aria-controls="lt-sync-panel">Sync My View</button>
-    <div id="lt-sync-panel" role="region" aria-label="Sync your view instructions">
-      <div id="lt-sync-steps">
-        <span class="loc-sync-step"><span class="loc-sync-step-num">1</span><span>Position to the exact viewpoint you want the agent to see</span></span>
-        <span class="loc-sync-step"><span class="loc-sync-step-num">2</span><span>Press the <kbd>U</kbd> key on your keyboard + click <strong>Copy to clipboard</strong></span></span>
-        <span class="loc-sync-step"><span class="loc-sync-step-num">3</span><span>Click the <strong>Sync</strong> button below</span></span>
-      </div>
-      <div id="loc-sync-action">
-        <button type="button" id="loc-sync-btn" aria-describedby="loc-sync-status">
-          <span id="loc-sync-spinner" aria-hidden="true"></span>
-          <span id="loc-sync-btn-text">Sync My View</span>
-        </button>
-        <div id="loc-sync-status" aria-live="polite"></div>
-        <div id="loc-sync-fallback" hidden>
-          <input type="text" id="loc-sync-fallback-input" placeholder="Paste tour link here" aria-label="Paste Matterport tour link" autocomplete="off" spellcheck="false">
-          <button type="button" id="loc-sync-fallback-submit">Send</button>
-        </div>
-      </div>
-    </div>
+     <button type="button" id="lt-leave-btn" class="lt-action-btn lt-leave" aria-label="Leave live tour">Leave</button>
   </div>
+</div>
+
+<!-- ── Auto-share pill: visitor-only, fixed top-left under the chevron.
+     Stays out of the iframe entirely (small pill, never covers Matterport
+     popups). Visitor never needs to click it in the happy path —
+     clipboard is auto-polled while connected. In denied-permission mode
+     it becomes a single tap target (read+send on click). The legacy
+     paste field is kept as a deep fallback when readText() is missing. -->
+<div id="auto-share-pill" role="status" aria-live="polite" hidden>
+  <span id="auto-share-pill-dot" aria-hidden="true"></span>
+  <span id="auto-share-pill-text">Auto-share on</span>
+  <button type="button" id="auto-share-pill-help" aria-label="How sharing works" title="How sharing works">?</button>
+</div>
+<div id="auto-share-coach" role="dialog" aria-label="How to share your view" hidden>
+  <div id="auto-share-coach-body">
+    Share what you're looking at anytime: press <kbd>U</kbd> in the tour, then click <strong>Copy to clipboard</strong>. We'll send it to your agent automatically — no extra clicks here.
+  </div>
+  <div id="auto-share-coach-fallback" hidden>
+    <input type="text" id="loc-sync-fallback-input" placeholder="Or paste tour link here" aria-label="Paste Matterport tour link" autocomplete="off" spellcheck="false">
+    <button type="button" id="loc-sync-fallback-submit">Send</button>
+  </div>
+  <button type="button" id="auto-share-coach-dismiss" aria-label="Dismiss">Got it</button>
 </div>
 
 <!-- ── Location Sync: agent's incoming-share pill (CSS-gated to agent) -->
