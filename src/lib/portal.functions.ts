@@ -3962,29 +3962,12 @@ if(frame){
   var audioEl=document.getElementById("lg-audio");
   var leaveBtn=document.getElementById("lt-leave-btn");
   var ltDrawer=document.getElementById("live-tour-control-drawer");
-  var ltSyncBtn=document.getElementById("lt-sync-btn");
-  function openLtSyncPanel(){
-    if(!ltDrawer) return;
-    // Force the left drawer open via the shared setter so the chevron
-    // icon flips and the regular HUD stays hidden, then reveal the
-    // instructions sub-panel inside the drawer.
-    try { if(typeof window.__setHudVisible==="function") window.__setHudVisible(true); } catch(_e){}
-    ltDrawer.classList.add("show-sync");
-    if(ltSyncBtn) ltSyncBtn.setAttribute("aria-expanded","true");
-  }
-  function closeLtSyncPanel(){
-    if(!ltDrawer) return;
-    ltDrawer.classList.remove("show-sync");
-    if(ltSyncBtn) ltSyncBtn.setAttribute("aria-expanded","false");
-    // Collapse the whole drawer so the 3D tour is unobstructed again.
-    try { if(typeof window.__setHudVisible==="function") window.__setHudVisible(false); } catch(_e){}
-  }
-  if(ltSyncBtn){
-    ltSyncBtn.addEventListener("click",function(){
-      if(ltDrawer && ltDrawer.classList.contains("show-sync")) closeLtSyncPanel();
-      else openLtSyncPanel();
-    });
-  }
+  // Sync My View button + instruction panel removed. The visitor now
+  // shares views via clipboard auto-polling (see auto-share pill below)
+  // so opening any drawer/panel — which would steal iframe focus and
+  // break the `U` key — is no longer required for the main flow.
+  function closeLtSyncPanel(){ /* retained as no-op for legacy callers */ }
+
 
   var session=createLiveSession({});
   var lastTeleportTs=0;
