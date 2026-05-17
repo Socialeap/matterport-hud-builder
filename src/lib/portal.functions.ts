@@ -1747,7 +1747,7 @@ ${askAssets.css}
       <button type="button" class="anno-tool-btn" data-tool="draw" title="Draw (D)" aria-keyshortcuts="D">Draw</button>
       <label class="anno-color-wrap" title="Stroke color">
         <span class="anno-color-swatch" id="anno-color-swatch" aria-hidden="true"></span>
-        <select class="anno-tool-btn anno-color-select" id="anno-color-select" aria-label="Stroke color">
+        <select class="anno-color-select" id="anno-color-select" aria-label="Stroke color">
           <option value="#ff3b30">Red</option>
           <option value="#1e90ff">Blue</option>
           <option value="#22c55e">Green</option>
