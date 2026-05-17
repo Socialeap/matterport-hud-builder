@@ -1,70 +1,109 @@
-## Visitor freeze never engages — root cause and fix
 
-### Root cause (single bug)
+## Goal
 
-The wire protocol, the `nav_lock` send/receive, the `applyNavLock()` toggle, and the `#live-tour-navlock` overlay element are all wired correctly. The overlay even gets the `.locked` class on the visitor when the agent enters annotation mode.
+Stop the "Share your view" card from blocking the 3D tour. Introduce a dedicated **Live Tour HUD** that replaces the regular HUD whenever `body.live-tour-active` is set. For visitors it contains only **Sync My View** and **Leave**, the instructions appear inline on demand, and the entire bar stays hidden until the chevron is clicked.
 
-The freeze still fails because of one CSS gate. In `src/lib/portal.functions.ts` line 1622:
+## Current state (traced)
 
-```css
-body.live-tour-active.live-tour-visitor #live-tour-navlock.locked{display:block}
+- `src/lib/portal.functions.ts` renders a single `#hud-header` (brand, mute, map, cinema, media, floormap, Ask, Live Tour, Contact). The chevron `#hud-toggle` and standalone `#hud-leave-btn` already exist.
+- During a live tour, `body.live-tour-active.live-tour-visitor` gates a separate fixed card `#loc-sync` at `top:120px` that contains the "Share your view:" instructions + Sync button. This is the blocking overlay.
+- `setBodyLetterboxClass(active,isAgent)` (line ~4010) flips `live-tour-active` / `live-tour-visitor` / `live-tour-agent`. `teardownSession()` (~4816) resets everything; `leaveBtn` is currently shown via `leaveBtn.hidden=false` on connect (~5006).
+- All Sync click logic (`syncBtn`, `readClipboardAndSend`, `enterPasteMode`, paste fallback, dedupe, `shareLocationWithAgent`) lives between lines 4518–4810. The agent-side `#loc-share-pill` is independent and stays untouched.
+
+## Solution: two stacked headers, CSS-gated by role/state
+
+### 1. Markup (`src/lib/portal.functions.ts`, around lines 1840–1880)
+
+Keep the existing `#hud-header`, `#hud-toggle`, `#hud-leave-btn`. Add a sibling `#hud-header-livetour` that mirrors the structure but renders different children:
+
+```text
+#hud-header-livetour (visible only when body.live-tour-active && .visible)
+├── #lt-hud-inner
+│   ├── #lt-hud-center  → brand/logo (compact)
+│   └── #lt-hud-right
+│       ├── (visitor)  #lt-sync-btn  "Sync My View"
+│       ├── (visitor)  #lt-leave-btn "Leave"
+│       └── (agent)    #lt-leave-btn "Leave"   ← agent variant TBD (see Q1)
+└── #lt-sync-panel (hidden by default)
+    ├── step 1: Press U in the tour
+    ├── step 2: Click "Copy to clipboard"
+    └── step 3: [Send / paste fallback input + Send]
 ```
 
-…requires **both** `live-tour-active` and `live-tour-visitor` body classes. But `setBodyLetterboxClass(active, isAgent)` (lines 3934–3944) only ever adds `live-tour-active` and `live-tour-agent` — there is no code path anywhere that adds `live-tour-visitor`. So on the visitor side, the selector never matches, the overlay stays at `display:none`, and pointer/touch events fall straight through to the Matterport iframe behind it. The agent's own iframe also freezes (because the canvas above intercepts pointer events when a tool is active) — which is why only the visitor side appears broken.
+The standalone floating `#loc-sync` card and its inner `#loc-sync-instructions` (with "Share your view:" label) are **removed**. `#loc-sync-action` (the actual sync button + status + paste fallback) is moved inside `#lt-sync-panel` and keeps the same element IDs (`loc-sync-btn`, `loc-sync-status`, `loc-sync-fallback*`) so the existing JS still finds them with no rewiring.
 
-### Fix
+### 2. CSS (replaces `#loc-sync*` positioning rules, ~lines 1639–1675)
 
-Two surgical edits in `src/lib/portal.functions.ts`, both inside `setBodyLetterboxClass`:
+```text
+/* Hide the regular HUD entirely during a live tour. */
+body.live-tour-active #hud-header { display:none; }
+body.live-tour-active #hud-leave-btn { display:none; } /* leave now lives inside lt header */
 
-1. When `active && !isAgent`, add `live-tour-visitor` to `document.body.classList`.
-2. In the `else` branch (teardown), also remove `live-tour-visitor`.
-
-Resulting function:
-
-```js
-function setBodyLetterboxClass(active,isAgent){
-  if(!document||!document.body) return;
-  if(active){
-    document.body.classList.add("live-tour-active");
-    if(isAgent){
-      document.body.classList.add("live-tour-agent");
-      document.body.classList.remove("live-tour-visitor");
-    } else {
-      document.body.classList.add("live-tour-visitor");
-      document.body.classList.remove("live-tour-agent");
-    }
-  } else {
-    document.body.classList.remove("live-tour-active");
-    document.body.classList.remove("live-tour-agent");
-    document.body.classList.remove("live-tour-visitor");
-  }
+/* Live-tour HUD: same fixed-top + chevron-driven slide pattern as #hud-header. */
+#hud-header-livetour {
+  position:fixed; top:0; left:0; right:0; z-index:1200;
+  transform:translateY(-100%); opacity:0; pointer-events:none;
+  transition:transform .3s ease, opacity .3s ease;
+  display:none;
 }
+body.live-tour-active #hud-header-livetour { display:block; }
+#hud-header-livetour.visible { transform:translateY(0); opacity:1; pointer-events:auto; }
+
+/* Inline instructions panel — only shown after Sync My View is clicked. */
+#lt-sync-panel { display:none; padding:10px 14px; background:rgba(0,0,0,.7); ... }
+#hud-header-livetour.show-sync #lt-sync-panel { display:flex; }
+
+/* Visitor-only / agent-only children */
+body.live-tour-agent   #lt-sync-btn   { display:none; }
+body.live-tour-agent   #lt-sync-panel { display:none !important; }
 ```
 
-### Defense-in-depth (optional second edit, included for safety)
+The standalone `#loc-sync` element + all `#loc-sync-instructions*` selectors are deleted.
 
-To eliminate any possibility of the iframe stealing pointer events even when the overlay is shown, add `pointer-events:none` to the iframe while the visitor is locked. Append one rule next to line 1622:
+### 3. JS wiring
 
-```css
-body.live-tour-active.live-tour-visitor #live-tour-navlock.locked ~ #matterport-frame,
-body.live-tour-active.live-tour-visitor #anno-letterbox-wrap:has(#live-tour-navlock.locked) #matterport-frame{pointer-events:none}
-```
+- **Header visibility on entering Live Tour**: in `setBodyLetterboxClass(active,isAgent)`, when `active===true` ensure `#hud-header.visible` is removed, `#hud-header-livetour` exists but stays **without** the `.visible` class so it's hidden — visitor must click the chevron to open it. When `active===false`, remove `.visible` from the live-tour header and restore the regular header's previous toggle state.
 
-(Either selector works on all evergreen browsers we ship to; the `:has()` form is the cleaner one and we already use modern CSS elsewhere in this stylesheet.) This guarantees freeze even if a future change reorders DOM nodes inside `#anno-letterbox-wrap`.
+- **Chevron `#hud-toggle`** (lines 2168–2211, 2449–2468): change the click handler so it toggles whichever header matches the current mode:
 
-### Verification
+  ```text
+  var target = document.body.classList.contains("live-tour-active")
+    ? document.getElementById("hud-header-livetour")
+    : document.getElementById("hud-header");
+  target.classList.toggle("visible");
+  ```
 
-- Trace: `session.sendNavLock` → wire → `incomingNavLockEvent` → `applyNavLock(true)` (line 4817) → overlay gets `.locked` → CSS selector now matches because both body classes are present → overlay covers iframe → visitor cannot pan/click.
-- Auto-release paths (`setToolMode("none")`, X button, teardown, `incomingClearEvent`) all remain intact — none of them depend on the body class.
-- Agent role unchanged: agent body still gets `live-tour-agent`, never `live-tour-visitor`, so the agent's own iframe is unaffected by the new overlay rule.
-- No wire-protocol changes, no test changes required (existing `tests/live-session.test.mjs` already covers send/receive of `nav_lock`).
-- Backward compatible: any older clients still don't send/receive `nav_lock` and behave exactly as before.
+  Also flip the chevron up/down SVG using `target.classList.contains("visible")`. Keep the existing pulse-on-idle behavior.
 
-### Files touched
+- **Sync My View flow**:
+  - New `#lt-sync-btn` click handler: adds `.show-sync` to `#hud-header-livetour` (reveals inline instructions + the existing `#loc-sync-btn` button inside the panel).
+  - The existing `#loc-sync-btn` click (already wired to `readClipboardAndSend` / paste flow) is unchanged. After `attemptSendLocation` returns `true` (or after paste-submit success), also call `closeLtSyncPanel()`:
+    - removes `.show-sync` and `.visible` from `#hud-header-livetour`
+    - leaves the success/error toast visible for ~2.2s via a brief fixed-position `#loc-sync-status` clone, then resets (reuses existing `scheduleSyncIdleReset` timing).
 
-- `src/lib/portal.functions.ts` — 1 function body (≈7 lines) + 1 optional CSS rule.
+- **Leave button**: move the `leaveBtn = document.getElementById("hud-leave-btn")` lookup to `#lt-leave-btn` (rename the element to keep behavior). The existing `teardownSession()` already does the full cleanup; only the show/hide path changes — `leaveBtn.hidden=false` runs on connect, `hidden=true` on teardown.
 
-### Out of scope
+- **`resetLocationSyncUi()`** also removes `.show-sync` from the live-tour header so a re-join starts collapsed.
 
-- No changes to `live-session.mjs`, `live-session-source.ts`, or tests.
-- No changes to the rope tool, draw tool, color picker, X exit button, or teleport flow.
+### 4. Files touched
+
+- `src/lib/portal.functions.ts` — only file with markup, CSS, and JS for the live-tour HUD. All changes are HTML-template + interpolated CSS + IIFE JS, no backend/server changes.
+- `tests/live-session.test.mjs` — no changes; controller surface (`shareLocationWithAgent`, `teleportVisitor`, etc.) is untouched.
+
+### 5. Regression guards traced
+
+- `#loc-sync-btn`, `#loc-sync-status`, `#loc-sync-fallback*`, `#loc-sync-spinner`, `#loc-sync-btn-text` IDs preserved → all current handlers (4518–4810) keep working without edits.
+- `#loc-share-pill` (agent's incoming-share notification) is independent and untouched.
+- Annotation toolbar `#anno-toolbar` lives inside `#anno-letterbox-wrap` (not in the HUD) — unaffected.
+- `setBodyLetterboxClass` is the single switch — used by `onState` for both agent and visitor, so the header swap is symmetric and disposed correctly on teardown.
+- Ask AI / Contact / mute / map / cinema / media / floormap buttons remain in `#hud-header` and are simply hidden by `display:none` during live tour. They reappear automatically after `teardownSession()` strips `.live-tour-active`.
+
+## Open question
+
+**Q1 — Agent's Live Tour HUD contents.** You only specified the visitor's side (Sync + Leave). The agent already has the in-frame annotation toolbar (Pointer / Draw / Rope / Clear / X). For the agent's Live Tour HUD bar, should it contain:
+
+- (a) Just **Leave** (annotation toolbar inside the frame stays the only control), or
+- (b) **Leave** + the **PIN reminder** ("PIN: 1234"), or
+- (c) Something else?
+
+I'll default to **(a)** if you don't specify, since the annotation toolbar already covers the agent's needs and matches your "unobstructed view" principle.
