@@ -1741,6 +1741,15 @@ ${askAssets.css}
     <div id="anno-toolbar" role="toolbar" aria-label="Live tour annotations">
       <button type="button" class="anno-tool-btn" data-tool="pointer" title="Pointer (P)" aria-keyshortcuts="P">Pointer</button>
       <button type="button" class="anno-tool-btn" data-tool="draw" title="Draw (D)" aria-keyshortcuts="D">Draw</button>
+      <label class="anno-color-wrap" title="Stroke color">
+        <span class="anno-color-swatch" id="anno-color-swatch" aria-hidden="true"></span>
+        <select class="anno-tool-btn anno-color-select" id="anno-color-select" aria-label="Stroke color">
+          <option value="#ff3b30">Red</option>
+          <option value="#1e90ff">Blue</option>
+          <option value="#22c55e">Green</option>
+          <option value="#ffffff">White</option>
+        </select>
+      </label>
       <button type="button" class="anno-tool-btn" id="anno-clear-btn" title="Clear annotations (C)" aria-keyshortcuts="C">Clear</button>
       <button type="button" class="anno-tool-btn" id="anno-capture-btn" title="Capture spec (S)" aria-keyshortcuts="S">Capture</button>
     </div>
