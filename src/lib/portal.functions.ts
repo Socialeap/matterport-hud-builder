@@ -1656,54 +1656,38 @@ body.live-tour-active #live-tour-control-drawer{display:flex;flex-direction:colu
 .lt-action-btn.lt-leave{background:rgba(255,255,255,0.14);color:#fff;box-shadow:none;border:1px solid rgba(255,255,255,0.18)}
 .lt-action-btn.lt-leave:hover{background:rgba(220,38,38,0.85);transform:translateY(-1px);box-shadow:0 6px 16px rgba(220,38,38,0.4)}
 
-/* ── Auto-share pill (visitor only). Pinned top-left below the chevron
-   so it never overlaps Matterport's URL/Copy popup (top area) or the
-   bottom controls. Compact by default, doesn't steal iframe focus. */
-#auto-share-pill{position:fixed;top:50px;left:8px;z-index:1240;display:none;align-items:center;gap:8px;padding:6px 10px 6px 12px;border-radius:999px;background:rgba(0,0,0,0.62);border:1px solid rgba(255,255,255,0.18);color:#fff;font:600 11px/1 system-ui,-apple-system,sans-serif;-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%);box-shadow:0 6px 18px rgba(0,0,0,0.28);max-width:min(280px,calc(100vw - 16px));pointer-events:auto;cursor:default;transition:background 0.2s,transform 0.1s,box-shadow 0.2s}
-body.live-tour-active.live-tour-visitor #auto-share-pill:not([hidden]){display:inline-flex}
-#auto-share-pill.is-tap{cursor:pointer;background:${escapeHtml(accentColor)}cc;border-color:${escapeHtml(accentColor)}}
-#auto-share-pill.is-tap:hover{transform:translateY(-1px);box-shadow:0 8px 20px ${escapeHtml(accentColor)}55}
-#auto-share-pill.is-reading{background:rgba(255,255,255,0.22)}
-#auto-share-pill.is-success{background:#16a34a;border-color:rgba(34,197,94,0.6);box-shadow:0 6px 18px rgba(22,163,74,0.4)}
-#auto-share-pill.is-error{background:#b45309;border-color:rgba(180,83,9,0.6)}
-#auto-share-pill-dot{width:8px;height:8px;border-radius:50%;background:#22c55e;flex-shrink:0;animation:auto-share-pulse 1.8s ease-in-out infinite}
-#auto-share-pill.is-reading #auto-share-pill-dot{animation:auto-share-spin 0.7s linear infinite;background:transparent;border:2px solid rgba(255,255,255,0.4);border-top-color:#fff;width:10px;height:10px}
-#auto-share-pill.is-success #auto-share-pill-dot,#auto-share-pill.is-error #auto-share-pill-dot{animation:none;background:#fff}
-#auto-share-pill-text{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:0.01em}
-#auto-share-pill-help{appearance:none;border:none;cursor:pointer;background:rgba(255,255,255,0.18);color:#fff;width:18px;height:18px;border-radius:50%;font:700 11px/1 inherit;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
-#auto-share-pill-help:hover{background:rgba(255,255,255,0.32)}
-@keyframes auto-share-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.55;transform:scale(0.85)}}
-@keyframes auto-share-spin{to{transform:rotate(360deg)}}
+/* ── Location Sync — visitor's ambient pulse pill ──────────────────── */
+/* Single ambient status pill. Clipboard is read silently on focus /
+   visibilitychange / pointerenter once permission is granted at join
+   time. The pill is also clickable as a user-gesture fallback for
+   browsers that block ambient readText (Firefox/Safari per-call). Sits
+   just below the top-left chevron so it cannot collide with Matterport's
+   "Link to location" popup (top-right) or the drawer (off-screen). */
+#loc-sync{position:fixed;top:50px;left:8px;z-index:1240;display:none;align-items:center;gap:8px;padding:6px 14px 6px 10px;border-radius:999px;background:rgba(0,0,0,0.58);border:1px solid rgba(255,255,255,0.18);color:#fff;font:600 12px/1 system-ui,-apple-system,sans-serif;-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%);box-shadow:0 6px 20px rgba(0,0,0,0.32);cursor:pointer;user-select:none;transition:background 0.2s,opacity 0.2s,transform 0.1s;pointer-events:auto;max-width:min(280px,calc(100vw - 16px))}
+body.live-tour-active.live-tour-visitor #loc-sync{display:inline-flex}
+#loc-sync:hover{background:rgba(0,0,0,0.7);transform:translateY(-1px)}
+#loc-sync:active{transform:scale(0.97)}
+#loc-sync:focus-visible{outline:2px solid ${escapeHtml(accentColor)};outline-offset:2px}
+.loc-sync-dot{position:relative;display:inline-flex;align-items:center;justify-content:center;width:10px;height:10px;border-radius:50%;background:${escapeHtml(accentColor)};flex-shrink:0;animation:loc-sync-breath 2.2s ease-in-out infinite}
+.loc-sync-label{color:rgba(255,255,255,0.94);letter-spacing:0.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@keyframes loc-sync-breath{0%,100%{box-shadow:0 0 0 0 ${escapeHtml(accentColor)}66}50%{box-shadow:0 0 0 6px ${escapeHtml(accentColor)}00}}
+@keyframes loc-sync-spin{to{transform:rotate(360deg)}}
 
-/* Coach mark — one-time onboarding tooltip pinned near the pill. */
-#auto-share-coach{position:fixed;top:78px;left:8px;z-index:1245;display:none;flex-direction:column;gap:10px;width:min(300px,calc(100vw - 16px));padding:12px 14px;border-radius:12px;background:rgba(0,0,0,0.78);border:1px solid rgba(255,255,255,0.16);color:#fff;font:500 12px/1.45 system-ui,-apple-system,sans-serif;-webkit-backdrop-filter:blur(16px) saturate(170%);backdrop-filter:blur(16px) saturate(170%);box-shadow:0 12px 28px rgba(0,0,0,0.4)}
-body.live-tour-active.live-tour-visitor #auto-share-coach:not([hidden]){display:flex}
-#auto-share-coach kbd{display:inline-block;padding:1px 6px;border-radius:4px;background:rgba(255,255,255,0.18);border:1px solid rgba(255,255,255,0.24);font:700 11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:#fff}
-#auto-share-coach-fallback{display:flex;gap:6px}
-#auto-share-coach-fallback[hidden]{display:none}
-#loc-sync-fallback-input{flex:1;min-width:0;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.18);color:#fff;border-radius:6px;padding:6px 8px;font:500 11px/1.4 inherit;outline:none}
-#loc-sync-fallback-input::placeholder{color:rgba(255,255,255,0.45)}
-#loc-sync-fallback-input:focus{border-color:${escapeHtml(accentColor)}}
-#loc-sync-fallback-submit{appearance:none;border:none;cursor:pointer;background:${escapeHtml(accentColor)};color:#fff;border-radius:6px;padding:0 12px;font:700 11px/1 inherit}
-#auto-share-coach-dismiss{appearance:none;border:none;cursor:pointer;background:rgba(255,255,255,0.14);color:#fff;border-radius:6px;padding:6px 10px;font:700 11px/1 inherit;align-self:flex-end}
-#auto-share-coach-dismiss:hover{background:rgba(255,255,255,0.24)}
+/* State variants — all driven by data-state on #loc-sync. */
+#loc-sync[data-state="syncing"] .loc-sync-dot{background:transparent;border:2px solid rgba(255,255,255,0.35);border-top-color:#fff;animation:loc-sync-spin 0.7s linear infinite;box-shadow:none}
+#loc-sync[data-state="success"]{background:rgba(22,163,74,0.85);border-color:rgba(22,163,74,0.95)}
+#loc-sync[data-state="success"] .loc-sync-dot{background:#fff;animation:none;box-shadow:none}
+#loc-sync[data-state="success"] .loc-sync-dot::after{content:"";position:absolute;width:6px;height:3px;border-left:2px solid #16a34a;border-bottom:2px solid #16a34a;transform:rotate(-45deg) translate(0.5px,-1px)}
+#loc-sync[data-state="denied"]{background:rgba(180,83,9,0.78);border-color:rgba(180,83,9,0.9)}
+#loc-sync[data-state="denied"] .loc-sync-dot{background:rgba(255,255,255,0.95);animation:none;box-shadow:none}
+#loc-sync[data-state="denied"] .loc-sync-dot::after{content:"";position:absolute;width:4px;height:3px;border:1.5px solid #b45309;border-bottom:none;border-radius:2px 2px 0 0;top:1px}
+#loc-sync[data-state="waiting"]{opacity:0.65}
+#loc-sync[data-state="waiting"] .loc-sync-dot{background:rgba(255,255,255,0.5);animation:loc-sync-breath 3s ease-in-out infinite}
+@media(max-width:560px){#loc-sync{padding:5px 12px 5px 8px;font-size:11px}}
 
-
-/* ── Location Sync — agent's "Visitor shared location" pill ──────── */
-#loc-share-pill{position:fixed;top:42px;right:12px;z-index:1300;display:none;align-items:center;gap:8px;padding:6px 6px 6px 14px;border-radius:999px;background:rgba(0,0,0,0.55);border:1px solid rgba(255,255,255,0.2);color:#fff;font:600 12px/1 system-ui,-apple-system,sans-serif;-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%);box-shadow:0 8px 24px rgba(0,0,0,0.32);max-width:min(360px,calc(100vw - 24px));animation:loc-share-slide 0.25s ease-out}
-body.live-tour-active.live-tour-agent #loc-share-pill.is-visible{display:inline-flex}
-#loc-share-pill-dot{width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 0 rgba(34,197,94,0.6);animation:loc-share-pulse 1.6s ease-in-out infinite;flex-shrink:0}
-#loc-share-pill-text{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:rgba(255,255,255,0.92)}
-#loc-share-follow{appearance:none;border:none;cursor:pointer;background:${escapeHtml(accentColor)};color:#fff;font:700 11px/1 inherit;letter-spacing:0.02em;padding:0 12px;height:24px;border-radius:999px;display:inline-flex;align-items:center;gap:4px;transition:opacity 0.15s,transform 0.1s}
-#loc-share-follow:hover{opacity:0.92}
-#loc-share-follow:active{transform:scale(0.97)}
-#loc-share-dismiss{appearance:none;border:none;cursor:pointer;background:rgba(255,255,255,0.12);color:rgba(255,255,255,0.75);font-size:14px;line-height:1;width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;transition:background 0.15s,color 0.15s}
-#loc-share-dismiss:hover{background:rgba(255,255,255,0.22);color:#fff}
-@keyframes loc-share-slide{from{transform:translateY(-8px);opacity:0}to{transform:translateY(0);opacity:1}}
-@keyframes loc-share-pulse{0%,100%{box-shadow:0 0 0 0 rgba(34,197,94,0.6)}50%{box-shadow:0 0 0 6px rgba(34,197,94,0)}}
-/* Brief outline pulse on the agent's iframe wrap when they tap Follow,
-   so they have a clear visual that the view they're now seeing is the
-   visitor's location, not their own navigation. */
+/* Agent auto-follow visual cue — brief outline pulse on the iframe
+   wrap when a visitor's location_share arrives. No agent UI; the
+   teleport is silent except for this pulse. */
 body.live-tour-active.live-tour-agent #anno-letterbox-wrap.follow-pulse{box-shadow:0 0 0 3px ${escapeHtml(accentColor)},0 0 0 6px ${escapeHtml(accentColor)}33;transition:box-shadow 1.5s ease-out}
 
 /* ── Shared modal backdrop ────────────────────────────────────────── */
@@ -1869,34 +1853,16 @@ ${askAssets.css}
   </div>
 </div>
 
-<!-- ── Auto-share pill: visitor-only, fixed top-left under the chevron.
-     Stays out of the iframe entirely (small pill, never covers Matterport
-     popups). Visitor never needs to click it in the happy path —
-     clipboard is auto-polled while connected. In denied-permission mode
-     it becomes a single tap target (read+send on click). The legacy
-     paste field is kept as a deep fallback when readText() is missing. -->
-<div id="auto-share-pill" role="status" aria-live="polite" hidden>
-  <span id="auto-share-pill-dot" aria-hidden="true"></span>
-  <span id="auto-share-pill-text">Auto-share on</span>
-  <button type="button" id="auto-share-pill-help" aria-label="How sharing works" title="How sharing works">?</button>
-</div>
-<div id="auto-share-coach" role="dialog" aria-label="How to share your view" hidden>
-  <div id="auto-share-coach-body">
-    Share what you're looking at anytime: press <kbd>U</kbd> in the tour, then click <strong>Copy to clipboard</strong>. We'll send it to your agent automatically — no extra clicks here.
-  </div>
-  <div id="auto-share-coach-fallback" hidden>
-    <input type="text" id="loc-sync-fallback-input" placeholder="Or paste tour link here" aria-label="Paste Matterport tour link" autocomplete="off" spellcheck="false">
-    <button type="button" id="loc-sync-fallback-submit">Send</button>
-  </div>
-  <button type="button" id="auto-share-coach-dismiss" aria-label="Dismiss">Got it</button>
-</div>
-
-<!-- ── Location Sync: agent's incoming-share pill (CSS-gated to agent) -->
-<div id="loc-share-pill" role="status" aria-live="polite" hidden>
-  <span id="loc-share-pill-dot" aria-hidden="true"></span>
-  <span id="loc-share-pill-text">Visitor shared their location</span>
-  <button type="button" id="loc-share-follow" aria-label="Teleport to the visitor's location">Follow</button>
-  <button type="button" id="loc-share-dismiss" aria-label="Dismiss">&times;</button>
+<!-- ── Location Sync: visitor ambient pulse pill (CSS-gated to visitor) -->
+<!-- Single ambient status pill. Clipboard is read silently on focus /
+     visibilitychange / pointerenter once the visitor grants permission
+     at join time. The pill is also clickable as a user-gesture fallback
+     for browsers that block ambient readText. data-state drives the
+     visual; aria-live announces label changes. Agent auto-follows on
+     receive — no Follow pill rendered. -->
+<div id="loc-sync" data-state="waiting" role="button" tabindex="0" aria-label="Sync your view with the agent">
+  <span class="loc-sync-dot" aria-hidden="true"></span>
+  <span class="loc-sync-label" aria-live="polite">Connecting…</span>
 </div>
 
 <button id="hud-toggle" aria-label="Show or hide the top toolbar" title="Show / hide header" aria-keyshortcuts="H">
@@ -4577,121 +4543,63 @@ if(frame){
   // clipboard-read at all; they degrade to a single-tap pill, then to
   // a paste field as a deep fallback. The agent-side "Follow" pill
   // is untouched.
-  var sharePill=document.getElementById("loc-share-pill");
-  var sharePillText=document.getElementById("loc-share-pill-text");
-  var shareFollowBtn=document.getElementById("loc-share-follow");
-  var shareDismissBtn=document.getElementById("loc-share-dismiss");
-  var autoPill=document.getElementById("auto-share-pill");
-  var autoPillText=document.getElementById("auto-share-pill-text");
-  var autoPillHelp=document.getElementById("auto-share-pill-help");
-  var autoCoach=document.getElementById("auto-share-coach");
-  var autoCoachFallback=document.getElementById("auto-share-coach-fallback");
-  var autoCoachDismiss=document.getElementById("auto-share-coach-dismiss");
-  var syncFallbackInput=document.getElementById("loc-sync-fallback-input");
-  var syncFallbackSubmit=document.getElementById("loc-sync-fallback-submit");
+  // Visitor's ambient pulse pill (CSS-gated to visitor role). Agent
+  // gets no UI here — auto-follows on receive via the onState handler
+  // below. No paste fallback, no coach mark — the pill itself is the
+  // single visible surface; clicking it triggers a manual readText for
+  // browsers where ambient polling fails (FF/Safari per-call prompts).
+  var syncBtn=document.getElementById("loc-sync");
+  var syncLabelEl=syncBtn?syncBtn.querySelector(".loc-sync-label"):null;
 
-  var LOC_SYNC_PILL_AUTODISMISS_MS=30000;
-  var AUTO_SHARE_POLL_MS=700;
-  var AUTO_SHARE_MIN_GAP_MS=400;
-  var AUTO_SHARE_SUCCESS_RESET_MS=2400;
-  var COACH_STORAGE_KEY="__lvb_autoshare_coach_seen";
-
+  var LOC_SYNC_POLL_THROTTLE_MS=800;
+  var LOC_SYNC_SUCCESS_RESET_MS=1800;
+  // locSyncGranted is a hint, not a hard gate — every poll attempts
+  // readText() inside try/catch and degrades gracefully on rejection.
+  var locSyncGranted=false;
+  var locSyncLastPollTs=0;
   var lastSentLocationKey="";
   var lastSentLocationTs=0;
   var lastShareTs=0;
-  var pendingShare=null; // {ss, sr}
-  var shareAutoDismissTimer=null;
-  var autoShareMode="auto"; // "auto" | "tap" | "paste"
-  var autoSharePollTimer=null;
-  var autoShareListenersBound=false;
-  var autoShareLastReadTs=0;
-  var autoShareLastClipText="";
-  var autoSharePillResetTimer=null;
-  var autoShareStarted=false;
+  var syncResetTimer=null;
 
-  function setAutoPillState(stateName,msg){
-    if(!autoPill) return;
-    autoPill.classList.remove("is-tap","is-reading","is-success","is-error");
-    if(stateName==="tap") autoPill.classList.add("is-tap");
-    else if(stateName==="reading") autoPill.classList.add("is-reading");
-    else if(stateName==="success") autoPill.classList.add("is-success");
-    else if(stateName==="error") autoPill.classList.add("is-error");
-    if(autoPillText&&typeof msg==="string") autoPillText.textContent=msg;
-    if(autoSharePillResetTimer){ try { clearTimeout(autoSharePillResetTimer); } catch(_e){} autoSharePillResetTimer=null; }
+  var LOC_SYNC_LABELS={
+    idle:"Live with agent",
+    syncing:"Aligning agent’s view…",
+    success:"Views synced",
+    denied:"Tap to enable sync",
+    waiting:"Connecting…"
+  };
+
+  function setPulseState(name){
+    if(!syncBtn) return;
+    var state=LOC_SYNC_LABELS[name]?name:"idle";
+    syncBtn.setAttribute("data-state",state);
+    if(syncLabelEl) syncLabelEl.textContent=LOC_SYNC_LABELS[state];
+    if(syncResetTimer){ try { clearTimeout(syncResetTimer); } catch(_e){} syncResetTimer=null; }
   }
 
-  function defaultPillMsg(){
-    if(autoShareMode==="paste") return "Tap ? to paste your link";
-    if(autoShareMode==="tap") return "Tap after Copy to clipboard";
-    return "Auto-share on";
-  }
-
-  function scheduleAutoPillIdle(){
-    if(autoSharePillResetTimer){ try { clearTimeout(autoSharePillResetTimer); } catch(_e){} }
-    autoSharePillResetTimer=setTimeout(function(){
-      var s=autoShareMode==="auto"?"idle":(autoShareMode==="tap"?"tap":"error");
-      setAutoPillState(s,defaultPillMsg());
-    },AUTO_SHARE_SUCCESS_RESET_MS);
-  }
-
-  function showAutoPill(){
-    if(!autoPill) return;
-    autoPill.hidden=false;
-    setAutoPillState(autoShareMode==="auto"?"idle":(autoShareMode==="tap"?"tap":"error"),defaultPillMsg());
-  }
-
-  function hideAutoPill(){
-    if(autoPill) autoPill.hidden=true;
-    if(autoCoach) autoCoach.hidden=true;
-  }
-
-  function showCoachIfFirstTime(){
-    if(!autoCoach) return;
-    try {
-      if(sessionStorage.getItem(COACH_STORAGE_KEY)==="1") return;
-    } catch(_e){}
-    autoCoach.hidden=false;
-    setTimeout(function(){ if(autoCoach) autoCoach.hidden=true; },10000);
-  }
-
-  function dismissCoach(){
-    if(autoCoach) autoCoach.hidden=true;
-    try { sessionStorage.setItem(COACH_STORAGE_KEY,"1"); } catch(_e){}
-  }
-
-  function showFallbackInput(){
-    if(autoCoachFallback) autoCoachFallback.hidden=false;
-    if(autoCoach) autoCoach.hidden=false;
-    if(syncFallbackInput){ try { syncFallbackInput.focus(); } catch(_e){} }
-  }
-
-  function enterTapMode(reason){
-    autoShareMode="tap";
-    stopAutoSharePolling();
-    setAutoPillState("tap",reason||"Tap after Copy to clipboard");
-  }
-
-  function enterPasteMode(reason){
-    autoShareMode="paste";
-    stopAutoSharePolling();
-    showFallbackInput();
-    setAutoPillState("error",reason||"Paste your link in the popup");
+  function scheduleSyncIdleReset(){
+    if(syncResetTimer){ try { clearTimeout(syncResetTimer); } catch(_e){} }
+    syncResetTimer=setTimeout(function(){
+      var cur=syncBtn?syncBtn.getAttribute("data-state"):"idle";
+      if(cur==="success") setPulseState("idle");
+    },LOC_SYNC_SUCCESS_RESET_MS);
   }
 
   function resetLocationSyncUi(){
-    autoShareMode="auto";
-    stopAutoSharePolling();
-    hideAutoPill();
-    if(autoCoachFallback) autoCoachFallback.hidden=true;
-    if(syncFallbackInput) syncFallbackInput.value="";
-    hideAgentSharePill();
+    locSyncGranted=false;
+    locSyncLastPollTs=0;
     lastSentLocationKey="";
     lastSentLocationTs=0;
-    autoShareLastClipText="";
-    autoShareStarted=false;
+    lastShareTs=0;
+    setPulseState("waiting");
   }
 
   // Parse a Matterport "Link to location" URL. Returns {ss, sr} or null.
+  // We require the URL to be on matterport.com (any subdomain), to carry
+  // an "ss" integer sweep id, and (if present) a well-formed "sr" pair.
+  // Hard 2KB ceiling so a clipboard packed with garbage can't OOM the
+  // parser.
   function parseMatterportLocationUrl(text){
     if(!text||typeof text!=="string") return null;
     var trimmed=text.trim();
@@ -4710,11 +4618,12 @@ if(frame){
     if(!parsed) return false;
     var key=parsed.ss+"|"+parsed.sr;
     var now=Date.now();
-    // Same-view dedupe: visitor pressing Copy twice on the same view
-    // shouldn't re-fire to the agent.
+    // Content-level dedupe: if the clipboard repeats the same coords,
+    // flash success without re-sending. Saves an iframe reload on the
+    // agent side.
     if(key===lastSentLocationKey&&(now-lastSentLocationTs)<5000){
-      setAutoPillState("success","Already shared ✓");
-      scheduleAutoPillIdle();
+      setPulseState("success");
+      scheduleSyncIdleReset();
       return true;
     }
     var ok=false;
@@ -4722,233 +4631,141 @@ if(frame){
     if(ok){
       lastSentLocationKey=key;
       lastSentLocationTs=now;
-      setAutoPillState("success","Shared ✓ — agent can follow");
-      scheduleAutoPillIdle();
+      setPulseState("success");
+      scheduleSyncIdleReset();
       return true;
     }
-    setAutoPillState("error","Couldn't reach agent");
-    scheduleAutoPillIdle();
+    // Channel not ready — stay silent (no error pulse). Next poll
+    // naturally retries because we didn't update the dedupe key.
     return false;
   }
 
-  // Single read attempt — used by both the auto-poll and the tap-mode
-  // pill click. Silent on no-op; surfaces denied/unavailable by
-  // downgrading the mode for the rest of the session.
-  function tryReadAndShare(opts){
-    if(!navigator||!navigator.clipboard||typeof navigator.clipboard.readText!=="function"){
-      enterPasteMode("Clipboard read not supported — use paste");
-      return;
-    }
-    var now=Date.now();
-    if(!opts||!opts.force){
-      if(now-autoShareLastReadTs<AUTO_SHARE_MIN_GAP_MS) return;
-    }
-    autoShareLastReadTs=now;
-    if(opts&&opts.showReading) setAutoPillState("reading","Sharing view…");
-    var p;
-    try { p=navigator.clipboard.readText(); } catch(_e){
-      enterTapMode("Tap to share (clipboard blocked)");
-      return;
-    }
-    if(!p||typeof p.then!=="function"){
-      enterTapMode("Tap to share (clipboard blocked)");
-      return;
-    }
-    p.then(function(text){
-      if(typeof text!=="string") return;
-      // Silent skip when clipboard hasn't changed since our last poll —
-      // avoids replaying the same URL endlessly.
-      if(text===autoShareLastClipText) return;
-      autoShareLastClipText=text;
-      var parsed=parseMatterportLocationUrl(text);
-      if(!parsed){
-        // Only the explicit click path shows a "not a tour link" hint;
-        // background polling stays quiet.
-        if(opts&&opts.showReading){
-          setAutoPillState("error","Press U then Copy in tour first");
-          scheduleAutoPillIdle();
-        }
-        return;
-      }
-      attemptSendLocation(parsed);
-    },function(err){
-      var name=err&&err.name?err.name:"";
-      if(name==="NotAllowedError"||name==="SecurityError"){
-        enterTapMode("Tap to share (allow clipboard once)");
-      } else if(opts&&opts.showReading){
-        setAutoPillState("error","Couldn't read clipboard");
-        scheduleAutoPillIdle();
-      }
-    });
-  }
-
-  function startAutoSharePolling(){
-    if(autoShareListenersBound) return;
-    autoShareListenersBound=true;
-    // Refresh on every signal that the user just returned from the
-    // iframe / Matterport popup: focus, visibility change, plus a
-    // lightweight interval as a backstop. All three funnel through
-    // the same throttled tryReadAndShare().
-    window.addEventListener("focus",autoShareSignal);
-    document.addEventListener("visibilitychange",autoShareSignal);
-    autoSharePollTimer=setInterval(autoShareSignal,AUTO_SHARE_POLL_MS);
-  }
-
-  function stopAutoSharePolling(){
-    if(!autoShareListenersBound) return;
-    autoShareListenersBound=false;
-    try { window.removeEventListener("focus",autoShareSignal); } catch(_e){}
-    try { document.removeEventListener("visibilitychange",autoShareSignal); } catch(_e){}
-    if(autoSharePollTimer){ try { clearInterval(autoSharePollTimer); } catch(_e){} autoSharePollTimer=null; }
-  }
-
-  function autoShareSignal(){
-    if(autoShareMode!=="auto") return;
-    if(document.hidden) return;
-    tryReadAndShare({});
-  }
-
-  // Visitor pill click — used in tap mode (after permission denial).
-  // Marked as a user-gesture read so browsers that allow gated
-  // readText() (Safari with prior user activation) will honour it.
-  if(autoPill){
-    autoPill.addEventListener("click",function(e){
-      // Help button clicks shouldn't trigger a read.
-      if(e.target&&e.target.id==="auto-share-pill-help") return;
-      if(autoShareMode==="paste"){ showFallbackInput(); return; }
-      // Force a read even when we're in auto mode — gives the visitor
-      // a manual escape hatch if the poll missed something.
-      tryReadAndShare({ force: true, showReading: true });
-    });
-  }
-
-  if(autoPillHelp){
-    autoPillHelp.addEventListener("click",function(e){
-      e.stopPropagation();
-      if(!autoCoach) return;
-      autoCoach.hidden=!autoCoach.hidden;
-    });
-  }
-
-  if(autoCoachDismiss){
-    autoCoachDismiss.addEventListener("click",dismissCoach);
-  }
-
-  function readPasteInputAndSend(){
-    var text=(syncFallbackInput&&syncFallbackInput.value||"").trim();
-    if(!text){
-      setAutoPillState("error","Paste your tour link first");
-      if(syncFallbackInput){ try { syncFallbackInput.focus(); } catch(_e){} }
-      return;
-    }
-    var parsed=parseMatterportLocationUrl(text);
-    if(!parsed){
-      setAutoPillState("error","That's not a Matterport link");
-      return;
-    }
-    if(attemptSendLocation(parsed)){
-      if(syncFallbackInput) syncFallbackInput.value="";
-    }
-  }
-
-  if(syncFallbackSubmit&&syncFallbackInput){
-    syncFallbackSubmit.addEventListener("click",readPasteInputAndSend);
-    syncFallbackInput.addEventListener("keydown",function(e){
-      if(e.key==="Enter"){ e.preventDefault(); readPasteInputAndSend(); }
-    });
-    // Auto-send the moment a valid URL is pasted, so the visitor
-    // doesn't have to click Send afterward.
-    syncFallbackInput.addEventListener("paste",function(){
-      setTimeout(function(){
-        var t=(syncFallbackInput.value||"").trim();
-        var parsed=parseMatterportLocationUrl(t);
-        if(parsed&&attemptSendLocation(parsed)){
-          syncFallbackInput.value="";
-        }
-      },0);
-    });
-  }
-
-  // Called once per session, the first time the visitor's data channel
-  // opens. Reveals the pill, kicks off polling, and shows the one-time
-  // coach mark if the visitor has never seen it.
-  function activateVisitorAutoShare(){
-    if(autoShareStarted) return;
-    autoShareStarted=true;
-    showAutoPill();
-    showCoachIfFirstTime();
-    if(!navigator||!navigator.clipboard||typeof navigator.clipboard.readText!=="function"){
-      enterPasteMode("Clipboard read not supported — use paste");
-      return;
-    }
-    // If the Permissions API has already told us the grant is denied,
-    // skip auto-polling entirely and go straight to tap mode.
+  // Pre-flight the clipboard permission via the Permissions API where
+  // it's supported (Chromium-family). If it's already "denied" we skip
+  // the readText() call entirely so the visitor never sees an extra
+  // popup. Browsers without the Permissions API for clipboard-read
+  // (Safari/Firefox) return "unknown" and fall through to readText.
+  function queryClipboardPermission(){
     try {
-      if(navigator.permissions&&typeof navigator.permissions.query==="function"){
-        navigator.permissions.query({ name: "clipboard-read" }).then(function(r){
-          var st=(r&&r.state)||"unknown";
-          if(st==="denied") enterTapMode("Tap to share (clipboard blocked)");
-          else startAutoSharePolling();
-        },function(){ startAutoSharePolling(); });
-        return;
+      if(!navigator||!navigator.permissions||typeof navigator.permissions.query!=="function"){
+        return Promise.resolve("unknown");
+      }
+      return navigator.permissions.query({ name: "clipboard-read" }).then(function(result){
+        return (result&&result.state)||"unknown";
+      },function(){ return "unknown"; });
+    } catch(_e){
+      return Promise.resolve("unknown");
+    }
+  }
+
+  // The single workhorse — used by both ambient triggers and the
+  // pulse-pill click fallback. `gestureBound` is true when the caller
+  // is a user gesture (click), which is the path Firefox/Safari need.
+  function readClipboardAndSend(gestureBound){
+    var s=session.getState();
+    if(s.role!=="visitor"||!s.isConnected) return;
+    setPulseState("syncing");
+    // Pull focus back to the parent doc — clipboard.readText() rejects
+    // NotAllowedError when the iframe holds focus.
+    try { window.focus(); } catch(_e){}
+    try {
+      if(document.documentElement&&typeof document.documentElement.focus==="function"){
+        document.documentElement.focus();
       }
     } catch(_e){}
-    startAutoSharePolling();
-  }
-
-  // Agent-side: receive + Follow
-  function showAgentSharePill(ss,sr){
-    pendingShare={ ss: ss, sr: sr };
-    if(!sharePill) return;
-    sharePill.hidden=false;
-    sharePill.classList.add("is-visible");
-    if(sharePillText){
-      var srSummary=sr?" · view "+sr:"";
-      sharePillText.textContent="Visitor shared their location"+srSummary;
+    if(!navigator||!navigator.clipboard||typeof navigator.clipboard.readText!=="function"){
+      setPulseState("denied");
+      return;
     }
-    if(shareAutoDismissTimer){ try { clearTimeout(shareAutoDismissTimer); } catch(_e){} }
-    shareAutoDismissTimer=setTimeout(function(){
-      hideAgentSharePill();
-    },LOC_SYNC_PILL_AUTODISMISS_MS);
-  }
-
-  function hideAgentSharePill(){
-    pendingShare=null;
-    if(sharePill){
-      sharePill.hidden=true;
-      sharePill.classList.remove("is-visible");
-    }
-    if(shareAutoDismissTimer){
-      try { clearTimeout(shareAutoDismissTimer); } catch(_e){}
-      shareAutoDismissTimer=null;
-    }
-  }
-
-  if(shareFollowBtn){
-    shareFollowBtn.addEventListener("click",function(){
-      if(!pendingShare){ hideAgentSharePill(); return; }
-      var ss=pendingShare.ss;
-      var sr=pendingShare.sr;
-      hideAgentSharePill();
-      // Reuse the existing teleport primitive: wipes annotations, rolls
-      // currentViewKey, rewrites the iframe src with the safe url flags.
-      // Also broadcasts a teleport packet to the visitor so both sides
-      // stay in lock-step on the shared view — without this the visitor
-      // could keep navigating away while the agent's iframe is frozen
-      // on the shared point.
-      try { session.teleportVisitor(ss,sr); } catch(_e){}
-      applyTeleport(ss,sr);
-      if(letterboxWrap){
-        try {
-          letterboxWrap.classList.add("follow-pulse");
-          setTimeout(function(){ if(letterboxWrap) letterboxWrap.classList.remove("follow-pulse"); },1500);
-        } catch(_e){}
+    queryClipboardPermission().then(function(permState){
+      if(permState==="denied"){
+        setPulseState("denied");
+        return;
       }
+      var p;
+      try { p=navigator.clipboard.readText(); } catch(_e){
+        setPulseState(gestureBound?"denied":"idle");
+        return;
+      }
+      if(!p||typeof p.then!=="function"){
+        setPulseState(gestureBound?"denied":"idle");
+        return;
+      }
+      p.then(function(text){
+        var parsed=parseMatterportLocationUrl(text);
+        if(!parsed){
+          // Clipboard reachable but no tour link. Don't nag —
+          // silently revert to idle. Ambient triggers fire often;
+          // flashing an error every alt-tab would be a nag.
+          setPulseState("idle");
+          return;
+        }
+        locSyncGranted=true;
+        attemptSendLocation(parsed);
+      },function(err){
+        var name=err&&err.name?err.name:"";
+        if(name==="NotAllowedError"||name==="SecurityError"){
+          setPulseState("denied");
+        } else {
+          setPulseState("idle");
+        }
+      });
     });
   }
 
-  if(shareDismissBtn){
-    shareDismissBtn.addEventListener("click",hideAgentSharePill);
+  // schedulePoll: ambient throttled entrypoint for focus / visibility
+  // / pointerenter events. Bails on hidden tab, wrong role, recent
+  // poll. Calls readClipboardAndSend without a user gesture — only
+  // works silently on Chromium with a persistent grant.
+  function schedulePoll(){
+    if(document.hidden) return;
+    var s=session.getState();
+    if(s.role!=="visitor"||!s.isConnected) return;
+    var now=Date.now();
+    if(now-locSyncLastPollTs<LOC_SYNC_POLL_THROTTLE_MS) return;
+    locSyncLastPollTs=now;
+    readClipboardAndSend(false);
+  }
+
+  if(syncBtn){
+    // Click: user-gesture fallback. Always available — handles the
+    // permission-denied → re-prompt path on FF/Safari and any case
+    // where ambient triggers didn't fire (e.g., visitor pressed U,
+    // copied, never moved the mouse out of the iframe).
+    syncBtn.addEventListener("click",function(){
+      readClipboardAndSend(true);
+    });
+    // Keyboard a11y — Enter/Space activates the role="button" pill.
+    syncBtn.addEventListener("keydown",function(e){
+      if(e.key==="Enter"||e.key===" "){ e.preventDefault(); readClipboardAndSend(true); }
+    });
+  }
+
+  // Ambient polling triggers. Battery-friendly: NO setInterval, only
+  // event-driven. All three call schedulePoll which dedupes / throttles.
+  window.addEventListener("focus",schedulePoll);
+  document.addEventListener("visibilitychange",function(){ if(!document.hidden) schedulePoll(); });
+  if(letterboxWrap){
+    letterboxWrap.addEventListener("pointerenter",schedulePoll);
+  }
+
+  // Pillar C — Hover focus injection. On mouseenter into the iframe
+  // wrap, force the iframe to take keyboard focus so pressing U works
+  // on the first try. Guarded against (a) non-visitor roles and (b)
+  // active focus in a parent INPUT/TEXTAREA so we never steal focus
+  // mid-typing in a side-drawer text field.
+  if(letterboxWrap){
+    letterboxWrap.addEventListener("pointerenter",function(){
+      var st=session.getState();
+      if(st.role!=="visitor") return;
+      var ae=document.activeElement;
+      if(ae&&(ae.tagName==="INPUT"||ae.tagName==="TEXTAREA"||ae.isContentEditable)) return;
+      if(frame){
+        try { frame.focus({ preventScroll: true }); } catch(_e){
+          try { frame.focus(); } catch(_e2){}
+        }
+      }
+    });
   }
 
   function teardownSession(){
@@ -5079,11 +4896,16 @@ if(frame){
       if(visitorStatus) visitorStatus.textContent="Connecting…";
       // Pre-grant clipboard permission in the same user gesture as the
       // Join click — browser prompts once now, then silent reads power
-      // the auto-share pill for the rest of the session.
+      // the ambient pulse pill for the rest of the session.
       try {
+        if(navigator&&navigator.permissions&&typeof navigator.permissions.query==="function"){
+          navigator.permissions.query({ name: "clipboard-read" }).then(function(r){
+            locSyncGranted=!!(r&&r.state==="granted");
+          },function(){});
+        }
         if(navigator&&navigator.clipboard&&typeof navigator.clipboard.readText==="function"){
-          var __pgp=navigator.clipboard.readText();
-          if(__pgp&&typeof __pgp.catch==="function") __pgp.catch(function(){});
+          navigator.clipboard.readText().then(function(){ locSyncGranted=true; },
+                                              function(){ locSyncGranted=false; });
         }
       } catch(_e){}
       session.joinAsVisitor(pin).catch(function(){
@@ -5194,21 +5016,31 @@ if(frame){
       applyTeleport(state.incomingTeleportEvent.ss,state.incomingTeleportEvent.sr);
     }
 
-    // Agent receive: visitor's clipboard-shared location surfaces as a
-    // non-blocking "Follow" pill rather than auto-teleporting. ts is
-    // the de-dupe key (controller stamps a fresh one per inbound packet)
-    // so re-shares of the same coords replace the prior pill.
+    // Agent auto-follow: visitor's location_share patches the state with
+    // a fresh ts on each inbound packet. Dedupe by ts. Pure local
+    // action — we do NOT broadcast back to the visitor (their iframe
+    // must never reload from auto-sync, per the role-isolation rule).
     if(state.role==="agent"&&state.incomingLocationShareEvent&&state.incomingLocationShareEvent.ts!==lastShareTs){
       lastShareTs=state.incomingLocationShareEvent.ts;
-      showAgentSharePill(state.incomingLocationShareEvent.ss,state.incomingLocationShareEvent.sr);
+      applyTeleport(state.incomingLocationShareEvent.ss,state.incomingLocationShareEvent.sr);
+      if(letterboxWrap){
+        try {
+          letterboxWrap.classList.add("follow-pulse");
+          setTimeout(function(){ if(letterboxWrap) letterboxWrap.classList.remove("follow-pulse"); },1500);
+        } catch(_e){}
+      }
     }
 
-    // Visitor auto-share activation. The first time the channel goes
-    // live we reveal the auto-share pill and start clipboard polling.
-    // If the channel later drops we leave the pill visible until the
-    // session is fully torn down (resetLocationSyncUi handles cleanup).
-    if(state.role==="visitor"&&state.isConnected){
-      activateVisitorAutoShare();
+    // Visitor's pulse pill: reflects connection state. When connected,
+    // settle into idle (breathing pulse). When disconnected, dim to
+    // waiting. Don't clobber transient syncing/success/denied states.
+    if(state.role==="visitor"&&syncBtn){
+      var curState=syncBtn.getAttribute("data-state");
+      if(!state.isConnected){
+        if(curState!=="syncing"&&curState!=="denied") setPulseState("waiting");
+      } else if(curState==="waiting"){
+        setPulseState("idle");
+      }
     }
 
     // ── Annotation receive paths ─────────────────────────────────
