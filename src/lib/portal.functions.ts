@@ -1757,15 +1757,18 @@ ${askAssets.css}
           <option value="#ffffff">White</option>
         </select>
       </label>
-      <button type="button" class="anno-tool-btn" data-tool="rope" id="anno-rope-btn" title="Focus Rope (R)" aria-keyshortcuts="R">Focus Rope</button>
-      <label class="anno-shape-wrap" title="Rope shape">
-        <select class="anno-shape-select" id="anno-shape-select" aria-label="Rope shape">
-          <option value="circle">Circle</option>
-          <option value="box">Box</option>
-        </select>
-      </label>
+      <span class="anno-rope-group" role="group" aria-label="Focus Rope">
+        <button type="button" class="anno-tool-btn" data-tool="rope" id="anno-rope-btn" title="Focus Rope (R)" aria-keyshortcuts="R">Focus Rope</button>
+        <label class="anno-shape-wrap" title="Rope shape">
+          <select class="anno-shape-select" id="anno-shape-select" aria-label="Rope shape">
+            <option value="circle">Circle</option>
+            <option value="box">Box</option>
+          </select>
+        </label>
+      </span>
       <button type="button" class="anno-tool-btn" id="anno-clear-btn" title="Clear annotations (C)" aria-keyshortcuts="C">Clear</button>
       <button type="button" class="anno-tool-btn" id="anno-capture-btn" title="Capture spec (S)" aria-keyshortcuts="S">Capture</button>
+      <button type="button" class="anno-tool-btn anno-exit-btn" id="anno-exit-btn" title="Exit annotation mode (clears drawings &amp; unfreezes visitor)" aria-label="Exit annotation mode">&times;</button>
     </div>
     <div id="anno-capture-panel" hidden>
       <textarea id="anno-capture-note" placeholder="Optional note for this spec..." rows="3"></textarea>
