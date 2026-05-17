@@ -3965,7 +3965,7 @@ if(frame){
   // Sync My View button + instruction panel removed. The visitor now
   // shares views via clipboard auto-polling (see auto-share pill below)
   // so opening any drawer/panel — which would steal iframe focus and
-  // break the `U` key — is no longer required for the main flow.
+  // break the U key — is no longer required for the main flow.
   function closeLtSyncPanel(){ /* retained as no-op for legacy callers */ }
 
 
