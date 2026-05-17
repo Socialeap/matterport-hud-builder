@@ -89,6 +89,21 @@ export interface LiveSessionClearEvent {
   ts: number;
 }
 
+/**
+ * Agent → Visitor navigation lock toggle. While `locked` is true the
+ * visitor should swallow pointer/touch input on the Matterport iframe
+ * so the agent's annotations stay aligned to the current sweep. The
+ * visitor unlocks automatically when a `nav_lock` with `locked:false`
+ * arrives, when the agent leaves the annotation tool, or when the
+ * session tears down. Never used to lock the agent's own view.
+ */
+export interface LiveSessionNavLockEvent {
+  viewKey: string;
+  locked: boolean;
+  seq: number;
+  ts: number;
+}
+
 export type LiveSessionRole = "agent" | "visitor" | null;
 export type LiveSessionStatus =
   | "idle"
@@ -111,6 +126,7 @@ export interface LiveSessionState {
   incomingPointerEvent: LiveSessionPointerEvent | null;
   incomingStrokeEvent: LiveSessionStrokeEvent | null;
   incomingClearEvent: LiveSessionClearEvent | null;
+  incomingNavLockEvent: LiveSessionNavLockEvent | null;
 }
 
 /** Public API surface of the controller returned by `createLiveSession`. */
@@ -135,6 +151,7 @@ export interface LiveSessionController {
   ): boolean;
   sendStrokeCommit(viewKey: string, strokeId: string): boolean;
   sendClear(viewKey: string): boolean;
+  sendNavLock(viewKey: string, locked: boolean): boolean;
   dispose(): void;
 }
 

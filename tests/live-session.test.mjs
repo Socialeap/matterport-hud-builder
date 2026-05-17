@@ -371,6 +371,7 @@ test("annotation senders all return false when role is not agent", () => {
   assert.equal(session.sendStrokePatch("v|", "s1", [[0.1, 0.1]]), false);
   assert.equal(session.sendStrokeCommit("v|", "s1"), false);
   assert.equal(session.sendClear("v|"), false);
+  assert.equal(session.sendNavLock("v|", true), false);
   // Visitor role — also false even when connected (sender is agent-only).
   return session.joinAsVisitor("4242").then(() => {
     assert.equal(session.sendPointer("v|", 0.5, 0.5), false);
@@ -378,6 +379,7 @@ test("annotation senders all return false when role is not agent", () => {
     assert.equal(session.sendStrokePatch("v|", "s1", [[0.1, 0.1]]), false);
     assert.equal(session.sendStrokeCommit("v|", "s1"), false);
     assert.equal(session.sendClear("v|"), false);
+    assert.equal(session.sendNavLock("v|", true), false);
     session.dispose();
   });
 });
@@ -392,6 +394,7 @@ test("annotation senders return false when agent is not yet connected", () => {
     assert.equal(session.sendStrokePatch("v|", "s1", [[0.1, 0.1]]), false);
     assert.equal(session.sendStrokeCommit("v|", "s1"), false);
     assert.equal(session.sendClear("v|"), false);
+    assert.equal(session.sendNavLock("v|", true), false);
     session.dispose();
   });
 });
@@ -556,6 +559,58 @@ test("inbound stroke/clear packets surface as kind-tagged events", () => {
 
     fireData({ type: "clear", viewKey: "", seq: 12, ts: 3 });
     assert.equal(session.getState().incomingClearEvent.seq, 12);
+    session.dispose();
+  });
+});
+
+test("sendNavLock emits a documented nav_lock packet and respects view key + sequence", () => {
+  return makeConnectedAgent().then(({ session, sentPackets }) => {
+    // teleport first so _currentViewKey is set to a known value.
+    assert.equal(session.teleportVisitor("42", "0,0"), true);
+    assert.equal(sentPackets[0].type, "teleport");
+
+    const ok = session.sendNavLock("42|0,0", true);
+    assert.equal(ok, true);
+    const lockPacket = sentPackets[1];
+    assert.equal(lockPacket.type, "nav_lock");
+    assert.equal(lockPacket.viewKey, "42|0,0");
+    assert.equal(lockPacket.locked, true);
+    assert.equal(typeof lockPacket.seq, "number");
+    assert.ok(lockPacket.seq > 0);
+
+    const ok2 = session.sendNavLock("42|0,0", false);
+    assert.equal(ok2, true);
+    assert.equal(sentPackets[2].locked, false);
+    assert.ok(sentPackets[2].seq > lockPacket.seq, "seq must be monotonic");
+
+    // Non-truthy locked coerces to false (no string/number leakage).
+    session.sendNavLock("42|0,0", "yes");
+    assert.equal(sentPackets[3].locked, false);
+    session.dispose();
+  });
+});
+
+test("inbound nav_lock packet surfaces as incomingNavLockEvent and obeys stale viewKey filter", () => {
+  return makeConnectedAgent().then(({ session, fireData }) => {
+    // Establish current view key via inbound teleport so the receiver
+    // filter has something to compare against.
+    fireData({ type: "teleport", ss: "42", sr: "0,0" });
+
+    fireData({ type: "nav_lock", viewKey: "42|0,0", locked: true, seq: 10, ts: 1 });
+    let ev = session.getState().incomingNavLockEvent;
+    assert.equal(ev.locked, true);
+    assert.equal(ev.seq, 10);
+
+    fireData({ type: "nav_lock", viewKey: "42|0,0", locked: false, seq: 11, ts: 2 });
+    ev = session.getState().incomingNavLockEvent;
+    assert.equal(ev.locked, false);
+    assert.equal(ev.seq, 11);
+
+    // Stale viewKey from a previous sweep — must be dropped.
+    fireData({ type: "nav_lock", viewKey: "99|9,9", locked: true, seq: 12, ts: 3 });
+    ev = session.getState().incomingNavLockEvent;
+    assert.equal(ev.seq, 11, "stale-viewKey packet must not patch state");
+    assert.equal(ev.locked, false);
     session.dispose();
   });
 });

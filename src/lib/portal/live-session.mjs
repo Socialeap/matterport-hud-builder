@@ -169,6 +169,7 @@ function createLiveSession(options) {
     incomingPointerEvent: null,
     incomingStrokeEvent: null,
     incomingClearEvent: null,
+    incomingNavLockEvent: null,
   };
 
   var listeners = [];
@@ -506,7 +507,8 @@ function createLiveSession(options) {
       type === "stroke_begin" ||
       type === "stroke_patch" ||
       type === "stroke_commit" ||
-      type === "clear"
+      type === "clear" ||
+      type === "nav_lock"
     ) {
       var seq = +payload.seq || 0;
       if (seq <= _lastRecvSeq) return;
@@ -531,6 +533,17 @@ function createLiveSession(options) {
       if (type === "clear") {
         _patch({
           incomingClearEvent: { viewKey: vk, seq: seq, ts: ts },
+        });
+        return;
+      }
+      if (type === "nav_lock") {
+        _patch({
+          incomingNavLockEvent: {
+            viewKey: vk,
+            locked: payload.locked === true,
+            seq: seq,
+            ts: ts,
+          },
         });
         return;
       }
@@ -692,6 +705,25 @@ function createLiveSession(options) {
     }
   }
 
+  function sendNavLock(viewKey, locked) {
+    if (!_canSendAnnotation()) return false;
+    var seq = ++_sendSeq;
+    var packet = {
+      type: "nav_lock",
+      viewKey: _coerceString(viewKey),
+      locked: locked === true,
+      seq: seq,
+      ts: Date.now(),
+    };
+    try {
+      dataConn.send(packet);
+      return true;
+    } catch (e) {
+      log("nav_lock send failed", e);
+      return false;
+    }
+  }
+
   function dispose() {
     if (disposed) return;
     disposed = true;
@@ -752,6 +784,7 @@ function createLiveSession(options) {
       incomingPointerEvent: null,
       incomingStrokeEvent: null,
       incomingClearEvent: null,
+      incomingNavLockEvent: null,
     };
   }
 
@@ -766,6 +799,7 @@ function createLiveSession(options) {
     sendStrokePatch: sendStrokePatch,
     sendStrokeCommit: sendStrokeCommit,
     sendClear: sendClear,
+    sendNavLock: sendNavLock,
     dispose: dispose,
   };
 }

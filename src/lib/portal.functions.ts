@@ -1610,9 +1610,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .anno-color-swatch{display:inline-block;width:12px;height:12px;border-radius:50%;background:#ff3b30;border:1px solid rgba(255,255,255,0.6);box-shadow:0 0 0 1px rgba(0,0,0,0.3)}
 .anno-color-select{appearance:none;-webkit-appearance:none;background:transparent;border:none;color:rgba(255,255,255,0.85);padding:6px 6px 6px 2px;font:600 12px/1 inherit;cursor:pointer;outline:none}
 .anno-color-select option{background:#11141d;color:#fff}
-.anno-shape-wrap{display:inline-flex;align-items:center;gap:4px;padding:0 2px 0 6px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);border-radius:6px}
+.anno-rope-group{display:inline-flex;align-items:center;gap:4px}
+.anno-rope-group .anno-shape-wrap{display:none}
+body.anno-rope-active .anno-rope-group .anno-shape-wrap{display:inline-flex}
+.anno-shape-wrap{align-items:center;gap:4px;padding:0 2px 0 6px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);border-radius:6px}
 .anno-shape-select{appearance:none;-webkit-appearance:none;background:transparent;border:none;color:rgba(255,255,255,0.85);padding:6px 6px 6px 2px;font:600 12px/1 inherit;cursor:pointer;outline:none;font-family:inherit}
 .anno-shape-select option{background:#11141d;color:#fff}
+.anno-exit-btn{font-size:16px;line-height:1;padding:4px 9px 6px}
+.anno-exit-btn:hover{background:rgba(255,107,107,0.18);border-color:rgba(255,107,107,0.45);color:#ff6b6b}
+#live-tour-navlock{position:absolute;inset:0;z-index:4;background:transparent;cursor:not-allowed;display:none;touch-action:none}
+body.live-tour-active.live-tour-visitor #live-tour-navlock.locked{display:block}
 #anno-capture-panel{position:absolute;left:50%;top:64px;transform:translateX(-50%);display:flex;flex-direction:column;gap:8px;z-index:10;background:rgba(10,12,20,0.82);backdrop-filter:blur(14px) saturate(160%);-webkit-backdrop-filter:blur(14px) saturate(160%);border:1px solid rgba(255,255,255,0.14);border-radius:10px;padding:10px;min-width:280px;box-shadow:0 8px 32px rgba(0,0,0,0.45)}
 #anno-capture-panel[hidden]{display:none}
 #anno-capture-note{width:100%;min-height:60px;background:rgba(0,0,0,0.35);color:#fff;border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:8px;font:13px/1.4 inherit;resize:vertical;outline:none;font-family:inherit;box-sizing:border-box}
@@ -1743,6 +1750,7 @@ ${askAssets.css}
 <div id="viewer">
   <div id="anno-letterbox-wrap">
     <iframe id="matterport-frame" allowfullscreen allow="xr-spatial-tracking; fullscreen"></iframe>
+    <div id="live-tour-navlock" aria-hidden="true"></div>
     <canvas id="anno-canvas"></canvas>
     <div id="remote-pointer" aria-hidden="true"></div>
     <div id="anno-toolbar" role="toolbar" aria-label="Live tour annotations">
@@ -1757,15 +1765,18 @@ ${askAssets.css}
           <option value="#ffffff">White</option>
         </select>
       </label>
-      <button type="button" class="anno-tool-btn" data-tool="rope" id="anno-rope-btn" title="Focus Rope (R)" aria-keyshortcuts="R">Focus Rope</button>
-      <label class="anno-shape-wrap" title="Rope shape">
-        <select class="anno-shape-select" id="anno-shape-select" aria-label="Rope shape">
-          <option value="circle">Circle</option>
-          <option value="box">Box</option>
-        </select>
-      </label>
+      <span class="anno-rope-group" role="group" aria-label="Focus Rope">
+        <button type="button" class="anno-tool-btn" data-tool="rope" id="anno-rope-btn" title="Focus Rope (R)" aria-keyshortcuts="R">Focus Rope</button>
+        <label class="anno-shape-wrap" title="Rope shape">
+          <select class="anno-shape-select" id="anno-shape-select" aria-label="Rope shape">
+            <option value="circle">Circle</option>
+            <option value="box">Box</option>
+          </select>
+        </label>
+      </span>
       <button type="button" class="anno-tool-btn" id="anno-clear-btn" title="Clear annotations (C)" aria-keyshortcuts="C">Clear</button>
       <button type="button" class="anno-tool-btn" id="anno-capture-btn" title="Capture spec (S)" aria-keyshortcuts="S">Capture</button>
+      <button type="button" class="anno-tool-btn anno-exit-btn" id="anno-exit-btn" title="Exit annotation mode (clears drawings &amp; unfreezes visitor)" aria-label="Exit annotation mode">&times;</button>
     </div>
     <div id="anno-capture-panel" hidden>
       <textarea id="anno-capture-note" placeholder="Optional note for this spec..." rows="3"></textarea>
@@ -3864,6 +3875,7 @@ if(frame){
   var lastPointerSeq=0;
   var lastStrokeSeq=0;
   var lastClearSeq=0;
+  var lastNavLockSeq=0;
   var remotePointerHideTimer=null;
   // Focus Rope state — agent-only authoring of a circle/box outline
   // overlay. The rope is rendered as a polyline (48 pts circle, 5 pts
@@ -3948,6 +3960,23 @@ if(frame){
         else b.classList.remove("active");
       }
     }
+    // Toggle the body class that reveals the rope shape dropdown only
+    // while the Focus Rope tool is active. Keeps the toolbar compact
+    // for Pointer/Draw and merges the rope button + shape picker into
+    // one cohesive control.
+    try { document.body.classList.toggle("anno-rope-active", mode==="rope"); } catch(_e){}
+    // Auto-open the shape <select> on the click that activates rope
+    // mode so the agent immediately sees Circle/Box without a second
+    // click. Guarded — showPicker isn't on every browser.
+    if(prev!=="rope"&&mode==="rope"){
+      try {
+        var sel=document.getElementById("anno-shape-select");
+        if(sel){
+          sel.focus();
+          if(typeof sel.showPicker==="function") sel.showPicker();
+        }
+      } catch(_e){}
+    }
     if(prev==="pointer"&&mode!=="pointer"){
       // Leaving pointer tool while connected: hide the remote dot on
       // the visitor by sending a null-position pointer event.
@@ -3962,6 +3991,17 @@ if(frame){
       // points stay in localStrokes as a regular committed stroke.
       commitActiveRope();
     }
+    // Visitor nav-lock: any annotation tool freezes the visitor so
+    // the agent's strokes/ropes stay aligned to the current sweep.
+    // Switching to "none" releases the lock. Safe to call when not
+    // connected — sendNavLock guards on agent role + open channel.
+    try {
+      var sess=session.getState();
+      if(sess.role==="agent"&&sess.isConnected){
+        var locked=(mode==="pointer"||mode==="draw"||mode==="rope");
+        session.sendNavLock(currentViewKey, locked);
+      }
+    } catch(_e){}
   }
 
   function resizeAnnoCanvas(){
@@ -4139,6 +4179,20 @@ if(frame){
       remotePointerHideTimer=null;
     }
     redrawAllStrokes();
+  }
+
+  // Toggle the visitor-side transparent overlay that swallows pointer
+  // and touch input on the Matterport iframe while the agent is
+  // annotating. Agents never apply the lock to themselves so they can
+  // still freely teleport between sweeps. Safe to call when the
+  // overlay element isn't present yet.
+  function applyNavLock(locked){
+    try {
+      var ov=document.getElementById("live-tour-navlock");
+      if(!ov) return;
+      if(locked) ov.classList.add("locked");
+      else ov.classList.remove("locked");
+    } catch(_e){}
   }
 
   function handleClearLocallyAndBroadcast(){
@@ -4330,9 +4384,24 @@ if(frame){
       var btn=e.target&&e.target.closest?e.target.closest(".anno-tool-btn"):null;
       if(!btn) return;
       var t=btn.getAttribute("data-tool");
-      if(t==="pointer"||t==="draw"){ setToolMode(t); return; }
+      if(t==="pointer"||t==="draw"||t==="rope"){ setToolMode(t); return; }
       if(btn===clearBtn){ handleClearLocallyAndBroadcast(); return; }
       if(btn===captureOpenBtn){ showCapturePanel(); return; }
+      if(btn.id==="anno-exit-btn"){
+        // Hard exit: wipe local + remote annotations, drop the tool
+        // mode (which also releases the visitor nav-lock via the
+        // setToolMode side-effect), and broadcast an explicit
+        // nav_lock:false as a belt-and-suspenders safety net.
+        handleClearLocallyAndBroadcast();
+        setToolMode("none");
+        try {
+          var st=session.getState();
+          if(st.role==="agent"&&st.isConnected){
+            session.sendNavLock(currentViewKey,false);
+          }
+        } catch(_e){}
+        return;
+      }
     });
   }
   if(captureSaveBtn) captureSaveBtn.addEventListener("click",downloadCaptureSpec);
@@ -4439,6 +4508,10 @@ if(frame){
     lastPointerSeq=0;
     lastStrokeSeq=0;
     lastClearSeq=0;
+    lastNavLockSeq=0;
+    // Defensive: release any nav-lock overlay on teardown so a dropped
+    // unlock packet can't leave the visitor permanently frozen.
+    try { applyNavLock(false); } catch(_e){}
     hideCapturePanel();
     resetUiToIdle();
     // Re-create the controller so a fresh session can be started
@@ -4729,7 +4802,19 @@ if(frame){
     var cev=state.incomingClearEvent;
     if(cev&&cev.seq!==lastClearSeq){
       lastClearSeq=cev.seq;
-      if(state.role==="visitor") wipeAnnotations();
+      if(state.role==="visitor"){
+        wipeAnnotations();
+        // Defensive: a Clear from the agent always implies "annotation
+        // session ended" — release the nav-lock too in case the
+        // explicit unlock packet was dropped or reordered.
+        applyNavLock(false);
+      }
+    }
+
+    var nlev=state.incomingNavLockEvent;
+    if(nlev&&nlev.seq!==lastNavLockSeq){
+      lastNavLockSeq=nlev.seq;
+      if(state.role==="visitor") applyNavLock(nlev.locked===true);
     }
   }
 
