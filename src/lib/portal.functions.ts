@@ -3954,7 +3954,31 @@ if(frame){
   var preJoinBlock=document.getElementById("lg-agent-prejoin");
   var activeBlock=document.getElementById("lg-agent-active");
   var audioEl=document.getElementById("lg-audio");
-  var leaveBtn=document.getElementById("hud-leave-btn");
+  var leaveBtn=document.getElementById("lt-leave-btn");
+  var ltHeader=document.getElementById("hud-header-livetour");
+  var ltSyncBtn=document.getElementById("lt-sync-btn");
+  function openLtSyncPanel(){
+    if(!ltHeader) return;
+    // Force the LT header open via the shared setter so the chevron
+    // icon flips and the "other" header stays hidden, then reveal the
+    // instructions panel below.
+    try { if(typeof window.__setHudVisible==="function") window.__setHudVisible(true); } catch(_e){}
+    ltHeader.classList.add("show-sync");
+    if(ltSyncBtn) ltSyncBtn.setAttribute("aria-expanded","true");
+  }
+  function closeLtSyncPanel(){
+    if(!ltHeader) return;
+    ltHeader.classList.remove("show-sync");
+    if(ltSyncBtn) ltSyncBtn.setAttribute("aria-expanded","false");
+    // Collapse the whole LT HUD so the 3D tour is unobstructed again.
+    try { if(typeof window.__setHudVisible==="function") window.__setHudVisible(false); } catch(_e){}
+  }
+  if(ltSyncBtn){
+    ltSyncBtn.addEventListener("click",function(){
+      if(ltHeader && ltHeader.classList.contains("show-sync")) closeLtSyncPanel();
+      else openLtSyncPanel();
+    });
+  }
 
   var session=createLiveSession({});
   var lastTeleportTs=0;
