@@ -506,7 +506,8 @@ function createLiveSession(options) {
       type === "stroke_begin" ||
       type === "stroke_patch" ||
       type === "stroke_commit" ||
-      type === "clear"
+      type === "clear" ||
+      type === "nav_lock"
     ) {
       var seq = +payload.seq || 0;
       if (seq <= _lastRecvSeq) return;
@@ -531,6 +532,17 @@ function createLiveSession(options) {
       if (type === "clear") {
         _patch({
           incomingClearEvent: { viewKey: vk, seq: seq, ts: ts },
+        });
+        return;
+      }
+      if (type === "nav_lock") {
+        _patch({
+          incomingNavLockEvent: {
+            viewKey: vk,
+            locked: payload.locked === true,
+            seq: seq,
+            ts: ts,
+          },
         });
         return;
       }
