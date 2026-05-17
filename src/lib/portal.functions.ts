@@ -1629,24 +1629,41 @@ body.live-tour-active #viewer{display:flex;align-items:center;justify-content:ce
 body.live-tour-active #anno-letterbox-wrap{position:relative;inset:auto;aspect-ratio:16/9;width:min(100vw,calc(100vh * 16 / 9));height:auto;max-height:100vh}
 body.live-tour-active.live-tour-agent #anno-toolbar{display:flex}
 
-/* ── Location Sync — visitor's "Share my view" UI ────────────────── */
-/* Two stacked cards at the top-center column. We hard-cap the width
-   AND position the pill below the typical Matterport "Link to location"
-   popup band (which Matterport renders top-right, roughly y=10..110)
-   so even on narrower viewports the two UIs cannot collide. The pill
-   is centered horizontally in a narrow column so its right edge never
-   reaches the Matterport popup's left edge. CSS-gated to visitor role. */
-#loc-sync{position:fixed;top:120px;left:50%;transform:translateX(-50%);z-index:1300;display:none;flex-direction:column;align-items:center;gap:8px;width:min(440px,calc(100vw - 24px));pointer-events:none}
-body.live-tour-active.live-tour-visitor #loc-sync{display:flex}
-#loc-sync-instructions{display:flex;align-items:center;flex-wrap:wrap;justify-content:center;gap:6px 12px;padding:8px 14px;border-radius:12px;background:rgba(0,0,0,0.62);border:1px solid rgba(255,255,255,0.16);color:#fff;font:600 12px/1.3 system-ui,-apple-system,sans-serif;-webkit-backdrop-filter:blur(16px) saturate(160%);backdrop-filter:blur(16px) saturate(160%);box-shadow:0 8px 24px rgba(0,0,0,0.32);pointer-events:auto;text-align:center;width:100%;box-sizing:border-box}
-#loc-sync-instructions-label{display:inline-flex;align-items:center;gap:6px;color:rgba(255,255,255,0.92);white-space:nowrap;width:100%;justify-content:center;font-weight:700;padding-bottom:4px;border-bottom:1px solid rgba(255,255,255,0.08);margin-bottom:4px}
-#loc-sync-instructions-label svg{width:13px;height:13px;color:${escapeHtml(accentColor)}}
-.loc-sync-step{display:inline-flex;align-items:center;gap:5px;color:rgba(255,255,255,0.82);white-space:nowrap}
+/* ── Live Tour HUD (separate header that replaces the regular HUD
+   while body.live-tour-active is set). Keeps the 3D tour unobstructed:
+   it stays collapsed until the chevron is clicked. The visitor sees
+   Sync My View + Leave; the agent sees Leave only (their annotation
+   toolbar already lives inside the letterbox). The standalone floating
+   "Share your view" card was removed — instructions now slide down
+   from this header on demand. */
+body.live-tour-active #hud-header{display:none !important}
+#hud-header-livetour{display:none;position:fixed;top:0;left:0;right:0;z-index:1200;transform:translateY(-100%);opacity:0;pointer-events:none;transition:transform 0.3s ease,opacity 0.3s ease;will-change:transform,opacity}
+body.live-tour-active #hud-header-livetour{display:block}
+#hud-header-livetour.visible{transform:translateY(0);opacity:1;pointer-events:auto}
+#lt-hud-inner{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;background:${escapeHtml(hudBgColor)}ee;-webkit-backdrop-filter:blur(16px) saturate(160%);backdrop-filter:blur(16px) saturate(160%);border-bottom:1px solid rgba(255,255,255,0.08);box-shadow:0 4px 16px rgba(0,0,0,0.25)}
+#lt-hud-center{display:flex;align-items:center;gap:10px;min-width:0;color:#fff;flex:1}
+#lt-hud-logo{height:22px;width:auto;flex-shrink:0}
+#lt-hud-brand{font:700 14px/1 system-ui,-apple-system,sans-serif;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#lt-hud-status{font:600 11px/1 system-ui,-apple-system,sans-serif;color:rgba(255,255,255,0.7);padding:3px 8px;border-radius:999px;background:rgba(34,197,94,0.18);border:1px solid rgba(34,197,94,0.4);flex-shrink:0}
+#lt-hud-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.lt-action-btn{appearance:none;border:none;cursor:pointer;height:32px;padding:0 14px;border-radius:999px;background:${escapeHtml(accentColor)};color:#fff;font:700 12px/1 system-ui,-apple-system,sans-serif;letter-spacing:0.02em;display:inline-flex;align-items:center;justify-content:center;gap:6px;transition:background 0.2s,transform 0.1s,box-shadow 0.2s,opacity 0.15s;box-shadow:0 4px 12px ${escapeHtml(accentColor)}44}
+.lt-action-btn:hover{transform:translateY(-1px);box-shadow:0 6px 16px ${escapeHtml(accentColor)}66}
+.lt-action-btn:active{transform:scale(0.97)}
+.lt-action-btn.lt-leave{background:rgba(255,255,255,0.18);color:#fff;box-shadow:none}
+.lt-action-btn.lt-leave:hover{background:rgba(220,38,38,0.85);transform:translateY(-1px);box-shadow:0 6px 16px rgba(220,38,38,0.4)}
+body.live-tour-agent #lt-sync-btn{display:none}
+#lt-sync-panel{display:none;flex-direction:column;align-items:center;gap:10px;padding:12px 16px 14px;background:rgba(0,0,0,0.78);-webkit-backdrop-filter:blur(16px) saturate(160%);backdrop-filter:blur(16px) saturate(160%);border-bottom:1px solid rgba(255,255,255,0.08);box-shadow:0 4px 16px rgba(0,0,0,0.32)}
+#hud-header-livetour.show-sync #lt-sync-panel{display:flex}
+body.live-tour-agent #lt-sync-panel{display:none !important}
+#lt-sync-steps{display:flex;flex-wrap:wrap;justify-content:center;gap:6px 14px;color:#fff;font:600 12px/1.4 system-ui,-apple-system,sans-serif;max-width:560px}
+.loc-sync-step{display:inline-flex;align-items:center;gap:5px;color:rgba(255,255,255,0.92);white-space:nowrap}
 .loc-sync-step-num{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:${escapeHtml(accentColor)};color:#fff;font:700 10px/1 inherit;flex-shrink:0}
 .loc-sync-step kbd{display:inline-block;padding:1px 6px;border-radius:4px;background:rgba(255,255,255,0.18);border:1px solid rgba(255,255,255,0.24);font:700 11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:#fff}
 @media(max-width:560px){
-  #loc-sync{top:96px;width:calc(100vw - 24px)}
-  #loc-sync-instructions{padding:8px 12px;gap:4px 10px;font-size:11px}
+  #lt-hud-inner{padding:8px 12px;gap:8px}
+  #lt-hud-brand{font-size:12px}
+  .lt-action-btn{height:28px;padding:0 10px;font-size:11px}
+  #lt-sync-steps{font-size:11px;gap:4px 10px}
   .loc-sync-step{font-size:11px}
 }
 
@@ -1836,29 +1853,39 @@ ${askAssets.css}
   </div>
 </div>
 
-<!-- ── HUD toggle button ─────────────────────────────────────────── -->
-<button id="hud-leave-btn" hidden aria-label="Leave live tour" title="Leave Live Tour">Leave</button>
-
-<!-- ── Location Sync: visitor pill (CSS-gated to visitor role) ────── -->
-<div id="loc-sync" role="region" aria-label="Share your location with the agent">
-  <!-- Read-only instructions card. Always visible during a live tour so
-       the visitor never has to hunt for the steps. -->
-  <div id="loc-sync-instructions">
-    <span id="loc-sync-instructions-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 22s-7-7.58-7-13a7 7 0 1 1 14 0c0 5.42-7 13-7 13z"/><circle cx="12" cy="9" r="2.5"/></svg>Share your view:</span>
-    <span class="loc-sync-step"><span class="loc-sync-step-num">1</span>Press <kbd>U</kbd> in the tour</span>
-    <span class="loc-sync-step"><span class="loc-sync-step-num">2</span>Click <strong>Copy to clipboard</strong></span>
-    <span class="loc-sync-step"><span class="loc-sync-step-num">3</span>Tap the button below</span>
+<!-- ── Live Tour HUD header (replaces #hud-header while body.live-tour-active).
+     Visitor sees Sync My View + Leave; agent sees Leave only. Stays collapsed
+     until the chevron is clicked so the 3D tour stays unobstructed. The
+     Sync My View button reveals an inline instructions panel below the bar;
+     after a successful send the panel + header auto-close. -->
+<div id="hud-header-livetour" role="region" aria-label="Live Tour controls">
+  <div id="lt-hud-inner">
+    <div id="lt-hud-center">
+      ${logoUrl ? `<img id="lt-hud-logo" src="${escapeHtml(logoUrl)}" alt="Logo">` : ""}
+      <div id="lt-hud-brand">${escapeHtml(brandName)}</div>
+      <span id="lt-hud-status">Live Tour</span>
+    </div>
+    <div id="lt-hud-right">
+      <button type="button" id="lt-sync-btn" class="lt-action-btn" aria-expanded="false" aria-controls="lt-sync-panel">Sync My View</button>
+      <button type="button" id="lt-leave-btn" class="lt-action-btn lt-leave" aria-label="Leave live tour">Leave</button>
+    </div>
   </div>
-  <!-- Action card — the only thing that triggers the clipboard read. -->
-  <div id="loc-sync-action">
-    <button type="button" id="loc-sync-btn" aria-describedby="loc-sync-status">
-      <span id="loc-sync-spinner" aria-hidden="true"></span>
-      <span id="loc-sync-btn-text">Sync My View</span>
-    </button>
-    <div id="loc-sync-status" aria-live="polite"></div>
-    <div id="loc-sync-fallback" hidden>
-      <input type="text" id="loc-sync-fallback-input" placeholder="Paste tour link here" aria-label="Paste Matterport tour link" autocomplete="off" spellcheck="false">
-      <button type="button" id="loc-sync-fallback-submit">Send</button>
+  <div id="lt-sync-panel" role="region" aria-label="Sync your view instructions">
+    <div id="lt-sync-steps">
+      <span class="loc-sync-step"><span class="loc-sync-step-num">1</span>Press <kbd>U</kbd> in the tour</span>
+      <span class="loc-sync-step"><span class="loc-sync-step-num">2</span>Click <strong>Copy to clipboard</strong></span>
+      <span class="loc-sync-step"><span class="loc-sync-step-num">3</span>Tap the button below</span>
+    </div>
+    <div id="loc-sync-action">
+      <button type="button" id="loc-sync-btn" aria-describedby="loc-sync-status">
+        <span id="loc-sync-spinner" aria-hidden="true"></span>
+        <span id="loc-sync-btn-text">Sync My View</span>
+      </button>
+      <div id="loc-sync-status" aria-live="polite"></div>
+      <div id="loc-sync-fallback" hidden>
+        <input type="text" id="loc-sync-fallback-input" placeholder="Paste tour link here" aria-label="Paste Matterport tour link" autocomplete="off" spellcheck="false">
+        <button type="button" id="loc-sync-fallback-submit">Send</button>
+      </div>
     </div>
   </div>
 </div>
@@ -2172,14 +2199,23 @@ ${askAssets.moduleScript}
     var hudVisible=false;
     function setHudVisible(v){
       hudVisible=!!v;
-      if(hudHeader){
-        hudHeader.classList.toggle("visible",hudVisible);
-        // Inline-style fallback in case the .visible class rule is
-        // overridden by an unexpected stylesheet ordering issue.
-        hudHeader.style.transform=hudVisible?"translateY(0)":"translateY(-100%)";
-        hudHeader.style.opacity=hudVisible?"1":"0";
-        hudHeader.style.pointerEvents=hudVisible?"auto":"none";
+      // Pick the active header based on live-tour state, so the chevron
+      // toggles whichever HUD is appropriate for the current mode.
+      var liveActive=document.body.classList.contains("live-tour-active");
+      var ltHeader=document.getElementById("hud-header-livetour");
+      var target=liveActive?ltHeader:hudHeader;
+      // Always reset the inactive header so it can't be left stuck visible
+      // when modes switch.
+      if(hudHeader && liveActive){ hudHeader.classList.remove("visible"); hudHeader.style.transform="translateY(-100%)"; hudHeader.style.opacity="0"; hudHeader.style.pointerEvents="none"; }
+      if(ltHeader && !liveActive){ ltHeader.classList.remove("visible","show-sync"); ltHeader.style.transform="translateY(-100%)"; ltHeader.style.opacity="0"; ltHeader.style.pointerEvents="none"; }
+      if(target){
+        target.classList.toggle("visible",hudVisible);
+        target.style.transform=hudVisible?"translateY(0)":"translateY(-100%)";
+        target.style.opacity=hudVisible?"1":"0";
+        target.style.pointerEvents=hudVisible?"auto":"none";
       }
+      // Collapse the sync panel whenever the LT header closes.
+      if(!hudVisible && ltHeader) ltHeader.classList.remove("show-sync");
       if(chevUp) chevUp.style.display=hudVisible?"":"none";
       if(chevDown) chevDown.style.display=hudVisible?"none":"";
     }
@@ -3918,7 +3954,31 @@ if(frame){
   var preJoinBlock=document.getElementById("lg-agent-prejoin");
   var activeBlock=document.getElementById("lg-agent-active");
   var audioEl=document.getElementById("lg-audio");
-  var leaveBtn=document.getElementById("hud-leave-btn");
+  var leaveBtn=document.getElementById("lt-leave-btn");
+  var ltHeader=document.getElementById("hud-header-livetour");
+  var ltSyncBtn=document.getElementById("lt-sync-btn");
+  function openLtSyncPanel(){
+    if(!ltHeader) return;
+    // Force the LT header open via the shared setter so the chevron
+    // icon flips and the "other" header stays hidden, then reveal the
+    // instructions panel below.
+    try { if(typeof window.__setHudVisible==="function") window.__setHudVisible(true); } catch(_e){}
+    ltHeader.classList.add("show-sync");
+    if(ltSyncBtn) ltSyncBtn.setAttribute("aria-expanded","true");
+  }
+  function closeLtSyncPanel(){
+    if(!ltHeader) return;
+    ltHeader.classList.remove("show-sync");
+    if(ltSyncBtn) ltSyncBtn.setAttribute("aria-expanded","false");
+    // Collapse the whole LT HUD so the 3D tour is unobstructed again.
+    try { if(typeof window.__setHudVisible==="function") window.__setHudVisible(false); } catch(_e){}
+  }
+  if(ltSyncBtn){
+    ltSyncBtn.addEventListener("click",function(){
+      if(ltHeader && ltHeader.classList.contains("show-sync")) closeLtSyncPanel();
+      else openLtSyncPanel();
+    });
+  }
 
   var session=createLiveSession({});
   var lastTeleportTs=0;
@@ -4023,6 +4083,10 @@ if(frame){
       document.body.classList.remove("live-tour-agent");
       document.body.classList.remove("live-tour-visitor");
     }
+    // Reset the chevron-driven HUD visibility whenever the mode switches
+    // so the newly-active header (regular ↔ live-tour) starts collapsed
+    // and never inherits a stale "visible" state from the previous mode.
+    try { if(typeof window.__setHudVisible==="function") window.__setHudVisible(false); } catch(_e){}
   }
 
   function setToolMode(mode){
@@ -4601,6 +4665,7 @@ if(frame){
     lastSentLocationKey="";
     lastSentLocationTs=0;
     pendingShare=null;
+    try { closeLtSyncPanel(); } catch(_e){}
   }
 
   // Parse a Matterport "Link to location" URL. Returns {ss, sr} or null.
@@ -4633,6 +4698,7 @@ if(frame){
     if(key===lastSentLocationKey&&(now-lastSentLocationTs)<5000){
       setSyncBtnState("success","Sent ✓","Same view as last send.");
       scheduleSyncIdleReset();
+      setTimeout(function(){ try { closeLtSyncPanel(); } catch(_e){} },900);
       return true;
     }
     var ok=false;
@@ -4642,6 +4708,9 @@ if(frame){
       lastSentLocationTs=now;
       setSyncBtnState("success","Sent ✓","Your agent can now follow your view.");
       scheduleSyncIdleReset();
+      // Auto-close the inline instructions + the LT header so the 3D
+      // tour returns to a fully unobstructed view.
+      setTimeout(function(){ try { closeLtSyncPanel(); } catch(_e){} },900);
       return true;
     }
     setSyncBtnState("error","Try Again","Couldn’t reach your agent. Check the connection.");
