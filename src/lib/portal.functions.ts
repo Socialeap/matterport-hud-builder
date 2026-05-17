@@ -1655,37 +1655,39 @@ body.live-tour-active #live-tour-control-drawer{display:flex;flex-direction:colu
 .lt-action-btn:active{transform:scale(0.98)}
 .lt-action-btn.lt-leave{background:rgba(255,255,255,0.14);color:#fff;box-shadow:none;border:1px solid rgba(255,255,255,0.18)}
 .lt-action-btn.lt-leave:hover{background:rgba(220,38,38,0.85);transform:translateY(-1px);box-shadow:0 6px 16px rgba(220,38,38,0.4)}
-body.live-tour-agent #lt-sync-btn{display:none}
-#lt-sync-panel{display:none;flex-direction:column;align-items:stretch;gap:10px;padding:12px;background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.08);border-radius:10px;margin-top:4px}
-#live-tour-control-drawer.show-sync #lt-sync-panel{display:flex}
-body.live-tour-agent #lt-sync-panel{display:none !important}
-#lt-sync-steps{display:flex;flex-direction:column;gap:6px;color:#fff;font:600 12px/1.4 system-ui,-apple-system,sans-serif}
-.loc-sync-step{display:flex;align-items:flex-start;gap:6px;color:rgba(255,255,255,0.92)}
-.loc-sync-step-num{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:${escapeHtml(accentColor)};color:#fff;font:700 10px/1 inherit;flex-shrink:0;margin-top:1px}
-.loc-sync-step kbd{display:inline-block;padding:1px 6px;border-radius:4px;background:rgba(255,255,255,0.18);border:1px solid rgba(255,255,255,0.24);font:700 11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:#fff}
 
-/* Action card — the Sync button + status. Visually distinct from the
-   instruction card above so the user clearly sees the action vs. the
-   how-to. */
-#loc-sync-action{display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:auto;width:100%}
-#loc-sync-btn{appearance:none;border:none;cursor:pointer;min-height:36px;padding:0 22px;border-radius:999px;background:${escapeHtml(accentColor)};color:#fff;font:700 13px/1 system-ui,-apple-system,sans-serif;letter-spacing:0.02em;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:opacity 0.15s,background 0.2s,transform 0.1s,box-shadow 0.2s;box-shadow:0 8px 20px ${escapeHtml(accentColor)}33,0 2px 6px rgba(0,0,0,0.25)}
-#loc-sync-btn:hover{opacity:0.95;transform:translateY(-1px);box-shadow:0 10px 24px ${escapeHtml(accentColor)}55,0 3px 8px rgba(0,0,0,0.3)}
-#loc-sync-btn:active{transform:scale(0.97)}
-#loc-sync-btn[disabled]{opacity:0.55;cursor:default;transform:none;box-shadow:0 2px 6px rgba(0,0,0,0.2)}
-#loc-sync-btn.is-reading{background:rgba(255,255,255,0.22);color:rgba(255,255,255,0.95);box-shadow:0 4px 12px rgba(0,0,0,0.2)}
-#loc-sync-btn.is-success{background:#16a34a;color:#fff;box-shadow:0 8px 20px rgba(22,163,74,0.4)}
-#loc-sync-btn.is-error{background:#b45309;color:#fff;box-shadow:0 8px 20px rgba(180,83,9,0.4)}
-#loc-sync-spinner{display:none;width:12px;height:12px;border:2px solid rgba(255,255,255,0.4);border-top-color:#fff;border-radius:50%;animation:loc-sync-spin 0.7s linear infinite}
-#loc-sync-btn.is-reading #loc-sync-spinner{display:inline-block}
-@keyframes loc-sync-spin{to{transform:rotate(360deg)}}
-#loc-sync-status{font-size:11px;line-height:1.4;color:rgba(255,255,255,0.95);padding:6px 12px;border-radius:8px;background:rgba(0,0,0,0.6);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.14);width:100%;box-sizing:border-box;text-align:center;pointer-events:auto}
-#loc-sync-status:empty{display:none}
-#loc-sync-fallback{display:flex;gap:6px;background:rgba(0,0,0,0.6);padding:6px;border-radius:10px;border:1px solid rgba(255,255,255,0.14);pointer-events:auto;width:100%;box-sizing:border-box}
-#loc-sync-fallback[hidden]{display:none}
+/* ── Auto-share pill (visitor only). Pinned top-left below the chevron
+   so it never overlaps Matterport's URL/Copy popup (top area) or the
+   bottom controls. Compact by default, doesn't steal iframe focus. */
+#auto-share-pill{position:fixed;top:50px;left:8px;z-index:1240;display:none;align-items:center;gap:8px;padding:6px 10px 6px 12px;border-radius:999px;background:rgba(0,0,0,0.62);border:1px solid rgba(255,255,255,0.18);color:#fff;font:600 11px/1 system-ui,-apple-system,sans-serif;-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%);box-shadow:0 6px 18px rgba(0,0,0,0.28);max-width:min(280px,calc(100vw - 16px));pointer-events:auto;cursor:default;transition:background 0.2s,transform 0.1s,box-shadow 0.2s}
+body.live-tour-active.live-tour-visitor #auto-share-pill:not([hidden]){display:inline-flex}
+#auto-share-pill.is-tap{cursor:pointer;background:${escapeHtml(accentColor)}cc;border-color:${escapeHtml(accentColor)}}
+#auto-share-pill.is-tap:hover{transform:translateY(-1px);box-shadow:0 8px 20px ${escapeHtml(accentColor)}55}
+#auto-share-pill.is-reading{background:rgba(255,255,255,0.22)}
+#auto-share-pill.is-success{background:#16a34a;border-color:rgba(34,197,94,0.6);box-shadow:0 6px 18px rgba(22,163,74,0.4)}
+#auto-share-pill.is-error{background:#b45309;border-color:rgba(180,83,9,0.6)}
+#auto-share-pill-dot{width:8px;height:8px;border-radius:50%;background:#22c55e;flex-shrink:0;animation:auto-share-pulse 1.8s ease-in-out infinite}
+#auto-share-pill.is-reading #auto-share-pill-dot{animation:auto-share-spin 0.7s linear infinite;background:transparent;border:2px solid rgba(255,255,255,0.4);border-top-color:#fff;width:10px;height:10px}
+#auto-share-pill.is-success #auto-share-pill-dot,#auto-share-pill.is-error #auto-share-pill-dot{animation:none;background:#fff}
+#auto-share-pill-text{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:0.01em}
+#auto-share-pill-help{appearance:none;border:none;cursor:pointer;background:rgba(255,255,255,0.18);color:#fff;width:18px;height:18px;border-radius:50%;font:700 11px/1 inherit;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+#auto-share-pill-help:hover{background:rgba(255,255,255,0.32)}
+@keyframes auto-share-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.55;transform:scale(0.85)}}
+@keyframes auto-share-spin{to{transform:rotate(360deg)}}
+
+/* Coach mark — one-time onboarding tooltip pinned near the pill. */
+#auto-share-coach{position:fixed;top:78px;left:8px;z-index:1245;display:none;flex-direction:column;gap:10px;width:min(300px,calc(100vw - 16px));padding:12px 14px;border-radius:12px;background:rgba(0,0,0,0.78);border:1px solid rgba(255,255,255,0.16);color:#fff;font:500 12px/1.45 system-ui,-apple-system,sans-serif;-webkit-backdrop-filter:blur(16px) saturate(170%);backdrop-filter:blur(16px) saturate(170%);box-shadow:0 12px 28px rgba(0,0,0,0.4)}
+body.live-tour-active.live-tour-visitor #auto-share-coach:not([hidden]){display:flex}
+#auto-share-coach kbd{display:inline-block;padding:1px 6px;border-radius:4px;background:rgba(255,255,255,0.18);border:1px solid rgba(255,255,255,0.24);font:700 11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:#fff}
+#auto-share-coach-fallback{display:flex;gap:6px}
+#auto-share-coach-fallback[hidden]{display:none}
 #loc-sync-fallback-input{flex:1;min-width:0;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.18);color:#fff;border-radius:6px;padding:6px 8px;font:500 11px/1.4 inherit;outline:none}
 #loc-sync-fallback-input::placeholder{color:rgba(255,255,255,0.45)}
 #loc-sync-fallback-input:focus{border-color:${escapeHtml(accentColor)}}
 #loc-sync-fallback-submit{appearance:none;border:none;cursor:pointer;background:${escapeHtml(accentColor)};color:#fff;border-radius:6px;padding:0 12px;font:700 11px/1 inherit}
+#auto-share-coach-dismiss{appearance:none;border:none;cursor:pointer;background:rgba(255,255,255,0.14);color:#fff;border-radius:6px;padding:6px 10px;font:700 11px/1 inherit;align-self:flex-end}
+#auto-share-coach-dismiss:hover{background:rgba(255,255,255,0.24)}
+
 
 /* ── Location Sync — agent's "Visitor shared location" pill ──────── */
 #loc-share-pill{position:fixed;top:42px;right:12px;z-index:1300;display:none;align-items:center;gap:8px;padding:6px 6px 6px 14px;border-radius:999px;background:rgba(0,0,0,0.55);border:1px solid rgba(255,255,255,0.2);color:#fff;font:600 12px/1 system-ui,-apple-system,sans-serif;-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%);box-shadow:0 8px 24px rgba(0,0,0,0.32);max-width:min(360px,calc(100vw - 24px));animation:loc-share-slide 0.25s ease-out}
