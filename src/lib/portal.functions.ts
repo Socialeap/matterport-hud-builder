@@ -4194,6 +4194,8 @@ if(frame){
       else ov.classList.remove("locked");
     } catch(_e){}
   }
+
+  function handleClearLocallyAndBroadcast(){
     wipeAnnotations();
     var s=session.getState();
     if(s.role==="agent"&&s.isConnected){
