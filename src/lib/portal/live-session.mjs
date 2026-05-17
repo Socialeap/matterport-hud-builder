@@ -799,6 +799,7 @@ function createLiveSession(options) {
     sendStrokePatch: sendStrokePatch,
     sendStrokeCommit: sendStrokeCommit,
     sendClear: sendClear,
+    sendNavLock: sendNavLock,
     dispose: dispose,
   };
 }
