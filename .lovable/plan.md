@@ -1,100 +1,149 @@
+## Focus Rope failure, merged shape control, visitor freeze, and X-to-exit
 
-# Focus Rope annotation tool
+Three coordinated fixes, all confined to the generated portal runtime and the live-session module.
 
-Add a "Focus Rope" tool to the Live Tour annotation overlay that lets the agent draw a colored **Circle** or **Box** outline around any object on the 3D tour and resize it after creation via a latch handle. Reuses the existing color dropdown for foreground contrast. All changes are confined to `src/lib/portal.functions.ts` (the same file that holds the existing Pointer / Draw toolbar). **No changes to the live-session wire format or `live-session.mjs`** — keeps the P2P contract and `tests/live-session.test.mjs` green.
+---
 
-## What the user sees
+### 1. Bug fix — Focus Rope button is unresponsive
 
-Toolbar, left to right (additions in **bold**):
+**Root cause.** In `src/lib/portal.functions.ts` the toolbar click delegate only recognizes two tool names:
 
-```text
-[Pointer] [Draw] [color ▾] [Focus Rope] [shape: Circle ▾] [Clear] [Capture]
+```js
+// line 4333
+if(t==="pointer"||t==="draw"){ setToolMode(t); return; }
 ```
 
-- Clicking **Focus Rope** activates rope mode (toolbar button toggles `.active`, same pattern as Pointer/Draw).
-- The shape dropdown (Circle / Box) sits next to it; whitelist-guarded just like the color picker.
-- In rope mode, the agent click-drags on the canvas: a colored outline is drawn from the press point to the cursor (circle bounded by drag rect, or rectangle). On release the rope **stays on screen** and a small filled latch handle appears at the bottom-right of the shape's bounding box.
-- The agent can grab the latch and drag to resize the rope at any time while it's the active rope. Picking a different tool, hitting **Clear**, or teleporting deactivates the latch and bakes the rope as a committed annotation (still visible, no longer resizable).
-- Color dropdown selection applies to subsequent ropes (and to the active rope while it's still being resized), mirroring existing Draw behavior.
-- Hotkey: **R** for Focus Rope (next to existing P/D/C/S). Esc deselects.
+`data-tool="rope"` on `#anno-rope-btn` falls through every branch — the button literally does nothing on click. (The `R` hotkey works, but the button doesn't.) All the rope state, pointer handlers, latch, color/shape pickers and visitor "replace if id matches" plumbing are wired correctly; this is the single missing branch.
 
-## Wire-compatible rendering strategy
+**Fix.** Change line 4333 to:
 
-Strokes on the wire are arrays of normalized `[x,y]` points connected with `lineTo` (see `drawStroke`). A circle is sent as a 48-point polyline approximation; a box is 5 points (closed). This means:
+```js
+if(t==="pointer"||t==="draw"||t==="rope"){ setToolMode(t); return; }
+```
 
-- The visitor renders ropes using the **existing** stroke pipeline. No new packet types.
-- Resize updates re-send `stroke_begin` for the **same** `strokeId` with the new full point set. The visitor's `incomingStrokeEvent` handler is extended so a `begin` for an existing `strokeId` **replaces** that stroke's points (today it always pushes a new one). This change is backward-compatible — vanilla Draw strokes always use fresh ids, so behavior is identical for them.
-- `stroke_commit` is sent on the final mouseup (end of resize session, or when leaving rope mode), matching today's commit semantics.
-- The latch handle is an **agent-only local UI affordance** — never serialized over the wire and never written into `localStrokes` on the visitor.
+That alone restores Focus Rope.
 
-## Technical changes (all in `src/lib/portal.functions.ts`)
+---
 
-### 1. CSS (near the existing `.anno-tool-btn` / `.anno-color-wrap` block, ~lines 1605–1612)
-- Add `.anno-shape-wrap` / `.anno-shape-select` mirroring the color picker styles (so the Circle/Box dropdown matches visually).
+### 2. Merge "Focus Rope" + shape dropdown into one cohesive control
 
-### 2. Toolbar markup (in the `#anno-toolbar` block, ~lines 1745–1758)
-- Insert after the color picker, before `#anno-clear-btn`:
-  - `<button class="anno-tool-btn" data-tool="rope" id="anno-rope-btn" aria-keyshortcuts="R">Focus Rope</button>`
-  - `<label class="anno-shape-wrap"><select id="anno-shape-select" class="anno-shape-select"><option value="circle">Circle</option><option value="box">Box</option></select></label>`
+Replace the two separate elements (`#anno-rope-btn` and `.anno-shape-wrap`) at lines 1760-1766 with a single grouped control: a toggle button styled like the other tool buttons, plus an inline shape `<select>` that is **hidden until rope mode is active**. When the agent clicks the button:
+- It becomes `.active` (already handled by `setToolMode`).
+- The inline shape dropdown reveals next to it (chevron-suffix style, matching `.anno-color-wrap`).
+- The dropdown auto-opens on first activation by calling `.focus()` + `.showPicker?.()` so the agent can immediately pick Circle / Box.
 
-### 3. State (near `ANNO_STROKE_COLOR`, ~line 3843)
-- `var ANNO_ROPE_SHAPE="circle";` plus a whitelist `{circle:1, box:1}`.
-- `var activeRope=null;` holding `{strokeId, color, width, shape, x0,y0,x1,y1}` in normalized coords. Distinct from `activeStroke` (free-draw).
-- `var ropeLatchDragging=false;` and a `var LATCH_PX=10;` constant for hit-tolerance.
+Switching to any other tool collapses the dropdown again. No new state — the existing `toolMode==="rope"` already gates visibility via a single CSS rule:
 
-### 4. Geometry + rendering helpers
-- `ropeToPoints(rope) -> number[][]`: produces the polyline (48-pt circle / 5-pt closed box) from the bounding rect.
-- `ropeLatchPos(rope) -> {x,y}`: bottom-right of the bbox in normalized coords (translated to pixels at draw time).
-- Extend `redrawAllStrokes()` to also draw the latch handle for the active rope when present (after the strokes loop) — small filled disc using the rope's color with a thin white outline for contrast.
+```css
+.anno-rope-group .anno-shape-wrap{display:none}
+body.anno-rope-active .anno-rope-group .anno-shape-wrap{display:inline-flex}
+```
 
-### 5. Tool selection
-- Extend `setToolMode("rope")` to set canvas cursor (`crosshair`) and toggle the toolbar `.active` state via the same query that already handles `[data-tool]` buttons.
-- Switching away from `"rope"` while an `activeRope` exists: send a final `stroke_commit` for that rope, then null out `activeRope` (the rope's points stay in `localStrokes`).
+`setToolMode` toggles `document.body.classList.toggle("anno-rope-active", mode==="rope")` next to the existing class toggles around line 3934-3960.
 
-### 6. Pointer wiring (canvas handlers, ~lines 4100–4151)
-- `pointerdown` in rope mode:
-  - If there's an `activeRope` and the press is within `LATCH_PX` of `ropeLatchPos`, enter resize mode (`ropeLatchDragging=true`).
-  - Otherwise commit any prior active rope (`sendStrokeCommit`), then create a new `activeRope` with a fresh `strokeId`, anchor at the press point, push to `localStrokes`, and call `pushRopeUpdate()` (see below).
-- `pointermove` in rope mode: update `x1,y1` (or, during latch drag, only the dragged corner), regenerate the rope's `points` in place inside its `localStrokes` entry, call `redrawAllStrokes()`, and call `scheduleRopeFlush()`.
-- `pointerup` in rope mode: end the local drag — but **do not** commit yet; the rope remains active so the latch can be grabbed again. The rope is committed when the agent switches tools, teleports, or starts a new rope.
+The existing `ANNO_ROPE_SHAPE_WHITELIST` guard and live re-tinting in `annoShapeSelect.addEventListener("change", …)` (lines 4372-4386) are unchanged.
 
-### 7. Throttled outbound updates
-- `scheduleRopeFlush()` mirrors `scheduleStrokeFlush()` — coalesces to one rAF tick.
-- `pushRopeUpdate()` calls `session.sendStrokeBegin(currentViewKey, activeRope.strokeId, activeRope.color, activeRope.width, ropeToPoints(activeRope))`. Reusing `stroke_begin` for live updates is intentional: paired with the visitor-side "replace if id exists" change, it gives us atomic full-shape snapshots without protocol churn or risk of partial polylines flashing on the visitor.
+---
 
-### 8. Visitor receive path (in `onState`, ~lines 4490–4513)
-- In the `sev.kind === "begin"` branch, look up `findLocalStroke(sev.strokeId)`:
-  - If found → replace `existing.points` with `sev.points.slice()` (and update color/width if present).
-  - If not found → existing push-new behavior.
-- `patch` branch unchanged (free-draw keeps appending).
-- `commit` branch unchanged.
-- Net effect: free-draw works exactly as today; ropes get atomic snapshot updates.
+### 3. Visitor freeze while the agent is annotating, plus an X button to exit
 
-### 9. Shape picker wiring (mirrors color picker block at ~lines 4172–4185)
-- Bind `change` on `#anno-shape-select`; reject anything outside the whitelist; update `ANNO_ROPE_SHAPE`. If an `activeRope` is mid-edit, regenerate its points so the visible shape switches immediately and `pushRopeUpdate()` fires.
+**Requirement.** When the agent is in pointer/draw/rope mode after teleporting to a bookmarked scene, the visitor's tour must stop accepting navigation input so the annotation stays aligned to the scene. An "X" button at the end of the toolbar clears annotations, exits annotation mode, and releases the freeze.
 
-### 10. Clear, teleport, teardown
-- `wipeAnnotations()` already clears `localStrokes` + `activeStroke`; extend it to also null out `activeRope` and `ropeLatchDragging`.
-- `applyTeleport()` already calls `wipeAnnotations()` — rope auto-clears on teleport, viewKey filter on the visitor drops late rope packets. No extra work.
-- `teardownSession()` already calls `wipeAnnotations()` — covered.
+**Wire change — minimal and tested.** Add one new packet type `nav_lock` to `src/lib/portal/live-session.mjs`:
 
-### 11. Hotkey
-- Add `else if(k==="r"){ setToolMode("rope"); e.preventDefault(); }` in the existing keydown handler (~line 4202). Pointer/Draw/Clear/Capture/Esc behavior unchanged.
+- New sender `sendNavLock(viewKey, locked)` next to `sendClear` (uses the same `_sendSeq` + `_currentViewKey` plumbing).
+- Extend `_handleIncomingData` to recognize `type === "nav_lock"`, run the same seq / viewKey filter as the other annotation events, and patch `incomingNavLockEvent: { viewKey, locked, seq, ts }` onto state.
+- Add `incomingNavLockEvent: null` to the initial / reset state objects (lines ~168 and ~751).
+- Export `sendNavLock` from the returned API.
 
-### 12. Capture spec
-- `downloadCaptureSpec()` iterates `localStrokes` and serializes `points` — ropes are already in `localStrokes` as polylines, so they're captured automatically with no extra code. Verified by tracing the function at ~lines 4050–4096.
+Extend `tests/live-session.test.mjs` with two parallel tests modeled on the existing stroke/clear tests:
+- agent-side `sendNavLock` produces the documented JSON shape, increments `_sendSeq`, and respects `_currentViewKey`.
+- inbound `nav_lock` packet surfaces as `incomingNavLockEvent` and obeys the stale-viewKey filter.
 
-## Safety / regression analysis
+This keeps the contract explicit and the existing tests untouched.
 
-- **Wire format unchanged.** `tests/live-session.test.mjs` and the PeerJS controller are not touched. The new behavior is realized entirely through `stroke_begin` snapshot semantics on the agent side and a single client-side "replace if id matches" tweak on the visitor side.
-- **Free-draw unaffected.** Free-draw uses fresh strokeIds per stroke and uses `stroke_patch` for incremental updates, so the visitor's new "replace on begin if id matches" branch never fires for legacy draw strokes.
-- **Color whitelist preserved.** Ropes adopt `ANNO_STROKE_COLOR` at creation time and stay re-tintable while active; the whitelist guard on the existing `#anno-color-select` is reused as-is.
-- **Shape whitelist added** so a hijacked `<option>` value can't push arbitrary state into rendering.
-- **Visitor never sees the latch.** The latch is only drawn when `activeRope` is non-null, and `activeRope` is set exclusively in agent-side pointer handlers.
-- **Per-frame throttling** via `scheduleRopeFlush()` keeps the DataChannel under the existing backpressure guard in `live-session.mjs` (`LIVE_SESSION_POINTER_BACKPRESSURE_BYTES`) — at ~60Hz × ~48 points × ~12 bytes/point we're well under 64 KiB queued.
-- **No new packet types**, so no migration concerns for visitors loading an older runtime against a newer agent (and vice-versa): worst case on an old visitor is that a rope resize re-shows as a stacked duplicate, never a crash.
-- **Capture JSON unchanged in shape** — ropes flow through naturally; existing consumers see polylines as they always have.
+**Agent side (in `setToolMode`, `src/lib/portal.functions.ts`).** After the existing class toggles:
 
-## Out of scope (not changed)
+```js
+var locked = (mode==="pointer"||mode==="draw"||mode==="rope");
+try { session.sendNavLock(currentViewKey, locked); } catch(_e){}
+```
 
-- `src/lib/portal/live-session.mjs`, `src/lib/portal/live-session-source.ts`, the PeerJS wire format, the tests under `tests/live-session.test.mjs`, the visitor-side pointer cursor, the color whitelist contents, and any builder / dashboard UI.
+So entering any annotation tool freezes the visitor, and leaving annotation mode (or pressing the X) releases.
+
+**Visitor side.** Add a transparent overlay element inside the live-tour container that sits above the Matterport iframe but below `#anno-canvas`:
+
+```html
+<div id="live-tour-navlock" hidden aria-hidden="true"></div>
+```
+
+CSS:
+```css
+#live-tour-navlock{position:absolute;inset:0;z-index:4;background:transparent;cursor:not-allowed;display:none}
+#live-tour-navlock.locked{display:block}
+```
+
+z-index 4 is below `#anno-canvas` (z-index 5) and above the iframe, so the visitor still sees annotations but can't pan/click the tour. Touch is blocked too because the overlay has `pointer-events:auto` by default and the iframe sits behind it.
+
+In the existing `_handleIncomingNavLock` path (added next to the stroke handler around line 4692), the visitor toggles `.locked` based on `incomingNavLockEvent.locked`. Agents never apply the lock to themselves (gated by `state.role === "visitor"`).
+
+The lock auto-releases when:
+- The agent leaves annotation mode (sends `locked:false`).
+- The agent teleports (after teleport, the agent re-broadcasts the current `locked` for the new view key; visitor re-applies).
+- `teardownSession` and the existing `incomingClearEvent` path both fall back to `locked:false` defensively in case a `nav_lock:false` packet is dropped.
+
+**"X" exit button.** Append to `#anno-toolbar` after `#anno-capture-btn`:
+
+```html
+<button type="button" class="anno-tool-btn anno-exit-btn" id="anno-exit-btn"
+        title="Exit annotation mode (Esc)" aria-label="Exit annotation mode">×</button>
+```
+
+Styled with a slightly larger glyph and a red hover tint via a new `.anno-exit-btn:hover{color:#ff6b6b}` rule.
+
+In the toolbar click delegate (line 4329), add:
+```js
+if(btn.id==="anno-exit-btn"){
+  handleClearLocallyAndBroadcast();   // wipes strokes on both sides
+  setToolMode("none");                // collapses shape dropdown, removes .active states
+  try { session.sendNavLock(currentViewKey, false); } catch(_e){} // belt + suspenders; setToolMode already sends this
+  return;
+}
+```
+
+`handleClearLocallyAndBroadcast` already calls `wipeAnnotations()` and `session.sendClear(...)`, so committed strokes, the in-progress free-draw stroke, the active rope, and the latch all clear in one shot.
+
+---
+
+### Files changed
+
+- `src/lib/portal.functions.ts`
+  - Fix the click delegate to include `"rope"` (1-line bug fix).
+  - Restructure the rope toolbar markup into a grouped control; hide the shape dropdown until rope mode is active.
+  - Toggle a `body.anno-rope-active` class inside `setToolMode`.
+  - Add the X exit button + its click handler.
+  - Call `session.sendNavLock(currentViewKey, locked)` inside `setToolMode` and re-broadcast after teleport.
+  - Add the `#live-tour-navlock` overlay element and its CSS.
+  - Add visitor-side handler reacting to `incomingNavLockEvent`.
+
+- `src/lib/portal/live-session.mjs`
+  - Add `nav_lock` packet type to `_handleIncomingData`.
+  - Add `sendNavLock(viewKey, locked)` and export it.
+  - Add `incomingNavLockEvent` to initial + reset state.
+
+- `tests/live-session.test.mjs`
+  - Two new tests covering send + receive of `nav_lock`, mirroring the existing clear/stroke tests.
+
+### Out of scope
+
+- No change to the free-draw / rope wire snapshots or `findLocalStroke` semantics.
+- No change to teleport, pointer, stroke_*, clear packet shapes.
+- No backend, dashboard, or builder UI changes.
+- Visitor cursor outside the freeze overlay (no extra cursor work beyond `cursor:not-allowed`).
+
+### Risk / regression analysis
+
+- **Backward compatibility.** Older agents never send `nav_lock`; visitors built from this version simply never lock — identical to today's behavior. Older visitors against a new agent silently ignore unknown packet types (the existing `_handleIncomingData` early-returns on unknown `type`), so no crash.
+- **Stuck-lock safety.** The lock auto-clears on `setToolMode("none")`, the X button, `wipeAnnotations()`, teardown, and is also defensively released on `incomingClearEvent` for the visitor. The visitor cannot get permanently locked unless the data channel is silently dropped mid-annotation — and in that case the Leave Live Tour button already tears the session down.
+- **Tests.** Existing `tests/live-session.test.mjs` assertions are not modified; only two additions. PeerJS controller untouched.
+- **Pointer/touch.** The overlay uses `position:absolute; inset:0;` inside the same containing block as the iframe; `touch-action:none` already on `#anno-canvas` keeps gestures from leaking. The overlay itself doesn't need `touch-action:none` because it has no children to scroll.
