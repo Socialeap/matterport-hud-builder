@@ -1853,29 +1853,39 @@ ${askAssets.css}
   </div>
 </div>
 
-<!-- ── HUD toggle button ─────────────────────────────────────────── -->
-<button id="hud-leave-btn" hidden aria-label="Leave live tour" title="Leave Live Tour">Leave</button>
-
-<!-- ── Location Sync: visitor pill (CSS-gated to visitor role) ────── -->
-<div id="loc-sync" role="region" aria-label="Share your location with the agent">
-  <!-- Read-only instructions card. Always visible during a live tour so
-       the visitor never has to hunt for the steps. -->
-  <div id="loc-sync-instructions">
-    <span id="loc-sync-instructions-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 22s-7-7.58-7-13a7 7 0 1 1 14 0c0 5.42-7 13-7 13z"/><circle cx="12" cy="9" r="2.5"/></svg>Share your view:</span>
-    <span class="loc-sync-step"><span class="loc-sync-step-num">1</span>Press <kbd>U</kbd> in the tour</span>
-    <span class="loc-sync-step"><span class="loc-sync-step-num">2</span>Click <strong>Copy to clipboard</strong></span>
-    <span class="loc-sync-step"><span class="loc-sync-step-num">3</span>Tap the button below</span>
+<!-- ── Live Tour HUD header (replaces #hud-header while body.live-tour-active).
+     Visitor sees Sync My View + Leave; agent sees Leave only. Stays collapsed
+     until the chevron is clicked so the 3D tour stays unobstructed. The
+     Sync My View button reveals an inline instructions panel below the bar;
+     after a successful send the panel + header auto-close. -->
+<div id="hud-header-livetour" role="region" aria-label="Live Tour controls">
+  <div id="lt-hud-inner">
+    <div id="lt-hud-center">
+      ${logoUrl ? `<img id="lt-hud-logo" src="${escapeHtml(logoUrl)}" alt="Logo">` : ""}
+      <div id="lt-hud-brand">${escapeHtml(brandName)}</div>
+      <span id="lt-hud-status">Live Tour</span>
+    </div>
+    <div id="lt-hud-right">
+      <button type="button" id="lt-sync-btn" class="lt-action-btn" aria-expanded="false" aria-controls="lt-sync-panel">Sync My View</button>
+      <button type="button" id="lt-leave-btn" class="lt-action-btn lt-leave" aria-label="Leave live tour">Leave</button>
+    </div>
   </div>
-  <!-- Action card — the only thing that triggers the clipboard read. -->
-  <div id="loc-sync-action">
-    <button type="button" id="loc-sync-btn" aria-describedby="loc-sync-status">
-      <span id="loc-sync-spinner" aria-hidden="true"></span>
-      <span id="loc-sync-btn-text">Sync My View</span>
-    </button>
-    <div id="loc-sync-status" aria-live="polite"></div>
-    <div id="loc-sync-fallback" hidden>
-      <input type="text" id="loc-sync-fallback-input" placeholder="Paste tour link here" aria-label="Paste Matterport tour link" autocomplete="off" spellcheck="false">
-      <button type="button" id="loc-sync-fallback-submit">Send</button>
+  <div id="lt-sync-panel" role="region" aria-label="Sync your view instructions">
+    <div id="lt-sync-steps">
+      <span class="loc-sync-step"><span class="loc-sync-step-num">1</span>Press <kbd>U</kbd> in the tour</span>
+      <span class="loc-sync-step"><span class="loc-sync-step-num">2</span>Click <strong>Copy to clipboard</strong></span>
+      <span class="loc-sync-step"><span class="loc-sync-step-num">3</span>Tap the button below</span>
+    </div>
+    <div id="loc-sync-action">
+      <button type="button" id="loc-sync-btn" aria-describedby="loc-sync-status">
+        <span id="loc-sync-spinner" aria-hidden="true"></span>
+        <span id="loc-sync-btn-text">Sync My View</span>
+      </button>
+      <div id="loc-sync-status" aria-live="polite"></div>
+      <div id="loc-sync-fallback" hidden>
+        <input type="text" id="loc-sync-fallback-input" placeholder="Paste tour link here" aria-label="Paste Matterport tour link" autocomplete="off" spellcheck="false">
+        <button type="button" id="loc-sync-fallback-submit">Send</button>
+      </div>
     </div>
   </div>
 </div>
