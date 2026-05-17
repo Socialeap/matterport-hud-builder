@@ -4087,6 +4087,9 @@ if(frame){
     // so the newly-active header (regular ↔ live-tour) starts collapsed
     // and never inherits a stale "visible" state from the previous mode.
     try { if(typeof window.__setHudVisible==="function") window.__setHudVisible(false); } catch(_e){}
+  }
+
+  function setToolMode(mode){
     var prev=toolMode;
     toolMode=mode;
     if(annoCanvas){
