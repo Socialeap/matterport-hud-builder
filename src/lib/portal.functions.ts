@@ -4191,66 +4191,7 @@ if(frame){
     }
   }
 
-  function showCapturePanel(){
-    if(!capturePanel) return;
-    capturePanel.hidden=false;
-    if(captureNoteEl){
-      try { captureNoteEl.focus(); } catch(_e){}
-    }
-  }
 
-  function hideCapturePanel(){
-    if(!capturePanel) return;
-    capturePanel.hidden=true;
-  }
-
-  function downloadCaptureSpec(){
-    var p=props[current]||{};
-    var ss="";
-    var sr="";
-    if(currentViewKey){
-      var parts=currentViewKey.split("|");
-      ss=parts[0]||"";
-      sr=parts[1]||"";
-    }
-    var note=captureNoteEl?(captureNoteEl.value||""):"";
-    var stroked=[];
-    for(var i=0;i<localStrokes.length;i++){
-      var sObj=localStrokes[i];
-      stroked.push({
-        strokeId:sObj.strokeId,
-        color:sObj.color,
-        width:sObj.width,
-        points:sObj.points,
-      });
-    }
-    var spec={
-      type:"live-tour-spec",
-      version:1,
-      capturedAt:new Date().toISOString(),
-      propertyName:p.name||"",
-      iframeUrl:p.iframeUrl||"",
-      viewKey:currentViewKey,
-      ss:ss,
-      sr:sr,
-      note:note,
-      strokes:stroked,
-    };
-    var json=JSON.stringify(spec,null,2);
-    try {
-      var blob=new Blob([json],{type:"application/json"});
-      var url=URL.createObjectURL(blob);
-      var a=document.createElement("a");
-      a.href=url;
-      a.download="live-tour-spec-"+Date.now()+".json";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(function(){ try { URL.revokeObjectURL(url); } catch(_e){} },500);
-    } catch(_e){}
-    if(captureNoteEl) captureNoteEl.value="";
-    hideCapturePanel();
-  }
 
   // Canvas pointer wiring (agent only — toolMode is forced "none" on
   // the visitor side so these handlers are no-ops).
