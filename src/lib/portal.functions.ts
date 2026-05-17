@@ -1621,12 +1621,6 @@ body.anno-rope-active .anno-rope-group .anno-shape-wrap{display:inline-flex}
 #live-tour-navlock{position:absolute;inset:0;z-index:4;background:transparent;cursor:not-allowed;display:none;touch-action:none}
 body.live-tour-active.live-tour-visitor #live-tour-navlock.locked{display:block}
 body.live-tour-active.live-tour-visitor #anno-letterbox-wrap:has(#live-tour-navlock.locked) #matterport-frame{pointer-events:none}
-#anno-capture-panel{position:absolute;left:50%;top:64px;transform:translateX(-50%);display:flex;flex-direction:column;gap:8px;z-index:10;background:rgba(10,12,20,0.82);backdrop-filter:blur(14px) saturate(160%);-webkit-backdrop-filter:blur(14px) saturate(160%);border:1px solid rgba(255,255,255,0.14);border-radius:10px;padding:10px;min-width:280px;box-shadow:0 8px 32px rgba(0,0,0,0.45)}
-#anno-capture-panel[hidden]{display:none}
-#anno-capture-note{width:100%;min-height:60px;background:rgba(0,0,0,0.35);color:#fff;border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:8px;font:13px/1.4 inherit;resize:vertical;outline:none;font-family:inherit;box-sizing:border-box}
-#anno-capture-note:focus{border-color:${escapeHtml(accentColor)}}
-.anno-capture-actions{display:flex;gap:6px;justify-content:flex-end}
-
 /* Engage 16:9 letterboxing once the WebRTC session is live. Black
    bars come from #viewer's background while the wrap is centered
    inside it. The agent gets a toolbar; the visitor only sees the
