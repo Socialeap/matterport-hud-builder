@@ -3986,6 +3986,7 @@ if(frame){
     annoCtx.clearRect(0,0,w,h);
     for(var i=0;i<localStrokes.length;i++) drawStroke(localStrokes[i],w,h);
     if(activeStroke) drawStroke(activeStroke,w,h);
+    if(activeRope) drawRopeLatch(activeRope,w,h);
   }
 
   function drawStroke(stroke,w,h){
