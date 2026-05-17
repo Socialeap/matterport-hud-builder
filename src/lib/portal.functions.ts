@@ -3865,6 +3865,20 @@ if(frame){
   var lastStrokeSeq=0;
   var lastClearSeq=0;
   var remotePointerHideTimer=null;
+  // Focus Rope state — agent-only authoring of a circle/box outline
+  // overlay. The rope is rendered as a polyline (48 pts circle, 5 pts
+  // closed box) so it travels over the wire as a regular stroke.
+  // activeRope is non-null while the agent is creating or resizing
+  // one; once committed (tool switch / clear / teleport / new rope)
+  // it stays in localStrokes as a normal stroke entry.
+  var ANNO_ROPE_SHAPE="circle";
+  var ANNO_ROPE_SHAPE_WHITELIST={circle:1,box:1};
+  var ANNO_ROPE_CIRCLE_SAMPLES=48;
+  var ANNO_LATCH_PX=10;
+  var activeRope=null;          // {strokeId,color,width,shape,x0,y0,x1,y1}
+  var ropeDragging=false;       // initial draw drag
+  var ropeLatchDragging=false;  // resize via latch handle
+  var ropeFlushScheduled=false;
 
   // After a visitor connects, auto-close the Live Tour drawer so the
   // tour fills the screen. The HUD header (and the Live Tour button)
