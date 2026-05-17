@@ -1629,43 +1629,40 @@ body.live-tour-active #viewer{display:flex;align-items:center;justify-content:ce
 body.live-tour-active #anno-letterbox-wrap{position:relative;inset:auto;aspect-ratio:16/9;width:min(100vw,calc(100vh * 16 / 9));height:auto;max-height:100vh}
 body.live-tour-active.live-tour-agent #anno-toolbar{display:flex}
 
-/* ── Live Tour HUD (separate header that replaces the regular HUD
-   while body.live-tour-active is set). Keeps the 3D tour unobstructed:
-   it stays collapsed until the chevron is clicked. The visitor sees
-   Sync My View + Leave; the agent sees Leave only (their annotation
-   toolbar already lives inside the letterbox). The standalone floating
-   "Share your view" card was removed — instructions now slide down
-   from this header on demand. */
+/* ── Live Tour controls (left-side drawer that replaces the top HUD
+   while body.live-tour-active is set). Keeps the 3D tour and the
+   native Matterport "Link to location" popup fully unobstructed:
+   nothing renders at the top of the screen. The chevron moves to the
+   top-left and toggles a compact left drawer. The visitor sees Leave
+   then Sync My View; the agent sees Leave only (their annotation
+   toolbar already lives inside the letterbox). */
 body.live-tour-active #hud-header{display:none !important}
-#hud-header-livetour{display:none;position:fixed;top:0;left:0;right:0;z-index:1200;transform:translateY(-100%);opacity:0;pointer-events:none;transition:transform 0.3s ease,opacity 0.3s ease;will-change:transform,opacity}
-body.live-tour-active #hud-header-livetour{display:block}
-#hud-header-livetour.visible{transform:translateY(0);opacity:1;pointer-events:auto}
-#lt-hud-inner{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;background:${escapeHtml(hudBgColor)}ee;-webkit-backdrop-filter:blur(16px) saturate(160%);backdrop-filter:blur(16px) saturate(160%);border-bottom:1px solid rgba(255,255,255,0.08);box-shadow:0 4px 16px rgba(0,0,0,0.25)}
-#lt-hud-center{display:flex;align-items:center;gap:10px;min-width:0;color:#fff;flex:1}
-#lt-hud-logo{height:22px;width:auto;flex-shrink:0}
-#lt-hud-brand{font:700 14px/1 system-ui,-apple-system,sans-serif;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#lt-hud-status{font:600 11px/1 system-ui,-apple-system,sans-serif;color:rgba(255,255,255,0.7);padding:3px 8px;border-radius:999px;background:rgba(34,197,94,0.18);border:1px solid rgba(34,197,94,0.4);flex-shrink:0}
-#lt-hud-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
-.lt-action-btn{appearance:none;border:none;cursor:pointer;height:32px;padding:0 14px;border-radius:999px;background:${escapeHtml(accentColor)};color:#fff;font:700 12px/1 system-ui,-apple-system,sans-serif;letter-spacing:0.02em;display:inline-flex;align-items:center;justify-content:center;gap:6px;transition:background 0.2s,transform 0.1s,box-shadow 0.2s,opacity 0.15s;box-shadow:0 4px 12px ${escapeHtml(accentColor)}44}
+body.live-tour-active #hud-leave-btn{display:none !important}
+/* During a Live Tour the chevron lives at the top-LEFT so it can't
+   cover the Matterport URL popup that opens near the top-right. */
+body.live-tour-active #hud-toggle{left:8px;right:auto}
+
+#live-tour-control-drawer{display:none;position:fixed;top:0;left:0;height:100%;width:min(280px,82vw);z-index:1250;transform:translateX(-100%);transition:transform 0.28s ease;background:${escapeHtml(hudBgColor)}ee;-webkit-backdrop-filter:blur(20px) saturate(170%);backdrop-filter:blur(20px) saturate(170%);border-right:1px solid rgba(255,255,255,0.08);box-shadow:6px 0 28px rgba(0,0,0,0.32);will-change:transform}
+body.live-tour-active #live-tour-control-drawer{display:flex;flex-direction:column}
+#live-tour-control-drawer.open{transform:translateX(0)}
+#ltcd-inner{display:flex;flex-direction:column;gap:10px;padding:52px 16px 18px;color:#fff;overflow-y:auto;height:100%;box-sizing:border-box}
+#ltcd-header{display:flex;align-items:center;gap:10px;min-width:0;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.08);margin-bottom:4px}
+#ltcd-logo{height:22px;width:auto;flex-shrink:0}
+#ltcd-brand{font:700 13px/1.2 system-ui,-apple-system,sans-serif;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+#ltcd-status{font:600 10px/1 system-ui,-apple-system,sans-serif;color:rgba(255,255,255,0.85);padding:3px 8px;border-radius:999px;background:rgba(34,197,94,0.18);border:1px solid rgba(34,197,94,0.4);flex-shrink:0}
+.lt-action-btn{appearance:none;border:none;cursor:pointer;width:100%;height:38px;padding:0 14px;border-radius:8px;background:${escapeHtml(accentColor)};color:#fff;font:700 13px/1 system-ui,-apple-system,sans-serif;letter-spacing:0.02em;display:inline-flex;align-items:center;justify-content:center;gap:6px;transition:background 0.2s,transform 0.1s,box-shadow 0.2s,opacity 0.15s;box-shadow:0 4px 12px ${escapeHtml(accentColor)}44}
 .lt-action-btn:hover{transform:translateY(-1px);box-shadow:0 6px 16px ${escapeHtml(accentColor)}66}
-.lt-action-btn:active{transform:scale(0.97)}
-.lt-action-btn.lt-leave{background:rgba(255,255,255,0.18);color:#fff;box-shadow:none}
+.lt-action-btn:active{transform:scale(0.98)}
+.lt-action-btn.lt-leave{background:rgba(255,255,255,0.14);color:#fff;box-shadow:none;border:1px solid rgba(255,255,255,0.18)}
 .lt-action-btn.lt-leave:hover{background:rgba(220,38,38,0.85);transform:translateY(-1px);box-shadow:0 6px 16px rgba(220,38,38,0.4)}
 body.live-tour-agent #lt-sync-btn{display:none}
-#lt-sync-panel{display:none;flex-direction:column;align-items:center;gap:10px;padding:12px 16px 14px;background:rgba(0,0,0,0.78);-webkit-backdrop-filter:blur(16px) saturate(160%);backdrop-filter:blur(16px) saturate(160%);border-bottom:1px solid rgba(255,255,255,0.08);box-shadow:0 4px 16px rgba(0,0,0,0.32)}
-#hud-header-livetour.show-sync #lt-sync-panel{display:flex}
+#lt-sync-panel{display:none;flex-direction:column;align-items:stretch;gap:10px;padding:12px;background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.08);border-radius:10px;margin-top:4px}
+#live-tour-control-drawer.show-sync #lt-sync-panel{display:flex}
 body.live-tour-agent #lt-sync-panel{display:none !important}
-#lt-sync-steps{display:flex;flex-wrap:wrap;justify-content:center;gap:6px 14px;color:#fff;font:600 12px/1.4 system-ui,-apple-system,sans-serif;max-width:560px}
-.loc-sync-step{display:inline-flex;align-items:center;gap:5px;color:rgba(255,255,255,0.92);white-space:nowrap}
-.loc-sync-step-num{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:${escapeHtml(accentColor)};color:#fff;font:700 10px/1 inherit;flex-shrink:0}
+#lt-sync-steps{display:flex;flex-direction:column;gap:6px;color:#fff;font:600 12px/1.4 system-ui,-apple-system,sans-serif}
+.loc-sync-step{display:flex;align-items:flex-start;gap:6px;color:rgba(255,255,255,0.92)}
+.loc-sync-step-num{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:${escapeHtml(accentColor)};color:#fff;font:700 10px/1 inherit;flex-shrink:0;margin-top:1px}
 .loc-sync-step kbd{display:inline-block;padding:1px 6px;border-radius:4px;background:rgba(255,255,255,0.18);border:1px solid rgba(255,255,255,0.24);font:700 11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:#fff}
-@media(max-width:560px){
-  #lt-hud-inner{padding:8px 12px;gap:8px}
-  #lt-hud-brand{font-size:12px}
-  .lt-action-btn{height:28px;padding:0 10px;font-size:11px}
-  #lt-sync-steps{font-size:11px;gap:4px 10px}
-  .loc-sync-step{font-size:11px}
-}
 
 /* Action card — the Sync button + status. Visually distinct from the
    instruction card above so the user clearly sees the action vs. the
@@ -1681,9 +1678,9 @@ body.live-tour-agent #lt-sync-panel{display:none !important}
 #loc-sync-spinner{display:none;width:12px;height:12px;border:2px solid rgba(255,255,255,0.4);border-top-color:#fff;border-radius:50%;animation:loc-sync-spin 0.7s linear infinite}
 #loc-sync-btn.is-reading #loc-sync-spinner{display:inline-block}
 @keyframes loc-sync-spin{to{transform:rotate(360deg)}}
-#loc-sync-status{font-size:11px;line-height:1.4;color:rgba(255,255,255,0.95);padding:6px 12px;border-radius:8px;background:rgba(0,0,0,0.6);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.14);max-width:min(420px,calc(100vw - 40px));text-align:center;pointer-events:auto}
+#loc-sync-status{font-size:11px;line-height:1.4;color:rgba(255,255,255,0.95);padding:6px 12px;border-radius:8px;background:rgba(0,0,0,0.6);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.14);width:100%;box-sizing:border-box;text-align:center;pointer-events:auto}
 #loc-sync-status:empty{display:none}
-#loc-sync-fallback{display:flex;gap:6px;background:rgba(0,0,0,0.6);padding:6px;border-radius:10px;border:1px solid rgba(255,255,255,0.14);pointer-events:auto;width:min(420px,calc(100vw - 40px))}
+#loc-sync-fallback{display:flex;gap:6px;background:rgba(0,0,0,0.6);padding:6px;border-radius:10px;border:1px solid rgba(255,255,255,0.14);pointer-events:auto;width:100%;box-sizing:border-box}
 #loc-sync-fallback[hidden]{display:none}
 #loc-sync-fallback-input{flex:1;min-width:0;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.18);color:#fff;border-radius:6px;padding:6px 8px;font:500 11px/1.4 inherit;outline:none}
 #loc-sync-fallback-input::placeholder{color:rgba(255,255,255,0.45)}
@@ -1853,38 +1850,37 @@ ${askAssets.css}
   </div>
 </div>
 
-<!-- ── Live Tour HUD header (replaces #hud-header while body.live-tour-active).
-     Visitor sees Sync My View + Leave; agent sees Leave only. Stays collapsed
-     until the chevron is clicked so the 3D tour stays unobstructed. The
-     Sync My View button reveals an inline instructions panel below the bar;
-     after a successful send the panel + header auto-close. -->
-<div id="hud-header-livetour" role="region" aria-label="Live Tour controls">
-  <div id="lt-hud-inner">
-    <div id="lt-hud-center">
-      ${logoUrl ? `<img id="lt-hud-logo" src="${escapeHtml(logoUrl)}" alt="Logo">` : ""}
-      <div id="lt-hud-brand">${escapeHtml(brandName)}</div>
-      <span id="lt-hud-status">Live Tour</span>
+<!-- ── Live Tour control drawer (replaces the top HUD while
+     body.live-tour-active is set). Lives on the LEFT so it cannot
+     cover Matterport's native "Link to location" popup that anchors
+     near the top of the iframe. Visitor sees Leave then Sync My View;
+     agent sees Leave only (annotation toolbar is inside the letterbox).
+     Stays closed until the top-left chevron is clicked. -->
+<div id="live-tour-control-drawer" role="region" aria-label="Live Tour controls" aria-hidden="true">
+  <div id="ltcd-inner">
+    <div id="ltcd-header">
+      ${logoUrl ? `<img id="ltcd-logo" src="${escapeHtml(logoUrl)}" alt="Logo">` : ""}
+      <div id="ltcd-brand">${escapeHtml(brandName)}</div>
+      <span id="ltcd-status">Live Tour</span>
     </div>
-    <div id="lt-hud-right">
-      <button type="button" id="lt-sync-btn" class="lt-action-btn" aria-expanded="false" aria-controls="lt-sync-panel">Sync My View</button>
-      <button type="button" id="lt-leave-btn" class="lt-action-btn lt-leave" aria-label="Leave live tour">Leave</button>
-    </div>
-  </div>
-  <div id="lt-sync-panel" role="region" aria-label="Sync your view instructions">
-    <div id="lt-sync-steps">
-      <span class="loc-sync-step"><span class="loc-sync-step-num">1</span>Press <kbd>U</kbd> in the tour</span>
-      <span class="loc-sync-step"><span class="loc-sync-step-num">2</span>Click <strong>Copy to clipboard</strong></span>
-      <span class="loc-sync-step"><span class="loc-sync-step-num">3</span>Tap the button below</span>
-    </div>
-    <div id="loc-sync-action">
-      <button type="button" id="loc-sync-btn" aria-describedby="loc-sync-status">
-        <span id="loc-sync-spinner" aria-hidden="true"></span>
-        <span id="loc-sync-btn-text">Sync My View</span>
-      </button>
-      <div id="loc-sync-status" aria-live="polite"></div>
-      <div id="loc-sync-fallback" hidden>
-        <input type="text" id="loc-sync-fallback-input" placeholder="Paste tour link here" aria-label="Paste Matterport tour link" autocomplete="off" spellcheck="false">
-        <button type="button" id="loc-sync-fallback-submit">Send</button>
+    <button type="button" id="lt-leave-btn" class="lt-action-btn lt-leave" aria-label="Leave live tour">Leave</button>
+    <button type="button" id="lt-sync-btn" class="lt-action-btn" aria-expanded="false" aria-controls="lt-sync-panel">Sync My View</button>
+    <div id="lt-sync-panel" role="region" aria-label="Sync your view instructions">
+      <div id="lt-sync-steps">
+        <span class="loc-sync-step"><span class="loc-sync-step-num">1</span><span>Press <kbd>U</kbd> in the tour</span></span>
+        <span class="loc-sync-step"><span class="loc-sync-step-num">2</span><span>Click <strong>Copy to clipboard</strong></span></span>
+        <span class="loc-sync-step"><span class="loc-sync-step-num">3</span><span>Tap the button below</span></span>
+      </div>
+      <div id="loc-sync-action">
+        <button type="button" id="loc-sync-btn" aria-describedby="loc-sync-status">
+          <span id="loc-sync-spinner" aria-hidden="true"></span>
+          <span id="loc-sync-btn-text">Sync My View</span>
+        </button>
+        <div id="loc-sync-status" aria-live="polite"></div>
+        <div id="loc-sync-fallback" hidden>
+          <input type="text" id="loc-sync-fallback-input" placeholder="Paste tour link here" aria-label="Paste Matterport tour link" autocomplete="off" spellcheck="false">
+          <button type="button" id="loc-sync-fallback-submit">Send</button>
+        </div>
       </div>
     </div>
   </div>
@@ -2199,23 +2195,28 @@ ${askAssets.moduleScript}
     var hudVisible=false;
     function setHudVisible(v){
       hudVisible=!!v;
-      // Pick the active header based on live-tour state, so the chevron
-      // toggles whichever HUD is appropriate for the current mode.
+      // Pick the active surface based on live-tour state. In Live Tour
+      // mode the chevron toggles a LEFT-side drawer instead of the top
+      // header, so the Matterport "Link to location" popup at the top
+      // of the iframe is never covered.
       var liveActive=document.body.classList.contains("live-tour-active");
-      var ltHeader=document.getElementById("hud-header-livetour");
-      var target=liveActive?ltHeader:hudHeader;
-      // Always reset the inactive header so it can't be left stuck visible
+      var ltDrawer=document.getElementById("live-tour-control-drawer");
+      // Always reset the inactive surface so it can't be left stuck open
       // when modes switch.
       if(hudHeader && liveActive){ hudHeader.classList.remove("visible"); hudHeader.style.transform="translateY(-100%)"; hudHeader.style.opacity="0"; hudHeader.style.pointerEvents="none"; }
-      if(ltHeader && !liveActive){ ltHeader.classList.remove("visible","show-sync"); ltHeader.style.transform="translateY(-100%)"; ltHeader.style.opacity="0"; ltHeader.style.pointerEvents="none"; }
-      if(target){
-        target.classList.toggle("visible",hudVisible);
-        target.style.transform=hudVisible?"translateY(0)":"translateY(-100%)";
-        target.style.opacity=hudVisible?"1":"0";
-        target.style.pointerEvents=hudVisible?"auto":"none";
+      if(ltDrawer && !liveActive){ ltDrawer.classList.remove("open","show-sync"); ltDrawer.setAttribute("aria-hidden","true"); }
+      if(liveActive){
+        if(ltDrawer){
+          ltDrawer.classList.toggle("open",hudVisible);
+          ltDrawer.setAttribute("aria-hidden",hudVisible?"false":"true");
+        }
+        if(!hudVisible && ltDrawer) ltDrawer.classList.remove("show-sync");
+      } else if(hudHeader){
+        hudHeader.classList.toggle("visible",hudVisible);
+        hudHeader.style.transform=hudVisible?"translateY(0)":"translateY(-100%)";
+        hudHeader.style.opacity=hudVisible?"1":"0";
+        hudHeader.style.pointerEvents=hudVisible?"auto":"none";
       }
-      // Collapse the sync panel whenever the LT header closes.
-      if(!hudVisible && ltHeader) ltHeader.classList.remove("show-sync");
       if(chevUp) chevUp.style.display=hudVisible?"":"none";
       if(chevDown) chevDown.style.display=hudVisible?"none":"";
     }
@@ -3955,27 +3956,27 @@ if(frame){
   var activeBlock=document.getElementById("lg-agent-active");
   var audioEl=document.getElementById("lg-audio");
   var leaveBtn=document.getElementById("lt-leave-btn");
-  var ltHeader=document.getElementById("hud-header-livetour");
+  var ltDrawer=document.getElementById("live-tour-control-drawer");
   var ltSyncBtn=document.getElementById("lt-sync-btn");
   function openLtSyncPanel(){
-    if(!ltHeader) return;
-    // Force the LT header open via the shared setter so the chevron
-    // icon flips and the "other" header stays hidden, then reveal the
-    // instructions panel below.
+    if(!ltDrawer) return;
+    // Force the left drawer open via the shared setter so the chevron
+    // icon flips and the regular HUD stays hidden, then reveal the
+    // instructions sub-panel inside the drawer.
     try { if(typeof window.__setHudVisible==="function") window.__setHudVisible(true); } catch(_e){}
-    ltHeader.classList.add("show-sync");
+    ltDrawer.classList.add("show-sync");
     if(ltSyncBtn) ltSyncBtn.setAttribute("aria-expanded","true");
   }
   function closeLtSyncPanel(){
-    if(!ltHeader) return;
-    ltHeader.classList.remove("show-sync");
+    if(!ltDrawer) return;
+    ltDrawer.classList.remove("show-sync");
     if(ltSyncBtn) ltSyncBtn.setAttribute("aria-expanded","false");
-    // Collapse the whole LT HUD so the 3D tour is unobstructed again.
+    // Collapse the whole drawer so the 3D tour is unobstructed again.
     try { if(typeof window.__setHudVisible==="function") window.__setHudVisible(false); } catch(_e){}
   }
   if(ltSyncBtn){
     ltSyncBtn.addEventListener("click",function(){
-      if(ltHeader && ltHeader.classList.contains("show-sync")) closeLtSyncPanel();
+      if(ltDrawer && ltDrawer.classList.contains("show-sync")) closeLtSyncPanel();
       else openLtSyncPanel();
     });
   }
