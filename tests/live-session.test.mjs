@@ -103,6 +103,7 @@ test("createLiveSession exposes the documented public API", () => {
     "initializeAsAgent",
     "joinAsVisitor",
     "teleportVisitor",
+    "shareLocationWithAgent",
     "dispose",
   ]) {
     assert.equal(typeof session[k], "function", `missing method: ${k}`);
@@ -308,6 +309,188 @@ test("inbound teleport packet on visitor side patches incomingTeleportEvent", ()
     // Original event remains untouched.
     assert.equal(session.getState().incomingTeleportEvent.ss, "17");
 
+    session.dispose();
+  });
+});
+
+// ── Visitor → Agent: shareLocationWithAgent (clipboard bridge) ────────
+//
+// Mirrors the teleportVisitor tests but with the direction reversed.
+// The visitor parses a Matterport "Link to location" URL out of their
+// clipboard and offers ss/sr to the agent over a new `location_share`
+// packet type. The receiver-side surfaces it as `incomingLocationShareEvent`
+// — the agent's UI decides whether to teleport.
+
+function makeConnectedVisitor() {
+  const peers = [];
+  const FakePeer = makeFakePeerCtor();
+  function CapturingPeer(id) {
+    FakePeer.call(this, id);
+    peers.push(this);
+  }
+  CapturingPeer.prototype = FakePeer.prototype;
+  CapturingPeer.log = FakePeer.log;
+
+  const session = createLiveSession({ PeerCtor: CapturingPeer });
+  return session
+    .joinAsVisitor("4242")
+    .then(() => new Promise((r) => setTimeout(r, 0)))
+    .then(() => {
+      const visitorPeer = peers[0];
+      const conn = visitorPeer._conns[0];
+      assert.ok(conn, "visitor should have opened an outbound data connection");
+      conn._fire("open");
+      assert.equal(session.getState().isConnected, true);
+      // `peer._sentPackets` is a parallel log of every conn.send() call —
+      // shape is { to, packet } per the FakePeer connect() implementation.
+      return {
+        session,
+        conn,
+        sentPackets: visitorPeer._sentPackets,
+        fireData: (payload) => conn._fire("data", payload),
+      };
+    });
+}
+
+test("shareLocationWithAgent is exposed on the public API", () => {
+  const session = createLiveSession({ PeerCtor: makeFakePeerCtor() });
+  assert.equal(typeof session.shareLocationWithAgent, "function");
+  session.dispose();
+});
+
+test("shareLocationWithAgent returns false when not in visitor role or not connected", () => {
+  const session = createLiveSession({ PeerCtor: makeFakePeerCtor() });
+  // Idle: no role → false.
+  assert.equal(session.shareLocationWithAgent("23", "1.2,3.4"), false);
+  return session.initializeAsAgent().then(() => {
+    // Agent role can never share its own location to itself.
+    assert.equal(session.shareLocationWithAgent("23", "1.2,3.4"), false);
+    session.dispose();
+  });
+});
+
+test("shareLocationWithAgent returns false when visitor has no open data channel", () => {
+  // joinAsVisitor before the data conn fires "open" — should be a clean
+  // false, not a throw.
+  const peers = [];
+  const FakePeer = makeFakePeerCtor();
+  function CapturingPeer(id) {
+    FakePeer.call(this, id);
+    peers.push(this);
+  }
+  CapturingPeer.prototype = FakePeer.prototype;
+  CapturingPeer.log = FakePeer.log;
+  const session = createLiveSession({ PeerCtor: CapturingPeer });
+  return session
+    .joinAsVisitor("4242")
+    .then(() => new Promise((r) => setTimeout(r, 0)))
+    .then(() => {
+      // role is visitor, but isConnected is still false (conn hasn't fired "open").
+      assert.equal(session.getState().role, "visitor");
+      assert.equal(session.getState().isConnected, false);
+      assert.equal(session.shareLocationWithAgent("23", "1.2,3.4"), false);
+      session.dispose();
+    });
+});
+
+test("shareLocationWithAgent sends the documented JSON shape over the data channel", () => {
+  return makeConnectedVisitor().then(({ session, sentPackets }) => {
+    const ok = session.shareLocationWithAgent("42", "-1.45,-0.06");
+    assert.equal(ok, true);
+    assert.equal(sentPackets.length, 1, "exactly one packet sent");
+    const sent = sentPackets[0].packet;
+    assert.equal(sent.type, "location_share");
+    assert.equal(sent.ss, "42");
+    assert.equal(sent.sr, "-1.45,-0.06");
+    assert.equal(typeof sent.ts, "number");
+
+    // ss is required — empty ss is a silent reject (no extra packet).
+    const ok2 = session.shareLocationWithAgent("", "0,0");
+    assert.equal(ok2, false);
+    assert.equal(sentPackets.length, 1, "no extra packet after empty-ss reject");
+
+    // Coerces non-string args gracefully (defensive — callers should
+    // already pass strings, but the controller never throws on them).
+    const ok3 = session.shareLocationWithAgent(17, 0.5);
+    assert.equal(ok3, true);
+    assert.equal(sentPackets[1].packet.ss, "17");
+    assert.equal(sentPackets[1].packet.sr, "0.5");
+
+    session.dispose();
+  });
+});
+
+test("shareLocationWithAgent does NOT update _currentViewKey (the agent decides whether to follow)", () => {
+  return makeConnectedVisitor().then(({ session, sentPackets, fireData }) => {
+    // Visitor shares — should not roll the local viewKey watermark.
+    // We can prove this indirectly: an inbound annotation packet with
+    // an empty viewKey is accepted (the controller treats "" as
+    // pre-teleport / wildcard), so we just confirm no exception and
+    // a successful send. The receiver-side test below covers the
+    // agent's view.
+    assert.equal(session.shareLocationWithAgent("42", "0,0"), true);
+    assert.equal(sentPackets[0].packet.type, "location_share");
+    // Establish that an inbound clear with empty viewKey still works,
+    // proving the visitor's _currentViewKey wasn't silently set to
+    // "42|0,0" by the share send (if it had been, the empty-viewKey
+    // clear would have been dropped by the receiver filter).
+    fireData({ type: "clear", viewKey: "", seq: 1, ts: 1 });
+    assert.equal(session.getState().incomingClearEvent.seq, 1);
+    session.dispose();
+  });
+});
+
+test("inbound location_share packet on agent side patches incomingLocationShareEvent", () => {
+  return makeConnectedAgent().then(({ session, fireData }) => {
+    // Default state: no share event yet.
+    assert.equal(session.getState().incomingLocationShareEvent, null);
+
+    fireData({ type: "location_share", ss: "17", sr: "0.5,1.0" });
+    let ev = session.getState().incomingLocationShareEvent;
+    assert.ok(ev, "incomingLocationShareEvent should be set");
+    assert.equal(ev.ss, "17");
+    assert.equal(ev.sr, "0.5,1.0");
+    assert.equal(typeof ev.ts, "number");
+
+    // A second share replaces the first — ts is the dedupe key for the
+    // UI layer, which renders one pill at a time.
+    const firstTs = ev.ts;
+    return new Promise((r) => setTimeout(r, 2)).then(() => {
+      fireData({ type: "location_share", ss: "99", sr: "" });
+      ev = session.getState().incomingLocationShareEvent;
+      assert.equal(ev.ss, "99");
+      assert.equal(ev.sr, "");
+      assert.ok(ev.ts > firstTs, "fresh ts on each inbound share");
+
+      // Empty-ss share is dropped — state is unchanged.
+      fireData({ type: "location_share", ss: "", sr: "1,1" });
+      assert.equal(session.getState().incomingLocationShareEvent.ss, "99");
+
+      // Inbound location_share must NOT roll the agent's _currentViewKey.
+      // If it had, the empty-viewKey annotation below would be dropped.
+      // The receiver treats "" as wildcard, so we can verify by sending
+      // a clear with empty viewKey after the share — it should still
+      // patch state.
+      fireData({ type: "clear", viewKey: "", seq: 1, ts: 1 });
+      assert.equal(session.getState().incomingClearEvent.seq, 1);
+      session.dispose();
+    });
+  });
+});
+
+test("inbound location_share with non-object/garbage payloads is silently dropped", () => {
+  return makeConnectedAgent().then(({ session, fireData }) => {
+    fireData({ type: "location_share", ss: "17", sr: "0.5,1.0" });
+    const baselineTs = session.getState().incomingLocationShareEvent.ts;
+
+    // Garbage variants that must not overwrite the baseline.
+    fireData("not an object");
+    fireData(null);
+    fireData({ type: "location_share" }); // missing ss
+    fireData({ type: "location_share", ss: null }); // ss not a string
+
+    assert.equal(session.getState().incomingLocationShareEvent.ts, baselineTs);
+    assert.equal(session.getState().incomingLocationShareEvent.ss, "17");
     session.dispose();
   });
 });

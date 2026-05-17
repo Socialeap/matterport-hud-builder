@@ -170,6 +170,7 @@ function createLiveSession(options) {
     incomingStrokeEvent: null,
     incomingClearEvent: null,
     incomingNavLockEvent: null,
+    incomingLocationShareEvent: null,
   };
 
   var listeners = [];
@@ -502,6 +503,19 @@ function createLiveSession(options) {
       });
       return;
     }
+    if (type === "location_share") {
+      // Visitor → Agent: an offered location. Receiver-side validation
+      // mirrors `teleport` (non-empty ss required); we deliberately do
+      // NOT update _currentViewKey here — accepting the share is the
+      // agent's UX decision, not an automatic protocol action.
+      var lss = _coerceString(payload.ss).trim();
+      var lsr = _coerceString(payload.sr).trim();
+      if (!lss) return;
+      _patch({
+        incomingLocationShareEvent: { ss: lss, sr: lsr, ts: Date.now() },
+      });
+      return;
+    }
     if (
       type === "pointer" ||
       type === "stroke_begin" ||
@@ -585,6 +599,27 @@ function createLiveSession(options) {
       return true;
     } catch (e) {
       log("send failed", e);
+      return false;
+    }
+  }
+
+  // Visitor-only: hand the agent the visitor's current Matterport
+  // coordinates (typically parsed from the clipboard URL Matterport
+  // emits when the user presses `U` → "Copy to clipboard"). The agent
+  // does NOT auto-teleport on receive — they get a notification and
+  // choose to follow — so this is a soft, opt-in offer over the wire.
+  function shareLocationWithAgent(ss, sr) {
+    if (state.role !== "visitor") return false;
+    if (!dataConn || !state.isConnected) return false;
+    var ssClean = _coerceString(ss).trim();
+    var srClean = _coerceString(sr).trim();
+    if (!ssClean) return false;
+    var packet = { type: "location_share", ss: ssClean, sr: srClean, ts: Date.now() };
+    try {
+      dataConn.send(packet);
+      return true;
+    } catch (e) {
+      log("location_share send failed", e);
       return false;
     }
   }
@@ -785,6 +820,7 @@ function createLiveSession(options) {
       incomingStrokeEvent: null,
       incomingClearEvent: null,
       incomingNavLockEvent: null,
+      incomingLocationShareEvent: null,
     };
   }
 
@@ -794,6 +830,7 @@ function createLiveSession(options) {
     initializeAsAgent: initializeAsAgent,
     joinAsVisitor: joinAsVisitor,
     teleportVisitor: teleportVisitor,
+    shareLocationWithAgent: shareLocationWithAgent,
     sendPointer: sendPointer,
     sendStrokeBegin: sendStrokeBegin,
     sendStrokePatch: sendStrokePatch,
