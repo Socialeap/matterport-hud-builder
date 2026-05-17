@@ -4694,13 +4694,25 @@ if(frame){
       lastStrokeSeq=sev.seq;
       if(state.role==="visitor"){
         if(sev.kind==="begin"){
-          var nstroke={
-            strokeId:sev.strokeId,
-            color:sev.color||ANNO_STROKE_COLOR,
-            width:typeof sev.width==="number"?sev.width:ANNO_STROKE_WIDTH,
-            points:sev.points?sev.points.slice():[],
-          };
-          localStrokes.push(nstroke);
+          // Focus Rope reuses stroke_begin to push atomic shape
+          // snapshots under a stable strokeId. If the id is already
+          // known, replace its point list (and color/width) so the
+          // rope resizes in place. Otherwise push a new stroke —
+          // unchanged legacy free-draw behavior.
+          var existingBegin=findLocalStroke(sev.strokeId);
+          if(existingBegin){
+            if(sev.points) existingBegin.points=sev.points.slice();
+            if(typeof sev.color==="string") existingBegin.color=sev.color;
+            if(typeof sev.width==="number") existingBegin.width=sev.width;
+          } else {
+            var nstroke={
+              strokeId:sev.strokeId,
+              color:sev.color||ANNO_STROKE_COLOR,
+              width:typeof sev.width==="number"?sev.width:ANNO_STROKE_WIDTH,
+              points:sev.points?sev.points.slice():[],
+            };
+            localStrokes.push(nstroke);
+          }
           redrawAllStrokes();
         } else if(sev.kind==="patch"){
           var existing=findLocalStroke(sev.strokeId);
