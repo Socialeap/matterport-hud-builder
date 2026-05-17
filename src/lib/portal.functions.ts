@@ -4181,7 +4181,19 @@ if(frame){
     redrawAllStrokes();
   }
 
-  function handleClearLocallyAndBroadcast(){
+  // Toggle the visitor-side transparent overlay that swallows pointer
+  // and touch input on the Matterport iframe while the agent is
+  // annotating. Agents never apply the lock to themselves so they can
+  // still freely teleport between sweeps. Safe to call when the
+  // overlay element isn't present yet.
+  function applyNavLock(locked){
+    try {
+      var ov=document.getElementById("live-tour-navlock");
+      if(!ov) return;
+      if(locked) ov.classList.add("locked");
+      else ov.classList.remove("locked");
+    } catch(_e){}
+  }
     wipeAnnotations();
     var s=session.getState();
     if(s.role==="agent"&&s.isConnected){
