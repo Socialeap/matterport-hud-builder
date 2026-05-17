@@ -4693,6 +4693,7 @@ if(frame){
     if(key===lastSentLocationKey&&(now-lastSentLocationTs)<5000){
       setSyncBtnState("success","Sent ✓","Same view as last send.");
       scheduleSyncIdleReset();
+      setTimeout(function(){ try { closeLtSyncPanel(); } catch(_e){} },900);
       return true;
     }
     var ok=false;
@@ -4702,6 +4703,9 @@ if(frame){
       lastSentLocationTs=now;
       setSyncBtnState("success","Sent ✓","Your agent can now follow your view.");
       scheduleSyncIdleReset();
+      // Auto-close the inline instructions + the LT header so the 3D
+      // tour returns to a fully unobstructed view.
+      setTimeout(function(){ try { closeLtSyncPanel(); } catch(_e){} },900);
       return true;
     }
     setSyncBtnState("error","Try Again","Couldn’t reach your agent. Check the connection.");
