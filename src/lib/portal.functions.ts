@@ -1850,38 +1850,37 @@ ${askAssets.css}
   </div>
 </div>
 
-<!-- ── Live Tour HUD header (replaces #hud-header while body.live-tour-active).
-     Visitor sees Sync My View + Leave; agent sees Leave only. Stays collapsed
-     until the chevron is clicked so the 3D tour stays unobstructed. The
-     Sync My View button reveals an inline instructions panel below the bar;
-     after a successful send the panel + header auto-close. -->
-<div id="hud-header-livetour" role="region" aria-label="Live Tour controls">
-  <div id="lt-hud-inner">
-    <div id="lt-hud-center">
-      ${logoUrl ? `<img id="lt-hud-logo" src="${escapeHtml(logoUrl)}" alt="Logo">` : ""}
-      <div id="lt-hud-brand">${escapeHtml(brandName)}</div>
-      <span id="lt-hud-status">Live Tour</span>
+<!-- ── Live Tour control drawer (replaces the top HUD while
+     body.live-tour-active is set). Lives on the LEFT so it cannot
+     cover Matterport's native "Link to location" popup that anchors
+     near the top of the iframe. Visitor sees Leave then Sync My View;
+     agent sees Leave only (annotation toolbar is inside the letterbox).
+     Stays closed until the top-left chevron is clicked. -->
+<div id="live-tour-control-drawer" role="region" aria-label="Live Tour controls" aria-hidden="true">
+  <div id="ltcd-inner">
+    <div id="ltcd-header">
+      ${logoUrl ? `<img id="ltcd-logo" src="${escapeHtml(logoUrl)}" alt="Logo">` : ""}
+      <div id="ltcd-brand">${escapeHtml(brandName)}</div>
+      <span id="ltcd-status">Live Tour</span>
     </div>
-    <div id="lt-hud-right">
-      <button type="button" id="lt-sync-btn" class="lt-action-btn" aria-expanded="false" aria-controls="lt-sync-panel">Sync My View</button>
-      <button type="button" id="lt-leave-btn" class="lt-action-btn lt-leave" aria-label="Leave live tour">Leave</button>
-    </div>
-  </div>
-  <div id="lt-sync-panel" role="region" aria-label="Sync your view instructions">
-    <div id="lt-sync-steps">
-      <span class="loc-sync-step"><span class="loc-sync-step-num">1</span>Press <kbd>U</kbd> in the tour</span>
-      <span class="loc-sync-step"><span class="loc-sync-step-num">2</span>Click <strong>Copy to clipboard</strong></span>
-      <span class="loc-sync-step"><span class="loc-sync-step-num">3</span>Tap the button below</span>
-    </div>
-    <div id="loc-sync-action">
-      <button type="button" id="loc-sync-btn" aria-describedby="loc-sync-status">
-        <span id="loc-sync-spinner" aria-hidden="true"></span>
-        <span id="loc-sync-btn-text">Sync My View</span>
-      </button>
-      <div id="loc-sync-status" aria-live="polite"></div>
-      <div id="loc-sync-fallback" hidden>
-        <input type="text" id="loc-sync-fallback-input" placeholder="Paste tour link here" aria-label="Paste Matterport tour link" autocomplete="off" spellcheck="false">
-        <button type="button" id="loc-sync-fallback-submit">Send</button>
+    <button type="button" id="lt-leave-btn" class="lt-action-btn lt-leave" aria-label="Leave live tour">Leave</button>
+    <button type="button" id="lt-sync-btn" class="lt-action-btn" aria-expanded="false" aria-controls="lt-sync-panel">Sync My View</button>
+    <div id="lt-sync-panel" role="region" aria-label="Sync your view instructions">
+      <div id="lt-sync-steps">
+        <span class="loc-sync-step"><span class="loc-sync-step-num">1</span><span>Press <kbd>U</kbd> in the tour</span></span>
+        <span class="loc-sync-step"><span class="loc-sync-step-num">2</span><span>Click <strong>Copy to clipboard</strong></span></span>
+        <span class="loc-sync-step"><span class="loc-sync-step-num">3</span><span>Tap the button below</span></span>
+      </div>
+      <div id="loc-sync-action">
+        <button type="button" id="loc-sync-btn" aria-describedby="loc-sync-status">
+          <span id="loc-sync-spinner" aria-hidden="true"></span>
+          <span id="loc-sync-btn-text">Sync My View</span>
+        </button>
+        <div id="loc-sync-status" aria-live="polite"></div>
+        <div id="loc-sync-fallback" hidden>
+          <input type="text" id="loc-sync-fallback-input" placeholder="Paste tour link here" aria-label="Paste Matterport tour link" autocomplete="off" spellcheck="false">
+          <button type="button" id="loc-sync-fallback-submit">Send</button>
+        </div>
       </div>
     </div>
   </div>
