@@ -3935,9 +3935,10 @@ if(frame){
     var prev=toolMode;
     toolMode=mode;
     if(annoCanvas){
-      annoCanvas.classList.remove("pointer-mode","draw-mode");
+      annoCanvas.classList.remove("pointer-mode","draw-mode","rope-mode");
       if(mode==="pointer") annoCanvas.classList.add("pointer-mode");
       else if(mode==="draw") annoCanvas.classList.add("draw-mode");
+      else if(mode==="rope") annoCanvas.classList.add("rope-mode");
     }
     if(annoToolbar){
       var btns=annoToolbar.querySelectorAll(".anno-tool-btn[data-tool]");
@@ -3954,6 +3955,12 @@ if(frame){
       if(s.role==="agent"&&s.isConnected){
         session.sendPointer(currentViewKey,null,null);
       }
+    }
+    if(prev==="rope"&&mode!=="rope"){
+      // Leaving rope tool: bake the active rope (commit on the wire,
+      // drop the latch) so the next interaction starts fresh. The
+      // points stay in localStrokes as a regular committed stroke.
+      commitActiveRope();
     }
   }
 
