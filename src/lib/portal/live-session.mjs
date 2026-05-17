@@ -705,7 +705,24 @@ function createLiveSession(options) {
     }
   }
 
-  function dispose() {
+  function sendNavLock(viewKey, locked) {
+    if (!_canSendAnnotation()) return false;
+    var seq = ++_sendSeq;
+    var packet = {
+      type: "nav_lock",
+      viewKey: _coerceString(viewKey),
+      locked: locked === true,
+      seq: seq,
+      ts: Date.now(),
+    };
+    try {
+      dataConn.send(packet);
+      return true;
+    } catch (e) {
+      log("nav_lock send failed", e);
+      return false;
+    }
+  }
     if (disposed) return;
     disposed = true;
     listeners.length = 0;
