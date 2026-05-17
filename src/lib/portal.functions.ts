@@ -2195,23 +2195,28 @@ ${askAssets.moduleScript}
     var hudVisible=false;
     function setHudVisible(v){
       hudVisible=!!v;
-      // Pick the active header based on live-tour state, so the chevron
-      // toggles whichever HUD is appropriate for the current mode.
+      // Pick the active surface based on live-tour state. In Live Tour
+      // mode the chevron toggles a LEFT-side drawer instead of the top
+      // header, so the Matterport "Link to location" popup at the top
+      // of the iframe is never covered.
       var liveActive=document.body.classList.contains("live-tour-active");
-      var ltHeader=document.getElementById("hud-header-livetour");
-      var target=liveActive?ltHeader:hudHeader;
-      // Always reset the inactive header so it can't be left stuck visible
+      var ltDrawer=document.getElementById("live-tour-control-drawer");
+      // Always reset the inactive surface so it can't be left stuck open
       // when modes switch.
       if(hudHeader && liveActive){ hudHeader.classList.remove("visible"); hudHeader.style.transform="translateY(-100%)"; hudHeader.style.opacity="0"; hudHeader.style.pointerEvents="none"; }
-      if(ltHeader && !liveActive){ ltHeader.classList.remove("visible","show-sync"); ltHeader.style.transform="translateY(-100%)"; ltHeader.style.opacity="0"; ltHeader.style.pointerEvents="none"; }
-      if(target){
-        target.classList.toggle("visible",hudVisible);
-        target.style.transform=hudVisible?"translateY(0)":"translateY(-100%)";
-        target.style.opacity=hudVisible?"1":"0";
-        target.style.pointerEvents=hudVisible?"auto":"none";
+      if(ltDrawer && !liveActive){ ltDrawer.classList.remove("open","show-sync"); ltDrawer.setAttribute("aria-hidden","true"); }
+      if(liveActive){
+        if(ltDrawer){
+          ltDrawer.classList.toggle("open",hudVisible);
+          ltDrawer.setAttribute("aria-hidden",hudVisible?"false":"true");
+        }
+        if(!hudVisible && ltDrawer) ltDrawer.classList.remove("show-sync");
+      } else if(hudHeader){
+        hudHeader.classList.toggle("visible",hudVisible);
+        hudHeader.style.transform=hudVisible?"translateY(0)":"translateY(-100%)";
+        hudHeader.style.opacity=hudVisible?"1":"0";
+        hudHeader.style.pointerEvents=hudVisible?"auto":"none";
       }
-      // Collapse the sync panel whenever the LT header closes.
-      if(!hudVisible && ltHeader) ltHeader.classList.remove("show-sync");
       if(chevUp) chevUp.style.display=hudVisible?"":"none";
       if(chevDown) chevDown.style.display=hudVisible?"none":"";
     }
