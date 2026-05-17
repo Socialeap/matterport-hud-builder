@@ -169,6 +169,7 @@ function createLiveSession(options) {
     incomingPointerEvent: null,
     incomingStrokeEvent: null,
     incomingClearEvent: null,
+    incomingNavLockEvent: null,
   };
 
   var listeners = [];
