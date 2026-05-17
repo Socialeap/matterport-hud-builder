@@ -3875,6 +3875,7 @@ if(frame){
   var lastPointerSeq=0;
   var lastStrokeSeq=0;
   var lastClearSeq=0;
+  var lastNavLockSeq=0;
   var remotePointerHideTimer=null;
   // Focus Rope state — agent-only authoring of a circle/box outline
   // overlay. The rope is rendered as a polyline (48 pts circle, 5 pts
