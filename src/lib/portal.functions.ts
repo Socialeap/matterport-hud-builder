@@ -4215,21 +4215,61 @@ if(frame){
   if(annoCanvas){
     annoCanvas.addEventListener("pointerdown",function(e){
       if(session.getState().role!=="agent") return;
-      if(toolMode!=="draw") return;
-      var pt=clientToNorm(e);
-      var sid=String(Date.now())+"_"+Math.random().toString(36).slice(2,8);
-      activeStroke={
-        strokeId:sid,
-        color:ANNO_STROKE_COLOR,
-        width:ANNO_STROKE_WIDTH,
-        points:[[pt.x,pt.y]],
-      };
-      pendingStrokeId=sid;
-      pendingStrokePoints=[];
-      session.sendStrokeBegin(currentViewKey,sid,activeStroke.color,activeStroke.width,[[pt.x,pt.y]]);
-      redrawAllStrokes();
-      try { annoCanvas.setPointerCapture(e.pointerId); } catch(_e){}
-      e.preventDefault();
+      if(toolMode==="draw"){
+        var pt=clientToNorm(e);
+        var sid=String(Date.now())+"_"+Math.random().toString(36).slice(2,8);
+        activeStroke={
+          strokeId:sid,
+          color:ANNO_STROKE_COLOR,
+          width:ANNO_STROKE_WIDTH,
+          points:[[pt.x,pt.y]],
+        };
+        pendingStrokeId=sid;
+        pendingStrokePoints=[];
+        session.sendStrokeBegin(currentViewKey,sid,activeStroke.color,activeStroke.width,[[pt.x,pt.y]]);
+        redrawAllStrokes();
+        try { annoCanvas.setPointerCapture(e.pointerId); } catch(_e){}
+        e.preventDefault();
+        return;
+      }
+      if(toolMode==="rope"){
+        var rpt=clientToNorm(e);
+        // Hit-test the latch first: if we're near it, resize the
+        // current rope instead of starting a new one.
+        if(activeRope){
+          var lp=ropeLatchPos(activeRope);
+          var rect=letterboxWrap?letterboxWrap.getBoundingClientRect():{width:1,height:1};
+          var dx=(rpt.x-lp.x)*rect.width;
+          var dy=(rpt.y-lp.y)*rect.height;
+          if(Math.sqrt(dx*dx+dy*dy)<=ANNO_LATCH_PX*2){
+            ropeLatchDragging=true;
+            try { annoCanvas.setPointerCapture(e.pointerId); } catch(_e){}
+            e.preventDefault();
+            return;
+          }
+          // Tapping outside the latch starts a new rope — commit the
+          // prior one so it bakes into localStrokes.
+          commitActiveRope();
+        }
+        var rsid=String(Date.now())+"_"+Math.random().toString(36).slice(2,8);
+        activeRope={
+          strokeId:rsid,
+          color:ANNO_STROKE_COLOR,
+          width:ANNO_STROKE_WIDTH,
+          shape:ANNO_ROPE_SHAPE,
+          x0:rpt.x,y0:rpt.y,x1:rpt.x,y1:rpt.y,
+          points:[[rpt.x,rpt.y]],
+        };
+        ropeRegenerate(activeRope);
+        // Insert into localStrokes so the existing renderer draws it.
+        localStrokes.push(activeRope);
+        ropeDragging=true;
+        scheduleRopeFlush();
+        redrawAllStrokes();
+        try { annoCanvas.setPointerCapture(e.pointerId); } catch(_e){}
+        e.preventDefault();
+        return;
+      }
     });
     annoCanvas.addEventListener("pointermove",function(e){
       if(session.getState().role!=="agent") return;
@@ -4241,6 +4281,12 @@ if(frame){
         if(!pendingStrokePoints) pendingStrokePoints=[];
         pendingStrokePoints.push([pt.x,pt.y]);
         scheduleStrokeFlush();
+        redrawAllStrokes();
+      } else if(toolMode==="rope"&&activeRope&&(ropeDragging||ropeLatchDragging)){
+        activeRope.x1=pt.x;
+        activeRope.y1=pt.y;
+        ropeRegenerate(activeRope);
+        scheduleRopeFlush();
         redrawAllStrokes();
       }
     });
@@ -4256,6 +4302,18 @@ if(frame){
         activeStroke=null;
         pendingStrokeId=null;
         try { annoCanvas.releasePointerCapture(e.pointerId); } catch(_e){}
+      } else if(toolMode==="rope"&&activeRope&&(ropeDragging||ropeLatchDragging)){
+        // End the current drag but keep the rope active so the latch
+        // can be grabbed again. Send one more snapshot so the visitor
+        // matches the final bbox.
+        ropeDragging=false;
+        ropeLatchDragging=false;
+        var s=session.getState();
+        if(s.role==="agent"&&s.isConnected){
+          session.sendStrokeBegin(currentViewKey,activeRope.strokeId,activeRope.color,activeRope.width,activeRope.points);
+        }
+        try { annoCanvas.releasePointerCapture(e.pointerId); } catch(_e){}
+        redrawAllStrokes();
       }
     });
     annoCanvas.addEventListener("pointerleave",function(){
