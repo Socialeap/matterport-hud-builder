@@ -4802,7 +4802,19 @@ if(frame){
     var cev=state.incomingClearEvent;
     if(cev&&cev.seq!==lastClearSeq){
       lastClearSeq=cev.seq;
-      if(state.role==="visitor") wipeAnnotations();
+      if(state.role==="visitor"){
+        wipeAnnotations();
+        // Defensive: a Clear from the agent always implies "annotation
+        // session ended" — release the nav-lock too in case the
+        // explicit unlock packet was dropped or reordered.
+        applyNavLock(false);
+      }
+    }
+
+    var nlev=state.incomingNavLockEvent;
+    if(nlev&&nlev.seq!==lastNavLockSeq){
+      lastNavLockSeq=nlev.seq;
+      if(state.role==="visitor") applyNavLock(nlev.locked===true);
     }
   }
 
