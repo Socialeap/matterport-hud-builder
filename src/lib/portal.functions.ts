@@ -4165,6 +4165,25 @@ if(frame){
   if(captureSaveBtn) captureSaveBtn.addEventListener("click",downloadCaptureSpec);
   if(captureCancelBtn) captureCancelBtn.addEventListener("click",hideCapturePanel);
 
+  // Stroke color picker — updates the live ANNO_STROKE_COLOR used for
+  // subsequent strokes. Existing committed strokes keep their original
+  // color (each stroke carries its own color on the wire and in
+  // localStrokes), so switching mid-session only affects new drawings.
+  var annoColorSelect=document.getElementById("anno-color-select");
+  var annoColorSwatch=document.getElementById("anno-color-swatch");
+  if(annoColorSelect){
+    // Allow only the whitelisted palette to avoid unexpected CSS injection
+    // via a hijacked <option>. Anything else falls back to the current value.
+    var ANNO_COLOR_WHITELIST={"#ff3b30":1,"#1e90ff":1,"#22c55e":1,"#ffffff":1};
+    annoColorSelect.value=ANNO_STROKE_COLOR;
+    annoColorSelect.addEventListener("change",function(){
+      var v=String(annoColorSelect.value||"").toLowerCase();
+      if(!ANNO_COLOR_WHITELIST[v]){ annoColorSelect.value=ANNO_STROKE_COLOR; return; }
+      ANNO_STROKE_COLOR=v;
+      if(annoColorSwatch) annoColorSwatch.style.background=v;
+    });
+  }
+
   // Global hotkeys: only fire when an active agent session exists and
   // the user isn't typing in a form field. Esc closes the capture
   // panel first, then deselects the tool.
