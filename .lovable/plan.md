@@ -1,113 +1,100 @@
-# Fix: "token issuance failed" on Presentation export
 
-## Root cause (verified)
+# Focus Rope annotation tool
 
-Server log from the failed export:
+Add a "Focus Rope" tool to the Live Tour annotation overlay that lets the agent draw a colored **Circle** or **Box** outline around any object on the 3D tour and resize it after creation via a latch handle. Reuses the existing color dropdown for foreground contrast. All changes are confined to `src/lib/portal.functions.ts` (the same file that holds the existing Pointer / Draw toolbar). **No changes to the live-session wire format or `live-session.mjs`** — keeps the P2P contract and `tests/live-session.test.mjs` green.
 
-```
-[generatePresentation] token mint failed despite env being set:
-presentation-token: insert failed: Could not find the table
-'public.presentation_tokens' in the schema cache
-```
+## What the user sees
 
-`select to_regclass('public.presentation_tokens')` returns NULL — the table is not in the live database.
+Toolbar, left to right (additions in **bold**):
 
-The migration file `supabase/migrations/20260427000010_presentation_tokens.sql` already exists in the repo and defines the table, indexes, RLS, and service-only policies correctly, but it was never applied to this Cloud project. Every other piece of the pipeline is wired correctly:
-
-- `src/lib/portal.functions.ts` (≈line 1335) reads `PRESENTATION_TOKEN_SECRET` + `SUPABASE_SERVICE_ROLE_KEY`, both present, then calls `ensurePresentationToken(model.id)`.
-- `src/lib/presentation-token-server.ts` does `service.from('presentation_tokens').insert(...)` → fails because the relation is missing → throws → caller surfaces the friendly error.
-- `supabase/functions/_shared/presentation-token.ts` reads from the same table at verify time (would also fail once tokens existed).
-
-## Execution path traced
-
-```
-Builder → generatePresentation (serverFn)
-   → ensurePresentationToken(savedModelId)
-      → service.from('presentation_tokens').update(...).eq(...)   ← schema cache miss
-      → service.from('presentation_tokens').insert(...).select()  ← never reached
-   → throws "Ask AI couldn't be set up… token issuance failed."
+```text
+[Pointer] [Draw] [color ▾] [Focus Rope] [shape: Circle ▾] [Clear] [Capture]
 ```
 
-After the table exists, the same path completes, the HMAC + sha256(hash) row inserts, the token value is folded into the exported HTML, and the visitor's Ask AI runtime can verify it via `synthesize-answer` (which reads the same table).
+- Clicking **Focus Rope** activates rope mode (toolbar button toggles `.active`, same pattern as Pointer/Draw).
+- The shape dropdown (Circle / Box) sits next to it; whitelist-guarded just like the color picker.
+- In rope mode, the agent click-drags on the canvas: a colored outline is drawn from the press point to the cursor (circle bounded by drag rect, or rectangle). On release the rope **stays on screen** and a small filled latch handle appears at the bottom-right of the shape's bounding box.
+- The agent can grab the latch and drag to resize the rope at any time while it's the active rope. Picking a different tool, hitting **Clear**, or teleporting deactivates the latch and bakes the rope as a committed annotation (still visible, no longer resizable).
+- Color dropdown selection applies to subsequent ropes (and to the active rope while it's still being resized), mirroring existing Draw behavior.
+- Hotkey: **R** for Focus Rope (next to existing P/D/C/S). Esc deselects.
 
-## Solutions considered
+## Wire-compatible rendering strategy
 
-1. **Apply the existing migration as-is via a new migration call** — safest. The SQL is already idempotent (`CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`) and the RLS policies use unique names. Re-running it on a project where it somehow partially landed will not error or duplicate. **Chosen.**
-2. Drop and recreate the table — unnecessary and destructive. Rejected.
-3. Skip token mint entirely (degrade to deterministic-only mode) — already happens when env is missing, but here env IS configured, so silently degrading would mask the bug and disable Ask AI synthesis on every export. Rejected.
-4. Catch the schema-cache error in `presentation-token-server.ts` and degrade — hides the real fix and leaves Ask AI broken indefinitely. Rejected.
+Strokes on the wire are arrays of normalized `[x,y]` points connected with `lineTo` (see `drawStroke`). A circle is sent as a 48-point polyline approximation; a box is 5 points (closed). This means:
 
-## Change set (single migration, no code changes)
+- The visitor renders ropes using the **existing** stroke pipeline. No new packet types.
+- Resize updates re-send `stroke_begin` for the **same** `strokeId` with the new full point set. The visitor's `incomingStrokeEvent` handler is extended so a `begin` for an existing `strokeId` **replaces** that stroke's points (today it always pushes a new one). This change is backward-compatible — vanilla Draw strokes always use fresh ids, so behavior is identical for them.
+- `stroke_commit` is sent on the final mouseup (end of resize session, or when leaving rope mode), matching today's commit semantics.
+- The latch handle is an **agent-only local UI affordance** — never serialized over the wire and never written into `localStrokes` on the visitor.
 
-Create `supabase/migrations/<new-timestamp>_presentation_tokens_apply.sql` containing the exact body of `20260427000010_presentation_tokens.sql`. Because every statement is `IF NOT EXISTS` / uniquely-named policy, this is a safe no-op on any environment that already has the table and a clean install on this one.
+## Technical changes (all in `src/lib/portal.functions.ts`)
 
-Specifically the migration will (re)assert:
+### 1. CSS (near the existing `.anno-tool-btn` / `.anno-color-wrap` block, ~lines 1605–1612)
+- Add `.anno-shape-wrap` / `.anno-shape-select` mirroring the color picker styles (so the Circle/Box dropdown matches visually).
 
-- `public.presentation_tokens` table with PK + FK to `saved_models(id) ON DELETE CASCADE`
-- partial indexes `presentation_tokens_model_active_idx` and `presentation_tokens_revoked_idx`
-- `ENABLE ROW LEVEL SECURITY`
-- four `service_only` policies (select/insert/update/delete all `false` for non-service callers)
+### 2. Toolbar markup (in the `#anno-toolbar` block, ~lines 1745–1758)
+- Insert after the color picker, before `#anno-clear-btn`:
+  - `<button class="anno-tool-btn" data-tool="rope" id="anno-rope-btn" aria-keyshortcuts="R">Focus Rope</button>`
+  - `<label class="anno-shape-wrap"><select id="anno-shape-select" class="anno-shape-select"><option value="circle">Circle</option><option value="box">Box</option></select></label>`
 
-No frontend, server-fn, or edge-function code is touched. The existing token issuer, verifier, and the parity test (`tests/presentation-token-parity.test.mjs`) already line up with this schema.
+### 3. State (near `ANNO_STROKE_COLOR`, ~line 3843)
+- `var ANNO_ROPE_SHAPE="circle";` plus a whitelist `{circle:1, box:1}`.
+- `var activeRope=null;` holding `{strokeId, color, width, shape, x0,y0,x1,y1}` in normalized coords. Distinct from `activeStroke` (free-draw).
+- `var ropeLatchDragging=false;` and a `var LATCH_PX=10;` constant for hit-tolerance.
 
-## Ripple-effect check
+### 4. Geometry + rendering helpers
+- `ropeToPoints(rope) -> number[][]`: produces the polyline (48-pt circle / 5-pt closed box) from the bounding rect.
+- `ropeLatchPos(rope) -> {x,y}`: bottom-right of the bbox in normalized coords (translated to pixels at draw time).
+- Extend `redrawAllStrokes()` to also draw the latch handle for the active rope when present (after the strokes loop) — small filled disc using the rope's color with a thin white outline for contrast.
 
-- **Builder export** — fixed; mint succeeds, `__PRESENTATION_TOKEN__` and `__SYNTHESIS_URL__` get injected, downloaded HTML works.
-- **Visitor Ask AI** — `synthesize-answer` (`supabase/functions/synthesize-answer/index.ts`) calls `verifyPresentationToken`, which reads the new table via service role; previously would have 401-looped, now verifies cleanly.
-- **RLS** — service-only policies; no client-readable surface, no data exposed.
-- **Idempotency** — re-applying on a project that already has the table is a no-op (every DDL guarded).
-- **Existing exports** — any HTML built before this fix shipped without a token (deterministic-only mode) and remains valid; no migration of stored data needed.
-- **Tests** — none rely on the table being absent; `presentation-token-parity.test.mjs` only exercises the canonicalisation bytes.
+### 5. Tool selection
+- Extend `setToolMode("rope")` to set canvas cursor (`crosshair`) and toggle the toolbar `.active` state via the same query that already handles `[data-tool]` buttons.
+- Switching away from `"rope"` while an `activeRope` exists: send a final `stroke_commit` for that rope, then null out `activeRope` (the rope's points stay in `localStrokes`).
 
-## Verification after apply
+### 6. Pointer wiring (canvas handlers, ~lines 4100–4151)
+- `pointerdown` in rope mode:
+  - If there's an `activeRope` and the press is within `LATCH_PX` of `ropeLatchPos`, enter resize mode (`ropeLatchDragging=true`).
+  - Otherwise commit any prior active rope (`sendStrokeCommit`), then create a new `activeRope` with a fresh `strokeId`, anchor at the press point, push to `localStrokes`, and call `pushRopeUpdate()` (see below).
+- `pointermove` in rope mode: update `x1,y1` (or, during latch drag, only the dragged corner), regenerate the rope's `points` in place inside its `localStrokes` entry, call `redrawAllStrokes()`, and call `scheduleRopeFlush()`.
+- `pointerup` in rope mode: end the local drag — but **do not** commit yet; the rope remains active so the latch can be grabbed again. The rope is committed when the agent switches tools, teleports, or starts a new rope.
 
-1. `select to_regclass('public.presentation_tokens')` → returns `presentation_tokens`.
-2. From the builder, click Download Presentation → file downloads, no error toast.
-3. Worker logs show no `[generatePresentation] token mint failed` lines.
-4. `select count(*) from public.presentation_tokens` increments by 1 per export.
-5. Open the downloaded HTML, ask Ask AI a question → `synthesize-answer` returns 200 (token verifies).
+### 7. Throttled outbound updates
+- `scheduleRopeFlush()` mirrors `scheduleStrokeFlush()` — coalesces to one rAF tick.
+- `pushRopeUpdate()` calls `session.sendStrokeBegin(currentViewKey, activeRope.strokeId, activeRope.color, activeRope.width, ropeToPoints(activeRope))`. Reusing `stroke_begin` for live updates is intentional: paired with the visitor-side "replace if id exists" change, it gives us atomic full-shape snapshots without protocol churn or risk of partial polylines flashing on the visitor.
 
----
+### 8. Visitor receive path (in `onState`, ~lines 4490–4513)
+- In the `sev.kind === "begin"` branch, look up `findLocalStroke(sev.strokeId)`:
+  - If found → replace `existing.points` with `sev.points.slice()` (and update color/width if present).
+  - If not found → existing push-new behavior.
+- `patch` branch unchanged (free-draw keeps appending).
+- `commit` branch unchanged.
+- Net effect: free-draw works exactly as today; ropes get atomic snapshot updates.
 
-# Addendum — Agent Profile as Presentation Starter Kit
+### 9. Shape picker wiring (mirrors color picker block at ~lines 4172–4185)
+- Bind `change` on `#anno-shape-select`; reject anything outside the whitelist; update `ANNO_ROPE_SHAPE`. If an `activeRope` is mid-edit, regenerate its points so the visible shape switches immediately and `pushRopeUpdate()` fires.
 
-(Full plan in chat; capturing scope here for the build queue.)
+### 10. Clear, teleport, teardown
+- `wipeAnnotations()` already clears `localStrokes` + `activeStroke`; extend it to also null out `activeRope` and `ropeLatchDragging`.
+- `applyTeleport()` already calls `wipeAnnotations()` — rope auto-clears on teleport, viewKey filter on the visitor drops late rope packets. No extra work.
+- `teardownSession()` already calls `wipeAnnotations()` — covered.
 
-Promote `public.profiles` into a real **Agent Profile** page so the agent's
-identity + preferences become a reusable seed for every new presentation.
+### 11. Hotkey
+- Add `else if(k==="r"){ setToolMode("rope"); e.preventDefault(); }` in the existing keydown handler (~line 4202). Pointer/Draw/Clear/Capture/Esc behavior unchanged.
 
-## Scope
-1. New route `/_authenticated/dashboard/profile` with sections:
-   - Identity & Contact (display_name, title_role, company, phone, avatar, bio)
-   - Voice & Messaging (default welcome note, saved welcome variants, AI persona tone, signature CTA)
-   - Default Presentation Preferences (starter template, tour behavior, enhancement toggles, branding overrides for Pro, privacy mode, GA4 ID)
-   - Reusable Property Brain (links to Vault templates the agent uses)
-2. DB additions to `profiles`: `bio`, `signature_cta`, `ai_persona_tone`, `welcome_variants jsonb`, `presentation_defaults jsonb`, `default_starter_template`.
-3. Server fns in `src/lib/agent-profile.functions.ts`: extend `getMyAgentProfile`, add `updateMyAgentProfile`, add `hydratePresentationFromProfile({ starterTemplate })`.
-4. Builder hydration: replace hard-coded empty defaults with `hydratePresentationFromProfile`.
-5. UI affordances: "Reset section to my profile defaults" links inside Agent / Branding / Enhancements sections.
+### 12. Capture spec
+- `downloadCaptureSpec()` iterates `localStrokes` and serializes `points` — ropes are already in `localStrokes` as polylines, so they're captured automatically with no extra code. Verified by tracing the function at ~lines 4050–4096.
 
-## Builder Top-Right "Setup" Button (NEW)
-Add a header control next to Import/Export on `/p/$slug/builder` so the
-agent explicitly chooses the start mode for each new presentation:
+## Safety / regression analysis
 
-- **Prefill from My Profile** — force-applies saved profile data to the
-  Agent/Manager Contact form (overwrites current values).
-- **Start Blank** — clears agent fields and disables auto-prefill, so the
-  agent can immediately Import a `.3dps-draft.json` or hand-fill from scratch.
+- **Wire format unchanged.** `tests/live-session.test.mjs` and the PeerJS controller are not touched. The new behavior is realized entirely through `stroke_begin` snapshot semantics on the agent side and a single client-side "replace if id matches" tweak on the visitor side.
+- **Free-draw unaffected.** Free-draw uses fresh strokeIds per stroke and uses `stroke_patch` for incremental updates, so the visitor's new "replace on begin if id matches" branch never fires for legacy draw strokes.
+- **Color whitelist preserved.** Ropes adopt `ANNO_STROKE_COLOR` at creation time and stay re-tintable while active; the whitelist guard on the existing `#anno-color-select` is reused as-is.
+- **Shape whitelist added** so a hijacked `<option>` value can't push arbitrary state into rendering.
+- **Visitor never sees the latch.** The latch is only drawn when `activeRope` is non-null, and `activeRope` is set exclusively in agent-side pointer handlers.
+- **Per-frame throttling** via `scheduleRopeFlush()` keeps the DataChannel under the existing backpressure guard in `live-session.mjs` (`LIVE_SESSION_POINTER_BACKPRESSURE_BYTES`) — at ~60Hz × ~48 points × ~12 bytes/point we're well under 64 KiB queued.
+- **No new packet types**, so no migration concerns for visitors loading an older runtime against a newer agent (and vice-versa): worst case on an old visitor is that a rope resize re-shows as a stacked duplicate, never a crash.
+- **Capture JSON unchanged in shape** — ropes flow through naturally; existing consumers see polylines as they always have.
 
-Implementation notes:
-- Refactor existing auto-prefill `useEffect` into a callable
-  `applyProfileToAgent({ force, notify })` so the button and the
-  first-load auto-prefill share one code path.
-- Add `handleClearAgentFields()` that resets to `DEFAULT_AGENT`, drops any
-  staged avatar file, and sets `agentAutofilledRef.current = true` to
-  prevent auto-prefill from clobbering the cleared state.
-- Render a `DropdownMenu` (Sparkles / Eraser icons) — disabled "Prefill"
-  item when no `userId`.
-- Existing auto-prefill on first empty load is preserved (non-breaking).
+## Out of scope (not changed)
 
-## Out of scope (this addendum)
-- Cloning a finished saved presentation as a template (handled by existing
-  draft Export/Import for now).
-- Per-agent profile presets beyond a single default set.
+- `src/lib/portal/live-session.mjs`, `src/lib/portal/live-session-source.ts`, the PeerJS wire format, the tests under `tests/live-session.test.mjs`, the visitor-side pointer cursor, the color whitelist contents, and any builder / dashboard UI.

@@ -1599,7 +1599,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 #anno-letterbox-wrap{position:absolute;inset:0}
 #anno-letterbox-wrap iframe{width:100%;height:100%;border:none;display:block}
 #anno-canvas{position:absolute;inset:0;display:block;width:100%;height:100%;pointer-events:none;z-index:5;touch-action:none}
-#anno-canvas.pointer-mode,#anno-canvas.draw-mode{pointer-events:auto;cursor:crosshair}
+#anno-canvas.pointer-mode,#anno-canvas.draw-mode,#anno-canvas.rope-mode{pointer-events:auto;cursor:crosshair}
 #remote-pointer{position:absolute;left:0;top:0;width:18px;height:18px;border-radius:50%;background:${escapeHtml(accentColor)}cc;border:2px solid #fff;box-shadow:0 1px 6px rgba(0,0,0,0.45);pointer-events:none;transform:translate(-50%,-50%);z-index:6;display:none}
 #anno-toolbar{position:absolute;left:50%;top:14px;transform:translateX(-50%);display:none;gap:6px;z-index:10;background:rgba(10,12,20,0.7);backdrop-filter:blur(14px) saturate(160%);-webkit-backdrop-filter:blur(14px) saturate(160%);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:6px;box-shadow:0 6px 24px rgba(0,0,0,0.35)}
 .anno-tool-btn{appearance:none;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.85);border-radius:6px;padding:6px 10px;font:600 12px/1 inherit;cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:background 0.15s,border-color 0.15s,color 0.15s;font-family:inherit}
@@ -1610,6 +1610,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .anno-color-swatch{display:inline-block;width:12px;height:12px;border-radius:50%;background:#ff3b30;border:1px solid rgba(255,255,255,0.6);box-shadow:0 0 0 1px rgba(0,0,0,0.3)}
 .anno-color-select{appearance:none;-webkit-appearance:none;background:transparent;border:none;color:rgba(255,255,255,0.85);padding:6px 6px 6px 2px;font:600 12px/1 inherit;cursor:pointer;outline:none}
 .anno-color-select option{background:#11141d;color:#fff}
+.anno-shape-wrap{display:inline-flex;align-items:center;gap:4px;padding:0 2px 0 6px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);border-radius:6px}
+.anno-shape-select{appearance:none;-webkit-appearance:none;background:transparent;border:none;color:rgba(255,255,255,0.85);padding:6px 6px 6px 2px;font:600 12px/1 inherit;cursor:pointer;outline:none;font-family:inherit}
+.anno-shape-select option{background:#11141d;color:#fff}
 #anno-capture-panel{position:absolute;left:50%;top:64px;transform:translateX(-50%);display:flex;flex-direction:column;gap:8px;z-index:10;background:rgba(10,12,20,0.82);backdrop-filter:blur(14px) saturate(160%);-webkit-backdrop-filter:blur(14px) saturate(160%);border:1px solid rgba(255,255,255,0.14);border-radius:10px;padding:10px;min-width:280px;box-shadow:0 8px 32px rgba(0,0,0,0.45)}
 #anno-capture-panel[hidden]{display:none}
 #anno-capture-note{width:100%;min-height:60px;background:rgba(0,0,0,0.35);color:#fff;border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:8px;font:13px/1.4 inherit;resize:vertical;outline:none;font-family:inherit;box-sizing:border-box}
@@ -1752,6 +1755,13 @@ ${askAssets.css}
           <option value="#1e90ff">Blue</option>
           <option value="#22c55e">Green</option>
           <option value="#ffffff">White</option>
+        </select>
+      </label>
+      <button type="button" class="anno-tool-btn" data-tool="rope" id="anno-rope-btn" title="Focus Rope (R)" aria-keyshortcuts="R">Focus Rope</button>
+      <label class="anno-shape-wrap" title="Rope shape">
+        <select class="anno-shape-select" id="anno-shape-select" aria-label="Rope shape">
+          <option value="circle">Circle</option>
+          <option value="box">Box</option>
         </select>
       </label>
       <button type="button" class="anno-tool-btn" id="anno-clear-btn" title="Clear annotations (C)" aria-keyshortcuts="C">Clear</button>
@@ -3855,6 +3865,20 @@ if(frame){
   var lastStrokeSeq=0;
   var lastClearSeq=0;
   var remotePointerHideTimer=null;
+  // Focus Rope state — agent-only authoring of a circle/box outline
+  // overlay. The rope is rendered as a polyline (48 pts circle, 5 pts
+  // closed box) so it travels over the wire as a regular stroke.
+  // activeRope is non-null while the agent is creating or resizing
+  // one; once committed (tool switch / clear / teleport / new rope)
+  // it stays in localStrokes as a normal stroke entry.
+  var ANNO_ROPE_SHAPE="circle";
+  var ANNO_ROPE_SHAPE_WHITELIST={circle:1,box:1};
+  var ANNO_ROPE_CIRCLE_SAMPLES=48;
+  var ANNO_LATCH_PX=10;
+  var activeRope=null;          // {strokeId,color,width,shape,x0,y0,x1,y1}
+  var ropeDragging=false;       // initial draw drag
+  var ropeLatchDragging=false;  // resize via latch handle
+  var ropeFlushScheduled=false;
 
   // After a visitor connects, auto-close the Live Tour drawer so the
   // tour fills the screen. The HUD header (and the Live Tour button)
@@ -3911,9 +3935,10 @@ if(frame){
     var prev=toolMode;
     toolMode=mode;
     if(annoCanvas){
-      annoCanvas.classList.remove("pointer-mode","draw-mode");
+      annoCanvas.classList.remove("pointer-mode","draw-mode","rope-mode");
       if(mode==="pointer") annoCanvas.classList.add("pointer-mode");
       else if(mode==="draw") annoCanvas.classList.add("draw-mode");
+      else if(mode==="rope") annoCanvas.classList.add("rope-mode");
     }
     if(annoToolbar){
       var btns=annoToolbar.querySelectorAll(".anno-tool-btn[data-tool]");
@@ -3930,6 +3955,12 @@ if(frame){
       if(s.role==="agent"&&s.isConnected){
         session.sendPointer(currentViewKey,null,null);
       }
+    }
+    if(prev==="rope"&&mode!=="rope"){
+      // Leaving rope tool: bake the active rope (commit on the wire,
+      // drop the latch) so the next interaction starts fresh. The
+      // points stay in localStrokes as a regular committed stroke.
+      commitActiveRope();
     }
   }
 
@@ -3955,6 +3986,7 @@ if(frame){
     annoCtx.clearRect(0,0,w,h);
     for(var i=0;i<localStrokes.length;i++) drawStroke(localStrokes[i],w,h);
     if(activeStroke) drawStroke(activeStroke,w,h);
+    if(activeRope) drawRopeLatch(activeRope,w,h);
   }
 
   function drawStroke(stroke,w,h){
@@ -4011,11 +4043,94 @@ if(frame){
     });
   }
 
+  // ── Focus Rope helpers ─────────────────────────────────────────────
+  // Ropes are rendered as polylines so the existing stroke pipeline
+  // (drawStroke + the live-session stroke_* packets) handles them with
+  // no protocol changes. The latch is purely a local agent affordance.
+  function ropeBBox(rope){
+    var x0=Math.min(rope.x0,rope.x1),y0=Math.min(rope.y0,rope.y1);
+    var x1=Math.max(rope.x0,rope.x1),y1=Math.max(rope.y0,rope.y1);
+    return {x0:x0,y0:y0,x1:x1,y1:y1};
+  }
+  function ropeToPoints(rope){
+    var b=ropeBBox(rope);
+    var cx=(b.x0+b.x1)/2,cy=(b.y0+b.y1)/2;
+    var rx=(b.x1-b.x0)/2,ry=(b.y1-b.y0)/2;
+    var out=[];
+    if(rope.shape==="box"){
+      out.push([b.x0,b.y0]);
+      out.push([b.x1,b.y0]);
+      out.push([b.x1,b.y1]);
+      out.push([b.x0,b.y1]);
+      out.push([b.x0,b.y0]);
+    } else {
+      var n=ANNO_ROPE_CIRCLE_SAMPLES;
+      for(var i=0;i<=n;i++){
+        var t=(i/n)*Math.PI*2;
+        var x=cx+Math.cos(t)*rx;
+        var y=cy+Math.sin(t)*ry;
+        if(x<0)x=0;else if(x>1)x=1;
+        if(y<0)y=0;else if(y>1)y=1;
+        out.push([x,y]);
+      }
+    }
+    return out;
+  }
+  function ropeLatchPos(rope){
+    var b=ropeBBox(rope);
+    return {x:b.x1,y:b.y1};
+  }
+  function drawRopeLatch(rope,w,h){
+    if(!annoCtx) return;
+    var lp=ropeLatchPos(rope);
+    var px=lp.x*w, py=lp.y*h;
+    var r=Math.max(5,Math.min(ANNO_LATCH_PX,12));
+    annoCtx.beginPath();
+    annoCtx.arc(px,py,r,0,Math.PI*2);
+    annoCtx.fillStyle=rope.color||ANNO_STROKE_COLOR;
+    annoCtx.fill();
+    annoCtx.lineWidth=2;
+    annoCtx.strokeStyle="#ffffff";
+    annoCtx.stroke();
+  }
+  function ropeRegenerate(rope){
+    rope.points=ropeToPoints(rope);
+  }
+  function scheduleRopeFlush(){
+    if(ropeFlushScheduled) return;
+    ropeFlushScheduled=true;
+    var raf=window.requestAnimationFrame||function(cb){ return setTimeout(cb,16); };
+    raf(function(){
+      ropeFlushScheduled=false;
+      if(!activeRope) return;
+      var s=session.getState();
+      if(s.role!=="agent"||!s.isConnected) return;
+      session.sendStrokeBegin(currentViewKey,activeRope.strokeId,activeRope.color,activeRope.width,activeRope.points);
+    });
+  }
+  function commitActiveRope(){
+    if(!activeRope) return;
+    var s=session.getState();
+    if(s.role==="agent"&&s.isConnected){
+      // Flush a final shape snapshot before the commit so the visitor
+      // ends up with the exact bbox the agent let go of.
+      session.sendStrokeBegin(currentViewKey,activeRope.strokeId,activeRope.color,activeRope.width,activeRope.points);
+      session.sendStrokeCommit(currentViewKey,activeRope.strokeId);
+    }
+    activeRope=null;
+    ropeDragging=false;
+    ropeLatchDragging=false;
+    redrawAllStrokes();
+  }
+
   function wipeAnnotations(){
     localStrokes=[];
     activeStroke=null;
     pendingStrokeId=null;
     pendingStrokePoints=null;
+    activeRope=null;
+    ropeDragging=false;
+    ropeLatchDragging=false;
     if(remotePointer){
       remotePointer.style.display="none";
     }
@@ -4100,21 +4215,61 @@ if(frame){
   if(annoCanvas){
     annoCanvas.addEventListener("pointerdown",function(e){
       if(session.getState().role!=="agent") return;
-      if(toolMode!=="draw") return;
-      var pt=clientToNorm(e);
-      var sid=String(Date.now())+"_"+Math.random().toString(36).slice(2,8);
-      activeStroke={
-        strokeId:sid,
-        color:ANNO_STROKE_COLOR,
-        width:ANNO_STROKE_WIDTH,
-        points:[[pt.x,pt.y]],
-      };
-      pendingStrokeId=sid;
-      pendingStrokePoints=[];
-      session.sendStrokeBegin(currentViewKey,sid,activeStroke.color,activeStroke.width,[[pt.x,pt.y]]);
-      redrawAllStrokes();
-      try { annoCanvas.setPointerCapture(e.pointerId); } catch(_e){}
-      e.preventDefault();
+      if(toolMode==="draw"){
+        var pt=clientToNorm(e);
+        var sid=String(Date.now())+"_"+Math.random().toString(36).slice(2,8);
+        activeStroke={
+          strokeId:sid,
+          color:ANNO_STROKE_COLOR,
+          width:ANNO_STROKE_WIDTH,
+          points:[[pt.x,pt.y]],
+        };
+        pendingStrokeId=sid;
+        pendingStrokePoints=[];
+        session.sendStrokeBegin(currentViewKey,sid,activeStroke.color,activeStroke.width,[[pt.x,pt.y]]);
+        redrawAllStrokes();
+        try { annoCanvas.setPointerCapture(e.pointerId); } catch(_e){}
+        e.preventDefault();
+        return;
+      }
+      if(toolMode==="rope"){
+        var rpt=clientToNorm(e);
+        // Hit-test the latch first: if we're near it, resize the
+        // current rope instead of starting a new one.
+        if(activeRope){
+          var lp=ropeLatchPos(activeRope);
+          var rect=letterboxWrap?letterboxWrap.getBoundingClientRect():{width:1,height:1};
+          var dx=(rpt.x-lp.x)*rect.width;
+          var dy=(rpt.y-lp.y)*rect.height;
+          if(Math.sqrt(dx*dx+dy*dy)<=ANNO_LATCH_PX*2){
+            ropeLatchDragging=true;
+            try { annoCanvas.setPointerCapture(e.pointerId); } catch(_e){}
+            e.preventDefault();
+            return;
+          }
+          // Tapping outside the latch starts a new rope — commit the
+          // prior one so it bakes into localStrokes.
+          commitActiveRope();
+        }
+        var rsid=String(Date.now())+"_"+Math.random().toString(36).slice(2,8);
+        activeRope={
+          strokeId:rsid,
+          color:ANNO_STROKE_COLOR,
+          width:ANNO_STROKE_WIDTH,
+          shape:ANNO_ROPE_SHAPE,
+          x0:rpt.x,y0:rpt.y,x1:rpt.x,y1:rpt.y,
+          points:[[rpt.x,rpt.y]],
+        };
+        ropeRegenerate(activeRope);
+        // Insert into localStrokes so the existing renderer draws it.
+        localStrokes.push(activeRope);
+        ropeDragging=true;
+        scheduleRopeFlush();
+        redrawAllStrokes();
+        try { annoCanvas.setPointerCapture(e.pointerId); } catch(_e){}
+        e.preventDefault();
+        return;
+      }
     });
     annoCanvas.addEventListener("pointermove",function(e){
       if(session.getState().role!=="agent") return;
@@ -4126,6 +4281,12 @@ if(frame){
         if(!pendingStrokePoints) pendingStrokePoints=[];
         pendingStrokePoints.push([pt.x,pt.y]);
         scheduleStrokeFlush();
+        redrawAllStrokes();
+      } else if(toolMode==="rope"&&activeRope&&(ropeDragging||ropeLatchDragging)){
+        activeRope.x1=pt.x;
+        activeRope.y1=pt.y;
+        ropeRegenerate(activeRope);
+        scheduleRopeFlush();
         redrawAllStrokes();
       }
     });
@@ -4141,6 +4302,18 @@ if(frame){
         activeStroke=null;
         pendingStrokeId=null;
         try { annoCanvas.releasePointerCapture(e.pointerId); } catch(_e){}
+      } else if(toolMode==="rope"&&activeRope&&(ropeDragging||ropeLatchDragging)){
+        // End the current drag but keep the rope active so the latch
+        // can be grabbed again. Send one more snapshot so the visitor
+        // matches the final bbox.
+        ropeDragging=false;
+        ropeLatchDragging=false;
+        var s=session.getState();
+        if(s.role==="agent"&&s.isConnected){
+          session.sendStrokeBegin(currentViewKey,activeRope.strokeId,activeRope.color,activeRope.width,activeRope.points);
+        }
+        try { annoCanvas.releasePointerCapture(e.pointerId); } catch(_e){}
+        redrawAllStrokes();
       }
     });
     annoCanvas.addEventListener("pointerleave",function(){
@@ -4181,6 +4354,34 @@ if(frame){
       if(!ANNO_COLOR_WHITELIST[v]){ annoColorSelect.value=ANNO_STROKE_COLOR; return; }
       ANNO_STROKE_COLOR=v;
       if(annoColorSwatch) annoColorSwatch.style.background=v;
+      // Live-update the in-progress rope so its outline (and latch
+      // fill) repaint immediately, and broadcast a fresh snapshot so
+      // the visitor sees the new color before the next mouse move.
+      if(activeRope){
+        activeRope.color=v;
+        scheduleRopeFlush();
+        redrawAllStrokes();
+      }
+    });
+  }
+
+  // Focus Rope shape picker — Circle / Box. Whitelist-guarded just
+  // like the color picker so a hijacked <option> can't push arbitrary
+  // state into the renderer. Changing mid-edit regenerates the active
+  // rope's polyline so the visitor sees the new shape immediately.
+  var annoShapeSelect=document.getElementById("anno-shape-select");
+  if(annoShapeSelect){
+    annoShapeSelect.value=ANNO_ROPE_SHAPE;
+    annoShapeSelect.addEventListener("change",function(){
+      var v=String(annoShapeSelect.value||"").toLowerCase();
+      if(!ANNO_ROPE_SHAPE_WHITELIST[v]){ annoShapeSelect.value=ANNO_ROPE_SHAPE; return; }
+      ANNO_ROPE_SHAPE=v;
+      if(activeRope){
+        activeRope.shape=v;
+        ropeRegenerate(activeRope);
+        scheduleRopeFlush();
+        redrawAllStrokes();
+      }
     });
   }
 
@@ -4201,6 +4402,7 @@ if(frame){
     var k=(e.key||"").toLowerCase();
     if(k==="p"){ setToolMode("pointer"); e.preventDefault(); }
     else if(k==="d"){ setToolMode("draw"); e.preventDefault(); }
+    else if(k==="r"){ setToolMode("rope"); e.preventDefault(); }
     else if(k==="c"){ handleClearLocallyAndBroadcast(); e.preventDefault(); }
     else if(k==="s"){ showCapturePanel(); e.preventDefault(); }
     else if(e.key==="Escape"){
@@ -4492,13 +4694,25 @@ if(frame){
       lastStrokeSeq=sev.seq;
       if(state.role==="visitor"){
         if(sev.kind==="begin"){
-          var nstroke={
-            strokeId:sev.strokeId,
-            color:sev.color||ANNO_STROKE_COLOR,
-            width:typeof sev.width==="number"?sev.width:ANNO_STROKE_WIDTH,
-            points:sev.points?sev.points.slice():[],
-          };
-          localStrokes.push(nstroke);
+          // Focus Rope reuses stroke_begin to push atomic shape
+          // snapshots under a stable strokeId. If the id is already
+          // known, replace its point list (and color/width) so the
+          // rope resizes in place. Otherwise push a new stroke —
+          // unchanged legacy free-draw behavior.
+          var existingBegin=findLocalStroke(sev.strokeId);
+          if(existingBegin){
+            if(sev.points) existingBegin.points=sev.points.slice();
+            if(typeof sev.color==="string") existingBegin.color=sev.color;
+            if(typeof sev.width==="number") existingBegin.width=sev.width;
+          } else {
+            var nstroke={
+              strokeId:sev.strokeId,
+              color:sev.color||ANNO_STROKE_COLOR,
+              width:typeof sev.width==="number"?sev.width:ANNO_STROKE_WIDTH,
+              points:sev.points?sev.points.slice():[],
+            };
+            localStrokes.push(nstroke);
+          }
           redrawAllStrokes();
         } else if(sev.kind==="patch"){
           var existing=findLocalStroke(sev.strokeId);
