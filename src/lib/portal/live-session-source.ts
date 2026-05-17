@@ -126,6 +126,7 @@ export interface LiveSessionState {
   incomingPointerEvent: LiveSessionPointerEvent | null;
   incomingStrokeEvent: LiveSessionStrokeEvent | null;
   incomingClearEvent: LiveSessionClearEvent | null;
+  incomingNavLockEvent: LiveSessionNavLockEvent | null;
 }
 
 /** Public API surface of the controller returned by `createLiveSession`. */
