@@ -1621,12 +1621,6 @@ body.anno-rope-active .anno-rope-group .anno-shape-wrap{display:inline-flex}
 #live-tour-navlock{position:absolute;inset:0;z-index:4;background:transparent;cursor:not-allowed;display:none;touch-action:none}
 body.live-tour-active.live-tour-visitor #live-tour-navlock.locked{display:block}
 body.live-tour-active.live-tour-visitor #anno-letterbox-wrap:has(#live-tour-navlock.locked) #matterport-frame{pointer-events:none}
-#anno-capture-panel{position:absolute;left:50%;top:64px;transform:translateX(-50%);display:flex;flex-direction:column;gap:8px;z-index:10;background:rgba(10,12,20,0.82);backdrop-filter:blur(14px) saturate(160%);-webkit-backdrop-filter:blur(14px) saturate(160%);border:1px solid rgba(255,255,255,0.14);border-radius:10px;padding:10px;min-width:280px;box-shadow:0 8px 32px rgba(0,0,0,0.45)}
-#anno-capture-panel[hidden]{display:none}
-#anno-capture-note{width:100%;min-height:60px;background:rgba(0,0,0,0.35);color:#fff;border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:8px;font:13px/1.4 inherit;resize:vertical;outline:none;font-family:inherit;box-sizing:border-box}
-#anno-capture-note:focus{border-color:${escapeHtml(accentColor)}}
-.anno-capture-actions{display:flex;gap:6px;justify-content:flex-end}
-
 /* Engage 16:9 letterboxing once the WebRTC session is live. Black
    bars come from #viewer's background while the wrap is centered
    inside it. The agent gets a toolbar; the visitor only sees the
@@ -1776,15 +1770,7 @@ ${askAssets.css}
         </label>
       </span>
       <button type="button" class="anno-tool-btn" id="anno-clear-btn" title="Clear annotations (C)" aria-keyshortcuts="C">Clear</button>
-      <button type="button" class="anno-tool-btn" id="anno-capture-btn" title="Capture spec (S)" aria-keyshortcuts="S">Capture</button>
       <button type="button" class="anno-tool-btn anno-exit-btn" id="anno-exit-btn" title="Exit annotation mode (clears drawings &amp; unfreezes visitor)" aria-label="Exit annotation mode">&times;</button>
-    </div>
-    <div id="anno-capture-panel" hidden>
-      <textarea id="anno-capture-note" placeholder="Optional note for this spec..." rows="3"></textarea>
-      <div class="anno-capture-actions">
-        <button type="button" class="anno-tool-btn" id="anno-capture-cancel">Cancel</button>
-        <button type="button" class="anno-tool-btn primary" id="anno-capture-save">Save JSON</button>
-      </div>
     </div>
   </div>
 </div>
@@ -3855,11 +3841,6 @@ if(frame){
   var annoCtx=annoCanvas?annoCanvas.getContext("2d"):null;
   var annoToolbar=document.getElementById("anno-toolbar");
   var remotePointer=document.getElementById("remote-pointer");
-  var capturePanel=document.getElementById("anno-capture-panel");
-  var captureNoteEl=document.getElementById("anno-capture-note");
-  var captureSaveBtn=document.getElementById("anno-capture-save");
-  var captureCancelBtn=document.getElementById("anno-capture-cancel");
-  var captureOpenBtn=document.getElementById("anno-capture-btn");
   var clearBtn=document.getElementById("anno-clear-btn");
 
   var ANNO_STROKE_COLOR="#ff3b30";
@@ -4210,66 +4191,7 @@ if(frame){
     }
   }
 
-  function showCapturePanel(){
-    if(!capturePanel) return;
-    capturePanel.hidden=false;
-    if(captureNoteEl){
-      try { captureNoteEl.focus(); } catch(_e){}
-    }
-  }
 
-  function hideCapturePanel(){
-    if(!capturePanel) return;
-    capturePanel.hidden=true;
-  }
-
-  function downloadCaptureSpec(){
-    var p=props[current]||{};
-    var ss="";
-    var sr="";
-    if(currentViewKey){
-      var parts=currentViewKey.split("|");
-      ss=parts[0]||"";
-      sr=parts[1]||"";
-    }
-    var note=captureNoteEl?(captureNoteEl.value||""):"";
-    var stroked=[];
-    for(var i=0;i<localStrokes.length;i++){
-      var sObj=localStrokes[i];
-      stroked.push({
-        strokeId:sObj.strokeId,
-        color:sObj.color,
-        width:sObj.width,
-        points:sObj.points,
-      });
-    }
-    var spec={
-      type:"live-tour-spec",
-      version:1,
-      capturedAt:new Date().toISOString(),
-      propertyName:p.name||"",
-      iframeUrl:p.iframeUrl||"",
-      viewKey:currentViewKey,
-      ss:ss,
-      sr:sr,
-      note:note,
-      strokes:stroked,
-    };
-    var json=JSON.stringify(spec,null,2);
-    try {
-      var blob=new Blob([json],{type:"application/json"});
-      var url=URL.createObjectURL(blob);
-      var a=document.createElement("a");
-      a.href=url;
-      a.download="live-tour-spec-"+Date.now()+".json";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(function(){ try { URL.revokeObjectURL(url); } catch(_e){} },500);
-    } catch(_e){}
-    if(captureNoteEl) captureNoteEl.value="";
-    hideCapturePanel();
-  }
 
   // Canvas pointer wiring (agent only — toolMode is forced "none" on
   // the visitor side so these handlers are no-ops).
@@ -4393,7 +4315,7 @@ if(frame){
       var t=btn.getAttribute("data-tool");
       if(t==="pointer"||t==="draw"||t==="rope"){ setToolMode(t); return; }
       if(btn===clearBtn){ handleClearLocallyAndBroadcast(); return; }
-      if(btn===captureOpenBtn){ showCapturePanel(); return; }
+      
       if(btn.id==="anno-exit-btn"){
         // Hard exit: wipe local + remote annotations, drop the tool
         // mode (which also releases the visitor nav-lock via the
@@ -4411,9 +4333,6 @@ if(frame){
       }
     });
   }
-  if(captureSaveBtn) captureSaveBtn.addEventListener("click",downloadCaptureSpec);
-  if(captureCancelBtn) captureCancelBtn.addEventListener("click",hideCapturePanel);
-
   // Stroke color picker — updates the live ANNO_STROKE_COLOR used for
   // subsequent strokes. Existing committed strokes keep their original
   // color (each stroke carries its own color on the wire and in
@@ -4462,17 +4381,12 @@ if(frame){
   }
 
   // Global hotkeys: only fire when an active agent session exists and
-  // the user isn't typing in a form field. Esc closes the capture
-  // panel first, then deselects the tool.
+  // the user isn't typing in a form field.
   document.addEventListener("keydown",function(e){
     var s=session.getState();
     if(s.role!=="agent"||!s.isConnected) return;
     var tgt=e.target;
     if(tgt&&(tgt.tagName==="INPUT"||tgt.tagName==="TEXTAREA"||tgt.isContentEditable)){
-      if(e.key==="Escape"&&capturePanel&&!capturePanel.hidden){
-        hideCapturePanel();
-        e.preventDefault();
-      }
       return;
     }
     var k=(e.key||"").toLowerCase();
@@ -4480,10 +4394,8 @@ if(frame){
     else if(k==="d"){ setToolMode("draw"); e.preventDefault(); }
     else if(k==="r"){ setToolMode("rope"); e.preventDefault(); }
     else if(k==="c"){ handleClearLocallyAndBroadcast(); e.preventDefault(); }
-    else if(k==="s"){ showCapturePanel(); e.preventDefault(); }
     else if(e.key==="Escape"){
-      if(capturePanel&&!capturePanel.hidden) hideCapturePanel();
-      else setToolMode("none");
+      setToolMode("none");
       e.preventDefault();
     }
   });
