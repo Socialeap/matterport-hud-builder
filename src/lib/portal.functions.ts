@@ -1630,21 +1630,23 @@ body.live-tour-active #anno-letterbox-wrap{position:relative;inset:auto;aspect-r
 body.live-tour-active.live-tour-agent #anno-toolbar{display:flex}
 
 /* ── Location Sync — visitor's "Share my view" UI ────────────────── */
-/* Two stacked cards at top-center: a read-only instruction card and
-   a separate action card with the Sync button. Top-center positioning
-   keeps the UI off the Matterport "Link to location" popup which
-   appears mid/right inside the iframe. CSS-gated to visitor role. */
-#loc-sync{position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:1300;display:none;flex-direction:column;align-items:center;gap:8px;width:min(560px,calc(100vw - 80px));pointer-events:none}
+/* Two stacked cards at the top-center column. We hard-cap the width
+   AND position the pill below the typical Matterport "Link to location"
+   popup band (which Matterport renders top-right, roughly y=10..110)
+   so even on narrower viewports the two UIs cannot collide. The pill
+   is centered horizontally in a narrow column so its right edge never
+   reaches the Matterport popup's left edge. CSS-gated to visitor role. */
+#loc-sync{position:fixed;top:120px;left:50%;transform:translateX(-50%);z-index:1300;display:none;flex-direction:column;align-items:center;gap:8px;width:min(440px,calc(100vw - 24px));pointer-events:none}
 body.live-tour-active.live-tour-visitor #loc-sync{display:flex}
-#loc-sync-instructions{display:flex;align-items:center;flex-wrap:wrap;justify-content:center;gap:10px 14px;padding:8px 16px;border-radius:12px;background:rgba(0,0,0,0.55);border:1px solid rgba(255,255,255,0.16);color:#fff;font:600 12px/1.3 system-ui,-apple-system,sans-serif;-webkit-backdrop-filter:blur(16px) saturate(160%);backdrop-filter:blur(16px) saturate(160%);box-shadow:0 8px 24px rgba(0,0,0,0.32);pointer-events:auto;text-align:center}
-#loc-sync-instructions-label{display:inline-flex;align-items:center;gap:6px;color:rgba(255,255,255,0.92);white-space:nowrap}
+#loc-sync-instructions{display:flex;align-items:center;flex-wrap:wrap;justify-content:center;gap:6px 12px;padding:8px 14px;border-radius:12px;background:rgba(0,0,0,0.62);border:1px solid rgba(255,255,255,0.16);color:#fff;font:600 12px/1.3 system-ui,-apple-system,sans-serif;-webkit-backdrop-filter:blur(16px) saturate(160%);backdrop-filter:blur(16px) saturate(160%);box-shadow:0 8px 24px rgba(0,0,0,0.32);pointer-events:auto;text-align:center;width:100%;box-sizing:border-box}
+#loc-sync-instructions-label{display:inline-flex;align-items:center;gap:6px;color:rgba(255,255,255,0.92);white-space:nowrap;width:100%;justify-content:center;font-weight:700;padding-bottom:4px;border-bottom:1px solid rgba(255,255,255,0.08);margin-bottom:4px}
 #loc-sync-instructions-label svg{width:13px;height:13px;color:${escapeHtml(accentColor)}}
 .loc-sync-step{display:inline-flex;align-items:center;gap:5px;color:rgba(255,255,255,0.82);white-space:nowrap}
 .loc-sync-step-num{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:${escapeHtml(accentColor)};color:#fff;font:700 10px/1 inherit;flex-shrink:0}
 .loc-sync-step kbd{display:inline-block;padding:1px 6px;border-radius:4px;background:rgba(255,255,255,0.18);border:1px solid rgba(255,255,255,0.24);font:700 11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:#fff}
 @media(max-width:560px){
-  #loc-sync{width:calc(100vw - 24px)}
-  #loc-sync-instructions{padding:8px 12px;gap:6px 10px;font-size:11px}
+  #loc-sync{top:96px;width:calc(100vw - 24px)}
+  #loc-sync-instructions{padding:8px 12px;gap:4px 10px;font-size:11px}
   .loc-sync-step{font-size:11px}
 }
 
