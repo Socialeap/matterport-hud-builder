@@ -1606,6 +1606,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .anno-tool-btn:hover{background:rgba(255,255,255,0.14);color:#fff}
 .anno-tool-btn.active{background:${escapeHtml(accentColor)};border-color:${escapeHtml(accentColor)};color:#fff}
 .anno-tool-btn.primary{background:${escapeHtml(accentColor)};border-color:${escapeHtml(accentColor)};color:#fff}
+.anno-color-wrap{display:inline-flex;align-items:center;gap:4px;padding:0 2px 0 6px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);border-radius:6px}
+.anno-color-swatch{display:inline-block;width:12px;height:12px;border-radius:50%;background:#ff3b30;border:1px solid rgba(255,255,255,0.6);box-shadow:0 0 0 1px rgba(0,0,0,0.3)}
+.anno-color-select{appearance:none;-webkit-appearance:none;background:transparent;border:none;color:rgba(255,255,255,0.85);padding:6px 6px 6px 2px;font:600 12px/1 inherit;cursor:pointer;outline:none}
+.anno-color-select option{background:#11141d;color:#fff}
 #anno-capture-panel{position:absolute;left:50%;top:64px;transform:translateX(-50%);display:flex;flex-direction:column;gap:8px;z-index:10;background:rgba(10,12,20,0.82);backdrop-filter:blur(14px) saturate(160%);-webkit-backdrop-filter:blur(14px) saturate(160%);border:1px solid rgba(255,255,255,0.14);border-radius:10px;padding:10px;min-width:280px;box-shadow:0 8px 32px rgba(0,0,0,0.45)}
 #anno-capture-panel[hidden]{display:none}
 #anno-capture-note{width:100%;min-height:60px;background:rgba(0,0,0,0.35);color:#fff;border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:8px;font:13px/1.4 inherit;resize:vertical;outline:none;font-family:inherit;box-sizing:border-box}
@@ -1741,6 +1745,15 @@ ${askAssets.css}
     <div id="anno-toolbar" role="toolbar" aria-label="Live tour annotations">
       <button type="button" class="anno-tool-btn" data-tool="pointer" title="Pointer (P)" aria-keyshortcuts="P">Pointer</button>
       <button type="button" class="anno-tool-btn" data-tool="draw" title="Draw (D)" aria-keyshortcuts="D">Draw</button>
+      <label class="anno-color-wrap" title="Stroke color">
+        <span class="anno-color-swatch" id="anno-color-swatch" aria-hidden="true"></span>
+        <select class="anno-color-select" id="anno-color-select" aria-label="Stroke color">
+          <option value="#ff3b30">Red</option>
+          <option value="#1e90ff">Blue</option>
+          <option value="#22c55e">Green</option>
+          <option value="#ffffff">White</option>
+        </select>
+      </label>
       <button type="button" class="anno-tool-btn" id="anno-clear-btn" title="Clear annotations (C)" aria-keyshortcuts="C">Clear</button>
       <button type="button" class="anno-tool-btn" id="anno-capture-btn" title="Capture spec (S)" aria-keyshortcuts="S">Capture</button>
     </div>
@@ -4151,6 +4164,25 @@ if(frame){
   }
   if(captureSaveBtn) captureSaveBtn.addEventListener("click",downloadCaptureSpec);
   if(captureCancelBtn) captureCancelBtn.addEventListener("click",hideCapturePanel);
+
+  // Stroke color picker — updates the live ANNO_STROKE_COLOR used for
+  // subsequent strokes. Existing committed strokes keep their original
+  // color (each stroke carries its own color on the wire and in
+  // localStrokes), so switching mid-session only affects new drawings.
+  var annoColorSelect=document.getElementById("anno-color-select");
+  var annoColorSwatch=document.getElementById("anno-color-swatch");
+  if(annoColorSelect){
+    // Allow only the whitelisted palette to avoid unexpected CSS injection
+    // via a hijacked <option>. Anything else falls back to the current value.
+    var ANNO_COLOR_WHITELIST={"#ff3b30":1,"#1e90ff":1,"#22c55e":1,"#ffffff":1};
+    annoColorSelect.value=ANNO_STROKE_COLOR;
+    annoColorSelect.addEventListener("change",function(){
+      var v=String(annoColorSelect.value||"").toLowerCase();
+      if(!ANNO_COLOR_WHITELIST[v]){ annoColorSelect.value=ANNO_STROKE_COLOR; return; }
+      ANNO_STROKE_COLOR=v;
+      if(annoColorSwatch) annoColorSwatch.style.background=v;
+    });
+  }
 
   // Global hotkeys: only fire when an active agent session exists and
   // the user isn't typing in a form field. Esc closes the capture
