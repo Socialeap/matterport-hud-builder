@@ -5194,17 +5194,12 @@ if(frame){
       showAgentSharePill(state.incomingLocationShareEvent.ss,state.incomingLocationShareEvent.sr);
     }
 
-    // Visitor's Sync button: disable when the channel isn't live so a
-    // tap doesn't read the clipboard for nothing. Idle-text reset only
-    // when we're not mid-flow (preserves the success/error message).
-    if(state.role==="visitor"&&syncBtn){
-      if(!state.isConnected){
-        if(!syncBtn.classList.contains("is-reading")&&!syncBtn.classList.contains("is-error")){
-          setSyncBtnState("disabled","Waiting…","Waiting for your agent…");
-        }
-      } else if(syncBtn.disabled&&!syncBtn.classList.contains("is-reading")&&!syncBtn.classList.contains("is-success")&&!syncBtn.classList.contains("is-error")){
-        setSyncBtnState("idle",defaultSyncLabel(),"");
-      }
+    // Visitor auto-share activation. The first time the channel goes
+    // live we reveal the auto-share pill and start clipboard polling.
+    // If the channel later drops we leave the pill visible until the
+    // session is fully torn down (resetLocationSyncUi handles cleanup).
+    if(state.role==="visitor"&&state.isConnected){
+      activateVisitorAutoShare();
     }
 
     // ── Annotation receive paths ─────────────────────────────────
