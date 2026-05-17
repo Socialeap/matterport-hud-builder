@@ -4315,7 +4315,7 @@ if(frame){
       var t=btn.getAttribute("data-tool");
       if(t==="pointer"||t==="draw"||t==="rope"){ setToolMode(t); return; }
       if(btn===clearBtn){ handleClearLocallyAndBroadcast(); return; }
-      if(btn===captureOpenBtn){ showCapturePanel(); return; }
+      
       if(btn.id==="anno-exit-btn"){
         // Hard exit: wipe local + remote annotations, drop the tool
         // mode (which also releases the visitor nav-lock via the
