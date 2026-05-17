@@ -3948,6 +3948,23 @@ if(frame){
         else b.classList.remove("active");
       }
     }
+    // Toggle the body class that reveals the rope shape dropdown only
+    // while the Focus Rope tool is active. Keeps the toolbar compact
+    // for Pointer/Draw and merges the rope button + shape picker into
+    // one cohesive control.
+    try { document.body.classList.toggle("anno-rope-active", mode==="rope"); } catch(_e){}
+    // Auto-open the shape <select> on the click that activates rope
+    // mode so the agent immediately sees Circle/Box without a second
+    // click. Guarded — showPicker isn't on every browser.
+    if(prev!=="rope"&&mode==="rope"){
+      try {
+        var sel=document.getElementById("anno-shape-select");
+        if(sel){
+          sel.focus();
+          if(typeof sel.showPicker==="function") sel.showPicker();
+        }
+      } catch(_e){}
+    }
     if(prev==="pointer"&&mode!=="pointer"){
       // Leaving pointer tool while connected: hide the remote dot on
       // the visitor by sending a null-position pointer event.
@@ -3962,6 +3979,17 @@ if(frame){
       // points stay in localStrokes as a regular committed stroke.
       commitActiveRope();
     }
+    // Visitor nav-lock: any annotation tool freezes the visitor so
+    // the agent's strokes/ropes stay aligned to the current sweep.
+    // Switching to "none" releases the lock. Safe to call when not
+    // connected — sendNavLock guards on agent role + open channel.
+    try {
+      var sess=session.getState();
+      if(sess.role==="agent"&&sess.isConnected){
+        var locked=(mode==="pointer"||mode==="draw"||mode==="rope");
+        session.sendNavLock(currentViewKey, locked);
+      }
+    } catch(_e){}
   }
 
   function resizeAnnoCanvas(){
