@@ -4083,9 +4083,10 @@ if(frame){
       document.body.classList.remove("live-tour-agent");
       document.body.classList.remove("live-tour-visitor");
     }
-  }
-
-  function setToolMode(mode){
+    // Reset the chevron-driven HUD visibility whenever the mode switches
+    // so the newly-active header (regular ↔ live-tour) starts collapsed
+    // and never inherits a stale "visible" state from the previous mode.
+    try { if(typeof window.__setHudVisible==="function") window.__setHudVisible(false); } catch(_e){}
     var prev=toolMode;
     toolMode=mode;
     if(annoCanvas){
