@@ -4381,17 +4381,12 @@ if(frame){
   }
 
   // Global hotkeys: only fire when an active agent session exists and
-  // the user isn't typing in a form field. Esc closes the capture
-  // panel first, then deselects the tool.
+  // the user isn't typing in a form field.
   document.addEventListener("keydown",function(e){
     var s=session.getState();
     if(s.role!=="agent"||!s.isConnected) return;
     var tgt=e.target;
     if(tgt&&(tgt.tagName==="INPUT"||tgt.tagName==="TEXTAREA"||tgt.isContentEditable)){
-      if(e.key==="Escape"&&capturePanel&&!capturePanel.hidden){
-        hideCapturePanel();
-        e.preventDefault();
-      }
       return;
     }
     var k=(e.key||"").toLowerCase();
@@ -4399,10 +4394,8 @@ if(frame){
     else if(k==="d"){ setToolMode("draw"); e.preventDefault(); }
     else if(k==="r"){ setToolMode("rope"); e.preventDefault(); }
     else if(k==="c"){ handleClearLocallyAndBroadcast(); e.preventDefault(); }
-    else if(k==="s"){ showCapturePanel(); e.preventDefault(); }
     else if(e.key==="Escape"){
-      if(capturePanel&&!capturePanel.hidden) hideCapturePanel();
-      else setToolMode("none");
+      setToolMode("none");
       e.preventDefault();
     }
   });
