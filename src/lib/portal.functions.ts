@@ -1629,41 +1629,47 @@ body.live-tour-active #viewer{display:flex;align-items:center;justify-content:ce
 body.live-tour-active #anno-letterbox-wrap{position:relative;inset:auto;aspect-ratio:16/9;width:min(100vw,calc(100vh * 16 / 9));height:auto;max-height:100vh}
 body.live-tour-active.live-tour-agent #anno-toolbar{display:flex}
 
-/* ── Location Sync — visitor's "Share my view" pill ──────────────── */
-/* Hidden unless the visitor is in an active live tour. Anchored top-right
-   beside the Leave pill so it's always visible without blocking the
-   iframe. Premium glassmorphism matches the other HUD chrome. */
-#loc-sync{position:fixed;top:42px;right:12px;z-index:1300;display:none;flex-direction:column;align-items:flex-end;gap:6px;max-width:min(280px,calc(100vw - 24px));pointer-events:none}
+/* ── Location Sync — visitor's "Share my view" UI ────────────────── */
+/* Two stacked cards at top-center: a read-only instruction card and
+   a separate action card with the Sync button. Top-center positioning
+   keeps the UI off the Matterport "Link to location" popup which
+   appears mid/right inside the iframe. CSS-gated to visitor role. */
+#loc-sync{position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:1300;display:none;flex-direction:column;align-items:center;gap:8px;width:min(560px,calc(100vw - 80px));pointer-events:none}
 body.live-tour-active.live-tour-visitor #loc-sync{display:flex}
-#loc-sync-bar{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 4px 0 12px;border-radius:999px;background:rgba(0,0,0,0.42);border:1px solid rgba(255,255,255,0.18);color:#fff;font:600 12px/1 system-ui,-apple-system,sans-serif;-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%);box-shadow:0 6px 20px rgba(0,0,0,0.28);pointer-events:auto}
-#loc-sync-label{display:inline-flex;align-items:center;gap:6px;color:rgba(255,255,255,0.85);white-space:nowrap}
-#loc-sync-label svg{width:12px;height:12px;color:${escapeHtml(accentColor)}}
-@media(max-width:520px){#loc-sync-label .loc-sync-label-text{display:none}}
-#loc-sync-help-toggle{appearance:none;border:none;background:transparent;color:rgba(255,255,255,0.55);font:600 11px/1 inherit;width:18px;height:18px;border-radius:50%;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:background 0.15s,color 0.15s}
-#loc-sync-help-toggle:hover{background:rgba(255,255,255,0.12);color:#fff}
-#loc-sync-btn{appearance:none;border:none;cursor:pointer;height:24px;padding:0 12px;border-radius:999px;background:${escapeHtml(accentColor)};color:#fff;font:700 11px/1 inherit;letter-spacing:0.02em;display:inline-flex;align-items:center;justify-content:center;gap:5px;transition:opacity 0.15s,background 0.2s,transform 0.1s}
-#loc-sync-btn:hover{opacity:0.92}
+#loc-sync-instructions{display:flex;align-items:center;flex-wrap:wrap;justify-content:center;gap:10px 14px;padding:8px 16px;border-radius:12px;background:rgba(0,0,0,0.55);border:1px solid rgba(255,255,255,0.16);color:#fff;font:600 12px/1.3 system-ui,-apple-system,sans-serif;-webkit-backdrop-filter:blur(16px) saturate(160%);backdrop-filter:blur(16px) saturate(160%);box-shadow:0 8px 24px rgba(0,0,0,0.32);pointer-events:auto;text-align:center}
+#loc-sync-instructions-label{display:inline-flex;align-items:center;gap:6px;color:rgba(255,255,255,0.92);white-space:nowrap}
+#loc-sync-instructions-label svg{width:13px;height:13px;color:${escapeHtml(accentColor)}}
+.loc-sync-step{display:inline-flex;align-items:center;gap:5px;color:rgba(255,255,255,0.82);white-space:nowrap}
+.loc-sync-step-num{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:${escapeHtml(accentColor)};color:#fff;font:700 10px/1 inherit;flex-shrink:0}
+.loc-sync-step kbd{display:inline-block;padding:1px 6px;border-radius:4px;background:rgba(255,255,255,0.18);border:1px solid rgba(255,255,255,0.24);font:700 11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:#fff}
+@media(max-width:560px){
+  #loc-sync{width:calc(100vw - 24px)}
+  #loc-sync-instructions{padding:8px 12px;gap:6px 10px;font-size:11px}
+  .loc-sync-step{font-size:11px}
+}
+
+/* Action card — the Sync button + status. Visually distinct from the
+   instruction card above so the user clearly sees the action vs. the
+   how-to. */
+#loc-sync-action{display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:auto;width:100%}
+#loc-sync-btn{appearance:none;border:none;cursor:pointer;min-height:36px;padding:0 22px;border-radius:999px;background:${escapeHtml(accentColor)};color:#fff;font:700 13px/1 system-ui,-apple-system,sans-serif;letter-spacing:0.02em;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:opacity 0.15s,background 0.2s,transform 0.1s,box-shadow 0.2s;box-shadow:0 8px 20px ${escapeHtml(accentColor)}33,0 2px 6px rgba(0,0,0,0.25)}
+#loc-sync-btn:hover{opacity:0.95;transform:translateY(-1px);box-shadow:0 10px 24px ${escapeHtml(accentColor)}55,0 3px 8px rgba(0,0,0,0.3)}
 #loc-sync-btn:active{transform:scale(0.97)}
-#loc-sync-btn[disabled]{opacity:0.55;cursor:default}
-#loc-sync-btn.is-reading{background:rgba(255,255,255,0.18);color:rgba(255,255,255,0.92)}
-#loc-sync-btn.is-success{background:#16a34a;color:#fff}
-#loc-sync-btn.is-error{background:#b45309;color:#fff}
-#loc-sync-spinner{display:none;width:10px;height:10px;border:2px solid rgba(255,255,255,0.4);border-top-color:#fff;border-radius:50%;animation:loc-sync-spin 0.7s linear infinite}
+#loc-sync-btn[disabled]{opacity:0.55;cursor:default;transform:none;box-shadow:0 2px 6px rgba(0,0,0,0.2)}
+#loc-sync-btn.is-reading{background:rgba(255,255,255,0.22);color:rgba(255,255,255,0.95);box-shadow:0 4px 12px rgba(0,0,0,0.2)}
+#loc-sync-btn.is-success{background:#16a34a;color:#fff;box-shadow:0 8px 20px rgba(22,163,74,0.4)}
+#loc-sync-btn.is-error{background:#b45309;color:#fff;box-shadow:0 8px 20px rgba(180,83,9,0.4)}
+#loc-sync-spinner{display:none;width:12px;height:12px;border:2px solid rgba(255,255,255,0.4);border-top-color:#fff;border-radius:50%;animation:loc-sync-spin 0.7s linear infinite}
 #loc-sync-btn.is-reading #loc-sync-spinner{display:inline-block}
 @keyframes loc-sync-spin{to{transform:rotate(360deg)}}
-#loc-sync-status{font-size:11px;line-height:1.35;color:rgba(255,255,255,0.92);padding:6px 10px;border-radius:8px;background:rgba(0,0,0,0.5);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.12);max-width:260px;text-align:right;min-height:0;pointer-events:auto}
+#loc-sync-status{font-size:11px;line-height:1.4;color:rgba(255,255,255,0.95);padding:6px 12px;border-radius:8px;background:rgba(0,0,0,0.6);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.14);max-width:min(420px,calc(100vw - 40px));text-align:center;pointer-events:auto}
 #loc-sync-status:empty{display:none}
-#loc-sync-help{font-size:11px;line-height:1.45;color:rgba(255,255,255,0.86);padding:10px 12px;border-radius:10px;background:rgba(0,0,0,0.55);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.14);max-width:280px;text-align:left;pointer-events:auto}
-#loc-sync-help[hidden]{display:none}
-#loc-sync-help ol{margin:6px 0 0;padding-left:18px}
-#loc-sync-help li{margin-bottom:4px}
-#loc-sync-help kbd{display:inline-block;padding:1px 6px;border-radius:4px;background:rgba(255,255,255,0.16);border:1px solid rgba(255,255,255,0.22);font:600 10px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:#fff}
-#loc-sync-fallback{display:flex;gap:6px;background:rgba(0,0,0,0.55);padding:6px;border-radius:10px;border:1px solid rgba(255,255,255,0.14);pointer-events:auto}
+#loc-sync-fallback{display:flex;gap:6px;background:rgba(0,0,0,0.6);padding:6px;border-radius:10px;border:1px solid rgba(255,255,255,0.14);pointer-events:auto;width:min(420px,calc(100vw - 40px))}
 #loc-sync-fallback[hidden]{display:none}
 #loc-sync-fallback-input{flex:1;min-width:0;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.18);color:#fff;border-radius:6px;padding:6px 8px;font:500 11px/1.4 inherit;outline:none}
 #loc-sync-fallback-input::placeholder{color:rgba(255,255,255,0.45)}
 #loc-sync-fallback-input:focus{border-color:${escapeHtml(accentColor)}}
-#loc-sync-fallback-submit{appearance:none;border:none;cursor:pointer;background:${escapeHtml(accentColor)};color:#fff;border-radius:6px;padding:0 10px;font:700 11px/1 inherit}
+#loc-sync-fallback-submit{appearance:none;border:none;cursor:pointer;background:${escapeHtml(accentColor)};color:#fff;border-radius:6px;padding:0 12px;font:700 11px/1 inherit}
 
 /* ── Location Sync — agent's "Visitor shared location" pill ──────── */
 #loc-share-pill{position:fixed;top:42px;right:12px;z-index:1300;display:none;align-items:center;gap:8px;padding:6px 6px 6px 14px;border-radius:999px;background:rgba(0,0,0,0.55);border:1px solid rgba(255,255,255,0.2);color:#fff;font:600 12px/1 system-ui,-apple-system,sans-serif;-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%);box-shadow:0 8px 24px rgba(0,0,0,0.32);max-width:min(360px,calc(100vw - 24px));animation:loc-share-slide 0.25s ease-out}
@@ -1833,26 +1839,25 @@ ${askAssets.css}
 
 <!-- ── Location Sync: visitor pill (CSS-gated to visitor role) ────── -->
 <div id="loc-sync" role="region" aria-label="Share your location with the agent">
-  <div id="loc-sync-bar">
-    <span id="loc-sync-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 22s-7-7.58-7-13a7 7 0 1 1 14 0c0 5.42-7 13-7 13z"/><circle cx="12" cy="9" r="2.5"/></svg><span class="loc-sync-label-text">Share my view</span></span>
-    <button type="button" id="loc-sync-help-toggle" aria-label="How to share" aria-expanded="false" aria-controls="loc-sync-help" title="How to share">?</button>
+  <!-- Read-only instructions card. Always visible during a live tour so
+       the visitor never has to hunt for the steps. -->
+  <div id="loc-sync-instructions">
+    <span id="loc-sync-instructions-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 22s-7-7.58-7-13a7 7 0 1 1 14 0c0 5.42-7 13-7 13z"/><circle cx="12" cy="9" r="2.5"/></svg>Share your view:</span>
+    <span class="loc-sync-step"><span class="loc-sync-step-num">1</span>Press <kbd>U</kbd> in the tour</span>
+    <span class="loc-sync-step"><span class="loc-sync-step-num">2</span>Click <strong>Copy to clipboard</strong></span>
+    <span class="loc-sync-step"><span class="loc-sync-step-num">3</span>Tap the button below</span>
+  </div>
+  <!-- Action card — the only thing that triggers the clipboard read. -->
+  <div id="loc-sync-action">
     <button type="button" id="loc-sync-btn" aria-describedby="loc-sync-status">
       <span id="loc-sync-spinner" aria-hidden="true"></span>
-      <span id="loc-sync-btn-text">Sync Location</span>
+      <span id="loc-sync-btn-text">Sync My View</span>
     </button>
-  </div>
-  <div id="loc-sync-help" hidden>
-    <strong>Send your exact spot to the agent:</strong>
-    <ol>
-      <li>Press <kbd>U</kbd> while inside the 3D tour.</li>
-      <li>Click <strong>Copy to clipboard</strong> in the popup.</li>
-      <li>Tap <strong>Sync Location</strong> here.</li>
-    </ol>
-  </div>
-  <div id="loc-sync-status" aria-live="polite"></div>
-  <div id="loc-sync-fallback" hidden>
-    <input type="text" id="loc-sync-fallback-input" placeholder="Paste tour link here" aria-label="Paste Matterport tour link" autocomplete="off" spellcheck="false">
-    <button type="button" id="loc-sync-fallback-submit">Send</button>
+    <div id="loc-sync-status" aria-live="polite"></div>
+    <div id="loc-sync-fallback" hidden>
+      <input type="text" id="loc-sync-fallback-input" placeholder="Paste tour link here" aria-label="Paste Matterport tour link" autocomplete="off" spellcheck="false">
+      <button type="button" id="loc-sync-fallback-submit">Send</button>
+    </div>
   </div>
 </div>
 
@@ -4508,12 +4513,9 @@ if(frame){
   // native popup, then tap our Sync button. We parse the URL out of
   // the clipboard and send {ss, sr} over the existing data channel.
   // The agent never auto-teleports — they get a "Follow" pill.
-  var syncBar=document.getElementById("loc-sync-bar");
   var syncBtn=document.getElementById("loc-sync-btn");
   var syncBtnText=document.getElementById("loc-sync-btn-text");
   var syncStatusEl=document.getElementById("loc-sync-status");
-  var syncHelpEl=document.getElementById("loc-sync-help");
-  var syncHelpToggle=document.getElementById("loc-sync-help-toggle");
   var syncFallback=document.getElementById("loc-sync-fallback");
   var syncFallbackInput=document.getElementById("loc-sync-fallback-input");
   var syncFallbackSubmit=document.getElementById("loc-sync-fallback-submit");
@@ -4525,6 +4527,16 @@ if(frame){
   var LOC_SYNC_RATE_LIMIT_MS=1500;
   var LOC_SYNC_SUCCESS_RESET_MS=2200;
   var LOC_SYNC_PILL_AUTODISMISS_MS=30000;
+  var SYNC_LABEL_AUTO="Sync My View";
+  var SYNC_LABEL_PASTE="Send Pasted Link";
+  // locSyncMode controls the click handler's behavior:
+  //   "auto"  → try navigator.clipboard.readText() (default).
+  //   "paste" → read from the visible paste input only. We switch to
+  //             this mode for the rest of the session as soon as the
+  //             clipboard API rejects or is unavailable, which breaks
+  //             the "deny → re-prompt → deny → …" loop that Firefox
+  //             and Safari trigger on every readText() call.
+  var locSyncMode="auto";
   var lastSentLocationKey="";
   var lastSentLocationTs=0;
   var lastShareTs=0;
@@ -4546,16 +4558,20 @@ if(frame){
     if(syncResetTimer){ try { clearTimeout(syncResetTimer); } catch(_e){} syncResetTimer=null; }
   }
 
+  function defaultSyncLabel(){
+    return locSyncMode==="paste"?SYNC_LABEL_PASTE:SYNC_LABEL_AUTO;
+  }
+
   function scheduleSyncIdleReset(){
     if(syncResetTimer){ try { clearTimeout(syncResetTimer); } catch(_e){} }
     syncResetTimer=setTimeout(function(){
-      setSyncBtnState("idle","Sync Location","");
+      setSyncBtnState("idle",defaultSyncLabel(),"");
     },LOC_SYNC_SUCCESS_RESET_MS);
   }
 
-  function showSyncFallback(){
+  function showSyncFallback(focusInput){
     if(syncFallback) syncFallback.hidden=false;
-    if(syncFallbackInput){
+    if(focusInput&&syncFallbackInput){
       try { syncFallbackInput.focus(); } catch(_e){}
     }
   }
@@ -4565,11 +4581,20 @@ if(frame){
     if(syncFallbackInput) syncFallbackInput.value="";
   }
 
+  // Switch to paste-only mode for the rest of the session. The big
+  // primary button now sends from the paste input instead of calling
+  // readText(), so the visitor never sees the clipboard permission
+  // prompt again until they reload the page. Idempotent.
+  function enterPasteMode(reason){
+    locSyncMode="paste";
+    showSyncFallback(true);
+    setSyncBtnState("error",SYNC_LABEL_PASTE,reason||"Paste your tour link below — we won’t ask for clipboard access again this session.");
+  }
+
   function resetLocationSyncUi(){
-    setSyncBtnState("idle","Sync Location","");
+    locSyncMode="auto";
+    setSyncBtnState("idle",SYNC_LABEL_AUTO,"");
     hideSyncFallback();
-    if(syncHelpEl) syncHelpEl.hidden=true;
-    if(syncHelpToggle) syncHelpToggle.setAttribute("aria-expanded","false");
     hideAgentSharePill();
     lastSentLocationKey="";
     lastSentLocationTs=0;
@@ -4614,12 +4639,31 @@ if(frame){
       lastSentLocationKey=key;
       lastSentLocationTs=now;
       setSyncBtnState("success","Sent ✓","Your agent can now follow your view.");
-      hideSyncFallback();
       scheduleSyncIdleReset();
       return true;
     }
     setSyncBtnState("error","Try Again","Couldn’t reach your agent. Check the connection.");
     return false;
+  }
+
+  // Pre-flight the clipboard permission via the Permissions API where
+  // it's supported (Chromium-family). If it's already "denied" we skip
+  // the readText() call entirely, which means no permission popup —
+  // the visitor goes straight to paste mode. Browsers without the
+  // Permissions API (Safari/Firefox for clipboard-read) just fall
+  // through to the readText() attempt as before.
+  // Returns a Promise<"granted"|"denied"|"prompt"|"unknown">.
+  function queryClipboardPermission(){
+    try {
+      if(!navigator||!navigator.permissions||typeof navigator.permissions.query!=="function"){
+        return Promise.resolve("unknown");
+      }
+      return navigator.permissions.query({ name: "clipboard-read" }).then(function(result){
+        return (result&&result.state)||"unknown";
+      },function(){ return "unknown"; });
+    } catch(_e){
+      return Promise.resolve("unknown");
+    }
   }
 
   function readClipboardAndSend(){
@@ -4635,38 +4679,63 @@ if(frame){
       }
     } catch(_e){}
     if(!navigator||!navigator.clipboard||typeof navigator.clipboard.readText!=="function"){
-      setSyncBtnState("error","Paste Instead","Your browser can’t read the clipboard. Paste your tour link below.");
-      showSyncFallback();
+      enterPasteMode("Your browser can’t read the clipboard automatically. Paste your tour link below — we won’t ask again this session.");
       return;
     }
-    var p;
-    try { p=navigator.clipboard.readText(); } catch(_e){
-      setSyncBtnState("error","Paste Instead","Browser blocked the clipboard. Paste your tour link below.");
-      showSyncFallback();
-      return;
-    }
-    if(!p||typeof p.then!=="function"){
-      setSyncBtnState("error","Paste Instead","Browser blocked the clipboard. Paste your tour link below.");
-      showSyncFallback();
-      return;
-    }
-    p.then(function(text){
-      var parsed=parseMatterportLocationUrl(text);
-      if(!parsed){
-        setSyncBtnState("error","Try Again","Clipboard doesn’t have a tour link. Press U inside the tour first, then click Copy to clipboard.");
+    queryClipboardPermission().then(function(permState){
+      // Already-denied: never call readText() (which would re-prompt or
+      // reject silently). Permanently switch this session to paste mode.
+      if(permState==="denied"){
+        enterPasteMode("Clipboard access is blocked. Paste your tour link below — we won’t ask again this session.");
         return;
       }
-      attemptSendLocation(parsed);
-    },function(err){
-      var name=err&&err.name?err.name:"";
-      if(name==="NotAllowedError"||name==="SecurityError"){
-        setSyncBtnState("error","Retry","Permission denied. Tap Retry or paste your tour link below.");
-        showSyncFallback();
-      } else {
-        setSyncBtnState("error","Retry","Couldn’t read clipboard. Paste your tour link below.");
-        showSyncFallback();
+      var p;
+      try { p=navigator.clipboard.readText(); } catch(_e){
+        enterPasteMode("Browser blocked the clipboard. Paste your tour link below — we won’t ask again this session.");
+        return;
       }
+      if(!p||typeof p.then!=="function"){
+        enterPasteMode("Browser blocked the clipboard. Paste your tour link below — we won’t ask again this session.");
+        return;
+      }
+      p.then(function(text){
+        var parsed=parseMatterportLocationUrl(text);
+        if(!parsed){
+          // Clipboard reachable but contents weren't a tour link. This
+          // is a content problem (user forgot to press Copy), NOT a
+          // permission problem — stay in auto mode so the next click
+          // doesn't need a fresh prompt.
+          setSyncBtnState("error",SYNC_LABEL_AUTO,"Clipboard doesn’t have a tour link yet. Press U in the tour, then click Copy to clipboard, then tap here.");
+          return;
+        }
+        attemptSendLocation(parsed);
+      },function(err){
+        var name=err&&err.name?err.name:"";
+        if(name==="NotAllowedError"||name==="SecurityError"){
+          enterPasteMode("Permission denied. Paste your tour link below — we won’t ask again this session.");
+        } else {
+          enterPasteMode("Couldn’t read the clipboard. Paste your tour link below — we won’t ask again this session.");
+        }
+      });
     });
+  }
+
+  // Send from the visible paste input. Used in paste mode (after
+  // denial / unsupported) and as the keyboard-Enter handler on the
+  // input itself.
+  function readPasteInputAndSend(){
+    var text=(syncFallbackInput&&syncFallbackInput.value||"").trim();
+    if(!text){
+      setSyncBtnState("error",SYNC_LABEL_PASTE,"Paste your tour link in the box first.");
+      if(syncFallbackInput){ try { syncFallbackInput.focus(); } catch(_e){} }
+      return;
+    }
+    var parsed=parseMatterportLocationUrl(text);
+    if(!parsed){
+      setSyncBtnState("error",SYNC_LABEL_PASTE,"That doesn’t look like a Matterport link. Copy the full URL from the popup.");
+      return;
+    }
+    attemptSendLocation(parsed);
   }
 
   if(syncBtn){
@@ -4675,30 +4744,15 @@ if(frame){
       if(s.role!=="visitor"||!s.isConnected) return;
       var now=Date.now();
       if(now-lastSentLocationTs<LOC_SYNC_RATE_LIMIT_MS&&!syncBtn.classList.contains("is-error")) return;
-      readClipboardAndSend();
-    });
-  }
-
-  if(syncHelpToggle&&syncHelpEl){
-    syncHelpToggle.addEventListener("click",function(){
-      var wasHidden=syncHelpEl.hidden;
-      syncHelpEl.hidden=!wasHidden;
-      syncHelpToggle.setAttribute("aria-expanded",wasHidden?"true":"false");
+      if(locSyncMode==="paste") readPasteInputAndSend();
+      else readClipboardAndSend();
     });
   }
 
   if(syncFallbackSubmit&&syncFallbackInput){
-    syncFallbackSubmit.addEventListener("click",function(){
-      var text=(syncFallbackInput.value||"").trim();
-      var parsed=parseMatterportLocationUrl(text);
-      if(!parsed){
-        setSyncBtnState("error","Try Again","That doesn’t look like a Matterport link. Copy the full URL from the popup.");
-        return;
-      }
-      attemptSendLocation(parsed);
-    });
+    syncFallbackSubmit.addEventListener("click",readPasteInputAndSend);
     syncFallbackInput.addEventListener("keydown",function(e){
-      if(e.key==="Enter"){ e.preventDefault(); syncFallbackSubmit.click(); }
+      if(e.key==="Enter"){ e.preventDefault(); readPasteInputAndSend(); }
     });
   }
 
@@ -5009,7 +5063,7 @@ if(frame){
           setSyncBtnState("disabled","Waiting…","Waiting for your agent…");
         }
       } else if(syncBtn.disabled&&!syncBtn.classList.contains("is-reading")&&!syncBtn.classList.contains("is-success")&&!syncBtn.classList.contains("is-error")){
-        setSyncBtnState("idle","Sync Location","");
+        setSyncBtnState("idle",defaultSyncLabel(),"");
       }
     }
 
