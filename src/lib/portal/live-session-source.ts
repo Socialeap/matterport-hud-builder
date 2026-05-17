@@ -104,6 +104,19 @@ export interface LiveSessionNavLockEvent {
   ts: number;
 }
 
+/**
+ * Visitor → Agent location offer. The visitor parses the Matterport
+ * "Link to location" URL out of their clipboard (after pressing `U`
+ * inside the iframe and clicking "Copy to clipboard") and offers the
+ * resulting ss/sr to the agent. Receiving is non-disruptive: the agent
+ * sees a notification pill and chooses whether to follow.
+ */
+export interface LiveSessionLocationShareEvent {
+  ss: string;
+  sr: string;
+  ts: number;
+}
+
 export type LiveSessionRole = "agent" | "visitor" | null;
 export type LiveSessionStatus =
   | "idle"
@@ -127,6 +140,7 @@ export interface LiveSessionState {
   incomingStrokeEvent: LiveSessionStrokeEvent | null;
   incomingClearEvent: LiveSessionClearEvent | null;
   incomingNavLockEvent: LiveSessionNavLockEvent | null;
+  incomingLocationShareEvent: LiveSessionLocationShareEvent | null;
 }
 
 /** Public API surface of the controller returned by `createLiveSession`. */
@@ -136,6 +150,7 @@ export interface LiveSessionController {
   initializeAsAgent(): Promise<{ pin: string; peerId: string }>;
   joinAsVisitor(pin: string): Promise<{ pin: string; peerId: string }>;
   teleportVisitor(ss: string, sr: string): boolean;
+  shareLocationWithAgent(ss: string, sr: string): boolean;
   sendPointer(viewKey: string, x: number | null, y: number | null): boolean;
   sendStrokeBegin(
     viewKey: string,

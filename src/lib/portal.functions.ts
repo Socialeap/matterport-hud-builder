@@ -1629,6 +1629,59 @@ body.live-tour-active #viewer{display:flex;align-items:center;justify-content:ce
 body.live-tour-active #anno-letterbox-wrap{position:relative;inset:auto;aspect-ratio:16/9;width:min(100vw,calc(100vh * 16 / 9));height:auto;max-height:100vh}
 body.live-tour-active.live-tour-agent #anno-toolbar{display:flex}
 
+/* ── Location Sync — visitor's "Share my view" pill ──────────────── */
+/* Hidden unless the visitor is in an active live tour. Anchored top-right
+   beside the Leave pill so it's always visible without blocking the
+   iframe. Premium glassmorphism matches the other HUD chrome. */
+#loc-sync{position:fixed;top:42px;right:12px;z-index:1300;display:none;flex-direction:column;align-items:flex-end;gap:6px;max-width:min(280px,calc(100vw - 24px));pointer-events:none}
+body.live-tour-active.live-tour-visitor #loc-sync{display:flex}
+#loc-sync-bar{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 4px 0 12px;border-radius:999px;background:rgba(0,0,0,0.42);border:1px solid rgba(255,255,255,0.18);color:#fff;font:600 12px/1 system-ui,-apple-system,sans-serif;-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%);box-shadow:0 6px 20px rgba(0,0,0,0.28);pointer-events:auto}
+#loc-sync-label{display:inline-flex;align-items:center;gap:6px;color:rgba(255,255,255,0.85);white-space:nowrap}
+#loc-sync-label svg{width:12px;height:12px;color:${escapeHtml(accentColor)}}
+@media(max-width:520px){#loc-sync-label .loc-sync-label-text{display:none}}
+#loc-sync-help-toggle{appearance:none;border:none;background:transparent;color:rgba(255,255,255,0.55);font:600 11px/1 inherit;width:18px;height:18px;border-radius:50%;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:background 0.15s,color 0.15s}
+#loc-sync-help-toggle:hover{background:rgba(255,255,255,0.12);color:#fff}
+#loc-sync-btn{appearance:none;border:none;cursor:pointer;height:24px;padding:0 12px;border-radius:999px;background:${escapeHtml(accentColor)};color:#fff;font:700 11px/1 inherit;letter-spacing:0.02em;display:inline-flex;align-items:center;justify-content:center;gap:5px;transition:opacity 0.15s,background 0.2s,transform 0.1s}
+#loc-sync-btn:hover{opacity:0.92}
+#loc-sync-btn:active{transform:scale(0.97)}
+#loc-sync-btn[disabled]{opacity:0.55;cursor:default}
+#loc-sync-btn.is-reading{background:rgba(255,255,255,0.18);color:rgba(255,255,255,0.92)}
+#loc-sync-btn.is-success{background:#16a34a;color:#fff}
+#loc-sync-btn.is-error{background:#b45309;color:#fff}
+#loc-sync-spinner{display:none;width:10px;height:10px;border:2px solid rgba(255,255,255,0.4);border-top-color:#fff;border-radius:50%;animation:loc-sync-spin 0.7s linear infinite}
+#loc-sync-btn.is-reading #loc-sync-spinner{display:inline-block}
+@keyframes loc-sync-spin{to{transform:rotate(360deg)}}
+#loc-sync-status{font-size:11px;line-height:1.35;color:rgba(255,255,255,0.92);padding:6px 10px;border-radius:8px;background:rgba(0,0,0,0.5);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.12);max-width:260px;text-align:right;min-height:0;pointer-events:auto}
+#loc-sync-status:empty{display:none}
+#loc-sync-help{font-size:11px;line-height:1.45;color:rgba(255,255,255,0.86);padding:10px 12px;border-radius:10px;background:rgba(0,0,0,0.55);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.14);max-width:280px;text-align:left;pointer-events:auto}
+#loc-sync-help[hidden]{display:none}
+#loc-sync-help ol{margin:6px 0 0;padding-left:18px}
+#loc-sync-help li{margin-bottom:4px}
+#loc-sync-help kbd{display:inline-block;padding:1px 6px;border-radius:4px;background:rgba(255,255,255,0.16);border:1px solid rgba(255,255,255,0.22);font:600 10px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:#fff}
+#loc-sync-fallback{display:flex;gap:6px;background:rgba(0,0,0,0.55);padding:6px;border-radius:10px;border:1px solid rgba(255,255,255,0.14);pointer-events:auto}
+#loc-sync-fallback[hidden]{display:none}
+#loc-sync-fallback-input{flex:1;min-width:0;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.18);color:#fff;border-radius:6px;padding:6px 8px;font:500 11px/1.4 inherit;outline:none}
+#loc-sync-fallback-input::placeholder{color:rgba(255,255,255,0.45)}
+#loc-sync-fallback-input:focus{border-color:${escapeHtml(accentColor)}}
+#loc-sync-fallback-submit{appearance:none;border:none;cursor:pointer;background:${escapeHtml(accentColor)};color:#fff;border-radius:6px;padding:0 10px;font:700 11px/1 inherit}
+
+/* ── Location Sync — agent's "Visitor shared location" pill ──────── */
+#loc-share-pill{position:fixed;top:42px;right:12px;z-index:1300;display:none;align-items:center;gap:8px;padding:6px 6px 6px 14px;border-radius:999px;background:rgba(0,0,0,0.55);border:1px solid rgba(255,255,255,0.2);color:#fff;font:600 12px/1 system-ui,-apple-system,sans-serif;-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%);box-shadow:0 8px 24px rgba(0,0,0,0.32);max-width:min(360px,calc(100vw - 24px));animation:loc-share-slide 0.25s ease-out}
+body.live-tour-active.live-tour-agent #loc-share-pill.is-visible{display:inline-flex}
+#loc-share-pill-dot{width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 0 rgba(34,197,94,0.6);animation:loc-share-pulse 1.6s ease-in-out infinite;flex-shrink:0}
+#loc-share-pill-text{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:rgba(255,255,255,0.92)}
+#loc-share-follow{appearance:none;border:none;cursor:pointer;background:${escapeHtml(accentColor)};color:#fff;font:700 11px/1 inherit;letter-spacing:0.02em;padding:0 12px;height:24px;border-radius:999px;display:inline-flex;align-items:center;gap:4px;transition:opacity 0.15s,transform 0.1s}
+#loc-share-follow:hover{opacity:0.92}
+#loc-share-follow:active{transform:scale(0.97)}
+#loc-share-dismiss{appearance:none;border:none;cursor:pointer;background:rgba(255,255,255,0.12);color:rgba(255,255,255,0.75);font-size:14px;line-height:1;width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;transition:background 0.15s,color 0.15s}
+#loc-share-dismiss:hover{background:rgba(255,255,255,0.22);color:#fff}
+@keyframes loc-share-slide{from{transform:translateY(-8px);opacity:0}to{transform:translateY(0);opacity:1}}
+@keyframes loc-share-pulse{0%,100%{box-shadow:0 0 0 0 rgba(34,197,94,0.6)}50%{box-shadow:0 0 0 6px rgba(34,197,94,0)}}
+/* Brief outline pulse on the agent's iframe wrap when they tap Follow,
+   so they have a clear visual that the view they're now seeing is the
+   visitor's location, not their own navigation. */
+body.live-tour-active.live-tour-agent #anno-letterbox-wrap.follow-pulse{box-shadow:0 0 0 3px ${escapeHtml(accentColor)},0 0 0 6px ${escapeHtml(accentColor)}33;transition:box-shadow 1.5s ease-out}
+
 /* ── Shared modal backdrop ────────────────────────────────────────── */
 .modal-backdrop{position:fixed;inset:0;z-index:2500;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.65);backdrop-filter:blur(14px) brightness(0.55);-webkit-backdrop-filter:blur(14px) brightness(0.55);padding:16px}
 .modal-backdrop.open{display:flex}
@@ -1777,6 +1830,40 @@ ${askAssets.css}
 
 <!-- ── HUD toggle button ─────────────────────────────────────────── -->
 <button id="hud-leave-btn" hidden aria-label="Leave live tour" title="Leave Live Tour">Leave</button>
+
+<!-- ── Location Sync: visitor pill (CSS-gated to visitor role) ────── -->
+<div id="loc-sync" role="region" aria-label="Share your location with the agent">
+  <div id="loc-sync-bar">
+    <span id="loc-sync-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 22s-7-7.58-7-13a7 7 0 1 1 14 0c0 5.42-7 13-7 13z"/><circle cx="12" cy="9" r="2.5"/></svg><span class="loc-sync-label-text">Share my view</span></span>
+    <button type="button" id="loc-sync-help-toggle" aria-label="How to share" aria-expanded="false" aria-controls="loc-sync-help" title="How to share">?</button>
+    <button type="button" id="loc-sync-btn" aria-describedby="loc-sync-status">
+      <span id="loc-sync-spinner" aria-hidden="true"></span>
+      <span id="loc-sync-btn-text">Sync Location</span>
+    </button>
+  </div>
+  <div id="loc-sync-help" hidden>
+    <strong>Send your exact spot to the agent:</strong>
+    <ol>
+      <li>Press <kbd>U</kbd> while inside the 3D tour.</li>
+      <li>Click <strong>Copy to clipboard</strong> in the popup.</li>
+      <li>Tap <strong>Sync Location</strong> here.</li>
+    </ol>
+  </div>
+  <div id="loc-sync-status" aria-live="polite"></div>
+  <div id="loc-sync-fallback" hidden>
+    <input type="text" id="loc-sync-fallback-input" placeholder="Paste tour link here" aria-label="Paste Matterport tour link" autocomplete="off" spellcheck="false">
+    <button type="button" id="loc-sync-fallback-submit">Send</button>
+  </div>
+</div>
+
+<!-- ── Location Sync: agent's incoming-share pill (CSS-gated to agent) -->
+<div id="loc-share-pill" role="status" aria-live="polite" hidden>
+  <span id="loc-share-pill-dot" aria-hidden="true"></span>
+  <span id="loc-share-pill-text">Visitor shared their location</span>
+  <button type="button" id="loc-share-follow" aria-label="Teleport to the visitor's location">Follow</button>
+  <button type="button" id="loc-share-dismiss" aria-label="Dismiss">&times;</button>
+</div>
+
 <button id="hud-toggle" aria-label="Show or hide the top toolbar" title="Show / hide header" aria-keyshortcuts="H">
   <svg id="hud-chevron-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="display:none"><polyline points="18 15 12 9 6 15"/></svg>
   <svg id="hud-chevron-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
@@ -4414,6 +4501,262 @@ if(frame){
     window.addEventListener("resize",resizeAnnoCanvas);
   }
 
+  // ── Location Sync (visitor → agent, clipboard bridge) ─────────────
+  // The Matterport iframe is fully cross-origin and we have no SDK
+  // budget, so we use the user as the secure data bridge: they press
+  // U inside the tour, click "Copy to clipboard" in Matterport's
+  // native popup, then tap our Sync button. We parse the URL out of
+  // the clipboard and send {ss, sr} over the existing data channel.
+  // The agent never auto-teleports — they get a "Follow" pill.
+  var syncBar=document.getElementById("loc-sync-bar");
+  var syncBtn=document.getElementById("loc-sync-btn");
+  var syncBtnText=document.getElementById("loc-sync-btn-text");
+  var syncStatusEl=document.getElementById("loc-sync-status");
+  var syncHelpEl=document.getElementById("loc-sync-help");
+  var syncHelpToggle=document.getElementById("loc-sync-help-toggle");
+  var syncFallback=document.getElementById("loc-sync-fallback");
+  var syncFallbackInput=document.getElementById("loc-sync-fallback-input");
+  var syncFallbackSubmit=document.getElementById("loc-sync-fallback-submit");
+  var sharePill=document.getElementById("loc-share-pill");
+  var sharePillText=document.getElementById("loc-share-pill-text");
+  var shareFollowBtn=document.getElementById("loc-share-follow");
+  var shareDismissBtn=document.getElementById("loc-share-dismiss");
+
+  var LOC_SYNC_RATE_LIMIT_MS=1500;
+  var LOC_SYNC_SUCCESS_RESET_MS=2200;
+  var LOC_SYNC_PILL_AUTODISMISS_MS=30000;
+  var lastSentLocationKey="";
+  var lastSentLocationTs=0;
+  var lastShareTs=0;
+  var pendingShare=null; // {ss, sr}
+  var shareAutoDismissTimer=null;
+  var syncResetTimer=null;
+
+  function setSyncBtnState(stateName,btnLabel,statusMsg){
+    if(syncBtn){
+      syncBtn.classList.remove("is-reading","is-success","is-error");
+      if(stateName==="reading"){ syncBtn.classList.add("is-reading"); syncBtn.disabled=true; }
+      else if(stateName==="success"){ syncBtn.classList.add("is-success"); syncBtn.disabled=false; }
+      else if(stateName==="error"){ syncBtn.classList.add("is-error"); syncBtn.disabled=false; }
+      else if(stateName==="disabled"){ syncBtn.disabled=true; }
+      else { syncBtn.disabled=false; }
+    }
+    if(syncBtnText&&typeof btnLabel==="string") syncBtnText.textContent=btnLabel;
+    if(syncStatusEl) syncStatusEl.textContent=statusMsg||"";
+    if(syncResetTimer){ try { clearTimeout(syncResetTimer); } catch(_e){} syncResetTimer=null; }
+  }
+
+  function scheduleSyncIdleReset(){
+    if(syncResetTimer){ try { clearTimeout(syncResetTimer); } catch(_e){} }
+    syncResetTimer=setTimeout(function(){
+      setSyncBtnState("idle","Sync Location","");
+    },LOC_SYNC_SUCCESS_RESET_MS);
+  }
+
+  function showSyncFallback(){
+    if(syncFallback) syncFallback.hidden=false;
+    if(syncFallbackInput){
+      try { syncFallbackInput.focus(); } catch(_e){}
+    }
+  }
+
+  function hideSyncFallback(){
+    if(syncFallback) syncFallback.hidden=true;
+    if(syncFallbackInput) syncFallbackInput.value="";
+  }
+
+  function resetLocationSyncUi(){
+    setSyncBtnState("idle","Sync Location","");
+    hideSyncFallback();
+    if(syncHelpEl) syncHelpEl.hidden=true;
+    if(syncHelpToggle) syncHelpToggle.setAttribute("aria-expanded","false");
+    hideAgentSharePill();
+    lastSentLocationKey="";
+    lastSentLocationTs=0;
+    pendingShare=null;
+  }
+
+  // Parse a Matterport "Link to location" URL. Returns {ss, sr} or null.
+  // We require the URL to be on matterport.com (any subdomain), to carry
+  // an "ss" integer sweep id, and (if present) a well-formed "sr" pair.
+  // Hard 2KB ceiling so a clipboard packed with garbage can't OOM the
+  // parser.
+  function parseMatterportLocationUrl(text){
+    if(!text||typeof text!=="string") return null;
+    var trimmed=text.trim();
+    if(trimmed.length===0||trimmed.length>2000) return null;
+    var u;
+    try { u=new URL(trimmed); } catch(_e){ return null; }
+    if(!/(^|\\.)matterport\\.com$/i.test(u.hostname||"")) return null;
+    var ss=u.searchParams.get("ss");
+    var sr=u.searchParams.get("sr")||"";
+    if(!ss||!/^\\d+$/.test(ss)) return null;
+    if(sr&&!/^-?\\d*\\.?\\d+,-?\\d*\\.?\\d+$/.test(sr)) return null;
+    return { ss: ss, sr: sr };
+  }
+
+  function attemptSendLocation(parsed){
+    if(!parsed) return false;
+    var key=parsed.ss+"|"+parsed.sr;
+    var now=Date.now();
+    // Dedupe: if the visitor mashes Sync repeatedly with the same coords,
+    // flash success without re-sending — saves an iframe reload on the
+    // agent side and matches user expectation that "nothing new = nothing
+    // happens."
+    if(key===lastSentLocationKey&&(now-lastSentLocationTs)<5000){
+      setSyncBtnState("success","Sent ✓","Same view as last send.");
+      scheduleSyncIdleReset();
+      return true;
+    }
+    var ok=false;
+    try { ok=session.shareLocationWithAgent(parsed.ss,parsed.sr); } catch(_e){ ok=false; }
+    if(ok){
+      lastSentLocationKey=key;
+      lastSentLocationTs=now;
+      setSyncBtnState("success","Sent ✓","Your agent can now follow your view.");
+      hideSyncFallback();
+      scheduleSyncIdleReset();
+      return true;
+    }
+    setSyncBtnState("error","Try Again","Couldn’t reach your agent. Check the connection.");
+    return false;
+  }
+
+  function readClipboardAndSend(){
+    setSyncBtnState("reading","Reading…","");
+    // The user just clicked our button, but if they were inside the
+    // Matterport popup a moment ago the iframe may still hold focus —
+    // clipboard.readText() will reject NotAllowedError in that case.
+    // Pull focus back to the parent document before the API call.
+    try { window.focus(); } catch(_e){}
+    try {
+      if(document.documentElement&&typeof document.documentElement.focus==="function"){
+        document.documentElement.focus();
+      }
+    } catch(_e){}
+    if(!navigator||!navigator.clipboard||typeof navigator.clipboard.readText!=="function"){
+      setSyncBtnState("error","Paste Instead","Your browser can’t read the clipboard. Paste your tour link below.");
+      showSyncFallback();
+      return;
+    }
+    var p;
+    try { p=navigator.clipboard.readText(); } catch(_e){
+      setSyncBtnState("error","Paste Instead","Browser blocked the clipboard. Paste your tour link below.");
+      showSyncFallback();
+      return;
+    }
+    if(!p||typeof p.then!=="function"){
+      setSyncBtnState("error","Paste Instead","Browser blocked the clipboard. Paste your tour link below.");
+      showSyncFallback();
+      return;
+    }
+    p.then(function(text){
+      var parsed=parseMatterportLocationUrl(text);
+      if(!parsed){
+        setSyncBtnState("error","Try Again","Clipboard doesn’t have a tour link. Press U inside the tour first, then click Copy to clipboard.");
+        return;
+      }
+      attemptSendLocation(parsed);
+    },function(err){
+      var name=err&&err.name?err.name:"";
+      if(name==="NotAllowedError"||name==="SecurityError"){
+        setSyncBtnState("error","Retry","Permission denied. Tap Retry or paste your tour link below.");
+        showSyncFallback();
+      } else {
+        setSyncBtnState("error","Retry","Couldn’t read clipboard. Paste your tour link below.");
+        showSyncFallback();
+      }
+    });
+  }
+
+  if(syncBtn){
+    syncBtn.addEventListener("click",function(){
+      var s=session.getState();
+      if(s.role!=="visitor"||!s.isConnected) return;
+      var now=Date.now();
+      if(now-lastSentLocationTs<LOC_SYNC_RATE_LIMIT_MS&&!syncBtn.classList.contains("is-error")) return;
+      readClipboardAndSend();
+    });
+  }
+
+  if(syncHelpToggle&&syncHelpEl){
+    syncHelpToggle.addEventListener("click",function(){
+      var wasHidden=syncHelpEl.hidden;
+      syncHelpEl.hidden=!wasHidden;
+      syncHelpToggle.setAttribute("aria-expanded",wasHidden?"true":"false");
+    });
+  }
+
+  if(syncFallbackSubmit&&syncFallbackInput){
+    syncFallbackSubmit.addEventListener("click",function(){
+      var text=(syncFallbackInput.value||"").trim();
+      var parsed=parseMatterportLocationUrl(text);
+      if(!parsed){
+        setSyncBtnState("error","Try Again","That doesn’t look like a Matterport link. Copy the full URL from the popup.");
+        return;
+      }
+      attemptSendLocation(parsed);
+    });
+    syncFallbackInput.addEventListener("keydown",function(e){
+      if(e.key==="Enter"){ e.preventDefault(); syncFallbackSubmit.click(); }
+    });
+  }
+
+  // Agent-side: receive + Follow
+  function showAgentSharePill(ss,sr){
+    pendingShare={ ss: ss, sr: sr };
+    if(!sharePill) return;
+    sharePill.hidden=false;
+    sharePill.classList.add("is-visible");
+    if(sharePillText){
+      var srSummary=sr?" · view "+sr:"";
+      sharePillText.textContent="Visitor shared their location"+srSummary;
+    }
+    if(shareAutoDismissTimer){ try { clearTimeout(shareAutoDismissTimer); } catch(_e){} }
+    shareAutoDismissTimer=setTimeout(function(){
+      hideAgentSharePill();
+    },LOC_SYNC_PILL_AUTODISMISS_MS);
+  }
+
+  function hideAgentSharePill(){
+    pendingShare=null;
+    if(sharePill){
+      sharePill.hidden=true;
+      sharePill.classList.remove("is-visible");
+    }
+    if(shareAutoDismissTimer){
+      try { clearTimeout(shareAutoDismissTimer); } catch(_e){}
+      shareAutoDismissTimer=null;
+    }
+  }
+
+  if(shareFollowBtn){
+    shareFollowBtn.addEventListener("click",function(){
+      if(!pendingShare){ hideAgentSharePill(); return; }
+      var ss=pendingShare.ss;
+      var sr=pendingShare.sr;
+      hideAgentSharePill();
+      // Reuse the existing teleport primitive: wipes annotations, rolls
+      // currentViewKey, rewrites the iframe src with the safe url flags.
+      // Also broadcasts a teleport packet to the visitor so both sides
+      // stay in lock-step on the shared view — without this the visitor
+      // could keep navigating away while the agent's iframe is frozen
+      // on the shared point.
+      try { session.teleportVisitor(ss,sr); } catch(_e){}
+      applyTeleport(ss,sr);
+      if(letterboxWrap){
+        try {
+          letterboxWrap.classList.add("follow-pulse");
+          setTimeout(function(){ if(letterboxWrap) letterboxWrap.classList.remove("follow-pulse"); },1500);
+        } catch(_e){}
+      }
+    });
+  }
+
+  if(shareDismissBtn){
+    shareDismissBtn.addEventListener("click",hideAgentSharePill);
+  }
+
   function teardownSession(){
     try { session.dispose(); } catch(_e){}
     if(leaveBtn) leaveBtn.hidden=true;
@@ -4431,7 +4774,7 @@ if(frame){
     // Defensive: release any nav-lock overlay on teardown so a dropped
     // unlock packet can't leave the visitor permanently frozen.
     try { applyNavLock(false); } catch(_e){}
-    hideCapturePanel();
+    resetLocationSyncUi();
     resetUiToIdle();
     // Re-create the controller so a fresh session can be started
     // without reloading the page. Re-attach the same subscriber.
@@ -4646,6 +4989,28 @@ if(frame){
     if(state.role==="visitor"&&state.incomingTeleportEvent&&state.incomingTeleportEvent.ts!==lastTeleportTs){
       lastTeleportTs=state.incomingTeleportEvent.ts;
       applyTeleport(state.incomingTeleportEvent.ss,state.incomingTeleportEvent.sr);
+    }
+
+    // Agent receive: visitor's clipboard-shared location surfaces as a
+    // non-blocking "Follow" pill rather than auto-teleporting. ts is
+    // the de-dupe key (controller stamps a fresh one per inbound packet)
+    // so re-shares of the same coords replace the prior pill.
+    if(state.role==="agent"&&state.incomingLocationShareEvent&&state.incomingLocationShareEvent.ts!==lastShareTs){
+      lastShareTs=state.incomingLocationShareEvent.ts;
+      showAgentSharePill(state.incomingLocationShareEvent.ss,state.incomingLocationShareEvent.sr);
+    }
+
+    // Visitor's Sync button: disable when the channel isn't live so a
+    // tap doesn't read the clipboard for nothing. Idle-text reset only
+    // when we're not mid-flow (preserves the success/error message).
+    if(state.role==="visitor"&&syncBtn){
+      if(!state.isConnected){
+        if(!syncBtn.classList.contains("is-reading")&&!syncBtn.classList.contains("is-error")){
+          setSyncBtnState("disabled","Waiting…","Waiting for your agent…");
+        }
+      } else if(syncBtn.disabled&&!syncBtn.classList.contains("is-reading")&&!syncBtn.classList.contains("is-success")&&!syncBtn.classList.contains("is-error")){
+        setSyncBtnState("idle","Sync Location","");
+      }
     }
 
     // ── Annotation receive paths ─────────────────────────────────
