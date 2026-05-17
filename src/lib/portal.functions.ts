@@ -4043,11 +4043,94 @@ if(frame){
     });
   }
 
+  // ── Focus Rope helpers ─────────────────────────────────────────────
+  // Ropes are rendered as polylines so the existing stroke pipeline
+  // (drawStroke + the live-session stroke_* packets) handles them with
+  // no protocol changes. The latch is purely a local agent affordance.
+  function ropeBBox(rope){
+    var x0=Math.min(rope.x0,rope.x1),y0=Math.min(rope.y0,rope.y1);
+    var x1=Math.max(rope.x0,rope.x1),y1=Math.max(rope.y0,rope.y1);
+    return {x0:x0,y0:y0,x1:x1,y1:y1};
+  }
+  function ropeToPoints(rope){
+    var b=ropeBBox(rope);
+    var cx=(b.x0+b.x1)/2,cy=(b.y0+b.y1)/2;
+    var rx=(b.x1-b.x0)/2,ry=(b.y1-b.y0)/2;
+    var out=[];
+    if(rope.shape==="box"){
+      out.push([b.x0,b.y0]);
+      out.push([b.x1,b.y0]);
+      out.push([b.x1,b.y1]);
+      out.push([b.x0,b.y1]);
+      out.push([b.x0,b.y0]);
+    } else {
+      var n=ANNO_ROPE_CIRCLE_SAMPLES;
+      for(var i=0;i<=n;i++){
+        var t=(i/n)*Math.PI*2;
+        var x=cx+Math.cos(t)*rx;
+        var y=cy+Math.sin(t)*ry;
+        if(x<0)x=0;else if(x>1)x=1;
+        if(y<0)y=0;else if(y>1)y=1;
+        out.push([x,y]);
+      }
+    }
+    return out;
+  }
+  function ropeLatchPos(rope){
+    var b=ropeBBox(rope);
+    return {x:b.x1,y:b.y1};
+  }
+  function drawRopeLatch(rope,w,h){
+    if(!annoCtx) return;
+    var lp=ropeLatchPos(rope);
+    var px=lp.x*w, py=lp.y*h;
+    var r=Math.max(5,Math.min(ANNO_LATCH_PX,12));
+    annoCtx.beginPath();
+    annoCtx.arc(px,py,r,0,Math.PI*2);
+    annoCtx.fillStyle=rope.color||ANNO_STROKE_COLOR;
+    annoCtx.fill();
+    annoCtx.lineWidth=2;
+    annoCtx.strokeStyle="#ffffff";
+    annoCtx.stroke();
+  }
+  function ropeRegenerate(rope){
+    rope.points=ropeToPoints(rope);
+  }
+  function scheduleRopeFlush(){
+    if(ropeFlushScheduled) return;
+    ropeFlushScheduled=true;
+    var raf=window.requestAnimationFrame||function(cb){ return setTimeout(cb,16); };
+    raf(function(){
+      ropeFlushScheduled=false;
+      if(!activeRope) return;
+      var s=session.getState();
+      if(s.role!=="agent"||!s.isConnected) return;
+      session.sendStrokeBegin(currentViewKey,activeRope.strokeId,activeRope.color,activeRope.width,activeRope.points);
+    });
+  }
+  function commitActiveRope(){
+    if(!activeRope) return;
+    var s=session.getState();
+    if(s.role==="agent"&&s.isConnected){
+      // Flush a final shape snapshot before the commit so the visitor
+      // ends up with the exact bbox the agent let go of.
+      session.sendStrokeBegin(currentViewKey,activeRope.strokeId,activeRope.color,activeRope.width,activeRope.points);
+      session.sendStrokeCommit(currentViewKey,activeRope.strokeId);
+    }
+    activeRope=null;
+    ropeDragging=false;
+    ropeLatchDragging=false;
+    redrawAllStrokes();
+  }
+
   function wipeAnnotations(){
     localStrokes=[];
     activeStroke=null;
     pendingStrokeId=null;
     pendingStrokePoints=null;
+    activeRope=null;
+    ropeDragging=false;
+    ropeLatchDragging=false;
     if(remotePointer){
       remotePointer.style.display="none";
     }
