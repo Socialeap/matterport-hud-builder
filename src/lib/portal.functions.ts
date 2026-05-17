@@ -4561,107 +4561,137 @@ if(frame){
     window.addEventListener("resize",resizeAnnoCanvas);
   }
 
-  // ── Location Sync (visitor → agent, clipboard bridge) ─────────────
-  // The Matterport iframe is fully cross-origin and we have no SDK
-  // budget, so we use the user as the secure data bridge: they press
-  // U inside the tour, click "Copy to clipboard" in Matterport's
-  // native popup, then tap our Sync button. We parse the URL out of
-  // the clipboard and send {ss, sr} over the existing data channel.
-  // The agent never auto-teleports — they get a "Follow" pill.
-  var syncBtn=document.getElementById("loc-sync-btn");
-  var syncBtnText=document.getElementById("loc-sync-btn-text");
-  var syncStatusEl=document.getElementById("loc-sync-status");
-  var syncFallback=document.getElementById("loc-sync-fallback");
-  var syncFallbackInput=document.getElementById("loc-sync-fallback-input");
-  var syncFallbackSubmit=document.getElementById("loc-sync-fallback-submit");
+  // ── Location Sync (visitor → agent, clipboard auto-share) ────────
+  // True one-action sync: the visitor positions their view, presses U
+  // inside Matterport, and clicks "Copy to clipboard" in Matterport's
+  // native popup. That's it. We auto-poll the clipboard while
+  // connected as a visitor and push any new ss/sr to the agent over
+  // the data channel. No drawer click, no paste, no focus juggling —
+  // so the U key never breaks because we never overlay the iframe.
+  //
+  // Permission strategy: we pre-fire navigator.clipboard.readText()
+  // inside the visitor's Join click handler so the browser permission
+  // prompt appears once, at the natural opt-in moment. Chrome/Edge
+  // remember the grant for the rest of the page session, after which
+  // readText() runs silently forever. Safari/Firefox don't expose
+  // clipboard-read at all; they degrade to a single-tap pill, then to
+  // a paste field as a deep fallback. The agent-side "Follow" pill
+  // is untouched.
   var sharePill=document.getElementById("loc-share-pill");
   var sharePillText=document.getElementById("loc-share-pill-text");
   var shareFollowBtn=document.getElementById("loc-share-follow");
   var shareDismissBtn=document.getElementById("loc-share-dismiss");
+  var autoPill=document.getElementById("auto-share-pill");
+  var autoPillText=document.getElementById("auto-share-pill-text");
+  var autoPillHelp=document.getElementById("auto-share-pill-help");
+  var autoCoach=document.getElementById("auto-share-coach");
+  var autoCoachFallback=document.getElementById("auto-share-coach-fallback");
+  var autoCoachDismiss=document.getElementById("auto-share-coach-dismiss");
+  var syncFallbackInput=document.getElementById("loc-sync-fallback-input");
+  var syncFallbackSubmit=document.getElementById("loc-sync-fallback-submit");
 
-  var LOC_SYNC_RATE_LIMIT_MS=1500;
-  var LOC_SYNC_SUCCESS_RESET_MS=2200;
   var LOC_SYNC_PILL_AUTODISMISS_MS=30000;
-  var SYNC_LABEL_AUTO="Sync My View";
-  var SYNC_LABEL_PASTE="Send Pasted Link";
-  // locSyncMode controls the click handler's behavior:
-  //   "auto"  → try navigator.clipboard.readText() (default).
-  //   "paste" → read from the visible paste input only. We switch to
-  //             this mode for the rest of the session as soon as the
-  //             clipboard API rejects or is unavailable, which breaks
-  //             the "deny → re-prompt → deny → …" loop that Firefox
-  //             and Safari trigger on every readText() call.
-  var locSyncMode="auto";
+  var AUTO_SHARE_POLL_MS=700;
+  var AUTO_SHARE_MIN_GAP_MS=400;
+  var AUTO_SHARE_SUCCESS_RESET_MS=2400;
+  var COACH_STORAGE_KEY="__lvb_autoshare_coach_seen";
+
   var lastSentLocationKey="";
   var lastSentLocationTs=0;
   var lastShareTs=0;
   var pendingShare=null; // {ss, sr}
   var shareAutoDismissTimer=null;
-  var syncResetTimer=null;
+  var autoShareMode="auto"; // "auto" | "tap" | "paste"
+  var autoSharePollTimer=null;
+  var autoShareListenersBound=false;
+  var autoShareLastReadTs=0;
+  var autoShareLastClipText="";
+  var autoSharePillResetTimer=null;
+  var autoShareStarted=false;
 
-  function setSyncBtnState(stateName,btnLabel,statusMsg){
-    if(syncBtn){
-      syncBtn.classList.remove("is-reading","is-success","is-error");
-      if(stateName==="reading"){ syncBtn.classList.add("is-reading"); syncBtn.disabled=true; }
-      else if(stateName==="success"){ syncBtn.classList.add("is-success"); syncBtn.disabled=false; }
-      else if(stateName==="error"){ syncBtn.classList.add("is-error"); syncBtn.disabled=false; }
-      else if(stateName==="disabled"){ syncBtn.disabled=true; }
-      else { syncBtn.disabled=false; }
-    }
-    if(syncBtnText&&typeof btnLabel==="string") syncBtnText.textContent=btnLabel;
-    if(syncStatusEl) syncStatusEl.textContent=statusMsg||"";
-    if(syncResetTimer){ try { clearTimeout(syncResetTimer); } catch(_e){} syncResetTimer=null; }
+  function setAutoPillState(stateName,msg){
+    if(!autoPill) return;
+    autoPill.classList.remove("is-tap","is-reading","is-success","is-error");
+    if(stateName==="tap") autoPill.classList.add("is-tap");
+    else if(stateName==="reading") autoPill.classList.add("is-reading");
+    else if(stateName==="success") autoPill.classList.add("is-success");
+    else if(stateName==="error") autoPill.classList.add("is-error");
+    if(autoPillText&&typeof msg==="string") autoPillText.textContent=msg;
+    if(autoSharePillResetTimer){ try { clearTimeout(autoSharePillResetTimer); } catch(_e){} autoSharePillResetTimer=null; }
   }
 
-  function defaultSyncLabel(){
-    return locSyncMode==="paste"?SYNC_LABEL_PASTE:SYNC_LABEL_AUTO;
+  function defaultPillMsg(){
+    if(autoShareMode==="paste") return "Tap ? to paste your link";
+    if(autoShareMode==="tap") return "Tap after Copy to clipboard";
+    return "Auto-share on";
   }
 
-  function scheduleSyncIdleReset(){
-    if(syncResetTimer){ try { clearTimeout(syncResetTimer); } catch(_e){} }
-    syncResetTimer=setTimeout(function(){
-      setSyncBtnState("idle",defaultSyncLabel(),"");
-    },LOC_SYNC_SUCCESS_RESET_MS);
+  function scheduleAutoPillIdle(){
+    if(autoSharePillResetTimer){ try { clearTimeout(autoSharePillResetTimer); } catch(_e){} }
+    autoSharePillResetTimer=setTimeout(function(){
+      var s=autoShareMode==="auto"?"idle":(autoShareMode==="tap"?"tap":"error");
+      setAutoPillState(s,defaultPillMsg());
+    },AUTO_SHARE_SUCCESS_RESET_MS);
   }
 
-  function showSyncFallback(focusInput){
-    if(syncFallback) syncFallback.hidden=false;
-    if(focusInput&&syncFallbackInput){
-      try { syncFallbackInput.focus(); } catch(_e){}
-    }
+  function showAutoPill(){
+    if(!autoPill) return;
+    autoPill.hidden=false;
+    setAutoPillState(autoShareMode==="auto"?"idle":(autoShareMode==="tap"?"tap":"error"),defaultPillMsg());
   }
 
-  function hideSyncFallback(){
-    if(syncFallback) syncFallback.hidden=true;
-    if(syncFallbackInput) syncFallbackInput.value="";
+  function hideAutoPill(){
+    if(autoPill) autoPill.hidden=true;
+    if(autoCoach) autoCoach.hidden=true;
   }
 
-  // Switch to paste-only mode for the rest of the session. The big
-  // primary button now sends from the paste input instead of calling
-  // readText(), so the visitor never sees the clipboard permission
-  // prompt again until they reload the page. Idempotent.
+  function showCoachIfFirstTime(){
+    if(!autoCoach) return;
+    try {
+      if(sessionStorage.getItem(COACH_STORAGE_KEY)==="1") return;
+    } catch(_e){}
+    autoCoach.hidden=false;
+    setTimeout(function(){ if(autoCoach) autoCoach.hidden=true; },10000);
+  }
+
+  function dismissCoach(){
+    if(autoCoach) autoCoach.hidden=true;
+    try { sessionStorage.setItem(COACH_STORAGE_KEY,"1"); } catch(_e){}
+  }
+
+  function showFallbackInput(){
+    if(autoCoachFallback) autoCoachFallback.hidden=false;
+    if(autoCoach) autoCoach.hidden=false;
+    if(syncFallbackInput){ try { syncFallbackInput.focus(); } catch(_e){} }
+  }
+
+  function enterTapMode(reason){
+    autoShareMode="tap";
+    stopAutoSharePolling();
+    setAutoPillState("tap",reason||"Tap after Copy to clipboard");
+  }
+
   function enterPasteMode(reason){
-    locSyncMode="paste";
-    showSyncFallback(true);
-    setSyncBtnState("error",SYNC_LABEL_PASTE,reason||"Paste your tour link below — we won’t ask for clipboard access again this session.");
+    autoShareMode="paste";
+    stopAutoSharePolling();
+    showFallbackInput();
+    setAutoPillState("error",reason||"Paste your link in the popup");
   }
 
   function resetLocationSyncUi(){
-    locSyncMode="auto";
-    setSyncBtnState("idle",SYNC_LABEL_AUTO,"");
-    hideSyncFallback();
+    autoShareMode="auto";
+    stopAutoSharePolling();
+    hideAutoPill();
+    if(autoCoachFallback) autoCoachFallback.hidden=true;
+    if(syncFallbackInput) syncFallbackInput.value="";
     hideAgentSharePill();
     lastSentLocationKey="";
     lastSentLocationTs=0;
-    pendingShare=null;
-    try { closeLtSyncPanel(); } catch(_e){}
+    autoShareLastClipText="";
+    autoShareStarted=false;
   }
 
   // Parse a Matterport "Link to location" URL. Returns {ss, sr} or null.
-  // We require the URL to be on matterport.com (any subdomain), to carry
-  // an "ss" integer sweep id, and (if present) a well-formed "sr" pair.
-  // Hard 2KB ceiling so a clipboard packed with garbage can't OOM the
-  // parser.
   function parseMatterportLocationUrl(text){
     if(!text||typeof text!=="string") return null;
     var trimmed=text.trim();
@@ -4680,14 +4710,11 @@ if(frame){
     if(!parsed) return false;
     var key=parsed.ss+"|"+parsed.sr;
     var now=Date.now();
-    // Dedupe: if the visitor mashes Sync repeatedly with the same coords,
-    // flash success without re-sending — saves an iframe reload on the
-    // agent side and matches user expectation that "nothing new = nothing
-    // happens."
+    // Same-view dedupe: visitor pressing Copy twice on the same view
+    // shouldn't re-fire to the agent.
     if(key===lastSentLocationKey&&(now-lastSentLocationTs)<5000){
-      setSyncBtnState("success","Sent ✓","Same view as last send.");
-      scheduleSyncIdleReset();
-      setTimeout(function(){ try { closeLtSyncPanel(); } catch(_e){} },900);
+      setAutoPillState("success","Already shared ✓");
+      scheduleAutoPillIdle();
       return true;
     }
     var ok=false;
@@ -4695,118 +4722,133 @@ if(frame){
     if(ok){
       lastSentLocationKey=key;
       lastSentLocationTs=now;
-      setSyncBtnState("success","Sent ✓","Your agent can now follow your view.");
-      scheduleSyncIdleReset();
-      // Auto-close the inline instructions + the LT header so the 3D
-      // tour returns to a fully unobstructed view.
-      setTimeout(function(){ try { closeLtSyncPanel(); } catch(_e){} },900);
+      setAutoPillState("success","Shared ✓ — agent can follow");
+      scheduleAutoPillIdle();
       return true;
     }
-    setSyncBtnState("error","Try Again","Couldn’t reach your agent. Check the connection.");
+    setAutoPillState("error","Couldn't reach agent");
+    scheduleAutoPillIdle();
     return false;
   }
 
-  // Pre-flight the clipboard permission via the Permissions API where
-  // it's supported (Chromium-family). If it's already "denied" we skip
-  // the readText() call entirely, which means no permission popup —
-  // the visitor goes straight to paste mode. Browsers without the
-  // Permissions API (Safari/Firefox for clipboard-read) just fall
-  // through to the readText() attempt as before.
-  // Returns a Promise<"granted"|"denied"|"prompt"|"unknown">.
-  function queryClipboardPermission(){
-    try {
-      if(!navigator||!navigator.permissions||typeof navigator.permissions.query!=="function"){
-        return Promise.resolve("unknown");
-      }
-      return navigator.permissions.query({ name: "clipboard-read" }).then(function(result){
-        return (result&&result.state)||"unknown";
-      },function(){ return "unknown"; });
-    } catch(_e){
-      return Promise.resolve("unknown");
-    }
-  }
-
-  function readClipboardAndSend(){
-    setSyncBtnState("reading","Reading…","");
-    // The user just clicked our button, but if they were inside the
-    // Matterport popup a moment ago the iframe may still hold focus —
-    // clipboard.readText() will reject NotAllowedError in that case.
-    // Pull focus back to the parent document before the API call.
-    try { window.focus(); } catch(_e){}
-    try {
-      if(document.documentElement&&typeof document.documentElement.focus==="function"){
-        document.documentElement.focus();
-      }
-    } catch(_e){}
+  // Single read attempt — used by both the auto-poll and the tap-mode
+  // pill click. Silent on no-op; surfaces denied/unavailable by
+  // downgrading the mode for the rest of the session.
+  function tryReadAndShare(opts){
     if(!navigator||!navigator.clipboard||typeof navigator.clipboard.readText!=="function"){
-      enterPasteMode("Your browser can’t read the clipboard automatically. Paste your tour link below — we won’t ask again this session.");
+      enterPasteMode("Clipboard read not supported — use paste");
       return;
     }
-    queryClipboardPermission().then(function(permState){
-      // Already-denied: never call readText() (which would re-prompt or
-      // reject silently). Permanently switch this session to paste mode.
-      if(permState==="denied"){
-        enterPasteMode("Clipboard access is blocked. Paste your tour link below — we won’t ask again this session.");
-        return;
-      }
-      var p;
-      try { p=navigator.clipboard.readText(); } catch(_e){
-        enterPasteMode("Browser blocked the clipboard. Paste your tour link below — we won’t ask again this session.");
-        return;
-      }
-      if(!p||typeof p.then!=="function"){
-        enterPasteMode("Browser blocked the clipboard. Paste your tour link below — we won’t ask again this session.");
-        return;
-      }
-      p.then(function(text){
-        var parsed=parseMatterportLocationUrl(text);
-        if(!parsed){
-          // Clipboard reachable but contents weren't a tour link. This
-          // is a content problem (user forgot to press Copy), NOT a
-          // permission problem — stay in auto mode so the next click
-          // doesn't need a fresh prompt.
-          setSyncBtnState("error",SYNC_LABEL_AUTO,"Clipboard doesn’t have a tour link yet. Press U in the tour, then click Copy to clipboard, then tap here.");
-          return;
+    var now=Date.now();
+    if(!opts||!opts.force){
+      if(now-autoShareLastReadTs<AUTO_SHARE_MIN_GAP_MS) return;
+    }
+    autoShareLastReadTs=now;
+    if(opts&&opts.showReading) setAutoPillState("reading","Sharing view…");
+    var p;
+    try { p=navigator.clipboard.readText(); } catch(_e){
+      enterTapMode("Tap to share (clipboard blocked)");
+      return;
+    }
+    if(!p||typeof p.then!=="function"){
+      enterTapMode("Tap to share (clipboard blocked)");
+      return;
+    }
+    p.then(function(text){
+      if(typeof text!=="string") return;
+      // Silent skip when clipboard hasn't changed since our last poll —
+      // avoids replaying the same URL endlessly.
+      if(text===autoShareLastClipText) return;
+      autoShareLastClipText=text;
+      var parsed=parseMatterportLocationUrl(text);
+      if(!parsed){
+        // Only the explicit click path shows a "not a tour link" hint;
+        // background polling stays quiet.
+        if(opts&&opts.showReading){
+          setAutoPillState("error","Press U then Copy in tour first");
+          scheduleAutoPillIdle();
         }
-        attemptSendLocation(parsed);
-      },function(err){
-        var name=err&&err.name?err.name:"";
-        if(name==="NotAllowedError"||name==="SecurityError"){
-          enterPasteMode("Permission denied. Paste your tour link below — we won’t ask again this session.");
-        } else {
-          enterPasteMode("Couldn’t read the clipboard. Paste your tour link below — we won’t ask again this session.");
-        }
-      });
+        return;
+      }
+      attemptSendLocation(parsed);
+    },function(err){
+      var name=err&&err.name?err.name:"";
+      if(name==="NotAllowedError"||name==="SecurityError"){
+        enterTapMode("Tap to share (allow clipboard once)");
+      } else if(opts&&opts.showReading){
+        setAutoPillState("error","Couldn't read clipboard");
+        scheduleAutoPillIdle();
+      }
     });
   }
 
-  // Send from the visible paste input. Used in paste mode (after
-  // denial / unsupported) and as the keyboard-Enter handler on the
-  // input itself.
+  function startAutoSharePolling(){
+    if(autoShareListenersBound) return;
+    autoShareListenersBound=true;
+    // Refresh on every signal that the user just returned from the
+    // iframe / Matterport popup: focus, visibility change, plus a
+    // lightweight interval as a backstop. All three funnel through
+    // the same throttled tryReadAndShare().
+    window.addEventListener("focus",autoShareSignal);
+    document.addEventListener("visibilitychange",autoShareSignal);
+    autoSharePollTimer=setInterval(autoShareSignal,AUTO_SHARE_POLL_MS);
+  }
+
+  function stopAutoSharePolling(){
+    if(!autoShareListenersBound) return;
+    autoShareListenersBound=false;
+    try { window.removeEventListener("focus",autoShareSignal); } catch(_e){}
+    try { document.removeEventListener("visibilitychange",autoShareSignal); } catch(_e){}
+    if(autoSharePollTimer){ try { clearInterval(autoSharePollTimer); } catch(_e){} autoSharePollTimer=null; }
+  }
+
+  function autoShareSignal(){
+    if(autoShareMode!=="auto") return;
+    if(document.hidden) return;
+    tryReadAndShare({});
+  }
+
+  // Visitor pill click — used in tap mode (after permission denial).
+  // Marked as a user-gesture read so browsers that allow gated
+  // readText() (Safari with prior user activation) will honour it.
+  if(autoPill){
+    autoPill.addEventListener("click",function(e){
+      // Help button clicks shouldn't trigger a read.
+      if(e.target&&e.target.id==="auto-share-pill-help") return;
+      if(autoShareMode==="paste"){ showFallbackInput(); return; }
+      // Force a read even when we're in auto mode — gives the visitor
+      // a manual escape hatch if the poll missed something.
+      tryReadAndShare({ force: true, showReading: true });
+    });
+  }
+
+  if(autoPillHelp){
+    autoPillHelp.addEventListener("click",function(e){
+      e.stopPropagation();
+      if(!autoCoach) return;
+      autoCoach.hidden=!autoCoach.hidden;
+    });
+  }
+
+  if(autoCoachDismiss){
+    autoCoachDismiss.addEventListener("click",dismissCoach);
+  }
+
   function readPasteInputAndSend(){
     var text=(syncFallbackInput&&syncFallbackInput.value||"").trim();
     if(!text){
-      setSyncBtnState("error",SYNC_LABEL_PASTE,"Paste your tour link in the box first.");
+      setAutoPillState("error","Paste your tour link first");
       if(syncFallbackInput){ try { syncFallbackInput.focus(); } catch(_e){} }
       return;
     }
     var parsed=parseMatterportLocationUrl(text);
     if(!parsed){
-      setSyncBtnState("error",SYNC_LABEL_PASTE,"That doesn’t look like a Matterport link. Copy the full URL from the popup.");
+      setAutoPillState("error","That's not a Matterport link");
       return;
     }
-    attemptSendLocation(parsed);
-  }
-
-  if(syncBtn){
-    syncBtn.addEventListener("click",function(){
-      var s=session.getState();
-      if(s.role!=="visitor"||!s.isConnected) return;
-      var now=Date.now();
-      if(now-lastSentLocationTs<LOC_SYNC_RATE_LIMIT_MS&&!syncBtn.classList.contains("is-error")) return;
-      if(locSyncMode==="paste") readPasteInputAndSend();
-      else readClipboardAndSend();
-    });
+    if(attemptSendLocation(parsed)){
+      if(syncFallbackInput) syncFallbackInput.value="";
+    }
   }
 
   if(syncFallbackSubmit&&syncFallbackInput){
@@ -4814,6 +4856,44 @@ if(frame){
     syncFallbackInput.addEventListener("keydown",function(e){
       if(e.key==="Enter"){ e.preventDefault(); readPasteInputAndSend(); }
     });
+    // Auto-send the moment a valid URL is pasted, so the visitor
+    // doesn't have to click Send afterward.
+    syncFallbackInput.addEventListener("paste",function(){
+      setTimeout(function(){
+        var t=(syncFallbackInput.value||"").trim();
+        var parsed=parseMatterportLocationUrl(t);
+        if(parsed&&attemptSendLocation(parsed)){
+          syncFallbackInput.value="";
+        }
+      },0);
+    });
+  }
+
+  // Called once per session, the first time the visitor's data channel
+  // opens. Reveals the pill, kicks off polling, and shows the one-time
+  // coach mark if the visitor has never seen it.
+  function activateVisitorAutoShare(){
+    if(autoShareStarted) return;
+    autoShareStarted=true;
+    showAutoPill();
+    showCoachIfFirstTime();
+    if(!navigator||!navigator.clipboard||typeof navigator.clipboard.readText!=="function"){
+      enterPasteMode("Clipboard read not supported — use paste");
+      return;
+    }
+    // If the Permissions API has already told us the grant is denied,
+    // skip auto-polling entirely and go straight to tap mode.
+    try {
+      if(navigator.permissions&&typeof navigator.permissions.query==="function"){
+        navigator.permissions.query({ name: "clipboard-read" }).then(function(r){
+          var st=(r&&r.state)||"unknown";
+          if(st==="denied") enterTapMode("Tap to share (clipboard blocked)");
+          else startAutoSharePolling();
+        },function(){ startAutoSharePolling(); });
+        return;
+      }
+    } catch(_e){}
+    startAutoSharePolling();
   }
 
   // Agent-side: receive + Follow
