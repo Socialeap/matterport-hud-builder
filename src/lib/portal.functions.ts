@@ -4494,6 +4494,10 @@ if(frame){
     lastPointerSeq=0;
     lastStrokeSeq=0;
     lastClearSeq=0;
+    lastNavLockSeq=0;
+    // Defensive: release any nav-lock overlay on teardown so a dropped
+    // unlock packet can't leave the visitor permanently frozen.
+    try { applyNavLock(false); } catch(_e){}
     hideCapturePanel();
     resetUiToIdle();
     // Re-create the controller so a fresh session can be started
