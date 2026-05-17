@@ -1867,9 +1867,9 @@ ${askAssets.css}
     <button type="button" id="lt-sync-btn" class="lt-action-btn" aria-expanded="false" aria-controls="lt-sync-panel">Sync My View</button>
     <div id="lt-sync-panel" role="region" aria-label="Sync your view instructions">
       <div id="lt-sync-steps">
-        <span class="loc-sync-step"><span class="loc-sync-step-num">1</span><span>Press <kbd>U</kbd> in the tour</span></span>
-        <span class="loc-sync-step"><span class="loc-sync-step-num">2</span><span>Click <strong>Copy to clipboard</strong></span></span>
-        <span class="loc-sync-step"><span class="loc-sync-step-num">3</span><span>Tap the button below</span></span>
+        <span class="loc-sync-step"><span class="loc-sync-step-num">1</span><span>Position to the exact viewpoint you want the agent to see</span></span>
+        <span class="loc-sync-step"><span class="loc-sync-step-num">2</span><span>Press the <kbd>U</kbd> key on your keyboard + click <strong>Copy to clipboard</strong></span></span>
+        <span class="loc-sync-step"><span class="loc-sync-step-num">3</span><span>Click the <strong>Sync</strong> button below</span></span>
       </div>
       <div id="loc-sync-action">
         <button type="button" id="loc-sync-btn" aria-describedby="loc-sync-status">
