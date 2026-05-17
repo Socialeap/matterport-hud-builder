@@ -4333,9 +4333,6 @@ if(frame){
       }
     });
   }
-  if(captureSaveBtn) captureSaveBtn.addEventListener("click",downloadCaptureSpec);
-  if(captureCancelBtn) captureCancelBtn.addEventListener("click",hideCapturePanel);
-
   // Stroke color picker — updates the live ANNO_STROKE_COLOR used for
   // subsequent strokes. Existing committed strokes keep their original
   // color (each stroke carries its own color on the wire and in
