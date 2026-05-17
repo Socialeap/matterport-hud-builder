@@ -4354,6 +4354,34 @@ if(frame){
       if(!ANNO_COLOR_WHITELIST[v]){ annoColorSelect.value=ANNO_STROKE_COLOR; return; }
       ANNO_STROKE_COLOR=v;
       if(annoColorSwatch) annoColorSwatch.style.background=v;
+      // Live-update the in-progress rope so its outline (and latch
+      // fill) repaint immediately, and broadcast a fresh snapshot so
+      // the visitor sees the new color before the next mouse move.
+      if(activeRope){
+        activeRope.color=v;
+        scheduleRopeFlush();
+        redrawAllStrokes();
+      }
+    });
+  }
+
+  // Focus Rope shape picker — Circle / Box. Whitelist-guarded just
+  // like the color picker so a hijacked <option> can't push arbitrary
+  // state into the renderer. Changing mid-edit regenerates the active
+  // rope's polyline so the visitor sees the new shape immediately.
+  var annoShapeSelect=document.getElementById("anno-shape-select");
+  if(annoShapeSelect){
+    annoShapeSelect.value=ANNO_ROPE_SHAPE;
+    annoShapeSelect.addEventListener("change",function(){
+      var v=String(annoShapeSelect.value||"").toLowerCase();
+      if(!ANNO_ROPE_SHAPE_WHITELIST[v]){ annoShapeSelect.value=ANNO_ROPE_SHAPE; return; }
+      ANNO_ROPE_SHAPE=v;
+      if(activeRope){
+        activeRope.shape=v;
+        ropeRegenerate(activeRope);
+        scheduleRopeFlush();
+        redrawAllStrokes();
+      }
     });
   }
 
