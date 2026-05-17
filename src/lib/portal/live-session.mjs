@@ -723,6 +723,8 @@ function createLiveSession(options) {
       return false;
     }
   }
+
+  function dispose() {
     if (disposed) return;
     disposed = true;
     listeners.length = 0;
