@@ -1678,12 +1678,21 @@ body.live-tour-active.live-tour-visitor #loc-sync{display:inline-flex}
 #loc-sync[data-state="success"]{background:rgba(22,163,74,0.85);border-color:rgba(22,163,74,0.95)}
 #loc-sync[data-state="success"] .loc-sync-dot{background:#fff;animation:none;box-shadow:none}
 #loc-sync[data-state="success"] .loc-sync-dot::after{content:"";position:absolute;width:6px;height:3px;border-left:2px solid #16a34a;border-bottom:2px solid #16a34a;transform:rotate(-45deg) translate(0.5px,-1px)}
-#loc-sync[data-state="denied"]{background:rgba(180,83,9,0.78);border-color:rgba(180,83,9,0.9)}
-#loc-sync[data-state="denied"] .loc-sync-dot{background:rgba(255,255,255,0.95);animation:none;box-shadow:none}
-#loc-sync[data-state="denied"] .loc-sync-dot::after{content:"";position:absolute;width:4px;height:3px;border:1.5px solid #b45309;border-bottom:none;border-radius:2px 2px 0 0;top:1px}
 #loc-sync[data-state="waiting"]{opacity:0.65}
 #loc-sync[data-state="waiting"] .loc-sync-dot{background:rgba(255,255,255,0.5);animation:loc-sync-breath 3s ease-in-out infinite}
 @media(max-width:560px){#loc-sync{padding:5px 12px 5px 8px;font-size:11px}}
+
+/* Tips dropdown — appears just below the pulse pill on every click.
+   Brief instructional card with the 2-step user flow. CSS-gated to
+   visitor role so it never renders for the agent. */
+#loc-sync-tips{position:fixed;top:88px;left:8px;z-index:1245;display:none;flex-direction:column;width:min(260px,calc(100vw - 16px));padding:10px 14px 12px;border-radius:12px;background:rgba(0,0,0,0.82);border:1px solid rgba(255,255,255,0.16);color:#fff;font:500 12px/1.45 system-ui,-apple-system,sans-serif;-webkit-backdrop-filter:blur(16px) saturate(170%);backdrop-filter:blur(16px) saturate(170%);box-shadow:0 12px 28px rgba(0,0,0,0.42);animation:loc-sync-tips-in 0.22s ease-out;pointer-events:none}
+body.live-tour-active.live-tour-visitor #loc-sync-tips:not([hidden]){display:flex}
+#loc-sync-tips ol{margin:0;padding-left:22px}
+#loc-sync-tips li{margin-bottom:3px;color:rgba(255,255,255,0.94)}
+#loc-sync-tips li:last-child{margin-bottom:0}
+#loc-sync-tips strong{color:#fff;font-weight:700}
+#loc-sync-tips kbd{display:inline-block;padding:1px 7px;border-radius:4px;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.26);font:700 11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:#fff}
+@keyframes loc-sync-tips-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
 
 /* Agent auto-follow visual cue — brief outline pulse on the iframe
    wrap when a visitor's location_share arrives. No agent UI; the
@@ -1863,6 +1872,16 @@ ${askAssets.css}
 <div id="loc-sync" data-state="waiting" role="button" tabindex="0" aria-label="Sync your view with the agent">
   <span class="loc-sync-dot" aria-hidden="true"></span>
   <span class="loc-sync-label" aria-live="polite">Connecting…</span>
+</div>
+
+<!-- Tips dropdown — appears below the pulse pill on every click. Brief
+     instructional card; auto-dismisses after a few seconds OR on
+     successful sync. CSS-gated to visitor role. -->
+<div id="loc-sync-tips" role="status" aria-live="polite" hidden>
+  <ol>
+    <li>Press <kbd>U</kbd> + click <strong>Copy to clipboard</strong></li>
+    <li>Click <strong>Allow</strong> on the browser prompt</li>
+  </ol>
 </div>
 
 <button id="hud-toggle" aria-label="Show or hide the top toolbar" title="Show / hide header" aria-keyshortcuts="H">
@@ -4550,9 +4569,11 @@ if(frame){
   // browsers where ambient polling fails (FF/Safari per-call prompts).
   var syncBtn=document.getElementById("loc-sync");
   var syncLabelEl=syncBtn?syncBtn.querySelector(".loc-sync-label"):null;
+  var tipsEl=document.getElementById("loc-sync-tips");
 
   var LOC_SYNC_POLL_THROTTLE_MS=800;
   var LOC_SYNC_SUCCESS_RESET_MS=1800;
+  var LOC_SYNC_TIPS_DURATION_MS=5500;
   // locSyncGranted is a hint, not a hard gate — every poll attempts
   // readText() inside try/catch and degrades gracefully on rejection.
   var locSyncGranted=false;
@@ -4561,12 +4582,31 @@ if(frame){
   var lastSentLocationTs=0;
   var lastShareTs=0;
   var syncResetTimer=null;
+  var tipsTimer=null;
+
+  // Tips dropdown — instructional card that appears below the pill on
+  // every click. Auto-dismisses after a few seconds OR on successful
+  // sync (no need to keep showing instructions once the visitor has
+  // proven they know what to do).
+  function showTips(){
+    if(!tipsEl) return;
+    tipsEl.hidden=false;
+    if(tipsTimer){ try { clearTimeout(tipsTimer); } catch(_e){} }
+    tipsTimer=setTimeout(function(){
+      if(tipsEl) tipsEl.hidden=true;
+      tipsTimer=null;
+    },LOC_SYNC_TIPS_DURATION_MS);
+  }
+
+  function hideTips(){
+    if(tipsEl) tipsEl.hidden=true;
+    if(tipsTimer){ try { clearTimeout(tipsTimer); } catch(_e){} tipsTimer=null; }
+  }
 
   var LOC_SYNC_LABELS={
-    idle:"Live with agent",
+    idle:"To sync your view…",
     syncing:"Aligning agent’s view…",
-    success:"Views synced",
-    denied:"Tap to enable sync",
+    success:"View Synced",
     waiting:"Connecting…"
   };
 
@@ -4592,6 +4632,7 @@ if(frame){
     lastSentLocationKey="";
     lastSentLocationTs=0;
     lastShareTs=0;
+    hideTips();
     setPulseState("waiting");
   }
 
@@ -4640,33 +4681,26 @@ if(frame){
     return false;
   }
 
-  // Pre-flight the clipboard permission via the Permissions API where
-  // it's supported (Chromium-family). If it's already "denied" we skip
-  // the readText() call entirely so the visitor never sees an extra
-  // popup. Browsers without the Permissions API for clipboard-read
-  // (Safari/Firefox) return "unknown" and fall through to readText.
-  function queryClipboardPermission(){
-    try {
-      if(!navigator||!navigator.permissions||typeof navigator.permissions.query!=="function"){
-        return Promise.resolve("unknown");
-      }
-      return navigator.permissions.query({ name: "clipboard-read" }).then(function(result){
-        return (result&&result.state)||"unknown";
-      },function(){ return "unknown"; });
-    } catch(_e){
-      return Promise.resolve("unknown");
-    }
-  }
-
   // The single workhorse — used by both ambient triggers and the
-  // pulse-pill click fallback. gestureBound is true when the caller
-  // is a user gesture (click), which is the path Firefox/Safari need.
+  // pulse-pill click fallback. `gestureBound` is true when the caller
+  // is a user gesture (click); we keep the parameter for compatibility
+  // but it no longer changes branching (both paths look the same now).
+  //
+  // We deliberately do NOT call navigator.permissions.query() before
+  // readText(). On file:// the Permissions API returned stale "denied"
+  // even while the live browser popup was pending, causing the pill
+  // to flip to "Tap to enable sync" mid-flow and confuse the visitor.
+  // The popup itself is the source of truth — let readText() raise it,
+  // and trust the Promise resolution to tell us the outcome.
   function readClipboardAndSend(gestureBound){
     var s=session.getState();
     if(s.role!=="visitor"||!s.isConnected) return;
     setPulseState("syncing");
-    // Pull focus back to the parent doc — clipboard.readText() rejects
-    // NotAllowedError when the iframe holds focus.
+    // Pull focus back to the parent doc just before readText —
+    // clipboard.readText() rejects NotAllowedError when the iframe
+    // holds focus. The outer click handler returns focus to the iframe
+    // AFTER readText() has been initiated, so the user can press U
+    // without re-clicking.
     try { window.focus(); } catch(_e){}
     try {
       if(document.documentElement&&typeof document.documentElement.focus==="function"){
@@ -4674,42 +4708,39 @@ if(frame){
       }
     } catch(_e){}
     if(!navigator||!navigator.clipboard||typeof navigator.clipboard.readText!=="function"){
-      setPulseState("denied");
+      // Browser doesn't support clipboard reads at all (very old or
+      // sandboxed). Revert to idle so the label keeps inviting the
+      // visitor to try; nothing else we can do.
+      setPulseState("idle");
       return;
     }
-    queryClipboardPermission().then(function(permState){
-      if(permState==="denied"){
-        setPulseState("denied");
+    var p;
+    try { p=navigator.clipboard.readText(); } catch(_e){
+      setPulseState("idle");
+      return;
+    }
+    if(!p||typeof p.then!=="function"){
+      setPulseState("idle");
+      return;
+    }
+    p.then(function(text){
+      var parsed=parseMatterportLocationUrl(text);
+      if(!parsed){
+        // Clipboard reachable but no tour link. Revert to idle so the
+        // visitor sees the "To sync your view…" invitation again. The
+        // tips dropdown is the guidance surface; the pill stays calm.
+        setPulseState("idle");
         return;
       }
-      var p;
-      try { p=navigator.clipboard.readText(); } catch(_e){
-        setPulseState(gestureBound?"denied":"idle");
-        return;
-      }
-      if(!p||typeof p.then!=="function"){
-        setPulseState(gestureBound?"denied":"idle");
-        return;
-      }
-      p.then(function(text){
-        var parsed=parseMatterportLocationUrl(text);
-        if(!parsed){
-          // Clipboard reachable but no tour link. Don't nag —
-          // silently revert to idle. Ambient triggers fire often;
-          // flashing an error every alt-tab would be a nag.
-          setPulseState("idle");
-          return;
-        }
-        locSyncGranted=true;
-        attemptSendLocation(parsed);
-      },function(err){
-        var name=err&&err.name?err.name:"";
-        if(name==="NotAllowedError"||name==="SecurityError"){
-          setPulseState("denied");
-        } else {
-          setPulseState("idle");
-        }
-      });
+      locSyncGranted=true;
+      attemptSendLocation(parsed);
+      // Sync succeeded — the tips dropdown served its purpose, hide it.
+      hideTips();
+    },function(){
+      // Read rejected (NotAllowedError / SecurityError / etc.). Revert
+      // to idle. The tips dropdown — already shown on click — keeps
+      // teaching the user how to grant permission ("Click Allow").
+      setPulseState("idle");
     });
   }
 
@@ -4727,17 +4758,27 @@ if(frame){
     readClipboardAndSend(false);
   }
 
+  // Click handler — three actions in tight sequence:
+  //   1. Show the instructional tips card (1) Press U + Copy, 2) Allow).
+  //   2. Initiate the clipboard read (must happen before focus shift —
+  //      readText() needs the parent doc to have focus at call time).
+  //   3. Return focus to the iframe so the visitor can press U without
+  //      re-clicking on the 3D scene first.
+  function handlePulseTap(){
+    showTips();
+    readClipboardAndSend(true);
+    if(frame){
+      try { frame.focus({ preventScroll: true }); } catch(_e){
+        try { frame.focus(); } catch(_e2){}
+      }
+    }
+  }
+
   if(syncBtn){
-    // Click: user-gesture fallback. Always available — handles the
-    // permission-denied → re-prompt path on FF/Safari and any case
-    // where ambient triggers didn't fire (e.g., visitor pressed U,
-    // copied, never moved the mouse out of the iframe).
-    syncBtn.addEventListener("click",function(){
-      readClipboardAndSend(true);
-    });
+    syncBtn.addEventListener("click",handlePulseTap);
     // Keyboard a11y — Enter/Space activates the role="button" pill.
     syncBtn.addEventListener("keydown",function(e){
-      if(e.key==="Enter"||e.key===" "){ e.preventDefault(); readClipboardAndSend(true); }
+      if(e.key==="Enter"||e.key===" "){ e.preventDefault(); handlePulseTap(); }
     });
   }
 
@@ -4748,6 +4789,20 @@ if(frame){
   if(letterboxWrap){
     letterboxWrap.addEventListener("pointerenter",schedulePoll);
   }
+
+  // Persistence hack — Chrome 124+ exposes a `clipboardchange` event
+  // that fires when the system clipboard contents change. Once the
+  // visitor has granted the persistent "Always allow" permission,
+  // this event lets us auto-detect Matterport's Copy click without
+  // any further user gesture or prompt. Older browsers don't expose
+  // the API; the addEventListener call is a no-op there. Safe by
+  // default — schedulePoll's throttle + content dedupe drop redundant
+  // reads if the event fires more often than expected.
+  try {
+    if(navigator&&navigator.clipboard&&typeof navigator.clipboard.addEventListener==="function"){
+      navigator.clipboard.addEventListener("clipboardchange",schedulePoll);
+    }
+  } catch(_e){}
 
   // Pillar C — Hover focus injection. On mouseenter into the iframe
   // wrap, force the iframe to take keyboard focus so pressing U works
@@ -5033,11 +5088,11 @@ if(frame){
 
     // Visitor's pulse pill: reflects connection state. When connected,
     // settle into idle (breathing pulse). When disconnected, dim to
-    // waiting. Don't clobber transient syncing/success/denied states.
+    // waiting. Don't clobber a transient syncing/success state.
     if(state.role==="visitor"&&syncBtn){
       var curState=syncBtn.getAttribute("data-state");
       if(!state.isConnected){
-        if(curState!=="syncing"&&curState!=="denied") setPulseState("waiting");
+        if(curState!=="syncing") setPulseState("waiting");
       } else if(curState==="waiting"){
         setPulseState("idle");
       }
