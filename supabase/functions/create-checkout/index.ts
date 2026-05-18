@@ -62,6 +62,7 @@ serve(async (req) => {
       mode: isRecurring ? "subscription" : "payment",
       ui_mode: "embedded",
       return_url: returnUrl || `${req.headers.get("origin")}/checkout/return?session_id={CHECKOUT_SESSION_ID}`,
+      allow_promotion_codes: true,
       ...(customerEmail && { customer_email: customerEmail }),
     };
 
