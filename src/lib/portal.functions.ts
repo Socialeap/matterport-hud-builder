@@ -1642,10 +1642,17 @@ body.live-tour-active #hud-leave-btn{display:none !important}
    cover the Matterport URL popup that opens near the top-right. */
 body.live-tour-active #hud-toggle{left:8px;right:auto}
 
-#live-tour-control-drawer{display:none;position:fixed;top:0;left:0;height:100%;width:min(280px,82vw);z-index:1250;transform:translateX(-100%);transition:transform 0.28s ease;background:${escapeHtml(hudBgColor)}ee;-webkit-backdrop-filter:blur(20px) saturate(170%);backdrop-filter:blur(20px) saturate(170%);border-right:1px solid rgba(255,255,255,0.08);box-shadow:6px 0 28px rgba(0,0,0,0.32);will-change:transform}
+#live-tour-control-drawer{display:none;position:fixed;top:0;left:0;height:100%;width:min(320px,90vw);z-index:1250;transform:translateX(-100%);transition:transform 0.28s ease;background:${escapeHtml(hudBgColor)}ee;-webkit-backdrop-filter:blur(20px) saturate(170%);backdrop-filter:blur(20px) saturate(170%);border-right:1px solid rgba(255,255,255,0.08);box-shadow:6px 0 28px rgba(0,0,0,0.32);will-change:transform}
 body.live-tour-active #live-tour-control-drawer{display:flex;flex-direction:column}
 #live-tour-control-drawer.open{transform:translateX(0)}
 #ltcd-inner{display:flex;flex-direction:column;gap:10px;padding:52px 16px 18px;color:#fff;overflow-y:auto;height:100%;box-sizing:border-box}
+/* While the live tour is active, the right-side Live Tour drawer is
+   merged into this left drawer (see __relocateLiveGuide in the
+   runtime). Hide the right drawer entirely so there is exactly one
+   panel on screen and never two competing surfaces. */
+body.live-tour-active #live-tour-drawer{display:none !important}
+#ltcd-inner .drawer-live-guide{margin-top:0;border-top:none;padding-top:0;margin-bottom:0}
+#ltcd-inner .lg-stops{max-height:calc(100vh - 280px);overflow-y:auto}
 #ltcd-header{display:flex;align-items:center;gap:10px;min-width:0;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.08);margin-bottom:4px}
 #ltcd-logo{height:22px;width:auto;flex-shrink:0}
 #ltcd-brand{font:700 13px/1.2 system-ui,-apple-system,sans-serif;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
@@ -1859,6 +1866,11 @@ ${askAssets.css}
       <div id="ltcd-brand">${escapeHtml(brandName)}</div>
       <span id="ltcd-status">Live Tour</span>
     </div>
+    <!-- Slot: while live-tour-active, the runtime relocates the
+         #drawer-live-guide subtree (PIN entry / agent controls / tour
+         stops) into this slot so visitor + agent see a single unified
+         panel on the LEFT instead of two competing drawers. -->
+    <div id="ltcd-live-guide-slot"></div>
      <button type="button" id="lt-leave-btn" class="lt-action-btn lt-leave" aria-label="Leave live tour">Leave</button>
   </div>
 </div>
@@ -4045,6 +4057,25 @@ if(frame){
   // wrap. Both ends store the same numbers on the wire; the renderer
   // multiplies by current canvas pixels at draw time so a viewport
   // resize on either side stays consistent.
+  // Move the #drawer-live-guide subtree between its two homes so that
+  // there is only ever ONE live-tour panel on screen. Listeners survive
+  // appendChild (it relocates, does not clone) so PIN entry, Start as
+  // Agent, Tour Stops clicks etc. keep working without rewiring. Safe
+  // to call repeatedly — if the node is already at the requested home
+  // appendChild is a no-op.
+  function relocateLiveGuide(toLeft){
+    try {
+      var guide=document.getElementById("drawer-live-guide");
+      if(!guide) return;
+      var leftHome=document.getElementById("ltcd-live-guide-slot");
+      var rightHome=document.getElementById("live-tour-inner");
+      var target=toLeft?leftHome:rightHome;
+      if(target && guide.parentNode!==target){
+        target.appendChild(guide);
+      }
+    } catch(_e){}
+  }
+
   function setBodyLetterboxClass(active,isAgent){
     if(!document||!document.body) return;
     if(active){
@@ -4056,15 +4087,24 @@ if(frame){
         document.body.classList.add("live-tour-visitor");
         document.body.classList.remove("live-tour-agent");
       }
+      relocateLiveGuide(true);
     } else {
       document.body.classList.remove("live-tour-active");
       document.body.classList.remove("live-tour-agent");
       document.body.classList.remove("live-tour-visitor");
+      relocateLiveGuide(false);
     }
     // Reset the chevron-driven HUD visibility whenever the mode switches
     // so the newly-active header (regular ↔ live-tour) starts collapsed
     // and never inherits a stale "visible" state from the previous mode.
     try { if(typeof window.__setHudVisible==="function") window.__setHudVisible(false); } catch(_e){}
+    // Auto-open the LEFT drawer for the agent on connection so they
+    // immediately see the merged PIN + Tour Stops panel without a
+    // chevron click. Visitor still auto-closes (see onState) so the
+    // 3D tour fills their screen.
+    if(active && isAgent){
+      try { if(typeof window.__setHudVisible==="function") window.__setHudVisible(true); } catch(_e){}
+    }
   }
 
   function setToolMode(mode){
