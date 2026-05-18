@@ -1428,7 +1428,9 @@ export const generatePresentation = createServerFn({ method: "POST" })
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-${faviconUrl ? `<link rel="icon" href="${escapeHtml(faviconUrl)}">` : ""}
+<link rel="icon" type="${iconMimeType}" href="${escapeHtml(effectiveFaviconUrl)}">
+<link rel="shortcut icon" type="${iconMimeType}" href="${escapeHtml(effectiveFaviconUrl)}">
+<link rel="apple-touch-icon" href="${escapeHtml(effectiveFaviconUrl)}">
 <title>${escapeHtml(model.name || "3D Presentation")}</title>
 ${gaTrackingId ? `<script async src="https://www.googletagmanager.com/gtag/js?id=${escapeHtml(gaTrackingId)}"></script>
 <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${escapeHtml(gaTrackingId)}');</script>` : ""}
