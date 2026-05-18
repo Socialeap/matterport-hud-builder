@@ -1866,6 +1866,11 @@ ${askAssets.css}
       <div id="ltcd-brand">${escapeHtml(brandName)}</div>
       <span id="ltcd-status">Live Tour</span>
     </div>
+    <!-- Slot: while live-tour-active, the runtime relocates the
+         #drawer-live-guide subtree (PIN entry / agent controls / tour
+         stops) into this slot so visitor + agent see a single unified
+         panel on the LEFT instead of two competing drawers. -->
+    <div id="ltcd-live-guide-slot"></div>
      <button type="button" id="lt-leave-btn" class="lt-action-btn lt-leave" aria-label="Leave live tour">Leave</button>
   </div>
 </div>
