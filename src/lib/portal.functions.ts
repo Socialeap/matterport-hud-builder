@@ -1664,7 +1664,7 @@ body.live-tour-active #live-tour-control-drawer{display:flex;flex-direction:colu
    just below the top-left chevron so it cannot collide with Matterport's
    "Link to location" popup (top-right) or the drawer (off-screen). */
 #loc-sync{position:fixed;top:50px;left:8px;z-index:1240;display:none;align-items:center;gap:8px;padding:6px 14px 6px 10px;border-radius:999px;background:rgba(0,0,0,0.58);border:1px solid rgba(255,255,255,0.18);color:#fff;font:600 12px/1 system-ui,-apple-system,sans-serif;-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%);box-shadow:0 6px 20px rgba(0,0,0,0.32);cursor:help;user-select:none;transition:background 0.2s,opacity 0.2s;pointer-events:auto;max-width:min(280px,calc(100vw - 16px))}
-body.live-tour-active.live-tour-visitor #loc-sync{display:inline-flex}
+body.live-tour-active.live-tour-visitor #loc-sync,body.live-tour-active.live-tour-agent #loc-sync{display:inline-flex}
 /* Hover/focus reveal: subtle background brighten only — no transform,
    no active state. The pill is informational, not a button. */
 #loc-sync:hover,#loc-sync:focus-visible{background:rgba(0,0,0,0.7)}
@@ -1685,9 +1685,9 @@ body.live-tour-active.live-tour-visitor #loc-sync{display:inline-flex}
 
 /* Tips dropdown — appears just below the pulse pill on every click.
    Brief instructional card with the 2-step user flow. CSS-gated to
-   visitor role so it never renders for the agent. */
+   live-tour-active so it renders for both visitor and agent roles. */
 #loc-sync-tips{position:fixed;top:88px;left:8px;z-index:1245;display:none;flex-direction:column;width:min(260px,calc(100vw - 16px));padding:10px 14px 12px;border-radius:12px;background:rgba(0,0,0,0.82);border:1px solid rgba(255,255,255,0.16);color:#fff;font:500 12px/1.45 system-ui,-apple-system,sans-serif;-webkit-backdrop-filter:blur(16px) saturate(170%);backdrop-filter:blur(16px) saturate(170%);box-shadow:0 12px 28px rgba(0,0,0,0.42);animation:loc-sync-tips-in 0.22s ease-out;pointer-events:none}
-body.live-tour-active.live-tour-visitor #loc-sync-tips:not([hidden]){display:flex}
+body.live-tour-active.live-tour-visitor #loc-sync-tips:not([hidden]),body.live-tour-active.live-tour-agent #loc-sync-tips:not([hidden]){display:flex}
 #loc-sync-tips ol{margin:0;padding-left:22px}
 #loc-sync-tips li{margin-bottom:3px;color:rgba(255,255,255,0.94)}
 #loc-sync-tips li:last-child{margin-bottom:0}
@@ -1863,27 +1863,28 @@ ${askAssets.css}
   </div>
 </div>
 
-<!-- ── Location Sync: visitor ambient pulse pill (CSS-gated to visitor) -->
+<!-- ── Location Sync: ambient pulse pill, shown on both visitor + agent -->
 <!-- Single ambient status pill. Read-only / informational — hover or
      keyboard-focus surfaces the instructions tooltip; there is NO click
      action and the pill never steals keyboard focus from the iframe.
      Auto-sync happens silently via clipboardchange / focus /
-     visibilitychange / pointerenter listeners once the visitor grants
-     clipboard permission at join time. data-state drives the visual;
-     aria-live announces label changes. -->
+     visibilitychange / pointerenter listeners once clipboard permission
+     is granted at join / start time. Visitor's send goes through
+     shareLocationWithAgent; agent's send goes through teleportVisitor.
+     data-state drives the visual; aria-live announces label changes. -->
 <div id="loc-sync" data-state="waiting" tabindex="0" aria-label="Tour sync status — hover for instructions">
   <span class="loc-sync-dot" aria-hidden="true"></span>
   <span class="loc-sync-label" aria-live="polite">Connecting…</span>
 </div>
 
 <!-- Tips dropdown — appears below the pulse pill on hover OR keyboard
-     focus. Stays visible while the visitor's cursor is over either the
-     pill or this card; hides ~250ms after they leave both. Read-only —
-     no buttons, no inputs, no controls. CSS-gated to visitor role. -->
+     focus. Stays visible while the cursor is over either the pill or
+     this card; hides ~250ms after the cursor leaves both. Read-only —
+     no buttons, no inputs, no controls. Same card serves both roles. -->
 <div id="loc-sync-tips" role="status" aria-live="polite" hidden>
   <ol>
     <li>Click <strong>Allow</strong> if pop-up asks for permission.</li>
-    <li>Position the view you want agent to see.</li>
+    <li>Position the view you want to share.</li>
     <li>Press <kbd>U</kbd> then <strong>“Click to Copy”</strong> to sync.</li>
   </ol>
 </div>
@@ -4559,21 +4560,22 @@ if(frame){
   // so the U key never breaks because we never overlay the iframe.
   //
   // Permission strategy: we pre-fire navigator.clipboard.readText()
-  // inside the visitor's Join click handler so the browser permission
-  // prompt appears once, at the natural opt-in moment. Chrome/Edge
-  // remember the grant for the rest of the page session, after which
-  // readText() runs silently forever. Safari/Firefox don't expose
-  // clipboard-read at all; they degrade to a single-tap pill, then to
-  // a paste field as a deep fallback. The agent-side "Follow" pill
-  // is untouched.
-  // Visitor's ambient pulse pill (CSS-gated to visitor role). Read-only
-  // / informational — hover or keyboard focus reveals the tips
-  // dropdown; there is NO click action and the pill never steals
+  // inside both Join (visitor) and Start (agent) click handlers so the
+  // browser permission prompt appears once, at the natural opt-in
+  // moment. Chrome/Edge remember the grant for the rest of the page
+  // session, after which readText() runs silently forever. Safari/
+  // Firefox don't expose clipboard-read at all; they degrade to a
+  // single-tap pill, then to a paste field as a deep fallback.
+  // Ambient pulse pill — shown on BOTH visitor and agent sides.
+  // Read-only / informational — hover or keyboard focus reveals the
+  // tips dropdown; there is NO click action and the pill never steals
   // keyboard focus from the iframe. Auto-sync happens silently when
   // the clipboard changes (Matterport's "Copy to clipboard" inside the
   // iframe), via the clipboardchange / focus / visibilitychange /
-  // pointerenter listeners below. Agent gets no UI here — auto-follows
-  // on receive via the onState handler.
+  // pointerenter listeners below. Visitor's send routes through
+  // shareLocationWithAgent → agent's iframe reloads; agent's send
+  // routes through teleportVisitor → visitor's iframe reloads. Both
+  // sides also auto-follow on the inverse packet via onState.
   var syncBtn=document.getElementById("loc-sync");
   var syncLabelEl=syncBtn?syncBtn.querySelector(".loc-sync-label"):null;
   var tipsEl=document.getElementById("loc-sync-tips");
@@ -4589,6 +4591,12 @@ if(frame){
   var lastSentLocationKey="";
   var lastSentLocationTs=0;
   var lastShareTs=0;
+  // Last-Sender-Wins suppression: any outbound sync (ambient or Tour
+  // Stop) stamps lastOwnSendTs. Incoming syncs received within the
+  // SYNC_SUPPRESS_MS window are dropped (watermark still advances) so
+  // simultaneous bidirectional syncs don't swap views.
+  var lastOwnSendTs=0;
+  var SYNC_SUPPRESS_MS=500;
   var syncResetTimer=null;
   var tipsTimer=null;
 
@@ -4647,6 +4655,7 @@ if(frame){
     lastSentLocationKey="";
     lastSentLocationTs=0;
     lastShareTs=0;
+    lastOwnSendTs=0;
     hideTips();
     setPulseState("waiting");
   }
@@ -4684,10 +4693,15 @@ if(frame){
       return true;
     }
     var ok=false;
-    try { ok=session.shareLocationWithAgent(parsed.ss,parsed.sr); } catch(_e){ ok=false; }
+    var role=session.getState().role;
+    try {
+      if(role==="visitor") ok=session.shareLocationWithAgent(parsed.ss,parsed.sr);
+      else if(role==="agent") ok=session.teleportVisitor(parsed.ss,parsed.sr);
+    } catch(_e){ ok=false; }
     if(ok){
       lastSentLocationKey=key;
       lastSentLocationTs=now;
+      lastOwnSendTs=now;
       setPulseState("success");
       scheduleSyncIdleReset();
       return true;
@@ -4716,7 +4730,7 @@ if(frame){
   // is the source of truth.
   function readClipboardAndSend(){
     var s=session.getState();
-    if(s.role!=="visitor"||!s.isConnected) return;
+    if((s.role!=="visitor"&&s.role!=="agent")||!s.isConnected) return;
     if(!navigator||!navigator.clipboard||typeof navigator.clipboard.readText!=="function") return;
     var p;
     try { p=navigator.clipboard.readText(); } catch(_e){ return; }
@@ -4765,7 +4779,7 @@ if(frame){
   function schedulePoll(){
     if(document.hidden) return;
     var s=session.getState();
-    if(s.role!=="visitor"||!s.isConnected) return;
+    if((s.role!=="visitor"&&s.role!=="agent")||!s.isConnected) return;
     var now=Date.now();
     if(now-locSyncLastPollTs<LOC_SYNC_POLL_THROTTLE_MS) return;
     locSyncLastPollTs=now;
@@ -4823,7 +4837,7 @@ if(frame){
   if(letterboxWrap){
     letterboxWrap.addEventListener("pointerenter",function(){
       var st=session.getState();
-      if(st.role!=="visitor") return;
+      if(st.role!=="visitor"&&st.role!=="agent") return;
       var ae=document.activeElement;
       if(ae&&(ae.tagName==="INPUT"||ae.tagName==="TEXTAREA"||ae.isContentEditable)) return;
       if(frame){
@@ -4926,7 +4940,10 @@ if(frame){
         var sent=session.teleportVisitor(stop.ss,stop.sr||"");
         // Whether or not the data channel send succeeds, the agent's
         // own iframe should follow along — they're leading the tour.
-        if(sent) applyTeleport(stop.ss,stop.sr||"");
+        if(sent){
+          lastOwnSendTs=Date.now();
+          applyTeleport(stop.ss,stop.sr||"");
+        }
       });
       stopsContainer.appendChild(btn);
     });
@@ -4991,6 +5008,21 @@ if(frame){
     startBtn.addEventListener("click",function(){
       startBtn.disabled=true;
       if(agentStatus) agentStatus.textContent="Reserving session…";
+      // Pre-grant clipboard permission in the same user gesture as the
+      // Start click — the agent presses U + Copy in their own iframe to
+      // sync the visitor's view, just like the visitor's flow. Prompt
+      // once now; subsequent ambient reads stay silent on Chromium.
+      try {
+        if(navigator&&navigator.permissions&&typeof navigator.permissions.query==="function"){
+          navigator.permissions.query({ name: "clipboard-read" }).then(function(r){
+            locSyncGranted=!!(r&&r.state==="granted");
+          },function(){});
+        }
+        if(navigator&&navigator.clipboard&&typeof navigator.clipboard.readText==="function"){
+          navigator.clipboard.readText().then(function(){ locSyncGranted=true; },
+                                              function(){ locSyncGranted=false; });
+        }
+      } catch(_e){}
       session.initializeAsAgent().catch(function(){
         // error surfaced via subscribe()
       });
@@ -5079,7 +5111,11 @@ if(frame){
     // an unchanged event doesn't keep replaying.
     if(state.role==="visitor"&&state.incomingTeleportEvent&&state.incomingTeleportEvent.ts!==lastTeleportTs){
       lastTeleportTs=state.incomingTeleportEvent.ts;
-      applyTeleport(state.incomingTeleportEvent.ss,state.incomingTeleportEvent.sr);
+      // Last-Sender-Wins: drop incoming if we sent within the last 500ms.
+      // Watermark still advanced above so the same packet isn't replayed.
+      if(lastOwnSendTs===0||(Date.now()-lastOwnSendTs)>=SYNC_SUPPRESS_MS){
+        applyTeleport(state.incomingTeleportEvent.ss,state.incomingTeleportEvent.sr);
+      }
     }
 
     // Agent auto-follow: visitor's location_share patches the state with
@@ -5088,19 +5124,26 @@ if(frame){
     // must never reload from auto-sync, per the role-isolation rule).
     if(state.role==="agent"&&state.incomingLocationShareEvent&&state.incomingLocationShareEvent.ts!==lastShareTs){
       lastShareTs=state.incomingLocationShareEvent.ts;
-      applyTeleport(state.incomingLocationShareEvent.ss,state.incomingLocationShareEvent.sr);
-      if(letterboxWrap){
-        try {
-          letterboxWrap.classList.add("follow-pulse");
-          setTimeout(function(){ if(letterboxWrap) letterboxWrap.classList.remove("follow-pulse"); },1500);
-        } catch(_e){}
+      // Last-Sender-Wins: drop incoming visitor share if we sent within
+      // the last 500ms (ambient sync or Tour Stop). Watermark advanced
+      // above so the same packet won't replay once the window expires.
+      if(lastOwnSendTs===0||(Date.now()-lastOwnSendTs)>=SYNC_SUPPRESS_MS){
+        applyTeleport(state.incomingLocationShareEvent.ss,state.incomingLocationShareEvent.sr);
+        if(letterboxWrap){
+          try {
+            letterboxWrap.classList.add("follow-pulse");
+            setTimeout(function(){ if(letterboxWrap) letterboxWrap.classList.remove("follow-pulse"); },1500);
+          } catch(_e){}
+        }
       }
     }
 
-    // Visitor's pulse pill: reflects connection state. When connected,
-    // settle into idle (breathing pulse). When disconnected, dim to
-    // waiting. Don't clobber a transient syncing/success state.
-    if(state.role==="visitor"&&syncBtn){
+    // Pulse pill: reflects connection state. When connected, settle
+    // into idle (breathing pulse). When disconnected, dim to waiting.
+    // Don't clobber a transient syncing/success state. Both roles use
+    // the same pill — visitor sends location_share, agent sends
+    // teleportVisitor; the pulse states are direction-agnostic.
+    if((state.role==="visitor"||state.role==="agent")&&syncBtn){
       var curState=syncBtn.getAttribute("data-state");
       if(!state.isConnected){
         if(curState!=="syncing") setPulseState("waiting");
