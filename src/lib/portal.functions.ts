@@ -1642,10 +1642,17 @@ body.live-tour-active #hud-leave-btn{display:none !important}
    cover the Matterport URL popup that opens near the top-right. */
 body.live-tour-active #hud-toggle{left:8px;right:auto}
 
-#live-tour-control-drawer{display:none;position:fixed;top:0;left:0;height:100%;width:min(280px,82vw);z-index:1250;transform:translateX(-100%);transition:transform 0.28s ease;background:${escapeHtml(hudBgColor)}ee;-webkit-backdrop-filter:blur(20px) saturate(170%);backdrop-filter:blur(20px) saturate(170%);border-right:1px solid rgba(255,255,255,0.08);box-shadow:6px 0 28px rgba(0,0,0,0.32);will-change:transform}
+#live-tour-control-drawer{display:none;position:fixed;top:0;left:0;height:100%;width:min(320px,90vw);z-index:1250;transform:translateX(-100%);transition:transform 0.28s ease;background:${escapeHtml(hudBgColor)}ee;-webkit-backdrop-filter:blur(20px) saturate(170%);backdrop-filter:blur(20px) saturate(170%);border-right:1px solid rgba(255,255,255,0.08);box-shadow:6px 0 28px rgba(0,0,0,0.32);will-change:transform}
 body.live-tour-active #live-tour-control-drawer{display:flex;flex-direction:column}
 #live-tour-control-drawer.open{transform:translateX(0)}
 #ltcd-inner{display:flex;flex-direction:column;gap:10px;padding:52px 16px 18px;color:#fff;overflow-y:auto;height:100%;box-sizing:border-box}
+/* While the live tour is active, the right-side Live Tour drawer is
+   merged into this left drawer (see __relocateLiveGuide in the
+   runtime). Hide the right drawer entirely so there is exactly one
+   panel on screen and never two competing surfaces. */
+body.live-tour-active #live-tour-drawer{display:none !important}
+#ltcd-inner .drawer-live-guide{margin-top:0;border-top:none;padding-top:0;margin-bottom:0}
+#ltcd-inner .lg-stops{max-height:calc(100vh - 280px);overflow-y:auto}
 #ltcd-header{display:flex;align-items:center;gap:10px;min-width:0;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.08);margin-bottom:4px}
 #ltcd-logo{height:22px;width:auto;flex-shrink:0}
 #ltcd-brand{font:700 13px/1.2 system-ui,-apple-system,sans-serif;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
