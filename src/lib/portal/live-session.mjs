@@ -497,7 +497,16 @@ function createLiveSession(options) {
       var ss = _coerceString(payload.ss).trim();
       var sr = _coerceString(payload.sr).trim();
       if (!ss) return;
+      // Always update the internal viewKey so the annotation receive
+      // filter stays correct — annotation packets carry the viewKey
+      // and we drop stale ones regardless of role.
       _currentViewKey = ss + "|" + sr;
+      // Role-direction guard: `teleport` is an agent → visitor packet.
+      // An agent receiving its own teleport (echo / loopback / test
+      // arrangement) must NOT patch incomingTeleportEvent — doing so
+      // would trigger the agent's parent-code reload branch and cause
+      // an unintended iframe refresh on the wrong side.
+      if (state.role !== "visitor") return;
       _patch({
         incomingTeleportEvent: { ss: ss, sr: sr, ts: Date.now() },
       });
@@ -511,6 +520,13 @@ function createLiveSession(options) {
       var lss = _coerceString(payload.ss).trim();
       var lsr = _coerceString(payload.sr).trim();
       if (!lss) return;
+      // Role-direction guard: `location_share` is a visitor → agent
+      // packet. A visitor receiving its own share bounced back (echo /
+      // loopback) must NOT patch incomingLocationShareEvent — even
+      // though the parent code's auto-follow branch is also role-gated,
+      // sealing this at the controller boundary is the strongest
+      // defense against the visitor's iframe reloading unexpectedly.
+      if (state.role !== "agent") return;
       _patch({
         incomingLocationShareEvent: { ss: lss, sr: lsr, ts: Date.now() },
       });
