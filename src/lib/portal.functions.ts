@@ -4659,7 +4659,7 @@ if(frame){
   }
 
   // The single workhorse — used by both ambient triggers and the
-  // pulse-pill click fallback. `gestureBound` is true when the caller
+  // pulse-pill click fallback. gestureBound is true when the caller
   // is a user gesture (click), which is the path Firefox/Safari need.
   function readClipboardAndSend(gestureBound){
     var s=session.getState();
