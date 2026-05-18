@@ -1,99 +1,69 @@
+## Problem
+
+The generated standalone 3D presentation HTML only emits `<link rel="icon">` when `overrides.faviconUrl` is truthy (`src/lib/portal.functions.ts` line 1412). When the client hasn't uploaded a favicon — or the HTML is opened/embedded under the MSP domain `3dps.transcendencemedia.com` — the browser falls back to that host's `/favicon.png`, which is the Transcendence Media (TM) app icon. Result: TM's icon shows in the tab instead of the client's brand.
+
+The client's favicon is already captured, uploaded to Supabase storage (`brand-assets` bucket via `uploadBrandAsset(...,'favicon')`), and threaded through to `tourConfig.brandingOverrides.faviconUrl` in both the refresh and save flows (`HudBuilderSandbox.tsx` lines 1176 / 1448). The piping is correct; the generator just doesn't guarantee an icon tag is emitted, and doesn't fall back to the client's logo.
+
 ## Goal
-True one-action sync: visitor presses **U → Copy to clipboard** inside Matterport. That's it. Our app detects the new clipboard contents and pushes the view to the agent automatically. No drawer, no paste, no second click, no focus juggling.
 
-## The core idea ("auto-share")
-The only real friction is the browser's clipboard-read permission. Chrome/Edge grant clipboard-read **per-origin for the rest of the session** the first time it's allowed during a user gesture. Once granted, `navigator.clipboard.readText()` runs silently forever after. We exploit that:
+Every generated `.html` presentation must declare an icon tag in `<head>` that points at the client's branding assets, in this priority order:
 
-1. **Pre-grant** clipboard permission during the **same user gesture** that starts the Live Tour (the "Join PIN" / connect click). The browser shows the permission prompt exactly once, at the natural moment the visitor opts in to the live session — not buried mid-flow after they've already pressed U.
-2. **Auto-poll** the clipboard while a Live Tour is active. Whenever a *new* Matterport "Link to location" URL appears, we parse it and call `session.shareLocationWithAgent()` automatically.
-3. **No drawer interaction required** for sync. The "Sync My View" button + instruction panel are demoted to a tiny optional fallback for Safari/Firefox or denied-permission cases.
+1. Client's uploaded favicon (`overrides.faviconUrl`)
+2. Client's uploaded logo (`overrides.logoUrl`) as a graceful fallback
+3. Otherwise, an inline transparent 1×1 data-URI (suppresses the host's TM `/favicon.png` from leaking in)
 
-Visitor's mental model collapses to:
+Never fall through to the MSP/Lovable host favicon.
 
-```text
-Position view → press U → click "Copy to clipboard" → DONE
-                                                       (agent sees a "Follow" pill)
-```
+## Changes
 
-## Why this fixes every problem in the current flow
+### 1. `src/lib/portal.functions.ts` — generator
 
-- **Browser permission prompt only appears once**, at the obvious moment (starting Live Tour), not on every sync.
-- **No drawer opens**, so the iframe never loses focus → the `U` key always works.
-- **No paste step**, no "Sync My View" click, no manual button mashing per viewpoint.
-- The visitor can share many viewpoints in a row with zero extra UI taps.
-- Cross-origin iframe restriction stays respected — we still rely on the user copying the link, but they were doing that anyway.
+- Around line 1061, compute a single `effectiveFaviconUrl`:
+  - prefer `overrides.faviconUrl`
+  - else `overrides.logoUrl`
+  - else a constant `EMPTY_ICON_DATA_URI` (1×1 transparent PNG data URI declared at the top of the file)
+- Derive `iconMimeType` from the URL extension (`.png` / `.jpg` / `.jpeg` / `.svg` / `.webp` / `.ico` → matching `image/*`; default `image/png` for data-URIs and unknowns).
+- Replace the single conditional line at 1412 with three deterministic tags so different browsers/PWA contexts pick the right one:
+  ```html
+  <link rel="icon" type="${mime}" href="${escapeHtml(url)}">
+  <link rel="shortcut icon" type="${mime}" href="${escapeHtml(url)}">
+  <link rel="apple-touch-icon" href="${escapeHtml(url)}">
+  ```
+- Do not change ordering relative to `<title>` (icon tag must remain before `<title>`, already the case).
+- Keep everything inside the existing `escapeHtml` boundary; no new template variables exposed to user-controlled HTML.
 
-## Detection strategy (no permission needed for triggers, only for the read)
+### 2. `src/components/portal/HudBuilderSandbox.tsx` — builder UX (small clarification only)
 
-We don't need the iframe's events; we just need good signals for *when to peek at the clipboard*:
+No logic change to upload/save flow — already correct. Only update the hint text under the favicon input in `BrandingSection` so clients understand the fallback:
+- "If left empty, your uploaded logo will be used as the browser tab icon."
 
-- `window` `focus` event (fires when Matterport's "Copy to clipboard" toast/button click returns focus to the parent doc).
-- `document` `visibilitychange` (covers tab reactivation).
-- Light interval poll (every 700 ms) while a Live Tour is **connected as visitor**, capped to stop after N seconds of no clipboard change to keep CPU/battery negligible.
-- Dedupe by content hash (the existing `ss|sr` key) so a held clipboard never re-sends.
+This means a tiny prop addition (or just adjust copy inside `BrandingSection.tsx` `Favicon / Tab Icon` block, lines 130-140).
 
-## Visible UI changes
+### 3. No DB / migration / RLS changes
 
-1. **Replace the "Sync My View" button + 3-step instruction panel with a slim auto-share status pill** that lives unobtrusively at the bottom of the Live Tour drawer (drawer stays closed by default — the pill itself sits as a fixed bottom-left chip so it's visible without opening anything).
-   - States:
-     - `Auto-share on · share by pressing U → Copy in tour`
-     - `Sharing view…` (transient, ~600 ms)
-     - `Shared ✓ — agent can follow` (auto-fades)
-     - `Auto-share blocked — tap to enable` (only when permission was denied)
+The `branding_settings.favicon_url` column, `brand-assets` bucket, and existing storage policies are unchanged. The override payload already carries `faviconUrl` and `logoUrl`. Existing saved presentations regenerate with the new fallback automatically the next time the user clicks Generate.
 
-2. **First-time coach mark** (one-time, dismissible, stored in `sessionStorage`): a 2-line tooltip that appears the moment the visitor connects, anchored to the pill:
-   > Share what you're looking at any time: **press U → click Copy to clipboard** inside the tour. We'll send it to your agent automatically.
+## Execution trace (verified before plan)
 
-3. **Drawer no longer needs `Sync My View`.** Drawer is reduced to `Leave` only for both roles. (Agent already only had `Leave`.) This eliminates the focus-stealing overlay entirely for the main flow.
+1. Client uploads favicon → `uploadBrandAsset(...,'favicon')` → public URL in `brand-assets` bucket.
+2. Builder save path: `HudBuilderSandbox.tsx:1418-1448` writes `faviconUrl` into `tourConfig.brandingOverrides`.
+3. Builder refresh path: `HudBuilderSandbox.tsx:1119-1176` mirrors the same write.
+4. `generatePresentation` server fn reads `tourConfig.brandingOverrides` → `overrides.faviconUrl` (line 1049 / 1061). **(new)** Computes effective URL with logo + data-URI fallback.
+5. HTML template (line 1407+) emits `<link rel="icon"|"shortcut icon"|"apple-touch-icon">` before `<title>`.
+6. End user downloads `.html` or views it on any host → browser resolves the absolute Supabase storage URL (works for `file://`, `3dps.transcendencemedia.com`, custom domains, embeds).
 
-4. **Denied-permission fallback** (Safari, Firefox, or user clicked Block):
-   - Pill becomes a single tap target: `Tap after pressing Copy to clipboard`.
-   - One tap = one read + send. Still no drawer, no paste, no instructions overlay.
-   - Only if `readText()` is unavailable at all does the legacy paste field surface — kept as a deep fallback, hidden behind a "trouble syncing?" link in the pill.
+## Risk / regression check
 
-## Implementation steps in `src/lib/portal.functions.ts`
+- **Saved models without an uploaded favicon**: previously emitted no icon tag → now emits logo-as-icon, or transparent pixel. Both are strictly better than the current TM bleed-through.
+- **CORS / hotlink**: Supabase storage public URLs already serve `brand-assets` publicly (existing logo embeds rely on this). No new CORS surface.
+- **HTML quality check / regex safety**: `assertRuntimeRegexSafety(html)` runs on the final HTML (line 5259); the added tags use the same `escapeHtml` helper used elsewhere, so no new injection vector.
+- **End-product self-contained constraint** (Core memory): all values are baked at generation time; no runtime phone-home.
+- **Tier gating**: favicon is a branding asset already available to Starter and Pro — no tier logic affected.
+- **Build/lint**: changes are additive string concatenation inside an existing template literal; no new imports, no new dependencies, no schema changes.
 
-1. **Pre-grant during Live Tour join**
-   - In the visitor `Join` button handler and agent `Start` button handler (whichever path the visitor uses), after `session.joinAsVisitor(pin)` resolves, run a one-shot `navigator.clipboard.readText().catch(()=>{})` *inside the same click handler* so it counts as user-gesture-initiated. This triggers the browser prompt once, at the right time.
+## Files touched
 
-2. **Add `startClipboardAutoShare()`**
-   - Wired only for `role === "visitor"` after `isConnected` becomes true.
-   - Sets up: `window.addEventListener("focus", …)`, `document.addEventListener("visibilitychange", …)`, and a `setInterval(700)` poll. All three call a single throttled `tryReadAndShare()`.
-   - `tryReadAndShare()`:
-     - Skip if `permState === "denied"` (already known) or if the last attempt was < 400 ms ago.
-     - Call `navigator.clipboard.readText()`. On success, run `parseMatterportLocationUrl`; if it returns a fresh `ss|sr` (different from `lastSentLocationKey`), call `attemptSendLocation()` immediately.
-     - On `NotAllowedError`, flip the pill to denied state and stop polling.
-   - Teardown on session end / role change.
+- `src/lib/portal.functions.ts` (generator: add helper constants + fallback logic + 3-tag emission)
+- `src/components/portal/BrandingSection.tsx` (single hint string under the favicon input)
 
-3. **Pill component**
-   - New `#auto-share-pill` element, fixed bottom-left, outside the drawer, never overlapping iframe interactions (small, ~220 px wide, low z-index conflict).
-   - Reuses existing status copy and `is-success` / `is-error` styling.
-
-4. **Remove the friction-heavy bits**
-   - Delete `#lt-sync-btn`, `#lt-sync-panel`, the 3-step instruction list, the `openLtSyncPanel` / `closeLtSyncPanel` toggle, and the auto-open-drawer-then-focus dance.
-   - Keep `parseMatterportLocationUrl`, `attemptSendLocation`, `shareLocationWithAgent`, the agent-side "Follow" pill, dedupe, and rate limit — they're already correct.
-   - Drop the second `addEventListener("click", readPasteInputAndSend)` (currently registered twice — minor existing bug).
-
-5. **First-run coach mark**
-   - Render a small tooltip pointing at the pill on first connect; dismiss on any click or after 6 s; remember via `sessionStorage`.
-
-6. **Fallback ladder (in order; first that works wins)**
-   - a. Silent auto-poll (permission granted) → zero clicks.
-   - b. One-tap pill (permission denied but `readText` exists) → one click after Copy.
-   - c. Paste field (no `readText` at all) → hidden behind "trouble syncing?".
-
-## Regression guardrails
-
-- Keep all existing transport, agent-side `Follow` pill, dedupe, rate limit, and teardown paths untouched.
-- Verify that during a Live Tour, no element we add captures pointer events over the iframe — `pointer-events: none` on the pill container, `auto` only on the pill body.
-- Confirm `body.live-tour-active` still hides the regular HUD and that no chevron drawer auto-opens.
-- Re-run the live-session tests; no public API of `createLiveSession` changes.
-
-## What the visitor experiences end-to-end
-
-1. Visitor clicks "Join" with the PIN. Browser asks once: "Allow this site to read the clipboard?" → Allow.
-2. Tiny pill bottom-left: *"Auto-share on — press U → Copy in tour to share."*
-3. Visitor navigates, presses **U**, clicks **Copy to clipboard** in Matterport's native popup.
-4. Within ~700 ms our app reads the clipboard, parses the URL, sends it. Pill flashes *"Shared ✓"*.
-5. Agent's "Follow" pill appears. They click Follow, both views sync.
-6. Repeat indefinitely — no further clicks on our UI ever required.
+No other files require edits.
