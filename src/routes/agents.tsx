@@ -357,7 +357,7 @@ function AgentsPage() {
               );
             })}
           </div>
-          <div className="mt-10 flex items-center justify-center gap-2 text-center text-sm text-white/70">
+          <div className="mt-10 flex items-center justify-center gap-2 text-center text-sm font-medium text-white/70">
             <Sparkles className="size-4 text-amber-300" />
             <span>Curious about our amazing, newly added features? ...</span>
             <a
