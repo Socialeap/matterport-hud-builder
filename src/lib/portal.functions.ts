@@ -4057,6 +4057,25 @@ if(frame){
   // wrap. Both ends store the same numbers on the wire; the renderer
   // multiplies by current canvas pixels at draw time so a viewport
   // resize on either side stays consistent.
+  // Move the #drawer-live-guide subtree between its two homes so that
+  // there is only ever ONE live-tour panel on screen. Listeners survive
+  // appendChild (it relocates, does not clone) so PIN entry, Start as
+  // Agent, Tour Stops clicks etc. keep working without rewiring. Safe
+  // to call repeatedly — if the node is already at the requested home
+  // appendChild is a no-op.
+  function relocateLiveGuide(toLeft){
+    try {
+      var guide=document.getElementById("drawer-live-guide");
+      if(!guide) return;
+      var leftHome=document.getElementById("ltcd-live-guide-slot");
+      var rightHome=document.getElementById("live-tour-inner");
+      var target=toLeft?leftHome:rightHome;
+      if(target && guide.parentNode!==target){
+        target.appendChild(guide);
+      }
+    } catch(_e){}
+  }
+
   function setBodyLetterboxClass(active,isAgent){
     if(!document||!document.body) return;
     if(active){
@@ -4068,15 +4087,24 @@ if(frame){
         document.body.classList.add("live-tour-visitor");
         document.body.classList.remove("live-tour-agent");
       }
+      relocateLiveGuide(true);
     } else {
       document.body.classList.remove("live-tour-active");
       document.body.classList.remove("live-tour-agent");
       document.body.classList.remove("live-tour-visitor");
+      relocateLiveGuide(false);
     }
     // Reset the chevron-driven HUD visibility whenever the mode switches
     // so the newly-active header (regular ↔ live-tour) starts collapsed
     // and never inherits a stale "visible" state from the previous mode.
     try { if(typeof window.__setHudVisible==="function") window.__setHudVisible(false); } catch(_e){}
+    // Auto-open the LEFT drawer for the agent on connection so they
+    // immediately see the merged PIN + Tour Stops panel without a
+    // chevron click. Visitor still auto-closes (see onState) so the
+    // 3D tour fills their screen.
+    if(active && isAgent){
+      try { if(typeof window.__setHudVisible==="function") window.__setHudVisible(true); } catch(_e){}
+    }
   }
 
   function setToolMode(mode){
