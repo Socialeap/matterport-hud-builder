@@ -4775,7 +4775,7 @@ if(frame){
   // Pill is informational only — hover or keyboard focus reveals the
   // tips card; there is NO click action and no Enter/Space handler.
   // This is critical: ANY focus shift to the pill would steal keyboard
-  // control from the iframe and break the visitor pressing `U` next.
+  // control from the iframe and break the visitor pressing U next.
   // The visitor's only interactions are inside the Matterport iframe
   // (press U, click Copy to clipboard) plus the one-time browser
   // permission "Allow" prompt at Join time.
