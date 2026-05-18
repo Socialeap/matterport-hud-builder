@@ -135,7 +135,7 @@ export function BrandingSection({
               onChange={(e) => onFileChange("favicon", e.target.files?.[0] || null)}
             />
             <p className="text-xs text-muted-foreground">
-              Auto-optimized to WebP — most images work.
+              Auto-optimized to WebP — most images work. If left empty, your uploaded logo will be used as the browser tab icon.
             </p>
             {faviconPreview && (
               <div className="mt-2 flex items-center gap-2">

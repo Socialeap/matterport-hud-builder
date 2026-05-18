@@ -1059,6 +1059,25 @@ export const generatePresentation = createServerFn({ method: "POST" })
     // bake in the MSP's brand assets behind the client's back.
     const logoUrl = overrides.logoUrl || "";
     const faviconUrl = overrides.faviconUrl || "";
+    // Always emit an icon tag so the browser never falls back to the host's
+    // (MSP/Lovable) /favicon.png. Preference: client favicon -> client logo
+    // -> inline 1x1 transparent PNG.
+    const EMPTY_ICON_DATA_URI =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+    const effectiveFaviconUrl = faviconUrl || logoUrl || EMPTY_ICON_DATA_URI;
+    const iconMimeType = (() => {
+      const u = effectiveFaviconUrl.toLowerCase();
+      if (u.startsWith("data:image/")) {
+        const m = u.match(/^data:(image\/[a-z0-9.+-]+)/);
+        return m ? m[1] : "image/png";
+      }
+      const clean = u.split("?")[0].split("#")[0];
+      if (clean.endsWith(".svg")) return "image/svg+xml";
+      if (clean.endsWith(".jpg") || clean.endsWith(".jpeg")) return "image/jpeg";
+      if (clean.endsWith(".webp")) return "image/webp";
+      if (clean.endsWith(".ico")) return "image/x-icon";
+      return "image/png";
+    })();
 
     // Resolve any per-property spatial_audio vault asset selections to their
     // public asset_url. Failure to load the catalog must NOT block the build —
@@ -1409,7 +1428,9 @@ export const generatePresentation = createServerFn({ method: "POST" })
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-${faviconUrl ? `<link rel="icon" href="${escapeHtml(faviconUrl)}">` : ""}
+<link rel="icon" type="${iconMimeType}" href="${escapeHtml(effectiveFaviconUrl)}">
+<link rel="shortcut icon" type="${iconMimeType}" href="${escapeHtml(effectiveFaviconUrl)}">
+<link rel="apple-touch-icon" href="${escapeHtml(effectiveFaviconUrl)}">
 <title>${escapeHtml(model.name || "3D Presentation")}</title>
 ${gaTrackingId ? `<script async src="https://www.googletagmanager.com/gtag/js?id=${escapeHtml(gaTrackingId)}"></script>
 <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${escapeHtml(gaTrackingId)}');</script>` : ""}
