@@ -357,6 +357,18 @@ function AgentsPage() {
               );
             })}
           </div>
+          <div className="mt-10 flex items-center justify-center gap-2 text-center text-sm text-white/70">
+            <Sparkles className="size-4 text-amber-300" />
+            <span>Curious about our amazing, newly added features? ...</span>
+            <a
+              href="https://www.transcendencemedia.com/3dps-for-agents"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-amber-300 underline-offset-4 hover:text-amber-200 hover:underline"
+            >
+              LEARN MORE HERE!
+            </a>
+          </div>
         </div>
       </section>
 
