@@ -1,35 +1,65 @@
-# Enable Promo Code Field at Checkout
+# Why the coupon is rejected
 
-## Goal
-Allow MSPs to enter the **3DPS Free-Test** promo code (coupon `AWw4lrRx`) directly in the Stripe Embedded Checkout form when subscribing to Starter or Pro.
+The 3DPS Free-Test coupon (`AWw4lrRx`) is configured in Stripe as **product-restricted** — it's attached to the Starter and Pro products. Stripe only accepts a promo code if at least one line item in the cart belongs to one of the coupon's allowed products.
 
-## One-time action in Stripe Dashboard (user)
-The ID `AWw4lrRx` is a **Coupon**, not a Promotion Code. For customers to type a code at checkout, a **Promotion Code** must exist that wraps that coupon.
+Tracing `supabase/functions/create-checkout/index.ts`, a Pro checkout produces **two** line items:
 
-In the Stripe Dashboard → Products → Coupons → open `3DPS Free-Test` (`AWw4lrRx`) → **Create promotion code** → set the redeemable code string (e.g. `FREETEST`) → Save. Repeat in both sandbox and live as needed.
+1. **Subscription line** — `price: stripePrice.id` for `pro_annual` → belongs to the Pro product ✓ (coupon would apply)
+2. **Setup fee line** — built inline with `price_data.product_data: { name: "Pro Studio Setup & Franchise Fee" }` → Stripe creates a **brand-new, unrelated product** on the fly for every checkout ✗
 
-(If you've already created the promotion code, no action is needed — just share the code string with MSPs.)
+Combined with the 365-day trial (`trial_period_days: 365`), the recurring line is **$0 due now**. The only amount actually charged today is the setup fee — and that line item is attached to an ad-hoc product the coupon doesn't cover. Stripe therefore returns:
 
-## Code change — single file
-**`supabase/functions/create-checkout/index.ts`**
+> "This code is valid, but doesn't apply to items in your order."
 
-Add `allow_promotion_codes: true` to the subscription session params so the Stripe Embedded Checkout renders an "Add promotion code" field. One-time payment fallback gets the same flag for consistency.
+This is independent of `allow_promotion_codes` — that flag only controls whether the input box appears.
+
+# Fix
+
+Attach the setup fee line item to the **same Stripe product** as the subscription (the Pro / Starter product the coupon is already linked to), instead of creating a throwaway product. Stripe allows multiple prices (recurring + one-time) on the same product, and the coupon's `applies_to.products` check will then match.
+
+### Code change (single file)
+
+`supabase/functions/create-checkout/index.ts`, inside the `if (isRecurring)` branch where the setup fee is appended:
 
 ```ts
-sessionParams.allow_promotion_codes = true;
+if (setupFeeCents > 0) {
+  lineItems.push({
+    price_data: {
+      currency: stripePrice.currency || 'usd',
+      product: stripePrice.product as string,   // ← reuse Pro/Starter product
+      unit_amount: setupFeeCents,
+    },
+    quantity: 1,
+  });
+}
 ```
 
-Placed right after `sessionParams` is initialized (applies to both Starter and Pro since they go through the same handler).
+Replacing `product_data: { name: ... }` with `product: stripePrice.product` ties the setup fee to the same product the subscription price belongs to. The customer-facing name shown on the line item becomes the product's name in Stripe (e.g. "Pro Studio") — if you want the setup-fee subtitle, that can be set via `price_data.product_data.name` only when creating a new product, so we lose the "Setup & Franchise Fee" wording on the receipt line. Acceptable trade-off; the description can be conveyed via the product description in Stripe.
 
-## Notes / constraints
-- `allow_promotion_codes` and explicit `discounts: [...]` are mutually exclusive — we only use the former.
-- Trial mechanics (`trial_period_days: 365`) and the one-time setup fee line item are unaffected; promotion codes apply only to eligible line items per the coupon's Stripe config.
-- No DB changes, no new env vars, no client changes — `StripeEmbeddedCheckout.tsx` already renders whatever the session enables.
-- Webhook handlers in `payments-webhook/index.ts` need no changes; discount is recorded on the Stripe side.
+### Stripe Dashboard — verification
 
-## Verification
-1. Redeploy the `create-checkout` edge function.
-2. Open Starter or Pro checkout in preview (sandbox).
-3. Confirm an "Add promotion code" link appears in the embedded form.
-4. Enter the promotion code → discount line appears → complete with test card `4242 4242 4242 4242`.
-5. Repeat in live once the promotion code exists on the live coupon.
+Open the `3DPS Free-Test` coupon in both sandbox and live:
+- Confirm `Applies to → Specific products` includes the **Starter** and **Pro** products.
+- Confirm there is a **Promotion code** (redeemable string, e.g. `FREETEST`) linked to the coupon — `allow_promotion_codes` only reveals the input; the Coupon itself isn't redeemable without a Promotion Code.
+
+### Why not the alternatives
+
+- **Remove product restriction on the coupon (apply to all)** — works but weakens the guardrail; coupon would discount any future product including Stripe Connect marketplace payments.
+- **Make the coupon free-shipping/percentage-off on the subscription only** — useless here because the subscription is $0 during the 365-day trial; nothing to discount.
+- **Create a dedicated "Setup Fee" product and attach the coupon to it** — works, but doubles dashboard maintenance (every tier change requires editing two products) and re-introduces the same bug the next time a new tier is added.
+
+Reusing `stripePrice.product` is the smallest, safest change and self-heals: any product the subscription price belongs to is automatically the product the setup fee belongs to.
+
+# Verification steps after deploy
+
+1. Redeploy `create-checkout`.
+2. In **sandbox**, open Pro checkout, enter the Promotion Code → expect 100% discount on the $299 setup fee, $0 due now, trial active.
+3. Repeat for Starter ($149).
+4. Repeat both in **live** once confirmed.
+5. Check Stripe Dashboard → Payments: the resulting $0 PaymentIntent shows the coupon applied.
+
+# Files touched
+
+- `supabase/functions/create-checkout/index.ts` — 2-line change in the setup-fee `lineItems.push`.
+
+No DB migrations, no client changes, no new env vars, no webhook changes.

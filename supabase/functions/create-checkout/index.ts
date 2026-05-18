@@ -78,7 +78,9 @@ serve(async (req) => {
         lineItems.push({
           price_data: {
             currency: stripePrice.currency || 'usd',
-            product_data: { name: `${tierLabel} Studio Setup & Franchise Fee` },
+            // Reuse the subscription's product so product-restricted coupons
+            // (e.g. AWw4lrRx attached to Starter/Pro) apply to the setup fee.
+            product: stripePrice.product as string,
             unit_amount: setupFeeCents,
           },
           quantity: 1,
