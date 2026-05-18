@@ -1663,10 +1663,11 @@ body.live-tour-active #live-tour-control-drawer{display:flex;flex-direction:colu
    browsers that block ambient readText (Firefox/Safari per-call). Sits
    just below the top-left chevron so it cannot collide with Matterport's
    "Link to location" popup (top-right) or the drawer (off-screen). */
-#loc-sync{position:fixed;top:50px;left:8px;z-index:1240;display:none;align-items:center;gap:8px;padding:6px 14px 6px 10px;border-radius:999px;background:rgba(0,0,0,0.58);border:1px solid rgba(255,255,255,0.18);color:#fff;font:600 12px/1 system-ui,-apple-system,sans-serif;-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%);box-shadow:0 6px 20px rgba(0,0,0,0.32);cursor:pointer;user-select:none;transition:background 0.2s,opacity 0.2s,transform 0.1s;pointer-events:auto;max-width:min(280px,calc(100vw - 16px))}
+#loc-sync{position:fixed;top:50px;left:8px;z-index:1240;display:none;align-items:center;gap:8px;padding:6px 14px 6px 10px;border-radius:999px;background:rgba(0,0,0,0.58);border:1px solid rgba(255,255,255,0.18);color:#fff;font:600 12px/1 system-ui,-apple-system,sans-serif;-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%);box-shadow:0 6px 20px rgba(0,0,0,0.32);cursor:help;user-select:none;transition:background 0.2s,opacity 0.2s;pointer-events:auto;max-width:min(280px,calc(100vw - 16px))}
 body.live-tour-active.live-tour-visitor #loc-sync{display:inline-flex}
-#loc-sync:hover{background:rgba(0,0,0,0.7);transform:translateY(-1px)}
-#loc-sync:active{transform:scale(0.97)}
+/* Hover/focus reveal: subtle background brighten only — no transform,
+   no active state. The pill is informational, not a button. */
+#loc-sync:hover,#loc-sync:focus-visible{background:rgba(0,0,0,0.7)}
 #loc-sync:focus-visible{outline:2px solid ${escapeHtml(accentColor)};outline-offset:2px}
 .loc-sync-dot{position:relative;display:inline-flex;align-items:center;justify-content:center;width:10px;height:10px;border-radius:50%;background:${escapeHtml(accentColor)};flex-shrink:0;animation:loc-sync-breath 2.2s ease-in-out infinite}
 .loc-sync-label{color:rgba(255,255,255,0.94);letter-spacing:0.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -1863,24 +1864,27 @@ ${askAssets.css}
 </div>
 
 <!-- ── Location Sync: visitor ambient pulse pill (CSS-gated to visitor) -->
-<!-- Single ambient status pill. Clipboard is read silently on focus /
-     visibilitychange / pointerenter once the visitor grants permission
-     at join time. The pill is also clickable as a user-gesture fallback
-     for browsers that block ambient readText. data-state drives the
-     visual; aria-live announces label changes. Agent auto-follows on
-     receive — no Follow pill rendered. -->
-<div id="loc-sync" data-state="waiting" role="button" tabindex="0" aria-label="Sync your view with the agent">
+<!-- Single ambient status pill. Read-only / informational — hover or
+     keyboard-focus surfaces the instructions tooltip; there is NO click
+     action and the pill never steals keyboard focus from the iframe.
+     Auto-sync happens silently via clipboardchange / focus /
+     visibilitychange / pointerenter listeners once the visitor grants
+     clipboard permission at join time. data-state drives the visual;
+     aria-live announces label changes. -->
+<div id="loc-sync" data-state="waiting" tabindex="0" aria-label="Tour sync status — hover for instructions">
   <span class="loc-sync-dot" aria-hidden="true"></span>
   <span class="loc-sync-label" aria-live="polite">Connecting…</span>
 </div>
 
-<!-- Tips dropdown — appears below the pulse pill on every click. Brief
-     instructional card; auto-dismisses after a few seconds OR on
-     successful sync. CSS-gated to visitor role. -->
+<!-- Tips dropdown — appears below the pulse pill on hover OR keyboard
+     focus. Stays visible while the visitor's cursor is over either the
+     pill or this card; hides ~250ms after they leave both. Read-only —
+     no buttons, no inputs, no controls. CSS-gated to visitor role. -->
 <div id="loc-sync-tips" role="status" aria-live="polite" hidden>
   <ol>
-    <li>Press <kbd>U</kbd> + click <strong>Copy to clipboard</strong></li>
-    <li>Click <strong>Allow</strong> on the browser prompt</li>
+    <li>Click <strong>Allow</strong> if pop-up asks for permission.</li>
+    <li>Position the view you want agent to see.</li>
+    <li>Press <kbd>U</kbd> then <strong>“Click to Copy”</strong> to sync.</li>
   </ol>
 </div>
 
@@ -4562,40 +4566,50 @@ if(frame){
   // clipboard-read at all; they degrade to a single-tap pill, then to
   // a paste field as a deep fallback. The agent-side "Follow" pill
   // is untouched.
-  // Visitor's ambient pulse pill (CSS-gated to visitor role). Agent
-  // gets no UI here — auto-follows on receive via the onState handler
-  // below. No paste fallback, no coach mark — the pill itself is the
-  // single visible surface; clicking it triggers a manual readText for
-  // browsers where ambient polling fails (FF/Safari per-call prompts).
+  // Visitor's ambient pulse pill (CSS-gated to visitor role). Read-only
+  // / informational — hover or keyboard focus reveals the tips
+  // dropdown; there is NO click action and the pill never steals
+  // keyboard focus from the iframe. Auto-sync happens silently when
+  // the clipboard changes (Matterport's "Copy to clipboard" inside the
+  // iframe), via the clipboardchange / focus / visibilitychange /
+  // pointerenter listeners below. Agent gets no UI here — auto-follows
+  // on receive via the onState handler.
   var syncBtn=document.getElementById("loc-sync");
   var syncLabelEl=syncBtn?syncBtn.querySelector(".loc-sync-label"):null;
   var tipsEl=document.getElementById("loc-sync-tips");
 
   var LOC_SYNC_POLL_THROTTLE_MS=800;
   var LOC_SYNC_SUCCESS_RESET_MS=1800;
-  var LOC_SYNC_TIPS_DURATION_MS=5500;
+  var LOC_SYNC_TIPS_HIDE_DELAY_MS=250;
   // locSyncGranted is a hint, not a hard gate — every poll attempts
   // readText() inside try/catch and degrades gracefully on rejection.
   var locSyncGranted=false;
   var locSyncLastPollTs=0;
+  var lastReadClipText="";
   var lastSentLocationKey="";
   var lastSentLocationTs=0;
   var lastShareTs=0;
   var syncResetTimer=null;
   var tipsTimer=null;
 
-  // Tips dropdown — instructional card that appears below the pill on
-  // every click. Auto-dismisses after a few seconds OR on successful
-  // sync (no need to keep showing instructions once the visitor has
-  // proven they know what to do).
+  // Tips dropdown helpers — hover-driven, no auto-dismiss timer.
+  // showTips: reveal immediately, cancel any pending hide.
+  // scheduleHideTips: queue a hide after a short delay so the cursor
+  // can move from the pill onto the tips card without it disappearing.
+  // hideTips: immediate, used by teardown.
   function showTips(){
     if(!tipsEl) return;
+    if(tipsTimer){ try { clearTimeout(tipsTimer); } catch(_e){} tipsTimer=null; }
     tipsEl.hidden=false;
+  }
+
+  function scheduleHideTips(){
+    if(!tipsEl) return;
     if(tipsTimer){ try { clearTimeout(tipsTimer); } catch(_e){} }
     tipsTimer=setTimeout(function(){
       if(tipsEl) tipsEl.hidden=true;
       tipsTimer=null;
-    },LOC_SYNC_TIPS_DURATION_MS);
+    },LOC_SYNC_TIPS_HIDE_DELAY_MS);
   }
 
   function hideTips(){
@@ -4629,6 +4643,7 @@ if(frame){
   function resetLocationSyncUi(){
     locSyncGranted=false;
     locSyncLastPollTs=0;
+    lastReadClipText="";
     lastSentLocationKey="";
     lastSentLocationTs=0;
     lastShareTs=0;
@@ -4659,9 +4674,10 @@ if(frame){
     if(!parsed) return false;
     var key=parsed.ss+"|"+parsed.sr;
     var now=Date.now();
-    // Content-level dedupe: if the clipboard repeats the same coords,
-    // flash success without re-sending. Saves an iframe reload on the
-    // agent side.
+    // Content-level dedupe: if the same parsed coords were sent within
+    // the last 5s, flash success without re-sending. Saves an iframe
+    // reload on the agent side and absorbs any redundant ambient
+    // triggers that re-read the same clipboard URL.
     if(key===lastSentLocationKey&&(now-lastSentLocationTs)<5000){
       setPulseState("success");
       scheduleSyncIdleReset();
@@ -4676,78 +4692,76 @@ if(frame){
       scheduleSyncIdleReset();
       return true;
     }
-    // Channel not ready — stay silent (no error pulse). Next poll
-    // naturally retries because we didn't update the dedupe key.
+    // Channel not ready — revert the pulse to idle so it doesn't sit
+    // on "syncing" forever. The caller leaves lastReadClipText
+    // unchanged so the next ambient trigger naturally retries.
+    setPulseState("idle");
     return false;
   }
 
-  // The single workhorse — used by both ambient triggers and the
-  // pulse-pill click fallback. `gestureBound` is true when the caller
-  // is a user gesture (click); we keep the parameter for compatibility
-  // but it no longer changes branching (both paths look the same now).
-  //
-  // We deliberately do NOT call navigator.permissions.query() before
-  // readText(). On file:// the Permissions API returned stale "denied"
-  // even while the live browser popup was pending, causing the pill
-  // to flip to "Tap to enable sync" mid-flow and confuse the visitor.
-  // The popup itself is the source of truth — let readText() raise it,
-  // and trust the Promise resolution to tell us the outcome.
-  function readClipboardAndSend(gestureBound){
+  // Silently read the clipboard and send if it's a new Matterport URL.
+  // Pure ambient operation — no user gesture is bound to this; it runs
+  // from the focus / visibilitychange / pointerenter / clipboardchange
+  // listeners below. Three layers of dedupe keep the pill quiet:
+  //   1. locSyncLastPollTs throttle in schedulePoll (event-handler).
+  //   2. lastReadClipText content-equality check here (text dedupe).
+  //   3. lastSentLocationKey + 5s window in attemptSendLocation
+  //      (parsed ss|sr dedupe).
+  // Only NEW Matterport URLs flash the pulse (syncing → success → idle).
+  // Repeat reads, non-Matterport clipboards, and rejected reads stay
+  // silent so the pill doesn't strobe during normal interaction.
+  // We deliberately don't pre-flight navigator.permissions.query() —
+  // it returned stale "denied" on file:// while the live popup was
+  // pending. readText() raises the popup itself; the Promise outcome
+  // is the source of truth.
+  function readClipboardAndSend(){
     var s=session.getState();
     if(s.role!=="visitor"||!s.isConnected) return;
-    setPulseState("syncing");
-    // Pull focus back to the parent doc just before readText —
-    // clipboard.readText() rejects NotAllowedError when the iframe
-    // holds focus. The outer click handler returns focus to the iframe
-    // AFTER readText() has been initiated, so the user can press U
-    // without re-clicking.
-    try { window.focus(); } catch(_e){}
-    try {
-      if(document.documentElement&&typeof document.documentElement.focus==="function"){
-        document.documentElement.focus();
-      }
-    } catch(_e){}
-    if(!navigator||!navigator.clipboard||typeof navigator.clipboard.readText!=="function"){
-      // Browser doesn't support clipboard reads at all (very old or
-      // sandboxed). Revert to idle so the label keeps inviting the
-      // visitor to try; nothing else we can do.
-      setPulseState("idle");
-      return;
-    }
+    if(!navigator||!navigator.clipboard||typeof navigator.clipboard.readText!=="function") return;
     var p;
-    try { p=navigator.clipboard.readText(); } catch(_e){
-      setPulseState("idle");
-      return;
-    }
-    if(!p||typeof p.then!=="function"){
-      setPulseState("idle");
-      return;
-    }
+    try { p=navigator.clipboard.readText(); } catch(_e){ return; }
+    if(!p||typeof p.then!=="function") return;
     p.then(function(text){
+      if(typeof text!=="string") return;
+      // Content dedupe: silent skip when the clipboard hasn't changed
+      // since our last processed read. Prevents repeated pulse flashes
+      // on ambient triggers (mouse re-entering iframe area, tab focus
+      // toggles, etc.) when no new view has been copied.
+      if(text===lastReadClipText) return;
       var parsed=parseMatterportLocationUrl(text);
       if(!parsed){
-        // Clipboard reachable but no tour link. Revert to idle so the
-        // visitor sees the "To sync your view…" invitation again. The
-        // tips dropdown is the guidance surface; the pill stays calm.
-        setPulseState("idle");
+        // Not a tour link — silent, no pulse change. Update the dedupe
+        // marker so we don't re-parse the same non-Matterport text on
+        // every ambient trigger.
+        lastReadClipText=text;
         return;
       }
       locSyncGranted=true;
-      attemptSendLocation(parsed);
-      // Sync succeeded — the tips dropdown served its purpose, hide it.
-      hideTips();
+      // Only NOW do we know there's something real to do. Flip the
+      // pulse to "syncing" and dispatch the share.
+      setPulseState("syncing");
+      if(attemptSendLocation(parsed)){
+        // Send succeeded (or was a recent-dedupe hit). Lock the dedupe
+        // so subsequent identical reads stay silent.
+        lastReadClipText=text;
+      }
+      // If attemptSendLocation returned false (channel not ready), it
+      // has already reverted the pulse to idle. Leave lastReadClipText
+      // unchanged so the next ambient trigger retries.
     },function(){
-      // Read rejected (NotAllowedError / SecurityError / etc.). Revert
-      // to idle. The tips dropdown — already shown on click — keeps
-      // teaching the user how to grant permission ("Click Allow").
-      setPulseState("idle");
+      // Read rejected (denied / SecurityError / no focus). Stay silent;
+      // the next ambient trigger will retry. No state flip — the pill
+      // keeps its current label (typically "To sync your view…") so the
+      // visitor isn't alarmed by a transient permission error.
     });
   }
 
   // schedulePoll: ambient throttled entrypoint for focus / visibility
-  // / pointerenter events. Bails on hidden tab, wrong role, recent
-  // poll. Calls readClipboardAndSend without a user gesture — only
-  // works silently on Chromium with a persistent grant.
+  // / pointerenter / clipboardchange events. Bails on hidden tab, wrong
+  // role, recent poll. No focus juggling — readText runs with whatever
+  // focus state the trigger event provided; on HTTPS Chromium with a
+  // persistent grant it works regardless of focus, which is the user's
+  // production scenario.
   function schedulePoll(){
     if(document.hidden) return;
     var s=session.getState();
@@ -4755,35 +4769,32 @@ if(frame){
     var now=Date.now();
     if(now-locSyncLastPollTs<LOC_SYNC_POLL_THROTTLE_MS) return;
     locSyncLastPollTs=now;
-    readClipboardAndSend(false);
+    readClipboardAndSend();
   }
 
-  // Click handler — three actions in tight sequence:
-  //   1. Show the instructional tips card (1) Press U + Copy, 2) Allow).
-  //   2. Initiate the clipboard read (must happen before focus shift —
-  //      readText() needs the parent doc to have focus at call time).
-  //   3. Return focus to the iframe so the visitor can press U without
-  //      re-clicking on the 3D scene first.
-  function handlePulseTap(){
-    showTips();
-    readClipboardAndSend(true);
-    if(frame){
-      try { frame.focus({ preventScroll: true }); } catch(_e){
-        try { frame.focus(); } catch(_e2){}
-      }
-    }
-  }
-
+  // Pill is informational only — hover or keyboard focus reveals the
+  // tips card; there is NO click action and no Enter/Space handler.
+  // This is critical: ANY focus shift to the pill would steal keyboard
+  // control from the iframe and break the visitor pressing `U` next.
+  // The visitor's only interactions are inside the Matterport iframe
+  // (press U, click Copy to clipboard) plus the one-time browser
+  // permission "Allow" prompt at Join time.
   if(syncBtn){
-    syncBtn.addEventListener("click",handlePulseTap);
-    // Keyboard a11y — Enter/Space activates the role="button" pill.
-    syncBtn.addEventListener("keydown",function(e){
-      if(e.key==="Enter"||e.key===" "){ e.preventDefault(); handlePulseTap(); }
-    });
+    syncBtn.addEventListener("mouseenter",showTips);
+    syncBtn.addEventListener("mouseleave",scheduleHideTips);
+    syncBtn.addEventListener("focus",showTips);
+    syncBtn.addEventListener("blur",scheduleHideTips);
+  }
+  // Keep tips visible while the cursor is hovering the card itself so
+  // the visitor can read it without it disappearing mid-glance.
+  if(tipsEl){
+    tipsEl.addEventListener("mouseenter",showTips);
+    tipsEl.addEventListener("mouseleave",scheduleHideTips);
   }
 
   // Ambient polling triggers. Battery-friendly: NO setInterval, only
-  // event-driven. All three call schedulePoll which dedupes / throttles.
+  // event-driven. All four funnel through schedulePoll which dedupes
+  // and throttles.
   window.addEventListener("focus",schedulePoll);
   document.addEventListener("visibilitychange",function(){ if(!document.hidden) schedulePoll(); });
   if(letterboxWrap){
