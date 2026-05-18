@@ -4790,7 +4790,7 @@ if(frame){
     letterboxWrap.addEventListener("pointerenter",schedulePoll);
   }
 
-  // Persistence hack — Chrome 124+ exposes a `clipboardchange` event
+  // Persistence hack — Chrome 124+ exposes a clipboardchange event
   // that fires when the system clipboard contents change. Once the
   // visitor has granted the persistent "Always allow" permission,
   // this event lets us auto-detect Matterport's Copy click without
