@@ -495,6 +495,49 @@ test("inbound location_share with non-object/garbage payloads is silently droppe
   });
 });
 
+// ── Role-direction guards ─────────────────────────────────────────────
+//
+// The wire protocol is directional: `teleport` flows agent → visitor,
+// `location_share` flows visitor → agent. The controller drops packets
+// arriving in the wrong direction (echo / loopback / test arrangement
+// quirks) so the wrong side can never trigger an iframe reload via the
+// parent code's state-driven branches.
+
+test("agent role drops inbound `teleport` from state.incomingTeleportEvent (echo guard)", () => {
+  return makeConnectedAgent().then(({ session, fireData }) => {
+    // Before any inbound, state is null.
+    assert.equal(session.getState().incomingTeleportEvent, null);
+    fireData({ type: "teleport", ss: "42", sr: "0,0" });
+    // Role-direction guard drops the patch on the agent side. The
+    // viewKey is still updated internally so the annotation filter
+    // works, but state.incomingTeleportEvent stays null — preventing
+    // any onState branch from reloading the agent's iframe.
+    assert.equal(
+      session.getState().incomingTeleportEvent,
+      null,
+      "agent must not patch incomingTeleportEvent",
+    );
+    session.dispose();
+  });
+});
+
+test("visitor role drops inbound `location_share` from state.incomingLocationShareEvent (echo guard)", () => {
+  return makeConnectedVisitor().then(({ session, fireData }) => {
+    assert.equal(session.getState().incomingLocationShareEvent, null);
+    fireData({ type: "location_share", ss: "42", sr: "0,0", ts: 123 });
+    // Role-direction guard drops the patch on the visitor side. Even
+    // if the visitor's own share were bounced back (echo / loopback),
+    // the visitor's controller silently discards it — protecting the
+    // visitor's iframe from any unintended reload.
+    assert.equal(
+      session.getState().incomingLocationShareEvent,
+      null,
+      "visitor must not patch incomingLocationShareEvent",
+    );
+    session.dispose();
+  });
+});
+
 // ── Annotation channel tests ─────────────────────────────────────────
 //
 // Helper: stand up a connected agent session with a captured outbound
@@ -619,10 +662,13 @@ test("teleportVisitor updates _currentViewKey so subsequent annotations are acce
 
 test("incoming annotation packets with stale viewKey are dropped after teleport", () => {
   return makeConnectedAgent().then(({ session, fireData }) => {
-    // Establish current view via inbound teleport packet (this updates
-    // the controller's _currentViewKey).
+    // Establish current view via inbound teleport packet — this still
+    // updates the controller's _currentViewKey even on the agent role.
+    // (The state patch for incomingTeleportEvent is intentionally
+    // dropped for non-visitor roles by the role-direction guard, so
+    // we don't assert on it here. What matters for this test is that
+    // the viewKey filter below uses the updated _currentViewKey.)
     fireData({ type: "teleport", ss: "42", sr: "0,0" });
-    assert.equal(session.getState().incomingTeleportEvent.ss, "42");
 
     // Stroke from the OLD view — should be dropped.
     fireData({
