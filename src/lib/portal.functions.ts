@@ -4682,7 +4682,7 @@ if(frame){
   }
 
   // The single workhorse — used by both ambient triggers and the
-  // pulse-pill click fallback. `gestureBound` is true when the caller
+  // pulse-pill click fallback. gestureBound is true when the caller
   // is a user gesture (click); we keep the parameter for compatibility
   // but it no longer changes branching (both paths look the same now).
   //
@@ -4790,7 +4790,7 @@ if(frame){
     letterboxWrap.addEventListener("pointerenter",schedulePoll);
   }
 
-  // Persistence hack — Chrome 124+ exposes a `clipboardchange` event
+  // Persistence hack — Chrome 124+ exposes a clipboardchange event
   // that fires when the system clipboard contents change. Once the
   // visitor has granted the persistent "Always allow" permission,
   // this event lets us auto-detect Matterport's Copy click without
