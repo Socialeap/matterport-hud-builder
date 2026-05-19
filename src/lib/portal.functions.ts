@@ -4392,11 +4392,17 @@ if(frame){
 
 
 
-  // Canvas pointer wiring (agent only — toolMode is forced "none" on
-  // the visitor side so these handlers are no-ops).
+  // Canvas pointer wiring — bidirectional. Either role may annotate;
+  // toolMode stays "none" until the user picks a tool so handlers are
+  // no-ops in idle. Each side renders its own strokes locally; the
+  // peer receives them through the DataChannel.
+  function _canAnnotateLocal(){
+    var r=session.getState().role;
+    return r==="agent"||r==="visitor";
+  }
   if(annoCanvas){
     annoCanvas.addEventListener("pointerdown",function(e){
-      if(session.getState().role!=="agent") return;
+      if(!_canAnnotateLocal()) return;
       if(toolMode==="draw"){
         var pt=clientToNorm(e);
         var sid=String(Date.now())+"_"+Math.random().toString(36).slice(2,8);
@@ -4454,7 +4460,7 @@ if(frame){
       }
     });
     annoCanvas.addEventListener("pointermove",function(e){
-      if(session.getState().role!=="agent") return;
+      if(!_canAnnotateLocal()) return;
       var pt=clientToNorm(e);
       if(toolMode==="pointer"){
         session.sendPointer(currentViewKey,pt.x,pt.y);
@@ -4473,7 +4479,7 @@ if(frame){
       }
     });
     annoCanvas.addEventListener("pointerup",function(e){
-      if(session.getState().role!=="agent") return;
+      if(!_canAnnotateLocal()) return;
       if(toolMode==="draw"&&activeStroke){
         if(pendingStrokePoints&&pendingStrokePoints.length>0){
           session.sendStrokePatch(currentViewKey,pendingStrokeId,pendingStrokePoints);
@@ -4486,12 +4492,12 @@ if(frame){
         try { annoCanvas.releasePointerCapture(e.pointerId); } catch(_e){}
       } else if(toolMode==="rope"&&activeRope&&(ropeDragging||ropeLatchDragging)){
         // End the current drag but keep the rope active so the latch
-        // can be grabbed again. Send one more snapshot so the visitor
+        // can be grabbed again. Send one more snapshot so the peer
         // matches the final bbox.
         ropeDragging=false;
         ropeLatchDragging=false;
         var s=session.getState();
-        if(s.role==="agent"&&s.isConnected){
+        if((s.role==="agent"||s.role==="visitor")&&s.isConnected){
           session.sendStrokeBegin(currentViewKey,activeRope.strokeId,activeRope.color,activeRope.width,activeRope.points);
         }
         try { annoCanvas.releasePointerCapture(e.pointerId); } catch(_e){}
@@ -4499,14 +4505,15 @@ if(frame){
       }
     });
     annoCanvas.addEventListener("pointerleave",function(){
-      if(session.getState().role!=="agent") return;
+      if(!_canAnnotateLocal()) return;
       if(toolMode==="pointer"){
         session.sendPointer(currentViewKey,null,null);
       }
     });
   }
 
-  // Toolbar buttons (agent only — they're hidden via CSS for visitors).
+  // Toolbar buttons — visible to both roles via CSS. Annotations are
+  // bidirectional, so the same handler runs on agent and visitor.
   if(annoToolbar){
     annoToolbar.addEventListener("click",function(e){
       var btn=e.target&&e.target.closest?e.target.closest(".anno-tool-btn"):null;
@@ -4517,14 +4524,14 @@ if(frame){
       
       if(btn.id==="anno-exit-btn"){
         // Hard exit: wipe local + remote annotations, drop the tool
-        // mode (which also releases the visitor nav-lock via the
+        // mode (which also releases the peer's nav-lock via the
         // setToolMode side-effect), and broadcast an explicit
         // nav_lock:false as a belt-and-suspenders safety net.
         handleClearLocallyAndBroadcast();
         setToolMode("none");
         try {
           var st=session.getState();
-          if(st.role==="agent"&&st.isConnected){
+          if((st.role==="agent"||st.role==="visitor")&&st.isConnected){
             session.sendNavLock(currentViewKey,false);
           }
         } catch(_e){}
