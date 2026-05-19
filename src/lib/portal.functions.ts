@@ -4744,6 +4744,17 @@ if(frame){
     if(!parsed) return false;
     var key=parsed.ss+"|"+parsed.sr;
     var now=Date.now();
+    // Echo suppression: if the clipboard coords already match the view
+    // we're currently displaying (whether we navigated there ourselves
+    // or were teleported there by the other side via applyTeleport),
+    // this is a no-op — never rebroadcast, which would ping-pong the
+    // other side's iframe. Flash success silently so the pill behaves
+    // the same as the existing 5s recent-send dedupe path.
+    if(currentViewKey&&key===currentViewKey){
+      setPulseState("success");
+      scheduleSyncIdleReset();
+      return true;
+    }
     // Content-level dedupe: if the same parsed coords were sent within
     // the last 5s, flash success without re-sending. Saves an iframe
     // reload on the agent side and absorbs any redundant ambient
