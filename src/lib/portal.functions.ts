@@ -4165,9 +4165,10 @@ if(frame){
     }
     if(prev==="pointer"&&mode!=="pointer"){
       // Leaving pointer tool while connected: hide the remote dot on
-      // the visitor by sending a null-position pointer event.
+      // the other peer by sending a null-position pointer event. Both
+      // roles emit — annotations are bidirectional.
       var s=session.getState();
-      if(s.role==="agent"&&s.isConnected){
+      if((s.role==="agent"||s.role==="visitor")&&s.isConnected){
         session.sendPointer(currentViewKey,null,null);
       }
     }
@@ -4177,13 +4178,13 @@ if(frame){
       // points stay in localStrokes as a regular committed stroke.
       commitActiveRope();
     }
-    // Visitor nav-lock: any annotation tool freezes the visitor so
-    // the agent's strokes/ropes stay aligned to the current sweep.
+    // Nav-lock: any annotation tool freezes the OTHER peer so the
+    // annotator's strokes/ropes stay aligned to the current sweep.
     // Switching to "none" releases the lock. Safe to call when not
-    // connected — sendNavLock guards on agent role + open channel.
+    // connected — sendNavLock guards on role + open channel.
     try {
       var sess=session.getState();
-      if(sess.role==="agent"&&sess.isConnected){
+      if((sess.role==="agent"||sess.role==="visitor")&&sess.isConnected){
         var locked=(mode==="pointer"||mode==="draw"||mode==="rope");
         session.sendNavLock(currentViewKey, locked);
       }
