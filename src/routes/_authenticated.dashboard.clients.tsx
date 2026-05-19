@@ -86,15 +86,31 @@ function ClientsPage() {
 
     if (error) {
       setSending(false);
-      toast.error(error.message.includes("duplicate")
-        ? "This email has already been invited"
-        : "Failed to send invitation");
+      console.error("Invitation insert failed:", error);
+      const msg = error.message || "";
+      const code = (error as { code?: string }).code;
+      const isRlsDenial =
+        code === "42501" ||
+        /row-level security|violates? row-level/i.test(msg) ||
+        /permission denied/i.test(msg);
+      if (msg.includes("duplicate") || code === "23505") {
+        toast.error("This email has already been invited");
+      } else if (isRlsDenial) {
+        toast.error(
+          "Your account isn't recognized as a Provider yet. Sign out and back in, then try again — if it persists, contact support.",
+        );
+      } else {
+        toast.error(`Failed to send invitation: ${msg || "unknown error"}`);
+      }
       return;
     }
 
-    // Always attempt to send the email; log + toast separately so the manual
-    // link is still usable even when email delivery fails (e.g. unverified DNS).
-    let emailSent = true;
+    // Always attempt to enqueue the email; log + toast separately so the manual
+    // link is still usable even when email delivery fails (e.g. unverified DNS,
+    // emails disabled at project level, etc.). Note: a successful response from
+    // /lovable/email/transactional/send only confirms enqueue — actual delivery
+    // happens asynchronously in the dispatcher.
+    let emailQueued = true;
     try {
       const signupUrl = buildPlatformUrl(`/signup?token=${inserted.token}`);
       await sendTransactionalEmail({
@@ -107,16 +123,18 @@ function ClientsPage() {
         },
       });
     } catch (emailError) {
-      emailSent = false;
-      console.error("Failed to send invitation email:", emailError);
+      emailQueued = false;
+      console.error("Failed to enqueue invitation email:", emailError);
     }
 
     setSending(false);
-    if (emailSent) {
-      toast.success(`Invitation sent to ${trimmedEmail}. You can also share the manual link below.`);
+    if (emailQueued) {
+      toast.success(
+        `Invitation recorded for ${trimmedEmail} — email delivery is in progress. You can also share the manual link below.`,
+      );
     } else {
       toast.warning(
-        `Invitation recorded for ${trimmedEmail}, but the email did not send. Copy the manual link to share it directly.`,
+        `Invitation recorded for ${trimmedEmail}, but the email could not be queued. Copy the manual link to share it directly.`,
       );
     }
     setEmail("");
