@@ -4331,16 +4331,16 @@ if(frame){
       ropeFlushScheduled=false;
       if(!activeRope) return;
       var s=session.getState();
-      if(s.role!=="agent"||!s.isConnected) return;
+      if((s.role!=="agent"&&s.role!=="visitor")||!s.isConnected) return;
       session.sendStrokeBegin(currentViewKey,activeRope.strokeId,activeRope.color,activeRope.width,activeRope.points);
     });
   }
   function commitActiveRope(){
     if(!activeRope) return;
     var s=session.getState();
-    if(s.role==="agent"&&s.isConnected){
-      // Flush a final shape snapshot before the commit so the visitor
-      // ends up with the exact bbox the agent let go of.
+    if((s.role==="agent"||s.role==="visitor")&&s.isConnected){
+      // Flush a final shape snapshot before the commit so the peer
+      // ends up with the exact bbox the annotator let go of.
       session.sendStrokeBegin(currentViewKey,activeRope.strokeId,activeRope.color,activeRope.width,activeRope.points);
       session.sendStrokeCommit(currentViewKey,activeRope.strokeId);
     }
@@ -4368,11 +4368,11 @@ if(frame){
     redrawAllStrokes();
   }
 
-  // Toggle the visitor-side transparent overlay that swallows pointer
-  // and touch input on the Matterport iframe while the agent is
-  // annotating. Agents never apply the lock to themselves so they can
-  // still freely teleport between sweeps. Safe to call when the
-  // overlay element isn't present yet.
+  // Toggle the transparent overlay that swallows pointer/touch input
+  // on the Matterport iframe while the OTHER peer is annotating. Each
+  // side only locks itself in response to an inbound nav_lock packet —
+  // annotators never lock themselves so they can keep teleporting.
+  // Safe to call when the overlay element isn't present yet.
   function applyNavLock(locked){
     try {
       var ov=document.getElementById("live-tour-navlock");
@@ -4385,7 +4385,7 @@ if(frame){
   function handleClearLocallyAndBroadcast(){
     wipeAnnotations();
     var s=session.getState();
-    if(s.role==="agent"&&s.isConnected){
+    if((s.role==="agent"||s.role==="visitor")&&s.isConnected){
       session.sendClear(currentViewKey);
     }
   }
