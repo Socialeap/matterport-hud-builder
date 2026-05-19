@@ -1640,15 +1640,15 @@ body.anno-rope-active .anno-rope-group .anno-shape-wrap{display:inline-flex}
 .anno-exit-btn{font-size:16px;line-height:1;padding:4px 9px 6px}
 .anno-exit-btn:hover{background:rgba(255,107,107,0.18);border-color:rgba(255,107,107,0.45);color:#ff6b6b}
 #live-tour-navlock{position:absolute;inset:0;z-index:4;background:transparent;cursor:not-allowed;display:none;touch-action:none}
-body.live-tour-active.live-tour-visitor #live-tour-navlock.locked{display:block}
-body.live-tour-active.live-tour-visitor #anno-letterbox-wrap:has(#live-tour-navlock.locked) #matterport-frame{pointer-events:none}
+body.live-tour-active.live-tour-visitor #live-tour-navlock.locked,body.live-tour-active.live-tour-agent #live-tour-navlock.locked{display:block}
+body.live-tour-active.live-tour-visitor #anno-letterbox-wrap:has(#live-tour-navlock.locked) #matterport-frame,body.live-tour-active.live-tour-agent #anno-letterbox-wrap:has(#live-tour-navlock.locked) #matterport-frame{pointer-events:none}
 /* Engage 16:9 letterboxing once the WebRTC session is live. Black
    bars come from #viewer's background while the wrap is centered
-   inside it. The agent gets a toolbar; the visitor only sees the
-   pointer / strokes that arrive over the channel. */
+   inside it. Both roles get the annotation toolbar — strokes /
+   pointer / clear / nav_lock are bidirectional. */
 body.live-tour-active #viewer{display:flex;align-items:center;justify-content:center;background:#000}
 body.live-tour-active #anno-letterbox-wrap{position:relative;inset:auto;aspect-ratio:16/9;width:min(100vw,calc(100vh * 16 / 9));height:auto;max-height:100vh}
-body.live-tour-active.live-tour-agent #anno-toolbar{display:flex}
+body.live-tour-active.live-tour-agent #anno-toolbar,body.live-tour-active.live-tour-visitor #anno-toolbar{display:flex}
 
 /* ── Live Tour controls (left-side drawer that replaces the top HUD
    while body.live-tour-active is set). Keeps the 3D tour and the
@@ -4165,9 +4165,10 @@ if(frame){
     }
     if(prev==="pointer"&&mode!=="pointer"){
       // Leaving pointer tool while connected: hide the remote dot on
-      // the visitor by sending a null-position pointer event.
+      // the other peer by sending a null-position pointer event. Both
+      // roles emit — annotations are bidirectional.
       var s=session.getState();
-      if(s.role==="agent"&&s.isConnected){
+      if((s.role==="agent"||s.role==="visitor")&&s.isConnected){
         session.sendPointer(currentViewKey,null,null);
       }
     }
@@ -4177,13 +4178,13 @@ if(frame){
       // points stay in localStrokes as a regular committed stroke.
       commitActiveRope();
     }
-    // Visitor nav-lock: any annotation tool freezes the visitor so
-    // the agent's strokes/ropes stay aligned to the current sweep.
+    // Nav-lock: any annotation tool freezes the OTHER peer so the
+    // annotator's strokes/ropes stay aligned to the current sweep.
     // Switching to "none" releases the lock. Safe to call when not
-    // connected — sendNavLock guards on agent role + open channel.
+    // connected — sendNavLock guards on role + open channel.
     try {
       var sess=session.getState();
-      if(sess.role==="agent"&&sess.isConnected){
+      if((sess.role==="agent"||sess.role==="visitor")&&sess.isConnected){
         var locked=(mode==="pointer"||mode==="draw"||mode==="rope");
         session.sendNavLock(currentViewKey, locked);
       }
@@ -4330,16 +4331,16 @@ if(frame){
       ropeFlushScheduled=false;
       if(!activeRope) return;
       var s=session.getState();
-      if(s.role!=="agent"||!s.isConnected) return;
+      if((s.role!=="agent"&&s.role!=="visitor")||!s.isConnected) return;
       session.sendStrokeBegin(currentViewKey,activeRope.strokeId,activeRope.color,activeRope.width,activeRope.points);
     });
   }
   function commitActiveRope(){
     if(!activeRope) return;
     var s=session.getState();
-    if(s.role==="agent"&&s.isConnected){
-      // Flush a final shape snapshot before the commit so the visitor
-      // ends up with the exact bbox the agent let go of.
+    if((s.role==="agent"||s.role==="visitor")&&s.isConnected){
+      // Flush a final shape snapshot before the commit so the peer
+      // ends up with the exact bbox the annotator let go of.
       session.sendStrokeBegin(currentViewKey,activeRope.strokeId,activeRope.color,activeRope.width,activeRope.points);
       session.sendStrokeCommit(currentViewKey,activeRope.strokeId);
     }
@@ -4367,11 +4368,11 @@ if(frame){
     redrawAllStrokes();
   }
 
-  // Toggle the visitor-side transparent overlay that swallows pointer
-  // and touch input on the Matterport iframe while the agent is
-  // annotating. Agents never apply the lock to themselves so they can
-  // still freely teleport between sweeps. Safe to call when the
-  // overlay element isn't present yet.
+  // Toggle the transparent overlay that swallows pointer/touch input
+  // on the Matterport iframe while the OTHER peer is annotating. Each
+  // side only locks itself in response to an inbound nav_lock packet —
+  // annotators never lock themselves so they can keep teleporting.
+  // Safe to call when the overlay element isn't present yet.
   function applyNavLock(locked){
     try {
       var ov=document.getElementById("live-tour-navlock");
@@ -4384,18 +4385,24 @@ if(frame){
   function handleClearLocallyAndBroadcast(){
     wipeAnnotations();
     var s=session.getState();
-    if(s.role==="agent"&&s.isConnected){
+    if((s.role==="agent"||s.role==="visitor")&&s.isConnected){
       session.sendClear(currentViewKey);
     }
   }
 
 
 
-  // Canvas pointer wiring (agent only — toolMode is forced "none" on
-  // the visitor side so these handlers are no-ops).
+  // Canvas pointer wiring — bidirectional. Either role may annotate;
+  // toolMode stays "none" until the user picks a tool so handlers are
+  // no-ops in idle. Each side renders its own strokes locally; the
+  // peer receives them through the DataChannel.
+  function _canAnnotateLocal(){
+    var r=session.getState().role;
+    return r==="agent"||r==="visitor";
+  }
   if(annoCanvas){
     annoCanvas.addEventListener("pointerdown",function(e){
-      if(session.getState().role!=="agent") return;
+      if(!_canAnnotateLocal()) return;
       if(toolMode==="draw"){
         var pt=clientToNorm(e);
         var sid=String(Date.now())+"_"+Math.random().toString(36).slice(2,8);
@@ -4453,7 +4460,7 @@ if(frame){
       }
     });
     annoCanvas.addEventListener("pointermove",function(e){
-      if(session.getState().role!=="agent") return;
+      if(!_canAnnotateLocal()) return;
       var pt=clientToNorm(e);
       if(toolMode==="pointer"){
         session.sendPointer(currentViewKey,pt.x,pt.y);
@@ -4472,7 +4479,7 @@ if(frame){
       }
     });
     annoCanvas.addEventListener("pointerup",function(e){
-      if(session.getState().role!=="agent") return;
+      if(!_canAnnotateLocal()) return;
       if(toolMode==="draw"&&activeStroke){
         if(pendingStrokePoints&&pendingStrokePoints.length>0){
           session.sendStrokePatch(currentViewKey,pendingStrokeId,pendingStrokePoints);
@@ -4485,12 +4492,12 @@ if(frame){
         try { annoCanvas.releasePointerCapture(e.pointerId); } catch(_e){}
       } else if(toolMode==="rope"&&activeRope&&(ropeDragging||ropeLatchDragging)){
         // End the current drag but keep the rope active so the latch
-        // can be grabbed again. Send one more snapshot so the visitor
+        // can be grabbed again. Send one more snapshot so the peer
         // matches the final bbox.
         ropeDragging=false;
         ropeLatchDragging=false;
         var s=session.getState();
-        if(s.role==="agent"&&s.isConnected){
+        if((s.role==="agent"||s.role==="visitor")&&s.isConnected){
           session.sendStrokeBegin(currentViewKey,activeRope.strokeId,activeRope.color,activeRope.width,activeRope.points);
         }
         try { annoCanvas.releasePointerCapture(e.pointerId); } catch(_e){}
@@ -4498,14 +4505,15 @@ if(frame){
       }
     });
     annoCanvas.addEventListener("pointerleave",function(){
-      if(session.getState().role!=="agent") return;
+      if(!_canAnnotateLocal()) return;
       if(toolMode==="pointer"){
         session.sendPointer(currentViewKey,null,null);
       }
     });
   }
 
-  // Toolbar buttons (agent only — they're hidden via CSS for visitors).
+  // Toolbar buttons — visible to both roles via CSS. Annotations are
+  // bidirectional, so the same handler runs on agent and visitor.
   if(annoToolbar){
     annoToolbar.addEventListener("click",function(e){
       var btn=e.target&&e.target.closest?e.target.closest(".anno-tool-btn"):null;
@@ -4516,14 +4524,14 @@ if(frame){
       
       if(btn.id==="anno-exit-btn"){
         // Hard exit: wipe local + remote annotations, drop the tool
-        // mode (which also releases the visitor nav-lock via the
+        // mode (which also releases the peer's nav-lock via the
         // setToolMode side-effect), and broadcast an explicit
         // nav_lock:false as a belt-and-suspenders safety net.
         handleClearLocallyAndBroadcast();
         setToolMode("none");
         try {
           var st=session.getState();
-          if(st.role==="agent"&&st.isConnected){
+          if((st.role==="agent"||st.role==="visitor")&&st.isConnected){
             session.sendNavLock(currentViewKey,false);
           }
         } catch(_e){}
@@ -5239,15 +5247,15 @@ if(frame){
     // ── Annotation receive paths ─────────────────────────────────
     // Controller's seq filter guarantees monotonicity in state; we
     // de-dupe locally by seq so the same patch-tick doesn't re-render
-    // the same event. Agent and visitor BOTH receive (agent only
-    // emits, but the agent's own canvas is updated by the local
-    // pointerdown/move handlers, not by inbound events — strictly
-    // speaking the agent has nothing to receive, but the dedup is
-    // cheap and keeps the handler symmetric).
+    // the same event. Bidirectional — both agent and visitor render
+    // the OTHER peer's inbound pointer/strokes/clear/nav_lock. Each
+    // side's own actions are rendered locally by the canvas handlers,
+    // not by inbound events (peer-to-peer with no loopback).
+    var _canReceive=(state.role==="agent"||state.role==="visitor");
     var pev=state.incomingPointerEvent;
     if(pev&&pev.seq!==lastPointerSeq){
       lastPointerSeq=pev.seq;
-      if(state.role==="visitor"&&remotePointer&&letterboxWrap){
+      if(_canReceive&&remotePointer&&letterboxWrap){
         if(pev.x==null||pev.y==null){
           remotePointer.style.display="none";
           if(remotePointerHideTimer){ try { clearTimeout(remotePointerHideTimer); } catch(_e){} remotePointerHideTimer=null; }
@@ -5261,7 +5269,7 @@ if(frame){
           remotePointer.style.display="block";
           if(remotePointerHideTimer){ try { clearTimeout(remotePointerHideTimer); } catch(_e){} }
           // Idle-hide so a stuck pointer doesn't linger forever if
-          // the agent disconnects without a clean leave event.
+          // the peer disconnects without a clean leave event.
           remotePointerHideTimer=setTimeout(function(){
             if(remotePointer) remotePointer.style.display="none";
           },ANNO_REMOTE_POINTER_TIMEOUT_MS);
@@ -5272,7 +5280,7 @@ if(frame){
     var sev=state.incomingStrokeEvent;
     if(sev&&sev.seq!==lastStrokeSeq){
       lastStrokeSeq=sev.seq;
-      if(state.role==="visitor"){
+      if(_canReceive){
         if(sev.kind==="begin"){
           // Focus Rope reuses stroke_begin to push atomic shape
           // snapshots under a stable strokeId. If the id is already
@@ -5301,17 +5309,17 @@ if(frame){
             redrawAllStrokes();
           }
         }
-        // commit is a no-op on the visitor — the stroke is already
-        // visible; commit just signals the agent finished it.
+        // commit is a no-op on the receiver — the stroke is already
+        // visible; commit just signals the sender finished it.
       }
     }
 
     var cev=state.incomingClearEvent;
     if(cev&&cev.seq!==lastClearSeq){
       lastClearSeq=cev.seq;
-      if(state.role==="visitor"){
+      if(_canReceive){
         wipeAnnotations();
-        // Defensive: a Clear from the agent always implies "annotation
+        // Defensive: a Clear from the peer always implies "annotation
         // session ended" — release the nav-lock too in case the
         // explicit unlock packet was dropped or reordered.
         applyNavLock(false);
@@ -5321,7 +5329,7 @@ if(frame){
     var nlev=state.incomingNavLockEvent;
     if(nlev&&nlev.seq!==lastNavLockSeq){
       lastNavLockSeq=nlev.seq;
-      if(state.role==="visitor") applyNavLock(nlev.locked===true);
+      if(_canReceive) applyNavLock(nlev.locked===true);
     }
   }
 

@@ -589,7 +589,7 @@ function makeConnectedAgent(extraOpts) {
   });
 }
 
-test("annotation senders all return false when role is not agent", () => {
+test("annotation senders all return false when role is not set", () => {
   const session = createLiveSession({ PeerCtor: makeFakePeerCtor() });
   // Idle — no role at all.
   assert.equal(session.sendPointer("v|", 0.5, 0.5), false);
@@ -598,8 +598,10 @@ test("annotation senders all return false when role is not agent", () => {
   assert.equal(session.sendStrokeCommit("v|", "s1"), false);
   assert.equal(session.sendClear("v|"), false);
   assert.equal(session.sendNavLock("v|", true), false);
-  // Visitor role — also false even when connected (sender is agent-only).
+  // Visitor without a connected DataChannel is still false (no peer yet).
   return session.joinAsVisitor("4242").then(() => {
+    // status is "connecting" / "waiting" until the agent answers — no data conn.
+    assert.equal(session.getState().isConnected, false);
     assert.equal(session.sendPointer("v|", 0.5, 0.5), false);
     assert.equal(session.sendStrokeBegin("v|", "s1", "#fff", 0.004, [[0, 0]]), false);
     assert.equal(session.sendStrokePatch("v|", "s1", [[0.1, 0.1]]), false);

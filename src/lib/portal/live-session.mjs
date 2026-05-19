@@ -641,7 +641,11 @@ function createLiveSession(options) {
   }
 
   function _canSendAnnotation() {
-    return state.role === "agent" && !!dataConn && state.isConnected;
+    // Bidirectional annotations: both agent and visitor may emit
+    // pointer / stroke / clear / nav_lock packets. _sendSeq and
+    // _lastRecvSeq are per-peer so monotonicity holds either way.
+    return (state.role === "agent" || state.role === "visitor")
+      && !!dataConn && state.isConnected;
   }
 
   function _bufferedAmount() {
