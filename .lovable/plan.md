@@ -1,65 +1,75 @@
-# Why the coupon is rejected
 
-The 3DPS Free-Test coupon (`AWw4lrRx`) is configured in Stripe as **product-restricted** — it's attached to the Starter and Pro products. Stripe only accepts a promo code if at least one line item in the cart belongs to one of the coupon's allowed products.
+## Problem
 
-Tracing `supabase/functions/create-checkout/index.ts`, a Pro checkout produces **two** line items:
+The coupon `AWw4lrRx` is product-restricted in Stripe to specific Product IDs. Current `create-checkout` resolves prices via `lookup_keys: ["starter_annual" | "pro_annual"]` and trusts whatever product Stripe returns. If the lookup-key resolution ever returns a price attached to a different product (e.g. a duplicate created during an earlier sync, or a price whose lookup_key was reassigned), the setup fee line item — even after the last fix — inherits that "wrong" product and the coupon rejects the order.
 
-1. **Subscription line** — `price: stripePrice.id` for `pro_annual` → belongs to the Pro product ✓ (coupon would apply)
-2. **Setup fee line** — built inline with `price_data.product_data: { name: "Pro Studio Setup & Franchise Fee" }` → Stripe creates a **brand-new, unrelated product** on the fly for every checkout ✗
+The user wants the checkout to bind to **exact** Stripe IDs so there is zero ambiguity.
 
-Combined with the 365-day trial (`trial_period_days: 365`), the recurring line is **$0 due now**. The only amount actually charged today is the setup fee — and that line item is attached to an ad-hoc product the coupon doesn't cover. Stripe therefore returns:
+| Internal key      | Stripe Product ID         | Stripe Price ID                   |
+| ----------------- | ------------------------- | --------------------------------- |
+| `starter_annual`  | `prod_ULJU4Nl5h77Jte`     | `price_1TMcs0CQXdxBxU8GqT6j5mUb`  |
+| `pro_annual`      | `prod_ULJUtLfqo0icwT`     | `price_1TMcrzCQXdxBxU8GuhuqJidW`  |
 
-> "This code is valid, but doesn't apply to items in your order."
+## Approach
 
-This is independent of `allow_promotion_codes` — that flag only controls whether the input box appears.
+Single-file change in `supabase/functions/create-checkout/index.ts`. Replace the `prices.list({ lookup_keys })` flow with an explicit lookup table, then `stripe.prices.retrieve(<price_id>)` to fetch currency / type. Both the subscription line item AND the setup-fee line item will reference these IDs verbatim.
 
-# Fix
+### Why this approach (vs alternatives)
 
-Attach the setup fee line item to the **same Stripe product** as the subscription (the Pro / Starter product the coupon is already linked to), instead of creating a throwaway product. Stripe allows multiple prices (recurring + one-time) on the same product, and the coupon's `applies_to.products` check will then match.
+1. **Hardcoded map + `prices.retrieve` (chosen)** — Deterministic. Setup-fee line item uses `product: PRO_PRODUCT_ID` (literal), guaranteed to match the coupon's `applies_to.products`. Survives any future lookup_key reassignment in Stripe.
+2. ~~Keep `lookup_keys` and assert the returned product matches a whitelist~~ — Adds a runtime guard but still relies on Stripe state being correct; fails closed but doesn't fix the underlying brittleness.
+3. ~~Move IDs to env vars~~ — Adds a secret-management step with no real benefit; these are not secrets and live Stripe IDs differ from sandbox IDs anyway (see Environment note).
+4. ~~Read IDs from DB~~ — Overkill for two SKUs; introduces a query + caching surface for data that changes ~never.
 
-### Code change (single file)
+### Ripple analysis — what else touches these IDs?
 
-`supabase/functions/create-checkout/index.ts`, inside the `if (isRecurring)` branch where the setup fee is appended:
+Traced every call path:
 
-```ts
-if (setupFeeCents > 0) {
-  lineItems.push({
-    price_data: {
-      currency: stripePrice.currency || 'usd',
-      product: stripePrice.product as string,   // ← reuse Pro/Starter product
-      unit_amount: setupFeeCents,
-    },
-    quantity: 1,
-  });
-}
+- **`get-stripe-price` edge function** — separate function used by client-side helpers (`getStripePriceId`). Not on the checkout path. **No change needed**; it can keep lookup_key resolution.
+- **`payments-webhook`** — keys off `subscription.metadata.priceId` (the internal string `"pro_annual"` / `"starter_annual"`). We preserve that metadata exactly. **No change needed.**
+- **`StripeEmbeddedCheckout` / `useStripeCheckout` / upgrade page** — pass internal `priceId` strings only. **No change needed.**
+- **`subscription_data.trial_period_days: 365`** — preserved.
+- **`allow_promotion_codes: true`** — preserved.
+- **Setup fee `price_data`** — switches from `product: stripePrice.product` to literal `product: PRO_PRODUCT_ID | STARTER_PRODUCT_ID`.
+- **Validation regex** on incoming `priceId` (`/^[a-zA-Z0-9_-]+$/`) — still passes for `pro_annual` / `starter_annual`. Add an explicit allowlist check (must be one of the two known keys) for defense-in-depth.
+
+### Environment note (sandbox vs live)
+
+Stripe Product/Price IDs are **per-environment** — live IDs (`prod_…`, `price_…` above) do not exist in sandbox. The map will be keyed by environment so sandbox testing still works against existing sandbox prices via lookup_keys, while live uses the hardcoded IDs.
+
+```text
+priceId (internal) ──▶ STRIPE_IDS[env][priceId] ──▶ { productId, priceId }
+                            │
+                            ├── live    → hardcoded prod_*/price_* (from user)
+                            └── sandbox → resolved via lookup_keys (unchanged behavior)
 ```
 
-Replacing `product_data: { name: ... }` with `product: stripePrice.product` ties the setup fee to the same product the subscription price belongs to. The customer-facing name shown on the line item becomes the product's name in Stripe (e.g. "Pro Studio") — if you want the setup-fee subtitle, that can be set via `price_data.product_data.name` only when creating a new product, so we lose the "Setup & Franchise Fee" wording on the receipt line. Acceptable trade-off; the description can be conveyed via the product description in Stripe.
+This avoids breaking sandbox checkout in the preview while making live deterministic.
 
-### Stripe Dashboard — verification
+## Implementation steps
 
-Open the `3DPS Free-Test` coupon in both sandbox and live:
-- Confirm `Applies to → Specific products` includes the **Starter** and **Pro** products.
-- Confirm there is a **Promotion code** (redeemable string, e.g. `FREETEST`) linked to the coupon — `allow_promotion_codes` only reveals the input; the Coupon itself isn't redeemable without a Promotion Code.
+1. Edit `supabase/functions/create-checkout/index.ts`:
+   - Add `STRIPE_IDS` constant mapping `{ live: { starter_annual: {...}, pro_annual: {...} } }`.
+   - Add allowlist check: reject any `priceId` not in `["starter_annual", "pro_annual"]`.
+   - Branch on `env`:
+     - **live**: `stripe.prices.retrieve(STRIPE_IDS.live[priceId].priceId)` to get currency/type, then build line items using the literal `priceId` and `productId`.
+     - **sandbox**: keep current `lookup_keys` flow (so preview still works without sandbox prod/price IDs).
+   - Setup-fee `price_data.product`: literal product ID from the map (live) or `stripePrice.product` (sandbox).
+   - Preserve: `allow_promotion_codes`, `trial_period_days: 365`, `subscription_data.metadata`, `ui_mode: "embedded"`, `return_url`, customer email passthrough.
+2. Redeploy `create-checkout` via `supabase--deploy_edge_functions`.
+3. Verify by invoking the function with `environment: "live"` and `priceId: "pro_annual"` and confirm:
+   - Returned `clientSecret` is present.
+   - Stripe Dashboard shows the resulting session with line items attached to `prod_ULJUtLfqo0icwT`.
+   - Promo code field accepts `AWw4lrRx` without the "doesn't apply" error.
 
-### Why not the alternatives
+## Risks & mitigations
 
-- **Remove product restriction on the coupon (apply to all)** — works but weakens the guardrail; coupon would discount any future product including Stripe Connect marketplace payments.
-- **Make the coupon free-shipping/percentage-off on the subscription only** — useless here because the subscription is $0 during the 365-day trial; nothing to discount.
-- **Create a dedicated "Setup Fee" product and attach the coupon to it** — works, but doubles dashboard maintenance (every tier change requires editing two products) and re-introduces the same bug the next time a new tier is added.
+- **Risk**: Live IDs typo'd → coupon still rejects. **Mitigation**: copy IDs verbatim from this plan; verify in Stripe Dashboard post-deploy.
+- **Risk**: Coupon's `applies_to.products` in Stripe doesn't actually include BOTH `prod_ULJU4Nl5h77Jte` and `prod_ULJUtLfqo0icwT`. **Mitigation**: user should confirm both products are listed under the coupon's "Applies to" in the Stripe Dashboard. Code change alone cannot fix a misconfigured coupon.
+- **Risk**: Sandbox checkout breaks. **Mitigation**: sandbox branch unchanged.
 
-Reusing `stripePrice.product` is the smallest, safest change and self-heals: any product the subscription price belongs to is automatically the product the setup fee belongs to.
+## Files touched
 
-# Verification steps after deploy
+- `supabase/functions/create-checkout/index.ts` (only file)
 
-1. Redeploy `create-checkout`.
-2. In **sandbox**, open Pro checkout, enter the Promotion Code → expect 100% discount on the $299 setup fee, $0 due now, trial active.
-3. Repeat for Starter ($149).
-4. Repeat both in **live** once confirmed.
-5. Check Stripe Dashboard → Payments: the resulting $0 PaymentIntent shows the coupon applied.
-
-# Files touched
-
-- `supabase/functions/create-checkout/index.ts` — 2-line change in the setup-fee `lineItems.push`.
-
-No DB migrations, no client changes, no new env vars, no webhook changes.
+No DB migrations, no client changes, no new secrets, no webhook changes.
