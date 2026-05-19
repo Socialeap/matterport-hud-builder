@@ -1640,15 +1640,15 @@ body.anno-rope-active .anno-rope-group .anno-shape-wrap{display:inline-flex}
 .anno-exit-btn{font-size:16px;line-height:1;padding:4px 9px 6px}
 .anno-exit-btn:hover{background:rgba(255,107,107,0.18);border-color:rgba(255,107,107,0.45);color:#ff6b6b}
 #live-tour-navlock{position:absolute;inset:0;z-index:4;background:transparent;cursor:not-allowed;display:none;touch-action:none}
-body.live-tour-active.live-tour-visitor #live-tour-navlock.locked{display:block}
-body.live-tour-active.live-tour-visitor #anno-letterbox-wrap:has(#live-tour-navlock.locked) #matterport-frame{pointer-events:none}
+body.live-tour-active.live-tour-visitor #live-tour-navlock.locked,body.live-tour-active.live-tour-agent #live-tour-navlock.locked{display:block}
+body.live-tour-active.live-tour-visitor #anno-letterbox-wrap:has(#live-tour-navlock.locked) #matterport-frame,body.live-tour-active.live-tour-agent #anno-letterbox-wrap:has(#live-tour-navlock.locked) #matterport-frame{pointer-events:none}
 /* Engage 16:9 letterboxing once the WebRTC session is live. Black
    bars come from #viewer's background while the wrap is centered
-   inside it. The agent gets a toolbar; the visitor only sees the
-   pointer / strokes that arrive over the channel. */
+   inside it. Both roles get the annotation toolbar — strokes /
+   pointer / clear / nav_lock are bidirectional. */
 body.live-tour-active #viewer{display:flex;align-items:center;justify-content:center;background:#000}
 body.live-tour-active #anno-letterbox-wrap{position:relative;inset:auto;aspect-ratio:16/9;width:min(100vw,calc(100vh * 16 / 9));height:auto;max-height:100vh}
-body.live-tour-active.live-tour-agent #anno-toolbar{display:flex}
+body.live-tour-active.live-tour-agent #anno-toolbar,body.live-tour-active.live-tour-visitor #anno-toolbar{display:flex}
 
 /* ── Live Tour controls (left-side drawer that replaces the top HUD
    while body.live-tour-active is set). Keeps the 3D tour and the
