@@ -1,75 +1,79 @@
+## What's actually happening
 
-## Problem
+The "Send Invite" flow on `/dashboard/clients` does three things in sequence:
 
-The coupon `AWw4lrRx` is product-restricted in Stripe to specific Product IDs. Current `create-checkout` resolves prices via `lookup_keys: ["starter_annual" | "pro_annual"]` and trusts whatever product Stripe returns. If the lookup-key resolution ever returns a price attached to a different product (e.g. a duplicate created during an earlier sync, or a price whose lookup_key was reassigned), the setup fee line item — even after the last fix — inherits that "wrong" product and the coupon rejects the order.
+1. **INSERT into `public.invitations`** (browser → PostgREST, RLS-checked as the user)
+2. **POST `/lovable/email/transactional/send`** (browser → TanStack server route, JWT-checked, then service-role enqueue into pgmq)
+3. **Dispatcher (`/lovable/email/queue/process`)** pulls from pgmq and calls the Lovable Email API.
 
-The user wants the checkout to bind to **exact** Stripe IDs so there is zero ambiguity.
-
-| Internal key      | Stripe Product ID         | Stripe Price ID                   |
-| ----------------- | ------------------------- | --------------------------------- |
-| `starter_annual`  | `prod_ULJU4Nl5h77Jte`     | `price_1TMcs0CQXdxBxU8GqT6j5mUb`  |
-| `pro_annual`      | `prod_ULJUtLfqo0icwT`     | `price_1TMcrzCQXdxBxU8GuhuqJidW`  |
-
-## Approach
-
-Single-file change in `supabase/functions/create-checkout/index.ts`. Replace the `prices.list({ lookup_keys })` flow with an explicit lookup table, then `stripe.prices.retrieve(<price_id>)` to fetch currency / type. Both the subscription line item AND the setup-fee line item will reference these IDs verbatim.
-
-### Why this approach (vs alternatives)
-
-1. **Hardcoded map + `prices.retrieve` (chosen)** — Deterministic. Setup-fee line item uses `product: PRO_PRODUCT_ID` (literal), guaranteed to match the coupon's `applies_to.products`. Survives any future lookup_key reassignment in Stripe.
-2. ~~Keep `lookup_keys` and assert the returned product matches a whitelist~~ — Adds a runtime guard but still relies on Stripe state being correct; fails closed but doesn't fix the underlying brittleness.
-3. ~~Move IDs to env vars~~ — Adds a secret-management step with no real benefit; these are not secrets and live Stripe IDs differ from sandbox IDs anyway (see Environment note).
-4. ~~Read IDs from DB~~ — Overkill for two SKUs; introduces a query + caching surface for data that changes ~never.
-
-### Ripple analysis — what else touches these IDs?
-
-Traced every call path:
-
-- **`get-stripe-price` edge function** — separate function used by client-side helpers (`getStripePriceId`). Not on the checkout path. **No change needed**; it can keep lookup_key resolution.
-- **`payments-webhook`** — keys off `subscription.metadata.priceId` (the internal string `"pro_annual"` / `"starter_annual"`). We preserve that metadata exactly. **No change needed.**
-- **`StripeEmbeddedCheckout` / `useStripeCheckout` / upgrade page** — pass internal `priceId` strings only. **No change needed.**
-- **`subscription_data.trial_period_days: 365`** — preserved.
-- **`allow_promotion_codes: true`** — preserved.
-- **Setup fee `price_data`** — switches from `product: stripePrice.product` to literal `product: PRO_PRODUCT_ID | STARTER_PRODUCT_ID`.
-- **Validation regex** on incoming `priceId` (`/^[a-zA-Z0-9_-]+$/`) — still passes for `pro_annual` / `starter_annual`. Add an explicit allowlist check (must be one of the two known keys) for defense-in-depth.
-
-### Environment note (sandbox vs live)
-
-Stripe Product/Price IDs are **per-environment** — live IDs (`prod_…`, `price_…` above) do not exist in sandbox. The map will be keyed by environment so sandbox testing still works against existing sandbox prices via lookup_keys, while live uses the hardcoded IDs.
+The `is_free` toggle is **purely a column value** — no trigger, no CHECK constraint, no RLS branch keys off it. So "Free" itself can never cause a 403. The 403 must come from one of three real gates:
 
 ```text
-priceId (internal) ──▶ STRIPE_IDS[env][priceId] ──▶ { productId, priceId }
-                            │
-                            ├── live    → hardcoded prod_*/price_* (from user)
-                            └── sandbox → resolved via lookup_keys (unchanged behavior)
+[Browser] --insert--> invitations           ← RLS: auth.uid()=provider_id AND has_role(uid,'provider')
+[Browser] --POST--> /lovable/email/.../send ← 401 if no Bearer; 5xx on enqueue fail
+[Dispatcher] -----> Lovable Email API       ← 403 "Emails disabled" → row goes to DLQ
 ```
 
-This avoids breaking sandbox checkout in the preview while making live deterministic.
+### Findings from the live DB
 
-## Implementation steps
+- `public.invitations` RLS INSERT requires **both** `auth.uid() = provider_id` **and** `has_role(uid, 'provider')`. PostgREST returns HTTP **403** when `WITH CHECK` fails.
+- All three current Starter licensees (`978…`, `837…`, `8113…`) **do** have the `provider` role today — those rows were inserted by the mock-MSP seed migration, not by the production purchase trigger.
+- Real role grants depend on `trg_assign_provider_role` on `purchases`, which only fires on **AFTER INSERT** when `NEW.status='completed'`. A future code path that pre-inserts a `pending` purchase row and later updates it to `completed` (or any flow that creates an active license without going through `purchases` insert) will leave the user **license-paid but role-less** → every invite insert returns 403.
+- Past `email_send_log` rows for `invitation` show `status='dlq'` with `"Emails disabled for this project"`. That's a dispatcher-side 403 from the Lovable Email API, mapped to DLQ. It happens **after** the insert and after the 200 response from `/lovable/email/transactional/send`, so the UI today shows the success toast even though the email never leaves. The Starter user's "submitting failed" experience cannot come from this path, but the user-perceived failure (no email arrives) can.
+- The current UI catch in `handleInvite` collapses every Supabase error into `"Failed to send invitation"` (only `duplicate` is special-cased), so we have no telemetry to tell 403 vs 409 vs network apart.
 
-1. Edit `supabase/functions/create-checkout/index.ts`:
-   - Add `STRIPE_IDS` constant mapping `{ live: { starter_annual: {...}, pro_annual: {...} } }`.
-   - Add allowlist check: reject any `priceId` not in `["starter_annual", "pro_annual"]`.
-   - Branch on `env`:
-     - **live**: `stripe.prices.retrieve(STRIPE_IDS.live[priceId].priceId)` to get currency/type, then build line items using the literal `priceId` and `productId`.
-     - **sandbox**: keep current `lookup_keys` flow (so preview still works without sandbox prod/price IDs).
-   - Setup-fee `price_data.product`: literal product ID from the map (live) or `stripePrice.product` (sandbox).
-   - Preserve: `allow_promotion_codes`, `trial_period_days: 365`, `subscription_data.metadata`, `ui_mode: "embedded"`, `return_url`, customer email passthrough.
-2. Redeploy `create-checkout` via `supabase--deploy_edge_functions`.
-3. Verify by invoking the function with `environment: "live"` and `priceId: "pro_annual"` and confirm:
-   - Returned `clientSecret` is present.
-   - Stripe Dashboard shows the resulting session with line items attached to `prod_ULJUtLfqo0icwT`.
-   - Promo code field accepts `AWw4lrRx` without the "doesn't apply" error.
+### Most likely root cause
 
-## Risks & mitigations
+The Starter MSP who tried to invite is missing the `provider` role on `public.user_roles`, so the `invitations` INSERT fails the `WITH CHECK` and PostgREST returns 403. The "Free" toggle is incidental.
 
-- **Risk**: Live IDs typo'd → coupon still rejects. **Mitigation**: copy IDs verbatim from this plan; verify in Stripe Dashboard post-deploy.
-- **Risk**: Coupon's `applies_to.products` in Stripe doesn't actually include BOTH `prod_ULJU4Nl5h77Jte` and `prod_ULJUtLfqo0icwT`. **Mitigation**: user should confirm both products are listed under the coupon's "Applies to" in the Stripe Dashboard. Code change alone cannot fix a misconfigured coupon.
-- **Risk**: Sandbox checkout breaks. **Mitigation**: sandbox branch unchanged.
+## Plan
+
+Four layered fixes — diagnostic first, then make the gates self-healing.
+
+### 1. Surface the real error in the UI (telemetry)
+
+`src/routes/_authenticated.dashboard.clients.tsx` — replace the silent
+`"Failed to send invitation"` toast in `handleInvite` with one that:
+
+- detects PostgREST RLS denial (`error.code === '42501'` or message contains `"row-level security"`) and shows `"Your account is missing the Provider role — try refreshing, or contact support."` plus a console.error with the full error object;
+- keeps the duplicate-key branch;
+- still falls back to the generic message for unknown errors.
+
+This costs nothing and means the *next* report will be diagnosable in one screenshot.
+
+### 2. Self-heal the `provider` role (root-cause fix)
+
+Add a new migration with two safety nets so a paid Starter (or Pro) MSP can never be role-less:
+
+**a. Backfill** — `INSERT INTO public.user_roles (user_id, role) SELECT user_id, 'provider' FROM public.licenses WHERE license_status='active' AND tier IN ('starter','pro') ON CONFLICT DO NOTHING;` plus the same for `admin_grants` (active, non-revoked).
+
+**b. Forward-looking triggers** —
+   - On `public.licenses` AFTER INSERT OR UPDATE OF `license_status`, `tier`: if `NEW.license_status='active'` and `NEW.tier IN ('starter','pro')`, upsert `user_roles(NEW.user_id,'provider')`.
+   - On `public.purchases` change the existing `trg_assign_provider_role` to fire AFTER INSERT **OR UPDATE OF status** so a pending→completed transition also grants the role (idempotent thanks to ON CONFLICT).
+   - On `public.admin_grants` AFTER INSERT WHEN `revoked_at IS NULL`, upsert the role.
+
+All functions `SECURITY DEFINER` with `SET search_path = public`, mirroring the existing one.
+
+### 3. Stop reporting "email sent" when the dispatcher is going to DLQ
+
+Two small, isolated changes that don't touch business logic:
+
+- **`src/routes/_authenticated.dashboard.clients.tsx`** — after the `fetch("/lovable/email/transactional/send")` resolves, surface a softer toast `"Invitation recorded — email delivery is in progress."` instead of `"Invitation sent"`, since the route only confirms enqueue, not delivery. This sets correct expectations and removes the false-success case for the "Emails disabled" scenario.
+- **No change to the dispatcher** — the `403 → DLQ` mapping is already correct and intentional.
+
+### 4. Verification
+
+- Run the migration; re-query the role/license join to confirm every active Starter/Pro license has a `provider` role row.
+- Simulate the failure locally by `DELETE FROM user_roles WHERE user_id=<starter> AND role='provider'`, attempt an invite from that account, and confirm the new toast shows the RLS-specific message; re-insert the role (or rely on the new license trigger by toggling `license_status`) and confirm the invite succeeds with both `Free` and `Pay` toggles.
+- Inspect `email_send_log` to confirm a new `invitation` row reaches `status='sent'` (assuming Lovable Emails is enabled on this project).
 
 ## Files touched
 
-- `supabase/functions/create-checkout/index.ts` (only file)
+- `src/routes/_authenticated.dashboard.clients.tsx` — better error toasts, softer success toast (UI only, no business logic).
+- `supabase/migrations/<new>_self_heal_provider_role.sql` — backfill + three triggers.
 
-No DB migrations, no client changes, no new secrets, no webhook changes.
+## Out of scope
+
+- The Stripe coupon / checkout work from prior turns is untouched.
+- The Lovable Email "Emails disabled" project-level flag — that's a Cloud setting, not a code fix; the new toast just stops misrepresenting it.
+- The `setClientFreeFlag` server function — unchanged; it's only used by the row-level toggle, not the create form.
