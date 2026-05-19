@@ -5247,15 +5247,15 @@ if(frame){
     // ── Annotation receive paths ─────────────────────────────────
     // Controller's seq filter guarantees monotonicity in state; we
     // de-dupe locally by seq so the same patch-tick doesn't re-render
-    // the same event. Agent and visitor BOTH receive (agent only
-    // emits, but the agent's own canvas is updated by the local
-    // pointerdown/move handlers, not by inbound events — strictly
-    // speaking the agent has nothing to receive, but the dedup is
-    // cheap and keeps the handler symmetric).
+    // the same event. Bidirectional — both agent and visitor render
+    // the OTHER peer's inbound pointer/strokes/clear/nav_lock. Each
+    // side's own actions are rendered locally by the canvas handlers,
+    // not by inbound events (peer-to-peer with no loopback).
+    var _canReceive=(state.role==="agent"||state.role==="visitor");
     var pev=state.incomingPointerEvent;
     if(pev&&pev.seq!==lastPointerSeq){
       lastPointerSeq=pev.seq;
-      if(state.role==="visitor"&&remotePointer&&letterboxWrap){
+      if(_canReceive&&remotePointer&&letterboxWrap){
         if(pev.x==null||pev.y==null){
           remotePointer.style.display="none";
           if(remotePointerHideTimer){ try { clearTimeout(remotePointerHideTimer); } catch(_e){} remotePointerHideTimer=null; }
@@ -5269,7 +5269,7 @@ if(frame){
           remotePointer.style.display="block";
           if(remotePointerHideTimer){ try { clearTimeout(remotePointerHideTimer); } catch(_e){} }
           // Idle-hide so a stuck pointer doesn't linger forever if
-          // the agent disconnects without a clean leave event.
+          // the peer disconnects without a clean leave event.
           remotePointerHideTimer=setTimeout(function(){
             if(remotePointer) remotePointer.style.display="none";
           },ANNO_REMOTE_POINTER_TIMEOUT_MS);
@@ -5280,7 +5280,7 @@ if(frame){
     var sev=state.incomingStrokeEvent;
     if(sev&&sev.seq!==lastStrokeSeq){
       lastStrokeSeq=sev.seq;
-      if(state.role==="visitor"){
+      if(_canReceive){
         if(sev.kind==="begin"){
           // Focus Rope reuses stroke_begin to push atomic shape
           // snapshots under a stable strokeId. If the id is already
@@ -5309,17 +5309,17 @@ if(frame){
             redrawAllStrokes();
           }
         }
-        // commit is a no-op on the visitor — the stroke is already
-        // visible; commit just signals the agent finished it.
+        // commit is a no-op on the receiver — the stroke is already
+        // visible; commit just signals the sender finished it.
       }
     }
 
     var cev=state.incomingClearEvent;
     if(cev&&cev.seq!==lastClearSeq){
       lastClearSeq=cev.seq;
-      if(state.role==="visitor"){
+      if(_canReceive){
         wipeAnnotations();
-        // Defensive: a Clear from the agent always implies "annotation
+        // Defensive: a Clear from the peer always implies "annotation
         // session ended" — release the nav-lock too in case the
         // explicit unlock packet was dropped or reordered.
         applyNavLock(false);
@@ -5329,7 +5329,7 @@ if(frame){
     var nlev=state.incomingNavLockEvent;
     if(nlev&&nlev.seq!==lastNavLockSeq){
       lastNavLockSeq=nlev.seq;
-      if(state.role==="visitor") applyNavLock(nlev.locked===true);
+      if(_canReceive) applyNavLock(nlev.locked===true);
     }
   }
 
