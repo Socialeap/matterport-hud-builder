@@ -5187,6 +5187,13 @@ if(frame){
       // Watermark still advanced above so the same packet isn't replayed.
       if(lastOwnSendTs===0||(Date.now()-lastOwnSendTs)>=SYNC_SUPPRESS_MS){
         applyTeleport(state.incomingTeleportEvent.ss,state.incomingTeleportEvent.sr);
+        // Lock the receiver-side dedupe so even a delayed clipboard read
+        // of the same URL (Matterport rewrites, pointerenter polls,
+        // focus re-entry) cannot rebroadcast and ping-pong the
+        // sender's iframe. Belt-and-suspenders alongside the
+        // currentViewKey echo guard in attemptSendLocation.
+        lastSentLocationKey=state.incomingTeleportEvent.ss+"|"+state.incomingTeleportEvent.sr;
+        lastSentLocationTs=Date.now();
       }
     }
 
@@ -5201,6 +5208,11 @@ if(frame){
       // above so the same packet won't replay once the window expires.
       if(lastOwnSendTs===0||(Date.now()-lastOwnSendTs)>=SYNC_SUPPRESS_MS){
         applyTeleport(state.incomingLocationShareEvent.ss,state.incomingLocationShareEvent.sr);
+        // Receiver-side dedupe lock (see visitor branch above for
+        // rationale). Prevents the agent from re-sharing the just-
+        // applied coords back to the visitor on the next ambient poll.
+        lastSentLocationKey=state.incomingLocationShareEvent.ss+"|"+state.incomingLocationShareEvent.sr;
+        lastSentLocationTs=Date.now();
         if(letterboxWrap){
           try {
             letterboxWrap.classList.add("follow-pulse");
