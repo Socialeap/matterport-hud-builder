@@ -67,6 +67,8 @@ interface FormState {
   welcome_note: string;
   ga_tracking_id: string;
   avatar_url: string;
+  logo_url: string;
+  favicon_url: string;
   social_links: Record<string, string>;
 }
 
@@ -78,6 +80,8 @@ const EMPTY_FORM: FormState = {
   welcome_note: "",
   ga_tracking_id: "",
   avatar_url: "",
+  logo_url: "",
+  favicon_url: "",
   social_links: {},
 };
 
