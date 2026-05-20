@@ -181,7 +181,26 @@ export const Route = createFileRoute("/p/$slug/")({
         { name: "twitter:description", content: description.slice(0, 160) },
         { name: "twitter:image", content: image },
       ],
-      links: [{ rel: "canonical", href: url }],
+      links: (() => {
+        const links: Array<Record<string, string>> = [
+          { rel: "canonical", href: url },
+        ];
+        const iconHref = (b?.favicon_url || b?.logo_url || "").trim();
+        if (iconHref) {
+          const lower = iconHref.toLowerCase();
+          const type = lower.endsWith(".svg")
+            ? "image/svg+xml"
+            : lower.endsWith(".ico")
+            ? "image/x-icon"
+            : lower.endsWith(".webp")
+            ? "image/webp"
+            : lower.endsWith(".jpg") || lower.endsWith(".jpeg")
+            ? "image/jpeg"
+            : "image/png";
+          links.push({ rel: "icon", href: iconHref, type });
+        }
+        return links;
+      })(),
       scripts: [
         {
           type: "application/ld+json",
