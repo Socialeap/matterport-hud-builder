@@ -1,7 +1,12 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
-import { type StripeEnv, createStripeClient } from "../_shared/stripe.ts";
+import {
+  type StripeEnv,
+  createStripeClient,
+  isStripeCredentialError,
+  stripeCredentialResponse,
+} from "../_shared/stripe.ts";
 
 const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -71,6 +76,9 @@ serve(async (req) => {
     });
   } catch (error) {
     console.error("Connect status error:", error);
+    if (isStripeCredentialError(error)) {
+      return stripeCredentialResponse("sandbox", corsHeaders);
+    }
     return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Internal server error" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

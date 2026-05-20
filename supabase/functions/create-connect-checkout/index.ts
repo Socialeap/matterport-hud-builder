@@ -1,7 +1,12 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
-import { type StripeEnv, createStripeClient } from "../_shared/stripe.ts";
+import {
+  type StripeEnv,
+  createStripeClient,
+  isStripeCredentialError,
+  stripeCredentialResponse,
+} from "../_shared/stripe.ts";
 import { calculatePresentationPrice } from "../_shared/pricing.ts";
 
 const supabaseAdmin = createClient(
@@ -246,6 +251,10 @@ serve(async (req) => {
         status,
       });
 
+      if (isStripeCredentialError(stripeErr)) {
+        return stripeCredentialResponse(env, corsHeaders);
+      }
+
       // Platform not activated for Stripe Connect (Platform Profile incomplete)
       if (
         code === "platform_account_required" ||
@@ -289,6 +298,9 @@ serve(async (req) => {
     });
   } catch (error) {
     console.error("Connect checkout error:", error);
+    if (isStripeCredentialError(error)) {
+      return stripeCredentialResponse("sandbox", corsHeaders);
+    }
     return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Internal server error" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

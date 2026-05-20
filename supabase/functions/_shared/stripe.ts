@@ -34,6 +34,25 @@ export function createStripeClient(env: StripeEnv): Stripe {
   });
 }
 
+export function isStripeCredentialError(error: unknown): boolean {
+  const stripeError = error as { code?: string; raw?: { code?: string }; message?: string };
+  const code = stripeError?.code || stripeError?.raw?.code;
+  const message = stripeError?.message || "";
+  return code === "api_key_expired" || message.includes("Expired API Key provided");
+}
+
+export function stripeCredentialResponse(env: StripeEnv, corsHeaders: Record<string, string>): Response {
+  const label = env === "live" ? "live" : "test";
+  return new Response(
+    JSON.stringify({
+      error: `The Stripe ${label} environment credential has expired. Reconnect Stripe in Lovable to refresh the stored ${label} key.`,
+      code: "stripe_credentials_expired",
+      environment: env,
+    }),
+    { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+  );
+}
+
 export interface VerifiedStripeEvent {
   /** Raw Stripe event id, e.g. `evt_…` — used for webhook idempotency. */
   id: string;
