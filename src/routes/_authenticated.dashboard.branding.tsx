@@ -635,7 +635,7 @@ function BrandingPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="gate_label">Gate Button Label</Label>
+                <Label htmlFor="gate_label">Headline (see preview below)</Label>
                 <Input
                   id="gate_label"
                   value={branding.gate_label}
