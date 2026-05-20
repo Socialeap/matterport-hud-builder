@@ -768,7 +768,7 @@ function BrandingPage() {
                     />
                     <div className="absolute inset-0 flex items-center justify-center">
                       <span className="text-sm font-semibold text-white drop-shadow-lg">
-                        Headline preview
+                        {branding.gate_label?.trim() || "Enter Tour"}
                       </span>
                     </div>
                   </div>
