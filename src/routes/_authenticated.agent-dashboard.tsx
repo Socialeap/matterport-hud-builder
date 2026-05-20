@@ -67,6 +67,8 @@ interface FormState {
   welcome_note: string;
   ga_tracking_id: string;
   avatar_url: string;
+  logo_url: string;
+  favicon_url: string;
   social_links: Record<string, string>;
 }
 
@@ -78,6 +80,8 @@ const EMPTY_FORM: FormState = {
   welcome_note: "",
   ga_tracking_id: "",
   avatar_url: "",
+  logo_url: "",
+  favicon_url: "",
   social_links: {},
 };
 
@@ -102,12 +106,22 @@ function AgentDashboardPage() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const seededRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const faviconInputRef = useRef<HTMLInputElement>(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [faviconUploading, setFaviconUploading] = useState(false);
 
   // Seed form from server data once.
   useEffect(() => {
     if (seededRef.current) return;
-    const p = profileQuery.data?.profile;
+    const p = profileQuery.data?.profile as
+      | (NonNullable<typeof profileQuery.data>["profile"] & {
+          logo_url?: string | null;
+          favicon_url?: string | null;
+        })
+      | null
+      | undefined;
     if (!p) return;
     seededRef.current = true;
     setForm({
@@ -118,6 +132,8 @@ function AgentDashboardPage() {
       welcome_note: p.welcome_note ?? "",
       ga_tracking_id: p.ga_tracking_id ?? "",
       avatar_url: p.avatar_url ?? "",
+      logo_url: p.logo_url ?? "",
+      favicon_url: p.favicon_url ?? "",
       social_links: (p.social_links as Record<string, string>) ?? {},
     });
   }, [profileQuery.data]);
@@ -139,6 +155,46 @@ function AgentDashboardPage() {
 
   const handleSocial = (key: string, value: string) => {
     setForm((prev) => ({ ...prev, social_links: { ...prev.social_links, [key]: value } }));
+  };
+
+  const handleBrandImageSelect = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    kind: "logo" | "favicon",
+  ) => {
+    const file = e.target.files?.[0] ?? null;
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please choose an image file");
+      e.target.value = "";
+      return;
+    }
+    if (!user?.id) {
+      toast.error("You must be signed in to upload images");
+      return;
+    }
+    const setUploading = kind === "logo" ? setLogoUploading : setFaviconUploading;
+    const inputRef = kind === "logo" ? logoInputRef : faviconInputRef;
+    setUploading(true);
+    try {
+      const limits = kind === "logo" ? BRAND_ASSET_LIMITS.logo : BRAND_ASSET_LIMITS.favicon;
+      const opts = kind === "logo"
+        ? { ...limits, targetBytes: 120 * 1024, kind: "logo" as const }
+        : { ...limits, kind: "favicon" as const };
+      const result = await optimizeBrandImage(file, opts);
+      const url = await uploadBrandAsset(user.id, result.file, kind);
+      if (!url) {
+        toast.error("Upload failed — please try again");
+        return;
+      }
+      setForm((prev) => ({ ...prev, [kind === "logo" ? "logo_url" : "favicon_url"]: url }));
+      const savings = describeOptimization(result);
+      toast.success(savings ? `${kind === "logo" ? "Logo" : "Favicon"} uploaded (${savings})` : `${kind === "logo" ? "Logo" : "Favicon"} uploaded`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not process image");
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
   };
 
   const handleAvatarSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -180,6 +236,9 @@ function AgentDashboardPage() {
   const handleRemoveAvatar = () => {
     setForm((prev) => ({ ...prev, avatar_url: "" }));
   };
+
+  const handleRemoveLogo = () => setForm((prev) => ({ ...prev, logo_url: "" }));
+  const handleRemoveFavicon = () => setForm((prev) => ({ ...prev, favicon_url: "" }));
 
   const handleSave = () => {
     saveMut.mutate(form);
@@ -299,6 +358,115 @@ function AgentDashboardPage() {
                     </p>
                   </div>
                 </div>
+
+                {/* Brand Logo + Favicon — auto-prefill into Builder branding */}
+                <div className="grid gap-4 rounded-md border bg-muted/20 p-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label className="text-xs font-medium">Brand Logo</Label>
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-16 w-[120px] items-center justify-center rounded border bg-background">
+                        {form.logo_url ? (
+                          <img
+                            src={form.logo_url}
+                            alt="Logo"
+                            className="max-h-14 max-w-[112px] h-auto w-auto object-contain"
+                          />
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground">No logo</span>
+                        )}
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <input
+                          ref={logoInputRef}
+                          type="file"
+                          accept="image/*,.webp"
+                          className="hidden"
+                          onChange={(e) => handleBrandImageSelect(e, "logo")}
+                          disabled={logoUploading}
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => logoInputRef.current?.click()}
+                          disabled={logoUploading}
+                        >
+                          {logoUploading ? (
+                            <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                          ) : (
+                            <Upload className="mr-1.5 size-3.5" />
+                          )}
+                          {logoUploading ? "Optimizing…" : "Upload Logo"}
+                        </Button>
+                        {form.logo_url && (
+                          <Button type="button" size="sm" variant="ghost" onClick={handleRemoveLogo}>
+                            <Trash2 className="mr-1.5 size-3.5" />
+                            Remove
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Auto-optimized to WebP (under 120 KB). Portrait, landscape, or square.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-xs font-medium">Favicon</Label>
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-16 w-16 items-center justify-center rounded border bg-background">
+                        {form.favicon_url ? (
+                          <img
+                            src={form.favicon_url}
+                            alt="Favicon"
+                            className="h-10 w-10 rounded object-contain"
+                          />
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground">None</span>
+                        )}
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <input
+                          ref={faviconInputRef}
+                          type="file"
+                          accept="image/*,.webp,.ico"
+                          className="hidden"
+                          onChange={(e) => handleBrandImageSelect(e, "favicon")}
+                          disabled={faviconUploading}
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => faviconInputRef.current?.click()}
+                          disabled={faviconUploading}
+                        >
+                          {faviconUploading ? (
+                            <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                          ) : (
+                            <Upload className="mr-1.5 size-3.5" />
+                          )}
+                          {faviconUploading ? "Optimizing…" : "Upload Favicon"}
+                        </Button>
+                        {form.favicon_url && (
+                          <Button type="button" size="sm" variant="ghost" onClick={handleRemoveFavicon}>
+                            <Trash2 className="mr-1.5 size-3.5" />
+                            Remove
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Square recommended. Shown in the browser tab on your tour page.
+                    </p>
+                  </div>
+
+                  <p className="text-xs text-muted-foreground sm:col-span-2">
+                    These auto-prefill into the Branding section of every presentation builder
+                    when you use <span className="font-medium">Setup → Prefill from My Profile</span>.
+                  </p>
+                </div>
+
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-1">
