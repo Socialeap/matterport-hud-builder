@@ -144,6 +144,55 @@ function BrandingPage() {
   const [faviconFile, setFaviconFile] = useState<File | null>(null);
   const [heroFile, setHeroFile] = useState<File | null>(null);
   const [callingCardLogoFile, setCallingCardLogoFile] = useState<File | null>(null);
+  const [logoOptimizing, setLogoOptimizing] = useState(false);
+  const [faviconOptimizing, setFaviconOptimizing] = useState(false);
+
+  // Logo cap is enforced at 120 KB per product policy (overrides the 150 KB
+  // default in BRAND_ASSET_LIMITS.logo). Favicon uses its preset.
+  const handleLogoSelect = useCallback(async (file: File | null) => {
+    if (!file) {
+      setLogoFile(null);
+      return;
+    }
+    setLogoOptimizing(true);
+    try {
+      const result = await optimizeBrandImage(file, {
+        ...BRAND_ASSET_LIMITS.logo,
+        targetBytes: 120 * 1024,
+        kind: "logo",
+      });
+      setLogoFile(result.file);
+      const delta = describeOptimization(result);
+      toast.success(delta ? `Logo optimized (${delta})` : "Logo ready");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't process logo");
+      setLogoFile(null);
+    } finally {
+      setLogoOptimizing(false);
+    }
+  }, []);
+
+  const handleFaviconSelect = useCallback(async (file: File | null) => {
+    if (!file) {
+      setFaviconFile(null);
+      return;
+    }
+    setFaviconOptimizing(true);
+    try {
+      const result = await optimizeBrandImage(file, {
+        ...BRAND_ASSET_LIMITS.favicon,
+        kind: "favicon",
+      });
+      setFaviconFile(result.file);
+      const delta = describeOptimization(result);
+      toast.success(delta ? `Favicon optimized (${delta})` : "Favicon ready");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't process favicon");
+      setFaviconFile(null);
+    } finally {
+      setFaviconOptimizing(false);
+    }
+  }, []);
   const [savedSnapshot, setSavedSnapshot] = useState<BrandingData>(defaultBranding);
   const savedSnapshotRef = useRef<BrandingData>(defaultBranding);
   const [previewVersion, setPreviewVersion] = useState(0);
