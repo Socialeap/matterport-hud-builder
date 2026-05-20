@@ -20,6 +20,11 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { uploadBrandAsset } from "@/lib/storage";
+import {
+  optimizeBrandImage,
+  BRAND_ASSET_LIMITS,
+  describeOptimization,
+} from "@/lib/portal/image-optimizer";
 import { useStripeCheckout } from "@/hooks/useStripeCheckout";
 import { getStripeEnvironment } from "@/lib/stripe";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
