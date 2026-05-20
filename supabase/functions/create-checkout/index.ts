@@ -1,6 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
-import { type StripeEnv, createStripeClient } from "../_shared/stripe.ts";
+import {
+  type StripeEnv,
+  createStripeClient,
+  isStripeCredentialError,
+  stripeCredentialResponse,
+} from "../_shared/stripe.ts";
 
 // Setup fees in cents (Studio Setup & Franchise Fee)
 const SETUP_FEES: Record<string, number> = {
@@ -63,6 +68,9 @@ serve(async (req) => {
       try {
         stripePrice = await stripe.prices.retrieve(ids.priceId);
       } catch (err) {
+        if (isStripeCredentialError(err)) {
+          return stripeCredentialResponse(env, corsHeaders);
+        }
         console.error(`[create-checkout] Failed to retrieve live price ${ids.priceId}:`, err);
         return new Response(JSON.stringify({ error: "Price not found" }), {
           status: 404,
@@ -139,6 +147,9 @@ serve(async (req) => {
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Internal server error";
     console.error("[create-checkout] Unhandled error:", msg);
+    if (isStripeCredentialError(error)) {
+      return stripeCredentialResponse("sandbox", corsHeaders);
+    }
     return new Response(JSON.stringify({ error: msg }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
