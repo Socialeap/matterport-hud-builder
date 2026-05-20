@@ -359,6 +359,115 @@ function AgentDashboardPage() {
                   </div>
                 </div>
 
+                {/* Brand Logo + Favicon — auto-prefill into Builder branding */}
+                <div className="grid gap-4 rounded-md border bg-muted/20 p-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label className="text-xs font-medium">Brand Logo</Label>
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-16 w-[120px] items-center justify-center rounded border bg-background">
+                        {form.logo_url ? (
+                          <img
+                            src={form.logo_url}
+                            alt="Logo"
+                            className="max-h-14 max-w-[112px] h-auto w-auto object-contain"
+                          />
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground">No logo</span>
+                        )}
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <input
+                          ref={logoInputRef}
+                          type="file"
+                          accept="image/*,.webp"
+                          className="hidden"
+                          onChange={(e) => handleBrandImageSelect(e, "logo")}
+                          disabled={logoUploading}
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => logoInputRef.current?.click()}
+                          disabled={logoUploading}
+                        >
+                          {logoUploading ? (
+                            <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                          ) : (
+                            <Upload className="mr-1.5 size-3.5" />
+                          )}
+                          {logoUploading ? "Optimizing…" : "Upload Logo"}
+                        </Button>
+                        {form.logo_url && (
+                          <Button type="button" size="sm" variant="ghost" onClick={handleRemoveLogo}>
+                            <Trash2 className="mr-1.5 size-3.5" />
+                            Remove
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Auto-optimized to WebP (under 120 KB). Portrait, landscape, or square.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-xs font-medium">Favicon</Label>
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-16 w-16 items-center justify-center rounded border bg-background">
+                        {form.favicon_url ? (
+                          <img
+                            src={form.favicon_url}
+                            alt="Favicon"
+                            className="h-10 w-10 rounded object-contain"
+                          />
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground">None</span>
+                        )}
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <input
+                          ref={faviconInputRef}
+                          type="file"
+                          accept="image/*,.webp,.ico"
+                          className="hidden"
+                          onChange={(e) => handleBrandImageSelect(e, "favicon")}
+                          disabled={faviconUploading}
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => faviconInputRef.current?.click()}
+                          disabled={faviconUploading}
+                        >
+                          {faviconUploading ? (
+                            <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                          ) : (
+                            <Upload className="mr-1.5 size-3.5" />
+                          )}
+                          {faviconUploading ? "Optimizing…" : "Upload Favicon"}
+                        </Button>
+                        {form.favicon_url && (
+                          <Button type="button" size="sm" variant="ghost" onClick={handleRemoveFavicon}>
+                            <Trash2 className="mr-1.5 size-3.5" />
+                            Remove
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Square recommended. Shown in the browser tab on your tour page.
+                    </p>
+                  </div>
+
+                  <p className="text-xs text-muted-foreground sm:col-span-2">
+                    These auto-prefill into the Branding section of every presentation builder
+                    when you use <span className="font-medium">Setup → Prefill from My Profile</span>.
+                  </p>
+                </div>
+
+
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-1">
                     <Label className="text-xs">Full Name</Label>
