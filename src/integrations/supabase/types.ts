@@ -965,9 +965,11 @@ export type Database = {
           company: string | null
           created_at: string
           display_name: string | null
+          favicon_url: string | null
           floor_plan_free_passes_used: number
           ga_tracking_id: string | null
           id: string
+          logo_url: string | null
           phone: string | null
           provider_id: string | null
           social_links: Json
@@ -981,9 +983,11 @@ export type Database = {
           company?: string | null
           created_at?: string
           display_name?: string | null
+          favicon_url?: string | null
           floor_plan_free_passes_used?: number
           ga_tracking_id?: string | null
           id?: string
+          logo_url?: string | null
           phone?: string | null
           provider_id?: string | null
           social_links?: Json
@@ -997,9 +1001,11 @@ export type Database = {
           company?: string | null
           created_at?: string
           display_name?: string | null
+          favicon_url?: string | null
           floor_plan_free_passes_used?: number
           ga_tracking_id?: string | null
           id?: string
+          logo_url?: string | null
           phone?: string | null
           provider_id?: string | null
           social_links?: Json
