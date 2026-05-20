@@ -20,6 +20,11 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { uploadBrandAsset } from "@/lib/storage";
+import {
+  optimizeBrandImage,
+  BRAND_ASSET_LIMITS,
+  describeOptimization,
+} from "@/lib/portal/image-optimizer";
 import { useStripeCheckout } from "@/hooks/useStripeCheckout";
 import { getStripeEnvironment } from "@/lib/stripe";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -139,6 +144,55 @@ function BrandingPage() {
   const [faviconFile, setFaviconFile] = useState<File | null>(null);
   const [heroFile, setHeroFile] = useState<File | null>(null);
   const [callingCardLogoFile, setCallingCardLogoFile] = useState<File | null>(null);
+  const [logoOptimizing, setLogoOptimizing] = useState(false);
+  const [faviconOptimizing, setFaviconOptimizing] = useState(false);
+
+  // Logo cap is enforced at 120 KB per product policy (overrides the 150 KB
+  // default in BRAND_ASSET_LIMITS.logo). Favicon uses its preset.
+  const handleLogoSelect = useCallback(async (file: File | null) => {
+    if (!file) {
+      setLogoFile(null);
+      return;
+    }
+    setLogoOptimizing(true);
+    try {
+      const result = await optimizeBrandImage(file, {
+        ...BRAND_ASSET_LIMITS.logo,
+        targetBytes: 120 * 1024,
+        kind: "logo",
+      });
+      setLogoFile(result.file);
+      const delta = describeOptimization(result);
+      toast.success(delta ? `Logo optimized (${delta})` : "Logo ready");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't process logo");
+      setLogoFile(null);
+    } finally {
+      setLogoOptimizing(false);
+    }
+  }, []);
+
+  const handleFaviconSelect = useCallback(async (file: File | null) => {
+    if (!file) {
+      setFaviconFile(null);
+      return;
+    }
+    setFaviconOptimizing(true);
+    try {
+      const result = await optimizeBrandImage(file, {
+        ...BRAND_ASSET_LIMITS.favicon,
+        kind: "favicon",
+      });
+      setFaviconFile(result.file);
+      const delta = describeOptimization(result);
+      toast.success(delta ? `Favicon optimized (${delta})` : "Favicon ready");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't process favicon");
+      setFaviconFile(null);
+    } finally {
+      setFaviconOptimizing(false);
+    }
+  }, []);
   const [savedSnapshot, setSavedSnapshot] = useState<BrandingData>(defaultBranding);
   const savedSnapshotRef = useRef<BrandingData>(defaultBranding);
   const [previewVersion, setPreviewVersion] = useState(0);
@@ -629,36 +683,51 @@ function BrandingPage() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Primary Logo</Label>
+                  <Label>
+                    Primary Logo {logoOptimizing && <span className="text-xs text-muted-foreground">(optimizing…)</span>}
+                  </Label>
                   <Input
                     type="file"
                     accept=".png,.jpg,.jpeg,.svg,.webp"
-                    onChange={(e) => setLogoFile(e.target.files?.[0] || null)}
+                    disabled={logoOptimizing}
+                    onChange={(e) => handleLogoSelect(e.target.files?.[0] || null)}
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Auto-converted to WebP, kept under 120 KB. Portrait, landscape, and square images all display correctly.
+                  </p>
                   {(logoFile || branding.logo_url) && (
-                    <img
-                      src={logoFile ? URL.createObjectURL(logoFile) : branding.logo_url!}
-                      alt="Logo preview"
-                      className="mt-2 h-12 rounded object-contain"
-                    />
+                    <div className="mt-2 flex items-center justify-center rounded border border-border bg-muted/30 p-2">
+                      <img
+                        src={logoFile ? URL.createObjectURL(logoFile) : branding.logo_url!}
+                        alt="Logo preview"
+                        className="max-h-16 max-w-[160px] h-auto w-auto object-contain"
+                      />
+                    </div>
                   )}
                 </div>
                 <div className="space-y-2">
-                  <Label>Favicon / Tab Icon</Label>
+                  <Label>
+                    Favicon / Tab Icon {faviconOptimizing && <span className="text-xs text-muted-foreground">(optimizing…)</span>}
+                  </Label>
                   <Input
                     type="file"
                     accept=".png,.jpg,.jpeg,.svg,.webp,.ico"
-                    onChange={(e) => setFaviconFile(e.target.files?.[0] || null)}
+                    disabled={faviconOptimizing}
+                    onChange={(e) => handleFaviconSelect(e.target.files?.[0] || null)}
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Auto-optimized for browser tabs. Falls back to your logo if empty.
+                  </p>
                   {(faviconFile || branding.favicon_url) && (
                     <img
                       src={faviconFile ? URL.createObjectURL(faviconFile) : branding.favicon_url!}
                       alt="Favicon preview"
-                      className="mt-2 h-8 rounded object-contain"
+                      className="mt-2 h-8 w-8 rounded object-contain"
                     />
                   )}
                 </div>
               </div>
+
 
               <div className="space-y-3 rounded-lg border border-dashed border-border p-4">
                 <div className="flex items-center justify-between">
@@ -699,7 +768,7 @@ function BrandingPage() {
                     />
                     <div className="absolute inset-0 flex items-center justify-center">
                       <span className="text-sm font-semibold text-white drop-shadow-lg">
-                        Headline preview
+                        {branding.gate_label?.trim() || "Enter Tour"}
                       </span>
                     </div>
                   </div>
