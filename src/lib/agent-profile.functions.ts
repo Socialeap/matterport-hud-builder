@@ -33,6 +33,8 @@ const ProfileUpdateSchema = z.object({
   social_links: SocialLinksSchema.optional(),
   ga_tracking_id: z.string().max(50).optional().nullable(),
   avatar_url: z.string().max(2000).optional().nullable(),
+  logo_url: z.string().max(2000).optional().nullable(),
+  favicon_url: z.string().max(2000).optional().nullable(),
 });
 
 export type AgentProfileInput = z.infer<typeof ProfileUpdateSchema>;
@@ -44,7 +46,7 @@ export const getMyAgentProfile = createServerFn({ method: "GET" })
     const { data, error } = await supabase
       .from("profiles")
       .select(
-        "user_id, display_name, avatar_url, title_role, company, phone, welcome_note, social_links, ga_tracking_id"
+        "user_id, display_name, avatar_url, title_role, company, phone, welcome_note, social_links, ga_tracking_id, logo_url, favicon_url"
       )
       .eq("user_id", userId)
       .maybeSingle();
