@@ -279,6 +279,26 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
         if (profileCompany) {
           setBrandName((prev) => (opts.force || !prev.trim() ? profileCompany : prev));
         }
+        // Prefill agent's logo + favicon from their saved profile when
+        // the builder doesn't already have one (or when force is true).
+        const profileLogo = (profile.logo_url ?? "").trim();
+        if (profileLogo) {
+          setLogoStorageUrl((prev) => (opts.force || !prev ? profileLogo : prev));
+          setLogoPreview((prev) => (opts.force || !prev ? profileLogo : prev));
+          if (opts.force) {
+            setLogoFile(null);
+            setLogoDataUrl(null);
+          }
+        }
+        const profileFavicon = (profile.favicon_url ?? "").trim();
+        if (profileFavicon) {
+          setFaviconStorageUrl((prev) => (opts.force || !prev ? profileFavicon : prev));
+          setFaviconPreview((prev) => (opts.force || !prev ? profileFavicon : prev));
+          if (opts.force) {
+            setFaviconFile(null);
+            setFaviconDataUrl(null);
+          }
+        }
         agentAutofilledRef.current = true;
         if (opts.notify && applied) toast.success("Filled from your Agent Profile.");
         if (opts.notify && !applied)
