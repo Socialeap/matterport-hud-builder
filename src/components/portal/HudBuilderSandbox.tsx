@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { Link } from "@tanstack/react-router";
-import { ArrowLeft, LogIn, LogOut } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
