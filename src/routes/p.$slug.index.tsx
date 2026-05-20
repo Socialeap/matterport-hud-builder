@@ -130,6 +130,7 @@ export const Route = createFileRoute("/p/$slug/")({
           brand_name?: string | null;
           tagline?: string | null;
           logo_url?: string | null;
+          favicon_url?: string | null;
           hero_bg_url?: string | null;
           accent_color?: string | null;
           contact_email?: string | null;
