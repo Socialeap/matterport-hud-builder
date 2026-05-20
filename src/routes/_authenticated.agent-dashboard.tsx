@@ -106,12 +106,22 @@ function AgentDashboardPage() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const seededRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const faviconInputRef = useRef<HTMLInputElement>(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [faviconUploading, setFaviconUploading] = useState(false);
 
   // Seed form from server data once.
   useEffect(() => {
     if (seededRef.current) return;
-    const p = profileQuery.data?.profile;
+    const p = profileQuery.data?.profile as
+      | (NonNullable<typeof profileQuery.data>["profile"] & {
+          logo_url?: string | null;
+          favicon_url?: string | null;
+        })
+      | null
+      | undefined;
     if (!p) return;
     seededRef.current = true;
     setForm({
@@ -122,6 +132,8 @@ function AgentDashboardPage() {
       welcome_note: p.welcome_note ?? "",
       ga_tracking_id: p.ga_tracking_id ?? "",
       avatar_url: p.avatar_url ?? "",
+      logo_url: p.logo_url ?? "",
+      favicon_url: p.favicon_url ?? "",
       social_links: (p.social_links as Record<string, string>) ?? {},
     });
   }, [profileQuery.data]);
@@ -143,6 +155,46 @@ function AgentDashboardPage() {
 
   const handleSocial = (key: string, value: string) => {
     setForm((prev) => ({ ...prev, social_links: { ...prev.social_links, [key]: value } }));
+  };
+
+  const handleBrandImageSelect = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    kind: "logo" | "favicon",
+  ) => {
+    const file = e.target.files?.[0] ?? null;
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please choose an image file");
+      e.target.value = "";
+      return;
+    }
+    if (!user?.id) {
+      toast.error("You must be signed in to upload images");
+      return;
+    }
+    const setUploading = kind === "logo" ? setLogoUploading : setFaviconUploading;
+    const inputRef = kind === "logo" ? logoInputRef : faviconInputRef;
+    setUploading(true);
+    try {
+      const limits = kind === "logo" ? BRAND_ASSET_LIMITS.logo : BRAND_ASSET_LIMITS.favicon;
+      const opts = kind === "logo"
+        ? { ...limits, targetBytes: 120 * 1024, kind: "logo" as const }
+        : { ...limits, kind: "favicon" as const };
+      const result = await optimizeBrandImage(file, opts);
+      const url = await uploadBrandAsset(user.id, result.file, kind);
+      if (!url) {
+        toast.error("Upload failed — please try again");
+        return;
+      }
+      setForm((prev) => ({ ...prev, [kind === "logo" ? "logo_url" : "favicon_url"]: url }));
+      const savings = describeOptimization(result);
+      toast.success(savings ? `${kind === "logo" ? "Logo" : "Favicon"} uploaded (${savings})` : `${kind === "logo" ? "Logo" : "Favicon"} uploaded`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not process image");
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
   };
 
   const handleAvatarSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -184,6 +236,9 @@ function AgentDashboardPage() {
   const handleRemoveAvatar = () => {
     setForm((prev) => ({ ...prev, avatar_url: "" }));
   };
+
+  const handleRemoveLogo = () => setForm((prev) => ({ ...prev, logo_url: "" }));
+  const handleRemoveFavicon = () => setForm((prev) => ({ ...prev, favicon_url: "" }));
 
   const handleSave = () => {
     saveMut.mutate(form);
