@@ -211,8 +211,19 @@ function AgentDashboardPage() {
             >
               Work Orders
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => navigate({ to: "/agents" })}>
-              ← Back to /agents
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                const latestSlug = historyQuery.data?.rows.find((r) => r.brandSlug)?.brandSlug;
+                if (latestSlug) {
+                  navigate({ to: "/p/$slug/builder", params: { slug: latestSlug } });
+                } else {
+                  navigate({ to: "/agents" });
+                }
+              }}
+            >
+              ← Back to Builder
             </Button>
             <AccountMenu className="ml-1" />
           </div>

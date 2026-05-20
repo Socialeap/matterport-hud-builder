@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { Link } from "@tanstack/react-router";
-import { ArrowLeft, LogIn, LogOut } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -244,6 +244,9 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
           return false;
         }
         const social = (profile.social_links as Record<string, string>) ?? {};
+        const profileCompany =
+          (profile.company ?? "").trim() ||
+          (profile.display_name ?? "").trim();
         let applied = false;
         setAgent((prev) => {
           const isEmpty =
@@ -271,6 +274,11 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
             website: social.website ?? prev.website,
           };
         });
+        // Prefill agent-owned branding fields (Brand/Brokerage Name) from
+        // the agent's profile — never from the MSP studio's branding.
+        if (profileCompany) {
+          setBrandName((prev) => (opts.force || !prev.trim() ? profileCompany : prev));
+        }
         agentAutofilledRef.current = true;
         if (opts.notify && applied) toast.success("Filled from your Agent Profile.");
         if (opts.notify && !applied)
@@ -350,11 +358,15 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     checkLicense();
   }, [userId]);
 
-  // Branding state (pre-filled from MSP settings)
-  const [brandName, setBrandName] = useState(branding.brand_name);
+  // Branding state — Name and Entry Label start blank (or with a neutral
+  // default) so the signed-in agent's own brand identity fills in via the
+  // agent-profile autofill effect below. We deliberately do NOT seed these
+  // from the MSP's `branding_settings`, since the generated presentation
+  // belongs to the agent/client, not the MSP studio.
+  const [brandName, setBrandName] = useState("");
   const [accentColor, setAccentColor] = useState(branding.accent_color);
   const [hudBgColor, setHudBgColor] = useState(branding.hud_bg_color);
-  const [gateLabel, setGateLabel] = useState(branding.gate_label);
+  const [gateLabel, setGateLabel] = useState("Enter Tour");
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [faviconFile, setFaviconFile] = useState<File | null>(null);
   // Start empty — the client/end-user must add their own logo/favicon for the
@@ -1737,88 +1749,11 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
             </div>
           </TooltipProvider>
 
-          {/* Far right: signed-in identity (logo/name removed — already shown in builder body & preview) */}
-          <div className="ml-auto flex items-center gap-3 min-w-0">
-
-            {/* Identity: profile dropdown when signed in, or "Sign In" when not. */}
-            {!authChecked ? (
-              <div className="hidden h-8 w-24 animate-pulse rounded-full bg-muted sm:block" />
-            ) : viewer ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className="flex h-9 items-center gap-2 rounded-full border border-border bg-muted/40 pl-1 pr-3 shadow-sm transition-colors hover:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    aria-label="Open account menu"
-                    title={viewer.email || viewer.displayName || "Signed in"}
-                  >
-                    {viewer.avatarUrl ? (
-                      <img
-                        src={viewer.avatarUrl}
-                        alt=""
-                        className="h-7 w-7 rounded-full object-cover"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <div
-                        className="flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-bold text-white"
-                        style={{ backgroundColor: accentColor }}
-                      >
-                        {(viewer.displayName || viewer.email || "U")
-                          .trim()[0]
-                          ?.toUpperCase() || "U"}
-                      </div>
-                    )}
-                    <span className="hidden max-w-[12rem] truncate text-xs font-medium text-foreground sm:inline">
-                      {viewer.email || viewer.displayName || "Signed in"}
-                    </span>
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-64">
-                  <DropdownMenuLabel className="flex flex-col gap-0.5 py-2">
-                    <span className="text-xs font-normal text-muted-foreground">
-                      Signed in as
-                    </span>
-                    <span className="truncate text-sm font-semibold text-foreground">
-                      {viewer.email || viewer.displayName || "Account"}
-                    </span>
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild className="cursor-pointer">
-                    <a href="/agent-dashboard" target="_blank" rel="noopener noreferrer">
-                      <UserCircle className="size-4" />
-                      My Agent Profile
-                    </a>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onSelect={async () => {
-                      await supabase.auth.signOut();
-                      setUserId(null);
-                      setViewer(null);
-                      setAccessRetryNonce((n) => n + 1);
-                      toast.success("Signed out");
-                    }}
-                    className="cursor-pointer"
-                  >
-                    <LogOut className="size-4" />
-                    Sign Out
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : (
-              <Button
-                type="button"
-                size="sm"
-                className="h-9 gap-1.5 rounded-full text-white"
-                style={{ backgroundColor: accentColor }}
-                onClick={() => setSignupOpen(true)}
-              >
-                <LogIn className="size-4" />
-                Sign In
-              </Button>
-            )}
-          </div>
+          {/* Identity affordance is provided by the route-level <AccountMenu />
+              mounted in src/routes/p.$slug.builder.tsx (top-right). The
+              duplicate in-builder profile dropdown was removed to avoid
+              showing two avatars side-by-side. */}
+          <div className="ml-auto" />
         </div>
       </header>
 
