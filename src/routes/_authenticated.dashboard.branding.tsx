@@ -683,36 +683,51 @@ function BrandingPage() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Primary Logo</Label>
+                  <Label>
+                    Primary Logo {logoOptimizing && <span className="text-xs text-muted-foreground">(optimizing…)</span>}
+                  </Label>
                   <Input
                     type="file"
                     accept=".png,.jpg,.jpeg,.svg,.webp"
-                    onChange={(e) => setLogoFile(e.target.files?.[0] || null)}
+                    disabled={logoOptimizing}
+                    onChange={(e) => handleLogoSelect(e.target.files?.[0] || null)}
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Auto-converted to WebP, kept under 120 KB. Portrait, landscape, and square images all display correctly.
+                  </p>
                   {(logoFile || branding.logo_url) && (
-                    <img
-                      src={logoFile ? URL.createObjectURL(logoFile) : branding.logo_url!}
-                      alt="Logo preview"
-                      className="mt-2 h-12 rounded object-contain"
-                    />
+                    <div className="mt-2 flex items-center justify-center rounded border border-border bg-muted/30 p-2">
+                      <img
+                        src={logoFile ? URL.createObjectURL(logoFile) : branding.logo_url!}
+                        alt="Logo preview"
+                        className="max-h-16 max-w-[160px] h-auto w-auto object-contain"
+                      />
+                    </div>
                   )}
                 </div>
                 <div className="space-y-2">
-                  <Label>Favicon / Tab Icon</Label>
+                  <Label>
+                    Favicon / Tab Icon {faviconOptimizing && <span className="text-xs text-muted-foreground">(optimizing…)</span>}
+                  </Label>
                   <Input
                     type="file"
                     accept=".png,.jpg,.jpeg,.svg,.webp,.ico"
-                    onChange={(e) => setFaviconFile(e.target.files?.[0] || null)}
+                    disabled={faviconOptimizing}
+                    onChange={(e) => handleFaviconSelect(e.target.files?.[0] || null)}
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Auto-optimized for browser tabs. Falls back to your logo if empty.
+                  </p>
                   {(faviconFile || branding.favicon_url) && (
                     <img
                       src={faviconFile ? URL.createObjectURL(faviconFile) : branding.favicon_url!}
                       alt="Favicon preview"
-                      className="mt-2 h-8 rounded object-contain"
+                      className="mt-2 h-8 w-8 rounded object-contain"
                     />
                   )}
                 </div>
               </div>
+
 
               <div className="space-y-3 rounded-lg border border-dashed border-border p-4">
                 <div className="flex items-center justify-between">
