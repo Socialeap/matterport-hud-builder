@@ -1,11 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { checkRateLimit, ipFromRequest } from "../_shared/rate-limit.ts";
 
-// Defined locally rather than imported from a non-existent
-// `npm:@supabase/supabase-js@2/cors` subpath. Headers list mirrors what
-// the supabase-js client sends from the browser when it invokes an
-// Edge Function — every name here must appear in the preflight allow
-// list or Chrome blocks the actual POST.
+// CORS — defined locally because `npm:@supabase/supabase-js@2/cors` is
+// not a real subpath. Headers list mirrors what supabase-js sends from
+// the browser when it invokes an Edge Function; every name here must
+// appear in the preflight allow list or Chrome blocks the actual POST.
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -13,27 +12,32 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// ── Matterport endpoints ──────────────────────────────────────────────
-// Primary: the host the Matterport SPA itself uses for tag queries.
-// Validated against PR #89's deleted extractMattertags experiments —
-// accepts requests with `Origin: my.matterport.com` past the Cloudflare
-// WAF (returns 401 without viewer session, NOT 403).
-const PRIMARY_ENDPOINT = "https://api.matterport.com/api/models/graph";
-// Alternate, same-origin from the SPA's perspective. May have a more
-// permissive auth path; tried last-ditch if PRIMARY auth fails.
-const ALT_ENDPOINT = "https://my.matterport.com/api/graphql";
+// ── Matterport endpoint + auth ────────────────────────────────────────
+// Confirmed empirically by reverse-engineering the Matterport showcase
+// JS bundle (`static.matterport.com/showcase/.../js/showcase.js`):
+//
+//   - Endpoint: my.matterport.com/api/mp/models/graph  (note `/api/mp/`)
+//   - Auth: single `x-matterport-application-key` header
+//
+// The `MATTERPORT_APP_KEY` below is the SDK application key embedded
+// in every public Matterport showcase page — the anonymous-viewer key
+// Matterport's own SPA uses to serve millions of public tours. Not a
+// paid SDK key. If Matterport ever rotates it, `scrapeApplicationKey`
+// below self-heals by parsing it back out of the live show HTML.
+const MATTERPORT_ENDPOINT =
+  "https://my.matterport.com/api/mp/models/graph";
+const MATTERPORT_APP_KEY = "h2f9mazn377g554gxkkay5aqd";
 
 // ── GraphQL query ─────────────────────────────────────────────────────
-// PLACEHOLDER — verify against Chrome DevTools by reproducing the
-// network call the Matterport SPA makes when it loads tags. If the
-// exact operation name or field shape differs, drop the sniffed query
-// here. Field names below mirror what PR #89's deleted server function
-// expected; if Matterport renames anything, sanitizeMattertags() below
-// silently degrades to an empty array rather than throwing.
-const MATTERPORT_GRAPHQL_QUERY = `query GetMattertags($modelId: ID!) {
+// Minimal operation — only the fields persisted to MattertagData
+// (src/components/portal/types.ts). The Matterport schema returns
+// additional fields (color, enabled, stemEnabled, mediaType, etc.); we
+// intentionally ignore them. `includeDisabled: false` matches what the
+// SPA sends for default public viewing.
+const MATTERPORT_GRAPHQL_QUERY = `query GetMattertags($modelId: ID!, $includeDisabled: Boolean!) {
   model(id: $modelId) {
     id
-    mattertags {
+    mattertags(includeDisabled: $includeDisabled) {
       id
       label
       description
@@ -47,9 +51,8 @@ const MODEL_ID_RE = /^[A-Za-z0-9]{11}$/;
 const MAX_COUNT = 200;
 const FETCH_TIMEOUT_MS = 12_000;
 
-// Chrome 124 desktop UA — closer to a real browser than PR #89's bot UA.
-// Matterport's WAF appears to gate on Origin/Referer, not TLS fingerprint
-// or UA, but we use a plausible UA anyway to minimise heuristic flags.
+// Chrome 124 desktop UA — plausible-browser fingerprint. Defensive only;
+// Matterport's app-key path doesn't seem to care about UA.
 const BROWSER_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
   "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
@@ -65,6 +68,7 @@ interface CleanMattertag {
 type FetchResult =
   | { kind: "ok"; tags: CleanMattertag[] }
   | { kind: "auth-failed" }
+  | { kind: "not-found" }
   | { kind: "timeout" }
   | { kind: "network" }
   | { kind: "schema" };
@@ -90,7 +94,7 @@ serve(async (req) => {
   }
 
   // 2. Per-IP rate limit so a single abusive caller can't burn our
-  //    outbound traffic budget hammering Matterport.
+  //    outbound budget hammering Matterport.
   const rl = checkRateLimit(ipFromRequest(req), { perMinute: 10 });
   if (!rl.allowed) {
     return json(
@@ -103,25 +107,20 @@ serve(async (req) => {
     );
   }
 
-  // 3. Strategy A: simple header-spoof against PRIMARY_ENDPOINT.
-  //    Origin + Referer alone may be enough if Matterport's auth is
-  //    purely Origin-gated.
-  let result = await tryGraphQL(PRIMARY_ENDPOINT, matterportId, null);
+  // 3. Primary: POST with the hardcoded application key.
+  let result = await tryGraphQL(matterportId, MATTERPORT_APP_KEY);
 
-  // 4. Strategy B: GET show page → scrape session token → retry with
-  //    captured auth. Only runs when A explicitly returned 401/403.
+  // 4. Self-heal: if Matterport ever rotates the SDK key, our hardcoded
+  //    value will start returning 401/403. Re-scrape the current key
+  //    from a live show page and retry once.
   if (result.kind === "auth-failed") {
-    const auth = await scrapeViewerAuth(matterportId);
-    if (auth) {
-      result = await tryGraphQL(PRIMARY_ENDPOINT, matterportId, auth);
+    const freshKey = await scrapeApplicationKey(matterportId);
+    if (freshKey && freshKey !== MATTERPORT_APP_KEY) {
+      console.warn(
+        "[fetch-mattertags] hardcoded app key rejected; retrying with scraped key",
+      );
+      result = await tryGraphQL(matterportId, freshKey);
     }
-  }
-
-  // 5. Last-ditch: alternate endpoint with simple spoof (no scraped
-  //    auth — the alt endpoint may rely on different mechanisms).
-  if (result.kind !== "ok") {
-    const altResult = await tryGraphQL(ALT_ENDPOINT, matterportId, null);
-    if (altResult.kind === "ok") result = altResult;
   }
 
   if (result.kind === "ok") {
@@ -131,7 +130,13 @@ serve(async (req) => {
     return json({
       success: false,
       error:
-        "Couldn't authenticate with Matterport. The model may be private or have anonymous viewing disabled.",
+        "Matterport rejected the request. The model may be private or have anonymous viewing disabled.",
+    });
+  }
+  if (result.kind === "not-found") {
+    return json({
+      success: false,
+      error: "No Matterport model found with that ID.",
     });
   }
   return json({
@@ -148,39 +153,40 @@ serve(async (req) => {
 // ── Helpers ──────────────────────────────────────────────────────────
 
 async function tryGraphQL(
-  endpoint: string,
   modelId: string,
-  auth: { cookie?: string; bearer?: string } | null,
+  appKey: string,
 ): Promise<FetchResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-      "Origin": "https://my.matterport.com",
-      "Referer": `https://my.matterport.com/show/?m=${modelId}`,
-      "User-Agent": BROWSER_UA,
-      "Accept-Language": "en-US,en;q=0.9",
-    };
-    if (auth?.cookie) headers["Cookie"] = auth.cookie;
-    if (auth?.bearer) headers["Authorization"] = `Bearer ${auth.bearer}`;
-
-    const res = await fetch(endpoint, {
+    const res = await fetch(MATTERPORT_ENDPOINT, {
       method: "POST",
-      headers,
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "x-matterport-application-key": appKey,
+        // Defensive: origin/referer/UA match what the real SPA sends.
+        // Matterport's app-key auth doesn't appear to require them,
+        // but sending them keeps us indistinguishable from a browser
+        // if any anti-abuse layer is checking.
+        "Origin": "https://my.matterport.com",
+        "Referer": `https://my.matterport.com/show/?m=${modelId}`,
+        "User-Agent": BROWSER_UA,
+        "Accept-Language": "en-US,en;q=0.9",
+      },
       body: JSON.stringify({
         query: MATTERPORT_GRAPHQL_QUERY,
-        variables: { modelId },
+        variables: { modelId, includeDisabled: false },
       }),
       signal: controller.signal,
     });
     clearTimeout(timer);
 
     if (res.status === 401 || res.status === 403) return { kind: "auth-failed" };
+    if (res.status === 404) return { kind: "not-found" };
     if (!res.ok) {
       console.error(
-        `[fetch-mattertags] non-OK status from ${endpoint}: ${res.status}`,
+        `[fetch-mattertags] non-OK status from Matterport: ${res.status}`,
       );
       return { kind: "network" };
     }
@@ -192,6 +198,28 @@ async function tryGraphQL(
       console.error("[fetch-mattertags] JSON parse failed:", err);
       return { kind: "schema" };
     }
+
+    // GraphQL surfaces 200 + errors[] for app-layer failures (private
+    // model, no permission, etc.). Translate common cases to typed
+    // results so the caller can produce useful copy.
+    const errors = (payload as { errors?: Array<{ message?: string }> })
+      ?.errors;
+    if (Array.isArray(errors) && errors.length > 0) {
+      const firstMsg = (errors[0]?.message ?? "").toLowerCase();
+      console.warn("[fetch-mattertags] GraphQL errors:", errors);
+      if (firstMsg.includes("not found") || firstMsg.includes("does not exist")) {
+        return { kind: "not-found" };
+      }
+      if (
+        firstMsg.includes("unauthorized") ||
+        firstMsg.includes("forbidden") ||
+        firstMsg.includes("permission")
+      ) {
+        return { kind: "auth-failed" };
+      }
+      return { kind: "schema" };
+    }
+
     const tags = sanitizeMattertags(payload);
     return { kind: "ok", tags };
   } catch (err) {
@@ -204,14 +232,11 @@ async function tryGraphQL(
   }
 }
 
-// Anonymous-viewer session emulator: hit the public show page like a
-// browser would, then collect any auth material the SPA's initial load
-// reveals (Set-Cookie + tokens embedded in `<script>` blobs). Returns
-// null if neither produced anything usable — the caller's last-ditch
-// path takes over.
-async function scrapeViewerAuth(
-  modelId: string,
-): Promise<{ cookie?: string; bearer?: string } | null> {
+// Self-healing fallback: pull the live show page and extract the
+// current applicationKey. The key lives inside a `parseJSON("...")`
+// blob in the HTML, so the regex matches both escaped (\") and bare
+// (") forms in case Matterport ever moves it.
+async function scrapeApplicationKey(modelId: string): Promise<string | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
@@ -228,36 +253,14 @@ async function scrapeViewerAuth(
     });
     clearTimeout(timer);
     if (!res.ok) return null;
-
-    // Deno joins multiple Set-Cookie headers with a comma — split on
-    // ",<name>=" pairs to recover individual cookies, drop the
-    // attribute tail (path=, expires=, etc.) on each, then re-join with
-    // "; " for a normal Cookie header.
-    const setCookies = res.headers.get("set-cookie");
-    const cookie = setCookies
-      ? setCookies
-          .split(/,(?=\s*[A-Za-z0-9_-]+=)/)
-          .map((c) => c.split(";")[0].trim())
-          .filter((c) => c.includes("="))
-          .join("; ")
-      : undefined;
-
     const html = await res.text();
-    // Token patterns the Matterport SPA has historically embedded in
-    // its initial HTML. Loose matches so small shape changes don't
-    // break us. Order is best-known-first.
-    const bearer =
-      html.match(/"viewerToken"\s*:\s*"([^"\s]{20,1000})"/)?.[1] ||
-      html.match(/"authToken"\s*:\s*"([^"\s]{20,1000})"/)?.[1] ||
-      html.match(/"accessToken"\s*:\s*"([^"\s]{20,1000})"/)?.[1] ||
-      html.match(/"jwt"\s*:\s*"([^"\s]{20,1000})"/)?.[1] ||
-      html.match(/Authorization\s*=\s*Bearer\s+([A-Za-z0-9._\-]{20,1000})/)?.[1];
-
-    if (!cookie && !bearer) return null;
-    return { cookie, bearer };
+    const match = html.match(
+      /\\?"applicationKey\\?"\s*:\s*\\?"([a-zA-Z0-9]{20,40})\\?"/,
+    );
+    return match?.[1] ?? null;
   } catch (err) {
     clearTimeout(timer);
-    console.error("[fetch-mattertags] scrape failed:", err);
+    console.error("[fetch-mattertags] applicationKey scrape failed:", err);
     return null;
   }
 }
