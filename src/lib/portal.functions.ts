@@ -1674,21 +1674,28 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 #mattertag-close:hover{background:rgba(255,255,255,0.2)}
 #mattertag-title{font-size:13px;font-weight:600;color:#fff;margin:0 0 12px;display:flex;align-items:center;gap:6px}
 #mattertag-title svg{width:13px;height:13px;color:rgba(255,255,255,0.7)}
+.mt-beta{font-size:10px;font-weight:500;color:rgba(255,255,255,0.55);margin-left:4px;letter-spacing:0.04em}
 #mattertag-list{display:flex;flex-direction:column;gap:10px}
 .mt-card{position:relative;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.06);padding:10px 12px;transition:background 0.15s,border-color 0.15s}
 .mt-card-clickable{cursor:pointer}
 .mt-card-clickable:hover,.mt-card-clickable:focus-visible{background:rgba(255,255,255,0.10);border-color:${escapeHtml(accentColor)}66;outline:none}
 .mt-card-clickable:focus-visible{box-shadow:0 0 0 2px ${escapeHtml(accentColor)}99}
 .mt-card.is-loading{background:rgba(255,255,255,0.12)}
-.mt-card-thumb{width:100%;aspect-ratio:16/9;border-radius:8px;background:rgba(0,0,0,0.4);object-fit:cover;display:block;margin-bottom:8px;border:1px solid rgba(255,255,255,0.06)}
-.mt-card-title{font-size:13px;font-weight:600;color:#fff;line-height:1.3;margin-bottom:4px;letter-spacing:-0.01em}
+.mt-card-number{position:absolute;top:8px;right:8px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:${escapeHtml(accentColor)};color:#fff;font-size:10px;font-weight:700;line-height:18px;text-align:center;letter-spacing:0.02em;pointer-events:none;box-shadow:0 1px 4px rgba(0,0,0,0.35);z-index:1}
+.mt-card-thumb-btn{display:block;width:100%;padding:0;margin:0 0 8px;border:none;background:transparent;cursor:pointer;border-radius:8px;overflow:hidden;font:inherit}
+.mt-card-thumb-btn:focus-visible{outline:2px solid ${escapeHtml(accentColor)};outline-offset:2px}
+.mt-card-thumb{width:100%;aspect-ratio:16/9;border-radius:8px;background:rgba(0,0,0,0.4);object-fit:cover;display:block;border:1px solid rgba(255,255,255,0.06);transition:transform 0.2s}
+.mt-card-thumb-btn:hover .mt-card-thumb{transform:scale(1.02)}
+.mt-card-title{font-size:13px;font-weight:600;color:#fff;line-height:1.3;margin-bottom:4px;letter-spacing:-0.01em;padding-right:26px}
 .mt-card-desc{font-size:12px;line-height:1.55;color:rgba(255,255,255,0.84);white-space:pre-wrap;word-wrap:break-word;margin:0}
-.mt-card-desc a{color:${escapeHtml(accentColor)};text-decoration:underline;word-break:break-all}
-.mt-card-desc a:hover{color:#fff}
+.mt-card-links{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.mt-card-link-icon{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:6px;border:1px solid rgba(255,255,255,0.18);background:rgba(255,255,255,0.08);color:#fff;text-decoration:none;transition:background 0.15s,border-color 0.15s,color 0.15s}
+.mt-card-link-icon:hover{background:${escapeHtml(accentColor)};border-color:${escapeHtml(accentColor)};color:#fff}
+.mt-card-link-icon svg{width:13px;height:13px}
 .mt-card-cta{margin-top:8px;display:inline-flex;align-items:center;gap:5px;border:1px solid rgba(255,255,255,0.18);background:rgba(255,255,255,0.08);color:#fff;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer;text-decoration:none;font-family:inherit}
 .mt-card-cta:hover{background:rgba(255,255,255,0.16)}
 .mt-card-cta svg{width:11px;height:11px}
-.mt-card-spinner{position:absolute;top:8px;right:8px;width:14px;height:14px;border-radius:50%;border:2px solid rgba(255,255,255,0.25);border-top-color:#fff;display:none;animation:mt-spin 0.7s linear infinite;pointer-events:none}
+.mt-card-spinner{position:absolute;top:8px;left:8px;width:14px;height:14px;border-radius:50%;border:2px solid rgba(255,255,255,0.25);border-top-color:#fff;display:none;animation:mt-spin 0.7s linear infinite;pointer-events:none}
 .mt-card.is-loading .mt-card-spinner{display:block}
 @keyframes mt-spin{to{transform:rotate(360deg)}}
 .mt-card-jump-hint{display:inline-flex;align-items:center;gap:3px;margin-top:6px;font-size:10px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:rgba(255,255,255,0.55)}
