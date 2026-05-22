@@ -2935,7 +2935,7 @@ window.__openMattertagMedia=function(tagIdx,overrideUrl){
     if(cinemaContent){
       cinemaContent.innerHTML=parsedCine.kind==="mp4"
         ?'<video src="'+escapeText(parsedCine.src)+'" controls autoplay style="position:absolute;inset:0;width:100%;height:100%;border-radius:10px"></video>'
-        :'<iframe src="'+escapeText(parsedCine.src)+'" style="position:absolute;inset:0;width:100%;height:100%;border:none" allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture;fullscreen" allowfullscreen></iframe>';
+        :'<iframe src="'+escapeText(parsedCine.src)+'" style="position:absolute;inset:0;width:100%;height:100%;border:none" allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture;fullscreen" allowfullscreen referrerpolicy="origin"></iframe>';
     }
     var cinemaEl=document.getElementById("cinema-modal");
     if(cinemaEl) cinemaEl.classList.add("open");
