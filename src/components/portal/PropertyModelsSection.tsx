@@ -32,10 +32,10 @@ import {
   Star,
   ChevronDown,
   Tag,
+  Loader2,
 } from "lucide-react";
-import type { PropertyModel, MediaAsset, MattertagData } from "./types";
+import type { PropertyModel, MediaAsset } from "./types";
 import { MediaSyncModal } from "./MediaSyncModal";
-import { MattertagImportModal } from "./MattertagImportModal";
 import { useLusLicense } from "@/hooks/useLusLicense";
 import { parseCinematicVideo } from "@/lib/video-embed";
 
@@ -49,13 +49,14 @@ interface PropertyModelsSectionProps {
   /** Mark the chosen model as the one that loads first in the visitor's tour. */
   onSetPrimary?: (id: string) => void;
   /**
-   * Persist a freshly-imported Mattertag list for a property. Called by
-   * `MattertagImportModal` once the user has pasted + parsed the JSON
-   * payload produced by our bookmarklet / DevTools snippet. The Builder
-   * overwrites `model.mattertags` wholesale — re-importing replaces the
-   * previous batch.
+   * Kick off a server-side Mattertag import for the given property
+   * (proxied through the `fetch-mattertags` Supabase Edge Function).
+   * Mirrors the trigger on the HudPreview MATTERTAGS strip — both
+   * routes through the same Builder-level handler.
    */
-  onMattertagsParsed?: (modelId: string, tags: MattertagData[]) => void;
+  onImportTags?: (modelId: string) => void;
+  /** Set of property IDs with an in-flight import (drives spinner). */
+  mattertagSyncingIds?: Set<string>;
   savedModelId?: string | null;
   /** When true, render only the inner body (no Card/Header wrapper) — used inside Accordion. */
   headless?: boolean;
@@ -71,7 +72,8 @@ export function PropertyModelsSection({
   onMediaChange,
   onOpenBehavior,
   onSetPrimary,
-  onMattertagsParsed,
+  onImportTags,
+  mattertagSyncingIds,
   savedModelId,
   headless,
   maxModels,
@@ -80,8 +82,6 @@ export function PropertyModelsSection({
   const showPremium = lusLoading || lusActive;
   const [syncModelId, setSyncModelId] = useState<string | null>(null);
   const syncModel = syncModelId ? models.find((m) => m.id === syncModelId) ?? null : null;
-  const [tagModelId, setTagModelId] = useState<string | null>(null);
-  const tagModel = tagModelId ? models.find((m) => m.id === tagModelId) ?? null : null;
   const atCap = typeof maxModels === "number" && models.length >= maxModels;
   const helperNote = typeof maxModels === "number"
     ? `Recommended 2–4 · max ${maxModels} per presentation`
@@ -278,33 +278,48 @@ export function PropertyModelsSection({
                             Sync
                           </Button>
                         </div>
-                        {onMattertagsParsed && (
-                          <div className="flex items-center justify-between gap-2 pt-1">
-                            <span className="text-[11px] text-muted-foreground">
-                              {model.mattertags && model.mattertags.length > 0
-                                ? `${model.mattertags.length} mattertag${model.mattertags.length === 1 ? "" : "s"} imported`
-                                : "Import mattertags to populate the Property Features drawer"}
-                            </span>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => setTagModelId(model.id)}
-                              disabled={!/^[A-Za-z0-9]{11}$/.test(model.matterportId)}
-                              title={
-                                /^[A-Za-z0-9]{11}$/.test(model.matterportId)
-                                  ? "Import mattertags via bookmarklet or DevTools paste"
-                                  : "Enter a valid Matterport ID first"
-                              }
-                              className="h-7 shrink-0 text-[11px]"
-                            >
-                              <Tag className="mr-1 size-3.5" />
-                              {model.mattertags && model.mattertags.length > 0
-                                ? "Re-import"
-                                : "Import Mattertags"}
-                            </Button>
-                          </div>
-                        )}
+                        {onImportTags && (() => {
+                          const syncing = !!mattertagSyncingIds?.has(model.id);
+                          const ready = /^[A-Za-z0-9]{11}$/.test(model.matterportId);
+                          const hasTags = !!model.mattertags && model.mattertags.length > 0;
+                          return (
+                            <div className="flex items-center justify-between gap-2 pt-1">
+                              <span className="text-[11px] text-muted-foreground">
+                                {syncing
+                                  ? "Importing mattertags from Matterport…"
+                                  : hasTags
+                                    ? `${model.mattertags!.length} mattertag${model.mattertags!.length === 1 ? "" : "s"} imported`
+                                    : "Import mattertags to populate the Property Features drawer"}
+                              </span>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => onImportTags(model.id)}
+                                disabled={!ready || syncing}
+                                title={
+                                  ready
+                                    ? hasTags
+                                      ? "Re-fetch Mattertags from Matterport"
+                                      : "Fetch Mattertags from Matterport"
+                                    : "Enter a valid Matterport ID first"
+                                }
+                                className="h-7 shrink-0 text-[11px]"
+                              >
+                                {syncing ? (
+                                  <Loader2 className="mr-1 size-3.5 animate-spin" />
+                                ) : (
+                                  <Tag className="mr-1 size-3.5" />
+                                )}
+                                {syncing
+                                  ? "Importing…"
+                                  : hasTags
+                                    ? "Re-import"
+                                    : "Import Mattertags"}
+                              </Button>
+                            </div>
+                          );
+                        })()}
                       </div>
                       <div className="space-y-1">
                         <Label className="text-xs">Music URL (optional)</Label>
@@ -426,23 +441,6 @@ export function PropertyModelsSection({
     />
   );
 
-  const tagModalEl = tagModel && onMattertagsParsed && (
-    <MattertagImportModal
-      open={!!tagModelId}
-      onOpenChange={(open) => {
-        if (!open) setTagModelId(null);
-      }}
-      matterportId={tagModel.matterportId}
-      propertyLabel={
-        tagModel.propertyName?.trim() ||
-        tagModel.name?.trim() ||
-        "this property"
-      }
-      existing={tagModel.mattertags ?? []}
-      onConfirm={(tags) => onMattertagsParsed(tagModel.id, tags)}
-    />
-  );
-
   if (headless) {
     return (
       <>
@@ -454,7 +452,6 @@ export function PropertyModelsSection({
         </div>
         {body}
         {syncModalEl}
-        {tagModalEl}
       </>
     );
   }
@@ -477,7 +474,6 @@ export function PropertyModelsSection({
       </CardHeader>
       <CardContent>{body}</CardContent>
       {syncModalEl}
-      {tagModalEl}
     </Card>
   );
 }

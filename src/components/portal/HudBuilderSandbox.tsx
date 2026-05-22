@@ -869,17 +869,117 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
     setModels((prev) => prev.map((m) => (m.id === id ? { ...m, multimedia: assets } : m)));
   }, []);
 
-  // Persist a freshly-imported Mattertag list for a property. The parse +
-  // validate work happens client-side in `MattertagImportModal`; this
-  // callback just overwrites `model.mattertags` so the draft autosave +
-  // savePresentationRequest pipelines pick the change up automatically.
-  const handleMattertagsParsed = useCallback(
-    (modelId: string, tags: import("./types").MattertagData[]) => {
-      setModels((prev) =>
-        prev.map((m) => (m.id === modelId ? { ...m, mattertags: tags } : m)),
-      );
+  // Tracks per-property in-flight Mattertag imports. Drives the
+  // spinner state on the "Import Tags" buttons and disables them while
+  // the Edge Function is fetching.
+  const [mattertagSyncingIds, setMattertagSyncingIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+
+  // Import Mattertags for a single property by calling the
+  // `fetch-mattertags` Supabase Edge Function. The function proxies the
+  // request to Matterport's GraphQL endpoint server-side (spoofing
+  // Origin to slip past Cloudflare's WAF, with a JWT-scrape fallback
+  // for anonymous viewer auth). On success, overwrites
+  // `model.mattertags` so the draft autosave + savePresentationRequest
+  // pipelines pick the change up automatically. On failure, the
+  // existing tags array is preserved untouched.
+  const handleImportTags = useCallback(
+    async (modelId: string) => {
+      const model = models.find((m) => m.id === modelId);
+      if (!model) return;
+      const matterportId = (model.matterportId || "").trim();
+      if (!/^[A-Za-z0-9]{11}$/.test(matterportId)) {
+        toast.error("Enter a valid 11-character Matterport ID first.");
+        return;
+      }
+
+      const existingCount = model.mattertags?.length ?? 0;
+      if (existingCount > 0) {
+        const confirmed = await new Promise<boolean>((resolve) => {
+          let settled = false;
+          const settle = (v: boolean) => {
+            if (settled) return;
+            settled = true;
+            resolve(v);
+          };
+          toast(
+            `Replace ${existingCount} existing mattertag${existingCount === 1 ? "" : "s"}?`,
+            {
+              description: "Re-importing pulls fresh data from Matterport.",
+              action: {
+                label: "Replace",
+                onClick: () => settle(true),
+              },
+              cancel: {
+                label: "Cancel",
+                onClick: () => settle(false),
+              },
+              duration: 10_000,
+              onDismiss: () => settle(false),
+              onAutoClose: () => settle(false),
+            },
+          );
+        });
+        if (!confirmed) return;
+      }
+
+      setMattertagSyncingIds((prev) => {
+        if (prev.has(modelId)) return prev;
+        const next = new Set(prev);
+        next.add(modelId);
+        return next;
+      });
+      const loadingId = toast.loading("Importing mattertags from Matterport…");
+      try {
+        const { data, error } = await supabase.functions.invoke(
+          "fetch-mattertags",
+          { body: { matterportId } },
+        );
+        if (error) {
+          console.error("[handleImportTags] function error:", error);
+          toast.error(
+            error.message || "Could not reach the import service.",
+            { id: loadingId },
+          );
+          return;
+        }
+        if (!data?.success) {
+          const msg = data?.error || "Couldn't import mattertags.";
+          const desc = data?.retryAfterSeconds
+            ? `Try again in ${data.retryAfterSeconds}s.`
+            : undefined;
+          toast.error(msg, { id: loadingId, description: desc });
+          return;
+        }
+        const tags = (data.mattertags ?? []) as import("./types").MattertagData[];
+        setModels((prev) =>
+          prev.map((m) => (m.id === modelId ? { ...m, mattertags: tags } : m)),
+        );
+        if (tags.length === 0) {
+          toast.message("No mattertags found", {
+            id: loadingId,
+            description: "This model may not have any tagged points yet.",
+          });
+        } else {
+          toast.success(
+            `Imported ${tags.length} mattertag${tags.length === 1 ? "" : "s"}.`,
+            { id: loadingId },
+          );
+        }
+      } catch (err) {
+        console.error("[handleImportTags] unexpected failure:", err);
+        toast.error("Network error. Please try again.", { id: loadingId });
+      } finally {
+        setMattertagSyncingIds((prev) => {
+          if (!prev.has(modelId)) return prev;
+          const next = new Set(prev);
+          next.delete(modelId);
+          return next;
+        });
+      }
     },
-    [],
+    [models],
   );
 
   // Live Guided Tour: append a captured Spotlight bookmark to the model's
@@ -1918,7 +2018,8 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
                     onMediaChange={handleMediaChange}
                     onOpenBehavior={handleOpenBehavior}
                     onSetPrimary={handleSetPrimary}
-                    onMattertagsParsed={handleMattertagsParsed}
+                    onImportTags={handleImportTags}
+                    mattertagSyncingIds={mattertagSyncingIds}
                     savedModelId={savedModelId}
                     maxModels={MAX_PROPERTIES_PER_PRESENTATION}
                   />
@@ -2364,7 +2465,8 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
               onAddBookmark={handleAddBookmark}
               onRemoveBookmark={handleRemoveBookmark}
               enableMattertagImport
-              onMattertagsImport={handleMattertagsParsed}
+              onImportTags={handleImportTags}
+              mattertagSyncingIds={mattertagSyncingIds}
             />
           </div>
         </div>
