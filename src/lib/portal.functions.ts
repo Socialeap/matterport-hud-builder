@@ -2791,9 +2791,10 @@ function renderMattertags(i){
       // Description extraction (also drives both link icons and the
       // fallback thumbnail discovery).
       var parsed=extractMattertagLinks(tag.description||"");
-      // Resolve a thumbnail URL: prefer tag.media if it's an image,
-      // otherwise scan the original description for any image URL.
-      var thumbUrl=isImageUrl(tag.media)?tag.media:findImageUrlIn(tag.description||"");
+      // Resolve a thumbnail URL: prefer tag.media if it's plausibly an
+      // image (anything not provably video), otherwise scan the
+      // description for an image URL.
+      var thumbUrl=isLikelyImageUrl(tag.media)?tag.media:findImageUrlIn(tag.description||"");
       // Media URL used by the "Open Media" CTA and the thumbnail click.
       // Prefer tag.media (full asset); fall back to the scraped image.
       var mediaUrl=tag.media||thumbUrl||"";
