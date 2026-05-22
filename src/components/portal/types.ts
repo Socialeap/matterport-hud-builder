@@ -47,13 +47,12 @@ export interface LiveTourStop {
 }
 
 /**
- * A single Mattertag imported from a Matterport model. Populated by the
- * `MattertagImportModal` — the user runs our bookmarklet (or a copy-
- * paste DevTools snippet) inside their Matterport tour tab, which fetches
- * the GraphQL endpoint with their browser's anonymous viewer session,
- * copies the JSON payload to the clipboard, and pastes it back into the
- * Builder. Independent of the iframe-internal Mattertag rendering
- * controlled by `TourBehavior.hideMattertags`.
+ * A single Mattertag extracted from a public Matterport model via the
+ * Matterport GraphQL endpoint. Populated server-side by
+ * `extractMattertags` and surfaced in the "Property Features" drawer in
+ * both the React Builder and the exported standalone HTML. Independent
+ * of the iframe-internal Mattertag rendering controlled by
+ * `TourBehavior.hideMattertags`.
  */
 export interface MattertagData {
   /** Stable Mattertag id (sid) from the source model. */
@@ -85,9 +84,9 @@ export interface PropertyModel {
    */
   liveTourStops?: LiveTourStop[];
   /**
-   * Mattertags imported from the Matterport model via the bookmarklet/
-   * paste flow in `MattertagImportModal`. Undefined on legacy
-   * presentations / models that haven't been imported yet.
+   * Extracted Mattertags from the public Matterport model. Populated by
+   * the `extractMattertags` server function; undefined on legacy
+   * presentations / models that haven't been synced yet.
    */
   mattertags?: MattertagData[];
   /**
