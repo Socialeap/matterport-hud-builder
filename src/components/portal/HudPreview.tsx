@@ -1128,39 +1128,41 @@ export function HudPreview({
 }
 
 /**
- * Render plaintext that may contain raw URLs as React nodes, wrapping
- * any http(s) URLs in clickable `<a>` tags. The split regex matches the
- * same shape used by the static-export runtime's `linkifyMattertagHtml`
- * so both surfaces produce identical link surfaces.
+ * Extract URLs from a description. Mirrors the runtime helper of the
+ * same name in `src/lib/portal.functions.ts` so both surfaces produce
+ * identical card content. Handles markdown `[label](url)` (label kept,
+ * URL hoisted) and bare http(s) URLs (removed from the text entirely).
  */
-function LinkifiedText({
-  text,
-  accentColor,
-  className,
-}: {
-  text: string;
-  accentColor: string;
-  className?: string;
-}) {
-  const parts = String(text ?? "").split(/(https?:\/\/[^\s<>"']+)/i);
-  return (
-    <p className={className}>
-      {parts.map((seg, i) =>
-        i % 2 === 1 ? (
-          <a
-            key={i}
-            href={seg}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="break-all underline hover:text-white"
-            style={{ color: accentColor }}
-          >
-            {seg}
-          </a>
-        ) : (
-          <span key={i}>{seg}</span>
-        ),
-      )}
-    </p>
-  );
+function extractMattertagLinks(s: string): { text: string; links: string[] } {
+  let text = String(s ?? "");
+  const links: string[] = [];
+  text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_m, label: string, url: string) => {
+    links.push(url);
+    return label;
+  });
+  text = text.replace(/(https?:\/\/[^\s<>"')]+)/g, (_m, url: string) => {
+    links.push(url);
+    return "";
+  });
+  text = text
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+  const seen = new Set<string>();
+  const uniq: string[] = [];
+  for (const l of links) {
+    if (!seen.has(l)) {
+      seen.add(l);
+      uniq.push(l);
+    }
+  }
+  return { text, links: uniq };
+}
+
+/** Find the first image URL inside a string. */
+function findImageUrlIn(s: string): string {
+  if (!s) return "";
+  const m = String(s).match(/https?:\/\/[^\s<>"')]+?\.(?:jpe?g|png|gif|webp|avif)(?:\?[^\s<>"')]*)?/i);
+  return m ? m[0] : "";
 }
