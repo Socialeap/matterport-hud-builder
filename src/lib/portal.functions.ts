@@ -2550,7 +2550,7 @@ function parseCinematicUrl(url){
     url=url.trim();
     if(/\\.mp4(\\?.*)?$/i.test(url)) return {kind:"mp4",src:url};
     var yt=url.match(/youtu\\.be\\/([\\w-]{6,})/i)||url.match(/youtube\\.com\\/(?:watch\\?(?:.*&)?v=|embed\\/|shorts\\/|v\\/)([\\w-]{6,})/i);
-    if(yt&&yt[1]) return {kind:"iframe",src:"https://www.youtube-nocookie.com/embed/"+yt[1]+"?rel=0&modestbranding=1&playsinline=1&autoplay=1&mute=1&origin="+encodeURIComponent(location.origin)};
+    if(yt&&yt[1]) return {kind:"iframe",src:"https://www.youtube.com/embed/"+yt[1]+"?rel=0&modestbranding=1&playsinline=1&autoplay=1&mute=1"};
 
     var vi=url.match(/player\\.vimeo\\.com\\/video\\/(\\d+)/i)||url.match(/vimeo\\.com\\/(?:video\\/)?(\\d+)/i);
     if(vi&&vi[1]) return {kind:"iframe",src:"https://player.vimeo.com/video/"+vi[1]+"?title=0&byline=0&portrait=0&autoplay=1"};
@@ -2723,36 +2723,48 @@ function extractMattertagLinks(s){
   return { text:text, links:uniq };
 }
 
-// Find the first plausible image URL inside a string. Permissive: any
-// URL that isn't a video file or known hosted-video embed qualifies.
-// Matterport CDN attachment URLs often lack a file extension before the
-// query string, so a strict extension regex misses them. The <img>
-// onerror handler hides broken thumbnails, so non-images self-heal.
+// Deterministic media classifier shared by card render + click handler.
+// Returns: "image" | "videoFile" | "hostedVideo" | "external" | "unknown".
+// Social/document URLs (Instagram/FB/etc, PDF/DOC) are always "external"
+// so they NEVER trigger the in-app player or "Open Media" button.
+var SOCIAL_HOSTS_RE=/(?:^|\\.)(facebook|fb|instagram|threads|twitter|x|tiktok|linkedin|pinterest|snapchat|reddit|youtube|youtu|vimeo|loom|wistia)\\.(?:com|be|net|tv)$/i;
+var DOC_EXT_RE=/\\.(pdf|docx?|xlsx?|pptx?|csv|txt|zip)(\\?|#|$)/i;
+var IMG_EXT_RE=/\\.(jpe?g|png|gif|webp|avif|bmp|svg)(\\?|#|$)/i;
+var VID_EXT_RE=/\\.(mp4|webm|mov|m4v)(\\?|#|$)/i;
+var PHOTO_HOST_RE=/(matterport|cloudfront|amazonaws|googleusercontent|imgix|cloudinary|imagekit|akamaized|fastly|wp\\.com|wixstatic|squarespace-cdn|cdninstagram)/i;
+function classifyMediaUrl(u){
+  if(!u) return "external";
+  if(/^data:image\\//i.test(u)) return "image";
+  if(IMG_EXT_RE.test(u)) return "image";
+  if(VID_EXT_RE.test(u)) return "videoFile";
+  if(parseCinematicUrl(u)) return "hostedVideo";
+  var host="";
+  try{ host=new URL(u).hostname.toLowerCase(); }catch(_e){}
+  if(host&&SOCIAL_HOSTS_RE.test(host)) return "external";
+  if(DOC_EXT_RE.test(u)) return "external";
+  if(host&&PHOTO_HOST_RE.test(host)) return "image";
+  return "unknown";
+}
+function isPlayableMedia(u){
+  var k=classifyMediaUrl(u);
+  return k==="image"||k==="videoFile"||k==="hostedVideo";
+}
+
+// Find the first plausible image URL inside a string. Uses the
+// deterministic classifier so social/external URLs never qualify.
 function findImageUrlIn(s){
   if(!s) return "";
   var urls=String(s).match(/https?:\\/\\/[^\\s<>"')]+/gi)||[];
   for(var i=0;i<urls.length;i++){
     var u=urls[i].replace(/[),.;!?]+$/,"");
-    if(isVideoUrl(u)) continue;
-    if(parseCinematicUrl(u)) continue;
-    return u;
+    if(classifyMediaUrl(u)==="image") return u;
   }
   return "";
 }
 
-
-function isImageUrl(u){ return !!u && /\\.(jpe?g|png|gif|webp|avif)(\\?|#|$)/i.test(u); }
-function isVideoUrl(u){ return !!u && /\\.(mp4|webm|mov|m4v)(\\?|#|$)/i.test(u); }
-// Permissive image detection: treat any non-empty URL as an image
-// candidate UNLESS it's provably a video file OR a known hosted-video
-// embed (YouTube/Vimeo/Loom/Wistia). The <img> onerror handler removes
-// broken thumbnails, so non-images self-heal.
-function isLikelyImageUrl(u){
-  if(!u) return false;
-  if(isVideoUrl(u)) return false;
-  if(parseCinematicUrl(u)) return false;
-  return true;
-}
+function isImageUrl(u){ return classifyMediaUrl(u)==="image"; }
+function isVideoUrl(u){ return classifyMediaUrl(u)==="videoFile"; }
+function isLikelyImageUrl(u){ return classifyMediaUrl(u)==="image"; }
 
 // Render the Mattertag cards for property index i. Also toggles the
 // HUD button visibility so properties without tags don't show an empty
@@ -2806,9 +2818,10 @@ function renderMattertags(i){
       // image (anything not provably video), otherwise scan the
       // description for an image URL.
       var thumbUrl=isLikelyImageUrl(tag.media)?tag.media:findImageUrlIn(tag.description||"");
-      // Media URL used by the "Open Media" CTA and the thumbnail click.
-      // Prefer tag.media (full asset); fall back to the scraped image.
-      var mediaUrl=tag.media||thumbUrl||"";
+      // Media URL used by the "Open Media" CTA. Only set when tag.media
+      // is playable media (image/video/hosted) — social/external URLs
+      // surface as link icons only, NOT as a media button.
+      var mediaUrl=isPlayableMedia(tag.media)?tag.media:(thumbUrl||"");
       if(thumbUrl){
         var thumbBtn=document.createElement("button");
         thumbBtn.type="button";

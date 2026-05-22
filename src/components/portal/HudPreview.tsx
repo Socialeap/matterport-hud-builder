@@ -186,50 +186,66 @@ export function HudPreview({
   const hasMattertags = mattertags.length > 0;
 
   /**
-   * Open a Mattertag's media URL. Priority:
-   *   1. Direct image extension → MediaCarouselModal (photo).
-   *   2. Direct video extension (mp4/webm/mov/m4v) → MediaCarouselModal (video).
-   *   3. Hosted video (YouTube/Vimeo/Loom/Wistia) parseable by
-   *      parseCinematicVideo → CinemaModal (in-app iframe player).
-   *   4. Anything else with no extension → optimistically try as image in
-   *      the carousel; <img onError> hides it if it fails.
-   *   5. True external links → new tab fallback.
+   * Deterministic media classifier. Returns:
+   *   "image"       — image file extension or data: URI
+   *   "videoFile"   — direct mp4/webm/mov/m4v
+   *   "hostedVideo" — YouTube/Vimeo/Loom/Wistia (parsed by parseCinematicVideo)
+   *   "external"    — social posts, listing pages, docs, etc. (NEVER media)
+   *   "unknown"     — bare URL with no extension and unknown host (treated
+   *                   as external for the Open Media button, but allowed
+   *                   as a thumbnail candidate ONLY if it sits in tag.media
+   *                   AND its host looks like a CDN/photo host).
+   */
+  const SOCIAL_HOSTS = /(?:^|\.)(facebook|fb|instagram|threads|twitter|x|tiktok|linkedin|pinterest|snapchat|reddit|youtube|youtu|vimeo|loom|wistia)\.(?:com|be|net|tv)$/i;
+  const DOC_EXT = /\.(pdf|docx?|xlsx?|pptx?|csv|txt|zip)(\?|#|$)/i;
+  const IMG_EXT = /\.(jpe?g|png|gif|webp|avif|bmp|svg)(\?|#|$)/i;
+  const VID_EXT = /\.(mp4|webm|mov|m4v)(\?|#|$)/i;
+  const PHOTO_HOST = /(matterport|cloudfront|amazonaws|googleusercontent|imgix|cloudinary|imagekit|akamaized|fastly|wp\.com|wixstatic|squarespace-cdn|cdninstagram)/i;
+  type MediaKind = "image" | "videoFile" | "hostedVideo" | "external" | "unknown";
+  const classifyMediaUrl = (u: string): MediaKind => {
+    if (!u) return "external";
+    if (/^data:image\//i.test(u)) return "image";
+    if (IMG_EXT.test(u)) return "image";
+    if (VID_EXT.test(u)) return "videoFile";
+    if (parseCinematicVideo(u).kind !== "invalid") return "hostedVideo";
+    let host = "";
+    try { host = new URL(u).hostname.toLowerCase(); } catch { /* relative/bad URL */ }
+    if (host && SOCIAL_HOSTS.test(host)) return "external";
+    if (DOC_EXT.test(u)) return "external";
+    if (host && PHOTO_HOST.test(host)) return "image"; // CDN-hosted photo
+    return "unknown";
+  };
+  const isPlayableMedia = (u: string): boolean => {
+    const k = classifyMediaUrl(u);
+    return k === "image" || k === "videoFile" || k === "hostedVideo";
+  };
+
+  /**
+   * Open a Mattertag's media URL. Only called for URLs the classifier
+   * has already labeled as playable media (image/videoFile/hostedVideo).
    */
   const openMattertagMedia = (mediaUrl: string, label: string, tagId: string) => {
     if (!mediaUrl) return;
-    const isImageExt = /\.(jpe?g|png|gif|webp|avif)(\?|#|$)/i.test(mediaUrl);
-    const isVideoExt = /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(mediaUrl);
-    if (isImageExt || isVideoExt) {
+    const kind = classifyMediaUrl(mediaUrl);
+    if (kind === "image") {
       setMattertagMediaAsset({
-        id: `mt-${tagId || "0"}`,
-        kind: isVideoExt ? "video" : "photo",
-        visible: true,
-        label,
-        proxyUrl: isImageExt ? mediaUrl : undefined,
-        embedUrl: isVideoExt ? mediaUrl : undefined,
+        id: `mt-${tagId || "0"}`, kind: "photo", visible: true, label,
+        proxyUrl: mediaUrl,
       });
       return;
     }
-    const parsed = parseCinematicVideo(mediaUrl);
-    if (parsed.kind === "iframe" || parsed.kind === "mp4") {
+    if (kind === "videoFile") {
+      setMattertagMediaAsset({
+        id: `mt-${tagId || "0"}`, kind: "video", visible: true, label,
+        embedUrl: mediaUrl,
+      });
+      return;
+    }
+    if (kind === "hostedVideo") {
       setMattertagCinemaUrl(mediaUrl);
       return;
     }
     try { window.open(mediaUrl, "_blank", "noopener,noreferrer"); } catch { /* ignored */ }
-  };
-
-  /**
-   * Permissive image detection for thumbnail rendering. Treats any
-   * non-empty URL as an image candidate UNLESS it is provably a video
-   * (file extension or known hosted-video URL). The <img onError>
-   * handler in the card removes broken thumbnails, so a non-image
-   * slipping through self-heals.
-   */
-  const isLikelyImageUrl = (u: string): boolean => {
-    if (!u) return false;
-    if (/\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(u)) return false;
-    if (parseCinematicVideo(u).kind !== "invalid") return false;
-    return true;
   };
 
   const socialLinks = [
@@ -1005,11 +1021,17 @@ export function HudPreview({
             {hasMattertags ? (
               <div className="flex flex-col gap-2.5">
                 {mattertags.map((tag, idx) => {
-                  const tagMediaIsImage = isLikelyImageUrl(tag.media || "");
+                  const tagMediaKind = classifyMediaUrl(tag.media || "");
+                  const tagMediaIsImage = tagMediaKind === "image";
                   const parsed = extractMattertagLinks(tag.description || "");
-                  const scrapedImage = !tagMediaIsImage ? findImageUrlIn(tag.description || "") : "";
+                  // Thumbnail: tag.media if it's an image, otherwise scan
+                  // description URLs for the first classifier-confirmed image.
+                  const scrapedImage = !tagMediaIsImage ? findImageUrlIn(tag.description || "", classifyMediaUrl) : "";
                   const thumbUrl = tagMediaIsImage ? tag.media : scrapedImage;
-                  const mediaUrl = tag.media || thumbUrl || "";
+                  // Open Media button URL: only if tag.media is playable
+                  // media (image/video/hosted). Social/external URLs are
+                  // surfaced as link icons above, not as a media button.
+                  const mediaUrl = isPlayableMedia(tag.media || "") ? tag.media : (thumbUrl || "");
                   return (
                     <div
                       key={tag.id}
@@ -1207,11 +1229,15 @@ function extractMattertagLinks(s: string): { text: string; links: string[] } {
  * them. The card's <img onError> handler removes broken thumbnails, so
  * non-images self-heal — a brief broken-image flash is the worst case.
  */
-function findImageUrlIn(s: string): string {
+function findImageUrlIn(s: string, classify?: (u: string) => string): string {
   if (!s) return "";
   const urls = String(s).match(/https?:\/\/[^\s<>"')]+/gi) || [];
   for (const raw of urls) {
     const u = raw.replace(/[),.;!?]+$/, ""); // strip trailing punctuation
+    if (classify) {
+      if (classify(u) === "image") return u;
+      continue;
+    }
     if (/\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(u)) continue;
     if (parseCinematicVideo(u).kind !== "invalid") continue;
     return u;
