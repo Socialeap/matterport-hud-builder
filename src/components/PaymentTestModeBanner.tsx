@@ -1,6 +1,10 @@
+import { getStripeEnvironment } from "@/lib/stripe";
+
 const clientToken = import.meta.env.VITE_PAYMENTS_CLIENT_TOKEN;
 
 export function PaymentTestModeBanner() {
+  // Forced to 'live' app-wide while the sandbox connector is broken — never show the test banner.
+  if (getStripeEnvironment() === "live") return null;
   if (!clientToken?.startsWith("pk_test_")) return null;
 
   return (
