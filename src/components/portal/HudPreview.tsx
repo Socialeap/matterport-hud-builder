@@ -1149,6 +1149,16 @@ export function HudPreview({
           modelId={currentModel?.matterportId}
         />
       )}
+
+      {/* Hosted-video (YouTube/Vimeo/Loom/Wistia) player for a Mattertag's
+          media URL. Isolated from the property-level CinemaModal above. */}
+      {mattertagCinemaUrl && (
+        <CinemaModal
+          open
+          onClose={() => setMattertagCinemaUrl(null)}
+          videoUrl={mattertagCinemaUrl}
+        />
+      )}
     </div>
     </>
   );
