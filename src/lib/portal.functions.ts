@@ -2723,13 +2723,23 @@ function extractMattertagLinks(s){
   return { text:text, links:uniq };
 }
 
-// Find the first image URL inside a string (used to recover thumbnails
-// from descriptions when tag.media isn't itself an image).
+// Find the first plausible image URL inside a string. Permissive: any
+// URL that isn't a video file or known hosted-video embed qualifies.
+// Matterport CDN attachment URLs often lack a file extension before the
+// query string, so a strict extension regex misses them. The <img>
+// onerror handler hides broken thumbnails, so non-images self-heal.
 function findImageUrlIn(s){
   if(!s) return "";
-  var m=String(s).match(/https?:\\/\\/[^\\s<>"')]+?\\.(?:jpe?g|png|gif|webp|avif)(?:\\?[^\\s<>"')]*)?/i);
-  return m?m[0]:"";
+  var urls=String(s).match(/https?:\\/\\/[^\\s<>"')]+/gi)||[];
+  for(var i=0;i<urls.length;i++){
+    var u=urls[i].replace(/[),.;!?]+$/,"");
+    if(isVideoUrl(u)) continue;
+    if(parseCinematicUrl(u)) continue;
+    return u;
+  }
+  return "";
 }
+
 
 function isImageUrl(u){ return !!u && /\\.(jpe?g|png|gif|webp|avif)(\\?|#|$)/i.test(u); }
 function isVideoUrl(u){ return !!u && /\\.(mp4|webm|mov|m4v)(\\?|#|$)/i.test(u); }
