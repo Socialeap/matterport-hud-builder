@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { ChevronUp, ChevronDown, Phone, Mail, MessageSquare, Globe, X, MapPin, Film, Images, Copy, Bookmark, Info, Trash2, Plus, Tag, Link as LinkIcon, Download, Loader2 } from "lucide-react";
+import { ChevronUp, ChevronDown, Phone, Mail, MessageSquare, Globe, X, MapPin, Film, Images, Copy, Bookmark, Info, Trash2, Plus, Tag, Link as LinkIcon, Download, Loader2, ExternalLink } from "lucide-react";
 import { FaLinkedinIn, FaXTwitter, FaInstagram, FaFacebookF, FaTiktok } from "react-icons/fa6";
 import { toast } from "sonner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
