@@ -88,6 +88,10 @@ export function HudPreview({
   // payload for opening a tag's media URL inside the existing player.
   const [mattertagOpen, setMattertagOpen] = useState(false);
   const [mattertagMediaAsset, setMattertagMediaAsset] = useState<MediaAsset | null>(null);
+  // Hosted-video URL (YouTube/Vimeo/Loom/Wistia) routed to the CinemaModal —
+  // isolated from the property-level cinematicVideoUrl so closing it doesn't
+  // affect the main "Cinematic Video" player.
+  const [mattertagCinemaUrl, setMattertagCinemaUrl] = useState<string | null>(null);
   // Mutually-exclusive drawer toggles — opening one closes the others.
   const openContact = () => { setMattertagOpen(false); setContactOpen(true); };
   const openMattertag = () => { setContactOpen(false); setMattertagOpen(true); };
