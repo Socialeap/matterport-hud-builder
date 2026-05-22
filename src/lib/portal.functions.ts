@@ -2892,23 +2892,24 @@ window.__closeMattertags=function(){
 // The next __openModal('carousel') call resets carouselMedia from
 // props[current].multimedia, so the synthetic state never leaks
 // into the regular media gallery.
-window.__openMattertagMedia=function(tagIdx){
+window.__openMattertagMedia=function(tagIdx,overrideUrl){
   var p=props[current];
   var tags=(p&&p.mattertags)||[];
-  var tag=tags[tagIdx];
-  if(!tag||!tag.media) return;
-  var isImage=/\\.(jpe?g|png|gif|webp|avif)(\\?|#|$)/i.test(tag.media);
-  var isVideo=/\\.(mp4|webm|mov|m4v)(\\?|#|$)/i.test(tag.media);
+  var tag=tags[tagIdx]||{};
+  var url=overrideUrl||tag.media||"";
+  if(!url) return;
+  var isImage=/\\.(jpe?g|png|gif|webp|avif)(\\?|#|$)/i.test(url);
+  var isVideo=/\\.(mp4|webm|mov|m4v)(\\?|#|$)/i.test(url);
   if(!isImage&&!isVideo){
-    try { window.open(tag.media,"_blank","noopener,noreferrer"); } catch(_e){}
+    try { window.open(url,"_blank","noopener,noreferrer"); } catch(_e){}
     return;
   }
   carouselMedia=[{
     id:"mt-"+(tag.id||tagIdx),
     kind:isVideo?"video":"photo",
     label:tag.label||"",
-    proxyUrl:isImage?tag.media:"",
-    embedUrl:isVideo?tag.media:""
+    proxyUrl:isImage?url:"",
+    embedUrl:isVideo?url:""
   }];
   carouselIndex=0;
   renderCarousel();
