@@ -2897,12 +2897,15 @@ window.__closeMattertags=function(){
   if(b) b.setAttribute("aria-expanded","false");
 };
 
-// Open the existing media carousel with a synthetic single-asset
-// payload built from the Mattertag's media URL. Image/video URLs
-// route to the carousel; anything else opens in a new tab.
-// The next __openModal('carousel') call resets carouselMedia from
-// props[current].multimedia, so the synthetic state never leaks
-// into the regular media gallery.
+// Route a Mattertag's media URL to the appropriate in-app player:
+//   1. Direct image/video file → existing carousel-modal (synthetic
+//      single-asset payload; cleared on next __openModal('carousel')).
+//   2. Hosted video (YouTube/Vimeo/Loom/Wistia, or any URL parseable
+//      by parseCinematicUrl) → existing cinema-modal, with the parsed
+//      embed injected into #cinema-content. __closeModal('cinema')
+//      clears the content, so the property-level cinematic video is
+//      restored to its own embed on next open.
+//   3. Anything else → new-tab fallback.
 window.__openMattertagMedia=function(tagIdx,overrideUrl){
   var p=props[current];
   var tags=(p&&p.mattertags)||[];
@@ -2911,21 +2914,33 @@ window.__openMattertagMedia=function(tagIdx,overrideUrl){
   if(!url) return;
   var isImage=/\\.(jpe?g|png|gif|webp|avif)(\\?|#|$)/i.test(url);
   var isVideo=/\\.(mp4|webm|mov|m4v)(\\?|#|$)/i.test(url);
-  if(!isImage&&!isVideo){
-    try { window.open(url,"_blank","noopener,noreferrer"); } catch(_e){}
+  if(isImage||isVideo){
+    carouselMedia=[{
+      id:"mt-"+(tag.id||tagIdx),
+      kind:isVideo?"video":"photo",
+      label:tag.label||"",
+      proxyUrl:isImage?url:"",
+      embedUrl:isVideo?url:""
+    }];
+    carouselIndex=0;
+    renderCarousel();
+    var modalEl=document.getElementById("carousel-modal");
+    if(modalEl) modalEl.classList.add("open");
     return;
   }
-  carouselMedia=[{
-    id:"mt-"+(tag.id||tagIdx),
-    kind:isVideo?"video":"photo",
-    label:tag.label||"",
-    proxyUrl:isImage?url:"",
-    embedUrl:isVideo?url:""
-  }];
-  carouselIndex=0;
-  renderCarousel();
-  var modalEl=document.getElementById("carousel-modal");
-  if(modalEl) modalEl.classList.add("open");
+  var parsedCine=parseCinematicUrl(url);
+  if(parsedCine){
+    var cinemaContent=document.getElementById("cinema-content");
+    if(cinemaContent){
+      cinemaContent.innerHTML=parsedCine.kind==="mp4"
+        ?'<video src="'+escapeText(parsedCine.src)+'" controls autoplay style="position:absolute;inset:0;width:100%;height:100%;border-radius:10px"></video>'
+        :'<iframe src="'+escapeText(parsedCine.src)+'" style="position:absolute;inset:0;width:100%;height:100%;border:none" allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture;fullscreen" allowfullscreen></iframe>';
+    }
+    var cinemaEl=document.getElementById("cinema-modal");
+    if(cinemaEl) cinemaEl.classList.add("open");
+    return;
+  }
+  try { window.open(url,"_blank","noopener,noreferrer"); } catch(_e){}
 };
 
 // ── Mattertag deep-link "Ghost Iframe" crossfade engine ─────────────
