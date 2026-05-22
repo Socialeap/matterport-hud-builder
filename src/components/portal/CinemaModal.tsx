@@ -69,7 +69,7 @@ export function CinemaModal({ open, onClose, videoUrl }: CinemaModalProps) {
               className="h-full w-full"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
               allowFullScreen
-              referrerPolicy="origin"
+              referrerPolicy="strict-origin-when-cross-origin"
               title="Cinematic property video"
             />
 

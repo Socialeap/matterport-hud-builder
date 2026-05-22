@@ -40,14 +40,14 @@ export function parseCinematicVideo(rawUrl: string | undefined | null): ParsedVi
     url.match(/youtu\.be\/([\w-]{6,})/i) ||
     url.match(/youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|v\/)([\w-]{6,})/i);
   if (yt?.[1]) {
-    const origin =
-      typeof window !== "undefined" && window.location?.origin
-        ? `&origin=${encodeURIComponent(window.location.origin)}`
-        : "";
+    // Use canonical youtube.com/embed (matches the share-embed code YT
+    // generates). Avoid `origin=` — when the preview is itself iframed
+    // by Lovable, the player rejects the config (Error 153). autoplay
+    // is paired with mute to satisfy browser autoplay policy.
     return {
       kind: "iframe",
       provider: "youtube",
-      embedUrl: `https://www.youtube-nocookie.com/embed/${yt[1]}?rel=0&modestbranding=1&playsinline=1&autoplay=1&mute=1${origin}`,
+      embedUrl: `https://www.youtube.com/embed/${yt[1]}?rel=0&modestbranding=1&playsinline=1&autoplay=1&mute=1`,
     };
   }
 
