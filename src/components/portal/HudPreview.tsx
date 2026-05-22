@@ -1021,11 +1021,17 @@ export function HudPreview({
             {hasMattertags ? (
               <div className="flex flex-col gap-2.5">
                 {mattertags.map((tag, idx) => {
-                  const tagMediaIsImage = isLikelyImageUrl(tag.media || "");
+                  const tagMediaKind = classifyMediaUrl(tag.media || "");
+                  const tagMediaIsImage = tagMediaKind === "image";
                   const parsed = extractMattertagLinks(tag.description || "");
-                  const scrapedImage = !tagMediaIsImage ? findImageUrlIn(tag.description || "") : "";
+                  // Thumbnail: tag.media if it's an image, otherwise scan
+                  // description URLs for the first classifier-confirmed image.
+                  const scrapedImage = !tagMediaIsImage ? findImageUrlIn(tag.description || "", classifyMediaUrl) : "";
                   const thumbUrl = tagMediaIsImage ? tag.media : scrapedImage;
-                  const mediaUrl = tag.media || thumbUrl || "";
+                  // Open Media button URL: only if tag.media is playable
+                  // media (image/video/hosted). Social/external URLs are
+                  // surfaced as link icons above, not as a media button.
+                  const mediaUrl = isPlayableMedia(tag.media || "") ? tag.media : (thumbUrl || "");
                   return (
                     <div
                       key={tag.id}
