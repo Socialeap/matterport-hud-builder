@@ -1,9 +1,9 @@
 import { useState, useRef } from "react";
-import { ChevronUp, ChevronDown, Phone, Mail, MessageSquare, Globe, X, MapPin, Film, Images, Copy, Bookmark, Info, Trash2, Plus, Link as LinkIcon } from "lucide-react";
+import { ChevronUp, ChevronDown, Phone, Mail, MessageSquare, Globe, X, MapPin, Film, Images, Copy, Bookmark, Info, Trash2, Plus, Tag, Link as LinkIcon } from "lucide-react";
 import { FaLinkedinIn, FaXTwitter, FaInstagram, FaFacebookF, FaTiktok } from "react-icons/fa6";
 import { toast } from "sonner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import type { PropertyModel, TourBehavior, AgentContact, LiveTourStop } from "./types";
+import type { PropertyModel, TourBehavior, AgentContact, LiveTourStop, MediaAsset } from "./types";
 import { buildMatterportUrl } from "./types";
 import { NeighborhoodMapModal } from "./NeighborhoodMapModal";
 import { CinemaModal } from "./CinemaModal";
@@ -67,6 +67,13 @@ export function HudPreview({
   const [mapOpen, setMapOpen] = useState(false);
   const [cinemaOpen, setCinemaOpen] = useState(false);
   const [carouselOpen, setCarouselOpen] = useState(false);
+  // Property Features (Mattertag) drawer + synthetic single-asset carousel
+  // payload for opening a tag's media URL inside the existing player.
+  const [mattertagOpen, setMattertagOpen] = useState(false);
+  const [mattertagMediaAsset, setMattertagMediaAsset] = useState<MediaAsset | null>(null);
+  // Mutually-exclusive drawer toggles — opening one closes the others.
+  const openContact = () => { setMattertagOpen(false); setContactOpen(true); };
+  const openMattertag = () => { setContactOpen(false); setMattertagOpen(true); };
   // Quick-message form state (mirrors the standalone end-product behavior)
   const [qMessage, setQMessage] = useState("");
   const [qEmail, setQEmail] = useState("");
@@ -150,6 +157,36 @@ export function HudPreview({
   const hasCinematic = cinematicParsed?.kind === "iframe" || cinematicParsed?.kind === "mp4";
   const visibleMedia = (currentModel?.multimedia ?? []).filter((m) => m.visible);
   const hasMedia = visibleMedia.length > 0;
+  // Sort tags by elevation (highest first) so the drawer groups cards by
+  // floor without depending on the server-side sort.
+  const mattertags = (currentModel?.mattertags ?? [])
+    .slice()
+    .sort((a, b) => (b?.anchorPosition?.y ?? 0) - (a?.anchorPosition?.y ?? 0));
+  const hasMattertags = mattertags.length > 0;
+
+  /**
+   * Open a Mattertag's media URL. Image/video URLs route to the existing
+   * MediaCarouselModal via a synthetic single-asset payload; other URLs
+   * (external links) open in a new tab. Keeps the UX consistent with how
+   * the regular media gallery works.
+   */
+  const openMattertagMedia = (mediaUrl: string, label: string, tagId: string) => {
+    if (!mediaUrl) return;
+    const isImage = /\.(jpe?g|png|gif|webp|avif)(\?|#|$)/i.test(mediaUrl);
+    const isVideo = /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(mediaUrl);
+    if (!isImage && !isVideo) {
+      try { window.open(mediaUrl, "_blank", "noopener,noreferrer"); } catch { /* ignored */ }
+      return;
+    }
+    setMattertagMediaAsset({
+      id: `mt-${tagId || "0"}`,
+      kind: isVideo ? "video" : "photo",
+      visible: true,
+      label,
+      proxyUrl: isImage ? mediaUrl : undefined,
+      embedUrl: isVideo ? mediaUrl : undefined,
+    });
+  };
 
   const socialLinks = [
     { url: agent.linkedin, icon: FaLinkedinIn, label: "LinkedIn" },
@@ -567,12 +604,23 @@ export function HudPreview({
                   <Images className="h-3.5 w-3.5" />
                 </button>
               )}
+              {hasMattertags && (
+                <button
+                  onClick={openMattertag}
+                  className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur-md transition-colors hover:bg-white/25"
+                  title="Property Features"
+                  aria-label="Property Features"
+                  aria-expanded={mattertagOpen}
+                >
+                  <Tag className="h-3.5 w-3.5" />
+                </button>
+              )}
               {agent.name && (
                 <span className="text-xs text-white/80 drop-shadow-sm">{agent.name}</span>
               )}
               {(agent.phone || agent.email || agent.name) && (
                 <button
-                  onClick={() => setContactOpen(true)}
+                  onClick={openContact}
                   className="rounded px-2 py-1 text-xs font-medium text-white cursor-pointer shadow-md"
                   style={{ backgroundColor: accentColor }}
                 >
@@ -794,6 +842,90 @@ export function HudPreview({
             )}
           </div>
         </div>
+
+        {/* Property Features (Mattertag) drawer — slides from right */}
+        <div
+          className="absolute inset-y-0 right-0 z-40 w-[320px] overflow-y-auto transition-transform duration-300 ease-in-out border-l border-white/10"
+          style={{
+            transform: mattertagOpen ? "translateX(0)" : "translateX(100%)",
+            backgroundColor: "rgba(10,12,20,0.6)",
+            backdropFilter: "blur(28px) saturate(160%)",
+            WebkitBackdropFilter: "blur(28px) saturate(160%)",
+            boxShadow: "-8px 0 32px rgba(0,0,0,0.22)",
+          }}
+        >
+          <div className="p-4">
+            <button
+              onClick={() => setMattertagOpen(false)}
+              className="absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-full bg-white/10 text-white/70 hover:bg-white/20 hover:text-white transition-colors"
+              aria-label="Close"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+            <h3 className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-white">
+              <Tag className="h-3.5 w-3.5 text-white/70" />
+              Property Features
+            </h3>
+            {hasMattertags ? (
+              <div className="flex flex-col gap-2.5">
+                {mattertags.map((tag) => {
+                  const isImage = !!tag.media && /\.(jpe?g|png|gif|webp|avif)(\?|#|$)/i.test(tag.media);
+                  return (
+                    <div
+                      key={tag.id}
+                      className="rounded-lg border border-white/10 bg-white/5 px-3 py-2.5"
+                    >
+                      {isImage && (
+                        <img
+                          src={tag.media}
+                          alt={tag.label || "Highlight image"}
+                          loading="lazy"
+                          className="mb-2 block aspect-video w-full rounded-md border border-white/10 bg-black/40 object-cover"
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).style.display = "none";
+                          }}
+                        />
+                      )}
+                      {tag.label && (
+                        <p className="mb-1 text-[13px] font-semibold leading-snug text-white">
+                          {tag.label}
+                        </p>
+                      )}
+                      {tag.description && (
+                        <LinkifiedText
+                          text={tag.description}
+                          accentColor={accentColor}
+                          className="m-0 whitespace-pre-wrap break-words text-[12px] leading-[1.55] text-white/85"
+                        />
+                      )}
+                      {tag.media && (
+                        <button
+                          type="button"
+                          onClick={() => openMattertagMedia(tag.media, tag.label || "", tag.id)}
+                          className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-white/20 bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-white transition-colors hover:bg-white/20"
+                        >
+                          <svg
+                            viewBox="0 0 24 24"
+                            fill="currentColor"
+                            aria-hidden="true"
+                            className="h-2.5 w-2.5"
+                          >
+                            <polygon points="5 3 19 12 5 21" />
+                          </svg>
+                          Open Media
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-[12px] italic text-white/50">
+                No highlights for this property yet.
+              </p>
+            )}
+          </div>
+        </div>
       </div>
 
 
@@ -824,7 +956,57 @@ export function HudPreview({
           modelId={currentModel?.matterportId}
         />
       )}
+
+      {/* Single-asset carousel for a Mattertag's media URL. Mounted only
+          when a tag's "Open Media" CTA fired — keeps the regular
+          gallery's state isolated from the synthetic asset. */}
+      {mattertagMediaAsset && (
+        <MediaCarouselModal
+          open
+          onClose={() => setMattertagMediaAsset(null)}
+          assets={[mattertagMediaAsset]}
+          modelId={currentModel?.matterportId}
+        />
+      )}
     </div>
     </>
+  );
+}
+
+/**
+ * Render plaintext that may contain raw URLs as React nodes, wrapping
+ * any http(s) URLs in clickable `<a>` tags. The split regex matches the
+ * same shape used by the static-export runtime's `linkifyMattertagHtml`
+ * so both surfaces produce identical link surfaces.
+ */
+function LinkifiedText({
+  text,
+  accentColor,
+  className,
+}: {
+  text: string;
+  accentColor: string;
+  className?: string;
+}) {
+  const parts = String(text ?? "").split(/(https?:\/\/[^\s<>"']+)/i);
+  return (
+    <p className={className}>
+      {parts.map((seg, i) =>
+        i % 2 === 1 ? (
+          <a
+            key={i}
+            href={seg}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="break-all underline hover:text-white"
+            style={{ color: accentColor }}
+          >
+            {seg}
+          </a>
+        ) : (
+          <span key={i}>{seg}</span>
+        ),
+      )}
+    </p>
   );
 }

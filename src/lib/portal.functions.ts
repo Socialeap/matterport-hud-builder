@@ -41,6 +41,14 @@ interface SavePresentationLiveTourStop {
   sr: string;
 }
 
+interface SavePresentationMattertag {
+  id: string;
+  label: string;
+  description: string;
+  media: string;
+  anchorPosition: { x: number; y: number; z: number };
+}
+
 interface SavePresentationInput {
   providerId: string;
   name: string;
@@ -55,6 +63,7 @@ interface SavePresentationInput {
     enableNeighborhoodMap?: boolean;
     multimedia?: SavePresentationMediaAsset[];
     liveTourStops?: SavePresentationLiveTourStop[];
+    mattertags?: SavePresentationMattertag[];
     isPrimary?: boolean;
   }>;
   tourConfig: Record<string, unknown>;
@@ -266,6 +275,156 @@ export const refreshPresentationConfig = createServerFn({ method: "POST" })
     return { success: true };
   });
 
+/**
+ * Extract Mattertag metadata from a public Matterport model via the
+ * Matterport GraphQL endpoint.
+ *
+ * The endpoint is reachable without a Showcase SDK key (works against
+ * public models), but only from a server context — browser-side calls
+ * are blocked by CORS / origin checks. We proxy the request here so the
+ * Builder can show the tag list in our overlay drawer alongside the
+ * iframe (entirely separate from the iframe-internal Mattertag layer
+ * that `TourBehavior.hideMattertags` controls).
+ *
+ * Defensive: invalid IDs, rate-limited callers, network failures, and
+ * malformed responses all resolve to a typed error shape so the UI can
+ * preserve any previously-extracted tags untouched.
+ */
+const MATTERTAG_GQL_QUERY = `query GetMattertags($modelId: ID!) {
+  model(id: $modelId) {
+    id
+    mattertags {
+      id
+      label
+      description
+      media
+      anchorPosition { x y z }
+    }
+  }
+}`;
+
+const MATTERTAG_ID_RE = /^[A-Za-z0-9]{11}$/;
+const MATTERTAG_MAX_COUNT = 200;
+const MATTERTAG_FETCH_TIMEOUT_MS = 8_000;
+
+export const extractMattertags = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: { matterportId: string }) => data)
+  .handler(async ({ data }): Promise<{
+    success: boolean;
+    mattertags?: SavePresentationMattertag[];
+    error?: string;
+    retryAfterSeconds?: number;
+  }> => {
+    if (!data?.matterportId || !MATTERTAG_ID_RE.test(data.matterportId)) {
+      return { success: false, error: "Invalid Matterport ID" };
+    }
+
+    // Per-IP rate limit so a single abusive caller can't burn through
+    // our outbound traffic budget hammering Matterport.
+    const rl = checkRateLimit(ipFromRequest(getRequest()), { perMinute: 10 });
+    if (!rl.allowed) {
+      return {
+        success: false,
+        error: "Too many requests. Please wait a moment before syncing again.",
+        retryAfterSeconds: rl.retryAfterSeconds,
+      };
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), MATTERTAG_FETCH_TIMEOUT_MS);
+    let res: Response;
+    try {
+      res = await fetch("https://api.matterport.com/api/models/graph", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Origin": "https://my.matterport.com",
+          "Referer": "https://my.matterport.com/",
+          "User-Agent":
+            "Mozilla/5.0 (compatible; 3dps-builder-bot/1.0)",
+        },
+        body: JSON.stringify({
+          query: MATTERTAG_GQL_QUERY,
+          variables: { modelId: data.matterportId },
+        }),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      clearTimeout(timer);
+      const reason =
+        err instanceof Error && err.name === "AbortError"
+          ? "Matterport took too long to respond. Please try again."
+          : "Could not reach Matterport. Please try again.";
+      console.error("[extractMattertags] fetch failed:", err);
+      return { success: false, error: reason };
+    }
+    clearTimeout(timer);
+
+    if (!res.ok) {
+      console.error(
+        "[extractMattertags] non-OK status:",
+        res.status,
+        res.statusText,
+      );
+      return {
+        success: false,
+        error: `Matterport returned HTTP ${res.status}. The model may be private or unreachable.`,
+      };
+    }
+
+    let payload: unknown;
+    try {
+      payload = await res.json();
+    } catch (err) {
+      console.error("[extractMattertags] JSON parse failed:", err);
+      return { success: false, error: "Could not parse Matterport response." };
+    }
+
+    const root = payload as { data?: { model?: { mattertags?: unknown } } } | null;
+    const rawTags = root?.data?.model?.mattertags;
+    // model: null OR mattertags: null both surface as "no tags found" so
+    // the caller can show a friendly message without distinguishing
+    // between private models and tag-less ones.
+    if (!Array.isArray(rawTags)) {
+      return { success: true, mattertags: [] };
+    }
+
+    const cleaned: SavePresentationMattertag[] = [];
+    for (const entry of rawTags.slice(0, MATTERTAG_MAX_COUNT)) {
+      if (!entry || typeof entry !== "object") continue;
+      const e = entry as {
+        id?: unknown;
+        label?: unknown;
+        description?: unknown;
+        media?: unknown;
+        anchorPosition?: { x?: unknown; y?: unknown; z?: unknown } | null;
+      };
+      const id = String(e.id ?? "").slice(0, 64).trim();
+      if (!id) continue;
+      const mediaRaw = String(e.media ?? "").trim();
+      const media = /^https?:\/\//i.test(mediaRaw) ? mediaRaw.slice(0, 2048) : "";
+      const ap = e.anchorPosition || {};
+      cleaned.push({
+        id,
+        label: String(e.label ?? "").slice(0, 200),
+        description: String(e.description ?? "").slice(0, 4000),
+        media,
+        anchorPosition: {
+          x: Number(ap.x) || 0,
+          y: Number(ap.y) || 0,
+          z: Number(ap.z) || 0,
+        },
+      });
+    }
+    // Sort top-to-bottom by elevation so the storage / runtime order is
+    // stable and matches the drawer's display order.
+    cleaned.sort((a, b) => (b.anchorPosition.y - a.anchorPosition.y));
+
+    return { success: true, mattertags: cleaned };
+  });
+
 export const checkFulfillmentStatus = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: { modelId: string }) => data)
@@ -344,6 +503,14 @@ interface PropertyLiveTourStop {
   sr: string;
 }
 
+interface PropertyMattertagData {
+  id: string;
+  label: string;
+  description: string;
+  media: string;
+  anchorPosition: { x: number; y: number; z: number };
+}
+
 interface PropertyData {
   id: string;
   name: string;
@@ -355,6 +522,7 @@ interface PropertyData {
   enableNeighborhoodMap?: boolean;
   multimedia?: PropertyMediaAsset[];
   liveTourStops?: PropertyLiveTourStop[];
+  mattertags?: PropertyMattertagData[];
   isPrimary?: boolean;
 }
 
@@ -1160,6 +1328,30 @@ export const generatePresentation = createServerFn({ method: "POST" })
         const enhFloorMap = enhancements[p.id]?.floor_map;
         const floorMap = sanitizeFloorMapForExport(enhFloorMap);
 
+        // Mattertags extracted from the public Matterport model. Cap
+        // and coerce defensively so a tampered draft can't break the
+        // runtime; sort by `y` (elevation) descending so the drawer
+        // groups cards by floor with the highest first.
+        const mattertags = (p.mattertags ?? [])
+          .slice(0, MATTERTAG_MAX_COUNT)
+          .map((t) => {
+            const ap = (t && t.anchorPosition) || { x: 0, y: 0, z: 0 };
+            const mediaRaw = String(t?.media ?? "").trim();
+            return {
+              id: String(t?.id ?? "").slice(0, 64),
+              label: String(t?.label ?? "").slice(0, 200),
+              description: String(t?.description ?? "").slice(0, 4000),
+              media: /^https?:\/\//i.test(mediaRaw) ? mediaRaw.slice(0, 2048) : "",
+              anchorPosition: {
+                x: Number(ap.x) || 0,
+                y: Number(ap.y) || 0,
+                z: Number(ap.z) || 0,
+              },
+            };
+          })
+          .filter((t) => t.id.length > 0)
+          .sort((a, b) => b.anchorPosition.y - a.anchorPosition.y);
+
         return {
           name: p.name || "Untitled",
           propertyName: p.propertyName || "",
@@ -1171,6 +1363,7 @@ export const generatePresentation = createServerFn({ method: "POST" })
           multimedia,
           liveTourStops,
           floorMap,
+          mattertags,
         };
       });
 
@@ -1611,6 +1804,30 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   #live-tour-drawer{max-height:70vh}
 }
 
+/* ── Property Features (Mattertag) drawer ─────────────────────────── */
+#mattertag-drawer{position:fixed;top:0;right:0;width:min(340px,92vw);height:100%;z-index:2000;overflow-y:auto;transform:translateX(100%);transition:transform 0.3s ease;background:rgba(10,12,20,0.6);backdrop-filter:blur(28px) saturate(160%);-webkit-backdrop-filter:blur(28px) saturate(160%);border-left:1px solid rgba(255,255,255,0.06);box-shadow:-8px 0 32px rgba(0,0,0,0.22)}
+#mattertag-drawer.open{transform:translateX(0)}
+#mattertag-inner{padding:14px 14px 24px;position:relative}
+#mattertag-close{position:absolute;top:10px;right:10px;width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,0.1);border:none;color:rgba(255,255,255,0.7);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.2s}
+#mattertag-close:hover{background:rgba(255,255,255,0.2)}
+#mattertag-title{font-size:13px;font-weight:600;color:#fff;margin:0 0 12px;display:flex;align-items:center;gap:6px}
+#mattertag-title svg{width:13px;height:13px;color:rgba(255,255,255,0.7)}
+#mattertag-list{display:flex;flex-direction:column;gap:10px}
+.mt-card{border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.06);padding:10px 12px}
+.mt-card-thumb{width:100%;aspect-ratio:16/9;border-radius:8px;background:rgba(0,0,0,0.4);object-fit:cover;display:block;margin-bottom:8px;border:1px solid rgba(255,255,255,0.06)}
+.mt-card-title{font-size:13px;font-weight:600;color:#fff;line-height:1.3;margin-bottom:4px;letter-spacing:-0.01em}
+.mt-card-desc{font-size:12px;line-height:1.55;color:rgba(255,255,255,0.84);white-space:pre-wrap;word-wrap:break-word;margin:0}
+.mt-card-desc a{color:${escapeHtml(accentColor)};text-decoration:underline;word-break:break-all}
+.mt-card-desc a:hover{color:#fff}
+.mt-card-cta{margin-top:8px;display:inline-flex;align-items:center;gap:5px;border:1px solid rgba(255,255,255,0.18);background:rgba(255,255,255,0.08);color:#fff;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer;text-decoration:none;font-family:inherit}
+.mt-card-cta:hover{background:rgba(255,255,255,0.16)}
+.mt-card-cta svg{width:11px;height:11px}
+.mt-empty{font-size:12px;color:rgba(255,255,255,0.5);font-style:italic;padding:8px 4px}
+@media(max-width:640px){
+  #mattertag-drawer{top:auto;bottom:0;left:0;right:0;width:100%;height:auto;max-height:80vh;border-radius:16px 16px 0 0;border-left:none;border-top:1px solid rgba(255,255,255,0.08);transform:translateY(100%)}
+  #mattertag-drawer.open{transform:translateY(0)}
+}
+
 /* ── Live Tour annotation overlay ─────────────────────────────────── */
 /* The wrap is a full-size pass-through container in idle mode. When a
    live tour is connected, body.live-tour-active flips the wrap into a
@@ -1671,7 +1888,7 @@ body.live-tour-active #live-tour-control-drawer{display:flex;flex-direction:colu
    merged into this left drawer (see __relocateLiveGuide in the
    runtime). Hide the right drawer entirely so there is exactly one
    panel on screen and never two competing surfaces. */
-body.live-tour-active #live-tour-drawer{display:none !important}
+body.live-tour-active #live-tour-drawer,body.live-tour-active #mattertag-drawer{display:none !important}
 #ltcd-inner .drawer-live-guide{margin-top:0;border-top:none;padding-top:0;margin-bottom:0}
 #ltcd-inner .lg-stops{max-height:calc(100vh - 280px);overflow-y:auto}
 #ltcd-header{display:flex;align-items:center;gap:10px;min-width:0;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.08);margin-bottom:4px}
@@ -1959,6 +2176,9 @@ ${askAssets.css}
       <button id="hud-floormap-btn" class="hud-icon-btn" style="display:none" aria-label="Interactive floor map" title="Interactive Floor Map" onclick="window.__openModal&&window.__openModal('floormap')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3V6z"/><path d="M9 3v15"/><path d="M15 6v15"/></svg>
       </button>
+      <button id="hud-mattertag-btn" class="hud-icon-btn" style="display:none" aria-label="Property features" title="Property Features" aria-expanded="false" onclick="window.__openMattertags&&window.__openMattertags()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+      </button>
       ${askAssets.toggleBtn}
       
       ${hasAgentContact ? `<button id="hud-live-tour-btn" class="hud-live-tour-btn" type="button" aria-label="Live Tour" title="Live Tour" aria-expanded="false" onclick="window.__openLiveTour&&window.__openLiveTour()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4"/><path d="M5 7l3 3"/><path d="M19 7l-3 3"/><circle cx="12" cy="14" r="4"/><path d="M8 22h8"/><path d="M12 18v4"/></svg><span class="hud-live-tour-label">Live Tour</span><span class="lt-dot" aria-hidden="true"></span></button>` : ""}
@@ -2041,6 +2261,20 @@ ${hasAgentContact ? `<div id="agent-drawer">
      outside the drawer so the offscreen translate transform on the
      drawer can never inadvertently mute playback in any browser. -->
 <audio id="lg-audio" autoplay style="display:none"></audio>` : ""}
+
+<!-- ── Property Features (Mattertag) drawer ───────────────────────── -->
+<!-- Always emitted; runtime hides the toggle button when the current
+     property has no extracted mattertags. -->
+<div id="mattertag-drawer" role="dialog" aria-modal="false" aria-labelledby="mattertag-title">
+  <div id="mattertag-inner">
+    <button id="mattertag-close" type="button" onclick="window.__closeMattertags&&window.__closeMattertags()" aria-label="Close">&times;</button>
+    <h2 id="mattertag-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+      Property Features
+    </h2>
+    <div id="mattertag-list" aria-live="polite"></div>
+  </div>
+</div>
 
 <!-- ── Email options modal ───────────────────────────────────────── -->
 <div id="email-modal" class="modal-backdrop" onclick="if(event.target===this)window.__closeEmailOptions&&window.__closeEmailOptions()">
@@ -2504,6 +2738,8 @@ function updateHud(i){
   if(mediaBtn) mediaBtn.style.display=(p.multimedia&&p.multimedia.length>0)?"":"none";
   var fmBtn=document.getElementById("hud-floormap-btn");
   if(fmBtn) fmBtn.style.display=(p.floorMap&&(p.floorMap.svg||(p.floorMap.raster&&p.floorMap.raster.data)))?"":"none";
+  // Mattertag (Property Features) button + repopulate the drawer body.
+  try { if(typeof renderMattertags==="function") renderMattertags(i); } catch(_e){}
   if(p.musicUrl){initAudio(p.musicUrl,soundEnabled);}
   else if(audioEl){audioEl.pause();audioEl.src="";updateMuteBtn();}
 }
@@ -2553,9 +2789,10 @@ if(silentBtn) silentBtn.addEventListener("click",function(){
   try { dismissGate(); } catch(_e){}
 });
 
-// ── Contact + Live Tour drawers (mutually exclusive)
+// ── Contact + Live Tour + Property Features drawers (mutually exclusive)
 window.__openContact=function(){
   try { if(window.__closeLiveTour) window.__closeLiveTour(); } catch(_e){}
+  try { if(window.__closeMattertags) window.__closeMattertags(); } catch(_e){}
   var d=document.getElementById("agent-drawer");
   if(d) d.classList.add("open");
 };
@@ -2565,6 +2802,7 @@ window.__closeContact=function(){
 };
 window.__openLiveTour=function(){
   try { if(window.__closeContact) window.__closeContact(); } catch(_e){}
+  try { if(window.__closeMattertags) window.__closeMattertags(); } catch(_e){}
   var d=document.getElementById("live-tour-drawer");
   if(d) d.classList.add("open");
   var b=document.getElementById("hud-live-tour-btn");
@@ -2575,6 +2813,131 @@ window.__closeLiveTour=function(){
   if(d) d.classList.remove("open");
   var b=document.getElementById("hud-live-tour-btn");
   if(b) b.setAttribute("aria-expanded","false");
+};
+
+// ── Property Features (Mattertag) drawer
+// Linkify a plaintext description: HTML-escape the whole thing, then
+// wrap URL-shaped segments in <a> tags. The escapeText pass runs on
+// both URL and non-URL halves so an attacker can't smuggle markup
+// through either path.
+function linkifyMattertagHtml(s){
+  var text=String(s==null?"":s);
+  var parts=text.split(/(https?:\\/\\/[^\\s<>"']+)/i);
+  var out="";
+  for(var i=0;i<parts.length;i++){
+    var seg=parts[i];
+    if(i%2===1){
+      var href=escapeText(seg);
+      out+='<a href="'+href+'" target="_blank" rel="noopener noreferrer">'+href+'</a>';
+    }else{
+      out+=escapeText(seg);
+    }
+  }
+  return out;
+}
+
+// Render the Mattertag cards for property index i. Also toggles the
+// HUD button visibility so properties without tags don't show an empty
+// button. Called from updateHud(i) on property switch.
+function renderMattertags(i){
+  var p=props[i];
+  var listEl=document.getElementById("mattertag-list");
+  var btn=document.getElementById("hud-mattertag-btn");
+  var tags=(p&&Array.isArray(p.mattertags))?p.mattertags:[];
+  if(btn) btn.style.display=tags.length>0?"":"none";
+  if(!listEl) return;
+  listEl.innerHTML="";
+  if(!tags.length){
+    var empty=document.createElement("div");
+    empty.className="mt-empty";
+    empty.textContent="No highlights for this property yet.";
+    listEl.appendChild(empty);
+    return;
+  }
+  for(var t=0;t<tags.length;t++){
+    (function(tag,idx){
+      var card=document.createElement("div");
+      card.className="mt-card";
+      // Image-extension thumbnail (don't try to autoplay videos here).
+      if(tag.media&&/\\.(jpe?g|png|gif|webp|avif)(\\?|#|$)/i.test(tag.media)){
+        var img=document.createElement("img");
+        img.className="mt-card-thumb";
+        img.alt=tag.label||"Highlight image";
+        img.loading="lazy";
+        img.src=tag.media;
+        img.onerror=function(){ if(img.parentNode) img.parentNode.removeChild(img); };
+        card.appendChild(img);
+      }
+      if(tag.label){
+        var h=document.createElement("div");
+        h.className="mt-card-title";
+        h.textContent=tag.label;
+        card.appendChild(h);
+      }
+      if(tag.description){
+        var d=document.createElement("p");
+        d.className="mt-card-desc";
+        d.innerHTML=linkifyMattertagHtml(tag.description);
+        card.appendChild(d);
+      }
+      if(tag.media){
+        var cta=document.createElement("button");
+        cta.type="button";
+        cta.className="mt-card-cta";
+        cta.innerHTML='<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="5 3 19 12 5 21"/></svg><span>Open Media</span>';
+        cta.addEventListener("click",function(){
+          if(window.__openMattertagMedia) window.__openMattertagMedia(idx);
+        });
+        card.appendChild(cta);
+      }
+      listEl.appendChild(card);
+    })(tags[t],t);
+  }
+}
+
+window.__openMattertags=function(){
+  try { if(window.__closeContact) window.__closeContact(); } catch(_e){}
+  try { if(window.__closeLiveTour) window.__closeLiveTour(); } catch(_e){}
+  var d=document.getElementById("mattertag-drawer");
+  if(d) d.classList.add("open");
+  var b=document.getElementById("hud-mattertag-btn");
+  if(b) b.setAttribute("aria-expanded","true");
+};
+window.__closeMattertags=function(){
+  var d=document.getElementById("mattertag-drawer");
+  if(d) d.classList.remove("open");
+  var b=document.getElementById("hud-mattertag-btn");
+  if(b) b.setAttribute("aria-expanded","false");
+};
+
+// Open the existing media carousel with a synthetic single-asset
+// payload built from the Mattertag's media URL. Image/video URLs
+// route to the carousel; anything else opens in a new tab.
+// The next __openModal('carousel') call resets carouselMedia from
+// props[current].multimedia, so the synthetic state never leaks
+// into the regular media gallery.
+window.__openMattertagMedia=function(tagIdx){
+  var p=props[current];
+  var tags=(p&&p.mattertags)||[];
+  var tag=tags[tagIdx];
+  if(!tag||!tag.media) return;
+  var isImage=/\\.(jpe?g|png|gif|webp|avif)(\\?|#|$)/i.test(tag.media);
+  var isVideo=/\\.(mp4|webm|mov|m4v)(\\?|#|$)/i.test(tag.media);
+  if(!isImage&&!isVideo){
+    try { window.open(tag.media,"_blank","noopener,noreferrer"); } catch(_e){}
+    return;
+  }
+  carouselMedia=[{
+    id:"mt-"+(tag.id||tagIdx),
+    kind:isVideo?"video":"photo",
+    label:tag.label||"",
+    proxyUrl:isImage?tag.media:"",
+    embedUrl:isVideo?tag.media:""
+  }];
+  carouselIndex=0;
+  renderCarousel();
+  var modalEl=document.getElementById("carousel-modal");
+  if(modalEl) modalEl.classList.add("open");
 };
 
 // ── Edge email redirect helpers (client-only, no email backend)
@@ -3857,6 +4220,12 @@ function load(i){
   try {
     var fmEl=document.getElementById("floormap-modal");
     if(fmEl&&fmEl.classList.contains("open")) window.__closeModal("floormap");
+  } catch(_e){}
+  // Close the mattertag drawer on property switch so cards from the
+  // previous property aren't visible under the new property's button.
+  try {
+    var mtdEl=document.getElementById("mattertag-drawer");
+    if(mtdEl&&mtdEl.classList.contains("open")) window.__closeMattertags();
   } catch(_e){}
   try { if(typeof window.__lgOnPropertyChange==="function") window.__lgOnPropertyChange(i); } catch(_e){}
   // Reset carousel context for new property
