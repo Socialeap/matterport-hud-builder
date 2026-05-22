@@ -1512,7 +1512,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 
 /* ── Viewer (full-screen iframe) ──────────────────────────────────── */
 #viewer{position:fixed;inset:0;bottom:0}
-#viewer iframe{width:100%;height:100%;border:none}
+/* Both Matterport iframes are absolutely stacked inside the letterbox
+   wrap. The primary owns z-index:2 / opacity:1 by default; the ghost
+   sits behind at z-index:1 / opacity:0. The Mattertag deep-link engine
+   ping-pongs these styles to crossfade between camera positions
+   without a black WebGL reload. */
+#viewer iframe{position:absolute;inset:0;width:100%;height:100%;border:none;transition:opacity 0.35s ease}
+#matterport-frame{opacity:1;z-index:2;pointer-events:auto}
+#matterport-frame-ghost{opacity:0;z-index:1;pointer-events:none}
 
 /* ── HUD header (top glassmorphism overlay) ──────────────────────── */
 #hud-header{position:fixed;top:0;left:0;right:0;z-index:1200;transform:translateY(-100%);opacity:0;pointer-events:none;transition:transform 0.3s ease,opacity 0.3s ease;will-change:transform,opacity;isolation:isolate;-webkit-backface-visibility:hidden;backface-visibility:hidden}
@@ -1668,7 +1675,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 #mattertag-title{font-size:13px;font-weight:600;color:#fff;margin:0 0 12px;display:flex;align-items:center;gap:6px}
 #mattertag-title svg{width:13px;height:13px;color:rgba(255,255,255,0.7)}
 #mattertag-list{display:flex;flex-direction:column;gap:10px}
-.mt-card{border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.06);padding:10px 12px}
+.mt-card{position:relative;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.06);padding:10px 12px;transition:background 0.15s,border-color 0.15s}
+.mt-card-clickable{cursor:pointer}
+.mt-card-clickable:hover,.mt-card-clickable:focus-visible{background:rgba(255,255,255,0.10);border-color:${escapeHtml(accentColor)}66;outline:none}
+.mt-card-clickable:focus-visible{box-shadow:0 0 0 2px ${escapeHtml(accentColor)}99}
+.mt-card.is-loading{background:rgba(255,255,255,0.12)}
 .mt-card-thumb{width:100%;aspect-ratio:16/9;border-radius:8px;background:rgba(0,0,0,0.4);object-fit:cover;display:block;margin-bottom:8px;border:1px solid rgba(255,255,255,0.06)}
 .mt-card-title{font-size:13px;font-weight:600;color:#fff;line-height:1.3;margin-bottom:4px;letter-spacing:-0.01em}
 .mt-card-desc{font-size:12px;line-height:1.55;color:rgba(255,255,255,0.84);white-space:pre-wrap;word-wrap:break-word;margin:0}
@@ -1677,6 +1688,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .mt-card-cta{margin-top:8px;display:inline-flex;align-items:center;gap:5px;border:1px solid rgba(255,255,255,0.18);background:rgba(255,255,255,0.08);color:#fff;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer;text-decoration:none;font-family:inherit}
 .mt-card-cta:hover{background:rgba(255,255,255,0.16)}
 .mt-card-cta svg{width:11px;height:11px}
+.mt-card-spinner{position:absolute;top:8px;right:8px;width:14px;height:14px;border-radius:50%;border:2px solid rgba(255,255,255,0.25);border-top-color:#fff;display:none;animation:mt-spin 0.7s linear infinite;pointer-events:none}
+.mt-card.is-loading .mt-card-spinner{display:block}
+@keyframes mt-spin{to{transform:rotate(360deg)}}
+.mt-card-jump-hint{display:inline-flex;align-items:center;gap:3px;margin-top:6px;font-size:10px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:rgba(255,255,255,0.55)}
+.mt-card-clickable:hover .mt-card-jump-hint,.mt-card-clickable:focus-visible .mt-card-jump-hint{color:${escapeHtml(accentColor)}}
+.mt-card-jump-hint svg{width:9px;height:9px}
 .mt-empty{font-size:12px;color:rgba(255,255,255,0.5);font-style:italic;padding:8px 4px}
 @media(max-width:640px){
   #mattertag-drawer{top:auto;bottom:0;left:0;right:0;width:100%;height:auto;max-height:80vh;border-radius:16px 16px 0 0;border-left:none;border-top:1px solid rgba(255,255,255,0.08);transform:translateY(100%)}
@@ -1912,10 +1929,14 @@ ${askAssets.css}
 <!-- The iframe + annotation overlay share one positioned wrap so a
      16:9 letterbox can engage during a live tour without re-layout
      in idle viewing. Canvas, remote pointer, and toolbar all live
-     inside the wrap so their coordinates stay locked to the iframe. -->
+     inside the wrap so their coordinates stay locked to the iframe.
+     A second "ghost" iframe is stacked on top of the primary so
+     Mattertag deep-link clicks can load the ?tag=<sid> URL into the
+     hidden frame and crossfade opacities — no black WebGL reload. -->
 <div id="viewer">
   <div id="anno-letterbox-wrap">
     <iframe id="matterport-frame" allowfullscreen allow="xr-spatial-tracking; fullscreen"></iframe>
+    <iframe id="matterport-frame-ghost" allowfullscreen allow="xr-spatial-tracking; fullscreen" aria-hidden="true" tabindex="-1"></iframe>
     <div id="live-tour-navlock" aria-hidden="true"></div>
     <canvas id="anno-canvas"></canvas>
     <div id="remote-pointer" aria-hidden="true"></div>
@@ -2713,6 +2734,24 @@ function renderMattertags(i){
     (function(tag,idx){
       var card=document.createElement("div");
       card.className="mt-card";
+      // Cards with a valid id become deep-link triggers: clicking the
+      // card body loads ?tag=<sid> into the ghost iframe and crossfades.
+      // The "Open Media" CTA stops propagation so it never double-fires.
+      var canDeepLink=!!(tag&&tag.id);
+      if(canDeepLink){
+        card.setAttribute("data-tag-id",tag.id);
+        card.classList.add("mt-card-clickable");
+        card.setAttribute("role","button");
+        card.setAttribute("tabindex","0");
+        var labelText=tag.label?String(tag.label):"this feature";
+        card.setAttribute("aria-label","Jump to "+labelText+" in the 3D tour");
+      }
+      // Loading spinner overlay; revealed via .is-loading class while
+      // the ghost iframe loads the deep-link URL.
+      var spinner=document.createElement("span");
+      spinner.className="mt-card-spinner";
+      spinner.setAttribute("aria-hidden","true");
+      card.appendChild(spinner);
       // Image-extension thumbnail (don't try to autoplay videos here).
       if(tag.media&&/\\.(jpe?g|png|gif|webp|avif)(\\?|#|$)/i.test(tag.media)){
         var img=document.createElement("img");
@@ -2740,10 +2779,29 @@ function renderMattertags(i){
         cta.type="button";
         cta.className="mt-card-cta";
         cta.innerHTML='<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="5 3 19 12 5 21"/></svg><span>Open Media</span>';
-        cta.addEventListener("click",function(){
+        cta.addEventListener("click",function(ev){
+          // Card-level click handler also fires the deep-link; stop
+          // propagation so opening media doesn't ALSO navigate the tour.
+          if(ev&&ev.stopPropagation) ev.stopPropagation();
           if(window.__openMattertagMedia) window.__openMattertagMedia(idx);
         });
         card.appendChild(cta);
+      }
+      if(canDeepLink){
+        // Small hint that the card jumps the camera. Hidden visual
+        // weight; cursor + hover highlight do the heavy lifting.
+        var hint=document.createElement("div");
+        hint.className="mt-card-jump-hint";
+        hint.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg><span>Jump to view</span>';
+        card.appendChild(hint);
+        var activate=function(ev){
+          if(ev&&ev.preventDefault) ev.preventDefault();
+          if(window.__navigateToMattertag) window.__navigateToMattertag(tag.id,card);
+        };
+        card.addEventListener("click",activate);
+        card.addEventListener("keydown",function(ev){
+          if(ev.key==="Enter"||ev.key===" "||ev.key==="Spacebar") activate(ev);
+        });
       }
       listEl.appendChild(card);
     })(tags[t],t);
@@ -2794,6 +2852,172 @@ window.__openMattertagMedia=function(tagIdx){
   var modalEl=document.getElementById("carousel-modal");
   if(modalEl) modalEl.classList.add("open");
 };
+
+// ── Mattertag deep-link "Ghost Iframe" crossfade engine ─────────────
+// Two Matterport iframes are stacked inside #anno-letterbox-wrap. The
+// primary (#matterport-frame) is the always-stable foreground used by
+// property switches and live-tour teleports. The ghost
+// (#matterport-frame-ghost) is empty by default and only loads when a
+// Mattertag card is clicked — its src receives "...&play=1&qs=1&tag=<sid>"
+// and once the iframe load fires we crossfade opacity/z-index so the
+// new camera angle reveals smoothly. The roles ping-pong on each click
+// so we never re-load the foreground (no black WebGL flash).
+//
+// Memory: after every successful crossfade we schedule the now-bg
+// iframe's src to be cleared to about:blank after 1.5s so we don't
+// keep two WebGL contexts alive in steady state.
+(function(){
+  var mpA=document.getElementById("matterport-frame");
+  var mpB=document.getElementById("matterport-frame-ghost");
+  if(!mpA||!mpB) return;
+  var mpFg=mpA, mpBg=mpB;
+  var navToken=0;
+  var clearTimer=null;
+  // Per-token state so a stale load handler can't unhide a spinner on
+  // a card that already had a newer click queued.
+  var activeCardEl=null;
+  var activeLoadHandler=null;
+  var activeTimeoutId=null;
+
+  function applyFgStyles(){
+    mpFg.style.opacity="1";
+    mpFg.style.zIndex="2";
+    mpFg.style.pointerEvents="auto";
+    mpFg.removeAttribute("aria-hidden");
+    mpFg.removeAttribute("tabindex");
+    mpBg.style.opacity="0";
+    mpBg.style.zIndex="1";
+    mpBg.style.pointerEvents="none";
+    mpBg.setAttribute("aria-hidden","true");
+    mpBg.setAttribute("tabindex","-1");
+  }
+
+  // Strip and re-append ?play=1&qs=1&tag=<sid>. Mirrors the pattern in
+  // rewriteIframeForTeleport (see below) so deep-link nav is fast
+  // regardless of the builder's autoplay/quickstart behavior config.
+  function buildMattertagDeepLink(baseUrl,tagId){
+    if(!baseUrl||!tagId) return "";
+    var stripped=String(baseUrl).replace(/[?&](tag|play|qs)=[^&]*/g,function(m){
+      return m.charAt(0)==="?"?"?":"";
+    });
+    stripped=stripped.replace(/\\?&/g,"?").replace(/[?&]$/,"");
+    var sep=stripped.indexOf("?")===-1?"?":"&";
+    return stripped+sep+"play=1&qs=1&tag="+encodeURIComponent(tagId);
+  }
+
+  function clearStaleSrcLater(target){
+    if(clearTimer){ try { clearTimeout(clearTimer); } catch(_e){} clearTimer=null; }
+    clearTimer=setTimeout(function(){
+      clearTimer=null;
+      // Only clear if this iframe is still the background and hasn't
+      // been re-purposed by a newer navigation.
+      if(target===mpBg){
+        try { target.src="about:blank"; } catch(_e){}
+      }
+    },1500);
+  }
+
+  function finalizeCrossfade(cardEl){
+    // Swap roles and apply styles.
+    var t=mpFg; mpFg=mpBg; mpBg=t;
+    applyFgStyles();
+    if(cardEl&&cardEl.classList) cardEl.classList.remove("is-loading");
+    // Free the WebGL context that's no longer visible.
+    clearStaleSrcLater(mpBg);
+    activeCardEl=null;
+    activeLoadHandler=null;
+    activeTimeoutId=null;
+  }
+
+  // Public entry point: called by mattertag card click handlers.
+  window.__navigateToMattertag=function(tagId,cardEl){
+    if(!tagId) return;
+    var p=props[current];
+    if(!p||!p.iframeUrl) return;
+    var deepLinkUrl=buildMattertagDeepLink(p.iframeUrl,tagId);
+    if(!deepLinkUrl) return;
+    // Bump token: any older in-flight load/timeout handlers no-op.
+    navToken++;
+    var myToken=navToken;
+    // Cancel any pending bg-clear; we're about to use it.
+    if(clearTimer){ try { clearTimeout(clearTimer); } catch(_e){} clearTimer=null; }
+    // Detach any older handler attached to the same bg iframe so we
+    // don't accumulate listeners on rapid clicks.
+    if(activeLoadHandler){
+      try { mpBg.removeEventListener("load",activeLoadHandler); } catch(_e){}
+      activeLoadHandler=null;
+    }
+    if(activeTimeoutId){ try { clearTimeout(activeTimeoutId); } catch(_e){} activeTimeoutId=null; }
+    // Clear loading state from any previous card that's still flagged.
+    if(activeCardEl&&activeCardEl!==cardEl&&activeCardEl.classList){
+      activeCardEl.classList.remove("is-loading");
+    }
+    activeCardEl=cardEl||null;
+    if(cardEl&&cardEl.classList) cardEl.classList.add("is-loading");
+
+    var done=false;
+    function complete(){
+      if(done) return;
+      if(myToken!==navToken) return; // stale
+      done=true;
+      if(activeLoadHandler){
+        try { mpBg.removeEventListener("load",activeLoadHandler); } catch(_e){}
+        activeLoadHandler=null;
+      }
+      if(activeTimeoutId){ try { clearTimeout(activeTimeoutId); } catch(_e){} activeTimeoutId=null; }
+      finalizeCrossfade(cardEl);
+    }
+
+    // Wait for HTML load + a render delay so WebGL has a moment to
+    // paint before we crossfade. Cross-origin makes precise canvas-
+    // ready detection impossible; the overall 5s safety timeout
+    // guarantees the spinner can't hang forever.
+    activeLoadHandler=function(){
+      if(myToken!==navToken) return;
+      setTimeout(function(){ if(myToken===navToken) complete(); },1200);
+    };
+    mpBg.addEventListener("load",activeLoadHandler);
+    activeTimeoutId=setTimeout(function(){
+      if(myToken===navToken) complete();
+    },5000);
+
+    try { mpBg.src=deepLinkUrl; } catch(_e){
+      // If src assignment threw, undo the loading visuals.
+      if(cardEl&&cardEl.classList) cardEl.classList.remove("is-loading");
+      if(activeLoadHandler){
+        try { mpBg.removeEventListener("load",activeLoadHandler); } catch(__e){}
+        activeLoadHandler=null;
+      }
+      if(activeTimeoutId){ try { clearTimeout(activeTimeoutId); } catch(__e){} activeTimeoutId=null; }
+      activeCardEl=null;
+    }
+  };
+
+  // Called by load(i) and applyTeleport before they assign to
+  // frame.src (which always targets the closure-captured Iframe A).
+  // We instantly snap A back to foreground so the user sees the
+  // upcoming load on the iframe they're already looking at — and
+  // clear B so we don't leave a stale WebGL context in memory.
+  window.__snapPrimaryActive=function(){
+    // Cancel any in-flight Mattertag navigation.
+    navToken++;
+    if(activeLoadHandler){
+      try { mpBg.removeEventListener("load",activeLoadHandler); } catch(_e){}
+      activeLoadHandler=null;
+    }
+    if(activeTimeoutId){ try { clearTimeout(activeTimeoutId); } catch(_e){} activeTimeoutId=null; }
+    if(activeCardEl&&activeCardEl.classList){ activeCardEl.classList.remove("is-loading"); }
+    activeCardEl=null;
+    if(clearTimer){ try { clearTimeout(clearTimer); } catch(_e){} clearTimer=null; }
+    // Reset role-mapping so the foreground is always Iframe A.
+    if(mpFg!==mpA){
+      mpFg=mpA;
+      mpBg=mpB;
+    }
+    applyFgStyles();
+    try { if(mpB.src&&mpB.src!=="about:blank") mpB.src="about:blank"; } catch(_e){}
+  };
+})();
 
 // ── Edge email redirect helpers (client-only, no email backend)
 var EMAIL_REDIRECTOR_URL="https://polished-sky-f30e.shakoure.workers.dev/";
@@ -4065,6 +4289,10 @@ function openPropMenu(){
 var __propStorageKey="__lvb_prop_idx_"+(window.location.pathname||"x");
 function load(i){
   current=i;
+  // Snap the visible iframe back to the primary (Iframe A) before
+  // reloading its src, in case a Mattertag deep-link click left the
+  // ghost iframe in the foreground. Also clears the ghost's WebGL.
+  try { if(window.__snapPrimaryActive) window.__snapPrimaryActive(); } catch(_e){}
   try { if(frame && props[i]) frame.src=props[i].iframeUrl; } catch(_e){}
   try { setPropTrigger(i); setPropMenuSelected(i); } catch(_e){}
   try { localStorage.setItem(__propStorageKey,String(i)); } catch(_e){}
@@ -5218,6 +5446,10 @@ if(frame){
     // viewKey filter in live-session.mjs.
     currentViewKey=(ss||"")+"|"+(sr||"");
     wipeAnnotations();
+    // Live tour teleports always target the primary iframe (closure-
+    // captured frame === Iframe A). Snap state back so the user sees
+    // the upcoming reload on the iframe they're looking at.
+    try { if(window.__snapPrimaryActive) window.__snapPrimaryActive(); } catch(_e){}
     try { frame.src=rewriteIframeForTeleport(p.iframeUrl,ss,sr); } catch(_e){}
   }
 
