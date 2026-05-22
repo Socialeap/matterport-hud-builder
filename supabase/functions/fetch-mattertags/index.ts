@@ -1,6 +1,17 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { checkRateLimit, ipFromRequest } from "../_shared/rate-limit.ts";
+
+// Defined locally rather than imported from a non-existent
+// `npm:@supabase/supabase-js@2/cors` subpath. Headers list mirrors what
+// the supabase-js client sends from the browser when it invokes an
+// Edge Function — every name here must appear in the preflight allow
+// list or Chrome blocks the actual POST.
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
 
 // ── Matterport endpoints ──────────────────────────────────────────────
 // Primary: the host the Matterport SPA itself uses for tag queries.

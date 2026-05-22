@@ -47,3 +47,6 @@ verify_jwt = false
 
 [functions.vectorize-floorplan]
 verify_jwt = false
+
+[functions.fetch-mattertags]
+verify_jwt = false
