@@ -2732,6 +2732,16 @@ function findImageUrlIn(s){
 
 function isImageUrl(u){ return !!u && /\\.(jpe?g|png|gif|webp|avif)(\\?|#|$)/i.test(u); }
 function isVideoUrl(u){ return !!u && /\\.(mp4|webm|mov|m4v)(\\?|#|$)/i.test(u); }
+// Permissive image detection: treat any non-empty URL as an image
+// candidate UNLESS it's provably a video file OR a known hosted-video
+// embed (YouTube/Vimeo/Loom/Wistia). The <img> onerror handler removes
+// broken thumbnails, so non-images self-heal.
+function isLikelyImageUrl(u){
+  if(!u) return false;
+  if(isVideoUrl(u)) return false;
+  if(parseCinematicUrl(u)) return false;
+  return true;
+}
 
 // Render the Mattertag cards for property index i. Also toggles the
 // HUD button visibility so properties without tags don't show an empty
