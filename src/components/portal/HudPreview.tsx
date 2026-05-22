@@ -1005,7 +1005,7 @@ export function HudPreview({
             {hasMattertags ? (
               <div className="flex flex-col gap-2.5">
                 {mattertags.map((tag, idx) => {
-                  const tagMediaIsImage = !!tag.media && /\.(jpe?g|png|gif|webp|avif)(\?|#|$)/i.test(tag.media);
+                  const tagMediaIsImage = isLikelyImageUrl(tag.media || "");
                   const parsed = extractMattertagLinks(tag.description || "");
                   const scrapedImage = !tagMediaIsImage ? findImageUrlIn(tag.description || "") : "";
                   const thumbUrl = tagMediaIsImage ? tag.media : scrapedImage;
