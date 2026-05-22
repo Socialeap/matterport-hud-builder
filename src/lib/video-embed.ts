@@ -26,16 +26,31 @@ export function parseCinematicVideo(rawUrl: string | undefined | null): ParsedVi
   }
 
   // YouTube — youtu.be/<id>, youtube.com/watch?v=<id>, youtube.com/embed/<id>, youtube.com/shorts/<id>
+  //
+  // Embed URL hardening (fixes Error 153 "Video player configuration error"):
+  //   - youtube-nocookie.com — matches YouTube's own share-embed default,
+  //     fewer config rejections than www.youtube.com.
+  //   - playsinline=1 — required for iOS/Safari inside a modal iframe.
+  //   - mute=1 paired with autoplay=1 — satisfies browser autoplay policy
+  //     (un-muted autoplay is blocked and surfaces as Error 153, not as a
+  //     paused player). User can unmute via the player controls.
+  //   - origin=<parent> — restores the embed-validation signal that strict
+  //     referrer policies strip; without it the player rejects the config.
   const yt =
     url.match(/youtu\.be\/([\w-]{6,})/i) ||
     url.match(/youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|v\/)([\w-]{6,})/i);
   if (yt?.[1]) {
+    const origin =
+      typeof window !== "undefined" && window.location?.origin
+        ? `&origin=${encodeURIComponent(window.location.origin)}`
+        : "";
     return {
       kind: "iframe",
       provider: "youtube",
-      embedUrl: `https://www.youtube.com/embed/${yt[1]}?rel=0&modestbranding=1&autoplay=1`,
+      embedUrl: `https://www.youtube-nocookie.com/embed/${yt[1]}?rel=0&modestbranding=1&playsinline=1&autoplay=1&mute=1${origin}`,
     };
   }
+
 
   // Vimeo — vimeo.com/<id>, player.vimeo.com/video/<id>
   const vimeo =
