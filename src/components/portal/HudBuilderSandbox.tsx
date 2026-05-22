@@ -56,6 +56,7 @@ import {
   getStudioAccessState,
   refreshPresentationConfig,
   getApprovedFreePresentationDownload,
+  extractMattertags,
 } from "@/lib/portal.functions";
 import { uploadBrandAsset } from "@/lib/storage";
 import { toast } from "sonner";
@@ -499,6 +500,17 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
   const refreshPresentationConfigFn = useServerFn(refreshPresentationConfig);
   const getStudioAccessStateFn = useServerFn(getStudioAccessState);
   const getApprovedFreeDownloadFn = useServerFn(getApprovedFreePresentationDownload);
+  const extractMattertagsFn = useServerFn(extractMattertags);
+  // Tracks which model IDs currently have an in-flight Mattertag sync
+  // so the Builder can disable the button + show a spinner per row.
+  const [mattertagSyncingIds, setMattertagSyncingIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  // Dedupes onBlur-triggered syncs: a model's last successfully attempted
+  // matterportId. Keyed by model.id. Auto-sync only fires when this entry
+  // is missing or differs from the new value, so repeat blurs of the same
+  // ID don't hammer the API.
+  const lastSyncedMatterportIdRef = useRef<Map<string, string>>(new Map());
   const workerRef = useRef<EmbeddingWorkerClient | null>(null);
   const autoDownloadTriggeredRef = useRef(false);
   const brandAssetsTouchedRef = useRef({ logo: false, favicon: false, avatar: false });
@@ -868,6 +880,70 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
   const handleMediaChange = useCallback((id: string, assets: import("./types").MediaAsset[]) => {
     setModels((prev) => prev.map((m) => (m.id === id ? { ...m, multimedia: assets } : m)));
   }, []);
+
+  /**
+   * Sync the Mattertag list for a single property by calling the
+   * `extractMattertags` server function against the public Matterport
+   * GraphQL endpoint. Surfaces toast feedback and dedupes redundant
+   * calls for the same matterportId (so repeated onBlur fires after a
+   * paste don't hammer the upstream).
+   *
+   * On error, the existing mattertags array is preserved untouched so a
+   * transient failure can't wipe known-good data.
+   */
+  const handleSyncMattertags = useCallback(
+    async (modelId: string, matterportId: string, opts?: { manual?: boolean }) => {
+      const id = matterportId.trim();
+      if (!/^[A-Za-z0-9]{11}$/.test(id)) {
+        if (opts?.manual) {
+          toast.error("Enter an 11-character Matterport ID first.");
+        }
+        return;
+      }
+      if (lastSyncedMatterportIdRef.current.get(modelId) === id && !opts?.manual) {
+        return;
+      }
+      setMattertagSyncingIds((prev) => {
+        if (prev.has(modelId)) return prev;
+        const next = new Set(prev);
+        next.add(modelId);
+        return next;
+      });
+      // Record the attempt before awaiting so a parallel onBlur on the
+      // same ID can't trigger a duplicate request.
+      lastSyncedMatterportIdRef.current.set(modelId, id);
+      try {
+        const result = await extractMattertagsFn({ data: { matterportId: id } });
+        if (!result.success) {
+          toast.error(result.error || "Could not sync mattertags.");
+          return;
+        }
+        const tags = result.mattertags ?? [];
+        setModels((prev) =>
+          prev.map((m) => (m.id === modelId ? { ...m, mattertags: tags } : m)),
+        );
+        if (tags.length === 0) {
+          toast.message(
+            "No mattertags found",
+            { description: "The model may be private or has no tags." },
+          );
+        } else if (opts?.manual) {
+          toast.success(`Synced ${tags.length} mattertag${tags.length === 1 ? "" : "s"}.`);
+        }
+      } catch (err) {
+        console.error("extractMattertags failed:", err);
+        toast.error("Could not sync mattertags. Please try again.");
+      } finally {
+        setMattertagSyncingIds((prev) => {
+          if (!prev.has(modelId)) return prev;
+          const next = new Set(prev);
+          next.delete(modelId);
+          return next;
+        });
+      }
+    },
+    [extractMattertagsFn],
+  );
 
   // Live Guided Tour: append a captured Spotlight bookmark to the model's
   // `liveTourStops` array. Persistence is automatic — draft autosave runs
@@ -1905,6 +1981,8 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
                     onMediaChange={handleMediaChange}
                     onOpenBehavior={handleOpenBehavior}
                     onSetPrimary={handleSetPrimary}
+                    onSyncMattertags={handleSyncMattertags}
+                    mattertagSyncingIds={mattertagSyncingIds}
                     savedModelId={savedModelId}
                     maxModels={MAX_PROPERTIES_PER_PRESENTATION}
                   />

@@ -46,6 +46,27 @@ export interface LiveTourStop {
   sr: string;
 }
 
+/**
+ * A single Mattertag extracted from a public Matterport model via the
+ * Matterport GraphQL endpoint. Populated server-side by
+ * `extractMattertags` and surfaced in the "Property Features" drawer in
+ * both the React Builder and the exported standalone HTML. Independent
+ * of the iframe-internal Mattertag rendering controlled by
+ * `TourBehavior.hideMattertags`.
+ */
+export interface MattertagData {
+  /** Stable Mattertag id (sid) from the source model. */
+  id: string;
+  /** Tag title surfaced to the visitor. */
+  label: string;
+  /** Tag body. May contain raw URLs that the renderer linkifies. */
+  description: string;
+  /** Optional media URL pinned to the tag (image, video, or external link). */
+  media: string;
+  /** 3D anchor position; `y` is used to floor-order cards (highest first). */
+  anchorPosition: { x: number; y: number; z: number };
+}
+
 export interface PropertyModel {
   id: string;
   name: string;
@@ -62,6 +83,12 @@ export interface PropertyModel {
    * `[]` identically (no Live Guide available for that property).
    */
   liveTourStops?: LiveTourStop[];
+  /**
+   * Extracted Mattertags from the public Matterport model. Populated by
+   * the `extractMattertags` server function; undefined on legacy
+   * presentations / models that haven't been synced yet.
+   */
+  mattertags?: MattertagData[];
   /**
    * When true, this property loads first in the visitor's tour and
    * appears at the top of the in-HUD property dropdown. Exactly one
