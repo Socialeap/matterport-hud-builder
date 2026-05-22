@@ -3456,7 +3456,7 @@ window.__openModal=function(name,idx){
       if(parsed){
         content.innerHTML=parsed.kind==="mp4"
           ?'<video src="'+escapeText(parsed.src)+'" controls autoplay style="position:absolute;inset:0;width:100%;height:100%;border-radius:10px"></video>'
-          :'<iframe src="'+escapeText(parsed.src)+'" style="position:absolute;inset:0;width:100%;height:100%;border:none" allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture;fullscreen" allowfullscreen></iframe>';
+          :'<iframe src="'+escapeText(parsed.src)+'" style="position:absolute;inset:0;width:100%;height:100%;border:none" allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture;fullscreen" allowfullscreen referrerpolicy="origin"></iframe>';
       }
     }
   }
