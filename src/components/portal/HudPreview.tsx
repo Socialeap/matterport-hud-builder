@@ -1197,9 +1197,25 @@ function extractMattertagLinks(s: string): { text: string; links: string[] } {
   return { text, links: uniq };
 }
 
-/** Find the first image URL inside a string. */
+/**
+ * Find the first plausible image URL inside a string.
+ *
+ * Permissive: returns the first URL that is not provably a video file or
+ * a known hosted-video embed (YouTube/Vimeo/Loom/Wistia). Matterport CDN
+ * attachment URLs and many other photo hosts don't expose a file
+ * extension before the query string, so a strict extension regex misses
+ * them. The card's <img onError> handler removes broken thumbnails, so
+ * non-images self-heal — a brief broken-image flash is the worst case.
+ */
 function findImageUrlIn(s: string): string {
   if (!s) return "";
-  const m = String(s).match(/https?:\/\/[^\s<>"')]+?\.(?:jpe?g|png|gif|webp|avif)(?:\?[^\s<>"')]*)?/i);
-  return m ? m[0] : "";
+  const urls = String(s).match(/https?:\/\/[^\s<>"')]+/gi) || [];
+  for (const raw of urls) {
+    const u = raw.replace(/[),.;!?]+$/, ""); // strip trailing punctuation
+    if (/\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(u)) continue;
+    if (parseCinematicVideo(u).kind !== "invalid") continue;
+    return u;
+  }
+  return "";
 }
+

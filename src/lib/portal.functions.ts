@@ -2550,7 +2550,8 @@ function parseCinematicUrl(url){
     url=url.trim();
     if(/\\.mp4(\\?.*)?$/i.test(url)) return {kind:"mp4",src:url};
     var yt=url.match(/youtu\\.be\\/([\\w-]{6,})/i)||url.match(/youtube\\.com\\/(?:watch\\?(?:.*&)?v=|embed\\/|shorts\\/|v\\/)([\\w-]{6,})/i);
-    if(yt&&yt[1]) return {kind:"iframe",src:"https://www.youtube.com/embed/"+yt[1]+"?rel=0&modestbranding=1&autoplay=1"};
+    if(yt&&yt[1]) return {kind:"iframe",src:"https://www.youtube-nocookie.com/embed/"+yt[1]+"?rel=0&modestbranding=1&playsinline=1&autoplay=1&mute=1&origin="+encodeURIComponent(location.origin)};
+
     var vi=url.match(/player\\.vimeo\\.com\\/video\\/(\\d+)/i)||url.match(/vimeo\\.com\\/(?:video\\/)?(\\d+)/i);
     if(vi&&vi[1]) return {kind:"iframe",src:"https://player.vimeo.com/video/"+vi[1]+"?title=0&byline=0&portrait=0&autoplay=1"};
     var wi=url.match(/wistia\\.com\\/medias\\/([\\w-]+)/i)||url.match(/wistia\\.net\\/(?:embed\\/iframe|medias)\\/([\\w-]+)/i);
@@ -2722,13 +2723,23 @@ function extractMattertagLinks(s){
   return { text:text, links:uniq };
 }
 
-// Find the first image URL inside a string (used to recover thumbnails
-// from descriptions when tag.media isn't itself an image).
+// Find the first plausible image URL inside a string. Permissive: any
+// URL that isn't a video file or known hosted-video embed qualifies.
+// Matterport CDN attachment URLs often lack a file extension before the
+// query string, so a strict extension regex misses them. The <img>
+// onerror handler hides broken thumbnails, so non-images self-heal.
 function findImageUrlIn(s){
   if(!s) return "";
-  var m=String(s).match(/https?:\\/\\/[^\\s<>"')]+?\\.(?:jpe?g|png|gif|webp|avif)(?:\\?[^\\s<>"')]*)?/i);
-  return m?m[0]:"";
+  var urls=String(s).match(/https?:\\/\\/[^\\s<>"')]+/gi)||[];
+  for(var i=0;i<urls.length;i++){
+    var u=urls[i].replace(/[),.;!?]+$/,"");
+    if(isVideoUrl(u)) continue;
+    if(parseCinematicUrl(u)) continue;
+    return u;
+  }
+  return "";
 }
+
 
 function isImageUrl(u){ return !!u && /\\.(jpe?g|png|gif|webp|avif)(\\?|#|$)/i.test(u); }
 function isVideoUrl(u){ return !!u && /\\.(mp4|webm|mov|m4v)(\\?|#|$)/i.test(u); }
@@ -2934,7 +2945,7 @@ window.__openMattertagMedia=function(tagIdx,overrideUrl){
     if(cinemaContent){
       cinemaContent.innerHTML=parsedCine.kind==="mp4"
         ?'<video src="'+escapeText(parsedCine.src)+'" controls autoplay style="position:absolute;inset:0;width:100%;height:100%;border-radius:10px"></video>'
-        :'<iframe src="'+escapeText(parsedCine.src)+'" style="position:absolute;inset:0;width:100%;height:100%;border:none" allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture;fullscreen" allowfullscreen></iframe>';
+        :'<iframe src="'+escapeText(parsedCine.src)+'" style="position:absolute;inset:0;width:100%;height:100%;border:none" allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture;fullscreen" allowfullscreen referrerpolicy="origin"></iframe>';
     }
     var cinemaEl=document.getElementById("cinema-modal");
     if(cinemaEl) cinemaEl.classList.add("open");
@@ -3455,7 +3466,7 @@ window.__openModal=function(name,idx){
       if(parsed){
         content.innerHTML=parsed.kind==="mp4"
           ?'<video src="'+escapeText(parsed.src)+'" controls autoplay style="position:absolute;inset:0;width:100%;height:100%;border-radius:10px"></video>'
-          :'<iframe src="'+escapeText(parsed.src)+'" style="position:absolute;inset:0;width:100%;height:100%;border:none" allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture;fullscreen" allowfullscreen></iframe>';
+          :'<iframe src="'+escapeText(parsed.src)+'" style="position:absolute;inset:0;width:100%;height:100%;border:none" allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture;fullscreen" allowfullscreen referrerpolicy="origin"></iframe>';
       }
     }
   }
