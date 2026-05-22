@@ -2818,9 +2818,10 @@ function renderMattertags(i){
       // image (anything not provably video), otherwise scan the
       // description for an image URL.
       var thumbUrl=isLikelyImageUrl(tag.media)?tag.media:findImageUrlIn(tag.description||"");
-      // Media URL used by the "Open Media" CTA and the thumbnail click.
-      // Prefer tag.media (full asset); fall back to the scraped image.
-      var mediaUrl=tag.media||thumbUrl||"";
+      // Media URL used by the "Open Media" CTA. Only set when tag.media
+      // is playable media (image/video/hosted) — social/external URLs
+      // surface as link icons only, NOT as a media button.
+      var mediaUrl=isPlayableMedia(tag.media)?tag.media:(thumbUrl||"");
       if(thumbUrl){
         var thumbBtn=document.createElement("button");
         thumbBtn.type="button";
