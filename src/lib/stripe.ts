@@ -2,7 +2,12 @@ import { loadStripe, Stripe } from "@stripe/stripe-js";
 import { supabase } from "@/integrations/supabase/client";
 
 const clientToken = import.meta.env.VITE_PAYMENTS_CLIENT_TOKEN;
-const environment = clientToken?.startsWith('pk_test_') ? 'sandbox' : 'live';
+// TEMPORARY: Lovable's sandbox Stripe connector (std_01kp9q23fdfm68nz4we5dpqp0s)
+// has an expired upstream secret that the Disable→Enable cycle is not rotating.
+// Pin every client+server call to 'live' so nothing routes to the broken connector.
+// Restore the auto-detect line below once Lovable repairs the sandbox connector.
+//   const environment = clientToken?.startsWith('pk_test_') ? 'sandbox' : 'live';
+const environment: 'sandbox' | 'live' = 'live';
 
 let stripePromise: Promise<Stripe | null> | null = null;
 
