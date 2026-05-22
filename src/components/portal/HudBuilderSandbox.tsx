@@ -2363,6 +2363,8 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
               bookmarkBarPlacement="above"
               onAddBookmark={handleAddBookmark}
               onRemoveBookmark={handleRemoveBookmark}
+              enableMattertagImport
+              onMattertagsImport={handleMattertagsParsed}
             />
           </div>
         </div>

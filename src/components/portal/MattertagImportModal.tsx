@@ -16,10 +16,11 @@ import {
   Copy,
   Check,
   AlertTriangle,
-  Bookmark,
+  Link2,
   Terminal,
   ClipboardPaste,
   Info,
+  Lock,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { MattertagData } from "./types";
@@ -199,6 +200,32 @@ export function MattertagImportModal({
         </DialogHeader>
 
         <div className="space-y-4">
+          {/* Why-this-isn't-one-click explainer — addresses the obvious
+              "why can't you just read tags from the preview?" question
+              upfront so the multi-step flow doesn't feel arbitrary. */}
+          <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs leading-relaxed">
+            <Lock className="mt-0.5 size-4 shrink-0 text-amber-600" />
+            <div className="text-muted-foreground">
+              <p className="font-medium text-foreground">
+                Why can't 3DPS read tags directly from the preview?
+              </p>
+              <p className="mt-1">
+                Matterport's API only accepts requests from its own domain (we
+                tested — every other origin gets a 403). Browser security also
+                blocks us from scripting the embedded preview iframe. So you
+                run a small helper script in <em>your</em> Matterport tab,
+                where your login session is valid, and paste the result back
+                here.
+              </p>
+              <p className="mt-1 text-[11px]">
+                <strong>Heads up</strong>: the "Helper Link" below is a{" "}
+                <em>browser</em> bookmark — it has nothing to do with the
+                "Bookmark" button on your preview header (those are 3D tour
+                view-points).
+              </p>
+            </div>
+          </div>
+
           {/* Step 1: open Matterport */}
           <div className="rounded-lg border border-border bg-muted/20 p-3">
             <div className="flex items-start gap-2">
@@ -207,11 +234,11 @@ export function MattertagImportModal({
               </span>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-foreground">
-                  Open your Matterport tour
+                  Open this property's Matterport tour in a new tab
                 </p>
                 <p className="mt-0.5 text-[11px] text-muted-foreground">
-                  Opens the tour in a new tab so the bookmarklet / console can
-                  read your browser's Matterport session.
+                  Loads the tour on matterport.com so the helper below can use
+                  your existing Matterport session.
                 </p>
                 <Button
                   type="button"
@@ -222,7 +249,7 @@ export function MattertagImportModal({
                   disabled={!showUrl}
                 >
                   <ExternalLink className="mr-1 size-3.5" />
-                  Open tour
+                  Open on matterport.com
                 </Button>
               </div>
             </div>
@@ -236,16 +263,17 @@ export function MattertagImportModal({
               </span>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-foreground">
-                  Copy the tags to your clipboard
+                  Run the helper on your Matterport tab
                 </p>
                 <p className="mt-0.5 text-[11px] text-muted-foreground">
-                  Pick whichever method your browser supports.
+                  Pick whichever method your browser supports — both copy the
+                  same payload to your clipboard.
                 </p>
-                <Tabs defaultValue="bookmarklet" className="mt-2">
+                <Tabs defaultValue="helper" className="mt-2">
                   <TabsList className="h-7">
-                    <TabsTrigger value="bookmarklet" className="text-[11px] h-6 px-2">
-                      <Bookmark className="mr-1 size-3" />
-                      Bookmarklet
+                    <TabsTrigger value="helper" className="text-[11px] h-6 px-2">
+                      <Link2 className="mr-1 size-3" />
+                      Helper Link
                     </TabsTrigger>
                     <TabsTrigger value="devtools" className="text-[11px] h-6 px-2">
                       <Terminal className="mr-1 size-3" />
@@ -253,36 +281,40 @@ export function MattertagImportModal({
                     </TabsTrigger>
                   </TabsList>
 
-                  <TabsContent value="bookmarklet" className="mt-2 space-y-2">
+                  <TabsContent value="helper" className="mt-2 space-y-2">
                     <ol className="space-y-1 pl-4 text-[11px] text-muted-foreground list-decimal">
-                      <li>Make sure your bookmarks bar is visible.</li>
+                      <li>Make sure your browser's bookmarks bar is showing.</li>
                       <li>
-                        Drag this button onto it (one-time setup):{" "}
+                        Drag this link up to your bookmarks bar (one-time
+                        setup):{" "}
                         <a
                           href={bookmarkletHref}
                           onClick={(e) => {
                             e.preventDefault();
                             toast.message(
-                              "Drag this link to your bookmarks bar instead of clicking it.",
+                              "Drag this link onto your browser's bookmarks bar instead of clicking it.",
                             );
                           }}
                           className="ml-1 inline-flex items-center gap-1 rounded-md border border-primary/40 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/20"
                           draggable
                         >
-                          <Bookmark className="size-3" />
-                          3DPS — Copy Mattertags
+                          <Link2 className="size-3" />
+                          3DPS Tag Capture
                         </a>
                       </li>
                       <li>
-                        On your Matterport tab, click the bookmarklet. It copies
-                        the tags + shows a confirmation.
+                        Switch to your Matterport tab and click the saved link
+                        from the bookmarks bar. It copies the tags to your
+                        clipboard and shows a confirmation alert.
                       </li>
                     </ol>
                     <div className="flex items-start gap-1.5 rounded border border-border/40 bg-background/60 p-2 text-[10px] text-muted-foreground">
                       <Info className="mt-0.5 size-3 shrink-0" />
                       <span>
-                        If your browser blocks dragging from a dialog (or you
-                        use a corporate browser), use the DevTools tab instead.
+                        Some corporate/managed browsers block dragging
+                        <code className="mx-1 rounded bg-muted px-1">javascript:</code>
+                        links. If the drag doesn't take, use the DevTools tab
+                        instead.
                       </span>
                     </div>
                   </TabsContent>
