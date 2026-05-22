@@ -1,79 +1,73 @@
+## What's broken
 
-# Property Features panel tweaks
+1. **Photo Mattertags show no thumbnail.** Both the Builder preview (`HudPreview.tsx`) and the generated runtime (`portal.functions.ts`) only accept `tag.media` as a thumbnail when the URL ends in `.jpg/.png/.gif/.webp/.avif`. Matterport's CDN/photo URLs typically don't carry an extension before the query string, so the regex fails and no `<img>` is rendered. The `findImageUrlIn(description)` fallback also requires an extension, so it doesn't recover.
 
-The Mattertag side panel exists in **two mirrored places** — every change must land in both or the downloaded `.html` will drift from the preview.
+2. **YouTube "Open Media" opens a new tab.** `openMattertagMedia` (preview) and `window.__openMattertagMedia` (runtime) only treat URLs ending in `.mp4/.webm/.mov/.m4v` as in-app video. Anything else — including all YouTube/Vimeo/Loom/Wistia URLs — falls into the `window.open(..., "_blank")` branch. The cinematic player that already exists in the codebase (`CinemaModal` in React, `cinema-modal` + `parseCinematicUrl` in runtime) is never consulted.
 
-| Surface | File | Where |
-|---|---|---|
-| Builder preview (React) | `src/components/portal/HudPreview.tsx` | mattertag drawer ~L954–1036 + `LinkifiedText` ~L1090–1119 |
-| Generated `.html` runtime (string-templated JS/HTML/CSS) | `src/lib/portal.functions.ts` | CSS ~L1669–1701, HTML ~L2141–2153, `linkifyMattertagHtml` ~L2699–2713, `renderMattertags` ~L2718–2809 |
+## Fix overview
 
-No backend / edge-function changes — the `fetch-mattertags` function already returns `media` (image URL) per tag, and the data the description holds is already passed through. All four tweaks are presentation-only.
+Apply two surgical, frontend-only changes to both surfaces in lockstep so the Builder preview and the exported `.html` behave identically. No backend, edge-function, schema, or routing changes.
 
----
+### Fix A — Permissive thumbnail detection
 
-## 1. Replace inline URL strings with a link-icon hyperlink
+Treat `tag.media` as an image candidate unless it is provably a video (file extension `.mp4/.webm/.mov/.m4v`) or a known hosted-video URL (YouTube, Vimeo, Loom, Wistia — detected with the existing `parseCinematicVideo` / `parseCinematicUrl` helpers).
 
-Current behavior: `linkifyMattertagHtml` (runtime) and `LinkifiedText` (preview) wrap any `https?://…` substring in an `<a>` whose **text is the full URL**, producing the long blue strings shown in the screenshot.
+- `thumbUrl = isLikelyImage(tag.media) ? tag.media : findImageUrlIn(description)`
+- `isLikelyImage(u)`: non-empty AND not a video extension AND not a hosted-video URL.
+- The existing `<img onError>` handler already removes/hides the thumbnail button if a non-image slips through, so this is safe — a broken-image flash is the worst-case fallback, and it self-heals.
 
-New behavior: detect URLs in the description, **strip the URL text out of the visible description**, and render a small "external link" icon button after the remaining text. Each unique URL becomes one icon. Icon opens in a new tab (`target="_blank" rel="noopener noreferrer"`).
+### Fix B — Route hosted video through the in-app cinema player
 
-- Markdown-style `[label](url)` (which the screenshot shows is what's actually in some descriptions) → render `label` as plain text, plus a trailing link icon for the URL.
-- Bare `https://…` in the text → remove the URL substring, leave a trailing icon.
-- Multiple URLs → multiple icons, separated by a small gap.
-- HTML-escape everything; never inject raw description into innerHTML except via the existing escape path.
+Update the media open handler to inspect the URL with the existing cinematic parser before deciding how to display it:
 
-Apply to:
-- **Runtime**: rewrite `linkifyMattertagHtml(s)` to return `{ html, links: string[] }`, then in `renderMattertags` append a `.mt-card-links` row of `<a>` icon buttons after the description.
-- **Preview**: rewrite `LinkifiedText` to produce the same shape with a Lucide `ExternalLink` icon button row.
-- Add matching CSS class `.mt-card-links` in the runtime CSS block and matching Tailwind classes in the preview.
+Priority order (both surfaces):
+1. Direct image extension → existing `MediaCarouselModal` photo branch (preview) / `renderCarousel` photo branch (runtime).
+2. Direct video extension → existing `MediaCarouselModal` video branch / `renderCarousel` video branch.
+3. `parseCinematicVideo` / `parseCinematicUrl` returns iframe or mp4 → open the **existing** `CinemaModal` (preview) / `cinema-modal` (runtime). Reuses the same player Cinematic Video already uses.
+4. Otherwise → unchanged `window.open(..., "_blank")` fallback for genuinely-non-media external links.
 
-## 2. Numbered badge in top-right of each card
+For images where we can't be sure (no extension, not a known video host), step 1's permissive detection kicks in — the image carousel attempts to load it, and `onError` hides it if it isn't actually an image.
 
-Add a small circular badge (e.g. `1`, `2`, `3` …) absolutely positioned top-right of each `.mt-card` / preview card. Number = tag index + 1 in the **currently-rendered** sorted list (same sort the panel already uses: highest `anchorPosition.y` first), so numbering is stable per-render.
+## Files to change
 
-- **Runtime**: new `.mt-card-number` CSS rule; `renderMattertags` injects `<span class="mt-card-number">N</span>`.
-- **Preview**: same with Tailwind absolute positioning.
-- Must not collide with the existing `.mt-card-spinner` (top-right at 8px). Place the spinner inline with the number, or move the spinner to top-left when a number is present.
+### `src/components/portal/HudPreview.tsx`
 
-## 3. Image thumbnails from any extractable image URL
+- Add a small `mattertagCinemaUrl` state alongside `mattertagMediaAsset`.
+- Rewrite `openMattertagMedia(mediaUrl, label, tagId)`:
+  - Import `parseCinematicVideo` (already exists in `src/lib/video-embed.ts`, already used by `CinemaModal`).
+  - If `isLikelyImage` → carousel photo asset (current behavior).
+  - Else if direct video file → carousel video asset (current behavior).
+  - Else if `parseCinematicVideo(url).kind !== "invalid"` → `setMattertagCinemaUrl(url)`.
+  - Else → `window.open`.
+- Update `tagMediaIsImage` / `thumbUrl` resolution in the card-render loop to use the new permissive `isLikelyImage` helper so photo thumbnails appear.
+- Mount a second `<CinemaModal open={!!mattertagCinemaUrl} ... />` next to the existing one, isolated from the property-level cinematic state so closing it doesn't affect the main player.
 
-Today the thumbnail only renders when `tag.media` itself is an image extension (`/\.(jpe?g|png|gif|webp|avif)(\?|#|$)/i`). The user's sample URL `https://cdn-2.matterport.com/attachments/.../IMG_2956.jpg?t=…` already matches this regex (the `?` boundary works), so any tag whose GraphQL `media` field is an image will already render — confirmed by reading the Edge Function output sanitizer.
+### `src/lib/portal.functions.ts`
 
-What's missing: tags whose **image URL is embedded inside the description** (not in `media`). New extraction order:
+- Mirror the same helpers (`isLikelyImage`, hosted-video detection via existing `parseCinematicUrl`) inside the IIFE so the exported `.html` carries the same logic.
+- Update `renderMattertags`' `thumbUrl` resolution to use `isLikelyImage(tag.media)`.
+- Update `window.__openMattertagMedia(tagIdx, overrideUrl)`:
+  - Image path → unchanged (loads into `carousel-modal`).
+  - Video-file path → unchanged.
+  - New iframe/mp4-parsable path: temporarily inject the parsed embed into `#cinema-content` (same pattern `__openModal('cinema')` uses at lines 3424-3428) and open `cinema-modal`. To avoid clobbering the property's own cinematic video on next close/reopen, set the iframe directly and add a close hook (or just let `__closeModal('cinema')` clear `cinema-content` as it already does at line 3458 — verified safe).
+  - Fallback to `window.open` only for truly unparseable URLs.
 
-1. If `tag.media` matches the image-extension regex → use it.
-2. Else scan the description for the first `https?://…\.(jpe?g|png|gif|webp|avif)(\?|#|$)` URL → use it as the thumbnail source. (Same regex as #1, no Matterport-host restriction so non-CDN images also work.)
-3. Else no thumbnail.
+## What's intentionally NOT changing
 
-Clicking the thumbnail must open the existing media player (same surface as the current "Open Media" CTA):
-- **Preview**: thumbnail `<img>` is wrapped in a `<button>` that calls `openMattertagMedia(resolvedImageUrl, tag.label, tag.id)`. That helper already builds a synthetic `MediaAsset` and feeds it to `MediaCarouselModal`. Pass the resolved (possibly description-scraped) URL, not `tag.media`.
-- **Runtime**: thumbnail `<img>` gets `cursor:pointer` + click handler that calls `window.__openMattertagMedia(idx)`. The existing handler reads `tag.media`, so refactor it to accept an explicit URL override (or stash the resolved URL on the tag at render time and have `__openMattertagMedia` prefer the resolved URL).
-- Image extraction must happen once per render and the resolved URL must drive **both** the thumbnail src and the click target so they stay in sync.
+- `extractMattertagLinks` (URL-stripping for descriptions) — already correct from the previous turn.
+- Numbered badge, "(beta)" label, link-icon rendering — already correct.
+- Deep-link card-click → `__navigateToMattertag` behavior — unchanged; the new media handler still `stopPropagation()`s so it never double-fires.
+- Regular media gallery (`carouselMedia` from `props[current].multimedia`) — fully isolated; the synthetic single-asset payload is overwritten on the next `__openModal('carousel')` call as it is today.
+- Backend, RLS, edge functions, Supabase config — untouched.
 
-Edge cases:
-- Description-scraped URL should still be hidden from the visible description text per tweak #1 (it'll be one of the link-icon entries; that's fine — the icon and the thumbnail both lead to the same asset).
-- If the thumbnail `<img>` fails to load (`onerror`), it's removed (existing behavior) — keep that.
+## Verification checklist
 
-## 4. "(beta)" tag next to "Property Features"
+After implementation, in both the Builder preview AND a freshly-downloaded `.html`:
 
-- **Runtime** `<h2 id="mattertag-title">`: append `<span class="mt-beta">(beta)</span>` after the "Property Features" text. Add a `.mt-beta` CSS rule — small, lower-contrast, e.g. `font-size:10px; font-weight:500; color:rgba(255,255,255,0.55); margin-left:6px; letter-spacing:0.04em`.
-- **Preview** `<h3>`: add the same tag as a Tailwind `<span className="text-[10px] font-medium text-white/55 tracking-wider">(beta)</span>`.
-
----
-
-## Verification
-
-After implementing both surfaces:
-
-1. In the Builder preview, switch to a property with imported mattertags; confirm:
-   - "(beta)" appears in the panel header
-   - Each card shows a number top-right (1, 2, 3…)
-   - Description has no inline URL text; an external-link icon appears for each URL
-   - Cards with image media or a description-embedded image URL show a thumbnail
-   - Clicking the thumbnail opens the existing MediaCarouselModal
-2. Generate / download a `.html` for the same property and repeat the same 5 checks in the static file.
-3. Verify a tag with no media and no URLs still renders cleanly (no empty icon row, no broken thumbnail box, no badge collision).
-4. Confirm no regression to the existing card click → deep-link "Jump to view" behavior (clicks on the thumbnail button and link icons must `stopPropagation`).
-
-No DB/schema/auth changes. No edge-function changes. No other components touched.
+1. A Mattertag whose `tag.media` is a Matterport-hosted photo (no `.jpg` extension) shows a thumbnail in its card.
+2. Clicking that thumbnail opens the in-app `MediaCarouselModal` / `carousel-modal` with the photo — not a new tab.
+3. A Mattertag with a YouTube `tag.media` shows the "Open Media" CTA; clicking it opens `CinemaModal` / `cinema-modal` inline with the YouTube embed autoplaying — NOT a new browser tab.
+4. Vimeo, Loom, Wistia, and direct `.mp4` URLs also open inline (carousel for direct mp4, cinema modal for hosted).
+5. A Mattertag with a non-media external link (e.g. a PDF or listing page) still opens in a new tab (unchanged).
+6. Closing the Mattertag cinema modal does not break the property-level "Cinematic Video" button (re-open it and confirm the original cinematic video still plays).
+7. Card-body click on a deep-link-capable Mattertag still triggers the tour camera jump; clicking the thumbnail or "Open Media" CTA does not trigger the jump.

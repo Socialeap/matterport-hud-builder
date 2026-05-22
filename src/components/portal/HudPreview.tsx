@@ -88,6 +88,10 @@ export function HudPreview({
   // payload for opening a tag's media URL inside the existing player.
   const [mattertagOpen, setMattertagOpen] = useState(false);
   const [mattertagMediaAsset, setMattertagMediaAsset] = useState<MediaAsset | null>(null);
+  // Hosted-video URL (YouTube/Vimeo/Loom/Wistia) routed to the CinemaModal —
+  // isolated from the property-level cinematicVideoUrl so closing it doesn't
+  // affect the main "Cinematic Video" player.
+  const [mattertagCinemaUrl, setMattertagCinemaUrl] = useState<string | null>(null);
   // Mutually-exclusive drawer toggles — opening one closes the others.
   const openContact = () => { setMattertagOpen(false); setContactOpen(true); };
   const openMattertag = () => { setContactOpen(false); setMattertagOpen(true); };
@@ -182,27 +186,50 @@ export function HudPreview({
   const hasMattertags = mattertags.length > 0;
 
   /**
-   * Open a Mattertag's media URL. Image/video URLs route to the existing
-   * MediaCarouselModal via a synthetic single-asset payload; other URLs
-   * (external links) open in a new tab. Keeps the UX consistent with how
-   * the regular media gallery works.
+   * Open a Mattertag's media URL. Priority:
+   *   1. Direct image extension → MediaCarouselModal (photo).
+   *   2. Direct video extension (mp4/webm/mov/m4v) → MediaCarouselModal (video).
+   *   3. Hosted video (YouTube/Vimeo/Loom/Wistia) parseable by
+   *      parseCinematicVideo → CinemaModal (in-app iframe player).
+   *   4. Anything else with no extension → optimistically try as image in
+   *      the carousel; <img onError> hides it if it fails.
+   *   5. True external links → new tab fallback.
    */
   const openMattertagMedia = (mediaUrl: string, label: string, tagId: string) => {
     if (!mediaUrl) return;
-    const isImage = /\.(jpe?g|png|gif|webp|avif)(\?|#|$)/i.test(mediaUrl);
-    const isVideo = /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(mediaUrl);
-    if (!isImage && !isVideo) {
-      try { window.open(mediaUrl, "_blank", "noopener,noreferrer"); } catch { /* ignored */ }
+    const isImageExt = /\.(jpe?g|png|gif|webp|avif)(\?|#|$)/i.test(mediaUrl);
+    const isVideoExt = /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(mediaUrl);
+    if (isImageExt || isVideoExt) {
+      setMattertagMediaAsset({
+        id: `mt-${tagId || "0"}`,
+        kind: isVideoExt ? "video" : "photo",
+        visible: true,
+        label,
+        proxyUrl: isImageExt ? mediaUrl : undefined,
+        embedUrl: isVideoExt ? mediaUrl : undefined,
+      });
       return;
     }
-    setMattertagMediaAsset({
-      id: `mt-${tagId || "0"}`,
-      kind: isVideo ? "video" : "photo",
-      visible: true,
-      label,
-      proxyUrl: isImage ? mediaUrl : undefined,
-      embedUrl: isVideo ? mediaUrl : undefined,
-    });
+    const parsed = parseCinematicVideo(mediaUrl);
+    if (parsed.kind === "iframe" || parsed.kind === "mp4") {
+      setMattertagCinemaUrl(mediaUrl);
+      return;
+    }
+    try { window.open(mediaUrl, "_blank", "noopener,noreferrer"); } catch { /* ignored */ }
+  };
+
+  /**
+   * Permissive image detection for thumbnail rendering. Treats any
+   * non-empty URL as an image candidate UNLESS it is provably a video
+   * (file extension or known hosted-video URL). The <img onError>
+   * handler in the card removes broken thumbnails, so a non-image
+   * slipping through self-heals.
+   */
+  const isLikelyImageUrl = (u: string): boolean => {
+    if (!u) return false;
+    if (/\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(u)) return false;
+    if (parseCinematicVideo(u).kind !== "invalid") return false;
+    return true;
   };
 
   const socialLinks = [
@@ -978,7 +1005,7 @@ export function HudPreview({
             {hasMattertags ? (
               <div className="flex flex-col gap-2.5">
                 {mattertags.map((tag, idx) => {
-                  const tagMediaIsImage = !!tag.media && /\.(jpe?g|png|gif|webp|avif)(\?|#|$)/i.test(tag.media);
+                  const tagMediaIsImage = isLikelyImageUrl(tag.media || "");
                   const parsed = extractMattertagLinks(tag.description || "");
                   const scrapedImage = !tagMediaIsImage ? findImageUrlIn(tag.description || "") : "";
                   const thumbUrl = tagMediaIsImage ? tag.media : scrapedImage;
@@ -1120,6 +1147,16 @@ export function HudPreview({
           onClose={() => setMattertagMediaAsset(null)}
           assets={[mattertagMediaAsset]}
           modelId={currentModel?.matterportId}
+        />
+      )}
+
+      {/* Hosted-video (YouTube/Vimeo/Loom/Wistia) player for a Mattertag's
+          media URL. Isolated from the property-level CinemaModal above. */}
+      {mattertagCinemaUrl && (
+        <CinemaModal
+          open
+          onClose={() => setMattertagCinemaUrl(null)}
+          videoUrl={mattertagCinemaUrl}
         />
       )}
     </div>
