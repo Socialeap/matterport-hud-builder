@@ -973,43 +973,88 @@ export function HudPreview({
             <h3 className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-white">
               <Tag className="h-3.5 w-3.5 text-white/70" />
               Property Features
+              <span className="ml-0.5 text-[10px] font-medium tracking-wider text-white/55">(beta)</span>
             </h3>
             {hasMattertags ? (
               <div className="flex flex-col gap-2.5">
-                {mattertags.map((tag) => {
-                  const isImage = !!tag.media && /\.(jpe?g|png|gif|webp|avif)(\?|#|$)/i.test(tag.media);
+                {mattertags.map((tag, idx) => {
+                  const tagMediaIsImage = !!tag.media && /\.(jpe?g|png|gif|webp|avif)(\?|#|$)/i.test(tag.media);
+                  const parsed = extractMattertagLinks(tag.description || "");
+                  const scrapedImage = !tagMediaIsImage ? findImageUrlIn(tag.description || "") : "";
+                  const thumbUrl = tagMediaIsImage ? tag.media : scrapedImage;
+                  const mediaUrl = tag.media || thumbUrl || "";
                   return (
                     <div
                       key={tag.id}
-                      className="rounded-lg border border-white/10 bg-white/5 px-3 py-2.5"
+                      className="relative rounded-lg border border-white/10 bg-white/5 px-3 py-2.5"
                     >
-                      {isImage && (
-                        <img
-                          src={tag.media}
-                          alt={tag.label || "Highlight image"}
-                          loading="lazy"
-                          className="mb-2 block aspect-video w-full rounded-md border border-white/10 bg-black/40 object-cover"
-                          onError={(e) => {
-                            (e.currentTarget as HTMLImageElement).style.display = "none";
-                          }}
-                        />
+                      <span
+                        aria-hidden="true"
+                        className="pointer-events-none absolute right-2 top-2 z-10 min-w-[18px] rounded-full px-1.5 text-center text-[10px] font-bold leading-[18px] text-white shadow"
+                        style={{ backgroundColor: accentColor }}
+                      >
+                        {idx + 1}
+                      </span>
+                      {thumbUrl && (
+                        <button
+                          type="button"
+                          onClick={() => openMattertagMedia(mediaUrl, tag.label || "", tag.id)}
+                          className="mb-2 block w-full overflow-hidden rounded-md border border-white/10 bg-black/40 p-0"
+                          aria-label={`Open ${tag.label || "image"} in media player`}
+                        >
+                          <img
+                            src={thumbUrl}
+                            alt={tag.label || "Highlight image"}
+                            loading="lazy"
+                            className="block aspect-video w-full object-cover transition-transform hover:scale-[1.02]"
+                            onError={(e) => {
+                              const btn = (e.currentTarget as HTMLImageElement).parentElement;
+                              if (btn) (btn as HTMLElement).style.display = "none";
+                            }}
+                          />
+                        </button>
                       )}
                       {tag.label && (
-                        <p className="mb-1 text-[13px] font-semibold leading-snug text-white">
+                        <p className="mb-1 pr-7 text-[13px] font-semibold leading-snug text-white">
                           {tag.label}
                         </p>
                       )}
-                      {tag.description && (
-                        <LinkifiedText
-                          text={tag.description}
-                          accentColor={accentColor}
-                          className="m-0 whitespace-pre-wrap break-words text-[12px] leading-[1.55] text-white/85"
-                        />
+                      {parsed.text && (
+                        <p className="m-0 whitespace-pre-wrap break-words text-[12px] leading-[1.55] text-white/85">
+                          {parsed.text}
+                        </p>
                       )}
-                      {tag.media && (
+                      {parsed.links.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {parsed.links.map((href) => (
+                            <a
+                              key={href}
+                              href={href}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title={href}
+                              aria-label={`Open link in new tab: ${href}`}
+                              onClick={(ev) => ev.stopPropagation()}
+                              className="inline-flex h-[26px] w-[26px] items-center justify-center rounded-md border border-white/20 bg-white/10 text-white transition-colors hover:text-white"
+                              style={{ borderColor: undefined }}
+                              onMouseEnter={(e) => {
+                                (e.currentTarget as HTMLAnchorElement).style.backgroundColor = accentColor;
+                                (e.currentTarget as HTMLAnchorElement).style.borderColor = accentColor;
+                              }}
+                              onMouseLeave={(e) => {
+                                (e.currentTarget as HTMLAnchorElement).style.backgroundColor = "";
+                                (e.currentTarget as HTMLAnchorElement).style.borderColor = "";
+                              }}
+                            >
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                      {mediaUrl && (
                         <button
                           type="button"
-                          onClick={() => openMattertagMedia(tag.media, tag.label || "", tag.id)}
+                          onClick={() => openMattertagMedia(mediaUrl, tag.label || "", tag.id)}
                           className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-white/20 bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-white transition-colors hover:bg-white/20"
                         >
                           <svg
@@ -1035,6 +1080,7 @@ export function HudPreview({
           </div>
         </div>
       </div>
+
 
 
 
