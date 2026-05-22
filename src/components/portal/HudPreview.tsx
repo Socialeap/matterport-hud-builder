@@ -1229,11 +1229,15 @@ function extractMattertagLinks(s: string): { text: string; links: string[] } {
  * them. The card's <img onError> handler removes broken thumbnails, so
  * non-images self-heal — a brief broken-image flash is the worst case.
  */
-function findImageUrlIn(s: string): string {
+function findImageUrlIn(s: string, classify?: (u: string) => string): string {
   if (!s) return "";
   const urls = String(s).match(/https?:\/\/[^\s<>"')]+/gi) || [];
   for (const raw of urls) {
     const u = raw.replace(/[),.;!?]+$/, ""); // strip trailing punctuation
+    if (classify) {
+      if (classify(u) === "image") return u;
+      continue;
+    }
     if (/\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(u)) continue;
     if (parseCinematicVideo(u).kind !== "invalid") continue;
     return u;
