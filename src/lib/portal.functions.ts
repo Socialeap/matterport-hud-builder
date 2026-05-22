@@ -2699,25 +2699,39 @@ window.__closeLiveTour=function(){
 };
 
 // ── Property Features (Mattertag) drawer
-// Linkify a plaintext description: HTML-escape the whole thing, then
-// wrap URL-shaped segments in <a> tags. The escapeText pass runs on
-// both URL and non-URL halves so an attacker can't smuggle markup
-// through either path.
-function linkifyMattertagHtml(s){
+// Extract URLs from a description. Handles markdown [label](url) (the
+// label is kept, the URL is hoisted out) and bare http(s) URLs (removed
+// from the text entirely). Returns the cleaned plain text plus a
+// deduped list of extracted URLs to render as separate link-icon
+// buttons. All consumers must HTML-escape the returned text/urls
+// before injecting into innerHTML; this function never does HTML work.
+function extractMattertagLinks(s){
   var text=String(s==null?"":s);
-  var parts=text.split(/(https?:\\/\\/[^\\s<>"']+)/i);
-  var out="";
-  for(var i=0;i<parts.length;i++){
-    var seg=parts[i];
-    if(i%2===1){
-      var href=escapeText(seg);
-      out+='<a href="'+href+'" target="_blank" rel="noopener noreferrer">'+href+'</a>';
-    }else{
-      out+=escapeText(seg);
-    }
-  }
-  return out;
+  var links=[];
+  text=text.replace(/\\[([^\\]]+)\\]\\((https?:\\/\\/[^\\s)]+)\\)/g,function(_m,label,url){
+    links.push(url);
+    return label;
+  });
+  text=text.replace(/(https?:\\/\\/[^\\s<>"')]+)/g,function(_m,url){
+    links.push(url);
+    return "";
+  });
+  text=text.replace(/[ \\t]+\\n/g,"\\n").replace(/\\n{3,}/g,"\\n\\n").replace(/[ \\t]{2,}/g," ").trim();
+  var seen={},uniq=[];
+  for(var i=0;i<links.length;i++){ if(!seen[links[i]]){ seen[links[i]]=1; uniq.push(links[i]); } }
+  return { text:text, links:uniq };
 }
+
+// Find the first image URL inside a string (used to recover thumbnails
+// from descriptions when tag.media isn't itself an image).
+function findImageUrlIn(s){
+  if(!s) return "";
+  var m=String(s).match(/https?:\\/\\/[^\\s<>"')]+?\\.(?:jpe?g|png|gif|webp|avif)(?:\\?[^\\s<>"')]*)?/i);
+  return m?m[0]:"";
+}
+
+function isImageUrl(u){ return !!u && /\\.(jpe?g|png|gif|webp|avif)(\\?|#|$)/i.test(u); }
+function isVideoUrl(u){ return !!u && /\\.(mp4|webm|mov|m4v)(\\?|#|$)/i.test(u); }
 
 // Render the Mattertag cards for property index i. Also toggles the
 // HUD button visibility so properties without tags don't show an empty
@@ -2753,21 +2767,43 @@ function renderMattertags(i){
         var labelText=tag.label?String(tag.label):"this feature";
         card.setAttribute("aria-label","Jump to "+labelText+" in the 3D tour");
       }
-      // Loading spinner overlay; revealed via .is-loading class while
-      // the ghost iframe loads the deep-link URL.
+      // Numbered badge top-right (1-indexed render order).
+      var numEl=document.createElement("span");
+      numEl.className="mt-card-number";
+      numEl.setAttribute("aria-hidden","true");
+      numEl.textContent=String(idx+1);
+      card.appendChild(numEl);
+      // Loading spinner overlay (now top-LEFT to avoid the number).
       var spinner=document.createElement("span");
       spinner.className="mt-card-spinner";
       spinner.setAttribute("aria-hidden","true");
       card.appendChild(spinner);
-      // Image-extension thumbnail (don't try to autoplay videos here).
-      if(tag.media&&/\\.(jpe?g|png|gif|webp|avif)(\\?|#|$)/i.test(tag.media)){
+      // Description extraction (also drives both link icons and the
+      // fallback thumbnail discovery).
+      var parsed=extractMattertagLinks(tag.description||"");
+      // Resolve a thumbnail URL: prefer tag.media if it's an image,
+      // otherwise scan the original description for any image URL.
+      var thumbUrl=isImageUrl(tag.media)?tag.media:findImageUrlIn(tag.description||"");
+      // Media URL used by the "Open Media" CTA and the thumbnail click.
+      // Prefer tag.media (full asset); fall back to the scraped image.
+      var mediaUrl=tag.media||thumbUrl||"";
+      if(thumbUrl){
+        var thumbBtn=document.createElement("button");
+        thumbBtn.type="button";
+        thumbBtn.className="mt-card-thumb-btn";
+        thumbBtn.setAttribute("aria-label","Open "+(tag.label||"image")+" in media player");
         var img=document.createElement("img");
         img.className="mt-card-thumb";
         img.alt=tag.label||"Highlight image";
         img.loading="lazy";
-        img.src=tag.media;
-        img.onerror=function(){ if(img.parentNode) img.parentNode.removeChild(img); };
-        card.appendChild(img);
+        img.src=thumbUrl;
+        img.onerror=function(){ if(thumbBtn.parentNode) thumbBtn.parentNode.removeChild(thumbBtn); };
+        thumbBtn.appendChild(img);
+        thumbBtn.addEventListener("click",function(ev){
+          if(ev&&ev.stopPropagation) ev.stopPropagation();
+          if(window.__openMattertagMedia) window.__openMattertagMedia(idx,mediaUrl);
+        });
+        card.appendChild(thumbBtn);
       }
       if(tag.label){
         var h=document.createElement("div");
@@ -2775,13 +2811,33 @@ function renderMattertags(i){
         h.textContent=tag.label;
         card.appendChild(h);
       }
-      if(tag.description){
+      if(parsed.text){
         var d=document.createElement("p");
         d.className="mt-card-desc";
-        d.innerHTML=linkifyMattertagHtml(tag.description);
+        d.textContent=parsed.text;
         card.appendChild(d);
       }
-      if(tag.media){
+      // Render extracted URLs as compact icon buttons (open in new tab).
+      if(parsed.links.length){
+        var linkRow=document.createElement("div");
+        linkRow.className="mt-card-links";
+        for(var li=0;li<parsed.links.length;li++){
+          (function(href){
+            var a=document.createElement("a");
+            a.className="mt-card-link-icon";
+            a.href=href;
+            a.target="_blank";
+            a.rel="noopener noreferrer";
+            a.title=href;
+            a.setAttribute("aria-label","Open link in new tab: "+href);
+            a.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
+            a.addEventListener("click",function(ev){ if(ev&&ev.stopPropagation) ev.stopPropagation(); });
+            linkRow.appendChild(a);
+          })(parsed.links[li]);
+        }
+        card.appendChild(linkRow);
+      }
+      if(mediaUrl){
         var cta=document.createElement("button");
         cta.type="button";
         cta.className="mt-card-cta";
@@ -2790,7 +2846,7 @@ function renderMattertags(i){
           // Card-level click handler also fires the deep-link; stop
           // propagation so opening media doesn't ALSO navigate the tour.
           if(ev&&ev.stopPropagation) ev.stopPropagation();
-          if(window.__openMattertagMedia) window.__openMattertagMedia(idx);
+          if(window.__openMattertagMedia) window.__openMattertagMedia(idx,mediaUrl);
         });
         card.appendChild(cta);
       }
