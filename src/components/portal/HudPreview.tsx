@@ -1,13 +1,14 @@
 import { useState, useRef } from "react";
-import { ChevronUp, ChevronDown, Phone, Mail, MessageSquare, Globe, X, MapPin, Film, Images, Copy, Bookmark, Info, Trash2, Plus, Tag, Link as LinkIcon } from "lucide-react";
+import { ChevronUp, ChevronDown, Phone, Mail, MessageSquare, Globe, X, MapPin, Film, Images, Copy, Bookmark, Info, Trash2, Plus, Tag, Link as LinkIcon, Download } from "lucide-react";
 import { FaLinkedinIn, FaXTwitter, FaInstagram, FaFacebookF, FaTiktok } from "react-icons/fa6";
 import { toast } from "sonner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import type { PropertyModel, TourBehavior, AgentContact, LiveTourStop, MediaAsset } from "./types";
+import type { PropertyModel, TourBehavior, AgentContact, LiveTourStop, MediaAsset, MattertagData } from "./types";
 import { buildMatterportUrl } from "./types";
 import { NeighborhoodMapModal } from "./NeighborhoodMapModal";
 import { CinemaModal } from "./CinemaModal";
 import { MediaCarouselModal } from "./MediaCarouselModal";
+import { MattertagImportModal } from "./MattertagImportModal";
 import { parseCinematicVideo } from "@/lib/video-embed";
 
 interface HudPreviewProps {
@@ -42,6 +43,16 @@ interface HudPreviewProps {
    *   iframe — used by the Builder so it never covers Matterport's controls.
    */
   bookmarkBarPlacement?: "overlay" | "above";
+  /**
+   * Builder-only affordance: shows a "Mattertags" header strip directly
+   * above the iframe (sibling to "Live Tour Bookmarks") with a button
+   * that opens the `MattertagImportModal` scoped to the currently
+   * selected model. Visitor previews and the exported HTML runtime
+   * never pass this prop — the drawer just reads pre-imported tags.
+   */
+  enableMattertagImport?: boolean;
+  /** Persist a freshly-parsed Mattertag list for the given property. */
+  onMattertagsImport?: (modelId: string, tags: MattertagData[]) => void;
 }
 
 export function HudPreview({
@@ -61,6 +72,8 @@ export function HudPreview({
   onAddBookmark,
   onRemoveBookmark,
   bookmarkBarPlacement = "overlay",
+  enableMattertagImport = false,
+  onMattertagsImport,
 }: HudPreviewProps) {
   const [headerVisible, setHeaderVisible] = useState(defaultHeaderVisible);
   const [contactOpen, setContactOpen] = useState(false);
@@ -84,6 +97,9 @@ export function HudPreview({
   const [bookmarkName, setBookmarkName] = useState("");
   const [bookmarkLink, setBookmarkLink] = useState("");
   const bookmarkNameRef = useRef<HTMLInputElement>(null);
+  // Mattertag import modal — Builder-only. Opens scoped to the currently
+  // selected model so the modal header / deep-link match what's on-screen.
+  const [tagImportOpen, setTagImportOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const currentModel = models[selectedModelIndex];
   const bookmarkingActive = enableBookmarking && isBookmarking && !!onAddBookmark;
@@ -451,9 +467,85 @@ export function HudPreview({
     </div>
   ) : null;
 
+  // Builder-only sibling strip for the Mattertag import flow. Anchored
+  // visually to the same preview the user is looking at so the action
+  // "import the tags for THIS model" reads at a glance. Disabled until
+  // a valid 11-char Matterport ID is set on the selected property.
+  const mattertagReady =
+    !!currentModel &&
+    /^[A-Za-z0-9]{11}$/.test(currentModel.matterportId || "");
+  const importedCount = currentModel?.mattertags?.length ?? 0;
+  const aboveMattertagBlock = enableMattertagImport && onMattertagsImport ? (
+    <div className="mb-3">
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card/40 px-3 py-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <Tag className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0">
+            Mattertags
+          </span>
+          <span className="truncate text-[11px] text-muted-foreground">
+            {importedCount > 0
+              ? `· ${importedCount} imported for this property`
+              : mattertagReady
+                ? "· not yet imported"
+                : "· add a Matterport ID to enable"}
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
+                aria-label="Why does importing Mattertags need a separate step?"
+                title="Why does this need a separate step?"
+              >
+                <Info className="h-3.5 w-3.5" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent side="bottom" align="end" className="w-80 text-xs leading-relaxed">
+              <p className="mb-1.5 font-semibold text-foreground">
+                Why isn't this one-click?
+              </p>
+              <p className="text-muted-foreground">
+                Matterport's API only authenticates requests from its own
+                domain — every other origin gets blocked at the firewall. The
+                preview above is also locked away from us by browser
+                cross-origin rules. So we use a tiny helper script you run
+                inside <em>your</em> Matterport tab (where you're logged in)
+                to copy the tags, then paste them here.
+              </p>
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                Once imported, the tags show up in the{" "}
+                <strong className="text-foreground">Property Features</strong>{" "}
+                drawer (the tag icon in the HUD header).
+              </p>
+            </PopoverContent>
+          </Popover>
+          <button
+            type="button"
+            onClick={() => setTagImportOpen(true)}
+            disabled={!mattertagReady}
+            className="flex h-7 items-center gap-1.5 rounded-full bg-foreground/90 px-3 text-[11px] font-medium text-background transition-colors hover:bg-foreground disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label="Import Mattertags for this property"
+            title={
+              mattertagReady
+                ? "Import this property's Mattertags from Matterport"
+                : "Add a valid 11-char Matterport ID first"
+            }
+          >
+            <Download className="h-3 w-3" />
+            <span>{importedCount > 0 ? "Re-import" : "Import Tags"}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   return (
     <>
       {aboveBookmarkBlock}
+      {aboveMattertagBlock}
       <div
         ref={containerRef}
         className={
@@ -969,6 +1061,20 @@ export function HudPreview({
         />
       )}
     </div>
+    {enableMattertagImport && onMattertagsImport && currentModel && (
+      <MattertagImportModal
+        open={tagImportOpen}
+        onOpenChange={setTagImportOpen}
+        matterportId={currentModel.matterportId}
+        propertyLabel={
+          currentModel.propertyName?.trim() ||
+          currentModel.name?.trim() ||
+          "this property"
+        }
+        existing={currentModel.mattertags ?? []}
+        onConfirm={(tags) => onMattertagsImport(currentModel.id, tags)}
+      />
+    )}
     </>
   );
 }
