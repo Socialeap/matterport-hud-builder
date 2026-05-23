@@ -406,7 +406,10 @@ export function PublishDistributeSection({
                   then copy the live published URL and paste it below.
                 </p>
                 <ol className="mt-2 list-decimal space-y-0.5 pl-4">
-                  <li>Drag your 3DPS file/package into Netlify.</li>
+                  <li>
+                    Drag your downloaded <strong>.zip</strong> file directly
+                    onto Netlify — it auto-unpacks and hosts the folder.
+                  </li>
                   <li>Wait for Netlify to publish the site.</li>
                   <li>Copy the live Netlify URL.</li>
                   <li>Paste the URL below.</li>
