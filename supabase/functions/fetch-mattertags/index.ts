@@ -29,11 +29,17 @@ const MATTERPORT_ENDPOINT =
 const MATTERPORT_APP_KEY = "h2f9mazn377g554gxkkay5aqd";
 
 // ── GraphQL queries ───────────────────────────────────────────────────
-// Modern Matterport tags created in the current editor store uploaded
-// images in the separate `attachments` connection — `media` is empty
-// for those. We ask for both; if the model's API version rejects the
-// `attachments`/`mediaType` fields with a validation error we
-// transparently retry with the legacy field set (LEGACY below).
+// Schema confirmed via introspection against Matterport's public
+// `my.matterport.com/api/mp/models/graph` endpoint:
+//   Mattertag.fileAttachments     -> [FileAttachment]
+//     FileAttachment { id filename mimeType downloadUrl ... }
+//   Mattertag.externalAttachments -> [ExternalAttachment]
+//     ExternalAttachment { id url thumbnailUrl mediaType category ... }
+// Tags created with an uploaded image (the "Noire Restaurant /
+// View Our Food Menu" style cards) put the image in fileAttachments
+// with mimeType image/*. The legacy `media` string is empty for those.
+// If a model's API version rejects the modern fields, we retry with
+// the legacy query.
 const MATTERPORT_GRAPHQL_QUERY = `query GetMattertags($modelId: ID!, $includeDisabled: Boolean!) {
   model(id: $modelId) {
     id
@@ -43,7 +49,8 @@ const MATTERPORT_GRAPHQL_QUERY = `query GetMattertags($modelId: ID!, $includeDis
       description
       media
       mediaType
-      attachments { src type }
+      fileAttachments { id filename mimeType downloadUrl }
+      externalAttachments { id url thumbnailUrl mediaType }
       anchorPosition { x y z }
     }
   }
@@ -61,6 +68,7 @@ const MATTERPORT_GRAPHQL_QUERY_LEGACY = `query GetMattertags($modelId: ID!, $inc
     }
   }
 }`;
+
 
 const MODEL_ID_RE = /^[A-Za-z0-9]{11}$/;
 const MAX_COUNT = 200;
@@ -328,26 +336,51 @@ function sanitizeMattertags(payload: unknown): CleanMattertag[] {
     const mediaRaw = String(e.media ?? "").trim();
     let media = /^https?:\/\//i.test(mediaRaw) ? mediaRaw.slice(0, 2048) : "";
 
-    // Modern tags store uploaded images under `attachments` (the
-    // `media` field stays empty). Promote the first usable PHOTO
-    // attachment so the renderer can show a thumbnail.
-    if (!media && Array.isArray(e.attachments)) {
-      for (const a of e.attachments as Array<Record<string, unknown>>) {
+    // Modern tags store uploaded images under `fileAttachments`
+    // (FileAttachment.downloadUrl) and linked photos/videos under
+    // `externalAttachments` (ExternalAttachment.url/thumbnailUrl).
+    // Promote the first usable image so the renderer can show a
+    // thumbnail. Confirmed via Matterport GraphQL introspection.
+    if (!media && Array.isArray(e.fileAttachments)) {
+      for (const a of e.fileAttachments as Array<Record<string, unknown>>) {
         if (!a || typeof a !== "object") continue;
-        const src = String(a.src ?? "").trim();
-        const type = String(a.type ?? "").toUpperCase();
-        if (!/^https?:\/\//i.test(src)) continue;
+        const url = String(a.downloadUrl ?? "").trim();
+        if (!/^https?:\/\//i.test(url)) continue;
+        const mime = String(a.mimeType ?? "").toLowerCase();
+        const filename = String(a.filename ?? "").toLowerCase();
         const looksImage =
-          type === "PHOTO" ||
-          type === "IMAGE" ||
-          /\.(jpe?g|png|gif|webp|avif)(\?|#|$)/i.test(src) ||
-          /\/attachments\//i.test(src);
+          mime.startsWith("image/") ||
+          /\.(jpe?g|png|gif|webp|avif)(\?|#|$)/i.test(url) ||
+          /\.(jpe?g|png|gif|webp|avif)$/i.test(filename) ||
+          /\/attachments\//i.test(url);
         if (looksImage) {
-          media = src.slice(0, 2048);
+          media = url.slice(0, 2048);
           break;
         }
       }
     }
+
+    if (!media && Array.isArray(e.externalAttachments)) {
+      for (const a of e.externalAttachments as Array<Record<string, unknown>>) {
+        if (!a || typeof a !== "object") continue;
+        const mt = String(a.mediaType ?? "").toUpperCase();
+        const thumb = String(a.thumbnailUrl ?? "").trim();
+        const link = String(a.url ?? "").trim();
+        // PHOTO -> use the linked URL directly. VIDEO/RICH -> use the
+        // thumbnail if present so the card still shows a preview image.
+        const candidate =
+          mt === "PHOTO" && /^https?:\/\//i.test(link)
+            ? link
+            : /^https?:\/\//i.test(thumb)
+              ? thumb
+              : "";
+        if (candidate) {
+          media = candidate.slice(0, 2048);
+          break;
+        }
+      }
+    }
+
 
     const ap = (e.anchorPosition ?? {}) as Record<string, unknown>;
     cleaned.push({
