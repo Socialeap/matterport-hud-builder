@@ -368,6 +368,11 @@ interface PropertyMattertagData {
   description: string;
   media: string;
   anchorPosition: { x: number; y: number; z: number };
+  // Optional sweep id (nearest sweep to anchorPosition, derived at
+  // import time). When present, the runtime emits &ss=<ss> instead of
+  // &tag=<id> on Jump-to-view so the native Mattertag dock never opens.
+  ss?: string;
+  sr?: string;
 }
 
 interface PropertyData {
