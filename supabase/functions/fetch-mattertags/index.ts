@@ -170,6 +170,7 @@ serve(async (req) => {
 async function tryGraphQL(
   modelId: string,
   appKey: string,
+  query: string = MATTERPORT_GRAPHQL_QUERY,
 ): Promise<FetchResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
