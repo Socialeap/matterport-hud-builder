@@ -732,7 +732,7 @@ function Index() {
             Clients will Love your Studio's  Self-Serve Work Flow
           </h2>
           <p className={`mx-auto mt-3 max-w-2xl text-center text-white/60`}>
-            Hand clients self-serve features — not a service ticket. They configure, brand, and walk away with a portable HTML presentation file they own and can host anywhere.
+            Hand clients self-serve features — not a service ticket. They configure, brand, and walk away with a single HTML presentation folder they own and can host anywhere.
           </p>
 
           {featureGroups.map((group) => (
@@ -974,7 +974,7 @@ function Index() {
             <div>
               <span className={`text-lg font-bold ${textColor}`}>3D Presentation Studio</span>
               <p className={`mt-2 text-sm ${textSubtle}`}>
-                Professional, white-labeled 3D property tour presentations. Your clients/agents customize and pay to download a portable HTML presentation file they own and can host anywhere.
+                Professional, white-labeled 3D property tour presentations. Your clients/agents customize and pay to download a single HTML presentation folder they own and can host anywhere.
               </p>
             </div>
             <div>

@@ -648,7 +648,7 @@ function PortalPage() {
               </div>
               <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
                 Preview your presentation. Once satisfied, make a one-time payment to download
-                a portable HTML presentation file you own and can host anywhere — no monthly
+                a single HTML presentation folder you own and can host anywhere — no monthly
                 fees to keep it online.
               </p>
             </div>
