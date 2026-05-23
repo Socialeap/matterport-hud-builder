@@ -209,8 +209,6 @@ export function PublishDistributeSection({
       `top=${top}`,
       "resizable=yes",
       "scrollbars=yes",
-      "noopener",
-      "noreferrer",
     ].join(",");
     let publishWindow: Window | null = null;
     try {
