@@ -3139,13 +3139,20 @@ window.__openMattertagMedia=function(tagIdx,overrideUrl){
   // regardless of the builder's autoplay/quickstart behavior config.
   function buildMattertagDeepLink(baseUrl,tagId){
     if(!baseUrl||!tagId) return "";
-    var stripped=String(baseUrl).replace(/[?&](tag|play|qs)=[^&]*/g,function(m){
+    // Strip any pre-existing copies of the params we're about to set so
+    // we never double-append (which Showcase rejects).
+    var stripped=String(baseUrl).replace(/[?&](tag|play|qs|ts|dh|hl)=[^&]*/g,function(m){
       return m.charAt(0)==="?"?"?":"";
     });
     stripped=stripped.replace(/\\?&/g,"?").replace(/[?&]$/,"");
     var sep=stripped.indexOf("?")===-1?"?":"&";
-    return stripped+sep+"play=1&qs=1&tag="+encodeURIComponent(tagId);
+    // play=1 + qs=1 trigger the navigation; tag=<id> selects the pose;
+    // ts=0 suppresses the title-strip / Mattertag dock chrome so the
+    // native panel doesn't pop in front of our Property Features panel;
+    // dh=0 suppresses the dollhouse hint overlay during the move.
+    return stripped+sep+"play=1&qs=1&ts=0&dh=0&tag="+encodeURIComponent(tagId);
   }
+
 
   function clearStaleSrcLater(target){
     if(clearTimer){ try { clearTimeout(clearTimer); } catch(_e){} clearTimer=null; }
