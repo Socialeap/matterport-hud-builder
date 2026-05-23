@@ -52,6 +52,8 @@ const MATTERPORT_GRAPHQL_QUERY = `query GetMattertags($modelId: ID!, $includeDis
       fileAttachments { id filename mimeType downloadUrl }
       externalAttachments { id url thumbnailUrl mediaType }
       anchorPosition { x y z }
+      floor { id }
+      scanLinks { scan { id } }
     }
   }
 }`;
