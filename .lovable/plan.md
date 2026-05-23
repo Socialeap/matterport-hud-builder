@@ -1,85 +1,64 @@
-## Findings
+# Make Mattertag photo thumbnails appear
 
-The current fix is failing because the media logic is still too broad in one place and too strict in another:
+## Root cause
 
-1. **YouTube player**: the code now converts YouTube links to `youtube-nocookie.com` embeds. Your working embed code uses `www.youtube.com/embed/...` with `referrerpolicy="strict-origin-when-cross-origin"`. Error 153 is commonly triggered when YouTube rejects the embed identity/referrer/origin configuration, so we should match YouTube’s official embed shape instead of using the no-cookie host.
-2. **Social links showing Open Media**: the new `isLikelyImageUrl()` treats almost any non-video URL as image/media. That makes Instagram/Facebook/TikTok/etc. links look like media and creates invalid Open Media buttons.
-3. **Photo thumbnails still missing**: thumbnail discovery is relying on “try any URL and let `<img onError>` hide it.” That is unsafe for social links and may still miss Matterport photo URLs or URL wrappers. We need a deterministic classifier, not a permissive guess.
+The preview renderer is already correct. `classifyMediaUrl()` matches `cdn-2.matterport.com/.../IMG_2956.jpg?t=…` (host matches `PHOTO_HOST=/matterport/i`, and `.jpg?` matches `IMG_EXT`), and `findImageUrlIn(description)` would also surface it. A thumbnail renders whenever the URL is anywhere in `tag.media` or `tag.description`.
 
-## Options evaluated
+The problem is upstream: that URL never reaches the saved data. Inspecting the most recent saved models in the database confirms it — every imported Mattertag has `"media": ""`, and no description contains a `cdn-2.matterport.com/attachments/…` URL. The mattertag the user has in the testing model that contains an inline image is stored on Matterport's side as a **photo attachment**, not as the GraphQL `media` field.
 
-- **Keep permissive URL guessing and hide broken images on error**: rejected. It already caused false Open Media buttons for social links and still doesn’t reliably surface photos.
-- **Probe every URL with `fetch`/HEAD to check `Content-Type`**: rejected for the exported standalone HTML. It can fail under CORS, adds latency, and makes the self-contained output less predictable.
-- **Use a deterministic shared media classifier and official embed URLs**: safest. It keeps social/external links as links only, routes only true media to in-app players, and mirrors behavior in both Builder preview and generated HTML.
+The current GraphQL query in `supabase/functions/fetch-mattertags/index.ts` only requests:
 
-## Implementation plan
-
-### 1. Replace broad Mattertag media guessing with a classifier
-
-Create/inline a small deterministic classifier in both surfaces:
-
-- `image`: image extensions, data images, and known Matterport/CDN/photo URL patterns.
-- `videoFile`: direct `.mp4/.webm/.mov/.m4v` URLs.
-- `hostedVideo`: YouTube/Vimeo/Loom/Wistia URLs parsed by the cinematic parser.
-- `external`: social media, documents, listing pages, and all other non-media URLs.
-
-Social domains will be explicitly excluded from media handling, including Facebook, Instagram, Threads, X/Twitter, TikTok, LinkedIn, Pinterest, and common document/file links like PDF/DOC/XLS.
-
-### 2. Fix Mattertag card rendering
-
-Update both `HudPreview.tsx` and the exported runtime in `portal.functions.ts` so each card resolves:
-
-```text
-thumbnailUrl = first classified image from tag.media or description URLs
-mediaActionUrl = first classified image/video/hostedVideo only
-external links = link-icon buttons only
+```graphql
+mattertags(includeDisabled: false) {
+  id label description media anchorPosition { x y z }
+}
 ```
 
-Result:
+Matterport's `media` field is a legacy single-URL slot used mostly by tags with rich/embedded media (YouTube, custom URLs). Tags created in the modern editor with an uploaded image store that image in the separate `attachments` connection — exactly the `cdn-2.matterport.com/attachments/<asset>/IMG_2956.jpg?t=…` shape the user pasted. The current importer never asks for `attachments`, so the photo never lands in `tag.media` and the card has nothing to display.
 
-- Social links remain as external-link icons only.
-- No Open Media button appears for social posts.
-- Photo Mattertags show a thumbnail when the URL is a real image candidate.
-- Thumbnail clicks open the in-app carousel.
-- Video/hosted-video Mattertags show Open Media and open the proper in-app player.
+## Fix
 
-### 3. Fix YouTube embed generation
+Expand the importer to request `attachments` and fold the first image attachment URL into `media` when the legacy `media` field is empty. This keeps the existing `MattertagData` wire shape (`id / label / description / media / anchorPosition`) intact — no client, runtime, draft-storage, or end-product changes required.
 
-Update `parseCinematicVideo()` and the mirrored runtime `parseCinematicUrl()` to use YouTube’s official embed host and referrer behavior:
+### 1. `supabase/functions/fetch-mattertags/index.ts`
 
-```text
-https://www.youtube.com/embed/<id>?rel=0&playsinline=1&autoplay=1&mute=1&enablejsapi=1&origin=<valid-http-origin>
-```
+- **Extend the GraphQL query** to request attachments:
 
-Also update iframe referrer policy from `origin` to `strict-origin-when-cross-origin`, matching the embed code YouTube provided.
+  ```graphql
+  mattertags(includeDisabled: false) {
+    id
+    label
+    description
+    media
+    mediaType                # "photo" | "video" | "rich" | "" — used to bias selection
+    attachments {            # modern uploaded media
+      src
+      type                   # "PHOTO" | "VIDEO" | "MODEL" | "PDF" | ...
+    }
+    anchorPosition { x y z }
+  }
+  ```
 
-If the exported file is opened from an invalid origin like `file://`, the code will avoid sending `origin=null`; if YouTube still blocks local-file embeds, the fallback remains the YouTube “Watch on YouTube” button because no app code can override YouTube’s embed restrictions.
+  If the field name turns out to be `model` or returns errors on this Matterport API version, fall back gracefully: a GraphQL error on `attachments` should not fail the whole import — log it and keep the legacy `media`-only path working.
 
-### 4. Improve imported Mattertag media normalization where needed
+- **Sanitization** (in `sanitizeMattertags`): after computing the legacy `media`, when `media` is empty, scan `attachments[]` for the first entry whose `type` is `PHOTO` (or whose `src` is an `https://` URL passing a simple image-host check covering `cdn-2.matterport.com`, `cdn.matterport.com`, and generic image extensions). Promote that `src` into `media`. Cap length at 2048 chars as today; drop non-https values.
 
-Review `fetch-mattertags` normalization so it does not accidentally discard usable Matterport image/media URLs. If Matterport returns absolute media URLs, preserve them. If it returns wrapped/HTML-encoded URLs in descriptions, decode and classify those before rendering.
+  Keep the existing rule that `media` must be a real `https://` URL; never store relative paths.
 
-No database schema change is planned unless the existing imported payload proves unable to represent the media URL at all.
+- **No schema change** to the response: we still ship `{id, label, description, media, anchorPosition}` to the client. This means zero changes to `MattertagData`, draft storage, the saved-model JSON shape, the preview, or the generated end-product HTML.
 
-### 5. Trace and verify the complete path
+### 2. No frontend changes
 
-After implementation, verify this full dependency path:
+`HudPreview.tsx` already classifies `cdn-2.matterport.com/...jpg?t=...` as an image and renders a thumbnail when `tag.media` is set. The end-product runtime in `src/lib/portal.functions.ts` does the same. Once the importer fills `tag.media`, both surfaces light up automatically.
 
-```text
-Matterport import -> MattertagData.media/description
--> HudPreview card classifier
--> generated portal.functions runtime classifier
--> thumbnail/card rendering
--> click handler
--> MediaCarouselModal or CinemaModal
--> iframe/video embed URL
-```
+### 3. Validate
 
-Validation targets:
+- Re-import Mattertags for the testing model. Confirm in the DB (or via the import modal preview) that the photo-tag's `media` now starts with `https://cdn-2.matterport.com/attachments/…`.
+- Reload the property and confirm the Mattertag card shows the thumbnail and that clicking it opens the in-app media carousel (the existing playable-media gate handles this).
+- Confirm social-only tags (Facebook/Instagram link tags) are unchanged: still no thumbnail, still no Open Media button, still get the link-icon chips.
 
-- The provided YouTube URL opens inside the in-app player without Error 153 where YouTube permits embedding.
-- Social post links do not show Open Media.
-- Photo Mattertags render thumbnails and open in the carousel.
-- External links still open in a new tab through link icons.
-- Property-level Cinematic Video still works.
-- Generated standalone HTML matches Builder preview behavior.
+## Technical notes
+
+- The Matterport public/anonymous GraphQL endpoint exposes `Mattertag.attachments` on most modern models; the older `mediaType` "photo" tags with the inline image use it. If a particular model returns `null`/empty attachments, the function silently falls back to today's behavior (no regression).
+- Edge function changes deploy automatically; no `supabase/config.toml` edits needed.
+- No migration, no env vars, no UI changes, no end-product HTML changes.
