@@ -86,7 +86,8 @@ type FetchResult =
   | { kind: "not-found" }
   | { kind: "timeout" }
   | { kind: "network" }
-  | { kind: "schema" };
+  | { kind: "schema" }
+  | { kind: "schema-mismatch" };
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
