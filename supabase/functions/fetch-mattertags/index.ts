@@ -336,26 +336,51 @@ function sanitizeMattertags(payload: unknown): CleanMattertag[] {
     const mediaRaw = String(e.media ?? "").trim();
     let media = /^https?:\/\//i.test(mediaRaw) ? mediaRaw.slice(0, 2048) : "";
 
-    // Modern tags store uploaded images under `attachments` (the
-    // `media` field stays empty). Promote the first usable PHOTO
-    // attachment so the renderer can show a thumbnail.
-    if (!media && Array.isArray(e.attachments)) {
-      for (const a of e.attachments as Array<Record<string, unknown>>) {
+    // Modern tags store uploaded images under `fileAttachments`
+    // (FileAttachment.downloadUrl) and linked photos/videos under
+    // `externalAttachments` (ExternalAttachment.url/thumbnailUrl).
+    // Promote the first usable image so the renderer can show a
+    // thumbnail. Confirmed via Matterport GraphQL introspection.
+    if (!media && Array.isArray(e.fileAttachments)) {
+      for (const a of e.fileAttachments as Array<Record<string, unknown>>) {
         if (!a || typeof a !== "object") continue;
-        const src = String(a.src ?? "").trim();
-        const type = String(a.type ?? "").toUpperCase();
-        if (!/^https?:\/\//i.test(src)) continue;
+        const url = String(a.downloadUrl ?? "").trim();
+        if (!/^https?:\/\//i.test(url)) continue;
+        const mime = String(a.mimeType ?? "").toLowerCase();
+        const filename = String(a.filename ?? "").toLowerCase();
         const looksImage =
-          type === "PHOTO" ||
-          type === "IMAGE" ||
-          /\.(jpe?g|png|gif|webp|avif)(\?|#|$)/i.test(src) ||
-          /\/attachments\//i.test(src);
+          mime.startsWith("image/") ||
+          /\.(jpe?g|png|gif|webp|avif)(\?|#|$)/i.test(url) ||
+          /\.(jpe?g|png|gif|webp|avif)$/i.test(filename) ||
+          /\/attachments\//i.test(url);
         if (looksImage) {
-          media = src.slice(0, 2048);
+          media = url.slice(0, 2048);
           break;
         }
       }
     }
+
+    if (!media && Array.isArray(e.externalAttachments)) {
+      for (const a of e.externalAttachments as Array<Record<string, unknown>>) {
+        if (!a || typeof a !== "object") continue;
+        const mt = String(a.mediaType ?? "").toUpperCase();
+        const thumb = String(a.thumbnailUrl ?? "").trim();
+        const link = String(a.url ?? "").trim();
+        // PHOTO -> use the linked URL directly. VIDEO/RICH -> use the
+        // thumbnail if present so the card still shows a preview image.
+        const candidate =
+          mt === "PHOTO" && /^https?:\/\//i.test(link)
+            ? link
+            : /^https?:\/\//i.test(thumb)
+              ? thumb
+              : "";
+        if (candidate) {
+          media = candidate.slice(0, 2048);
+          break;
+        }
+      }
+    }
+
 
     const ap = (e.anchorPosition ?? {}) as Record<string, unknown>;
     cleaned.push({
