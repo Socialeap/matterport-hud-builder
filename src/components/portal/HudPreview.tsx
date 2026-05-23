@@ -1023,7 +1023,7 @@ export function HudPreview({
                 {mattertags.map((tag, idx) => {
                   const tagMediaKind = classifyMediaUrl(tag.media || "");
                   const tagMediaIsImage = tagMediaKind === "image";
-                  const tagMediaIsVideo = tagMediaKind === "hostedVideo" || tagMediaKind === "directVideo";
+                  const tagMediaIsVideo = tagMediaKind === "hostedVideo" || tagMediaKind === "videoFile";
                   const parsed = extractMattertagLinks(tag.description || "");
                   // Thumbnail resolution order:
                   //   image media → tag.media
