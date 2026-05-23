@@ -51,6 +51,8 @@ interface SavePresentationMattertag {
   description: string;
   media: string;
   anchorPosition: { x: number; y: number; z: number };
+  ss?: string;
+  sr?: string;
 }
 
 interface SavePresentationInput {
