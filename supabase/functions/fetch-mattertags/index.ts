@@ -29,11 +29,17 @@ const MATTERPORT_ENDPOINT =
 const MATTERPORT_APP_KEY = "h2f9mazn377g554gxkkay5aqd";
 
 // ── GraphQL queries ───────────────────────────────────────────────────
-// Modern Matterport tags created in the current editor store uploaded
-// images in the separate `attachments` connection — `media` is empty
-// for those. We ask for both; if the model's API version rejects the
-// `attachments`/`mediaType` fields with a validation error we
-// transparently retry with the legacy field set (LEGACY below).
+// Schema confirmed via introspection against Matterport's public
+// `my.matterport.com/api/mp/models/graph` endpoint:
+//   Mattertag.fileAttachments     -> [FileAttachment]
+//     FileAttachment { id filename mimeType downloadUrl ... }
+//   Mattertag.externalAttachments -> [ExternalAttachment]
+//     ExternalAttachment { id url thumbnailUrl mediaType category ... }
+// Tags created with an uploaded image (the "Noire Restaurant /
+// View Our Food Menu" style cards) put the image in fileAttachments
+// with mimeType image/*. The legacy `media` string is empty for those.
+// If a model's API version rejects the modern fields, we retry with
+// the legacy query.
 const MATTERPORT_GRAPHQL_QUERY = `query GetMattertags($modelId: ID!, $includeDisabled: Boolean!) {
   model(id: $modelId) {
     id
@@ -43,7 +49,8 @@ const MATTERPORT_GRAPHQL_QUERY = `query GetMattertags($modelId: ID!, $includeDis
       description
       media
       mediaType
-      attachments { src type }
+      fileAttachments { id filename mimeType downloadUrl }
+      externalAttachments { id url thumbnailUrl mediaType }
       anchorPosition { x y z }
     }
   }
@@ -61,6 +68,7 @@ const MATTERPORT_GRAPHQL_QUERY_LEGACY = `query GetMattertags($modelId: ID!, $inc
     }
   }
 }`;
+
 
 const MODEL_ID_RE = /^[A-Za-z0-9]{11}$/;
 const MAX_COUNT = 200;
