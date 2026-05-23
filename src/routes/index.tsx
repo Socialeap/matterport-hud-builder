@@ -691,7 +691,7 @@ function Index() {
                 </div>
                 <h3 className={`mt-4 font-semibold text-white`}>Paying for Tools You Never Use</h3>
                 <p className={`mt-2 text-sm text-white/60`}>
-                  Complex &ldquo;bloatware&rdquo; like IoT data integrations and rarely used features like graphical overlays and sectional audio — bundled into every plan whether you need them or not.
+                  Complex “bloatware” like IoT data integrations and rarely used features bundled into a plan, whether you need them or not, can get expensive without a justifiable ROI. 3DPS as a platform offers truly practical 3D your features at no extra cost.
                 </p>
               </CardContent>
             </Card>
