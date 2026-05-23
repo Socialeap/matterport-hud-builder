@@ -233,6 +233,17 @@ async function tryGraphQL(
       ) {
         return { kind: "auth-failed" };
       }
+      // Schema validation error (e.g. this model's API rejects
+      // `attachments` or `mediaType`). Signal a typed result so the
+      // caller can retry with the legacy query.
+      if (
+        firstMsg.includes("cannot query field") ||
+        firstMsg.includes("unknown field") ||
+        firstMsg.includes("undefined field") ||
+        firstMsg.includes("validation")
+      ) {
+        return { kind: "schema-mismatch" };
+      }
       return { kind: "schema" };
     }
 
