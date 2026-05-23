@@ -86,7 +86,41 @@ interface CleanMattertag {
   description: string;
   media: string;
   anchorPosition: { x: number; y: number; z: number };
+  /**
+   * Matterport sweep id of the nearest sweep to anchorPosition. Set
+   * when the sweeps GraphQL query succeeds; omitted otherwise so the
+   * client falls back to the legacy `&tag=<id>` deep-link path.
+   *
+   * Purpose: emitting `&ss=<sweepId>` on Jump-to-view teleports the
+   * camera WITHOUT triggering Matterport's native Mattertag dock,
+   * which otherwise pops over our custom Property Features panel.
+   */
+  ss?: string;
 }
+
+// Try a handful of plausible field names for the sweeps collection on
+// the Matterport `Model` type. Matterport's public graph has shipped
+// `locations` historically; the iteration here makes us resilient if
+// the field name shifts. The query intentionally requests only the
+// minimum we need (id + position) so any schema mismatch fails fast
+// and we degrade cleanly to "no ss, fall back to tag=".
+const SWEEPS_QUERIES: ReadonlyArray<{ field: string; query: string }> = [
+  {
+    field: "locations",
+    query: `query GetSweeps($modelId: ID!) {
+      model(id: $modelId) { locations { id position { x y z } } }
+    }`,
+  },
+  {
+    field: "sweeps",
+    query: `query GetSweeps($modelId: ID!) {
+      model(id: $modelId) { sweeps { id position { x y z } } }
+    }`,
+  },
+];
+
+interface SweepPoint { id: string; x: number; y: number; z: number }
+
 
 type FetchResult =
   | { kind: "ok"; tags: CleanMattertag[] }
@@ -169,8 +203,25 @@ serve(async (req) => {
   }
 
   if (result.kind === "ok") {
+    // Best-effort: enrich each tag with the id of its nearest sweep so
+    // the runtime can deep-link via `&ss=` (no native Mattertag dock)
+    // instead of `&tag=` (always pops the dock over our panel). If the
+    // sweeps query fails for any reason, tags are returned unenriched
+    // and the runtime falls back to the legacy tag-deep-link path.
+    try {
+      const sweeps = await fetchSweeps(matterportId, MATTERPORT_APP_KEY);
+      if (sweeps.length > 0) {
+        for (const tag of result.tags) {
+          const ss = nearestSweepId(tag.anchorPosition, sweeps);
+          if (ss) tag.ss = ss;
+        }
+      }
+    } catch (err) {
+      console.warn("[fetch-mattertags] sweep enrichment skipped:", err);
+    }
     return json({ success: true, mattertags: result.tags });
   }
+
   if (result.kind === "auth-failed") {
     return json({
       success: false,
@@ -407,6 +458,90 @@ function sanitizeMattertags(
   cleaned.sort((a, b) => b.anchorPosition.y - a.anchorPosition.y);
   return cleaned;
 }
+
+// ── Sweep enrichment ────────────────────────────────────────────────
+//
+// Matterport's public `mattertags` field doesn't return any sweep
+// association, so we issue a second GraphQL request asking for the
+// model's sweep collection (id + 3D position) and compute the nearest
+// one per tag via Euclidean distance to anchorPosition. The runtime
+// uses that id in `&ss=<id>` to teleport WITHOUT opening the native
+// Mattertag dock — the whole reason we're not just emitting `&tag=`.
+//
+// Iterates a few plausible field names because Matterport's schema
+// has historically exposed sweeps under `locations` but may differ
+// across model versions. Returns [] on any failure so the caller
+// degrades silently.
+async function fetchSweeps(
+  modelId: string,
+  appKey: string,
+): Promise<SweepPoint[]> {
+  for (const { field, query } of SWEEPS_QUERIES) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    try {
+      const res = await fetch(MATTERPORT_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "x-matterport-application-key": appKey,
+          "Origin": "https://my.matterport.com",
+          "Referer": `https://my.matterport.com/show/?m=${modelId}`,
+          "User-Agent": BROWSER_UA,
+          "Accept-Language": "en-US,en;q=0.9",
+        },
+        body: JSON.stringify({ query, variables: { modelId } }),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (!res.ok) continue;
+      const payload = await res.json().catch(() => null) as
+        | { data?: { model?: Record<string, unknown> }; errors?: unknown }
+        | null;
+      if (!payload || payload.errors) continue;
+      const raw = payload.data?.model?.[field];
+      if (!Array.isArray(raw)) continue;
+      const out: SweepPoint[] = [];
+      for (const entry of raw) {
+        if (!entry || typeof entry !== "object") continue;
+        const e = entry as Record<string, unknown>;
+        const id = String(e.id ?? "").trim();
+        const p = (e.position ?? {}) as Record<string, unknown>;
+        if (!id) continue;
+        const x = Number(p.x), y = Number(p.y), z = Number(p.z);
+        if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+        out.push({ id, x, y, z });
+      }
+      if (out.length > 0) return out;
+    } catch (err) {
+      clearTimeout(timer);
+      console.warn(`[fetch-mattertags] sweeps query (${field}) failed:`, err);
+    }
+  }
+  return [];
+}
+
+function nearestSweepId(
+  tagPos: { x: number; y: number; z: number },
+  sweeps: SweepPoint[],
+): string | null {
+  let best: SweepPoint | null = null;
+  let bestDist = Infinity;
+  for (const s of sweeps) {
+    const dx = s.x - tagPos.x;
+    const dy = s.y - tagPos.y;
+    const dz = s.z - tagPos.z;
+    const d = dx * dx + dy * dy + dz * dz;
+    if (d < bestDist) {
+      bestDist = d;
+      best = s;
+    }
+  }
+  return best?.id ?? null;
+}
+
+
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

@@ -51,6 +51,8 @@ interface SavePresentationMattertag {
   description: string;
   media: string;
   anchorPosition: { x: number; y: number; z: number };
+  ss?: string;
+  sr?: string;
 }
 
 interface SavePresentationInput {
@@ -368,6 +370,11 @@ interface PropertyMattertagData {
   description: string;
   media: string;
   anchorPosition: { x: number; y: number; z: number };
+  // Optional sweep id (nearest sweep to anchorPosition, derived at
+  // import time). When present, the runtime emits &ss=<ss> instead of
+  // &tag=<id> on Jump-to-view so the native Mattertag dock never opens.
+  ss?: string;
+  sr?: string;
 }
 
 interface PropertyData {
@@ -1207,6 +1214,13 @@ export const generatePresentation = createServerFn({ method: "POST" })
               /^\/api\/mp-attachment\?(?=[^#]*\bm=[A-Za-z0-9]{11}\b)(?=[^#]*\bt=[A-Za-z0-9]{11}\b)(?=[^#]*\bid=[A-Za-z0-9]{16,64}\b)[^\s"'<>]{1,2048}$/.test(
                 mediaRaw,
               );
+            // Sweep id (ss) + framing rotation (sr) are sanitized to
+            // Matterport's URL alphabet so a tampered draft can't inject
+            // arbitrary query content into the runtime deep-link URL.
+            const ssRaw = String(t?.ss ?? "").trim();
+            const ss = /^[A-Za-z0-9_-]{1,64}$/.test(ssRaw) ? ssRaw : "";
+            const srRaw = String(t?.sr ?? "").trim();
+            const sr = /^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/.test(srRaw) ? srRaw : "";
             return {
               id: String(t?.id ?? "").slice(0, 64),
               label: String(t?.label ?? "").slice(0, 200),
@@ -1217,6 +1231,8 @@ export const generatePresentation = createServerFn({ method: "POST" })
                 y: Number(ap.y) || 0,
                 z: Number(ap.z) || 0,
               },
+              ...(ss ? { ss } : {}),
+              ...(sr ? { sr } : {}),
             };
           })
           .filter((t) => t.id.length > 0)
@@ -3018,7 +3034,7 @@ function renderMattertags(i){
         card.appendChild(hint);
         var activate=function(ev){
           if(ev&&ev.preventDefault) ev.preventDefault();
-          if(window.__navigateToMattertag) window.__navigateToMattertag(tag.id,card);
+          if(window.__navigateToMattertag) window.__navigateToMattertag(tag,card);
         };
         card.addEventListener("click",activate);
         card.addEventListener("keydown",function(ev){
@@ -3134,22 +3150,35 @@ window.__openMattertagMedia=function(tagIdx,overrideUrl){
     mpBg.setAttribute("tabindex","-1");
   }
 
-  // Strip and re-append ?play=1&qs=1&tag=<sid>. Mirrors the pattern in
-  // rewriteIframeForTeleport (see below) so deep-link nav is fast
-  // regardless of the builder's autoplay/quickstart behavior config.
-  function buildMattertagDeepLink(baseUrl,tagId){
-    if(!baseUrl||!tagId) return "";
-    // Strip any pre-existing copies of the params we're about to set so
-    // we never double-append (which Showcase rejects).
-    var stripped=String(baseUrl).replace(/[?&](tag|play|qs|ts|dh|hl)=[^&]*/g,function(m){
+  // Build the camera-teleport URL. Two paths:
+  //
+  //   1. Tag has 'ss' (sweep id, derived server-side at import time
+  //      from the nearest sweep to the tag 3D anchor). We emit
+  //      &ss=<id> + optionally &sr=<pan,tilt>. Matterport teleports
+  //      to that sweep WITHOUT opening the native Mattertag dock --
+  //      our Property Features panel stays the only overlay.
+  //
+  //   2. Tag has no 'ss' (legacy drafts, or a model whose sweeps
+  //      query failed). Fall back to &tag=<sid> so the click still
+  //      teleports. Pair with ts=0&dh=0 to suppress dock + dollhouse
+  //      hint since that path WILL try to pop native chrome.
+  function buildMattertagDeepLink(baseUrl,tag){
+    if(!baseUrl||!tag) return "";
+    var tagId=typeof tag==="string"?tag:(tag&&tag.id)||"";
+    var ss=typeof tag==="object"&&tag?tag.ss:"";
+    var sr=typeof tag==="object"&&tag?tag.sr:"";
+    if(!tagId&&!ss) return "";
+    // Strip pre-existing copies of params we set so we never double-append.
+    var stripped=String(baseUrl).replace(/[?&](tag|play|qs|ts|dh|hl|ss|sr)=[^&]*/g,function(m){
       return m.charAt(0)==="?"?"?":"";
     });
-    stripped=stripped.replace(/\\?&/g,"?").replace(/[?&]$/,"");
+    stripped=stripped.replace(/\?&/g,"?").replace(/[?&]$/,"");
     var sep=stripped.indexOf("?")===-1?"?":"&";
-    // play=1 + qs=1 trigger the navigation; tag=<id> selects the pose;
-    // ts=0 suppresses the title-strip / Mattertag dock chrome so the
-    // native panel doesn't pop in front of our Property Features panel;
-    // dh=0 suppresses the dollhouse hint overlay during the move.
+    if(ss){
+      var url=stripped+sep+"play=1&qs=1&ss="+encodeURIComponent(ss);
+      if(sr) url+="&sr="+encodeURIComponent(sr);
+      return url;
+    }
     return stripped+sep+"play=1&qs=1&ts=0&dh=0&tag="+encodeURIComponent(tagId);
   }
 
@@ -3179,11 +3208,13 @@ window.__openMattertagMedia=function(tagIdx,overrideUrl){
   }
 
   // Public entry point: called by mattertag card click handlers.
-  window.__navigateToMattertag=function(tagId,cardEl){
-    if(!tagId) return;
+  // Accepts the full tag object (so ss/sr can flow through to the
+  // sweep-deep-link path); accepts a bare tag id for back-compat.
+  window.__navigateToMattertag=function(tagOrId,cardEl){
+    if(!tagOrId) return;
     var p=props[current];
     if(!p||!p.iframeUrl) return;
-    var deepLinkUrl=buildMattertagDeepLink(p.iframeUrl,tagId);
+    var deepLinkUrl=buildMattertagDeepLink(p.iframeUrl,tagOrId);
     if(!deepLinkUrl) return;
     // Bump token: any older in-flight load/timeout handlers no-op.
     navToken++;

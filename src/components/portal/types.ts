@@ -66,6 +66,24 @@ export interface MattertagData {
   media: string;
   /** 3D anchor position; `y` is used to floor-order cards (highest first). */
   anchorPosition: { x: number; y: number; z: number };
+  /**
+   * Matterport sweep id of the nearest sweep to `anchorPosition`,
+   * derived server-side at import time. When present, the visitor's
+   * "Jump to view" deep-link uses `&ss=<ss>` instead of `&tag=<id>`,
+   * which teleports to the sweep WITHOUT triggering Matterport's
+   * native Mattertag dock chrome — our Property Features panel stays
+   * the only overlay. Undefined on legacy imports / models whose
+   * sweeps query the GraphQL endpoint didn't return.
+   */
+  ss?: string;
+  /**
+   * Optional `pan,tilt` rotation tuple (radians, Matterport `sr`
+   * format) that frames the camera toward the tag from its nearest
+   * sweep. Currently unused — left in the schema so a future
+   * per-tag "pin view" override can populate it without a draft
+   * version bump.
+   */
+  sr?: string;
 }
 
 export interface PropertyModel {
