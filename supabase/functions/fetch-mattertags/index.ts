@@ -505,76 +505,153 @@ function sanitizeMattertags(
 // has historically exposed sweeps under `locations` but may differ
 // across model versions. Returns [] on any failure so the caller
 // degrades silently.
+// ── Sweep enrichment ────────────────────────────────────────────────
+//
+// Picks the correct sweep per tag in this priority order:
+//   1. Matterport's own scanLinks association (the sweeps from which
+//      the tag was authored to be viewed).
+//   2. Nearest sweep ON THE SAME FLOOR, measured in the floor plane
+//      (ignore vertical axis so wall-mounted tags aren't biased to
+//      the sweep directly below them through a ceiling).
+//   3. Nearest sweep in 3D (when floor metadata is unavailable).
+//
+// CRITICAL: emits the sweep's NUMERIC INDEX (e.g. "125") as `ss`,
+// not the long alphanumeric GraphQL `id`. Matterport's showcase URL
+// `&ss=` parameter only accepts the numeric sweep index; passing the
+// `id` lands the camera on a default sweep, which presents as the
+// "totally incorrect navigation" symptom.
 async function fetchSweeps(
   modelId: string,
   appKey: string,
 ): Promise<SweepPoint[]> {
-  for (const { field, query } of SWEEPS_QUERIES) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-    try {
-      const res = await fetch(MATTERPORT_ENDPOINT, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-          "x-matterport-application-key": appKey,
-          "Origin": "https://my.matterport.com",
-          "Referer": `https://my.matterport.com/show/?m=${modelId}`,
-          "User-Agent": BROWSER_UA,
-          "Accept-Language": "en-US,en;q=0.9",
-        },
-        body: JSON.stringify({ query, variables: { modelId } }),
-        signal: controller.signal,
-      });
-      clearTimeout(timer);
-      if (!res.ok) continue;
-      const payload = await res.json().catch(() => null) as
-        | { data?: { model?: Record<string, unknown> }; errors?: unknown }
-        | null;
-      if (!payload || payload.errors) continue;
-      const raw = payload.data?.model?.[field];
-      if (!Array.isArray(raw)) continue;
-      const out: SweepPoint[] = [];
-      for (const entry of raw) {
-        if (!entry || typeof entry !== "object") continue;
-        const e = entry as Record<string, unknown>;
-        const id = String(e.id ?? "").trim();
-        const p = (e.position ?? {}) as Record<string, unknown>;
-        if (!id) continue;
-        const x = Number(p.x), y = Number(p.y), z = Number(p.z);
-        if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
-        out.push({ id, x, y, z });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(MATTERPORT_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "x-matterport-application-key": appKey,
+        "Origin": "https://my.matterport.com",
+        "Referer": `https://my.matterport.com/show/?m=${modelId}`,
+        "User-Agent": BROWSER_UA,
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+      body: JSON.stringify({ query: SWEEPS_QUERY, variables: { modelId } }),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (!res.ok) return [];
+    const payload = await res.json().catch(() => null) as
+      | { data?: { model?: { locations?: unknown } }; errors?: unknown }
+      | null;
+    if (!payload || payload.errors) return [];
+    const raw = payload.data?.model?.locations;
+    if (!Array.isArray(raw)) return [];
+    const out: SweepPoint[] = [];
+    for (const entry of raw) {
+      if (!entry || typeof entry !== "object") continue;
+      const e = entry as Record<string, unknown>;
+      const id = String(e.id ?? "").trim();
+      if (!id) continue;
+      // Prefer the explicit numeric `index`; fall back to parsing
+      // `label` (Matterport historically returns label as the index
+      // string). Skip the sweep if neither is a finite integer —
+      // there is no usable `ss` value to emit.
+      let index = Number(e.index);
+      if (!Number.isFinite(index)) {
+        const lbl = String(e.label ?? "").trim();
+        index = /^\d+$/.test(lbl) ? Number(lbl) : NaN;
       }
-      if (out.length > 0) return out;
-    } catch (err) {
-      clearTimeout(timer);
-      console.warn(`[fetch-mattertags] sweeps query (${field}) failed:`, err);
+      if (!Number.isFinite(index)) continue;
+      const p = (e.position ?? {}) as Record<string, unknown>;
+      const x = Number(p.x), y = Number(p.y), z = Number(p.z);
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+      const floorObj = e.floor as Record<string, unknown> | null | undefined;
+      const floorId = floorObj && typeof floorObj === "object"
+        ? String((floorObj as { id?: unknown }).id ?? "").trim() || null
+        : null;
+      out.push({ id, index, floorId, x, y, z });
     }
+    return out;
+  } catch (err) {
+    clearTimeout(timer);
+    console.warn("[fetch-mattertags] sweeps query failed:", err);
+    return [];
   }
-  return [];
 }
 
-function nearestSweepId(
-  tagPos: { x: number; y: number; z: number },
+interface PickResult {
+  sweep: SweepPoint;
+  distance: number;
+  source: "scanLink" | "sameFloorNearest" | "fallback3D";
+}
+
+function pickSweepForTag(
+  tag: CleanMattertag,
   sweeps: SweepPoint[],
-): string | null {
-  let best: SweepPoint | null = null;
-  let bestDist = Infinity;
-  for (const s of sweeps) {
-    const dx = s.x - tagPos.x;
-    const dy = s.y - tagPos.y;
-    const dz = s.z - tagPos.z;
-    const d = dx * dx + dy * dy + dz * dz;
-    if (d < bestDist) {
-      bestDist = d;
-      best = s;
+): PickResult | null {
+  if (sweeps.length === 0) return null;
+  const raw = tag as unknown as Record<string, unknown>;
+  const floorId = (raw.__floorId as string | null | undefined) ?? null;
+  const scanLinkIds = (raw.__scanLinkIds as string[] | undefined) ?? [];
+  const a = tag.anchorPosition;
+
+  const dist3D = (s: SweepPoint) => {
+    const dx = s.x - a.x, dy = s.y - a.y, dz = s.z - a.z;
+    return Math.sqrt(dx * dx + dy * dy + dz * dz);
+  };
+  // Floor-plane distance: Matterport models use Z-up; tags sit on
+  // walls (z ≈ floor level), sweeps sit at camera height (also
+  // small z). Ignoring Z prevents a tag on a 2nd-floor wall from
+  // being mapped to a 1st-floor sweep directly below it.
+  const distXY = (s: SweepPoint) => {
+    const dx = s.x - a.x, dy = s.y - a.y;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
+  // 1. scanLinks — Matterport's authoritative answer.
+  if (scanLinkIds.length > 0) {
+    const linked = sweeps.filter((s) => scanLinkIds.includes(s.id));
+    if (linked.length > 0) {
+      let best = linked[0], bestD = dist3D(best);
+      for (const s of linked.slice(1)) {
+        const d = dist3D(s);
+        if (d < bestD) { best = s; bestD = d; }
+      }
+      return { sweep: best, distance: bestD, source: "scanLink" };
     }
   }
-  return best?.id ?? null;
+
+  // 2. Nearest on same floor (floor-plane distance).
+  if (floorId) {
+    const sameFloor = sweeps.filter((s) => s.floorId === floorId);
+    if (sameFloor.length > 0) {
+      let best = sameFloor[0], bestD = distXY(best);
+      for (const s of sameFloor.slice(1)) {
+        const d = distXY(s);
+        if (d < bestD) { best = s; bestD = d; }
+      }
+      return { sweep: best, distance: bestD, source: "sameFloorNearest" };
+    }
+  }
+
+  // 3. Last-resort 3D nearest.
+  let best = sweeps[0], bestD = dist3D(best);
+  for (const s of sweeps.slice(1)) {
+    const d = dist3D(s);
+    if (d < bestD) { best = s; bestD = d; }
+  }
+  return { sweep: best, distance: bestD, source: "fallback3D" };
 }
 
-
+function stripInternalKeys(tag: CleanMattertag): CleanMattertag {
+  const r = tag as unknown as Record<string, unknown>;
+  delete r.__floorId;
+  delete r.__scanLinkIds;
+  return tag;
+}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
