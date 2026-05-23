@@ -2769,6 +2769,19 @@ function findImageUrlIn(s){
 function isImageUrl(u){ return classifyMediaUrl(u)==="image"; }
 function isVideoUrl(u){ return classifyMediaUrl(u)==="videoFile"; }
 function isLikelyImageUrl(u){ return classifyMediaUrl(u)==="image"; }
+// Synchronously derive a thumbnail URL from a hosted-video URL when the
+// provider exposes a deterministic image endpoint. Returns "" otherwise
+// (Wistia/Loom/direct mp4 — card simply renders without a thumb).
+function getVideoThumbnail(u){
+  if(!u) return "";
+  var s=String(u).trim();
+  if(!s) return "";
+  var yt=s.match(/youtu\\.be\\/([\\w-]{6,})/i)||s.match(/youtube\\.com\\/(?:watch\\?(?:.*&)?v=|embed\\/|shorts\\/|v\\/)([\\w-]{6,})/i);
+  if(yt&&yt[1]) return "https://img.youtube.com/vi/"+yt[1]+"/hqdefault.jpg";
+  var vi=s.match(/player\\.vimeo\\.com\\/video\\/(\\d+)/i)||s.match(/vimeo\\.com\\/(?:video\\/)?(\\d+)/i);
+  if(vi&&vi[1]) return "https://vumbnail.com/"+vi[1]+".jpg";
+  return "";
+}
 
 // Render the Mattertag cards for property index i. Also toggles the
 // HUD button visibility so properties without tags don't show an empty
