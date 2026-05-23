@@ -67,6 +67,7 @@ const MATTERPORT_GRAPHQL_QUERY_LEGACY = `query GetMattertags($modelId: ID!, $inc
       description
       media
       anchorPosition { x y z }
+      floor { id }
     }
   }
 }`;
