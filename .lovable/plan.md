@@ -1,92 +1,56 @@
-# Fix: Mattertag photo thumbnails are 410 Gone
+# Fix: Netlify Popup Opens Blank — Keep Sized Popup Window
 
-## Root cause (verified against the database and Matterport)
+## Root cause
 
-The Mattertag import (edge function `fetch-mattertags`) stores the raw signed Matterport CDN URL it gets from GraphQL into `tag.media`, e.g.:
-
-```
-https://cdn-2.matterport.com/attachments/<attachmentId>/full.jpeg?t=2-<sig>-<timestamp>-1
-```
-
-That URL's `t=` token expires within ~24h. I confirmed with `curl -I` against the URL currently stored for "View Our Food Menu" — Matterport responds **HTTP 410 Gone**. The `<img onError>` handler in `HudPreview` then hides the whole thumbnail button, so the entire photo card looks like it has no image. The classifier and rendering pipeline are fine — the URL itself is dead.
-
-Re-querying the Matterport GraphQL endpoint returns the same `FileAttachment.id` but a **freshly-signed** `downloadUrl`. So the durable identifier is the pair `(modelId, attachmentId)`, and we already use exactly this pattern for skybox images in `src/routes/api/mp-image.ts`.
-
-Video thumbnails (YouTube `img.youtube.com/vi/<id>/hqdefault.jpg`) are not signed, so they keep working — that matches what the user is seeing.
-
-## Solution: stable proxy `/api/mp-attachment` + store the proxy URL, not the CDN URL
-
-Mirror the existing `/api/mp-image` pattern. The proxy converts a stable `(modelId, attachmentId)` pair into a fresh 302 redirect on every request.
-
-### 1. New route `src/routes/api/mp-attachment.ts`
-
-`GET /api/mp-attachment?m={modelId}&t={mattertagId}&id={attachmentId}`
-
-- Validate `m` and `t` as 11-char alphanumeric Matterport IDs; validate `id` as a 20–64-char alphanumeric attachment slug. Reject anything else with 400.
-- Per-IP rate limit (60 req/min) using the same in-memory bucket as `mp-image.ts`.
-- POST to `https://my.matterport.com/api/mp/models/graph` with the hardcoded SDK app key (`h2f9mazn377g554gxkkay5aqd`, same key used by `fetch-mattertags`), requesting just that one mattertag's `fileAttachments { id downloadUrl mimeType }`.
-- Find the attachment whose `id` matches the requested `id`. Return **302 → `downloadUrl`**. Cache `max-age=300` (5 min) so the browser doesn't refetch on every render but the URL still rotates well before the token expires.
-- On any failure (timeout, 401/403, attachment not found) serve the same 1×1 transparent PNG fallback `mp-image.ts` uses, so cards never show a broken-image icon.
-- CORS: same `Access-Control-Allow-Origin: *` headers as `mp-image.ts`; this URL is also embedded in the generated standalone HTML which runs from arbitrary origins.
-
-### 2. `supabase/functions/fetch-mattertags/index.ts` — store the proxy URL, not the expiring CDN URL
-
-In `sanitizeMattertags`, when an image is promoted from `fileAttachments`, store:
+In `src/components/portal/PublishDistributeSection.tsx` (`openNetlifyPublishWindow`, ~lines 199–241) the features string passed to `window.open` mixes two kinds of tokens:
 
 ```
-/api/mp-attachment?m={modelId}&t={tag.id}&id={attachment.id}
+width=… height=… left=… top=… resizable=yes scrollbars=yes noopener noreferrer
 ```
 
-instead of `attachment.downloadUrl`. To do that:
+`noopener` and `noreferrer` are NOT valid window-feature dimensions — they are post-spec keywords that the HTML standard treats specially when present in the features string:
 
-- Thread `modelId` from the request handler down to `sanitizeMattertags(payload, modelId)`.
-- Keep the existing `externalAttachments` branch and the legacy `media` branch unchanged — those URLs are not signed and stay valid.
-- The `id`, `description`, `anchorPosition`, label, etc. fields are untouched.
+1. **`noopener` makes `window.open` return `null`.** That immediately falls into our `else` branch and sets `setNetlifyBlocked(true)`, showing the amber "popup blocked" warning even though the popup did open.
+2. **`noreferrer` strips the `Referer` request header AND forces no-opener semantics.** `app.netlify.com/drop` reads `document.referrer` during boot and sets `Cross-Origin-Opener-Policy: same-origin`; with no referrer + popup chrome + a named window, the SPA shell fails to hydrate → **white page**. This is the blank window the user is seeing.
 
-### 3. `src/components/portal/HudPreview.tsx` — make the classifier treat the proxy URL as an image
+Neither token is needed inside the features string. Cross-window isolation can be achieved safely by nulling `publishWindow.opener` after open (the code already attempts this on line ~230, but never reaches it because `publishWindow` is `null`).
 
-`classifyMediaUrl` currently parses `tag.media` with `new URL(u)`. A relative URL starting with `/api/mp-attachment` will throw, fall through, and end up as `"unknown"` — which means the thumbnail won't render and the click won't open the photo modal.
+The recent Mattertag/video/numbering edits did NOT touch this file — this regression is isolated to the popup features string.
 
-Fix at the top of `classifyMediaUrl`:
+## Fix (single-file, surgical)
 
-```ts
-if (/^\/api\/mp-attachment\b/.test(u)) return "image";
-```
+**`src/components/portal/PublishDistributeSection.tsx`** — `openNetlifyPublishWindow` only.
 
-`openMattertagMedia`'s `"image"` branch already sets `proxyUrl: mediaUrl` on `mattertagMediaAsset`, so the existing photo modal will load the same proxy URL and the 302 will re-sign on open. No change needed in `MattertagMediaPlayer` / photo modal.
+1. Remove `"noopener"` and `"noreferrer"` from the `features` array. Keep every dimension/behavior token exactly as configured:
+   - `width=${width}` (≥420, ~⅓ of outer width)
+   - `height=${height}` (≥480, ~½ of outer height)
+   - `left=${left}` (right side of screen, 24px from edge)
+   - `top=${top}` (vertically centered)
+   - `resizable=yes`
+   - `scrollbars=yes`
+2. Keep the `try { publishWindow = window.open(NETLIFY_DROP_URL, "netlifyPublishWindow", features) } catch { publishWindow = null }` wrapper unchanged.
+3. Keep the **defensive `publishWindow.opener = null`** assignment after a successful open. With `noopener` removed from the feature string, `window.open` now returns a real `Window` reference, so this null-out actually executes and gives us the same cross-origin isolation we wanted from `noopener` — without breaking Netlify's boot.
+4. Keep the existing branching:
+   - On success → `setNetlifyOpened(true); setNetlifyBlocked(false)` (button label flips to "Reopen Netlify Publish Window", the green/muted "Netlify is open" hint with the 5-step checklist renders).
+   - On `null` (genuine popup blocker) → `setNetlifyBlocked(true)` (amber fallback with the "Open Netlify Drop in New Tab" anchor remains visible).
 
-### 4. `src/lib/portal.functions.ts` — same classifier tweak for the standalone end-product HTML
+Nothing else in the file is touched:
+- Sizing math (`width`, `height`, `left`, `top` calculations) — unchanged.
+- "Open Netlify Drop in New Tab" anchor fallback — unchanged.
+- Step 1 download button, Step 3 URL parsing, Share Kit, QR canvas/PNG export — unchanged.
+- All useCallback/useMemo dependency arrays — unchanged (function identity unchanged).
 
-The generated `.html` has its own `classifyMediaUrl` (line 2739). Add the identical short-circuit:
+## Ripple / regression audit
 
-```js
-if(/^\/api\/mp-attachment\b/.test(u)) return "image";
-```
-
-Because the standalone HTML is served from a different origin than `/api/mp-attachment`, also rewrite the URL we store/use in the standalone build to an absolute one. Easiest: have the proxy URL string built once in JS using `location.origin` at generation time is not viable for a fully-static export. Instead, store an absolute URL `https://<published-host>/api/mp-attachment?...` in the mattertag `media` field when we know we're exporting, OR — simpler and aligned with how `/api/mp-image` is already used in the export — always store the path-relative form and have the export's HTML resolve it against `BUILDER_API_ORIGIN` (the same constant `portal.functions.ts` already uses to absolutize `/api/mp-image`). Reuse that exact mechanism, no new config needed.
-
-### 5. Backfill (no migration, user-driven)
-
-Already-stored `cdn-2.matterport.com/attachments/...` URLs are dead and there is no `attachmentId`+`modelId` audit trail in the JSON aside from the URL path itself. Rather than ship a fragile SQL migration that string-parses URLs, the user re-runs the "Import Mattertags" action on each affected model — the same one-click flow they used the first time. After step 2 lands, that re-import writes the new stable proxy URLs and the photos return immediately. The plan should call this out so the user knows the one manual step.
-
-## Files changed
-
-- `supabase/functions/fetch-mattertags/index.ts` — promote `fileAttachments` images to the `/api/mp-attachment?...` form; pass `modelId` into `sanitizeMattertags`.
-- `src/routes/api/mp-attachment.ts` — **new** stateless 302 proxy that re-queries Matterport GraphQL and redirects to a freshly-signed `downloadUrl`.
-- `src/components/portal/HudPreview.tsx` — add the `/api/mp-attachment` short-circuit at the top of `classifyMediaUrl`.
-- `src/lib/portal.functions.ts` — same short-circuit in the standalone-HTML twin of `classifyMediaUrl` (~line 2739); rely on the existing `BUILDER_API_ORIGIN` absolutization the file already does for `/api/mp-image`.
-
-## What is intentionally NOT touched
-
-- Video thumbnails (YouTube/Vimeo) — already use unsigned thumbnail hosts, working today.
-- YouTube `nocookie` embed host swap from the previous fix — stays as-shipped.
-- Card-number badge position, removal of the "Open Media" CTA — stay as-shipped.
-- `extractMattertagLinks`, `findImageUrlIn`, the photo carousel modal, and `MattertagMediaPlayer` — no changes; the proxy URL flows through them unchanged.
+- **Other components**: `PublishDistributeSection` is consumed by the builder page only; no shared utility is touched, so HudPreview, the Mattertag proxy, video-embed, card numbering, and the standalone end-product generator are unaffected.
+- **Security**: cross-origin opener access is still blocked because we null `publishWindow.opener` immediately. Netlify is cross-origin so it cannot read our window even before the null-out. Referrer is sent normally — appropriate, since Netlify is a trusted third party we're intentionally handing off to.
+- **Popup blockers**: triggered from a synchronous user click handler → permitted by all major browsers; behavior matches what worked previously.
+- **Reopen flow**: same `windowName` ("netlifyPublishWindow") means subsequent clicks focus/reuse the existing popup rather than spawning duplicates — preserved.
 
 ## Verification
 
-1. Hit `/api/mp-attachment?m=XjKKxpzSJdM&t=MD6E7vF2Uej&id=pnehuwsk5dhcf1nq307ygytwa` directly → 302 → image loads.
-2. Re-import Mattertags for the Noir Restaurant model → "View Our Food Menu" and "View Our Beverage Menu" cards show thumbnails again.
-3. Click either thumbnail → photo opens in the in-HUD media player (same proxy URL is used by the modal, so the 302 re-signs again).
-4. YouTube tag ("See this space before and after") still shows its video thumbnail and still plays via the `youtube-nocookie` host (regression check).
-5. Generate / re-publish the standalone end-product HTML, open it in a fresh browser → photo thumbnails resolve via the absolute `https://<published-host>/api/mp-attachment?...` URL, same as `/api/mp-image` already does today.
+1. Click **Open Netlify Publish Window** → a small popup window opens at the right side of the screen at the configured ⅓×½ size, loaded with the Netlify Drop UI (no blank page).
+2. Button label flips to **Reopen Netlify Publish Window**; the "Netlify is open" instruction card with the 5-step checklist renders; amber "popup blocked" warning does NOT show.
+3. Click **Reopen Netlify Publish Window** → existing popup is refocused (not duplicated).
+4. If the browser's popup blocker actually blocks it (e.g., user has popups disabled), amber fallback appears with the "Open Netlify Drop in New Tab" anchor — unchanged behavior.
+5. Smoke-check unrelated areas to confirm no regression: Features-card image thumbnails (Mattertag proxy), video player playback (youtube-nocookie), card numbering position, Share Kit generation after pasting a live URL.
