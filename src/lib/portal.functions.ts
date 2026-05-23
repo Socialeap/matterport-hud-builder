@@ -2817,13 +2817,13 @@ function renderMattertags(i){
         var labelText=tag.label?String(tag.label):"this feature";
         card.setAttribute("aria-label","Jump to "+labelText+" in the 3D tour");
       }
-      // Numbered badge top-right (1-indexed render order).
+      // Numbered badge — center-left, external to the card.
       var numEl=document.createElement("span");
       numEl.className="mt-card-number";
       numEl.setAttribute("aria-hidden","true");
       numEl.textContent=String(idx+1);
       card.appendChild(numEl);
-      // Loading spinner overlay (now top-LEFT to avoid the number).
+      // Loading spinner overlay (top-LEFT inside card).
       var spinner=document.createElement("span");
       spinner.className="mt-card-spinner";
       spinner.setAttribute("aria-hidden","true");
@@ -2831,26 +2831,40 @@ function renderMattertags(i){
       // Description extraction (also drives both link icons and the
       // fallback thumbnail discovery).
       var parsed=extractMattertagLinks(tag.description||"");
-      // Resolve a thumbnail URL: prefer tag.media if it's plausibly an
-      // image (anything not provably video), otherwise scan the
-      // description for an image URL.
-      var thumbUrl=isLikelyImageUrl(tag.media)?tag.media:findImageUrlIn(tag.description||"");
-      // Media URL used by the "Open Media" CTA. Only set when tag.media
-      // is playable media (image/video/hosted) — social/external URLs
-      // surface as link icons only, NOT as a media button.
+      // Thumbnail resolution order:
+      //   image media        → tag.media
+      //   else scraped image in description
+      //   else hosted video  → provider thumbnail (YouTube/Vimeo)
+      var mediaKind=classifyMediaUrl(tag.media||"");
+      var mediaIsImage=mediaKind==="image";
+      var mediaIsVideo=mediaKind==="hostedVideo"||mediaKind==="videoFile";
+      var scrapedImg=mediaIsImage?"":findImageUrlIn(tag.description||"");
+      var videoThumb=(!mediaIsImage&&!scrapedImg&&mediaIsVideo)?getVideoThumbnail(tag.media):"";
+      var thumbUrl=mediaIsImage?tag.media:(scrapedImg||videoThumb);
+      var thumbIsVideo=!mediaIsImage&&!scrapedImg&&!!videoThumb;
+      // Media URL routed to the in-app player. Only set when tag.media
+      // is playable (image/video/hosted) — social/external URLs surface
+      // as link icons only.
       var mediaUrl=isPlayableMedia(tag.media)?tag.media:(thumbUrl||"");
-      if(thumbUrl){
+      if(thumbUrl&&mediaUrl){
         var thumbBtn=document.createElement("button");
         thumbBtn.type="button";
         thumbBtn.className="mt-card-thumb-btn";
-        thumbBtn.setAttribute("aria-label","Open "+(tag.label||"image")+" in media player");
+        thumbBtn.setAttribute("aria-label","Open "+(tag.label||"media")+" in media player");
         var img=document.createElement("img");
         img.className="mt-card-thumb";
-        img.alt=tag.label||"Highlight image";
+        img.alt=tag.label||"Highlight";
         img.loading="lazy";
         img.src=thumbUrl;
         img.onerror=function(){ if(thumbBtn.parentNode) thumbBtn.parentNode.removeChild(thumbBtn); };
         thumbBtn.appendChild(img);
+        if(thumbIsVideo){
+          var ov=document.createElement("span");
+          ov.className="mt-card-play-overlay";
+          ov.setAttribute("aria-hidden","true");
+          ov.innerHTML='<span><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="5 3 19 12 5 21"/></svg></span>';
+          thumbBtn.appendChild(ov);
+        }
         thumbBtn.addEventListener("click",function(ev){
           if(ev&&ev.stopPropagation) ev.stopPropagation();
           if(window.__openMattertagMedia) window.__openMattertagMedia(idx,mediaUrl);
@@ -2889,19 +2903,8 @@ function renderMattertags(i){
         }
         card.appendChild(linkRow);
       }
-      if(mediaUrl){
-        var cta=document.createElement("button");
-        cta.type="button";
-        cta.className="mt-card-cta";
-        cta.innerHTML='<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="5 3 19 12 5 21"/></svg><span>Open Media</span>';
-        cta.addEventListener("click",function(ev){
-          // Card-level click handler also fires the deep-link; stop
-          // propagation so opening media doesn't ALSO navigate the tour.
-          if(ev&&ev.stopPropagation) ev.stopPropagation();
-          if(window.__openMattertagMedia) window.__openMattertagMedia(idx,mediaUrl);
-        });
-        card.appendChild(cta);
-      }
+      // NOTE: "Open Media" CTA removed — the thumbnail click already
+      // opens the in-app media player for image and hosted-video tags.
       if(canDeepLink){
         // Small hint that the card jumps the camera. Hidden visual
         // weight; cursor + hover highlight do the heavy lifting.
