@@ -147,7 +147,7 @@ export function PropertyModelsSection({
                 key={model.id}
                 value={model.id}
                 className={`rounded-lg border ${
-                  isPrimary ? "border-primary/60 bg-primary/5" : "border-border"
+                  isPrimary ? "border-primary/60" : "border-border"
                 }`}
               >
                 <AccordionTrigger className="px-4 py-3 hover:no-underline [&[data-state=open]>svg]:rotate-180">
