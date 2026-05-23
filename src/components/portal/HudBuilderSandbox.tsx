@@ -1427,13 +1427,9 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
         );
       }
 
-      const blob = new Blob([report.html], { type: "text/html" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
       const first = models[0];
       const rawName = (first?.propertyName || first?.name || "presentation").trim();
-      // Static-host-friendly: lowercase + dashes, e.g. `123-main-st-3dps-2026-04-30.html`.
+      // Static-host-friendly: lowercase + dashes, e.g. `123-main-st-3dps-2026-04-30`.
       // Static hosts (Netlify Drop, S3, brokerage CDNs) prefer kebab-case;
       // some don't preserve underscores in path segments.
       const safeName = rawName
@@ -1443,13 +1439,66 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
         .replace(/-+/g, "-")
         .replace(/^-+|-+$/g, "") || "presentation";
       const today = new Date().toISOString().slice(0, 10);
-      a.download = `${safeName}-3dps-${today}.html`;
+      const baseFilename = `${safeName}-3dps-${today}`;
+
+      // If the server resolved any Mattertag attachments, pack the HTML
+      // plus image files into a self-contained .zip folder. The exported
+      // bundle is then portable to Netlify, S3, the agent's own webserver,
+      // or just opened locally from disk — no platform dependency, and
+      // no inflated backend storage at scale.
+      const attachments = result.attachments ?? [];
+      let downloadBlob: Blob;
+      let downloadName: string;
+      if (attachments.length > 0) {
+        setDownloadStep("Packaging presentation bundle…");
+        const { zipSync, strToU8 } = await import("fflate");
+        const folder = baseFilename;
+        const zipInput: Record<string, Uint8Array> = {};
+        zipInput[`${folder}/index.html`] = strToU8(report.html);
+        for (const att of attachments) {
+          // Defensive: reject any path that tries to escape the folder.
+          if (
+            !att.path ||
+            att.path.includes("..") ||
+            att.path.startsWith("/") ||
+            att.path.includes("\\")
+          ) {
+            continue;
+          }
+          try {
+            const bin = atob(att.data);
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            zipInput[`${folder}/${att.path}`] = bytes;
+          } catch (decErr) {
+            console.warn("[download] skipped malformed attachment", att.path, decErr);
+          }
+        }
+        const zipped = zipSync(zipInput, { level: 6 });
+        // Copy into a fresh ArrayBuffer so Blob is portable on Safari.
+        const zipCopy = new Uint8Array(zipped);
+        downloadBlob = new Blob([zipCopy], { type: "application/zip" });
+        downloadName = `${baseFilename}.zip`;
+      } else {
+        downloadBlob = new Blob([report.html], { type: "text/html" });
+        downloadName = `${baseFilename}.html`;
+      }
+
+      const url = URL.createObjectURL(downloadBlob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = downloadName;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       clearDraft(providerSlug);
-      toast.success("Presentation downloaded");
+      toast.success(
+        attachments.length > 0
+          ? "Presentation package downloaded (.zip)"
+          : "Presentation downloaded",
+      );
+
     } catch (err) {
       console.error("Download failed:", err);
       // Surface the server error message when it's our Ask AI guard or
