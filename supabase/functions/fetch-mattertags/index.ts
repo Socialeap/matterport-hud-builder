@@ -458,6 +458,20 @@ function sanitizeMattertags(
 
 
     const ap = (e.anchorPosition ?? {}) as Record<string, unknown>;
+    const floorObj = e.floor as Record<string, unknown> | null | undefined;
+    const floorId = floorObj && typeof floorObj === "object"
+      ? String((floorObj as { id?: unknown }).id ?? "").trim() || null
+      : null;
+    const scanLinkIds: string[] = [];
+    if (Array.isArray(e.scanLinks)) {
+      for (const sl of e.scanLinks as Array<Record<string, unknown>>) {
+        const scan = sl && typeof sl === "object" ? sl.scan : null;
+        if (scan && typeof scan === "object") {
+          const sid = String((scan as { id?: unknown }).id ?? "").trim();
+          if (sid) scanLinkIds.push(sid);
+        }
+      }
+    }
     cleaned.push({
       id,
       label: String(e.label ?? "").slice(0, 200),
@@ -469,6 +483,10 @@ function sanitizeMattertags(
         z: Number(ap.z) || 0,
       },
     });
+    // Stash raw picker inputs on the tag using non-enumerable-style
+    // internal keys; stripped before serialization.
+    (cleaned[cleaned.length - 1] as unknown as Record<string, unknown>).__floorId = floorId;
+    (cleaned[cleaned.length - 1] as unknown as Record<string, unknown>).__scanLinkIds = scanLinkIds;
   }
   cleaned.sort((a, b) => b.anchorPosition.y - a.anchorPosition.y);
   return cleaned;
