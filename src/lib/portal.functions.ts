@@ -2969,8 +2969,12 @@ window.__openMattertagMedia=function(tagIdx,overrideUrl){
   var tag=tags[tagIdx]||{};
   var url=overrideUrl||tag.media||"";
   if(!url) return;
-  var isImage=/\\.(jpe?g|png|gif|webp|avif)(\\?|#|$)/i.test(url);
-  var isVideo=/\\.(mp4|webm|mov|m4v)(\\?|#|$)/i.test(url);
+  // Use the shared deterministic classifier so proxy-backed image URLs
+  // (e.g. /api/mp-attachment?...) open inside the in-app media player
+  // exactly like file-extension image URLs do.
+  var mtKind=classifyMediaUrl(url);
+  var isImage=mtKind==="image";
+  var isVideo=mtKind==="videoFile";
   if(isImage||isVideo){
     carouselMedia=[{
       id:"mt-"+(tag.id||tagIdx),
