@@ -204,6 +204,9 @@ export function HudPreview({
   type MediaKind = "image" | "videoFile" | "hostedVideo" | "external" | "unknown";
   const classifyMediaUrl = (u: string): MediaKind => {
     if (!u) return "external";
+    // Stable proxy for Matterport file attachments (re-signs the
+    // expiring CDN URL on each request). Always an image.
+    if (/^\/api\/mp-attachment\b/.test(u)) return "image";
     if (/^data:image\//i.test(u)) return "image";
     if (IMG_EXT.test(u)) return "image";
     if (VID_EXT.test(u)) return "videoFile";
