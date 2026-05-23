@@ -1237,6 +1237,86 @@ export const generatePresentation = createServerFn({ method: "POST" })
         };
       });
 
+    // ── Mattertag attachment bundling ────────────────────────────────
+    // Walk every property's mattertags and, for each `/api/mp-attachment?...`
+    // proxy URL, fetch the actual image bytes server-side and rewrite the
+    // tag's `media` to a RELATIVE path (`assets/mattertags/{m}/{id}.{ext}`).
+    // The bytes are returned to the client alongside the HTML so the
+    // browser can pack them into the downloaded `.zip` next to the HTML.
+    // Result: exports are fully self-contained — no platform dependency,
+    // no inflated backend storage, and Mattertag thumbnails work even from
+    // file:// or any static host (Netlify, S3, brokerage CDN, USB stick).
+    const MP_ATTACHMENT_URL_RE =
+      /^\/api\/mp-attachment\?(?=[^#]*\bm=([A-Za-z0-9]{11})\b)(?=[^#]*\bt=([A-Za-z0-9]{11})\b)(?=[^#]*\bid=([A-Za-z0-9]{16,64})\b)/;
+    type AttachmentRef = {
+      modelId: string;
+      mattertagId: string;
+      attachmentId: string;
+      tag: { media: string };
+    };
+    const refs: AttachmentRef[] = [];
+    for (const pe of propertyEntries) {
+      for (const tag of pe.mattertags) {
+        const m = MP_ATTACHMENT_URL_RE.exec(tag.media);
+        if (!m) continue;
+        refs.push({
+          modelId: m[1],
+          mattertagId: m[2],
+          attachmentId: m[3],
+          tag,
+        });
+      }
+    }
+
+    // Dedupe by (model, attachment) so a tag reused across views (or just
+    // duplicate fetches) only hits Matterport once.
+    const seen = new Map<string, AttachmentRef>();
+    for (const r of refs) {
+      const k = `${r.modelId}/${r.attachmentId}`;
+      if (!seen.has(k)) seen.set(k, r);
+    }
+    const uniqueFetches = Array.from(seen.values());
+
+    const bundledAttachments: Array<{ path: string; data: string }> = [];
+    const pathByKey = new Map<string, string>();
+    if (uniqueFetches.length > 0) {
+      const results = await mapWithConcurrency(uniqueFetches, 4, async (r) => {
+        const got = await fetchMattertagAttachment({
+          modelId: r.modelId,
+          mattertagId: r.mattertagId,
+          attachmentId: r.attachmentId,
+        });
+        return { ref: r, got };
+      });
+      for (const { ref, got } of results) {
+        const key = `${ref.modelId}/${ref.attachmentId}`;
+        if (!got) {
+          // On fetch failure, leave the URL as the platform proxy so the
+          // Builder preview still works; the standalone export will simply
+          // render that one card without a thumbnail.
+          continue;
+        }
+        const relPath = `assets/mattertags/${ref.modelId}/${ref.attachmentId}.${got.ext}`;
+        pathByKey.set(key, relPath);
+        // Base64-encode for safe transit over the server-fn RPC boundary.
+        // The client decodes once and feeds the raw bytes straight into
+        // fflate — no inflation in the final downloaded zip.
+        bundledAttachments.push({
+          path: relPath,
+          data: Buffer.from(got.bytes).toString("base64"),
+        });
+      }
+      // Rewrite every reference (not just the deduped first one) to the
+      // relative path. Tags whose attachment failed to fetch keep their
+      // original /api/mp-attachment URL.
+      for (const r of refs) {
+        const key = `${r.modelId}/${r.attachmentId}`;
+        const rel = pathByKey.get(key);
+        if (rel) r.tag.media = rel;
+      }
+    }
+
+
     const qaDatabase = data.qaDatabase ?? [];
     const hasQA = qaDatabase.length > 0;
 
