@@ -1041,7 +1041,7 @@ export const generatePresentation = createServerFn({ method: "POST" })
       password?: string;
     }) => data,
   )
-  .handler(async ({ data, context }): Promise<{ success: boolean; html?: string; error?: string; askAiWarning?: string }> => {
+  .handler(async ({ data, context }): Promise<{ success: boolean; html?: string; error?: string; askAiWarning?: string; attachments?: Array<{ path: string; data: string }> }> => {
     const { supabase, userId } = context;
 
     // Verify fulfillment
