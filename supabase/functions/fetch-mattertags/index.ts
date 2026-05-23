@@ -494,19 +494,6 @@ function sanitizeMattertags(
 
 // ── Sweep enrichment ────────────────────────────────────────────────
 //
-// Matterport's public `mattertags` field doesn't return any sweep
-// association, so we issue a second GraphQL request asking for the
-// model's sweep collection (id + 3D position) and compute the nearest
-// one per tag via Euclidean distance to anchorPosition. The runtime
-// uses that id in `&ss=<id>` to teleport WITHOUT opening the native
-// Mattertag dock — the whole reason we're not just emitting `&tag=`.
-//
-// Iterates a few plausible field names because Matterport's schema
-// has historically exposed sweeps under `locations` but may differ
-// across model versions. Returns [] on any failure so the caller
-// degrades silently.
-// ── Sweep enrichment ────────────────────────────────────────────────
-//
 // Picks the correct sweep per tag in this priority order:
 //   1. Matterport's own scanLinks association (the sweeps from which
 //      the tag was authored to be viewed).
