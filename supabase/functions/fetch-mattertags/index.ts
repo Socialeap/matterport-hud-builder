@@ -126,6 +126,20 @@ serve(async (req) => {
   // 3. Primary: POST with the hardcoded application key.
   let result = await tryGraphQL(matterportId, MATTERPORT_APP_KEY);
 
+  // 3a. Schema fallback: this model's Matterport API version may not
+  //     expose the modern `attachments`/`mediaType` fields. Retry once
+  //     with the legacy field set so we still return tags.
+  if (result.kind === "schema-mismatch") {
+    console.warn(
+      "[fetch-mattertags] extended query rejected; retrying legacy query",
+    );
+    result = await tryGraphQL(
+      matterportId,
+      MATTERPORT_APP_KEY,
+      MATTERPORT_GRAPHQL_QUERY_LEGACY,
+    );
+  }
+
   // 4. Self-heal: if Matterport ever rotates the SDK key, our hardcoded
   //    value will start returning 401/403. Re-scrape the current key
   //    from a live show page and retry once.
@@ -136,6 +150,13 @@ serve(async (req) => {
         "[fetch-mattertags] hardcoded app key rejected; retrying with scraped key",
       );
       result = await tryGraphQL(matterportId, freshKey);
+      if (result.kind === "schema-mismatch") {
+        result = await tryGraphQL(
+          matterportId,
+          freshKey,
+          MATTERPORT_GRAPHQL_QUERY_LEGACY,
+        );
+      }
     }
   }
 
