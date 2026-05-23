@@ -1894,10 +1894,16 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
                 type="file"
                 accept=".json,application/json"
                 className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) handleImportDraft(f);
-                  e.target.value = "";
+                onChange={async (e) => {
+                  const input = e.currentTarget;
+                  const f = input.files?.[0];
+                  if (!f) return;
+                  try {
+                    await handleImportDraft(f);
+                  } finally {
+                    // Reset only after the read completes so the File handle stays valid.
+                    input.value = "";
+                  }
                 }}
               />
               <Tooltip>
