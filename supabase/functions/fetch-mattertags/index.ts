@@ -277,7 +277,7 @@ async function tryGraphQL(
       return { kind: "schema" };
     }
 
-    const tags = sanitizeMattertags(payload);
+    const tags = sanitizeMattertags(payload, modelId);
     return { kind: "ok", tags };
   } catch (err) {
     clearTimeout(timer);
@@ -322,7 +322,10 @@ async function scrapeApplicationKey(modelId: string): Promise<string | null> {
   }
 }
 
-function sanitizeMattertags(payload: unknown): CleanMattertag[] {
+function sanitizeMattertags(
+  payload: unknown,
+  modelId: string,
+): CleanMattertag[] {
   const root = payload as { data?: { model?: { mattertags?: unknown } } } | null;
   const rawTags = root?.data?.model?.mattertags;
   if (!Array.isArray(rawTags)) return [];
@@ -339,12 +342,17 @@ function sanitizeMattertags(payload: unknown): CleanMattertag[] {
     // Modern tags store uploaded images under `fileAttachments`
     // (FileAttachment.downloadUrl) and linked photos/videos under
     // `externalAttachments` (ExternalAttachment.url/thumbnailUrl).
-    // Promote the first usable image so the renderer can show a
-    // thumbnail. Confirmed via Matterport GraphQL introspection.
+    // The `downloadUrl` returned here is a SHORT-LIVED signed CDN URL
+    // (cdn-2.matterport.com/attachments/<id>/...?t=...) that expires
+    // within ~24h. Storing it directly produces 410 Gone errors a day
+    // later. Instead, store a stable proxy URL that re-resolves the
+    // signed downloadUrl on demand via /api/mp-attachment.
     if (!media && Array.isArray(e.fileAttachments)) {
       for (const a of e.fileAttachments as Array<Record<string, unknown>>) {
         if (!a || typeof a !== "object") continue;
+        const attachmentId = String(a.id ?? "").trim();
         const url = String(a.downloadUrl ?? "").trim();
+        if (!/^[A-Za-z0-9]{16,64}$/.test(attachmentId)) continue;
         if (!/^https?:\/\//i.test(url)) continue;
         const mime = String(a.mimeType ?? "").toLowerCase();
         const filename = String(a.filename ?? "").toLowerCase();
@@ -354,11 +362,12 @@ function sanitizeMattertags(payload: unknown): CleanMattertag[] {
           /\.(jpe?g|png|gif|webp|avif)$/i.test(filename) ||
           /\/attachments\//i.test(url);
         if (looksImage) {
-          media = url.slice(0, 2048);
+          media = `/api/mp-attachment?m=${encodeURIComponent(modelId)}&t=${encodeURIComponent(id)}&id=${encodeURIComponent(attachmentId)}`;
           break;
         }
       }
     }
+
 
     if (!media && Array.isArray(e.externalAttachments)) {
       for (const a of e.externalAttachments as Array<Record<string, unknown>>) {

@@ -26,6 +26,7 @@ import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as EmailUnsubscribeRouteImport } from './routes/email/unsubscribe'
 import { Route as CardSlugRouteImport } from './routes/card.$slug'
 import { Route as ApiMpImageRouteImport } from './routes/api/mp-image'
+import { Route as ApiMpAttachmentRouteImport } from './routes/api/mp-attachment'
 import { Route as ApiMarketplaceFeedbackRouteImport } from './routes/api/marketplace-feedback'
 import { Route as ApiGeocodeDirectoryQueryRouteImport } from './routes/api/geocode-directory-query'
 import { Route as ApiGeocodeBrandingRouteImport } from './routes/api/geocode-branding'
@@ -147,6 +148,11 @@ const CardSlugRoute = CardSlugRouteImport.update({
 const ApiMpImageRoute = ApiMpImageRouteImport.update({
   id: '/api/mp-image',
   path: '/api/mp-image',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiMpAttachmentRoute = ApiMpAttachmentRouteImport.update({
+  id: '/api/mp-attachment',
+  path: '/api/mp-attachment',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiMarketplaceFeedbackRoute = ApiMarketplaceFeedbackRouteImport.update({
@@ -385,6 +391,7 @@ export interface FileRoutesByFullPath {
   '/api/geocode-branding': typeof ApiGeocodeBrandingRoute
   '/api/geocode-directory-query': typeof ApiGeocodeDirectoryQueryRoute
   '/api/marketplace-feedback': typeof ApiMarketplaceFeedbackRoute
+  '/api/mp-attachment': typeof ApiMpAttachmentRoute
   '/api/mp-image': typeof ApiMpImageRoute
   '/card/$slug': typeof CardSlugRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
@@ -439,6 +446,7 @@ export interface FileRoutesByTo {
   '/api/geocode-branding': typeof ApiGeocodeBrandingRoute
   '/api/geocode-directory-query': typeof ApiGeocodeDirectoryQueryRoute
   '/api/marketplace-feedback': typeof ApiMarketplaceFeedbackRoute
+  '/api/mp-attachment': typeof ApiMpAttachmentRoute
   '/api/mp-image': typeof ApiMpImageRoute
   '/card/$slug': typeof CardSlugRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
@@ -495,6 +503,7 @@ export interface FileRoutesById {
   '/api/geocode-branding': typeof ApiGeocodeBrandingRoute
   '/api/geocode-directory-query': typeof ApiGeocodeDirectoryQueryRoute
   '/api/marketplace-feedback': typeof ApiMarketplaceFeedbackRoute
+  '/api/mp-attachment': typeof ApiMpAttachmentRoute
   '/api/mp-image': typeof ApiMpImageRoute
   '/card/$slug': typeof CardSlugRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
@@ -553,6 +562,7 @@ export interface FileRouteTypes {
     | '/api/geocode-branding'
     | '/api/geocode-directory-query'
     | '/api/marketplace-feedback'
+    | '/api/mp-attachment'
     | '/api/mp-image'
     | '/card/$slug'
     | '/email/unsubscribe'
@@ -607,6 +617,7 @@ export interface FileRouteTypes {
     | '/api/geocode-branding'
     | '/api/geocode-directory-query'
     | '/api/marketplace-feedback'
+    | '/api/mp-attachment'
     | '/api/mp-image'
     | '/card/$slug'
     | '/email/unsubscribe'
@@ -662,6 +673,7 @@ export interface FileRouteTypes {
     | '/api/geocode-branding'
     | '/api/geocode-directory-query'
     | '/api/marketplace-feedback'
+    | '/api/mp-attachment'
     | '/api/mp-image'
     | '/card/$slug'
     | '/email/unsubscribe'
@@ -717,6 +729,7 @@ export interface RootRouteChildren {
   ApiGeocodeBrandingRoute: typeof ApiGeocodeBrandingRoute
   ApiGeocodeDirectoryQueryRoute: typeof ApiGeocodeDirectoryQueryRoute
   ApiMarketplaceFeedbackRoute: typeof ApiMarketplaceFeedbackRoute
+  ApiMpAttachmentRoute: typeof ApiMpAttachmentRoute
   ApiMpImageRoute: typeof ApiMpImageRoute
   CardSlugRoute: typeof CardSlugRoute
   EmailUnsubscribeRoute: typeof EmailUnsubscribeRoute
@@ -849,6 +862,13 @@ declare module '@tanstack/react-router' {
       path: '/api/mp-image'
       fullPath: '/api/mp-image'
       preLoaderRoute: typeof ApiMpImageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/mp-attachment': {
+      id: '/api/mp-attachment'
+      path: '/api/mp-attachment'
+      fullPath: '/api/mp-attachment'
+      preLoaderRoute: typeof ApiMpAttachmentRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/marketplace-feedback': {
@@ -1287,6 +1307,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiGeocodeBrandingRoute: ApiGeocodeBrandingRoute,
   ApiGeocodeDirectoryQueryRoute: ApiGeocodeDirectoryQueryRoute,
   ApiMarketplaceFeedbackRoute: ApiMarketplaceFeedbackRoute,
+  ApiMpAttachmentRoute: ApiMpAttachmentRoute,
   ApiMpImageRoute: ApiMpImageRoute,
   CardSlugRoute: CardSlugRoute,
   EmailUnsubscribeRoute: EmailUnsubscribeRoute,
