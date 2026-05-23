@@ -3134,22 +3134,40 @@ window.__openMattertagMedia=function(tagIdx,overrideUrl){
     mpBg.setAttribute("tabindex","-1");
   }
 
-  // Strip and re-append ?play=1&qs=1&tag=<sid>. Mirrors the pattern in
-  // rewriteIframeForTeleport (see below) so deep-link nav is fast
-  // regardless of the builder's autoplay/quickstart behavior config.
-  function buildMattertagDeepLink(baseUrl,tagId){
-    if(!baseUrl||!tagId) return "";
+  // Build the camera-teleport URL. Two paths, by design:
+  //
+  //   1. Tag has `ss` (sweep id, derived server-side at import time from
+  //      the nearest sweep to the tag's 3D anchor). We emit
+  //      `&ss=<id>` + optionally `&sr=<pan,tilt>`. Matterport teleports
+  //      the camera to that sweep WITHOUT opening the native Mattertag
+  //      dock — exactly what we need so our Property Features panel
+  //      stays the only overlay.
+  //
+  //   2. Tag has no `ss` (legacy drafts imported before the sweep-
+  //      enrichment shipped, or a model whose sweeps query failed).
+  //      Fall back to `&tag=<sid>` so the click still teleports.
+  //      Pair with `ts=0&dh=0` to suppress the dock + dollhouse hint
+  //      since that path WILL try to pop the native chrome.
+  function buildMattertagDeepLink(baseUrl,tag){
+    if(!baseUrl||!tag) return "";
+    var tagId=typeof tag==="string"?tag:(tag&&tag.id)||"";
+    var ss=typeof tag==="object"&&tag?tag.ss:"";
+    var sr=typeof tag==="object"&&tag?tag.sr:"";
+    if(!tagId&&!ss) return "";
     // Strip any pre-existing copies of the params we're about to set so
     // we never double-append (which Showcase rejects).
-    var stripped=String(baseUrl).replace(/[?&](tag|play|qs|ts|dh|hl)=[^&]*/g,function(m){
+    var stripped=String(baseUrl).replace(/[?&](tag|play|qs|ts|dh|hl|ss|sr)=[^&]*/g,function(m){
       return m.charAt(0)==="?"?"?":"";
     });
-    stripped=stripped.replace(/\\?&/g,"?").replace(/[?&]$/,"");
+    stripped=stripped.replace(/\?&/g,"?").replace(/[?&]$/,"");
     var sep=stripped.indexOf("?")===-1?"?":"&";
-    // play=1 + qs=1 trigger the navigation; tag=<id> selects the pose;
-    // ts=0 suppresses the title-strip / Mattertag dock chrome so the
-    // native panel doesn't pop in front of our Property Features panel;
-    // dh=0 suppresses the dollhouse hint overlay during the move.
+    if(ss){
+      var url=stripped+sep+"play=1&qs=1&ss="+encodeURIComponent(ss);
+      if(sr) url+="&sr="+encodeURIComponent(sr);
+      return url;
+    }
+    // Fallback: tag-based deep link. ts=0 + dh=0 hide the chrome the
+    // tag path otherwise pops over our custom panel.
     return stripped+sep+"play=1&qs=1&ts=0&dh=0&tag="+encodeURIComponent(tagId);
   }
 
