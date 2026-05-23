@@ -8,7 +8,7 @@ import { buildMatterportUrl } from "./types";
 import { NeighborhoodMapModal } from "./NeighborhoodMapModal";
 import { CinemaModal } from "./CinemaModal";
 import { MediaCarouselModal } from "./MediaCarouselModal";
-import { parseCinematicVideo } from "@/lib/video-embed";
+import { parseCinematicVideo, getVideoThumbnail } from "@/lib/video-embed";
 
 interface HudPreviewProps {
   models: PropertyModel[];
