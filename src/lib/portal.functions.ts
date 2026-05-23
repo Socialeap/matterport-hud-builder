@@ -1763,13 +1763,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 #live-tour-title{font-size:13px;font-weight:600;color:#fff;margin:0 0 12px}
 #live-tour-drawer .drawer-live-guide{margin-top:0;border-top:none;padding-top:0;margin-bottom:0}
 #live-tour-drawer .lg-stops{max-height:42vh;overflow-y:auto}
-.hud-live-tour-btn{position:relative;padding:5px 10px 5px 10px;border-radius:6px;font-size:12px;font-weight:600;border:1px solid rgba(255,255,255,0.18);color:#fff;cursor:pointer;background:rgba(255,255,255,0.08);transition:background 0.2s;display:inline-flex;align-items:center;gap:6px;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
-.hud-live-tour-btn:hover{background:rgba(255,255,255,0.16)}
+.hud-live-tour-btn{position:relative;padding:5px 12px;border-radius:6px;font-size:12px;font-weight:600;border:none;color:#fff;cursor:pointer;background:${escapeHtml(accentColor)};transition:opacity 0.2s;display:inline-flex;align-items:center;gap:6px}
+.hud-live-tour-btn:hover{opacity:0.85}
 .hud-live-tour-btn svg{width:13px;height:13px}
 .hud-live-tour-btn .lt-dot{width:7px;height:7px;border-radius:50%;background:transparent;display:inline-block}
-.hud-live-tour-btn.is-waiting .lt-dot{background:${escapeHtml(accentColor)};opacity:0.85}
-.hud-live-tour-btn.connected .lt-dot{background:${escapeHtml(accentColor)};animation:lt-pulse 1.6s ease-in-out infinite}
-@keyframes lt-pulse{0%,100%{box-shadow:0 0 0 0 ${escapeHtml(accentColor)}66}50%{box-shadow:0 0 0 6px ${escapeHtml(accentColor)}00}}
+.hud-live-tour-btn.is-waiting .lt-dot{background:#fff;opacity:0.9}
+.hud-live-tour-btn.connected .lt-dot{background:#fff;animation:lt-pulse 1.6s ease-in-out infinite}
+@keyframes lt-pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,255,255,0.5)}50%{box-shadow:0 0 0 6px rgba(255,255,255,0)}}
 @media(max-width:480px){.hud-live-tour-btn .hud-live-tour-label{display:none}}
 @media(max-width:640px){
   #agent-drawer,#live-tour-drawer{top:auto;bottom:0;left:0;right:0;width:100%;height:auto;max-height:85vh;border-radius:16px 16px 0 0;border-left:none;border-top:1px solid rgba(255,255,255,0.08);transform:translateY(100%)}

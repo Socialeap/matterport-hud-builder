@@ -87,11 +87,11 @@ export function PropertyModelsSection({
     ? `Recommended 2–4 · max ${maxModels} per presentation`
     : null;
 
-  // Single-open accordion state. Default to the primary (or first) model.
+  // Single-open accordion state. All sections start collapsed; the user
+  // chooses which property to expand and configure.
   const primaryFlagged = models.findIndex((m) => m.isPrimary);
   const effectivePrimaryIdx = primaryFlagged === -1 ? 0 : primaryFlagged;
-  const defaultOpenId = models[effectivePrimaryIdx]?.id ?? null;
-  const [openId, setOpenId] = useState<string | null>(defaultOpenId);
+  const [openId, setOpenId] = useState<string | null>(null);
 
   // When a new property is added, auto-open it.
   const prevCountRef = useRef(models.length);
@@ -103,12 +103,12 @@ export function PropertyModelsSection({
     prevCountRef.current = models.length;
   }, [models]);
 
-  // If the open id no longer exists (deleted), fall back to primary/first.
+  // If the open id no longer exists (deleted), collapse all.
   useEffect(() => {
     if (openId && !models.some((m) => m.id === openId)) {
-      setOpenId(models[effectivePrimaryIdx]?.id ?? null);
+      setOpenId(null);
     }
-  }, [models, openId, effectivePrimaryIdx]);
+  }, [models, openId]);
 
   const addButton = (
     <Button
@@ -147,7 +147,7 @@ export function PropertyModelsSection({
                 key={model.id}
                 value={model.id}
                 className={`rounded-lg border ${
-                  isPrimary ? "border-primary/60 bg-primary/5" : "border-border"
+                  isPrimary ? "border-primary/60" : "border-border"
                 }`}
               >
                 <AccordionTrigger className="px-4 py-3 hover:no-underline [&[data-state=open]>svg]:rotate-180">

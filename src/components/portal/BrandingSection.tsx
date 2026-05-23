@@ -49,7 +49,7 @@ export function BrandingSection({
 
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label>Accent Color</Label>
+            <Label>Accent Color <span className="text-muted-foreground font-normal">(buttons, links & highlights)</span></Label>
             <div className="flex items-center gap-2">
               <input
                 type="color"
