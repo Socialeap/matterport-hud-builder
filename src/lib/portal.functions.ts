@@ -3192,11 +3192,13 @@ window.__openMattertagMedia=function(tagIdx,overrideUrl){
   }
 
   // Public entry point: called by mattertag card click handlers.
-  window.__navigateToMattertag=function(tagId,cardEl){
-    if(!tagId) return;
+  // Accepts the full tag object (so ss/sr can flow through to the
+  // sweep-deep-link path); accepts a bare tag id for back-compat.
+  window.__navigateToMattertag=function(tagOrId,cardEl){
+    if(!tagOrId) return;
     var p=props[current];
     if(!p||!p.iframeUrl) return;
-    var deepLinkUrl=buildMattertagDeepLink(p.iframeUrl,tagId);
+    var deepLinkUrl=buildMattertagDeepLink(p.iframeUrl,tagOrId);
     if(!deepLinkUrl) return;
     // Bump token: any older in-flight load/timeout handlers no-op.
     navToken++;
