@@ -2738,6 +2738,8 @@ var VID_EXT_RE=/\\.(mp4|webm|mov|m4v)(\\?|#|$)/i;
 var PHOTO_HOST_RE=/(matterport|cloudfront|amazonaws|googleusercontent|imgix|cloudinary|imagekit|akamaized|fastly|wp\\.com|wixstatic|squarespace-cdn|cdninstagram)/i;
 function classifyMediaUrl(u){
   if(!u) return "external";
+  // Stable proxy for Matterport file attachments — always an image.
+  if(/^(?:https?:\\/\\/[^/]+)?\\/api\\/mp-attachment\\b/i.test(u)) return "image";
   if(/^data:image\\//i.test(u)) return "image";
   if(IMG_EXT_RE.test(u)) return "image";
   if(VID_EXT_RE.test(u)) return "videoFile";
