@@ -277,7 +277,7 @@ async function tryGraphQL(
       return { kind: "schema" };
     }
 
-    const tags = sanitizeMattertags(payload);
+    const tags = sanitizeMattertags(payload, modelId);
     return { kind: "ok", tags };
   } catch (err) {
     clearTimeout(timer);
