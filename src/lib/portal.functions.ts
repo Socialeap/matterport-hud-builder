@@ -6044,9 +6044,10 @@ if(frame){
     // of at the visitor's browser.
     assertRuntimeRegexSafety(html);
 
+    const attachments = bundledAttachments.length > 0 ? bundledAttachments : undefined;
     return askAiWarning
-      ? { success: true, html, askAiWarning }
-      : { success: true, html };
+      ? { success: true, html, askAiWarning, attachments }
+      : { success: true, html, attachments };
   });
 
 // ============================================================================
