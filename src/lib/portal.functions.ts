@@ -3018,7 +3018,7 @@ function renderMattertags(i){
         card.appendChild(hint);
         var activate=function(ev){
           if(ev&&ev.preventDefault) ev.preventDefault();
-          if(window.__navigateToMattertag) window.__navigateToMattertag(tag.id,card);
+          if(window.__navigateToMattertag) window.__navigateToMattertag(tag,card);
         };
         card.addEventListener("click",activate);
         card.addEventListener("keydown",function(ev){
