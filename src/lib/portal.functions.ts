@@ -2554,7 +2554,7 @@ function parseCinematicUrl(url){
     url=url.trim();
     if(/\\.mp4(\\?.*)?$/i.test(url)) return {kind:"mp4",src:url};
     var yt=url.match(/youtu\\.be\\/([\\w-]{6,})/i)||url.match(/youtube\\.com\\/(?:watch\\?(?:.*&)?v=|embed\\/|shorts\\/|v\\/)([\\w-]{6,})/i);
-    if(yt&&yt[1]) return {kind:"iframe",src:"https://www.youtube.com/embed/"+yt[1]+"?rel=0&modestbranding=1&playsinline=1&autoplay=1&mute=1"};
+    if(yt&&yt[1]) return {kind:"iframe",src:"https://www.youtube-nocookie.com/embed/"+yt[1]+"?rel=0&modestbranding=1&playsinline=1&autoplay=1&mute=1"};
 
     var vi=url.match(/player\\.vimeo\\.com\\/video\\/(\\d+)/i)||url.match(/vimeo\\.com\\/(?:video\\/)?(\\d+)/i);
     if(vi&&vi[1]) return {kind:"iframe",src:"https://player.vimeo.com/video/"+vi[1]+"?title=0&byline=0&portrait=0&autoplay=1"};

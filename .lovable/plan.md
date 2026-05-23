@@ -1,57 +1,59 @@
-## Goal
+# Fix: YouTube "Error 153" in Mattertag video player
 
-Polish the Property Features drawer cards in `src/components/portal/HudPreview.tsx`:
+## Root cause
 
-1. Move the per-card number badge from top-right (inside card) to center-left (outside the card edge).
-2. Remove the redundant "Open Media" button — the thumbnail is already clickable.
-3. Show a thumbnail for video tags (not just images), reusing the same click-to-open-internal-player behavior.
+The YouTube embed URL is built in two places, and both return `www.youtube.com/embed/<id>?...`:
 
-Scope is purely presentational — no schema, no importer, no backend changes.
+- `src/lib/video-embed.ts` → used by the React `CinemaModal` (admin preview, builder, public `/p/<slug>/demo`).
+- `src/lib/portal.functions.ts` (the standalone-HTML twin parser at line 2557) → used by the generated end-product HTML.
+
+Both files' own comments document that the fix for Error 153 ("Video player configuration error") is to embed via **`www.youtube-nocookie.com/embed/<id>`** — YouTube's official share-embed host, which is more tolerant of strict referrer policies and being nested inside another iframe (which is exactly the Lovable preview situation). Somewhere along the way the host was reverted to `www.youtube.com` while the rationale in the comments stayed. That is the regression.
+
+Recent UI work (card numbers, thumbnails, removing "Open Media") did not touch player wiring. The click path
+`thumb → openMattertagMedia(tag.media) → CinemaModal videoUrl={tag.media} → parseCinematicVideo` is intact. The broken piece is purely the embed URL string.
 
 ## Changes
 
-### 1. `src/lib/video-embed.ts` — add `getVideoThumbnail(url)`
+### 1. `src/lib/video-embed.ts` — YouTube branch of `parseCinematicVideo`
 
-Pure, synchronous helper that returns a thumbnail URL when one can be derived from the URL alone:
+Swap host to `www.youtube-nocookie.com` and keep all current params (rel, modestbranding, playsinline, autoplay, mute). Same params satisfy autoplay policy + iOS inline.
 
-- **YouTube** → `https://img.youtube.com/vi/<id>/hqdefault.jpg` (always available, no API call).
-- **Vimeo** → `https://vumbnail.com/<id>.jpg` (free public thumbnail proxy; falls back gracefully via `onError`).
-- **Wistia / Loom / direct mp4** → return `""` (no reliable synchronous thumbnail; card simply renders without one, same as today).
+```
+embedUrl: `https://www.youtube-nocookie.com/embed/${yt[1]}?rel=0&modestbranding=1&playsinline=1&autoplay=1&mute=1`
+```
 
-Reuses the same regex matchers already in `parseCinematicVideo` so we stay consistent with what the cinema modal can actually play.
+No change to `getVideoThumbnail` — `img.youtube.com/vi/<id>/hqdefault.jpg` is the right thumbnail host and is unaffected.
 
-### 2. `src/components/portal/HudPreview.tsx` — feature card render block (≈ lines 1022–1122)
+### 2. `src/lib/portal.functions.ts` — `parseCinematicUrl` (≈ line 2557)
 
-- **Thumbnail source** — extend the existing `thumbUrl` derivation:
-  ```
-  image media       → tag.media
-  else scraped image in description → that URL
-  else video media (YouTube/Vimeo)  → getVideoThumbnail(tag.media)
-  else                              → none
-  ```
-  Click handler stays `openMattertagMedia(mediaUrl, label, id)` — already routes images, YouTube, Vimeo, etc. through the internal player.
-- Add `onError` fallback on the `<img>` to hide the thumbnail wrapper if the video thumbnail 404s (matches current image behavior).
-- For video thumbnails, overlay a small play-triangle glyph on the thumbnail so users know it plays a video (reuses the same SVG currently inside the Open Media button).
+Same one-line host swap so the generated standalone HTML stays in sync:
 
-- **Remove the "Open Media" button block** entirely (current lines 1103–1119). The thumbnail click already opens the media player. Tags with no thumbnail (text-only / external-link-only) will simply show label + description + link chips, which is the correct outcome since there is nothing to play.
+```
+src:"https://www.youtube-nocookie.com/embed/"+yt[1]+"?rel=0&modestbranding=1&playsinline=1&autoplay=1&mute=1"
+```
 
-- **Move the number badge externally to center-left**:
-  - Replace `absolute right-2 top-2` with `absolute -left-3 top-1/2 -translate-y-1/2`.
-  - Add `pl-4` to the cards container (`flex flex-col gap-2.5`) so the badges sit in clear space inside the drawer's existing `p-4` (no horizontal clipping; the drawer only sets `overflow-y-auto`).
-  - Remove the now-unneeded `pr-7` from the label `<p>` (it was reserving space for the old top-right badge).
+No other code in `portal.functions.ts` needs to change. `classifyMediaUrl`, `isPlayableMedia`, `__openMattertagMedia`, and the cinema-modal `<iframe>` host wrapper are correct as-is.
 
-### 3. Verification
+### 3. Sanity-check the iframe attributes in `CinemaModal.tsx`
 
-- Test model with: image tag ("View Our Food Menu"), YouTube tag, text-only tag, external-link-only tag.
-- Confirm:
-  - Image tag — thumbnail renders, click opens internal image viewer, no Open Media button.
-  - YouTube tag — `img.youtube.com/vi/<id>/hqdefault.jpg` thumbnail renders with play overlay, click opens cinema modal, no Open Media button.
-  - Text-only tag — no thumbnail, no button, just label/description (unchanged).
-  - External link tag (social) — link chips render; no media button (unchanged).
-  - Number badges sit on the outside-left of each card, vertically centered, accent-colored, not clipped.
-- No changes to `fetch-mattertags`, `portal.functions.ts`, `types.ts`, or the standalone generation pipeline.
+Already correct: `allow="...; fullscreen"`, `allowFullScreen`, `referrerPolicy="strict-origin-when-cross-origin"`. The nocookie host accepts this combination; no change needed.
+
+## What is intentionally NOT touched
+
+- `openMattertagMedia` in `HudPreview.tsx` — wiring is correct.
+- The standalone-HTML `__openMattertagMedia` in `portal.functions.ts` — wiring is correct.
+- Vimeo / Wistia / Loom / mp4 branches — not affected by Error 153.
+- Thumbnail derivation, card number badge position, removal of the Open Media button — these stay as last shipped.
+
+## Verification (after switch to build mode)
+
+1. Open a YouTube Mattertag (e.g. the "View our Food Menu" tag's sibling video tag) from the Features drawer in the admin preview → CinemaModal opens, video plays muted, no Error 153.
+2. Same flow in `/p/<slug>/demo` (public demo, `fullViewport` HudPreview inside another iframe — the worst case for Error 153) → plays.
+3. Generate / re-publish a standalone end-product HTML, open it directly and inside an iframe → YouTube tag plays from the nocookie host.
+4. Vimeo tag still plays (regression check on the unchanged branch).
+5. Image tag still opens the carousel modal (regression check on the unchanged image path).
 
 ## Files changed
 
-- `src/lib/video-embed.ts` — add `getVideoThumbnail` export.
-- `src/components/portal/HudPreview.tsx` — card render block only.
+- `src/lib/video-embed.ts` — 1 line (YouTube embed host).
+- `src/lib/portal.functions.ts` — 1 line (YouTube embed host in `parseCinematicUrl`).
