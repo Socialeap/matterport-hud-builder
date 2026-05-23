@@ -203,8 +203,25 @@ serve(async (req) => {
   }
 
   if (result.kind === "ok") {
+    // Best-effort: enrich each tag with the id of its nearest sweep so
+    // the runtime can deep-link via `&ss=` (no native Mattertag dock)
+    // instead of `&tag=` (always pops the dock over our panel). If the
+    // sweeps query fails for any reason, tags are returned unenriched
+    // and the runtime falls back to the legacy tag-deep-link path.
+    try {
+      const sweeps = await fetchSweeps(matterportId, MATTERPORT_APP_KEY);
+      if (sweeps.length > 0) {
+        for (const tag of result.tags) {
+          const ss = nearestSweepId(tag.anchorPosition, sweeps);
+          if (ss) tag.ss = ss;
+        }
+      }
+    } catch (err) {
+      console.warn("[fetch-mattertags] sweep enrichment skipped:", err);
+    }
     return json({ success: true, mattertags: result.tags });
   }
+
   if (result.kind === "auth-failed") {
     return json({
       success: false,
