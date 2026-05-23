@@ -365,7 +365,7 @@ export function PublishDistributeSection({
               </h4>
               <p className="text-xs text-muted-foreground">
                 Click 'Browse files to upload' &gt;&gt; Select your presentation
-                file &gt;&gt; Signup (if you haven't already) &gt;&gt; select
+                folder &gt;&gt; Signup (if you haven't already) &gt;&gt; select
                 'Rename and Deploy' &gt;&gt; click 'Finish Later' &gt;&gt; Copy
                 &amp; click open your link.
               </p>
@@ -402,12 +402,12 @@ export function PublishDistributeSection({
             {netlifyOpened && !netlifyBlocked && (
               <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
                 <p className="font-medium text-foreground">
-                  Netlify is open. Upload your 3DPS file or package there,
+                  Netlify is open. Upload your 3DPS folder or package there,
                   then copy the live published URL and paste it below.
                 </p>
                 <ol className="mt-2 list-decimal space-y-0.5 pl-4">
                   <li>
-                    Drag your downloaded <strong>.zip</strong> file directly
+                    Drag your downloaded <strong>.zip</strong> package directly
                     onto Netlify — it auto-unpacks and hosts the folder.
                   </li>
                   <li>Wait for Netlify to publish the site.</li>
