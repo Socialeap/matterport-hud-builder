@@ -3172,7 +3172,7 @@ window.__openMattertagMedia=function(tagIdx,overrideUrl){
     var stripped=String(baseUrl).replace(/[?&](tag|play|qs|ts|dh|hl|ss|sr)=[^&]*/g,function(m){
       return m.charAt(0)==="?"?"?":"";
     });
-    stripped=stripped.replace(/\?&/g,"?").replace(/[?&]$/,"");
+    stripped=stripped.replace(/\\?&/g,"?").replace(/[?&]$/,"");
     var sep=stripped.indexOf("?")===-1?"?":"&";
     if(ss){
       var url=stripped+sep+"play=1&qs=1&ss="+encodeURIComponent(ss);
