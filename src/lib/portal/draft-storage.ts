@@ -129,17 +129,28 @@ export function exportDraftFile(providerSlug: string, state: DraftState): void {
   URL.revokeObjectURL(url);
 }
 
-export async function importDraftFile(file: File): Promise<DraftState | null> {
+export async function importDraftFile(file: File): Promise<DraftState> {
+  const text = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () =>
+      reject(
+        new Error(
+          `Could not read file (${reader.error?.name ?? "unknown"}). Re-select the file and try again.`,
+        ),
+      );
+    reader.readAsText(file);
+  });
+
+  let envelope: DraftEnvelope;
   try {
-    const text = await file.text();
-    const envelope = JSON.parse(text) as DraftEnvelope;
-    if (envelope.version !== DRAFT_VERSION) {
-      throw new Error(`Unsupported draft version: ${envelope.version}`);
-    }
-    if (!envelope.data) throw new Error("Draft file is missing data");
-    return envelope.data;
-  } catch (err) {
-    console.error("[draft-storage] Failed to import draft:", err);
-    return null;
+    envelope = JSON.parse(text) as DraftEnvelope;
+  } catch {
+    throw new Error("Draft file is not valid JSON.");
   }
+  if (envelope.version !== DRAFT_VERSION) {
+    throw new Error(`Unsupported draft version: ${envelope.version}`);
+  }
+  if (!envelope.data) throw new Error("Draft file is missing data.");
+  return envelope.data;
 }
