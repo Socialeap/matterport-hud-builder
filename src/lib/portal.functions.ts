@@ -11,6 +11,10 @@ import {
   PROTECTED_PBKDF2_ITERATIONS,
   type ProtectedConfigBlob,
 } from "./portal/protected-export";
+import {
+  fetchMattertagAttachment,
+  mapWithConcurrency,
+} from "./portal/mattertag-bundler.server";
 
 // Assembled Ask AI runtime JS — built once per process from the three
 // .mjs modules (intents, property-brain, logic). Injected verbatim into
