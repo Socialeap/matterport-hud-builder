@@ -3134,28 +3134,25 @@ window.__openMattertagMedia=function(tagIdx,overrideUrl){
     mpBg.setAttribute("tabindex","-1");
   }
 
-  // Build the camera-teleport URL. Two paths, by design:
+  // Build the camera-teleport URL. Two paths:
   //
-  //   1. Tag has `ss` (sweep id, derived server-side at import time from
-  //      the nearest sweep to the tag's 3D anchor). We emit
-  //      `&ss=<id>` + optionally `&sr=<pan,tilt>`. Matterport teleports
-  //      the camera to that sweep WITHOUT opening the native Mattertag
-  //      dock — exactly what we need so our Property Features panel
-  //      stays the only overlay.
+  //   1. Tag has 'ss' (sweep id, derived server-side at import time
+  //      from the nearest sweep to the tag 3D anchor). We emit
+  //      &ss=<id> + optionally &sr=<pan,tilt>. Matterport teleports
+  //      to that sweep WITHOUT opening the native Mattertag dock --
+  //      our Property Features panel stays the only overlay.
   //
-  //   2. Tag has no `ss` (legacy drafts imported before the sweep-
-  //      enrichment shipped, or a model whose sweeps query failed).
-  //      Fall back to `&tag=<sid>` so the click still teleports.
-  //      Pair with `ts=0&dh=0` to suppress the dock + dollhouse hint
-  //      since that path WILL try to pop the native chrome.
+  //   2. Tag has no 'ss' (legacy drafts, or a model whose sweeps
+  //      query failed). Fall back to &tag=<sid> so the click still
+  //      teleports. Pair with ts=0&dh=0 to suppress dock + dollhouse
+  //      hint since that path WILL try to pop native chrome.
   function buildMattertagDeepLink(baseUrl,tag){
     if(!baseUrl||!tag) return "";
     var tagId=typeof tag==="string"?tag:(tag&&tag.id)||"";
     var ss=typeof tag==="object"&&tag?tag.ss:"";
     var sr=typeof tag==="object"&&tag?tag.sr:"";
     if(!tagId&&!ss) return "";
-    // Strip any pre-existing copies of the params we're about to set so
-    // we never double-append (which Showcase rejects).
+    // Strip pre-existing copies of params we set so we never double-append.
     var stripped=String(baseUrl).replace(/[?&](tag|play|qs|ts|dh|hl|ss|sr)=[^&]*/g,function(m){
       return m.charAt(0)==="?"?"?":"";
     });
@@ -3166,8 +3163,6 @@ window.__openMattertagMedia=function(tagIdx,overrideUrl){
       if(sr) url+="&sr="+encodeURIComponent(sr);
       return url;
     }
-    // Fallback: tag-based deep link. ts=0 + dh=0 hide the chrome the
-    // tag path otherwise pops over our custom panel.
     return stripped+sep+"play=1&qs=1&ts=0&dh=0&tag="+encodeURIComponent(tagId);
   }
 
