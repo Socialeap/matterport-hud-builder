@@ -155,7 +155,7 @@ serve(async (req) => {
   }
 
   // 1. Parse + validate input.
-  let body: { matterportId?: unknown };
+  let body: { matterportId?: unknown; debug?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -165,6 +165,7 @@ serve(async (req) => {
   if (!MODEL_ID_RE.test(matterportId)) {
     return json({ success: false, error: "Invalid Matterport ID" }, 400);
   }
+  const debug = body.debug === true;
 
   // 2. Per-IP rate limit so a single abusive caller can't burn our
   //    outbound budget hammering Matterport.
