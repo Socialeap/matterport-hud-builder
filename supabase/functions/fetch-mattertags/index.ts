@@ -28,13 +28,28 @@ const MATTERPORT_ENDPOINT =
   "https://my.matterport.com/api/mp/models/graph";
 const MATTERPORT_APP_KEY = "h2f9mazn377g554gxkkay5aqd";
 
-// ── GraphQL query ─────────────────────────────────────────────────────
-// Minimal operation — only the fields persisted to MattertagData
-// (src/components/portal/types.ts). The Matterport schema returns
-// additional fields (color, enabled, stemEnabled, mediaType, etc.); we
-// intentionally ignore them. `includeDisabled: false` matches what the
-// SPA sends for default public viewing.
+// ── GraphQL queries ───────────────────────────────────────────────────
+// Modern Matterport tags created in the current editor store uploaded
+// images in the separate `attachments` connection — `media` is empty
+// for those. We ask for both; if the model's API version rejects the
+// `attachments`/`mediaType` fields with a validation error we
+// transparently retry with the legacy field set (LEGACY below).
 const MATTERPORT_GRAPHQL_QUERY = `query GetMattertags($modelId: ID!, $includeDisabled: Boolean!) {
+  model(id: $modelId) {
+    id
+    mattertags(includeDisabled: $includeDisabled) {
+      id
+      label
+      description
+      media
+      mediaType
+      attachments { src type }
+      anchorPosition { x y z }
+    }
+  }
+}`;
+
+const MATTERPORT_GRAPHQL_QUERY_LEGACY = `query GetMattertags($modelId: ID!, $includeDisabled: Boolean!) {
   model(id: $modelId) {
     id
     mattertags(includeDisabled: $includeDisabled) {
