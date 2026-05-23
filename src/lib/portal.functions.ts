@@ -1192,11 +1192,22 @@ export const generatePresentation = createServerFn({ method: "POST" })
           .map((t) => {
             const ap = (t && t.anchorPosition) || { x: 0, y: 0, z: 0 };
             const mediaRaw = String(t?.media ?? "").trim();
+            // Accept absolute http(s) URLs OR our same-origin Mattertag
+            // attachment proxy (/api/mp-attachment?m=&t=&id=) with strict
+            // 11-char model/tag IDs and a 16-64 char alphanumeric attachment
+            // id. Anything else (other relative paths, javascript:, data:,
+            // etc.) is dropped so a tampered draft can't smuggle URLs into
+            // the export.
+            const isHttp = /^https?:\/\//i.test(mediaRaw);
+            const isMpAttachment =
+              /^\/api\/mp-attachment\?(?=[^#]*\bm=[A-Za-z0-9]{11}\b)(?=[^#]*\bt=[A-Za-z0-9]{11}\b)(?=[^#]*\bid=[A-Za-z0-9]{16,64}\b)[^\s"'<>]{1,2048}$/.test(
+                mediaRaw,
+              );
             return {
               id: String(t?.id ?? "").slice(0, 64),
               label: String(t?.label ?? "").slice(0, 200),
               description: String(t?.description ?? "").slice(0, 4000),
-              media: /^https?:\/\//i.test(mediaRaw) ? mediaRaw.slice(0, 2048) : "",
+              media: isHttp || isMpAttachment ? mediaRaw.slice(0, 2048) : "",
               anchorPosition: {
                 x: Number(ap.x) || 0,
                 y: Number(ap.y) || 0,
@@ -2958,8 +2969,12 @@ window.__openMattertagMedia=function(tagIdx,overrideUrl){
   var tag=tags[tagIdx]||{};
   var url=overrideUrl||tag.media||"";
   if(!url) return;
-  var isImage=/\\.(jpe?g|png|gif|webp|avif)(\\?|#|$)/i.test(url);
-  var isVideo=/\\.(mp4|webm|mov|m4v)(\\?|#|$)/i.test(url);
+  // Use the shared deterministic classifier so proxy-backed image URLs
+  // (e.g. /api/mp-attachment?...) open inside the in-app media player
+  // exactly like file-extension image URLs do.
+  var mtKind=classifyMediaUrl(url);
+  var isImage=mtKind==="image";
+  var isVideo=mtKind==="videoFile";
   if(isImage||isVideo){
     carouselMedia=[{
       id:"mt-"+(tag.id||tagIdx),
