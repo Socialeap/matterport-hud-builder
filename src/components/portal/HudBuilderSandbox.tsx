@@ -2248,7 +2248,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
                 <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
                 <h3 className="text-lg font-semibold text-foreground">Preparing Your Download…</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  {downloadStep || "Generating your presentation file…"}
+                  {downloadStep || "Generating your presentation folder…"}
                 </p>
                 {downloadChecks.length > 0 && (
                   <ul className="mt-4 space-y-1.5 text-left text-xs">

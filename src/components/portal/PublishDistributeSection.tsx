@@ -326,7 +326,7 @@ export function PublishDistributeSection({
                 If you haven't already, Download Your Presentation Package
               </h4>
               <p className="text-xs text-muted-foreground">
-                Generate the publish-ready presentation file you'll upload to
+                Generate the publish-ready presentation folder you'll upload to
                 your host. Same flow as the main download button — kept here
                 so you can stay in this section.
               </p>
