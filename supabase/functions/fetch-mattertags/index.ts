@@ -86,7 +86,41 @@ interface CleanMattertag {
   description: string;
   media: string;
   anchorPosition: { x: number; y: number; z: number };
+  /**
+   * Matterport sweep id of the nearest sweep to anchorPosition. Set
+   * when the sweeps GraphQL query succeeds; omitted otherwise so the
+   * client falls back to the legacy `&tag=<id>` deep-link path.
+   *
+   * Purpose: emitting `&ss=<sweepId>` on Jump-to-view teleports the
+   * camera WITHOUT triggering Matterport's native Mattertag dock,
+   * which otherwise pops over our custom Property Features panel.
+   */
+  ss?: string;
 }
+
+// Try a handful of plausible field names for the sweeps collection on
+// the Matterport `Model` type. Matterport's public graph has shipped
+// `locations` historically; the iteration here makes us resilient if
+// the field name shifts. The query intentionally requests only the
+// minimum we need (id + position) so any schema mismatch fails fast
+// and we degrade cleanly to "no ss, fall back to tag=".
+const SWEEPS_QUERIES: ReadonlyArray<{ field: string; query: string }> = [
+  {
+    field: "locations",
+    query: `query GetSweeps($modelId: ID!) {
+      model(id: $modelId) { locations { id position { x y z } } }
+    }`,
+  },
+  {
+    field: "sweeps",
+    query: `query GetSweeps($modelId: ID!) {
+      model(id: $modelId) { sweeps { id position { x y z } } }
+    }`,
+  },
+];
+
+interface SweepPoint { id: string; x: number; y: number; z: number }
+
 
 type FetchResult =
   | { kind: "ok"; tags: CleanMattertag[] }
