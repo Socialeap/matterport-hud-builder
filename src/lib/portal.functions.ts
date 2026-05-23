@@ -1675,18 +1675,22 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 #mattertag-title{font-size:13px;font-weight:600;color:#fff;margin:0 0 12px;display:flex;align-items:center;gap:6px}
 #mattertag-title svg{width:13px;height:13px;color:rgba(255,255,255,0.7)}
 .mt-beta{font-size:10px;font-weight:500;color:rgba(255,255,255,0.55);margin-left:4px;letter-spacing:0.04em}
-#mattertag-list{display:flex;flex-direction:column;gap:10px}
+#mattertag-list{display:flex;flex-direction:column;gap:10px;padding-left:14px}
 .mt-card{position:relative;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.06);padding:10px 12px;transition:background 0.15s,border-color 0.15s}
 .mt-card-clickable{cursor:pointer}
 .mt-card-clickable:hover,.mt-card-clickable:focus-visible{background:rgba(255,255,255,0.10);border-color:${escapeHtml(accentColor)}66;outline:none}
 .mt-card-clickable:focus-visible{box-shadow:0 0 0 2px ${escapeHtml(accentColor)}99}
 .mt-card.is-loading{background:rgba(255,255,255,0.12)}
-.mt-card-number{position:absolute;top:8px;right:8px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:${escapeHtml(accentColor)};color:#fff;font-size:10px;font-weight:700;line-height:18px;text-align:center;letter-spacing:0.02em;pointer-events:none;box-shadow:0 1px 4px rgba(0,0,0,0.35);z-index:1}
-.mt-card-thumb-btn{display:block;width:100%;padding:0;margin:0 0 8px;border:none;background:transparent;cursor:pointer;border-radius:8px;overflow:hidden;font:inherit}
+.mt-card-number{position:absolute;top:50%;left:-12px;transform:translateY(-50%);min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:${escapeHtml(accentColor)};color:#fff;font-size:10px;font-weight:700;line-height:20px;text-align:center;letter-spacing:0.02em;pointer-events:none;box-shadow:0 1px 4px rgba(0,0,0,0.45);z-index:2}
+.mt-card-thumb-btn{position:relative;display:block;width:100%;padding:0;margin:0 0 8px;border:none;background:transparent;cursor:pointer;border-radius:8px;overflow:hidden;font:inherit}
 .mt-card-thumb-btn:focus-visible{outline:2px solid ${escapeHtml(accentColor)};outline-offset:2px}
 .mt-card-thumb{width:100%;aspect-ratio:16/9;border-radius:8px;background:rgba(0,0,0,0.4);object-fit:cover;display:block;border:1px solid rgba(255,255,255,0.06);transition:transform 0.2s}
 .mt-card-thumb-btn:hover .mt-card-thumb{transform:scale(1.02)}
-.mt-card-title{font-size:13px;font-weight:600;color:#fff;line-height:1.3;margin-bottom:4px;letter-spacing:-0.01em;padding-right:26px}
+.mt-card-play-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
+.mt-card-play-overlay span{display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;background:rgba(0,0,0,0.6);color:#fff;box-shadow:0 4px 12px rgba(0,0,0,0.45);border:1px solid rgba(255,255,255,0.3);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);transition:transform 0.2s}
+.mt-card-thumb-btn:hover .mt-card-play-overlay span{transform:scale(1.1)}
+.mt-card-play-overlay svg{width:14px;height:14px;transform:translateX(1px)}
+.mt-card-title{font-size:13px;font-weight:600;color:#fff;line-height:1.3;margin-bottom:4px;letter-spacing:-0.01em}
 .mt-card-desc{font-size:12px;line-height:1.55;color:rgba(255,255,255,0.84);white-space:pre-wrap;word-wrap:break-word;margin:0}
 .mt-card-links{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .mt-card-link-icon{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:6px;border:1px solid rgba(255,255,255,0.18);background:rgba(255,255,255,0.08);color:#fff;text-decoration:none;transition:background 0.15s,border-color 0.15s,color 0.15s}
@@ -2765,6 +2769,19 @@ function findImageUrlIn(s){
 function isImageUrl(u){ return classifyMediaUrl(u)==="image"; }
 function isVideoUrl(u){ return classifyMediaUrl(u)==="videoFile"; }
 function isLikelyImageUrl(u){ return classifyMediaUrl(u)==="image"; }
+// Synchronously derive a thumbnail URL from a hosted-video URL when the
+// provider exposes a deterministic image endpoint. Returns "" otherwise
+// (Wistia/Loom/direct mp4 — card simply renders without a thumb).
+function getVideoThumbnail(u){
+  if(!u) return "";
+  var s=String(u).trim();
+  if(!s) return "";
+  var yt=s.match(/youtu\\.be\\/([\\w-]{6,})/i)||s.match(/youtube\\.com\\/(?:watch\\?(?:.*&)?v=|embed\\/|shorts\\/|v\\/)([\\w-]{6,})/i);
+  if(yt&&yt[1]) return "https://img.youtube.com/vi/"+yt[1]+"/hqdefault.jpg";
+  var vi=s.match(/player\\.vimeo\\.com\\/video\\/(\\d+)/i)||s.match(/vimeo\\.com\\/(?:video\\/)?(\\d+)/i);
+  if(vi&&vi[1]) return "https://vumbnail.com/"+vi[1]+".jpg";
+  return "";
+}
 
 // Render the Mattertag cards for property index i. Also toggles the
 // HUD button visibility so properties without tags don't show an empty
@@ -2800,13 +2817,13 @@ function renderMattertags(i){
         var labelText=tag.label?String(tag.label):"this feature";
         card.setAttribute("aria-label","Jump to "+labelText+" in the 3D tour");
       }
-      // Numbered badge top-right (1-indexed render order).
+      // Numbered badge — center-left, external to the card.
       var numEl=document.createElement("span");
       numEl.className="mt-card-number";
       numEl.setAttribute("aria-hidden","true");
       numEl.textContent=String(idx+1);
       card.appendChild(numEl);
-      // Loading spinner overlay (now top-LEFT to avoid the number).
+      // Loading spinner overlay (top-LEFT inside card).
       var spinner=document.createElement("span");
       spinner.className="mt-card-spinner";
       spinner.setAttribute("aria-hidden","true");
@@ -2814,26 +2831,40 @@ function renderMattertags(i){
       // Description extraction (also drives both link icons and the
       // fallback thumbnail discovery).
       var parsed=extractMattertagLinks(tag.description||"");
-      // Resolve a thumbnail URL: prefer tag.media if it's plausibly an
-      // image (anything not provably video), otherwise scan the
-      // description for an image URL.
-      var thumbUrl=isLikelyImageUrl(tag.media)?tag.media:findImageUrlIn(tag.description||"");
-      // Media URL used by the "Open Media" CTA. Only set when tag.media
-      // is playable media (image/video/hosted) — social/external URLs
-      // surface as link icons only, NOT as a media button.
+      // Thumbnail resolution order:
+      //   image media        → tag.media
+      //   else scraped image in description
+      //   else hosted video  → provider thumbnail (YouTube/Vimeo)
+      var mediaKind=classifyMediaUrl(tag.media||"");
+      var mediaIsImage=mediaKind==="image";
+      var mediaIsVideo=mediaKind==="hostedVideo"||mediaKind==="videoFile";
+      var scrapedImg=mediaIsImage?"":findImageUrlIn(tag.description||"");
+      var videoThumb=(!mediaIsImage&&!scrapedImg&&mediaIsVideo)?getVideoThumbnail(tag.media):"";
+      var thumbUrl=mediaIsImage?tag.media:(scrapedImg||videoThumb);
+      var thumbIsVideo=!mediaIsImage&&!scrapedImg&&!!videoThumb;
+      // Media URL routed to the in-app player. Only set when tag.media
+      // is playable (image/video/hosted) — social/external URLs surface
+      // as link icons only.
       var mediaUrl=isPlayableMedia(tag.media)?tag.media:(thumbUrl||"");
-      if(thumbUrl){
+      if(thumbUrl&&mediaUrl){
         var thumbBtn=document.createElement("button");
         thumbBtn.type="button";
         thumbBtn.className="mt-card-thumb-btn";
-        thumbBtn.setAttribute("aria-label","Open "+(tag.label||"image")+" in media player");
+        thumbBtn.setAttribute("aria-label","Open "+(tag.label||"media")+" in media player");
         var img=document.createElement("img");
         img.className="mt-card-thumb";
-        img.alt=tag.label||"Highlight image";
+        img.alt=tag.label||"Highlight";
         img.loading="lazy";
         img.src=thumbUrl;
         img.onerror=function(){ if(thumbBtn.parentNode) thumbBtn.parentNode.removeChild(thumbBtn); };
         thumbBtn.appendChild(img);
+        if(thumbIsVideo){
+          var ov=document.createElement("span");
+          ov.className="mt-card-play-overlay";
+          ov.setAttribute("aria-hidden","true");
+          ov.innerHTML='<span><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="5 3 19 12 5 21"/></svg></span>';
+          thumbBtn.appendChild(ov);
+        }
         thumbBtn.addEventListener("click",function(ev){
           if(ev&&ev.stopPropagation) ev.stopPropagation();
           if(window.__openMattertagMedia) window.__openMattertagMedia(idx,mediaUrl);
@@ -2872,19 +2903,8 @@ function renderMattertags(i){
         }
         card.appendChild(linkRow);
       }
-      if(mediaUrl){
-        var cta=document.createElement("button");
-        cta.type="button";
-        cta.className="mt-card-cta";
-        cta.innerHTML='<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="5 3 19 12 5 21"/></svg><span>Open Media</span>';
-        cta.addEventListener("click",function(ev){
-          // Card-level click handler also fires the deep-link; stop
-          // propagation so opening media doesn't ALSO navigate the tour.
-          if(ev&&ev.stopPropagation) ev.stopPropagation();
-          if(window.__openMattertagMedia) window.__openMattertagMedia(idx,mediaUrl);
-        });
-        card.appendChild(cta);
-      }
+      // NOTE: "Open Media" CTA removed — the thumbnail click already
+      // opens the in-app media player for image and hosted-video tags.
       if(canDeepLink){
         // Small hint that the card jumps the camera. Hidden visual
         // weight; cursor + hover highlight do the heavy lifting.
