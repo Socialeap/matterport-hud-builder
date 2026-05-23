@@ -648,7 +648,7 @@ function PortalPage() {
               </div>
               <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
                 Preview your presentation. Once satisfied, make a one-time payment to download
-                a portable HTML presentation file you own and can host anywhere — no monthly
+                a single HTML presentation folder you own and can host anywhere — no monthly
                 fees to keep it online.
               </p>
             </div>
@@ -736,7 +736,7 @@ function PortalPage() {
               </h3>
               <ul className="mt-5 space-y-3">
                 <ComparisonRow accent={accent} text="Full white-label — your brand, front and center" />
-                <ComparisonRow accent={accent} text="You own the presentation file forever" />
+                <ComparisonRow accent={accent} text="You own the presentation folder forever" />
                 <ComparisonRow accent={accent} text="AI lead alerts straight to your inbox" />
                 <ComparisonRow accent={accent} text="One-time payment per downloaded presentation. No subscriptions." />
               </ul>
