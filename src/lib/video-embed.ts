@@ -90,3 +90,30 @@ export function parseCinematicVideo(rawUrl: string | undefined | null): ParsedVi
 
   return INVALID;
 }
+
+/**
+ * Synchronously derive a poster/thumbnail URL from a video URL when the
+ * provider exposes a deterministic image endpoint. Returns "" when no
+ * thumbnail can be derived without an async API call.
+ */
+export function getVideoThumbnail(rawUrl: string | undefined | null): string {
+  if (!rawUrl) return "";
+  const url = rawUrl.trim();
+  if (!url) return "";
+
+  const yt =
+    url.match(/youtu\.be\/([\w-]{6,})/i) ||
+    url.match(/youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|v\/)([\w-]{6,})/i);
+  if (yt?.[1]) {
+    return `https://img.youtube.com/vi/${yt[1]}/hqdefault.jpg`;
+  }
+
+  const vimeo =
+    url.match(/player\.vimeo\.com\/video\/(\d+)/i) ||
+    url.match(/vimeo\.com\/(?:video\/)?(\d+)/i);
+  if (vimeo?.[1]) {
+    return `https://vumbnail.com/${vimeo[1]}.jpg`;
+  }
+
+  return "";
+}
