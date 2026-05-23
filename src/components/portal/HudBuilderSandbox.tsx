@@ -587,16 +587,18 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
   }, [providerSlug, brandName, accentColor, hudBgColor, gateLabel, models, behaviors, agent, enhancements, access, logoDataUrl, faviconDataUrl, logoStorageUrl, faviconStorageUrl]);
 
   const handleImportDraft = useCallback(async (file: File) => {
-    const draft = await importDraftFile(file);
-    if (!draft) {
-      toast.error("Could not read draft file");
-      return;
+    try {
+      const draft = await importDraftFile(file);
+      applyDraft(draft);
+      draftHydratedRef.current = true;
+      setDraftBannerOpen(false);
+      setPendingDraft(null);
+      toast.success("Draft imported");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Could not read draft file";
+      toast.error(msg);
+      console.error("[draft-import] failed:", err);
     }
-    applyDraft(draft);
-    draftHydratedRef.current = true;
-    setDraftBannerOpen(false);
-    setPendingDraft(null);
-    toast.success("Draft imported");
   }, [applyDraft]);
 
   // Debounced autosave whenever any tracked field changes (after hydration).
