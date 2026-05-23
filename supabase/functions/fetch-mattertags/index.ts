@@ -219,23 +219,45 @@ serve(async (req) => {
   }
 
   if (result.kind === "ok") {
-    // Best-effort: enrich each tag with the id of its nearest sweep so
-    // the runtime can deep-link via `&ss=` (no native Mattertag dock)
-    // instead of `&tag=` (always pops the dock over our panel). If the
-    // sweeps query fails for any reason, tags are returned unenriched
-    // and the runtime falls back to the legacy tag-deep-link path.
+    // Enrich each tag with the correct sweep using scanLinks first,
+    // then same-floor nearest, then 3D fallback. `ss` MUST be the
+    // numeric sweep index — Matterport's `&ss=` param silently
+    // ignores the alphanumeric `id`.
     try {
       const sweeps = await fetchSweeps(matterportId, MATTERPORT_APP_KEY);
-      if (sweeps.length > 0) {
-        for (const tag of result.tags) {
-          const ss = nearestSweepId(tag.anchorPosition, sweeps);
-          if (ss) tag.ss = ss;
+      const tagsOut: CleanMattertag[] = [];
+      for (const tag of result.tags) {
+        const pick = sweeps.length > 0 ? pickSweepForTag(tag, sweeps) : null;
+        if (pick) {
+          tag.ss = String(pick.sweep.index);
         }
+        if (debug) {
+          const raw = tag as unknown as Record<string, unknown>;
+          tag._debug = {
+            pickedSweep: pick
+              ? {
+                  id: pick.sweep.id,
+                  index: pick.sweep.index,
+                  floorId: pick.sweep.floorId,
+                  position: { x: pick.sweep.x, y: pick.sweep.y, z: pick.sweep.z },
+                }
+              : { id: "", index: -1, floorId: null, position: { x: 0, y: 0, z: 0 } },
+            distance: pick?.distance ?? -1,
+            source: pick?.source ?? "none",
+            sweepCount: sweeps.length,
+            floorId: (raw.__floorId as string | null | undefined) ?? null,
+          };
+        }
+        tagsOut.push(stripInternalKeys(tag));
       }
+      return json({ success: true, mattertags: tagsOut });
     } catch (err) {
       console.warn("[fetch-mattertags] sweep enrichment skipped:", err);
+      return json({
+        success: true,
+        mattertags: result.tags.map(stripInternalKeys),
+      });
     }
-    return json({ success: true, mattertags: result.tags });
   }
 
   if (result.kind === "auth-failed") {
