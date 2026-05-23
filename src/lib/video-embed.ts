@@ -47,7 +47,7 @@ export function parseCinematicVideo(rawUrl: string | undefined | null): ParsedVi
     return {
       kind: "iframe",
       provider: "youtube",
-      embedUrl: `https://www.youtube.com/embed/${yt[1]}?rel=0&modestbranding=1&playsinline=1&autoplay=1&mute=1`,
+      embedUrl: `https://www.youtube-nocookie.com/embed/${yt[1]}?rel=0&modestbranding=1&playsinline=1&autoplay=1&mute=1`,
     };
   }
 
