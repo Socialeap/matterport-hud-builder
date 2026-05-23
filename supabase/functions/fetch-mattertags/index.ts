@@ -326,7 +326,29 @@ function sanitizeMattertags(payload: unknown): CleanMattertag[] {
     const id = String(e.id ?? "").slice(0, 64).trim();
     if (!id) continue;
     const mediaRaw = String(e.media ?? "").trim();
-    const media = /^https?:\/\//i.test(mediaRaw) ? mediaRaw.slice(0, 2048) : "";
+    let media = /^https?:\/\//i.test(mediaRaw) ? mediaRaw.slice(0, 2048) : "";
+
+    // Modern tags store uploaded images under `attachments` (the
+    // `media` field stays empty). Promote the first usable PHOTO
+    // attachment so the renderer can show a thumbnail.
+    if (!media && Array.isArray(e.attachments)) {
+      for (const a of e.attachments as Array<Record<string, unknown>>) {
+        if (!a || typeof a !== "object") continue;
+        const src = String(a.src ?? "").trim();
+        const type = String(a.type ?? "").toUpperCase();
+        if (!/^https?:\/\//i.test(src)) continue;
+        const looksImage =
+          type === "PHOTO" ||
+          type === "IMAGE" ||
+          /\.(jpe?g|png|gif|webp|avif)(\?|#|$)/i.test(src) ||
+          /\/attachments\//i.test(src);
+        if (looksImage) {
+          media = src.slice(0, 2048);
+          break;
+        }
+      }
+    }
+
     const ap = (e.anchorPosition ?? {}) as Record<string, unknown>;
     cleaned.push({
       id,
