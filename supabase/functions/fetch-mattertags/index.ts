@@ -191,7 +191,7 @@ async function tryGraphQL(
         "Accept-Language": "en-US,en;q=0.9",
       },
       body: JSON.stringify({
-        query: MATTERPORT_GRAPHQL_QUERY,
+        query,
         variables: { modelId, includeDisabled: false },
       }),
       signal: controller.signal,
