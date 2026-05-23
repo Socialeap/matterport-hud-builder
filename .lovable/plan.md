@@ -1,64 +1,57 @@
-# Make Mattertag photo thumbnails appear
+## Goal
 
-## Root cause
+Polish the Property Features drawer cards in `src/components/portal/HudPreview.tsx`:
 
-The preview renderer is already correct. `classifyMediaUrl()` matches `cdn-2.matterport.com/.../IMG_2956.jpg?t=…` (host matches `PHOTO_HOST=/matterport/i`, and `.jpg?` matches `IMG_EXT`), and `findImageUrlIn(description)` would also surface it. A thumbnail renders whenever the URL is anywhere in `tag.media` or `tag.description`.
+1. Move the per-card number badge from top-right (inside card) to center-left (outside the card edge).
+2. Remove the redundant "Open Media" button — the thumbnail is already clickable.
+3. Show a thumbnail for video tags (not just images), reusing the same click-to-open-internal-player behavior.
 
-The problem is upstream: that URL never reaches the saved data. Inspecting the most recent saved models in the database confirms it — every imported Mattertag has `"media": ""`, and no description contains a `cdn-2.matterport.com/attachments/…` URL. The mattertag the user has in the testing model that contains an inline image is stored on Matterport's side as a **photo attachment**, not as the GraphQL `media` field.
+Scope is purely presentational — no schema, no importer, no backend changes.
 
-The current GraphQL query in `supabase/functions/fetch-mattertags/index.ts` only requests:
+## Changes
 
-```graphql
-mattertags(includeDisabled: false) {
-  id label description media anchorPosition { x y z }
-}
-```
+### 1. `src/lib/video-embed.ts` — add `getVideoThumbnail(url)`
 
-Matterport's `media` field is a legacy single-URL slot used mostly by tags with rich/embedded media (YouTube, custom URLs). Tags created in the modern editor with an uploaded image store that image in the separate `attachments` connection — exactly the `cdn-2.matterport.com/attachments/<asset>/IMG_2956.jpg?t=…` shape the user pasted. The current importer never asks for `attachments`, so the photo never lands in `tag.media` and the card has nothing to display.
+Pure, synchronous helper that returns a thumbnail URL when one can be derived from the URL alone:
 
-## Fix
+- **YouTube** → `https://img.youtube.com/vi/<id>/hqdefault.jpg` (always available, no API call).
+- **Vimeo** → `https://vumbnail.com/<id>.jpg` (free public thumbnail proxy; falls back gracefully via `onError`).
+- **Wistia / Loom / direct mp4** → return `""` (no reliable synchronous thumbnail; card simply renders without one, same as today).
 
-Expand the importer to request `attachments` and fold the first image attachment URL into `media` when the legacy `media` field is empty. This keeps the existing `MattertagData` wire shape (`id / label / description / media / anchorPosition`) intact — no client, runtime, draft-storage, or end-product changes required.
+Reuses the same regex matchers already in `parseCinematicVideo` so we stay consistent with what the cinema modal can actually play.
 
-### 1. `supabase/functions/fetch-mattertags/index.ts`
+### 2. `src/components/portal/HudPreview.tsx` — feature card render block (≈ lines 1022–1122)
 
-- **Extend the GraphQL query** to request attachments:
-
-  ```graphql
-  mattertags(includeDisabled: false) {
-    id
-    label
-    description
-    media
-    mediaType                # "photo" | "video" | "rich" | "" — used to bias selection
-    attachments {            # modern uploaded media
-      src
-      type                   # "PHOTO" | "VIDEO" | "MODEL" | "PDF" | ...
-    }
-    anchorPosition { x y z }
-  }
+- **Thumbnail source** — extend the existing `thumbUrl` derivation:
   ```
+  image media       → tag.media
+  else scraped image in description → that URL
+  else video media (YouTube/Vimeo)  → getVideoThumbnail(tag.media)
+  else                              → none
+  ```
+  Click handler stays `openMattertagMedia(mediaUrl, label, id)` — already routes images, YouTube, Vimeo, etc. through the internal player.
+- Add `onError` fallback on the `<img>` to hide the thumbnail wrapper if the video thumbnail 404s (matches current image behavior).
+- For video thumbnails, overlay a small play-triangle glyph on the thumbnail so users know it plays a video (reuses the same SVG currently inside the Open Media button).
 
-  If the field name turns out to be `model` or returns errors on this Matterport API version, fall back gracefully: a GraphQL error on `attachments` should not fail the whole import — log it and keep the legacy `media`-only path working.
+- **Remove the "Open Media" button block** entirely (current lines 1103–1119). The thumbnail click already opens the media player. Tags with no thumbnail (text-only / external-link-only) will simply show label + description + link chips, which is the correct outcome since there is nothing to play.
 
-- **Sanitization** (in `sanitizeMattertags`): after computing the legacy `media`, when `media` is empty, scan `attachments[]` for the first entry whose `type` is `PHOTO` (or whose `src` is an `https://` URL passing a simple image-host check covering `cdn-2.matterport.com`, `cdn.matterport.com`, and generic image extensions). Promote that `src` into `media`. Cap length at 2048 chars as today; drop non-https values.
+- **Move the number badge externally to center-left**:
+  - Replace `absolute right-2 top-2` with `absolute -left-3 top-1/2 -translate-y-1/2`.
+  - Add `pl-4` to the cards container (`flex flex-col gap-2.5`) so the badges sit in clear space inside the drawer's existing `p-4` (no horizontal clipping; the drawer only sets `overflow-y-auto`).
+  - Remove the now-unneeded `pr-7` from the label `<p>` (it was reserving space for the old top-right badge).
 
-  Keep the existing rule that `media` must be a real `https://` URL; never store relative paths.
+### 3. Verification
 
-- **No schema change** to the response: we still ship `{id, label, description, media, anchorPosition}` to the client. This means zero changes to `MattertagData`, draft storage, the saved-model JSON shape, the preview, or the generated end-product HTML.
+- Test model with: image tag ("View Our Food Menu"), YouTube tag, text-only tag, external-link-only tag.
+- Confirm:
+  - Image tag — thumbnail renders, click opens internal image viewer, no Open Media button.
+  - YouTube tag — `img.youtube.com/vi/<id>/hqdefault.jpg` thumbnail renders with play overlay, click opens cinema modal, no Open Media button.
+  - Text-only tag — no thumbnail, no button, just label/description (unchanged).
+  - External link tag (social) — link chips render; no media button (unchanged).
+  - Number badges sit on the outside-left of each card, vertically centered, accent-colored, not clipped.
+- No changes to `fetch-mattertags`, `portal.functions.ts`, `types.ts`, or the standalone generation pipeline.
 
-### 2. No frontend changes
+## Files changed
 
-`HudPreview.tsx` already classifies `cdn-2.matterport.com/...jpg?t=...` as an image and renders a thumbnail when `tag.media` is set. The end-product runtime in `src/lib/portal.functions.ts` does the same. Once the importer fills `tag.media`, both surfaces light up automatically.
-
-### 3. Validate
-
-- Re-import Mattertags for the testing model. Confirm in the DB (or via the import modal preview) that the photo-tag's `media` now starts with `https://cdn-2.matterport.com/attachments/…`.
-- Reload the property and confirm the Mattertag card shows the thumbnail and that clicking it opens the in-app media carousel (the existing playable-media gate handles this).
-- Confirm social-only tags (Facebook/Instagram link tags) are unchanged: still no thumbnail, still no Open Media button, still get the link-icon chips.
-
-## Technical notes
-
-- The Matterport public/anonymous GraphQL endpoint exposes `Mattertag.attachments` on most modern models; the older `mediaType` "photo" tags with the inline image use it. If a particular model returns `null`/empty attachments, the function silently falls back to today's behavior (no regression).
-- Edge function changes deploy automatically; no `supabase/config.toml` edits needed.
-- No migration, no env vars, no UI changes, no end-product HTML changes.
+- `src/lib/video-embed.ts` — add `getVideoThumbnail` export.
+- `src/components/portal/HudPreview.tsx` — card render block only.

@@ -8,7 +8,7 @@ import { buildMatterportUrl } from "./types";
 import { NeighborhoodMapModal } from "./NeighborhoodMapModal";
 import { CinemaModal } from "./CinemaModal";
 import { MediaCarouselModal } from "./MediaCarouselModal";
-import { parseCinematicVideo } from "@/lib/video-embed";
+import { parseCinematicVideo, getVideoThumbnail } from "@/lib/video-embed";
 
 interface HudPreviewProps {
   models: PropertyModel[];
@@ -1019,18 +1019,25 @@ export function HudPreview({
               <span className="ml-0.5 text-[10px] font-medium tracking-wider text-white/55">(beta)</span>
             </h3>
             {hasMattertags ? (
-              <div className="flex flex-col gap-2.5">
+              <div className="flex flex-col gap-2.5 pl-4">
                 {mattertags.map((tag, idx) => {
                   const tagMediaKind = classifyMediaUrl(tag.media || "");
                   const tagMediaIsImage = tagMediaKind === "image";
+                  const tagMediaIsVideo = tagMediaKind === "hostedVideo" || tagMediaKind === "videoFile";
                   const parsed = extractMattertagLinks(tag.description || "");
-                  // Thumbnail: tag.media if it's an image, otherwise scan
-                  // description URLs for the first classifier-confirmed image.
+                  // Thumbnail resolution order:
+                  //   image media → tag.media
+                  //   else image URL inside description
+                  //   else hosted-video media → provider thumbnail (YouTube/Vimeo)
                   const scrapedImage = !tagMediaIsImage ? findImageUrlIn(tag.description || "", classifyMediaUrl) : "";
-                  const thumbUrl = tagMediaIsImage ? tag.media : scrapedImage;
-                  // Open Media button URL: only if tag.media is playable
-                  // media (image/video/hosted). Social/external URLs are
-                  // surfaced as link icons above, not as a media button.
+                  const videoThumb = !tagMediaIsImage && !scrapedImage && tagMediaIsVideo
+                    ? getVideoThumbnail(tag.media)
+                    : "";
+                  const thumbUrl = tagMediaIsImage
+                    ? tag.media
+                    : (scrapedImage || videoThumb);
+                  const thumbIsVideo = !tagMediaIsImage && !scrapedImage && Boolean(videoThumb);
+                  // Click target: playable media if available, else thumb URL.
                   const mediaUrl = isPlayableMedia(tag.media || "") ? tag.media : (thumbUrl || "");
                   return (
                     <div
@@ -1039,32 +1046,49 @@ export function HudPreview({
                     >
                       <span
                         aria-hidden="true"
-                        className="pointer-events-none absolute right-2 top-2 z-10 min-w-[18px] rounded-full px-1.5 text-center text-[10px] font-bold leading-[18px] text-white shadow"
+                        className="pointer-events-none absolute -left-3 top-1/2 z-10 min-w-[20px] -translate-y-1/2 rounded-full px-1.5 text-center text-[10px] font-bold leading-[20px] text-white shadow"
                         style={{ backgroundColor: accentColor }}
                       >
                         {idx + 1}
                       </span>
-                      {thumbUrl && (
+                      {thumbUrl && mediaUrl && (
                         <button
                           type="button"
                           onClick={() => openMattertagMedia(mediaUrl, tag.label || "", tag.id)}
-                          className="mb-2 block w-full overflow-hidden rounded-md border border-white/10 bg-black/40 p-0"
-                          aria-label={`Open ${tag.label || "image"} in media player`}
+                          className="group relative mb-2 block w-full overflow-hidden rounded-md border border-white/10 bg-black/40 p-0"
+                          aria-label={`Open ${tag.label || "media"} in media player`}
                         >
                           <img
                             src={thumbUrl}
-                            alt={tag.label || "Highlight image"}
+                            alt={tag.label || "Highlight"}
                             loading="lazy"
-                            className="block aspect-video w-full object-cover transition-transform hover:scale-[1.02]"
+                            className="block aspect-video w-full object-cover transition-transform group-hover:scale-[1.02]"
                             onError={(e) => {
                               const btn = (e.currentTarget as HTMLImageElement).parentElement;
                               if (btn) (btn as HTMLElement).style.display = "none";
                             }}
                           />
+                          {thumbIsVideo && (
+                            <span
+                              aria-hidden="true"
+                              className="pointer-events-none absolute inset-0 flex items-center justify-center"
+                            >
+                              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white shadow-lg ring-1 ring-white/30 backdrop-blur-sm transition-transform group-hover:scale-110">
+                                <svg
+                                  viewBox="0 0 24 24"
+                                  fill="currentColor"
+                                  aria-hidden="true"
+                                  className="h-3.5 w-3.5 translate-x-[1px]"
+                                >
+                                  <polygon points="5 3 19 12 5 21" />
+                                </svg>
+                              </span>
+                            </span>
+                          )}
                         </button>
                       )}
                       {tag.label && (
-                        <p className="mb-1 pr-7 text-[13px] font-semibold leading-snug text-white">
+                        <p className="mb-1 text-[13px] font-semibold leading-snug text-white">
                           {tag.label}
                         </p>
                       )}
@@ -1085,7 +1109,6 @@ export function HudPreview({
                               aria-label={`Open link in new tab: ${href}`}
                               onClick={(ev) => ev.stopPropagation()}
                               className="inline-flex h-[26px] w-[26px] items-center justify-center rounded-md border border-white/20 bg-white/10 text-white transition-colors hover:text-white"
-                              style={{ borderColor: undefined }}
                               onMouseEnter={(e) => {
                                 (e.currentTarget as HTMLAnchorElement).style.backgroundColor = accentColor;
                                 (e.currentTarget as HTMLAnchorElement).style.borderColor = accentColor;
@@ -1100,27 +1123,11 @@ export function HudPreview({
                           ))}
                         </div>
                       )}
-                      {mediaUrl && (
-                        <button
-                          type="button"
-                          onClick={() => openMattertagMedia(mediaUrl, tag.label || "", tag.id)}
-                          className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-white/20 bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-white transition-colors hover:bg-white/20"
-                        >
-                          <svg
-                            viewBox="0 0 24 24"
-                            fill="currentColor"
-                            aria-hidden="true"
-                            className="h-2.5 w-2.5"
-                          >
-                            <polygon points="5 3 19 12 5 21" />
-                          </svg>
-                          Open Media
-                        </button>
-                      )}
                     </div>
                   );
                 })}
               </div>
+
             ) : (
               <p className="text-[12px] italic text-white/50">
                 No highlights for this property yet.
