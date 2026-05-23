@@ -1212,6 +1212,13 @@ export const generatePresentation = createServerFn({ method: "POST" })
               /^\/api\/mp-attachment\?(?=[^#]*\bm=[A-Za-z0-9]{11}\b)(?=[^#]*\bt=[A-Za-z0-9]{11}\b)(?=[^#]*\bid=[A-Za-z0-9]{16,64}\b)[^\s"'<>]{1,2048}$/.test(
                 mediaRaw,
               );
+            // Sweep id (ss) + framing rotation (sr) are sanitized to
+            // Matterport's URL alphabet so a tampered draft can't inject
+            // arbitrary query content into the runtime deep-link URL.
+            const ssRaw = String(t?.ss ?? "").trim();
+            const ss = /^[A-Za-z0-9_-]{1,64}$/.test(ssRaw) ? ssRaw : "";
+            const srRaw = String(t?.sr ?? "").trim();
+            const sr = /^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/.test(srRaw) ? srRaw : "";
             return {
               id: String(t?.id ?? "").slice(0, 64),
               label: String(t?.label ?? "").slice(0, 200),
@@ -1222,6 +1229,8 @@ export const generatePresentation = createServerFn({ method: "POST" })
                 y: Number(ap.y) || 0,
                 z: Number(ap.z) || 0,
               },
+              ...(ss ? { ss } : {}),
+              ...(sr ? { sr } : {}),
             };
           })
           .filter((t) => t.id.length > 0)
