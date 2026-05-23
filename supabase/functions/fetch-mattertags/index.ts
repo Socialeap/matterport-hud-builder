@@ -28,13 +28,28 @@ const MATTERPORT_ENDPOINT =
   "https://my.matterport.com/api/mp/models/graph";
 const MATTERPORT_APP_KEY = "h2f9mazn377g554gxkkay5aqd";
 
-// ── GraphQL query ─────────────────────────────────────────────────────
-// Minimal operation — only the fields persisted to MattertagData
-// (src/components/portal/types.ts). The Matterport schema returns
-// additional fields (color, enabled, stemEnabled, mediaType, etc.); we
-// intentionally ignore them. `includeDisabled: false` matches what the
-// SPA sends for default public viewing.
+// ── GraphQL queries ───────────────────────────────────────────────────
+// Modern Matterport tags created in the current editor store uploaded
+// images in the separate `attachments` connection — `media` is empty
+// for those. We ask for both; if the model's API version rejects the
+// `attachments`/`mediaType` fields with a validation error we
+// transparently retry with the legacy field set (LEGACY below).
 const MATTERPORT_GRAPHQL_QUERY = `query GetMattertags($modelId: ID!, $includeDisabled: Boolean!) {
+  model(id: $modelId) {
+    id
+    mattertags(includeDisabled: $includeDisabled) {
+      id
+      label
+      description
+      media
+      mediaType
+      attachments { src type }
+      anchorPosition { x y z }
+    }
+  }
+}`;
+
+const MATTERPORT_GRAPHQL_QUERY_LEGACY = `query GetMattertags($modelId: ID!, $includeDisabled: Boolean!) {
   model(id: $modelId) {
     id
     mattertags(includeDisabled: $includeDisabled) {
@@ -71,7 +86,8 @@ type FetchResult =
   | { kind: "not-found" }
   | { kind: "timeout" }
   | { kind: "network" }
-  | { kind: "schema" };
+  | { kind: "schema" }
+  | { kind: "schema-mismatch" };
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -110,6 +126,20 @@ serve(async (req) => {
   // 3. Primary: POST with the hardcoded application key.
   let result = await tryGraphQL(matterportId, MATTERPORT_APP_KEY);
 
+  // 3a. Schema fallback: this model's Matterport API version may not
+  //     expose the modern `attachments`/`mediaType` fields. Retry once
+  //     with the legacy field set so we still return tags.
+  if (result.kind === "schema-mismatch") {
+    console.warn(
+      "[fetch-mattertags] extended query rejected; retrying legacy query",
+    );
+    result = await tryGraphQL(
+      matterportId,
+      MATTERPORT_APP_KEY,
+      MATTERPORT_GRAPHQL_QUERY_LEGACY,
+    );
+  }
+
   // 4. Self-heal: if Matterport ever rotates the SDK key, our hardcoded
   //    value will start returning 401/403. Re-scrape the current key
   //    from a live show page and retry once.
@@ -120,6 +150,13 @@ serve(async (req) => {
         "[fetch-mattertags] hardcoded app key rejected; retrying with scraped key",
       );
       result = await tryGraphQL(matterportId, freshKey);
+      if (result.kind === "schema-mismatch") {
+        result = await tryGraphQL(
+          matterportId,
+          freshKey,
+          MATTERPORT_GRAPHQL_QUERY_LEGACY,
+        );
+      }
     }
   }
 
@@ -155,6 +192,7 @@ serve(async (req) => {
 async function tryGraphQL(
   modelId: string,
   appKey: string,
+  query: string = MATTERPORT_GRAPHQL_QUERY,
 ): Promise<FetchResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -175,7 +213,7 @@ async function tryGraphQL(
         "Accept-Language": "en-US,en;q=0.9",
       },
       body: JSON.stringify({
-        query: MATTERPORT_GRAPHQL_QUERY,
+        query,
         variables: { modelId, includeDisabled: false },
       }),
       signal: controller.signal,
@@ -216,6 +254,17 @@ async function tryGraphQL(
         firstMsg.includes("permission")
       ) {
         return { kind: "auth-failed" };
+      }
+      // Schema validation error (e.g. this model's API rejects
+      // `attachments` or `mediaType`). Signal a typed result so the
+      // caller can retry with the legacy query.
+      if (
+        firstMsg.includes("cannot query field") ||
+        firstMsg.includes("unknown field") ||
+        firstMsg.includes("undefined field") ||
+        firstMsg.includes("validation")
+      ) {
+        return { kind: "schema-mismatch" };
       }
       return { kind: "schema" };
     }
@@ -277,7 +326,29 @@ function sanitizeMattertags(payload: unknown): CleanMattertag[] {
     const id = String(e.id ?? "").slice(0, 64).trim();
     if (!id) continue;
     const mediaRaw = String(e.media ?? "").trim();
-    const media = /^https?:\/\//i.test(mediaRaw) ? mediaRaw.slice(0, 2048) : "";
+    let media = /^https?:\/\//i.test(mediaRaw) ? mediaRaw.slice(0, 2048) : "";
+
+    // Modern tags store uploaded images under `attachments` (the
+    // `media` field stays empty). Promote the first usable PHOTO
+    // attachment so the renderer can show a thumbnail.
+    if (!media && Array.isArray(e.attachments)) {
+      for (const a of e.attachments as Array<Record<string, unknown>>) {
+        if (!a || typeof a !== "object") continue;
+        const src = String(a.src ?? "").trim();
+        const type = String(a.type ?? "").toUpperCase();
+        if (!/^https?:\/\//i.test(src)) continue;
+        const looksImage =
+          type === "PHOTO" ||
+          type === "IMAGE" ||
+          /\.(jpe?g|png|gif|webp|avif)(\?|#|$)/i.test(src) ||
+          /\/attachments\//i.test(src);
+        if (looksImage) {
+          media = src.slice(0, 2048);
+          break;
+        }
+      }
+    }
+
     const ap = (e.anchorPosition ?? {}) as Record<string, unknown>;
     cleaned.push({
       id,
