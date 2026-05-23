@@ -1762,21 +1762,23 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 }
 
 /* ── Property Features (Mattertag) drawer ─────────────────────────── */
-#mattertag-drawer{position:fixed;top:0;right:0;width:min(340px,92vw);height:100%;z-index:2000;overflow-y:auto;transform:translateX(100%);transition:transform 0.3s ease;background:rgba(10,12,20,0.6);backdrop-filter:blur(28px) saturate(160%);-webkit-backdrop-filter:blur(28px) saturate(160%);border-left:1px solid rgba(255,255,255,0.06);box-shadow:-8px 0 32px rgba(0,0,0,0.22)}
+:root{--hud-header-h:56px}
+#mattertag-drawer{position:fixed;top:var(--hud-header-h);right:0;width:min(340px,92vw);height:calc(100% - var(--hud-header-h));z-index:2000;display:flex;flex-direction:column;overflow:hidden;transform:translateX(100%);transition:transform 0.3s ease;background:rgba(10,12,20,0.6);backdrop-filter:blur(28px) saturate(160%);-webkit-backdrop-filter:blur(28px) saturate(160%);border-left:1px solid rgba(255,255,255,0.06);box-shadow:-8px 0 32px rgba(0,0,0,0.22)}
 #mattertag-drawer.open{transform:translateX(0)}
-#mattertag-inner{padding:14px 14px 24px;position:relative}
-#mattertag-close{position:absolute;top:10px;right:10px;width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,0.1);border:none;color:rgba(255,255,255,0.7);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.2s}
+#mattertag-inner{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;position:relative}
+#mattertag-header{position:sticky;top:0;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 14px;background:rgba(10,12,20,0.85);-webkit-backdrop-filter:blur(20px) saturate(160%);backdrop-filter:blur(20px) saturate(160%);border-bottom:1px solid rgba(255,255,255,0.08);z-index:5;flex:0 0 auto}
+#mattertag-close{width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,0.1);border:none;color:rgba(255,255,255,0.7);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.2s;flex-shrink:0}
 #mattertag-close:hover{background:rgba(255,255,255,0.2)}
-#mattertag-title{font-size:13px;font-weight:600;color:#fff;margin:0 0 12px;display:flex;align-items:center;gap:6px}
+#mattertag-title{font-size:13px;font-weight:600;color:#fff;margin:0;display:flex;align-items:center;gap:6px}
 #mattertag-title svg{width:13px;height:13px;color:rgba(255,255,255,0.7)}
 .mt-beta{font-size:10px;font-weight:500;color:rgba(255,255,255,0.55);margin-left:4px;letter-spacing:0.04em}
-#mattertag-list{display:flex;flex-direction:column;gap:10px;padding-left:14px}
+#mattertag-list{display:flex;flex-direction:column;gap:10px;flex:1 1 auto;overflow-y:auto;padding:12px 14px 24px 34px}
 .mt-card{position:relative;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.06);padding:10px 12px;transition:background 0.15s,border-color 0.15s}
 .mt-card-clickable{cursor:pointer}
 .mt-card-clickable:hover,.mt-card-clickable:focus-visible{background:rgba(255,255,255,0.10);border-color:${escapeHtml(accentColor)}66;outline:none}
 .mt-card-clickable:focus-visible{box-shadow:0 0 0 2px ${escapeHtml(accentColor)}99}
 .mt-card.is-loading{background:rgba(255,255,255,0.12)}
-.mt-card-number{position:absolute;top:50%;left:-12px;transform:translateY(-50%);min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:${escapeHtml(accentColor)};color:#fff;font-size:10px;font-weight:700;line-height:20px;text-align:center;letter-spacing:0.02em;pointer-events:none;box-shadow:0 1px 4px rgba(0,0,0,0.45);z-index:2}
+.mt-card-number{position:absolute;top:50%;left:-26px;transform:translateY(-50%);min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:${escapeHtml(accentColor)}b3;color:#fff;font-size:10px;font-weight:700;line-height:20px;text-align:center;letter-spacing:0.02em;pointer-events:none;box-shadow:0 1px 4px rgba(0,0,0,0.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);z-index:2}
 .mt-card-thumb-btn{position:relative;display:block;width:100%;padding:0;margin:0 0 8px;border:none;background:transparent;cursor:pointer;border-radius:8px;overflow:hidden;font:inherit}
 .mt-card-thumb-btn:focus-visible{outline:2px solid ${escapeHtml(accentColor)};outline-offset:2px}
 .mt-card-thumb{width:100%;aspect-ratio:16/9;border-radius:8px;background:rgba(0,0,0,0.4);object-fit:cover;display:block;border:1px solid rgba(255,255,255,0.06);transition:transform 0.2s}
@@ -1805,6 +1807,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   #mattertag-drawer{top:auto;bottom:0;left:0;right:0;width:100%;height:auto;max-height:80vh;border-radius:16px 16px 0 0;border-left:none;border-top:1px solid rgba(255,255,255,0.08);transform:translateY(100%)}
   #mattertag-drawer.open{transform:translateY(0)}
 }
+
+
 
 /* ── Live Tour annotation overlay ─────────────────────────────────── */
 /* The wrap is a full-size pass-through container in idle mode. When a
@@ -2249,13 +2253,16 @@ ${hasAgentContact ? `<div id="agent-drawer">
      property has no extracted mattertags. -->
 <div id="mattertag-drawer" role="dialog" aria-modal="false" aria-labelledby="mattertag-title">
   <div id="mattertag-inner">
-    <button id="mattertag-close" type="button" onclick="window.__closeMattertags&&window.__closeMattertags()" aria-label="Close">&times;</button>
-    <h2 id="mattertag-title">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
-      Property Features<span class="mt-beta">(beta)</span>
-    </h2>
+    <div id="mattertag-header">
+      <h2 id="mattertag-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+        Property Features<span class="mt-beta">(beta)</span>
+      </h2>
+      <button id="mattertag-close" type="button" onclick="window.__closeMattertags&&window.__closeMattertags()" aria-label="Close">&times;</button>
+    </div>
     <div id="mattertag-list" aria-live="polite"></div>
   </div>
+
 </div>
 
 <!-- ── Email options modal ───────────────────────────────────────── -->
@@ -3132,13 +3139,20 @@ window.__openMattertagMedia=function(tagIdx,overrideUrl){
   // regardless of the builder's autoplay/quickstart behavior config.
   function buildMattertagDeepLink(baseUrl,tagId){
     if(!baseUrl||!tagId) return "";
-    var stripped=String(baseUrl).replace(/[?&](tag|play|qs)=[^&]*/g,function(m){
+    // Strip any pre-existing copies of the params we're about to set so
+    // we never double-append (which Showcase rejects).
+    var stripped=String(baseUrl).replace(/[?&](tag|play|qs|ts|dh|hl)=[^&]*/g,function(m){
       return m.charAt(0)==="?"?"?":"";
     });
     stripped=stripped.replace(/\\?&/g,"?").replace(/[?&]$/,"");
     var sep=stripped.indexOf("?")===-1?"?":"&";
-    return stripped+sep+"play=1&qs=1&tag="+encodeURIComponent(tagId);
+    // play=1 + qs=1 trigger the navigation; tag=<id> selects the pose;
+    // ts=0 suppresses the title-strip / Mattertag dock chrome so the
+    // native panel doesn't pop in front of our Property Features panel;
+    // dh=0 suppresses the dollhouse hint overlay during the move.
+    return stripped+sep+"play=1&qs=1&ts=0&dh=0&tag="+encodeURIComponent(tagId);
   }
+
 
   function clearStaleSrcLater(target){
     if(clearTimer){ try { clearTimeout(clearTimer); } catch(_e){} clearTimer=null; }
