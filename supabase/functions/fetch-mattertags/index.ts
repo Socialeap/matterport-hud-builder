@@ -89,39 +89,52 @@ interface CleanMattertag {
   media: string;
   anchorPosition: { x: number; y: number; z: number };
   /**
-   * Matterport sweep id of the nearest sweep to anchorPosition. Set
-   * when the sweeps GraphQL query succeeds; omitted otherwise so the
-   * client falls back to the legacy `&tag=<id>` deep-link path.
+   * Matterport sweep INDEX (numeric string like "125") used in the
+   * showcase URL as `&ss=<index>`. CRITICAL: this is the sweep's
+   * `label`/`index` from AnchorLocation, NOT the long alphanumeric
+   * `id` (e.g. "d2g67xm1m5mmigpyxib2myz6a"). Matterport silently
+   * ignores non-numeric ss values and lands the camera on a default
+   * sweep, which presents as "totally incorrect navigation".
    *
-   * Purpose: emitting `&ss=<sweepId>` on Jump-to-view teleports the
-   * camera WITHOUT triggering Matterport's native Mattertag dock,
-   * which otherwise pops over our custom Property Features panel.
+   * Purpose: emitting `&ss=<index>` on Jump-to-view teleports the
+   * camera WITHOUT triggering Matterport's native Mattertag dock.
    */
   ss?: string;
+  /**
+   * Diagnostic metadata. Only populated when the request body includes
+   * `debug: true`. Lets us spot-check picker decisions without
+   * exporting the HUD.
+   */
+  _debug?: {
+    pickedSweep: { id: string; index: number; floorId: string | null;
+      position: { x: number; y: number; z: number } };
+    distance: number;
+    source: "scanLink" | "sameFloorNearest" | "fallback3D" | "none";
+    sweepCount: number;
+    floorId: string | null;
+  };
 }
 
-// Try a handful of plausible field names for the sweeps collection on
-// the Matterport `Model` type. Matterport's public graph has shipped
-// `locations` historically; the iteration here makes us resilient if
-// the field name shifts. The query intentionally requests only the
-// minimum we need (id + position) so any schema mismatch fails fast
-// and we degrade cleanly to "no ss, fall back to tag=".
-const SWEEPS_QUERIES: ReadonlyArray<{ field: string; query: string }> = [
-  {
-    field: "locations",
-    query: `query GetSweeps($modelId: ID!) {
-      model(id: $modelId) { locations { id position { x y z } } }
-    }`,
-  },
-  {
-    field: "sweeps",
-    query: `query GetSweeps($modelId: ID!) {
-      model(id: $modelId) { sweeps { id position { x y z } } }
-    }`,
-  },
-];
+const SWEEPS_QUERY = `query GetSweeps($modelId: ID!) {
+  model(id: $modelId) {
+    locations { id index label position { x y z } floor { id } }
+  }
+}`;
 
-interface SweepPoint { id: string; x: number; y: number; z: number }
+interface SweepPoint {
+  id: string;
+  index: number;
+  floorId: string | null;
+  x: number;
+  y: number;
+  z: number;
+}
+
+interface RawTagShape {
+  anchorPosition: { x: number; y: number; z: number };
+  floorId: string | null;
+  scanLinkIds: string[];
+}
 
 
 type FetchResult =
