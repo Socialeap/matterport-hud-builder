@@ -11,6 +11,18 @@ const ALLOWED_NETLIFY_START_ORIGINS = new Set([
   "https://3dps.transcendencemedia.com",
 ]);
 
+function readRequiredNetlifySecret(name: "NETLIFY_OAUTH_CLIENT_ID" | "NETLIFY_OAUTH_CLIENT_SECRET"): string {
+  const raw = process.env[name];
+  const value = raw?.trim();
+  if (!value) {
+    throw new Error("Netlify integration is not configured.");
+  }
+  if (/\s/.test(value)) {
+    throw new Error("Netlify integration credentials contain invalid whitespace.");
+  }
+  return value;
+}
+
 /**
  * Netlify validates redirect_uri by exact string match. Use one canonical
  * callback for every allowed start origin, then postMessage back to the opener.
@@ -58,10 +70,7 @@ export const startNetlifyOAuth = createServerFn({ method: "POST" })
   .inputValidator((input: { origin: string }) => input)
   .handler(async ({ data, context }) => {
     const { userId } = context;
-    const clientId = process.env.NETLIFY_OAUTH_CLIENT_ID;
-    if (!clientId) {
-      throw new Error("Netlify integration is not configured.");
-    }
+    const clientId = readRequiredNetlifySecret("NETLIFY_OAUTH_CLIENT_ID");
 
     const origin = normalizeAllowedStartOrigin(data.origin);
     requireAllowedRequestOrigin(origin);

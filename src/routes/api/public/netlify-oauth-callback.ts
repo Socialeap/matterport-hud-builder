@@ -4,6 +4,12 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 const CANONICAL_NETLIFY_REDIRECT_URI =
   "https://matterport-hud-builder.lovable.app/api/public/netlify-oauth-callback";
 
+function readNetlifySecret(name: "NETLIFY_OAUTH_CLIENT_ID" | "NETLIFY_OAUTH_CLIENT_SECRET"): string | null {
+  const value = process.env[name]?.trim();
+  if (!value || /\s/.test(value)) return null;
+  return value;
+}
+
 /**
  * Netlify OAuth callback. Netlify redirects here with ?code=&state=.
  * We look up `state` in netlify_oauth_states (mapped to a user_id when
@@ -54,12 +60,12 @@ export const Route = createFileRoute("/api/public/netlify-oauth-callback")({
           .delete()
           .eq("state", state);
 
-        const clientId = process.env.NETLIFY_OAUTH_CLIENT_ID;
-        const clientSecret = process.env.NETLIFY_OAUTH_CLIENT_SECRET;
+        const clientId = readNetlifySecret("NETLIFY_OAUTH_CLIENT_ID");
+        const clientSecret = readNetlifySecret("NETLIFY_OAUTH_CLIENT_SECRET");
         if (!clientId || !clientSecret) {
           return renderResultHtml({
             ok: false,
-            message: "Netlify integration is not configured on the server.",
+            message: "Netlify integration is not configured correctly on the server.",
           });
         }
 
