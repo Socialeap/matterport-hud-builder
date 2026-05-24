@@ -142,6 +142,12 @@ export const PublishDistributeSection = forwardRef<
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Surface Netlify connect errors as a toast as well, so they aren't missed
+  // if the publish panel is scrolled out of view.
+  useEffect(() => {
+    if (netlify.lastError) toast.error(netlify.lastError);
+  }, [netlify.lastError]);
+
   const interceptorHandlerRef = useRef<((blob: Blob) => Promise<void> | void) | null>(null);
   useImperativeHandle(ref, () => ({
     set: (handler) => { interceptorHandlerRef.current = handler; },
