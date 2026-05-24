@@ -85,6 +85,8 @@ const NETLIFY_OAUTH_ORIGINS = new Set([
 ]);
 
 const PUBLISHED_URL = "https://matterport-hud-builder.lovable.app";
+const CANONICAL_NETLIFY_REDIRECT_URI =
+  "https://matterport-hud-builder.lovable.app/api/public/netlify-oauth-callback";
 
 function slugifyForFilename(value: string): string {
   const cleaned = value
@@ -422,14 +424,12 @@ export const PublishDistributeSection = forwardRef<
                 {showOAuthHelp && (
                   <div className="space-y-1.5 rounded border bg-background/60 p-2 text-[11px] text-muted-foreground">
                     <p className="text-foreground">
-                      If Netlify showed <strong>"Not Found"</strong>, the current site's redirect URI isn't
+                      If Netlify showed <strong>"Not Found"</strong>, the canonical redirect URI isn't
                       registered on the 3DPS Studio OAuth app. An admin needs to add this URI in
                       Netlify → User settings → Applications → OAuth applications → 3DPS Studio:
                     </p>
                     <code className="block break-all rounded bg-muted px-2 py-1 font-mono text-foreground">
-                      {typeof window !== "undefined"
-                        ? `${window.location.origin}/api/public/netlify-oauth-callback`
-                        : "/api/public/netlify-oauth-callback"}
+                      {CANONICAL_NETLIFY_REDIRECT_URI}
                     </code>
                     <a
                       href="https://app.netlify.com/user/applications"
