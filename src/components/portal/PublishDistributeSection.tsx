@@ -248,8 +248,10 @@ export const PublishDistributeSection = forwardRef<
       setLiveUrl(result.liveUrl);
       if (result.fellBackToAutoName) {
         toast.warning(
-          `"${slug}" was already taken on Netlify. Published at ${result.siteName}.netlify.app instead — you can rename in Netlify.`,
+          `"${slug}" was not available in Netlify. Published at ${result.siteName}.netlify.app instead.`,
         );
+      } else if (result.reusedExistingSite) {
+        toast.success(`Your presentation is live at ${result.siteName}.netlify.app.`);
       } else {
         toast.success("Your presentation is live!");
       }
