@@ -79,6 +79,15 @@ const SHARE_LINKS: ShareLink[] = [
   { key: "window-sign", src: "window-sign", label: "Window Sign Link", description: "Use on storefront/window displays.", qr: true },
 ];
 
+const NETLIFY_OAUTH_ORIGINS = new Set([
+  "https://matterport-hud-builder.lovable.app",
+  "https://3dps.transcendencemedia.com",
+]);
+
+const PUBLISHED_URL = "https://matterport-hud-builder.lovable.app";
+const CANONICAL_NETLIFY_REDIRECT_URI =
+  "https://matterport-hud-builder.lovable.app/api/public/netlify-oauth-callback";
+
 function slugifyForFilename(value: string): string {
   const cleaned = value
     .normalize("NFKD")
@@ -125,14 +134,12 @@ export const PublishDistributeSection = forwardRef<
   const netlify = useNetlifyConnection();
   const fetchAccessToken = useServerFn(getNetlifyAccessToken);
 
-  // Netlify OAuth only works on origins whose redirect_uri is registered
-  // on the 3DPS Studio OAuth app. Preview builds (id-preview--*) are
-  // intentionally NOT registered, so we surface a clear message instead
-  // of letting users hit Netlify's "Not Found" page.
-  const isPreviewOrigin =
+  // Netlify OAuth only works on the exact origins registered on the
+  // 3DPS Studio OAuth app. Any other host would make Netlify show
+  // "Error during authorization — Not Found", so block before popup.
+  const isUnsupportedNetlifyOrigin =
     typeof window !== "undefined" &&
-    /^id-preview--/.test(window.location.hostname);
-  const publishedUrl = "https://matterport-hud-builder.lovable.app";
+    !NETLIFY_OAUTH_ORIGINS.has(window.location.origin);
 
   const [slug, setSlug] = useState(() => slugifyForNetlify(propertyName || "presentation"));
   const [publishing, setPublishing] = useState(false);
@@ -306,18 +313,18 @@ export const PublishDistributeSection = forwardRef<
               </p>
             </div>
 
-            {isPreviewOrigin ? (
+            {isUnsupportedNetlifyOrigin ? (
               <div className="space-y-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs">
                 <div className="flex items-start gap-2">
                   <Info className="mt-0.5 size-4 shrink-0 text-amber-500" />
                   <div className="space-y-1">
                     <p className="font-medium text-foreground">
-                      Publishing isn't available on the preview URL.
+                      Publishing isn't available on this URL.
                     </p>
                     <p className="text-muted-foreground">
                       Netlify sign-in only works on the live site. Open this app at{" "}
                       <a
-                        href={publishedUrl}
+                        href={PUBLISHED_URL}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="font-mono underline"
@@ -333,7 +340,7 @@ export const PublishDistributeSection = forwardRef<
                   size="sm"
                   variant="outline"
                   className="h-7 gap-1.5 text-xs"
-                  onClick={() => window.open(publishedUrl, "_blank", "noopener,noreferrer")}
+                   onClick={() => window.open(PUBLISHED_URL, "_blank", "noopener,noreferrer")}
                 >
                   <ExternalLink className="size-3.5" />
                   Open live site
@@ -382,7 +389,7 @@ export const PublishDistributeSection = forwardRef<
               </div>
             )}
 
-            {!isPreviewOrigin && netlify.lastError && (
+            {!isUnsupportedNetlifyOrigin && netlify.lastError && (
               <div className="space-y-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs">
                 <div className="flex items-start gap-2">
                   <AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
@@ -417,14 +424,12 @@ export const PublishDistributeSection = forwardRef<
                 {showOAuthHelp && (
                   <div className="space-y-1.5 rounded border bg-background/60 p-2 text-[11px] text-muted-foreground">
                     <p className="text-foreground">
-                      If Netlify showed <strong>"Not Found"</strong>, the current site's redirect URI isn't
+                      If Netlify showed <strong>"Not Found"</strong>, the canonical redirect URI isn't
                       registered on the 3DPS Studio OAuth app. An admin needs to add this URI in
                       Netlify → User settings → Applications → OAuth applications → 3DPS Studio:
                     </p>
                     <code className="block break-all rounded bg-muted px-2 py-1 font-mono text-foreground">
-                      {typeof window !== "undefined"
-                        ? `${window.location.origin}/api/public/netlify-oauth-callback`
-                        : "/api/public/netlify-oauth-callback"}
+                      {CANONICAL_NETLIFY_REDIRECT_URI}
                     </code>
                     <a
                       href="https://app.netlify.com/user/applications"
