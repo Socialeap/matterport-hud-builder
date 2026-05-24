@@ -43,6 +43,19 @@ interface NetlifyDeploy {
   error_message?: string;
 }
 
+interface SiteResolution {
+  site: NetlifySite;
+  usedFallbackName: boolean;
+  reusedExistingSite: boolean;
+}
+
+interface CreateSiteOutcome {
+  site: NetlifySite | null;
+  conflict: boolean;
+  status: number;
+  text: string;
+}
+
 const NETLIFY_API_BASE = "https://api.netlify.com/api/v1";
 
 export const Route = createFileRoute("/api/public/netlify-deploy")({
@@ -196,7 +209,8 @@ export const Route = createFileRoute("/api/public/netlify-deploy")({
           liveUrl,
           adminUrl,
           siteName: finalName,
-          fellBackToAutoName,
+          fellBackToAutoName: usedFallbackName,
+          reusedExistingSite,
         });
       },
     },
