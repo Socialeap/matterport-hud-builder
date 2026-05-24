@@ -217,6 +217,88 @@ export const Route = createFileRoute("/api/public/netlify-deploy")({
   },
 });
 
+async function resolveSiteForPublish(
+  accessToken: string,
+  userId: string,
+  desiredSlug: string,
+): Promise<SiteResolution> {
+  const existing = await getOwnedSiteByName(accessToken, desiredSlug);
+  if (existing) {
+    return { site: existing, usedFallbackName: false, reusedExistingSite: true };
+  }
+
+  const primary = await createNamedSite(accessToken, userId, desiredSlug);
+  if (primary.site) {
+    return { site: primary.site, usedFallbackName: false, reusedExistingSite: false };
+  }
+  if (!primary.conflict) {
+    throw new Error(`Netlify site creation failed (${primary.status}). ${primary.text}`);
+  }
+
+  const ownedAfterConflict = await getOwnedSiteByName(accessToken, desiredSlug);
+  if (ownedAfterConflict) {
+    return { site: ownedAfterConflict, usedFallbackName: false, reusedExistingSite: true };
+  }
+
+  for (const fallbackSlug of buildFallbackNetlifySlugs(desiredSlug)) {
+    const fallback = await createNamedSite(accessToken, userId, fallbackSlug);
+    if (fallback.site) {
+      return { site: fallback.site, usedFallbackName: true, reusedExistingSite: false };
+    }
+    if (!fallback.conflict) {
+      console.warn("[netlify-deploy] fallback site create failed", fallbackSlug, fallback.status, fallback.text);
+    }
+  }
+
+  const autoSite = await createAutoNamedSite(accessToken, userId);
+  return { site: autoSite, usedFallbackName: true, reusedExistingSite: false };
+}
+
+async function getOwnedSiteByName(accessToken: string, name: string): Promise<NetlifySite | null> {
+  const direct = await fetch(`${NETLIFY_API_BASE}/sites/${encodeURIComponent(name)}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (direct.ok) return (await direct.json()) as NetlifySite;
+  if (direct.status !== 404) {
+    console.warn("[netlify-deploy] direct site lookup failed", direct.status, await safeText(direct));
+  }
+
+  const list = await fetch(`${NETLIFY_API_BASE}/sites?filter=all&per_page=100`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!list.ok) {
+    console.warn("[netlify-deploy] site list lookup failed", list.status, await safeText(list));
+    return null;
+  }
+  const sites = (await list.json()) as NetlifySite[];
+  return sites.find((site) => site.name === name) ?? null;
+}
+
+async function createNamedSite(
+  accessToken: string,
+  userId: string,
+  name: string,
+): Promise<CreateSiteOutcome> {
+  const res = await fetch(`${NETLIFY_API_BASE}/sites`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ name, created_via: "3DPS Studio", session_id: userId }),
+  });
+  if (res.ok) {
+    return { site: (await res.json()) as NetlifySite, conflict: false, status: res.status, text: "" };
+  }
+  const text = await safeText(res);
+  return {
+    site: null,
+    conflict: isRecoverableNetlifyNameConflict(res.status, text),
+    status: res.status,
+    text,
+  };
+}
+
 async function createAutoNamedSite(accessToken: string, userId: string): Promise<NetlifySite> {
   const res = await fetch(`${NETLIFY_API_BASE}/sites`, {
     method: "POST",
