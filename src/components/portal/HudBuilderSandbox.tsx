@@ -509,6 +509,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
   const [draftBannerOpen, setDraftBannerOpen] = useState(false);
   const [pendingDraft, setPendingDraft] = useState<{ data: DraftState; savedAt: string } | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const publishInterceptorRef = useRef<PublishInterceptor | null>(null);
 
   // On mount: check for an existing draft and offer to resume.
   useEffect(() => {
