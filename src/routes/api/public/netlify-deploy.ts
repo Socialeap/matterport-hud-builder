@@ -356,15 +356,6 @@ async function validatedZipBlob(blob: Blob): Promise<Blob> {
   return new Blob([copy], { type: "application/zip" });
 }
 
-function isLikelyNameConflict(status: number, text: string): boolean {
-  const normalized = text.toLowerCase();
-  return (
-    (status === 400 || status === 409 || status === 422) &&
-    normalized.includes("name") &&
-    (normalized.includes("taken") || normalized.includes("already") || normalized.includes("exist"))
-  );
-}
-
 function nonEmpty(value: string | null | undefined): string | null {
   const trimmed = typeof value === "string" ? value.trim() : "";
   return trimmed && trimmed !== "undefined" && trimmed !== "null" ? trimmed : null;
