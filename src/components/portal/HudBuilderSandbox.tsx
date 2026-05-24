@@ -2183,7 +2183,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
                     marketplace-ready links and QR codes.
                   </p>
                   <PublishDistributeSection
-                    propertyName={
+                    ref={publishInterceptorRef}
                       models[0]?.propertyName?.trim() ||
                       models[0]?.name?.trim() ||
                       ""
