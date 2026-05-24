@@ -34,7 +34,10 @@ function normalizeAllowedOrigin(value: string): string {
 
 function requireAllowedRequestOrigin(expectedOrigin: string): void {
   const request = getRequest();
-  const requestOrigin = request.headers.get("origin") || request.headers.get("referer") || "";
+  const requestOrigin =
+    request.headers.get("origin") ||
+    request.headers.get("referer") ||
+    new URL(request.url).origin;
   const normalizedRequestOrigin = normalizeAllowedOrigin(requestOrigin);
   if (normalizedRequestOrigin !== expectedOrigin) {
     throw new Error(
