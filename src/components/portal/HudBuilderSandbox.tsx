@@ -42,7 +42,7 @@ import {
   isAccessArmed,
   ACCESS_PASSWORD_MIN_LEN,
 } from "./PrivacyAccessSection";
-import { PublishDistributeSection } from "./PublishDistributeSection";
+import { PublishDistributeSection, type PublishInterceptor } from "./PublishDistributeSection";
 import { TourBehaviorModal } from "./TourBehaviorModal";
 import { HudPreview } from "./HudPreview";
 import { PortalSignupModal } from "./PortalSignupModal";
@@ -509,6 +509,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
   const [draftBannerOpen, setDraftBannerOpen] = useState(false);
   const [pendingDraft, setPendingDraft] = useState<{ data: DraftState; savedAt: string } | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const publishInterceptorRef = useRef<PublishInterceptor | null>(null);
 
   // On mount: check for an existing draft and offer to resume.
   useEffect(() => {
@@ -1486,19 +1487,27 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
         downloadName = `${baseFilename}.html`;
       }
 
-      const url = URL.createObjectURL(downloadBlob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = downloadName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      // If the Publish flow registered an interceptor, hand the Blob over
+      // instead of triggering a browser download. The Publish flow then
+      // deploys it directly to the user's Netlify account.
+      const intercepted = await publishInterceptorRef.current?.consume(downloadBlob);
+      if (!intercepted) {
+        const url = URL.createObjectURL(downloadBlob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = downloadName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
       clearDraft(providerSlug);
       toast.success(
-        attachments.length > 0
-          ? "Presentation package downloaded (.zip)"
-          : "Presentation downloaded",
+        intercepted
+          ? "Presentation package ready — uploading to Netlify…"
+          : attachments.length > 0
+            ? "Presentation package downloaded (.zip)"
+            : "Presentation downloaded",
       );
 
     } catch (err) {
@@ -2174,8 +2183,10 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
                     marketplace-ready links and QR codes.
                   </p>
                   <PublishDistributeSection
+                    ref={publishInterceptorRef}
                     propertyName={
                       models[0]?.propertyName?.trim() ||
+                      models[0]?.name?.trim() ||
                       models[0]?.name?.trim() ||
                       ""
                     }
