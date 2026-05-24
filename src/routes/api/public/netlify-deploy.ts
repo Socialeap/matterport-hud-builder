@@ -138,6 +138,14 @@ export const Route = createFileRoute("/api/public/netlify-deploy")({
           return json({ error: "Netlify selected a site but did not return a site ID." }, 502);
         }
 
+        // ---- 1b. If this site has an in-progress deploy, wait for it first ----
+        // Prevents stacking duplicate deploys against Netlify's 3/minute limit.
+        try {
+          await waitForActiveDeployIdle(siteId, accessToken);
+        } catch (err) {
+          console.warn("[netlify-deploy] active deploy wait failed", err);
+        }
+
         // ---- 2. Upload zip as a production deploy and wait for ready ----
         let deploy: NetlifyDeploy | null = null;
         try {
@@ -157,6 +165,18 @@ export const Route = createFileRoute("/api/public/netlify-deploy")({
               deployRes.status,
               text,
             );
+            if (deployRes.status === 429) {
+              const retryAfter = deployRes.headers.get("retry-after");
+              return json(
+                {
+                  error:
+                    "Netlify is rate-limiting deploys for this account (max ~3 per minute). " +
+                    (retryAfter ? `Try again in ${retryAfter} seconds.` : "Wait a minute and try again."),
+                  rateLimited: true,
+                },
+                429,
+              );
+            }
             return json(
               { error: `Netlify deploy upload failed (${deployRes.status}). ${text}` },
               502,
@@ -195,9 +215,42 @@ export const Route = createFileRoute("/api/public/netlify-deploy")({
           return json({ error: "Netlify deployed the upload but did not return a usable live URL." }, 502);
         }
 
-        await waitForLiveIndex(liveUrl).catch((err) => {
-          console.warn("[netlify-deploy] live URL readiness warning", err);
-        });
+        // ---- 3. STRICT live URL verification — block success on 429/non-200 ----
+        const liveCheck = await verifyLiveUrl(liveUrl);
+        if (!liveCheck.ok) {
+          console.error("[netlify-deploy] live URL verification failed", {
+            liveUrl,
+            status: liveCheck.status,
+            retryAfter: liveCheck.retryAfter,
+          });
+          if (liveCheck.status === 429) {
+            return json(
+              {
+                error:
+                  `Your presentation was uploaded to ${liveUrl}, but Netlify is currently rate-limiting that URL (HTTP 429). ` +
+                  (liveCheck.retryAfter
+                    ? `Wait ~${liveCheck.retryAfter} seconds and reload the URL.`
+                    : "Wait a few minutes and reload the URL. Avoid republishing immediately — that will extend the rate limit."),
+                rateLimited: true,
+                liveUrl,
+                adminUrl,
+                siteName: finalName,
+              },
+              429,
+            );
+          }
+          return json(
+            {
+              error:
+                `Netlify finished the deploy but ${liveUrl} returned HTTP ${liveCheck.status || "?"}. ` +
+                "The site may still be propagating — try reloading it in a minute. If it stays broken, open the Netlify admin URL to inspect the deploy log.",
+              liveUrl,
+              adminUrl,
+              siteName: finalName,
+            },
+            502,
+          );
+        }
 
         return json({
           liveUrl,
@@ -342,9 +395,35 @@ async function validatedZipBlob(blob: Blob): Promise<Blob> {
   if (bytes[0] !== 0x50 || bytes[1] !== 0x4b) {
     throw new Error("Presentation package must be a zip file.");
   }
-  const textHead = new TextDecoder().decode(bytes.slice(0, Math.min(bytes.length, 200_000)));
-  if (!textHead.includes("index.html")) {
-    throw new Error("Presentation package is missing root index.html.");
+  if (bytes.length > 50 * 1024 * 1024) {
+    throw new Error("Presentation package exceeds 50 MB. Remove large attachments and try again.");
+  }
+
+  // Real ZIP central-directory inspection via fflate so we can enforce
+  // structure (root index.html, no Netlify config files, no traversal).
+  const { unzipSync } = await import("fflate");
+  let entries: Record<string, Uint8Array>;
+  try {
+    entries = unzipSync(bytes);
+  } catch (err) {
+    throw new Error(`Presentation package is not a valid zip: ${err instanceof Error ? err.message : "decode failed"}.`);
+  }
+  const paths = Object.keys(entries);
+  if (paths.length === 0) throw new Error("Presentation package is empty.");
+  if (paths.length > 5000) {
+    throw new Error("Presentation package contains too many files (>5000).");
+  }
+  if (!paths.includes("index.html")) {
+    throw new Error("Presentation package is missing a root index.html. Files must be at the zip root, not inside a folder.");
+  }
+  const FORBIDDEN_ROOTS = new Set(["_headers", "_redirects", "netlify.toml"]);
+  for (const p of paths) {
+    if (p.includes("..") || p.startsWith("/") || p.includes("\\")) {
+      throw new Error(`Presentation package contains an unsafe path: ${p}`);
+    }
+    if (FORBIDDEN_ROOTS.has(p)) {
+      throw new Error(`Presentation package must not include Netlify config file: ${p}`);
+    }
   }
   const copy = new Uint8Array(bytes);
   return new Blob([copy], { type: "application/zip" });
@@ -385,16 +464,73 @@ function ensureHttps(url: string): string {
   return url.replace(/^http:\/\//i, "https://").replace(/\/+$/, "");
 }
 
-async function waitForLiveIndex(liveUrl: string, timeoutMs = 45_000): Promise<void> {
+/**
+ * Strict live URL verification. Returns ok=true only on a real 2xx
+ * response from the deployed Netlify site. Surfaces 429 (rate limit)
+ * and other statuses to the caller so the UI can render a precise
+ * error instead of claiming success on a broken URL.
+ */
+async function verifyLiveUrl(
+  liveUrl: string,
+  timeoutMs = 45_000,
+): Promise<{ ok: boolean; status: number; retryAfter: string | null }> {
   const started = Date.now();
+  let lastStatus = 0;
+  let lastRetryAfter: string | null = null;
   while (Date.now() - started < timeoutMs) {
     try {
-      const res = await fetch(liveUrl, { method: "GET" });
-      if (res.ok) return;
+      const res = await fetch(liveUrl, { method: "GET", redirect: "follow" });
+      lastStatus = res.status;
+      lastRetryAfter = res.headers.get("retry-after");
+      if (res.ok) return { ok: true, status: res.status, retryAfter: null };
+      // Hard-fail fast on rate limit — retrying just makes it worse.
+      if (res.status === 429) {
+        return { ok: false, status: 429, retryAfter: lastRetryAfter };
+      }
+      // 5xx / 404 can occur briefly during Netlify edge propagation; keep polling.
     } catch {
-      // Netlify propagation can briefly fail immediately after deploy ready.
+      // Network blip during propagation — retry.
     }
     await new Promise((r) => setTimeout(r, 1500));
+  }
+  return { ok: false, status: lastStatus, retryAfter: lastRetryAfter };
+}
+
+/**
+ * Wait briefly for any in-progress deploy on the site to finish before
+ * we POST a new deploy. Prevents stacking duplicate deploys against
+ * Netlify's ~3-per-minute limit when the user retries quickly.
+ */
+async function waitForActiveDeployIdle(
+  siteId: string,
+  accessToken: string,
+  timeoutMs = 30_000,
+): Promise<void> {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const res = await fetch(
+      `${NETLIFY_API_BASE}/sites/${siteId}/deploys?per_page=1`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+    if (!res.ok) return;
+    const list = (await res.json()) as NetlifyDeploy[];
+    const latest = Array.isArray(list) && list.length > 0 ? list[0] : null;
+    if (!latest) return;
+    const state = String(latest.state || "").toLowerCase();
+    const inFlight = new Set([
+      "new",
+      "pending_review",
+      "accepted",
+      "enqueued",
+      "building",
+      "uploading",
+      "uploaded",
+      "preparing",
+      "prepared",
+      "processing",
+    ]);
+    if (!inFlight.has(state)) return;
+    await new Promise((r) => setTimeout(r, 2000));
   }
 }
 
