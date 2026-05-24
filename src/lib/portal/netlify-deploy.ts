@@ -1,8 +1,11 @@
+import { supabase } from "@/integrations/supabase/client";
+
 /**
- * Client-side helpers to deploy a presentation .zip to the user's own
- * Netlify account using their OAuth access token. We deliberately call
- * the Netlify REST API straight from the browser to avoid round-tripping
- * the (potentially large) zip through our server.
+ * Client-side helpers to deploy a presentation .zip to the user's Netlify
+ * account. We POST the zip to our own server route which proxies to
+ * api.netlify.com — this avoids browser CORS failures we hit calling
+ * Netlify directly (intermittent duplicate `Access-Control-Allow-Origin: *, *`
+ * response headers from Netlify's edge).
  *
  * Slug rules follow Netlify's site-name constraints:
  *   - lowercase letters, digits, hyphens
@@ -35,122 +38,63 @@ interface DeployResult {
   fellBackToAutoName: boolean;
 }
 
-interface NetlifySite {
-  id: string;
-  name: string;
-  ssl_url?: string;
-  url?: string;
-  admin_url?: string;
-  deploy_id?: string;
-  state?: string;
-}
-
-interface NetlifyDeploy {
-  id: string;
-  state: "uploaded" | "uploading" | "preparing" | "processing" | "ready" | "error" | string;
-  error_message?: string;
-  ssl_url?: string;
-  url?: string;
-}
-
 /**
- * Create a brand-new Netlify site by uploading the zip, optionally rename
- * it to the requested slug, and poll until the deploy is live.
+ * Upload the zip to our server-side proxy, which forwards it to Netlify
+ * using the user's stored OAuth access token. Returns the live + admin
+ * URLs and the final site name.
+ *
+ * The `accessToken` param is intentionally ignored — the server reads the
+ * Netlify token from the database keyed to the authenticated user. The
+ * signature is kept stable so callers (PublishDistributeSection) don't
+ * need to change.
  */
 export async function deployZipToNetlify(params: {
   blob: Blob;
   desiredSlug: string;
-  accessToken: string;
+  /** @deprecated kept for signature compatibility; server reads token from DB */
+  accessToken?: string;
   onProgress?: ProgressFn;
 }): Promise<DeployResult> {
-  const { blob, desiredSlug, accessToken, onProgress } = params;
+  const { blob, desiredSlug, onProgress } = params;
   const progress = onProgress ?? (() => {});
+
+  // Attach the user's Supabase bearer so the server can resolve user_id.
+  const { data: sessionData } = await supabase.auth.getSession();
+  const bearer = sessionData.session?.access_token;
+  if (!bearer) {
+    throw new Error("You must be signed in to publish.");
+  }
+
+  const form = new FormData();
+  form.append("zip", blob, "site.zip");
+  form.append("desiredSlug", desiredSlug);
 
   progress("Uploading to Netlify…");
 
-  // Step 1: POST /sites with zip → creates site + first deploy in one shot.
-  const createRes = await fetch("https://api.netlify.com/api/v1/sites", {
+  const res = await fetch("/api/public/netlify-deploy", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/zip",
-    },
-    body: blob,
+    headers: { Authorization: `Bearer ${bearer}` },
+    body: form,
   });
 
-  if (!createRes.ok) {
-    const text = await safeText(createRes);
-    throw new Error(`Netlify upload failed (${createRes.status}). ${text}`);
-  }
-
-  const site = (await createRes.json()) as NetlifySite;
-
-  // Step 2: poll deploy until ready.
   progress("Finalizing deploy…");
-  const deployId = site.deploy_id;
-  if (deployId) {
-    await pollDeployReady(site.id, deployId, accessToken);
-  }
 
-  // Step 3: rename to desired slug. If taken, keep the auto-generated name.
-  let finalName = site.name;
-  let fellBackToAutoName = false;
-
-  if (desiredSlug && desiredSlug !== site.name) {
-    progress("Setting your custom URL…");
-    const renameRes = await fetch(
-      `https://api.netlify.com/api/v1/sites/${site.id}`,
-      {
-        method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ name: desiredSlug }),
-      },
-    );
-    if (renameRes.ok) {
-      const renamed = (await renameRes.json()) as NetlifySite;
-      finalName = renamed.name;
-    } else {
-      fellBackToAutoName = true;
-      console.warn(
-        "[netlify] rename failed, keeping auto name",
-        renameRes.status,
-        await safeText(renameRes),
-      );
+  if (!res.ok) {
+    let message = `Publish failed (${res.status}).`;
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body?.error) message = body.error;
+    } catch {
+      const text = await safeText(res);
+      if (text) message = text;
     }
+    throw new Error(message);
   }
 
-  const liveUrl = `https://${finalName}.netlify.app`;
-  const adminUrl = site.admin_url || `https://app.netlify.com/sites/${finalName}`;
+  progress("Setting your custom URL…");
 
-  return { liveUrl, adminUrl, siteName: finalName, fellBackToAutoName };
-}
-
-async function pollDeployReady(
-  siteId: string,
-  deployId: string,
-  accessToken: string,
-  timeoutMs = 90_000,
-): Promise<void> {
-  const started = Date.now();
-  while (Date.now() - started < timeoutMs) {
-    const res = await fetch(
-      `https://api.netlify.com/api/v1/sites/${siteId}/deploys/${deployId}`,
-      { headers: { Authorization: `Bearer ${accessToken}` } },
-    );
-    if (res.ok) {
-      const d = (await res.json()) as NetlifyDeploy;
-      if (d.state === "ready") return;
-      if (d.state === "error") {
-        throw new Error(d.error_message || "Netlify deploy failed.");
-      }
-    }
-    await new Promise((r) => setTimeout(r, 1500));
-  }
-  // Don't hard-fail — Netlify often serves the site already even if our
-  // polling window expires; let the user open the URL and see.
+  const data = (await res.json()) as DeployResult;
+  return data;
 }
 
 async function safeText(res: Response): Promise<string> {
