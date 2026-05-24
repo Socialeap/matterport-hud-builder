@@ -110,52 +110,21 @@ export const Route = createFileRoute("/api/public/netlify-deploy")({
           );
         }
 
-        // ---- 1. Create the Netlify site ----
-        // Netlify's API does NOT deploy bytes via POST /sites. That endpoint
-        // only creates an empty site. The zip must be uploaded afterwards to
-        // /sites/:id/builds as multipart/form-data. Returning a live URL before
-        // that build is ready produces the exact empty-site 404 the user saw.
-        let site: NetlifySite;
-        let fellBackToAutoName = false;
+        // ---- 1. Resolve the Netlify site to deploy to ----
+        // Publishing must be idempotent. A previous failed attempt can create
+        // and reserve `desiredSlug` without a successful deploy, so always try
+        // to reuse an owned site before creating a fresh one.
+        let siteResolution: SiteResolution;
         try {
-          const createRes = await fetch(
-            `${NETLIFY_API_BASE}/sites`,
-            {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${accessToken}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                name: desiredSlug,
-                created_via: "3DPS Studio",
-                session_id: userId,
-              }),
-            },
-          );
-          if (!createRes.ok) {
-            const text = await safeText(createRes);
-            if (isLikelyNameConflict(createRes.status, text)) {
-              fellBackToAutoName = true;
-              site = await createAutoNamedSite(accessToken, userId);
-            } else {
-              console.error(
-                "[netlify-deploy] site create failed",
-                createRes.status,
-                text,
-              );
-              return json(
-                { error: `Netlify site creation failed (${createRes.status}). ${text}` },
-                502,
-              );
-            }
-          } else {
-            site = (await createRes.json()) as NetlifySite;
-          }
+          siteResolution = await resolveSiteForPublish(accessToken, userId, desiredSlug);
         } catch (err) {
           console.error("[netlify-deploy] site create error", err);
-          return json({ error: "Network error creating the Netlify site." }, 502);
+          return json(
+            { error: err instanceof Error ? err.message : "Network error creating the Netlify site." },
+            502,
+          );
         }
+        const { site, usedFallbackName, reusedExistingSite } = siteResolution;
 
         const siteId = site.id || site.site_id;
         if (!siteId) {
