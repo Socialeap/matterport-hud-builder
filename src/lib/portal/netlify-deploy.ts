@@ -1,6 +1,8 @@
 import { supabase } from "@/integrations/supabase/client";
 import { NETLIFY_SLUG_REGEX } from "@/lib/portal/netlify-name";
 
+export { NETLIFY_SLUG_REGEX } from "@/lib/portal/netlify-name";
+
 /**
  * Client-side helpers to deploy a presentation .zip to the user's Netlify
  * account. We POST the zip to our own server route which proxies to
