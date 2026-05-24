@@ -2,6 +2,11 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
+const ALLOWED_NETLIFY_OAUTH_ORIGINS = new Set([
+  "https://matterport-hud-builder.lovable.app",
+  "https://3dps.transcendencemedia.com",
+]);
+
 /**
  * Build the Netlify redirect URI for the current request host. We register
  * all three (preview / published / custom domain) in the Netlify OAuth app,
@@ -10,6 +15,21 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
  */
 function redirectUriForOrigin(origin: string): string {
   return `${origin}/api/public/netlify-oauth-callback`;
+}
+
+function normalizeAllowedOrigin(value: string): string {
+  try {
+    const url = new URL(value);
+    const origin = url.origin.replace(/\/$/, "");
+    if (!ALLOWED_NETLIFY_OAUTH_ORIGINS.has(origin)) {
+      throw new Error("unsupported-origin");
+    }
+    return origin;
+  } catch {
+    throw new Error(
+      "Netlify publishing must be started from the live site or custom domain. Preview URLs are not registered with the Netlify OAuth app.",
+    );
+  }
 }
 
 /**
@@ -27,7 +47,7 @@ export const startNetlifyOAuth = createServerFn({ method: "POST" })
       throw new Error("Netlify integration is not configured.");
     }
 
-    const origin = data.origin.replace(/\/$/, "");
+    const origin = normalizeAllowedOrigin(data.origin);
     const redirectUri = redirectUriForOrigin(origin);
 
     const state = crypto.randomUUID() + crypto.randomUUID();
