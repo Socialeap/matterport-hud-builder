@@ -822,6 +822,54 @@ export type Database = {
           },
         ]
       }
+      netlify_connections: {
+        Row: {
+          access_token: string
+          created_at: string
+          netlify_user_email: string | null
+          netlify_user_full_name: string | null
+          netlify_user_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          access_token: string
+          created_at?: string
+          netlify_user_email?: string | null
+          netlify_user_full_name?: string | null
+          netlify_user_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          access_token?: string
+          created_at?: string
+          netlify_user_email?: string | null
+          netlify_user_full_name?: string | null
+          netlify_user_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      netlify_oauth_states: {
+        Row: {
+          created_at: string
+          state: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          state: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          state?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       order_notifications: {
         Row: {
           client_id: string
