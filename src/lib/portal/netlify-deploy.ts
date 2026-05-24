@@ -77,7 +77,7 @@ export async function deployZipToNetlify(params: {
     body: form,
   });
 
-  progress("Finalizing deploy…");
+  progress("Creating Netlify site…");
 
   if (!res.ok) {
     let message = `Publish failed (${res.status}).`;
@@ -91,9 +91,12 @@ export async function deployZipToNetlify(params: {
     throw new Error(message);
   }
 
-  progress("Setting your custom URL…");
+  progress("Verifying live URL…");
 
   const data = (await res.json()) as DeployResult;
+  if (!data.liveUrl || data.liveUrl.includes("undefined")) {
+    throw new Error("Netlify did not return a usable presentation URL. Please try publishing again.");
+  }
   return data;
 }
 
