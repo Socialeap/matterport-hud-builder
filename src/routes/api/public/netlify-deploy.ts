@@ -227,24 +227,96 @@ export const Route = createFileRoute("/api/public/netlify-deploy")({
   },
 });
 
+async function createAutoNamedSite(accessToken: string, userId: string): Promise<NetlifySite> {
+  const res = await fetch(`${NETLIFY_API_BASE}/sites`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ created_via: "3DPS Studio", session_id: userId }),
+  });
+  if (!res.ok) {
+    throw new Error(`Netlify site creation failed (${res.status}). ${await safeText(res)}`);
+  }
+  return (await res.json()) as NetlifySite;
+}
+
 async function pollDeployReady(
-  siteId: string,
   deployId: string,
   accessToken: string,
   timeoutMs = 90_000,
-): Promise<void> {
+): Promise<NetlifyDeploy> {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
     const res = await fetch(
-      `https://api.netlify.com/api/v1/sites/${siteId}/deploys/${deployId}`,
+      `${NETLIFY_API_BASE}/deploys/${deployId}`,
       { headers: { Authorization: `Bearer ${accessToken}` } },
     );
     if (res.ok) {
       const d = (await res.json()) as NetlifyDeploy;
-      if (d.state === "ready") return;
+      if (d.state === "ready") return d;
       if (d.state === "error") {
         throw new Error(d.error_message || "Netlify deploy failed.");
       }
+    }
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  throw new Error("Netlify deploy timed out before becoming ready.");
+}
+
+async function validatedZipBlob(blob: Blob): Promise<Blob> {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  if (bytes.length < 22) throw new Error("Presentation package is empty.");
+  if (bytes[0] !== 0x50 || bytes[1] !== 0x4b) {
+    throw new Error("Presentation package must be a zip file.");
+  }
+  const textHead = new TextDecoder().decode(bytes.slice(0, Math.min(bytes.length, 200_000)));
+  if (!textHead.includes("index.html")) {
+    throw new Error("Presentation package is missing root index.html.");
+  }
+  const copy = new Uint8Array(bytes);
+  return new Blob([copy], { type: "application/zip" });
+}
+
+function isLikelyNameConflict(status: number, text: string): boolean {
+  const normalized = text.toLowerCase();
+  return (
+    (status === 400 || status === 409 || status === 422) &&
+    normalized.includes("name") &&
+    (normalized.includes("taken") || normalized.includes("already") || normalized.includes("exist"))
+  );
+}
+
+function nonEmpty(value: string | null | undefined): string | null {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  return trimmed && trimmed !== "undefined" && trimmed !== "null" ? trimmed : null;
+}
+
+function pickLiveUrl(
+  deploy: NetlifyDeploy | null,
+  site: NetlifySite,
+  finalName: string | null,
+): string | null {
+  const fromDeploy = nonEmpty(deploy?.ssl_url) || nonEmpty(deploy?.url);
+  const fromSite = nonEmpty(site.ssl_url) || nonEmpty(site.url);
+  if (fromDeploy) return ensureHttps(fromDeploy);
+  if (fromSite) return ensureHttps(fromSite);
+  return finalName ? `https://${finalName}.netlify.app` : null;
+}
+
+function ensureHttps(url: string): string {
+  return url.replace(/^http:\/\//i, "https://").replace(/\/+$/, "");
+}
+
+async function waitForLiveIndex(liveUrl: string, timeoutMs = 45_000): Promise<void> {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    try {
+      const res = await fetch(liveUrl, { method: "GET" });
+      if (res.ok) return;
+    } catch {
+      // Netlify propagation can briefly fail immediately after deploy ready.
     }
     await new Promise((r) => setTimeout(r, 1500));
   }
