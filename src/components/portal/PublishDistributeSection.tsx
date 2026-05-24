@@ -319,7 +319,7 @@ export const PublishDistributeSection = forwardRef<
                   <Info className="mt-0.5 size-4 shrink-0 text-amber-500" />
                   <div className="space-y-1">
                     <p className="font-medium text-foreground">
-                      Publishing isn't available on the preview URL.
+                      Publishing isn't available on this URL.
                     </p>
                     <p className="text-muted-foreground">
                       Netlify sign-in only works on the live site. Open this app at{" "}
