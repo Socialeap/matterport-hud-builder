@@ -26,13 +26,6 @@ interface NetlifySite {
   state?: string;
 }
 
-interface NetlifyBuild {
-  id: string;
-  deploy_id?: string;
-  done?: boolean;
-  error?: string;
-}
-
 interface NetlifyDeploy {
   id: string;
   state: string;
@@ -145,39 +138,39 @@ export const Route = createFileRoute("/api/public/netlify-deploy")({
           return json({ error: "Netlify selected a site but did not return a site ID." }, 502);
         }
 
-        // ---- 2. Upload zip as a production build and wait for ready ----
+        // ---- 2. Upload zip as a production deploy and wait for ready ----
         let deploy: NetlifyDeploy | null = null;
         try {
-          const buildForm = new FormData();
-          buildForm.append("title", `3DPS presentation publish: ${desiredSlug}`);
-          buildForm.append("zip", zipBlob, "presentation.zip");
-          const buildRes = await fetch(`${NETLIFY_API_BASE}/sites/${siteId}/builds`, {
+          const title = encodeURIComponent(`3DPS presentation publish: ${desiredSlug}`);
+          const deployRes = await fetch(`${NETLIFY_API_BASE}/sites/${siteId}/deploys?production=true&title=${title}`, {
             method: "POST",
-            headers: { Authorization: `Bearer ${accessToken}` },
-            body: buildForm,
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              "Content-Type": "application/zip",
+            },
+            body: zipBlob,
           });
-          if (!buildRes.ok) {
-            const text = await safeText(buildRes);
+          if (!deployRes.ok) {
+            const text = await safeText(deployRes);
             console.error(
-              "[netlify-deploy] build upload failed",
-              buildRes.status,
+              "[netlify-deploy] deploy upload failed",
+              deployRes.status,
               text,
             );
             return json(
-              { error: `Netlify deploy upload failed (${buildRes.status}). ${text}` },
+              { error: `Netlify deploy upload failed (${deployRes.status}). ${text}` },
               502,
             );
           }
 
-          const build = (await buildRes.json()) as NetlifyBuild;
-          if (build.error) {
-            return json({ error: `Netlify deploy failed: ${build.error}` }, 502);
-          }
-          if (!build.deploy_id) {
-            console.error("[netlify-deploy] build response missing deploy_id", build);
+          const uploadedDeploy = (await deployRes.json()) as NetlifyDeploy;
+          if (!uploadedDeploy.id) {
+            console.error("[netlify-deploy] deploy response missing id", uploadedDeploy);
             return json({ error: "Netlify accepted the upload but did not return a deploy ID." }, 502);
           }
-          deploy = await pollDeployReady(build.deploy_id, accessToken);
+          deploy = uploadedDeploy.state === "ready"
+            ? uploadedDeploy
+            : await pollDeployReady(uploadedDeploy.id, accessToken);
         } catch (err) {
           console.error("[netlify-deploy] build/deploy error", err);
           return json(
