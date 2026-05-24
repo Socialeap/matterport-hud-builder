@@ -129,26 +129,6 @@ export const getNetlifyConnection = createServerFn({ method: "GET" })
   });
 
 /**
- * Return the access token for the authenticated user. Used by the client
- * to call the Netlify API directly (upload zip, rename site). Tokens are
- * NEVER sent to non-authenticated callers; RLS would also block anon reads.
- */
-export const getNetlifyAccessToken = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    const { userId } = context;
-    const { data, error } = await supabaseAdmin
-      .from("netlify_connections")
-      .select("access_token")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (error || !data) {
-      throw new Error("No Netlify connection. Please connect first.");
-    }
-    return { accessToken: data.access_token };
-  });
-
-/**
  * Remove the current user's Netlify connection.
  */
 export const disconnectNetlify = createServerFn({ method: "POST" })
