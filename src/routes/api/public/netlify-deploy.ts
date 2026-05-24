@@ -141,8 +141,8 @@ export const Route = createFileRoute("/api/public/netlify-deploy")({
 
         const siteId = site.id || site.site_id;
         if (!siteId) {
-          console.error("[netlify-deploy] Netlify create response missing site id", site);
-          return json({ error: "Netlify created a site but did not return a site ID." }, 502);
+          console.error("[netlify-deploy] Netlify site response missing site id", site);
+          return json({ error: "Netlify selected a site but did not return a site ID." }, 502);
         }
 
         // ---- 2. Upload zip as a production build and wait for ready ----
@@ -263,15 +263,20 @@ async function getOwnedSiteByName(accessToken: string, name: string): Promise<Ne
     console.warn("[netlify-deploy] direct site lookup failed", direct.status, await safeText(direct));
   }
 
-  const list = await fetch(`${NETLIFY_API_BASE}/sites?filter=all&per_page=100`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!list.ok) {
-    console.warn("[netlify-deploy] site list lookup failed", list.status, await safeText(list));
-    return null;
+  for (let page = 1; page <= 10; page += 1) {
+    const list = await fetch(`${NETLIFY_API_BASE}/sites?filter=all&per_page=100&page=${page}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!list.ok) {
+      console.warn("[netlify-deploy] site list lookup failed", list.status, await safeText(list));
+      return null;
+    }
+    const sites = (await list.json()) as NetlifySite[];
+    const match = sites.find((site) => site.name === name);
+    if (match) return match;
+    if (sites.length < 100) return null;
   }
-  const sites = (await list.json()) as NetlifySite[];
-  return sites.find((site) => site.name === name) ?? null;
+  return null;
 }
 
 async function createNamedSite(
