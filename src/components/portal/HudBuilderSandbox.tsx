@@ -1452,30 +1452,38 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
       const attachments = result.attachments ?? [];
       let downloadBlob: Blob;
       let downloadName: string;
+      // Decoded attachments keyed by safe relative path (no folder prefix).
+      // Reused to build both the download zip (folder-wrapped, nicer UX
+      // when expanded locally) and the publish zip (flat, root-level files
+      // so Netlify serves index.html at /).
+      const safeAttachments: Record<string, Uint8Array> = {};
+      for (const att of attachments) {
+        if (
+          !att.path ||
+          att.path.includes("..") ||
+          att.path.startsWith("/") ||
+          att.path.includes("\\")
+        ) {
+          continue;
+        }
+        try {
+          const bin = atob(att.data);
+          const bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          safeAttachments[att.path] = bytes;
+        } catch (decErr) {
+          console.warn("[download] skipped malformed attachment", att.path, decErr);
+        }
+      }
+
       if (attachments.length > 0) {
         setDownloadStep("Packaging presentation bundle…");
         const { zipSync, strToU8 } = await import("fflate");
         const folder = baseFilename;
         const zipInput: Record<string, Uint8Array> = {};
         zipInput[`${folder}/index.html`] = strToU8(report.html);
-        for (const att of attachments) {
-          // Defensive: reject any path that tries to escape the folder.
-          if (
-            !att.path ||
-            att.path.includes("..") ||
-            att.path.startsWith("/") ||
-            att.path.includes("\\")
-          ) {
-            continue;
-          }
-          try {
-            const bin = atob(att.data);
-            const bytes = new Uint8Array(bin.length);
-            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-            zipInput[`${folder}/${att.path}`] = bytes;
-          } catch (decErr) {
-            console.warn("[download] skipped malformed attachment", att.path, decErr);
-          }
+        for (const [path, bytes] of Object.entries(safeAttachments)) {
+          zipInput[`${folder}/${path}`] = bytes;
         }
         const zipped = zipSync(zipInput, { level: 6 });
         // Copy into a fresh ArrayBuffer so Blob is portable on Safari.
@@ -1487,10 +1495,23 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
         downloadName = `${baseFilename}.html`;
       }
 
-      // If the Publish flow registered an interceptor, hand the Blob over
-      // instead of triggering a browser download. The Publish flow then
-      // deploys it directly to the user's Netlify account.
-      const intercepted = await publishInterceptorRef.current?.consume(downloadBlob);
+      // If the Publish flow registered an interceptor, hand it a
+      // Netlify-shaped zip: always a .zip, files at the ROOT (no folder
+      // prefix). This is what Netlify needs to serve / → index.html.
+      // The user-facing downloadBlob above stays folder-wrapped for nicer
+      // local-extract UX.
+      let publishBlob: Blob = downloadBlob;
+      if (publishInterceptorRef.current) {
+        const { zipSync, strToU8 } = await import("fflate");
+        const flatInput: Record<string, Uint8Array> = {
+          "index.html": strToU8(report.html),
+          ...safeAttachments,
+        };
+        const flatZipped = zipSync(flatInput, { level: 6 });
+        const flatCopy = new Uint8Array(flatZipped);
+        publishBlob = new Blob([flatCopy], { type: "application/zip" });
+      }
+      const intercepted = await publishInterceptorRef.current?.consume(publishBlob);
       if (!intercepted) {
         const url = URL.createObjectURL(downloadBlob);
         const a = document.createElement("a");
