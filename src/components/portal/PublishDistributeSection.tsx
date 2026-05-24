@@ -305,13 +305,6 @@ export function PublishDistributeSection({
   return (
     <div className="space-y-5">
       {/* Strategic positioning copy */}
-      <p className="text-xs text-muted-foreground">
-        While you can use any web hosting platform to publish your presentation
-        file (or upload to your own site), we recommend using Netlify which is
-        a really easy and free. See how below.
-      </p>
-
-      {/* Step 1 — Download the package */}
       <div className="rounded-lg border bg-card p-4">
         <div className="flex items-start gap-3">
           <div
@@ -322,13 +315,11 @@ export function PublishDistributeSection({
           </div>
           <div className="flex-1 space-y-2">
             <div>
-              <h4 className="text-sm font-semibold text-foreground">
+              <h4 className="text-sm font-semibold text-foreground whitespace-pre-wrap">
                 If you haven't already, Download Your Presentation Package
               </h4>
-              <p className="text-xs text-muted-foreground">
-                Generate the publish-ready presentation folder you'll upload to
-                your host. Same flow as the main download button — kept here
-                so you can stay in this section.
+              <p className="text-xs text-muted-foreground whitespace-pre-wrap">
+                Generate the publish-ready presentation folder you'll upload to your web host or website (same flow as the main download button)
               </p>
             </div>
             <Button
@@ -343,7 +334,7 @@ export function PublishDistributeSection({
               <Download className="size-4" />
               {downloading
                 ? (downloadingLabel || "Preparing…")
-                : "Download Presentation Package"}
+                : "Download Presentation Package (.zip)"}
             </Button>
           </div>
         </div>
