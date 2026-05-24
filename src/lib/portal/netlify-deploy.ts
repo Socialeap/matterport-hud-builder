@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { NETLIFY_SLUG_REGEX } from "@/lib/portal/netlify-name";
 
 /**
  * Client-side helpers to deploy a presentation .zip to the user's Netlify
@@ -12,8 +13,6 @@ import { supabase } from "@/integrations/supabase/client";
  *   - 1..63 chars
  *   - cannot start or end with a hyphen
  */
-export const NETLIFY_SLUG_REGEX = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
-
 export function slugifyForNetlify(value: string): string {
   return value
     .toLowerCase()
@@ -36,6 +35,8 @@ interface DeployResult {
   siteName: string;
   /** True when the slug was already taken globally; we kept Netlify's auto name. */
   fellBackToAutoName: boolean;
+  /** True when an earlier Netlify site with this name was recovered and updated. */
+  reusedExistingSite?: boolean;
 }
 
 /**
