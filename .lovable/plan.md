@@ -1,48 +1,61 @@
-# Fix Netlify "Site not found" after successful upload
+## Updated diagnosis
 
-## Root cause
+`sample3dps.netlify.app` showing Netlify’s “Site not found” does **not** necessarily mean the name is globally available. The most likely failure chain is:
 
-The Netlify site is created and the upload returns 200, but visiting the live URL 404s with "Site not found". The deploy itself is fine — the problem is what's *inside* the zip.
+```text
+1. The app created/reserved a Netlify site named sample3dps.
+2. The deploy upload/build step failed or was miswired before content went live.
+3. The Netlify name is now reserved inside the connected Netlify account.
+4. A later publish tries POST /sites with sample3dps again.
+5. Netlify correctly returns 422: subdomain must be unique.
+6. The public URL still shows “Site not found” because that reserved site has no successful deploy yet.
+```
 
-In `src/components/portal/HudBuilderSandbox.tsx` (lines ~1455–1488), the same blob is used for both the user's local download and the Netlify publish handoff:
+So the real bug is not only “slug unavailable.” The publish flow is **not idempotent**: it always tries to create a brand-new Netlify site instead of reusing/updating an existing site owned by the connected account.
 
-- **With attachments**: the zip nests every file under a top-level folder, e.g.
-  `${baseFilename}/index.html`, `${baseFilename}/img1.jpg`. Netlify serves the zip contents verbatim, so there is no `index.html` at `/` — only at `/<folder>/index.html`. Root URL 404s.
-- **Without attachments**: `downloadBlob` is a raw `text/html` blob, not a zip at all. Our `/api/public/netlify-deploy` route still sends it with `Content-Type: application/zip`, and Netlify can't extract it. Deploy is effectively empty → 404.
+## Final fix plan
 
-The local download wants the wrapping folder (so a user double-clicking the zip gets a clean folder, not loose files in Downloads). Netlify wants the opposite — files at the root.
+1. **Change Netlify publish from “always create” to “create-or-reuse”**
+   - In `src/routes/api/public/netlify-deploy.ts`, before creating a site, try to find an existing site in the connected Netlify account with the requested name.
+   - If it exists and is accessible with the user’s Netlify OAuth token, reuse that site ID and upload the new presentation build to it.
+   - This recovers prior failed/empty sites like `sample3dps` and preserves the user’s intended URL.
 
-## Fix: build a separate "flat" zip for the publish handoff
+2. **Handle 422 `subdomain must be unique` correctly**
+   - If `POST /sites` returns 422, inspect the response body.
+   - If it says `subdomain must be unique`, do **not** immediately fail or auto-rename.
+   - First attempt to load the site by name from the connected Netlify account.
+     - If found: deploy to that existing site.
+     - If not found: the name is owned by someone else or unavailable, then generate a unique fallback name.
 
-Make two blobs in the export path when an interceptor is registered: the existing user-download blob (unchanged) and a Netlify-shaped blob that is always a zip with files at the root.
+3. **Add safe fallback naming only when truly needed**
+   - If the requested slug is genuinely unavailable to this account, generate a valid fallback like:
+     ```text
+     sample3dps-k7m4q2
+     ```
+   - Keep Netlify’s 63-character limit by trimming the base slug before appending the suffix.
+   - Try a bounded sequence of fallback names, then return a clear error only if all attempts fail.
 
-### Edit `src/components/portal/HudBuilderSandbox.tsx`
+4. **Deploy to the selected site, not to a newly assumed URL**
+   - Once the route has a `siteId`, upload the zip to that exact site.
+   - Poll the deploy until Netlify reports it is ready.
+   - Verify the live URL responds before returning success when possible.
+   - Never return `undefined.netlify.app`; fail loudly if Netlify does not return a usable site name or URL.
 
-In the export block currently around lines 1452–1493:
+5. **Improve UI messaging**
+   - If the requested URL was recovered/reused, show success at the original URL.
+   - If a fallback URL was required, show a warning explaining the requested Netlify URL was unavailable and the presentation was published at the generated URL.
+   - Keep the final live URL displayed as the source of truth for share links and QR codes.
 
-1. Keep `downloadBlob` / `downloadName` exactly as today (folder-wrapped zip for the multi-file case, raw `.html` for the no-attachment case). The user's manual download stays user-friendly.
-2. Before calling the publish interceptor, if `publishInterceptorRef.current` is set, build a second `publishBlob`:
-   - Always a zip (import `fflate` once, reuse if already imported).
-   - Entries keyed at the root: `index.html` and each `att.path` (no `${folder}/` prefix).
-   - Same defensive path checks (`..`, leading `/`, backslashes) as the download zip.
-   - Same `Uint8Array` copy → `new Blob([copy], { type: "application/zip" })` pattern for Safari compatibility.
-3. Pass `publishBlob` (not `downloadBlob`) to `publishInterceptorRef.current.consume(...)`.
-4. If no interceptor is registered, behavior is unchanged — only the download path runs.
+6. **Add regression checks**
+   - Add/adjust focused tests for Netlify error classification so this exact response is treated correctly:
+     ```json
+     {"errors":{"subdomain":["must be unique"]}}
+     ```
+   - Include coverage for: existing owned site reuse, true external-name conflict fallback, missing final URL rejection, and root `index.html` zip validation.
 
-### What does not change
+## Expected result
 
-- `src/routes/api/public/netlify-deploy.ts` — still authenticates, looks up the OAuth token, uploads the zip, polls, renames, returns `{ liveUrl, adminUrl, siteName, fellBackToAutoName }`.
-- `src/lib/portal/netlify-deploy.ts` — still POSTs `multipart/form-data` to our proxy.
-- OAuth flow, secret trimming, custom-domain logic, slug validation, `PublishDistributeSection` UI — untouched.
-- The user's `.zip` download keeps its top-level folder (nicer UX when expanded locally).
+Publishing to `sample3dps` should now either:
 
-## Why this is the safe, comprehensive fix
-
-- Single source of truth for the deploy payload (the publish branch in the sandbox) — the proxy route doesn't need to know or guess about zip structure.
-- Server-side repacking was considered but rejected: it would mean unzipping + re-zipping on every publish in the Worker, doubling CPU/memory for large bundles when the client already has all the bytes in memory and has just produced the zip.
-- Covers both the attachment and no-attachment cases (the latter is silently broken today even with our prior CORS-proxy fix).
-- Leaves the download UX untouched. No DB, no schema, no secret, no OAuth, no UI changes.
-
-## Files touched
-
-- **edit** `src/components/portal/HudBuilderSandbox.tsx` — build a flat zip for the publish interceptor; keep the folder-wrapped zip for manual download.
+- reuse the already-created empty `sample3dps` Netlify site and successfully deploy content to `https://sample3dps.netlify.app/`, or
+- only if that name is not accessible in the connected Netlify account, publish to a generated available URL and clearly show that final URL.

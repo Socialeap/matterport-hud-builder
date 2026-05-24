@@ -1,4 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
+import { NETLIFY_SLUG_REGEX } from "@/lib/portal/netlify-name";
+
+export { NETLIFY_SLUG_REGEX } from "@/lib/portal/netlify-name";
 
 /**
  * Client-side helpers to deploy a presentation .zip to the user's Netlify
@@ -12,8 +15,6 @@ import { supabase } from "@/integrations/supabase/client";
  *   - 1..63 chars
  *   - cannot start or end with a hyphen
  */
-export const NETLIFY_SLUG_REGEX = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
-
 export function slugifyForNetlify(value: string): string {
   return value
     .toLowerCase()
@@ -36,6 +37,8 @@ interface DeployResult {
   siteName: string;
   /** True when the slug was already taken globally; we kept Netlify's auto name. */
   fellBackToAutoName: boolean;
+  /** True when an earlier Netlify site with this name was recovered and updated. */
+  reusedExistingSite?: boolean;
 }
 
 /**
@@ -69,7 +72,7 @@ export async function deployZipToNetlify(params: {
   form.append("zip", blob, "site.zip");
   form.append("desiredSlug", desiredSlug);
 
-  progress("Uploading to Netlify…");
+  progress("Uploading to Netlify and waiting for the live deploy…");
 
   const res = await fetch("/api/public/netlify-deploy", {
     method: "POST",
@@ -77,7 +80,7 @@ export async function deployZipToNetlify(params: {
     body: form,
   });
 
-  progress("Creating Netlify site…");
+  progress("Finalizing Netlify publish…");
 
   if (!res.ok) {
     let message = `Publish failed (${res.status}).`;
