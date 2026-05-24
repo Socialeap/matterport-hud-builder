@@ -124,10 +124,20 @@ export const PublishDistributeSection = forwardRef<
   const netlify = useNetlifyConnection();
   const fetchAccessToken = useServerFn(getNetlifyAccessToken);
 
+  // Netlify OAuth only works on origins whose redirect_uri is registered
+  // on the 3DPS Studio OAuth app. Preview builds (id-preview--*) are
+  // intentionally NOT registered, so we surface a clear message instead
+  // of letting users hit Netlify's "Not Found" page.
+  const isPreviewOrigin =
+    typeof window !== "undefined" &&
+    /^id-preview--/.test(window.location.hostname);
+  const publishedUrl = "https://matterport-hud-builder.lovable.app";
+
   const [slug, setSlug] = useState(() => slugifyForNetlify(propertyName || "presentation"));
   const [publishing, setPublishing] = useState(false);
   const [publishStep, setPublishStep] = useState<string>("");
   const [liveUrl, setLiveUrl] = useState<string | null>(null);
+  const [showOAuthHelp, setShowOAuthHelp] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
