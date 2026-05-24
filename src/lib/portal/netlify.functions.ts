@@ -3,25 +3,27 @@ import { getRequest } from "@tanstack/react-start/server";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
-const ALLOWED_NETLIFY_OAUTH_ORIGINS = new Set([
+const CANONICAL_NETLIFY_OAUTH_ORIGIN = "https://matterport-hud-builder.lovable.app";
+const CANONICAL_NETLIFY_REDIRECT_URI = `${CANONICAL_NETLIFY_OAUTH_ORIGIN}/api/public/netlify-oauth-callback`;
+
+const ALLOWED_NETLIFY_START_ORIGINS = new Set([
   "https://matterport-hud-builder.lovable.app",
   "https://3dps.transcendencemedia.com",
 ]);
 
 /**
- * Build the Netlify redirect URI for the current request host. Netlify
- * requires an exact registered origin match, so startNetlifyOAuth only
- * accepts the published site and the custom domain.
+ * Netlify validates redirect_uri by exact string match. Use one canonical
+ * callback for every allowed start origin, then postMessage back to the opener.
  */
-function redirectUriForOrigin(origin: string): string {
-  return `${origin}/api/public/netlify-oauth-callback`;
+function netlifyRedirectUri(): string {
+  return CANONICAL_NETLIFY_REDIRECT_URI;
 }
 
-function normalizeAllowedOrigin(value: string): string {
+function normalizeAllowedStartOrigin(value: string): string {
   try {
     const url = new URL(value);
     const origin = url.origin.replace(/\/$/, "");
-    if (!ALLOWED_NETLIFY_OAUTH_ORIGINS.has(origin)) {
+    if (!ALLOWED_NETLIFY_START_ORIGINS.has(origin)) {
       throw new Error("unsupported-origin");
     }
     return origin;
@@ -38,7 +40,7 @@ function requireAllowedRequestOrigin(expectedOrigin: string): void {
     request.headers.get("origin") ||
     request.headers.get("referer") ||
     new URL(request.url).origin;
-  const normalizedRequestOrigin = normalizeAllowedOrigin(requestOrigin);
+  const normalizedRequestOrigin = normalizeAllowedStartOrigin(requestOrigin);
   if (normalizedRequestOrigin !== expectedOrigin) {
     throw new Error(
       "Netlify publishing must be started from the same live site origin that will receive the OAuth callback.",
@@ -61,9 +63,9 @@ export const startNetlifyOAuth = createServerFn({ method: "POST" })
       throw new Error("Netlify integration is not configured.");
     }
 
-    const origin = normalizeAllowedOrigin(data.origin);
+    const origin = normalizeAllowedStartOrigin(data.origin);
     requireAllowedRequestOrigin(origin);
-    const redirectUri = redirectUriForOrigin(origin);
+    const redirectUri = netlifyRedirectUri();
 
     const state = crypto.randomUUID() + crypto.randomUUID();
 
