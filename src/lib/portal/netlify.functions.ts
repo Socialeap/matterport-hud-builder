@@ -43,7 +43,7 @@ function requireAllowedRequestOrigin(expectedOrigin: string): void {
   const normalizedRequestOrigin = normalizeAllowedStartOrigin(requestOrigin);
   if (normalizedRequestOrigin !== expectedOrigin) {
     throw new Error(
-      "Netlify publishing must be started from the same live site origin that will receive the OAuth callback.",
+      "Netlify publishing must be started from the same live site origin reported by the browser.",
     );
   }
 }
