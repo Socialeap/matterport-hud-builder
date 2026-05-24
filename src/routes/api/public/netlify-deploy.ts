@@ -180,9 +180,10 @@ export const Route = createFileRoute("/api/public/netlify-deploy")({
         }
 
         const finalName =
-          nonEmpty(deploy?.name) ||
           nonEmpty(site.name) ||
-          siteNameFromUrl(nonEmpty(deploy?.ssl_url) || nonEmpty(deploy?.url) || nonEmpty(site.ssl_url) || nonEmpty(site.url));
+          siteNameFromUrl(nonEmpty(site.ssl_url) || nonEmpty(site.url)) ||
+          siteNameFromUrl(nonEmpty(deploy?.ssl_url) || nonEmpty(deploy?.url)) ||
+          slugName(nonEmpty(deploy?.name));
         const liveUrl = pickLiveUrl(deploy, site, finalName);
         const adminUrl =
           nonEmpty(deploy?.admin_url) ||
@@ -374,6 +375,10 @@ function siteNameFromUrl(value: string | null): string | null {
   } catch {
     return null;
   }
+}
+
+function slugName(value: string | null): string | null {
+  return value && NETLIFY_SLUG_REGEX.test(value) ? value : null;
 }
 
 function ensureHttps(url: string): string {
