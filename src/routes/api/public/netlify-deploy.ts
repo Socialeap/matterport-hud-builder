@@ -360,10 +360,10 @@ function pickLiveUrl(
   site: NetlifySite,
   finalName: string | null,
 ): string | null {
-  const fromDeploy = nonEmpty(deploy?.ssl_url) || nonEmpty(deploy?.url);
   const fromSite = nonEmpty(site.ssl_url) || nonEmpty(site.url);
-  if (fromDeploy) return ensureHttps(fromDeploy);
   if (fromSite) return ensureHttps(fromSite);
+  const fromDeploy = nonEmpty(deploy?.ssl_url) || nonEmpty(deploy?.url);
+  if (fromDeploy) return ensureHttps(fromDeploy);
   return finalName ? `https://${finalName}.netlify.app` : null;
 }
 
