@@ -8,6 +8,7 @@ import {
 } from "react";
 import { QRCodeCanvas } from "qrcode.react";
 import {
+  AlertCircle,
   Check,
   Copy,
   Download,
@@ -17,6 +18,7 @@ import {
   Loader2,
   LogOut,
   QrCode,
+  RefreshCw,
   Rocket,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
