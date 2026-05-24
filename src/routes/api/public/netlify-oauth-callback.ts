@@ -1,6 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
+const CANONICAL_NETLIFY_REDIRECT_URI =
+  "https://matterport-hud-builder.lovable.app/api/public/netlify-oauth-callback";
+
 /**
  * Netlify OAuth callback. Netlify redirects here with ?code=&state=.
  * We look up `state` in netlify_oauth_states (mapped to a user_id when
@@ -60,7 +63,7 @@ export const Route = createFileRoute("/api/public/netlify-oauth-callback")({
           });
         }
 
-        const redirectUri = `${url.origin}/api/public/netlify-oauth-callback`;
+        const redirectUri = CANONICAL_NETLIFY_REDIRECT_URI;
 
         // Exchange code for token. Netlify accepts form-encoded body.
         let tokenJson:
