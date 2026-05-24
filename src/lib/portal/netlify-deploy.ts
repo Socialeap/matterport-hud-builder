@@ -72,7 +72,7 @@ export async function deployZipToNetlify(params: {
   form.append("zip", blob, "site.zip");
   form.append("desiredSlug", desiredSlug);
 
-  progress("Uploading to Netlify…");
+  progress("Uploading to Netlify and waiting for the live deploy…");
 
   const res = await fetch("/api/public/netlify-deploy", {
     method: "POST",
@@ -80,7 +80,7 @@ export async function deployZipToNetlify(params: {
     body: form,
   });
 
-  progress("Creating Netlify site…");
+  progress("Finalizing Netlify publish…");
 
   if (!res.ok) {
     let message = `Publish failed (${res.status}).`;
