@@ -10,15 +10,14 @@ In **Netlify → User settings → Applications → OAuth applications → 3DPS 
 
 ```
 https://matterport-hud-builder.lovable.app/api/public/netlify-oauth-callback
-https://3dps.transcendencemedia.com/api/public/netlify-oauth-callback
 ```
 
-Per your answer, we intentionally **do not** register `id-preview--*.lovable.app`. Connect Netlify will only work on the published site and the custom domain.
+Per your answer, we intentionally **do not** register `id-preview--*.lovable.app`. Connect Netlify can be started from the published site and the custom domain, but it now uses the published site as the single canonical OAuth callback to avoid host-specific mismatch failures.
 
 ### 2. Code changes (I will make)
 
-**A. Preview-origin guard in `PublishDistributeSection.tsx`**
-- Detect when `window.location.hostname` starts with `id-preview--` (or otherwise isn't the published/custom domain).
+**A. Unsupported-origin guard in `PublishDistributeSection.tsx`**
+- Detect when `window.location.origin` is not the published site or custom domain.
 - Disable the **Connect Netlify** button on preview and show an inline notice: *"Publishing requires the live site. Open this app at matterport-hud-builder.lovable.app or 3dps.transcendencemedia.com to connect Netlify."* with a button that opens the published URL in a new tab, preserving the current builder state via query params where feasible.
 
 **B. Harden popup error path in `useNetlifyConnection.ts`**
@@ -42,7 +41,7 @@ Per your answer, we intentionally **do not** register `id-preview--*.lovable.app
 ### 3. What I will NOT change
 
 - The OAuth flow itself, server-side token storage, deploy logic, slug validation, or the `publishInterceptorRef` wiring — all of that is working and unrelated to the "Not Found" error.
-- The `redirect_uri` construction logic — origin-based is correct; the fix is registering the right origins on Netlify's side.
+- The publish/deploy logic after OAuth succeeds.
 
 ## Verification after changes
 
