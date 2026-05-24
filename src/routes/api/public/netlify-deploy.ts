@@ -1,5 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import {
+  NETLIFY_SLUG_REGEX,
+  buildFallbackNetlifySlugs,
+  isRecoverableNetlifyNameConflict,
+} from "@/lib/portal/netlify-name";
 
 /**
  * Server-side proxy for Netlify deploy. The browser uploads the
@@ -38,7 +43,6 @@ interface NetlifyDeploy {
   error_message?: string;
 }
 
-const NETLIFY_SLUG_REGEX = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const NETLIFY_API_BASE = "https://api.netlify.com/api/v1";
 
 export const Route = createFileRoute("/api/public/netlify-deploy")({
