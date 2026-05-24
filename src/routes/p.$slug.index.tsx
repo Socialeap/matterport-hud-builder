@@ -398,6 +398,47 @@ function PortalPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branding?.ga_tracking_id]);
 
+  // Override the parent app's favicon (/favicon.png from __root.tsx) with the
+  // MSP's branded favicon. TanStack Router concatenates <link> entries from
+  // root + leaf without dedup, and browsers commonly honor the first
+  // rel="icon" they parse — so we explicitly purge competing icons at
+  // runtime and inject the brand one.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const rawHref = (branding?.favicon_url || branding?.logo_url || "").trim();
+    if (!rawHref) return;
+    const lower = rawHref.toLowerCase();
+    const type = lower.endsWith(".svg")
+      ? "image/svg+xml"
+      : lower.endsWith(".ico")
+      ? "image/x-icon"
+      : lower.endsWith(".webp")
+      ? "image/webp"
+      : lower.endsWith(".jpg") || lower.endsWith(".jpeg")
+      ? "image/jpeg"
+      : "image/png";
+
+    // Remove every existing icon / apple-touch-icon so only the brand icon
+    // remains. Without this, Chrome typically keeps the first /favicon.png.
+    document
+      .querySelectorAll<HTMLLinkElement>(
+        'link[rel="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"]',
+      )
+      .forEach((el) => el.parentNode?.removeChild(el));
+
+    const icon = document.createElement("link");
+    icon.rel = "icon";
+    icon.type = type;
+    icon.href = rawHref;
+    document.head.appendChild(icon);
+
+    const apple = document.createElement("link");
+    apple.rel = "apple-touch-icon";
+    apple.href = rawHref;
+    document.head.appendChild(apple);
+  }, [branding?.favicon_url, branding?.logo_url]);
+
+
   if (!branding) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
