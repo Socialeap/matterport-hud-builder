@@ -8,10 +8,9 @@ const ALLOWED_NETLIFY_OAUTH_ORIGINS = new Set([
 ]);
 
 /**
- * Build the Netlify redirect URI for the current request host. We register
- * all three (preview / published / custom domain) in the Netlify OAuth app,
- * but only the ONE that matches the host of the incoming start request can
- * be sent to Netlify (it must match exactly).
+ * Build the Netlify redirect URI for the current request host. Netlify
+ * requires an exact registered origin match, so startNetlifyOAuth only
+ * accepts the published site and the custom domain.
  */
 function redirectUriForOrigin(origin: string): string {
   return `${origin}/api/public/netlify-oauth-callback`;
