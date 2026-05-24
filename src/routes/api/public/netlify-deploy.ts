@@ -200,7 +200,10 @@ export const Route = createFileRoute("/api/public/netlify-deploy")({
           );
         }
 
-        const finalName = nonEmpty(deploy?.name) || nonEmpty(site.name);
+        const finalName =
+          nonEmpty(deploy?.name) ||
+          nonEmpty(site.name) ||
+          siteNameFromUrl(nonEmpty(deploy?.ssl_url) || nonEmpty(deploy?.url) || nonEmpty(site.ssl_url) || nonEmpty(site.url));
         const liveUrl = pickLiveUrl(deploy, site, finalName);
         const adminUrl =
           nonEmpty(deploy?.admin_url) ||
@@ -303,6 +306,16 @@ function pickLiveUrl(
   if (fromDeploy) return ensureHttps(fromDeploy);
   if (fromSite) return ensureHttps(fromSite);
   return finalName ? `https://${finalName}.netlify.app` : null;
+}
+
+function siteNameFromUrl(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    const host = new URL(value).hostname;
+    return host.endsWith(".netlify.app") ? host.replace(/\.netlify\.app$/, "") : null;
+  } catch {
+    return null;
+  }
 }
 
 function ensureHttps(url: string): string {
