@@ -26,9 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { useServerFn } from "@tanstack/react-start";
 import { useNetlifyConnection } from "@/hooks/useNetlifyConnection";
-import { getNetlifyAccessToken } from "@/lib/portal/netlify.functions";
 import {
   deployZipToNetlify,
   isValidNetlifySlug,
@@ -132,7 +130,6 @@ export const PublishDistributeSection = forwardRef<
   ref,
 ) {
   const netlify = useNetlifyConnection();
-  const fetchAccessToken = useServerFn(getNetlifyAccessToken);
 
   // Netlify OAuth only works on the exact origins registered on the
   // 3DPS Studio OAuth app. Any other host would make Netlify show
@@ -226,9 +223,6 @@ export const PublishDistributeSection = forwardRef<
     setLiveUrl(null);
 
     try {
-      setPublishStep("Fetching Netlify credentials…");
-      const { accessToken } = await fetchAccessToken({});
-
       // Set the interceptor BEFORE triggering the parent's download.
       setPublishStep("Packaging presentation…");
       const blob: Blob = await new Promise((resolve, reject) => {
@@ -248,7 +242,6 @@ export const PublishDistributeSection = forwardRef<
       const result = await deployZipToNetlify({
         blob,
         desiredSlug: slug,
-        accessToken,
         onProgress: (label) => setPublishStep(label),
       });
 
@@ -269,7 +262,7 @@ export const PublishDistributeSection = forwardRef<
       setPublishing(false);
       setPublishStep("");
     }
-  }, [fetchAccessToken, netlify.connection?.connected, onDownload, slug, slugValid]);
+  }, [netlify.connection?.connected, onDownload, slug, slugValid]);
 
   const shareLinksWithUrls = useMemo(() => {
     if (!liveUrl) return [] as Array<ShareLink & { fullUrl: string }>;
