@@ -2184,7 +2184,9 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
                   </p>
                   <PublishDistributeSection
                     ref={publishInterceptorRef}
+                    propertyName={
                       models[0]?.propertyName?.trim() ||
+                      models[0]?.name?.trim() ||
                       models[0]?.name?.trim() ||
                       ""
                     }
