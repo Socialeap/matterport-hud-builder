@@ -1,57 +1,53 @@
+# Fix Netlify deploy CORS failure
+
 ## Root cause
 
-The Netlify popup showing **"Error during authorization — Not Found"** is not a code bug. Netlify's `/authorize` endpoint returns "Not Found" when the `redirect_uri` we pass does not exactly match a URI registered on the **3DPS Studio** OAuth application. Our code correctly builds the redirect URI from the current browser origin — the registered URIs in Netlify just don't include the origin you were testing on.
+The browser error is unambiguous:
 
-## Action items
+> The 'Access-Control-Allow-Origin' header contains multiple values '*, *', but only one is allowed.
 
-### 1. Netlify dashboard (you — no code change)
+This is a **response-header** problem — the browser is rejecting Netlify's CORS response, not ours. `api.netlify.com` is emitting `Access-Control-Allow-Origin: *` **twice** on the preflight/response for `POST /api/v1/sites` when the request is a cross-origin upload with `Content-Type: application/zip` + `Authorization`. This is a long-standing, intermittent Netlify edge/CDN bug that surfaces unpredictably for browser-origin calls and cannot be fixed from our client code — no fetch option, header tweak, `mode: 'cors'`, `XMLHttpRequest` swap, or retry will change what Netlify's edge returns.
 
-In **Netlify → User settings → Applications → OAuth applications → 3DPS Studio**, register exactly these Redirect URIs (no trailing slash, one per line):
+The project does not register a service worker and does not wrap `fetch` in a way that could inject response headers (response headers can only come from the server / intermediaries). So the only durable fix is to **stop calling `api.netlify.com` from the browser**.
 
-```
-https://matterport-hud-builder.lovable.app/api/public/netlify-oauth-callback
-```
+## Fix: route Netlify deploy traffic through our own server
 
-Per your answer, we intentionally **do not** register `id-preview--*.lovable.app`. Connect Netlify can be started from the published site and the custom domain, but it now uses the published site as the single canonical OAuth callback to avoid host-specific mismatch failures.
+Move the three Netlify REST calls in `src/lib/portal/netlify-deploy.ts` behind a single server route on our origin. The browser uploads the zip to **us** (same-origin, no CORS), and our server forwards it to Netlify with the user's stored OAuth token.
 
-### 2. Code changes (I will make)
+### New server route — `src/routes/api/public/netlify-deploy.ts`
 
-**A. Unsupported-origin guard in `PublishDistributeSection.tsx`**
-- Detect when `window.location.origin` is not the published site or custom domain.
-- Disable the **Connect Netlify** button on unsupported URLs and show an inline notice that opens the published URL in a new tab.
+A `POST` handler that:
 
-**B. Harden popup error path in `useNetlifyConnection.ts`**
-- Track popup lifecycle with three terminal states: `success`, `error`, `cancelled`.
-- Add a **90-second timeout**: if no `postMessage` from the callback arrives, mark as `error` with message `"Sign-in timed out. The redirect URI may not be registered on the Netlify OAuth app."`.
-- Add a **popup-closed poll** (every 500ms): if `popup.closed === true` before a success message, mark as `cancelled` with message `"Sign-in cancelled or the redirect URI isn't registered on Netlify. See setup instructions."`.
-- Clear the polling/timeout on any terminal state to avoid leaks.
-- Expose `lastError: string | null` and `clearError()` from the hook.
-- The server function also rejects unsupported origins before returning a Netlify authorization URL.
+1. Authenticates the caller via the standard Supabase bearer header (reuse the same pattern as `getNetlifyAccessToken` — read the user's access token from `netlify_connections` server-side; never trust a token from the request body).
+2. Accepts a `multipart/form-data` body with:
+   - `zip` (the presentation blob, `application/zip`)
+   - `desiredSlug` (string)
+3. Server-side, performs the existing 3-step Netlify flow:
+   - `POST https://api.netlify.com/api/v1/sites` with the raw zip bytes + `Authorization: Bearer <token>`
+   - Poll `GET /sites/:id/deploys/:deployId` until `ready` (with the existing 90s ceiling)
+   - `PATCH /sites/:id` to rename to `desiredSlug`; on failure, fall back to auto name
+4. Returns the same JSON shape the client already expects: `{ liveUrl, adminUrl, siteName, fellBackToAutoName }`.
 
-**C. Surface the error in `PublishDistributeSection.tsx`**
-- Replace the silent "Connecting…" state. When `lastError` is set:
-  - Show a destructive inline Alert with the message.
-  - Include a "Retry" button (calls `clearError()` + `connect()`).
-  - Include a collapsible "Setup instructions" disclosure listing the canonical redirect URI to register and a link to Netlify OAuth applications settings.
-- Also `toast.error(lastError)` so it isn't missed if the panel is scrolled.
+Because this route is server-to-server, **CORS does not apply** — Netlify's duplicate-`*` header is irrelevant. The route lives under `/api/public/` only so it can be called without the platform's session middleware getting in the way; the handler still enforces auth itself.
 
-**D. Callback hardening in `src/routes/api/public/netlify-oauth-callback.ts`**
-- If Netlify returns with `?error=...&error_description=...`, render an HTML page that `postMessage`s `{ type: 'netlify-oauth', status: 'error', message }` to `window.opener` and closes — so the popup never gets stuck on a Netlify error page without the parent knowing.
-- Same treatment for token-exchange failures (currently they likely surface as a blank/error page with no parent notification).
+### Update `src/lib/portal/netlify-deploy.ts`
 
-### 3. What I will NOT change
+Replace the three direct `fetch("https://api.netlify.com/...")` calls in `deployZipToNetlify` with one same-origin `fetch("/api/public/netlify-deploy", { method: "POST", body: formData })`. Keep the existing `onProgress` callbacks ("Uploading to Netlify…", "Finalizing deploy…", "Setting your custom URL…") — fire them around the single request so the UI feedback in `PublishDistributeSection` stays the same. Slug validation helpers (`slugifyForNetlify`, `isValidNetlifySlug`, `NETLIFY_SLUG_REGEX`) stay client-side.
 
-- The OAuth flow itself, server-side token storage, deploy logic, slug validation, or the `publishInterceptorRef` wiring — all of that is working and unrelated to the "Not Found" error.
-- The publish/deploy logic after OAuth succeeds.
+### What does not change
 
-## Verification after changes
+- OAuth flow, canonical redirect URI, origin allowlist, secret trimming — all the prior fixes stay.
+- `getNetlifyAccessToken` server function stays (still used by any non-deploy paths and as the lookup the new route reuses internally).
+- UI in `PublishDistributeSection.tsx` — no changes; it still calls `deployZipToNetlify(...)` with the same arguments.
 
-1. On unsupported URLs: Connect button is disabled with the explanatory notice.
-2. On published site (after you register the URI): full flow succeeds end-to-end.
-3. Simulated failure (temporarily unregister the URI): popup shows Netlify's "Not Found", auto-closes via timeout, inline Alert appears in the Publish panel with retry + setup instructions.
+## Technical notes
+
+- Cloudflare Worker request body limit is 100 MB; presentation zips are well under that based on the existing zip pipeline. If a future zip approaches the cap, we'd switch to Netlify's file-digest deploy API, but that is not needed today.
+- The server route reads the zip with `await request.formData()` and forwards `file.stream()` (or the `Blob`) directly to Netlify — no buffering of the whole zip into a JS string.
+- Errors from Netlify are passed back to the client with status + message body so the existing `[publish] failed` UI surface keeps working.
+- No DB schema changes, no new secrets, no auth changes.
 
 ## Files touched
 
-- `src/hooks/useNetlifyConnection.ts` — timeout, popup-closed detection, error state
-- `src/components/portal/PublishDistributeSection.tsx` — preview guard, error Alert, retry, instructions
-- `src/routes/api/public/netlify-oauth-callback.ts` — postMessage on Netlify error / exchange failure
+- **new** `src/routes/api/public/netlify-deploy.ts` — server proxy
+- **edit** `src/lib/portal/netlify-deploy.ts` — swap 3 direct Netlify calls for 1 same-origin call
