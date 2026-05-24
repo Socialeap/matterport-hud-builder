@@ -299,7 +299,40 @@ export const PublishDistributeSection = forwardRef<
               </p>
             </div>
 
-            {netlify.connection?.connected ? (
+            {isPreviewOrigin ? (
+              <div className="space-y-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs">
+                <div className="flex items-start gap-2">
+                  <Info className="mt-0.5 size-4 shrink-0 text-amber-500" />
+                  <div className="space-y-1">
+                    <p className="font-medium text-foreground">
+                      Publishing isn't available on the preview URL.
+                    </p>
+                    <p className="text-muted-foreground">
+                      Netlify sign-in only works on the live site. Open this app at{" "}
+                      <a
+                        href={publishedUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-mono underline"
+                      >
+                        matterport-hud-builder.lovable.app
+                      </a>{" "}
+                      to connect Netlify and publish.
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 gap-1.5 text-xs"
+                  onClick={() => window.open(publishedUrl, "_blank", "noopener,noreferrer")}
+                >
+                  <ExternalLink className="size-3.5" />
+                  Open live site
+                </Button>
+              </div>
+            ) : netlify.connection?.connected ? (
               <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/30 p-2 text-xs">
                 <Check className="size-4 text-emerald-500" />
                 <span className="text-foreground">
@@ -342,8 +375,62 @@ export const PublishDistributeSection = forwardRef<
               </div>
             )}
 
-            {netlify.lastError && (
-              <p className="text-xs text-destructive">{netlify.lastError}</p>
+            {!isPreviewOrigin && netlify.lastError && (
+              <div className="space-y-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
+                  <p className="text-foreground">{netlify.lastError}</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 gap-1.5 text-xs"
+                    disabled={netlify.connecting}
+                    onClick={() => {
+                      netlify.clearError();
+                      void netlify.connect();
+                    }}
+                  >
+                    <RefreshCw className="size-3.5" />
+                    Try again
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 gap-1.5 text-xs"
+                    onClick={() => setShowOAuthHelp((v) => !v)}
+                  >
+                    <Info className="size-3.5" />
+                    {showOAuthHelp ? "Hide setup help" : "Setup help"}
+                  </Button>
+                </div>
+                {showOAuthHelp && (
+                  <div className="space-y-1.5 rounded border bg-background/60 p-2 text-[11px] text-muted-foreground">
+                    <p className="text-foreground">
+                      If Netlify showed <strong>"Not Found"</strong>, the current site's redirect URI isn't
+                      registered on the 3DPS Studio OAuth app. An admin needs to add this URI in
+                      Netlify → User settings → Applications → OAuth applications → 3DPS Studio:
+                    </p>
+                    <code className="block break-all rounded bg-muted px-2 py-1 font-mono text-foreground">
+                      {typeof window !== "undefined"
+                        ? `${window.location.origin}/api/public/netlify-oauth-callback`
+                        : "/api/public/netlify-oauth-callback"}
+                    </code>
+                    <a
+                      href="https://app.netlify.com/user/applications"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 underline"
+                    >
+                      Open Netlify OAuth applications
+                      <ExternalLink className="size-3" />
+                    </a>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
