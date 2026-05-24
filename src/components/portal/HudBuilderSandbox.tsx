@@ -42,7 +42,7 @@ import {
   isAccessArmed,
   ACCESS_PASSWORD_MIN_LEN,
 } from "./PrivacyAccessSection";
-import { PublishDistributeSection } from "./PublishDistributeSection";
+import { PublishDistributeSection, type PublishInterceptor } from "./PublishDistributeSection";
 import { TourBehaviorModal } from "./TourBehaviorModal";
 import { HudPreview } from "./HudPreview";
 import { PortalSignupModal } from "./PortalSignupModal";
