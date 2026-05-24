@@ -42,6 +42,7 @@ import { Route as PSlugDemoRouteImport } from './routes/p.$slug.demo'
 import { Route as PSlugBuilderRouteImport } from './routes/p.$slug.builder'
 import { Route as MarketplaceFeedbackTokenRouteImport } from './routes/marketplace.feedback.$token'
 import { Route as LovableEmailSuppressionRouteImport } from './routes/lovable/email/suppression'
+import { Route as ApiPublicNetlifyOauthCallbackRouteImport } from './routes/api/public/netlify-oauth-callback'
 import { Route as AgentsMatchMatchTokenRouteImport } from './routes/agents.match.$matchToken'
 import { Route as AuthenticatedDashboardWorkOrdersRouteImport } from './routes/_authenticated.dashboard.work-orders'
 import { Route as AuthenticatedDashboardVaultRouteImport } from './routes/_authenticated.dashboard.vault'
@@ -234,6 +235,12 @@ const LovableEmailSuppressionRoute = LovableEmailSuppressionRouteImport.update({
   path: '/lovable/email/suppression',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicNetlifyOauthCallbackRoute =
+  ApiPublicNetlifyOauthCallbackRouteImport.update({
+    id: '/api/public/netlify-oauth-callback',
+    path: '/api/public/netlify-oauth-callback',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AgentsMatchMatchTokenRoute = AgentsMatchMatchTokenRouteImport.update({
   id: '/match/$matchToken',
   path: '/match/$matchToken',
@@ -412,6 +419,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/vault': typeof AuthenticatedDashboardVaultRouteWithChildren
   '/dashboard/work-orders': typeof AuthenticatedDashboardWorkOrdersRoute
   '/agents/match/$matchToken': typeof AgentsMatchMatchTokenRoute
+  '/api/public/netlify-oauth-callback': typeof ApiPublicNetlifyOauthCallbackRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/marketplace/feedback/$token': typeof MarketplaceFeedbackTokenRoute
   '/p/$slug/builder': typeof PSlugBuilderRoute
@@ -465,6 +473,7 @@ export interface FileRoutesByTo {
   '/dashboard/vault': typeof AuthenticatedDashboardVaultRouteWithChildren
   '/dashboard/work-orders': typeof AuthenticatedDashboardWorkOrdersRoute
   '/agents/match/$matchToken': typeof AgentsMatchMatchTokenRoute
+  '/api/public/netlify-oauth-callback': typeof ApiPublicNetlifyOauthCallbackRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/marketplace/feedback/$token': typeof MarketplaceFeedbackTokenRoute
   '/p/$slug/builder': typeof PSlugBuilderRoute
@@ -524,6 +533,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard/vault': typeof AuthenticatedDashboardVaultRouteWithChildren
   '/_authenticated/dashboard/work-orders': typeof AuthenticatedDashboardWorkOrdersRoute
   '/agents/match/$matchToken': typeof AgentsMatchMatchTokenRoute
+  '/api/public/netlify-oauth-callback': typeof ApiPublicNetlifyOauthCallbackRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/marketplace/feedback/$token': typeof MarketplaceFeedbackTokenRoute
   '/p/$slug/builder': typeof PSlugBuilderRoute
@@ -583,6 +593,7 @@ export interface FileRouteTypes {
     | '/dashboard/vault'
     | '/dashboard/work-orders'
     | '/agents/match/$matchToken'
+    | '/api/public/netlify-oauth-callback'
     | '/lovable/email/suppression'
     | '/marketplace/feedback/$token'
     | '/p/$slug/builder'
@@ -636,6 +647,7 @@ export interface FileRouteTypes {
     | '/dashboard/vault'
     | '/dashboard/work-orders'
     | '/agents/match/$matchToken'
+    | '/api/public/netlify-oauth-callback'
     | '/lovable/email/suppression'
     | '/marketplace/feedback/$token'
     | '/p/$slug/builder'
@@ -694,6 +706,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard/vault'
     | '/_authenticated/dashboard/work-orders'
     | '/agents/match/$matchToken'
+    | '/api/public/netlify-oauth-callback'
     | '/lovable/email/suppression'
     | '/marketplace/feedback/$token'
     | '/p/$slug/builder'
@@ -735,6 +748,7 @@ export interface RootRouteChildren {
   EmailUnsubscribeRoute: typeof EmailUnsubscribeRoute
   InviteTokenRoute: typeof InviteTokenRoute
   PSlugRoute: typeof PSlugRouteWithChildren
+  ApiPublicNetlifyOauthCallbackRoute: typeof ApiPublicNetlifyOauthCallbackRoute
   LovableEmailSuppressionRoute: typeof LovableEmailSuppressionRoute
   MarketplaceFeedbackTokenRoute: typeof MarketplaceFeedbackTokenRoute
   WorkOrdersRateTokenRoute: typeof WorkOrdersRateTokenRoute
@@ -974,6 +988,13 @@ declare module '@tanstack/react-router' {
       path: '/lovable/email/suppression'
       fullPath: '/lovable/email/suppression'
       preLoaderRoute: typeof LovableEmailSuppressionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/netlify-oauth-callback': {
+      id: '/api/public/netlify-oauth-callback'
+      path: '/api/public/netlify-oauth-callback'
+      fullPath: '/api/public/netlify-oauth-callback'
+      preLoaderRoute: typeof ApiPublicNetlifyOauthCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/agents/match/$matchToken': {
@@ -1313,6 +1334,7 @@ const rootRouteChildren: RootRouteChildren = {
   EmailUnsubscribeRoute: EmailUnsubscribeRoute,
   InviteTokenRoute: InviteTokenRoute,
   PSlugRoute: PSlugRouteWithChildren,
+  ApiPublicNetlifyOauthCallbackRoute: ApiPublicNetlifyOauthCallbackRoute,
   LovableEmailSuppressionRoute: LovableEmailSuppressionRoute,
   MarketplaceFeedbackTokenRoute: MarketplaceFeedbackTokenRoute,
   WorkOrdersRateTokenRoute: WorkOrdersRateTokenRoute,
