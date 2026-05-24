@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { getRequest } from "@tanstack/react-start/server";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
@@ -31,6 +32,17 @@ function normalizeAllowedOrigin(value: string): string {
   }
 }
 
+function requireAllowedRequestOrigin(expectedOrigin: string): void {
+  const request = getRequest();
+  const requestOrigin = request.headers.get("origin") || request.headers.get("referer") || "";
+  const normalizedRequestOrigin = normalizeAllowedOrigin(requestOrigin);
+  if (normalizedRequestOrigin !== expectedOrigin) {
+    throw new Error(
+      "Netlify publishing must be started from the same live site origin that will receive the OAuth callback.",
+    );
+  }
+}
+
 /**
  * Begin the Netlify OAuth dance. Inserts a short-lived state row keyed to
  * the authenticated user, returns the full Netlify authorize URL for the
@@ -47,6 +59,7 @@ export const startNetlifyOAuth = createServerFn({ method: "POST" })
     }
 
     const origin = normalizeAllowedOrigin(data.origin);
+    requireAllowedRequestOrigin(origin);
     const redirectUri = redirectUriForOrigin(origin);
 
     const state = crypto.randomUUID() + crypto.randomUUID();
