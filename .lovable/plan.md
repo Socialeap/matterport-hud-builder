@@ -1,53 +1,48 @@
-# Fix Netlify deploy CORS failure
+# Fix Netlify "Site not found" after successful upload
 
 ## Root cause
 
-The browser error is unambiguous:
+The Netlify site is created and the upload returns 200, but visiting the live URL 404s with "Site not found". The deploy itself is fine — the problem is what's *inside* the zip.
 
-> The 'Access-Control-Allow-Origin' header contains multiple values '*, *', but only one is allowed.
+In `src/components/portal/HudBuilderSandbox.tsx` (lines ~1455–1488), the same blob is used for both the user's local download and the Netlify publish handoff:
 
-This is a **response-header** problem — the browser is rejecting Netlify's CORS response, not ours. `api.netlify.com` is emitting `Access-Control-Allow-Origin: *` **twice** on the preflight/response for `POST /api/v1/sites` when the request is a cross-origin upload with `Content-Type: application/zip` + `Authorization`. This is a long-standing, intermittent Netlify edge/CDN bug that surfaces unpredictably for browser-origin calls and cannot be fixed from our client code — no fetch option, header tweak, `mode: 'cors'`, `XMLHttpRequest` swap, or retry will change what Netlify's edge returns.
+- **With attachments**: the zip nests every file under a top-level folder, e.g.
+  `${baseFilename}/index.html`, `${baseFilename}/img1.jpg`. Netlify serves the zip contents verbatim, so there is no `index.html` at `/` — only at `/<folder>/index.html`. Root URL 404s.
+- **Without attachments**: `downloadBlob` is a raw `text/html` blob, not a zip at all. Our `/api/public/netlify-deploy` route still sends it with `Content-Type: application/zip`, and Netlify can't extract it. Deploy is effectively empty → 404.
 
-The project does not register a service worker and does not wrap `fetch` in a way that could inject response headers (response headers can only come from the server / intermediaries). So the only durable fix is to **stop calling `api.netlify.com` from the browser**.
+The local download wants the wrapping folder (so a user double-clicking the zip gets a clean folder, not loose files in Downloads). Netlify wants the opposite — files at the root.
 
-## Fix: route Netlify deploy traffic through our own server
+## Fix: build a separate "flat" zip for the publish handoff
 
-Move the three Netlify REST calls in `src/lib/portal/netlify-deploy.ts` behind a single server route on our origin. The browser uploads the zip to **us** (same-origin, no CORS), and our server forwards it to Netlify with the user's stored OAuth token.
+Make two blobs in the export path when an interceptor is registered: the existing user-download blob (unchanged) and a Netlify-shaped blob that is always a zip with files at the root.
 
-### New server route — `src/routes/api/public/netlify-deploy.ts`
+### Edit `src/components/portal/HudBuilderSandbox.tsx`
 
-A `POST` handler that:
+In the export block currently around lines 1452–1493:
 
-1. Authenticates the caller via the standard Supabase bearer header (reuse the same pattern as `getNetlifyAccessToken` — read the user's access token from `netlify_connections` server-side; never trust a token from the request body).
-2. Accepts a `multipart/form-data` body with:
-   - `zip` (the presentation blob, `application/zip`)
-   - `desiredSlug` (string)
-3. Server-side, performs the existing 3-step Netlify flow:
-   - `POST https://api.netlify.com/api/v1/sites` with the raw zip bytes + `Authorization: Bearer <token>`
-   - Poll `GET /sites/:id/deploys/:deployId` until `ready` (with the existing 90s ceiling)
-   - `PATCH /sites/:id` to rename to `desiredSlug`; on failure, fall back to auto name
-4. Returns the same JSON shape the client already expects: `{ liveUrl, adminUrl, siteName, fellBackToAutoName }`.
-
-Because this route is server-to-server, **CORS does not apply** — Netlify's duplicate-`*` header is irrelevant. The route lives under `/api/public/` only so it can be called without the platform's session middleware getting in the way; the handler still enforces auth itself.
-
-### Update `src/lib/portal/netlify-deploy.ts`
-
-Replace the three direct `fetch("https://api.netlify.com/...")` calls in `deployZipToNetlify` with one same-origin `fetch("/api/public/netlify-deploy", { method: "POST", body: formData })`. Keep the existing `onProgress` callbacks ("Uploading to Netlify…", "Finalizing deploy…", "Setting your custom URL…") — fire them around the single request so the UI feedback in `PublishDistributeSection` stays the same. Slug validation helpers (`slugifyForNetlify`, `isValidNetlifySlug`, `NETLIFY_SLUG_REGEX`) stay client-side.
+1. Keep `downloadBlob` / `downloadName` exactly as today (folder-wrapped zip for the multi-file case, raw `.html` for the no-attachment case). The user's manual download stays user-friendly.
+2. Before calling the publish interceptor, if `publishInterceptorRef.current` is set, build a second `publishBlob`:
+   - Always a zip (import `fflate` once, reuse if already imported).
+   - Entries keyed at the root: `index.html` and each `att.path` (no `${folder}/` prefix).
+   - Same defensive path checks (`..`, leading `/`, backslashes) as the download zip.
+   - Same `Uint8Array` copy → `new Blob([copy], { type: "application/zip" })` pattern for Safari compatibility.
+3. Pass `publishBlob` (not `downloadBlob`) to `publishInterceptorRef.current.consume(...)`.
+4. If no interceptor is registered, behavior is unchanged — only the download path runs.
 
 ### What does not change
 
-- OAuth flow, canonical redirect URI, origin allowlist, secret trimming — all the prior fixes stay.
-- `getNetlifyAccessToken` server function stays (still used by any non-deploy paths and as the lookup the new route reuses internally).
-- UI in `PublishDistributeSection.tsx` — no changes; it still calls `deployZipToNetlify(...)` with the same arguments.
+- `src/routes/api/public/netlify-deploy.ts` — still authenticates, looks up the OAuth token, uploads the zip, polls, renames, returns `{ liveUrl, adminUrl, siteName, fellBackToAutoName }`.
+- `src/lib/portal/netlify-deploy.ts` — still POSTs `multipart/form-data` to our proxy.
+- OAuth flow, secret trimming, custom-domain logic, slug validation, `PublishDistributeSection` UI — untouched.
+- The user's `.zip` download keeps its top-level folder (nicer UX when expanded locally).
 
-## Technical notes
+## Why this is the safe, comprehensive fix
 
-- Cloudflare Worker request body limit is 100 MB; presentation zips are well under that based on the existing zip pipeline. If a future zip approaches the cap, we'd switch to Netlify's file-digest deploy API, but that is not needed today.
-- The server route reads the zip with `await request.formData()` and forwards `file.stream()` (or the `Blob`) directly to Netlify — no buffering of the whole zip into a JS string.
-- Errors from Netlify are passed back to the client with status + message body so the existing `[publish] failed` UI surface keeps working.
-- No DB schema changes, no new secrets, no auth changes.
+- Single source of truth for the deploy payload (the publish branch in the sandbox) — the proxy route doesn't need to know or guess about zip structure.
+- Server-side repacking was considered but rejected: it would mean unzipping + re-zipping on every publish in the Worker, doubling CPU/memory for large bundles when the client already has all the bytes in memory and has just produced the zip.
+- Covers both the attachment and no-attachment cases (the latter is silently broken today even with our prior CORS-proxy fix).
+- Leaves the download UX untouched. No DB, no schema, no secret, no OAuth, no UI changes.
 
 ## Files touched
 
-- **new** `src/routes/api/public/netlify-deploy.ts` — server proxy
-- **edit** `src/lib/portal/netlify-deploy.ts` — swap 3 direct Netlify calls for 1 same-origin call
+- **edit** `src/components/portal/HudBuilderSandbox.tsx` — build a flat zip for the publish interceptor; keep the folder-wrapped zip for manual download.
