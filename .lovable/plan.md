@@ -1,61 +1,54 @@
-## Updated diagnosis
+## Diagnosis
 
-`sample3dps.netlify.app` showing Netlify’s “Site not found” does **not** necessarily mean the name is globally available. The most likely failure chain is:
+The current failure is no longer the earlier `undefined.netlify.app` or name-conflict problem. The live Netlify URL now exists, but the root request returns `HTTP 429` with an empty body from Netlify itself. Server logs show the latest publish route returned `200`, while an earlier attempt timed out waiting for the deploy. Netlify’s API limits deploy creation to roughly 3 deploys/minute and 100/day, and the current route can repeatedly create deploys while retrying/debugging. It also treats Netlify `deploy.state === "ready"` as sufficient, then only logs live URL verification failure instead of blocking success.
 
-```text
-1. The app created/reserved a Netlify site named sample3dps.
-2. The deploy upload/build step failed or was miswired before content went live.
-3. The Netlify name is now reserved inside the connected Netlify account.
-4. A later publish tries POST /sites with sample3dps again.
-5. Netlify correctly returns 422: subdomain must be unique.
-6. The public URL still shows “Site not found” because that reserved site has no successful deploy yet.
-```
+## Final fix
 
-So the real bug is not only “slug unavailable.” The publish flow is **not idempotent**: it always tries to create a brand-new Netlify site instead of reusing/updating an existing site owned by the connected account.
+1. **Make publish validation strict, not optimistic**
+   - Change `/api/public/netlify-deploy` so it does not return success unless the final production URL returns a valid `200` HTML page containing expected presentation markers.
+   - If Netlify returns `429`, return a clear retry-after/rate-limit error to the UI instead of presenting a broken URL as live.
+   - Preserve the final Netlify request ID/status in server logs for support-grade diagnostics.
 
-## Final fix plan
+2. **Throttle and debounce publish attempts per user/site**
+   - Add a short server-side guard for Netlify deploy calls so one user cannot accidentally fire repeated deploys for the same slug while a previous deploy is processing.
+   - If a publish is attempted too soon after a previous deploy, return an actionable message instead of creating another Netlify deploy and worsening the rate-limit state.
+   - This directly addresses the 429 loop and prevents repeated "final chance" retries from poisoning the same Netlify site.
 
-1. **Change Netlify publish from “always create” to “create-or-reuse”**
-   - In `src/routes/api/public/netlify-deploy.ts`, before creating a site, try to find an existing site in the connected Netlify account with the requested name.
-   - If it exists and is accessible with the user’s Netlify OAuth token, reuse that site ID and upload the new presentation build to it.
-   - This recovers prior failed/empty sites like `sample3dps` and preserves the user’s intended URL.
+3. **Use Netlify’s ZIP deploy API in the safest supported mode**
+   - Keep create-or-reuse site resolution, but move deploy upload to a helper that can fall back between the supported ZIP deploy patterns if needed:
+     - `POST /sites/{siteId}/deploys` with raw `application/zip`
+     - `PUT /sites/{siteId}` with raw `application/zip` as the documented equivalent fallback
+   - Poll the specific deploy ID and then verify the production site root, not only the deploy object.
 
-2. **Handle 422 `subdomain must be unique` correctly**
-   - If `POST /sites` returns 422, inspect the response body.
-   - If it says `subdomain must be unique`, do **not** immediately fail or auto-rename.
-   - First attempt to load the site by name from the connected Netlify account.
-     - If found: deploy to that existing site.
-     - If not found: the name is owned by someone else or unavailable, then generate a unique fallback name.
+4. **Recover previously broken/empty sites**
+   - When reusing an owned site like `tmsample3dps`, inspect the latest deploy state before uploading.
+   - If a previous deploy is still processing, wait briefly instead of starting a new deploy.
+   - If the site is rate-limited, surface that status and stop rather than uploading again.
 
-3. **Add safe fallback naming only when truly needed**
-   - If the requested slug is genuinely unavailable to this account, generate a valid fallback like:
-     ```text
-     sample3dps-k7m4q2
-     ```
-   - Keep Netlify’s 63-character limit by trimming the base slug before appending the suffix.
-   - Try a bounded sequence of fallback names, then return a clear error only if all attempts fail.
+5. **Validate the ZIP contents before upload**
+   - Replace the current weak `index.html` byte-string check with a real ZIP central-directory inspection using the already-installed `fflate` package.
+   - Require root-level `index.html` and reject dangerous Netlify config entries (`_headers`, `netlify.toml`, unexpected root redirects) so generated packages cannot accidentally create rate-limit or redirect rules.
+   - Add size/file-count limits and path traversal protection.
 
-4. **Deploy to the selected site, not to a newly assumed URL**
-   - Once the route has a `siteId`, upload the zip to that exact site.
-   - Poll the deploy until Netlify reports it is ready.
-   - Verify the live URL responds before returning success when possible.
-   - Never return `undefined.netlify.app`; fail loudly if Netlify does not return a usable site name or URL.
+6. **Improve client feedback and retries**
+   - Update the publish UI so it distinguishes:
+     - packaging
+     - upload accepted
+     - deploy processing
+     - live URL verification
+     - Netlify rate-limited / retry later
+   - Prevent double-click or repeated publish attempts while the previous attempt is active.
+   - Do not display/share QR codes unless the verified live URL is healthy.
 
-5. **Improve UI messaging**
-   - If the requested URL was recovered/reused, show success at the original URL.
-   - If a fallback URL was required, show a warning explaining the requested Netlify URL was unavailable and the presentation was published at the generated URL.
-   - Keep the final live URL displayed as the source of truth for share links and QR codes.
-
-6. **Add regression checks**
-   - Add/adjust focused tests for Netlify error classification so this exact response is treated correctly:
-     ```json
-     {"errors":{"subdomain":["must be unique"]}}
-     ```
-   - Include coverage for: existing owned site reuse, true external-name conflict fallback, missing final URL rejection, and root `index.html` zip validation.
+7. **Regression coverage**
+   - Extend tests around Netlify helper logic for:
+     - `429` live URL verification
+     - deploy timeout
+     - owned-site reuse
+     - zip missing root `index.html`
+     - forbidden `_headers`/`netlify.toml`
+     - no `undefined.netlify.app` response
 
 ## Expected result
 
-Publishing to `sample3dps` should now either:
-
-- reuse the already-created empty `sample3dps` Netlify site and successfully deploy content to `https://sample3dps.netlify.app/`, or
-- only if that name is not accessible in the connected Netlify account, publish to a generated available URL and clearly show that final URL.
+Publishing should either produce a verified, working URL like `https://tmsample3dps.netlify.app/`, or stop with a precise message such as: "Netlify is rate-limiting this site right now; wait a few minutes before retrying." It will no longer mark a presentation as live while Netlify is returning `404` or `429`, and it will avoid repeated deploy attempts that trigger more rate limiting.
