@@ -84,14 +84,19 @@ export async function deployZipToNetlify(params: {
 
   if (!res.ok) {
     let message = `Publish failed (${res.status}).`;
+    let rateLimited = false;
     try {
-      const body = (await res.json()) as { error?: string };
+      const body = (await res.json()) as { error?: string; rateLimited?: boolean };
       if (body?.error) message = body.error;
+      if (body?.rateLimited) rateLimited = true;
     } catch {
       const text = await safeText(res);
       if (text) message = text;
     }
-    throw new Error(message);
+    const err = new Error(message) as Error & { rateLimited?: boolean; status?: number };
+    err.rateLimited = rateLimited || res.status === 429;
+    err.status = res.status;
+    throw err;
   }
 
   progress("Verifying live URL…");
