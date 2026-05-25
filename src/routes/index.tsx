@@ -1,7 +1,10 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useAuth } from "@/hooks/use-auth";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchCheckoutMode } from "@/lib/site-settings.functions";
+import type { CheckoutMode } from "@/lib/site-settings.functions";
+import { WaitlistModal } from "@/components/WaitlistModal";
 import { lovable } from "@/integrations/lovable/index";
 import { Button } from "@/components/ui/button";
 import {
@@ -428,10 +431,22 @@ function Index() {
   const [isDark, setIsDark] = useState(true);
   const [hoveredStep, setHoveredStep] = useState(0);
   const { openCheckout, closeCheckout, isOpen: checkoutOpen, CheckoutForm } = useStripeCheckout();
+  const [checkoutMode, setCheckoutMode] = useState<CheckoutMode>("live");
+  const [waitlistOpen, setWaitlistOpen] = useState(false);
+
+  useEffect(() => {
+    fetchCheckoutMode().then((res) => setCheckoutMode(res.mode)).catch(() => {});
+  }, []);
 
   // Pricing card CTA: launch Stripe checkout for logged-in users; otherwise
   // route through signup with intent so checkout auto-launches afterward.
+  // When admin has set waitlist mode, show the Jotform modal instead.
   const handleTierCta = (tier: "starter" | "pro") => {
+    if (checkoutMode === "waitlist") {
+      setWaitlistOpen(true);
+      return;
+    }
+
     if (isAuthenticated && user) {
       openCheckout({
         priceId: tier === "pro" ? "pro_annual" : "starter_annual",
@@ -475,6 +490,7 @@ function Index() {
           {CheckoutForm && <CheckoutForm />}
         </DialogContent>
       </Dialog>
+      <WaitlistModal open={waitlistOpen} onOpenChange={setWaitlistOpen} />
       {/* ---- Notebook grid overlay ---- */}
       <div
         className="pointer-events-none fixed inset-0 z-0"

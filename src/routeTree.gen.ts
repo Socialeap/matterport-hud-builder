@@ -56,6 +56,7 @@ import { Route as AuthenticatedDashboardClientsRouteImport } from './routes/_aut
 import { Route as AuthenticatedDashboardBrandingRouteImport } from './routes/_authenticated.dashboard.branding'
 import { Route as AuthenticatedDashboardAccountRouteImport } from './routes/_authenticated.dashboard.account'
 import { Route as AuthenticatedAdminServiceMatchesRouteImport } from './routes/_authenticated.admin.service-matches'
+import { Route as AuthenticatedAdminSettingsRouteImport } from './routes/_authenticated.admin.settings'
 import { Route as AuthenticatedAdminProviderIdRouteImport } from './routes/_authenticated.admin.$providerId'
 import { Route as AuthenticatedAgentDashboardWorkOrdersIndexRouteImport } from './routes/_authenticated.agent-dashboard.work-orders.index'
 import { Route as AuthenticatedAdminServiceMatchesIndexRouteImport } from './routes/_authenticated.admin.service-matches.index'
@@ -317,6 +318,12 @@ const AuthenticatedAdminServiceMatchesRoute =
     path: '/service-matches',
     getParentRoute: () => AuthenticatedAdminRoute,
   } as any)
+const AuthenticatedAdminSettingsRoute =
+  AuthenticatedAdminSettingsRouteImport.update({
+    id: '/settings',
+    path: '/settings',
+    getParentRoute: () => AuthenticatedAdminRoute,
+  } as any)
 const AuthenticatedAdminProviderIdRoute =
   AuthenticatedAdminProviderIdRouteImport.update({
     id: '/$providerId',
@@ -398,6 +405,7 @@ export interface FileRoutesByFullPath {
   '/invite/$token': typeof InviteTokenRoute
   '/p/$slug': typeof PSlugRouteWithChildren
   '/admin/$providerId': typeof AuthenticatedAdminProviderIdRoute
+  '/admin/settings': typeof AuthenticatedAdminSettingsRoute
   '/admin/service-matches': typeof AuthenticatedAdminServiceMatchesRouteWithChildren
   '/dashboard/account': typeof AuthenticatedDashboardAccountRoute
   '/dashboard/branding': typeof AuthenticatedDashboardBrandingRoute
@@ -452,6 +460,7 @@ export interface FileRoutesByTo {
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/invite/$token': typeof InviteTokenRoute
   '/admin/$providerId': typeof AuthenticatedAdminProviderIdRoute
+  '/admin/settings': typeof AuthenticatedAdminSettingsRoute
   '/dashboard/account': typeof AuthenticatedDashboardAccountRoute
   '/dashboard/branding': typeof AuthenticatedDashboardBrandingRoute
   '/dashboard/clients': typeof AuthenticatedDashboardClientsRoute
@@ -510,6 +519,7 @@ export interface FileRoutesById {
   '/invite/$token': typeof InviteTokenRoute
   '/p/$slug': typeof PSlugRouteWithChildren
   '/_authenticated/admin/$providerId': typeof AuthenticatedAdminProviderIdRoute
+  '/_authenticated/admin/settings': typeof AuthenticatedAdminSettingsRoute
   '/_authenticated/admin/service-matches': typeof AuthenticatedAdminServiceMatchesRouteWithChildren
   '/_authenticated/dashboard/account': typeof AuthenticatedDashboardAccountRoute
   '/_authenticated/dashboard/branding': typeof AuthenticatedDashboardBrandingRoute
@@ -569,6 +579,7 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/p/$slug'
     | '/admin/$providerId'
+    | '/admin/settings'
     | '/admin/service-matches'
     | '/dashboard/account'
     | '/dashboard/branding'
@@ -623,6 +634,7 @@ export interface FileRouteTypes {
     | '/email/unsubscribe'
     | '/invite/$token'
     | '/admin/$providerId'
+    | '/admin/settings'
     | '/dashboard/account'
     | '/dashboard/branding'
     | '/dashboard/clients'
@@ -680,6 +692,7 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/p/$slug'
     | '/_authenticated/admin/$providerId'
+    | '/_authenticated/admin/settings'
     | '/_authenticated/admin/service-matches'
     | '/_authenticated/dashboard/account'
     | '/_authenticated/dashboard/branding'
@@ -1074,6 +1087,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminServiceMatchesRouteImport
       parentRoute: typeof AuthenticatedAdminRoute
     }
+    '/_authenticated/admin/settings': {
+      id: '/_authenticated/admin/settings'
+      path: '/settings'
+      fullPath: '/admin/settings'
+      preLoaderRoute: typeof AuthenticatedAdminSettingsRouteImport
+      parentRoute: typeof AuthenticatedAdminRoute
+    }
     '/_authenticated/admin/$providerId': {
       id: '/_authenticated/admin/$providerId'
       path: '/$providerId'
@@ -1160,12 +1180,14 @@ const AuthenticatedAdminServiceMatchesRouteWithChildren =
 
 interface AuthenticatedAdminRouteChildren {
   AuthenticatedAdminProviderIdRoute: typeof AuthenticatedAdminProviderIdRoute
+  AuthenticatedAdminSettingsRoute: typeof AuthenticatedAdminSettingsRoute
   AuthenticatedAdminServiceMatchesRoute: typeof AuthenticatedAdminServiceMatchesRouteWithChildren
   AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
 }
 
 const AuthenticatedAdminRouteChildren: AuthenticatedAdminRouteChildren = {
   AuthenticatedAdminProviderIdRoute: AuthenticatedAdminProviderIdRoute,
+  AuthenticatedAdminSettingsRoute: AuthenticatedAdminSettingsRoute,
   AuthenticatedAdminServiceMatchesRoute:
     AuthenticatedAdminServiceMatchesRouteWithChildren,
   AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,

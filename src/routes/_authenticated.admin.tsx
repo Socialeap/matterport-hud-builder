@@ -58,6 +58,12 @@ function AdminLayout() {
           >
             Service Match Requests
           </Link>
+          <Link
+            to="/admin/settings"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Settings
+          </Link>
         </div>
         <div className="flex items-center gap-4 text-sm text-muted-foreground">
           <span>{user?.email}</span>
