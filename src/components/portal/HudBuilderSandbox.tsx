@@ -1476,8 +1476,14 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
         }
       }
 
-      if (attachments.length > 0) {
-        setDownloadStep("Packaging presentation bundle…");
+      // Always emit a folder-wrapped .zip — even when no media assets
+      // were bundled — so the agent gets a consistent "presentation
+      // package" deliverable (a folder containing `index.html` and an
+      // `assets/` tree). This matches the prior Folder-package contract
+      // that the Netlify Drop popup flow set, and is the package shape
+      // the upload step expects.
+      setDownloadStep("Packaging presentation bundle…");
+      {
         const { zipSync, strToU8 } = await import("fflate");
         const folder = baseFilename;
         const zipInput: Record<string, Uint8Array> = {};
@@ -1490,9 +1496,6 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
         const zipCopy = new Uint8Array(zipped);
         downloadBlob = new Blob([zipCopy], { type: "application/zip" });
         downloadName = `${baseFilename}.zip`;
-      } else {
-        downloadBlob = new Blob([report.html], { type: "text/html" });
-        downloadName = `${baseFilename}.html`;
       }
 
       // If the Publish flow registered an interceptor, hand it a
@@ -1526,9 +1529,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
       toast.success(
         intercepted
           ? "Presentation package ready — uploading to Netlify…"
-          : attachments.length > 0
-            ? "Presentation package downloaded (.zip)"
-            : "Presentation downloaded",
+          : "Presentation package downloaded (.zip)",
       );
 
     } catch (err) {
