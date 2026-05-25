@@ -1,31 +1,12 @@
 import type React from "react";
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
-import { createServerFn } from "@tanstack/react-start";
-import { supabase } from "@/integrations/supabase/client";
+import { fetchPublicBrandingBySlug } from "@/lib/public-portal.functions";
 import { HudBuilderSandbox } from "@/components/portal/HudBuilderSandbox";
 import { Button } from "@/components/ui/button";
 import { IndexingProvider } from "@/lib/rag/indexing-context";
 import { AccountMenu } from "@/components/account/AccountMenu";
 import { useBrandedFavicon } from "@/hooks/use-branded-favicon";
 
-const fetchBrandingForBuilder = createServerFn({ method: "GET" })
-  .inputValidator((data: { slug: string }) => data)
-  .handler(async ({ data }) => {
-    const { data: branding, error } = await supabase
-      .from("branding_settings")
-      .select("*")
-      .eq("slug", data.slug)
-      .maybeSingle();
-
-    if (error || !branding) {
-      return { branding: null };
-    }
-    // Strip non-serializable PostGIS geometry columns before returning.
-    const { service_center: _sc, service_polygon: _sp, ...safeBranding } =
-      branding as typeof branding & { service_center?: unknown; service_polygon?: unknown };
-    void _sc; void _sp;
-    return { branding: safeBranding };
-  });
 
 export const Route = createFileRoute("/p/$slug/builder")({
   head: () => ({
