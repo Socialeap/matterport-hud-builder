@@ -315,7 +315,7 @@ function BrandingPage() {
         additional_model_fee_cents: data.additional_model_fee_cents,
         hero_bg_url: data.hero_bg_url ?? null,
         hero_bg_opacity: data.hero_bg_opacity ?? 0.45,
-        hero_lines: parseHeroLines(data.hero_lines),
+        hero_lines: parseHeroLines((data as unknown as { hero_lines?: unknown }).hero_lines),
         is_directory_public: data.is_directory_public ?? false,
         primary_city: data.primary_city ?? null,
         region: data.region ?? null,
