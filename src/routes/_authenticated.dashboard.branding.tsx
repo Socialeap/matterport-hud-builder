@@ -512,7 +512,6 @@ function BrandingPage() {
           additional_model_fee_cents: branding.additional_model_fee_cents,
           hero_bg_url: heroUrl,
           hero_bg_opacity: branding.hero_bg_opacity,
-          hero_lines: branding.hero_lines as unknown as Record<string, unknown>[],
           is_directory_public: branding.is_directory_public,
           primary_city: branding.primary_city?.trim() || null,
           region: branding.region?.trim().toUpperCase() || null,
@@ -534,6 +533,24 @@ function BrandingPage() {
       setSaving(false);
       toast.error("Failed to save branding settings");
       return;
+    }
+
+    // hero_lines is saved separately so the main upsert isn't broken
+    // if the migration hasn't been applied yet.
+    const heroLinesChanged =
+      JSON.stringify(branding.hero_lines) !== JSON.stringify(savedSnapshot.hero_lines);
+    if (heroLinesChanged) {
+      const { error: hlError } = await supabase
+        .from("branding_settings")
+        .update({
+          hero_lines: branding.hero_lines as unknown as Record<string, unknown>[],
+        } as any)
+        .eq("provider_id", user.id);
+      if (hlError) {
+        toast.warning(
+          "Branding saved, but hero headline could not be updated. The database migration may not have run yet.",
+        );
+      }
     }
 
     // Persist the polygon via the SECURITY DEFINER RPC. Geometry
