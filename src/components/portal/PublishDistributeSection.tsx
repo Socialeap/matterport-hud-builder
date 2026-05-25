@@ -459,7 +459,7 @@ export const PublishDistributeSection = forwardRef<
                 onClick={openNetlifyPublishWindow}
               >
                 <Rocket className="size-4" />
-                {netlifyOpenedAs === "popup" || netlifyOpenedAs === "tab" ? "Reopen Netlify Publish Window" : "Open Netlify Publish Window"}
+                {netlifyOpenedAs === "popup" ? "Reopen Netlify Publish Window" : "Open Netlify Publish Window"}
               </Button>
               <a
                 href={NETLIFY_DROP_URL}
