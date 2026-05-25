@@ -251,6 +251,7 @@ export const PublishDistributeSection = forwardRef<
     // trigger the "popup blocked" warning. We sever the opener
     // reference manually below instead.
     const features = [
+      "popup=yes",
       `width=${width}`,
       `height=${height}`,
       `left=${left}`,
