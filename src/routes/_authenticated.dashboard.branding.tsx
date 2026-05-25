@@ -8,6 +8,13 @@ import { Label } from "@/components/ui/label";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Lock, Copy, X, MapPin, CheckCircle2, AlertCircle } from "lucide-react";
@@ -35,6 +42,31 @@ import { CallingCardSection } from "@/components/branding/CallingCardSection";
 import type { Database } from "@/integrations/supabase/types";
 
 type MarketplaceSpecialty = Database["public"]["Enums"]["marketplace_specialty"];
+
+interface HeroLine {
+  text: string;
+  color: string;
+  fontFamily: string;
+}
+
+const HERO_FONT_OPTIONS = [
+  "Inter",
+  "Montserrat",
+  "Playfair Display",
+  "Roboto",
+  "Poppins",
+  "Raleway",
+  "Oswald",
+  "Lora",
+  "Merriweather",
+  "DM Sans",
+] as const;
+
+const DEFAULT_HERO_LINES: [HeroLine, HeroLine, HeroLine] = [
+  { text: "Your Properties,", color: "#FFFFFF", fontFamily: "Inter" },
+  { text: "Professionally Presented.", color: "#2563EB", fontFamily: "Inter" },
+  { text: "No Subscriptions.", color: "#FFFFFF", fontFamily: "Inter" },
+];
 
 const SPECIALTY_OPTIONS: ReadonlyArray<{
   value: MarketplaceSpecialty;
@@ -71,6 +103,7 @@ interface BrandingData {
   accent_color: string;
   hud_bg_color: string;
   gate_label: string;
+  hero_lines: [HeroLine, HeroLine, HeroLine];
   logo_url: string | null;
   favicon_url: string | null;
   custom_domain: string | null;
@@ -105,6 +138,7 @@ const defaultBranding: BrandingData = {
   accent_color: "#2563EB",
   hud_bg_color: "#1A1A2E",
   gate_label: "Enter Tour",
+  hero_lines: [...DEFAULT_HERO_LINES] as [HeroLine, HeroLine, HeroLine],
   logo_url: null,
   favicon_url: null,
   custom_domain: null,
@@ -132,6 +166,20 @@ const defaultBranding: BrandingData = {
   calling_card_cta_label: "",
   calling_card_logo_url: null,
 };
+
+function parseHeroLines(raw: unknown): [HeroLine, HeroLine, HeroLine] {
+  if (!Array.isArray(raw) || raw.length < 3) return [...DEFAULT_HERO_LINES] as [HeroLine, HeroLine, HeroLine];
+  return raw.slice(0, 3).map((item: unknown, i: number) => {
+    const fallback = DEFAULT_HERO_LINES[i];
+    if (!item || typeof item !== "object") return { ...fallback };
+    const obj = item as Record<string, unknown>;
+    return {
+      text: typeof obj.text === "string" ? obj.text : fallback.text,
+      color: typeof obj.color === "string" ? obj.color : fallback.color,
+      fontFamily: typeof obj.fontFamily === "string" ? obj.fontFamily : fallback.fontFamily,
+    };
+  }) as [HeroLine, HeroLine, HeroLine];
+}
 
 function BrandingPage() {
   const { user } = useAuth();
@@ -213,6 +261,23 @@ function BrandingPage() {
 
   const isPro = branding.tier === "pro";
   const customDomainUnlocked = isPro && hasPaid;
+
+  useEffect(() => {
+    const families = [...new Set(branding.hero_lines.map((l) => l.fontFamily))].filter(
+      (f) => f && f !== "Inter",
+    );
+    if (!families.length) return;
+    const id = "hero-fonts-dashboard";
+    let link = document.getElementById(id) as HTMLLinkElement | null;
+    const url = `https://fonts.googleapis.com/css2?${families.map((f) => `family=${encodeURIComponent(f)}:wght@400;700`).join("&")}&display=swap`;
+    if (!link) {
+      link = document.createElement("link");
+      link.id = id;
+      link.rel = "stylesheet";
+      document.head.appendChild(link);
+    }
+    link.href = url;
+  }, [branding.hero_lines]);
   const { openCheckout, closeCheckout, isOpen, CheckoutForm } = useStripeCheckout();
 
   const handleUpgrade = useCallback(() => {
@@ -250,6 +315,7 @@ function BrandingPage() {
         additional_model_fee_cents: data.additional_model_fee_cents,
         hero_bg_url: data.hero_bg_url ?? null,
         hero_bg_opacity: data.hero_bg_opacity ?? 0.45,
+        hero_lines: parseHeroLines(data.hero_lines),
         is_directory_public: data.is_directory_public ?? false,
         primary_city: data.primary_city ?? null,
         region: data.region ?? null,
@@ -446,6 +512,7 @@ function BrandingPage() {
           additional_model_fee_cents: branding.additional_model_fee_cents,
           hero_bg_url: heroUrl,
           hero_bg_opacity: branding.hero_bg_opacity,
+          hero_lines: branding.hero_lines as unknown as Record<string, unknown>[],
           is_directory_public: branding.is_directory_public,
           primary_city: branding.primary_city?.trim() || null,
           region: branding.region?.trim().toUpperCase() || null,
@@ -634,14 +701,60 @@ function BrandingPage() {
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="gate_label">Headline (see preview below)</Label>
-                <Input
-                  id="gate_label"
-                  value={branding.gate_label}
-                  onChange={(e) => setBranding({ ...branding, gate_label: e.target.value })}
-                  placeholder="Enter Tour"
-                />
+              <div className="space-y-4 rounded-lg border border-dashed border-border p-4">
+                <div>
+                  <Label className="text-sm font-semibold">Studio Headline</Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Customize the 3 lines of your Studio hero section. Each line can have its own text, color, and font.
+                  </p>
+                </div>
+                {branding.hero_lines.map((line, idx) => {
+                  const updateLine = (field: keyof HeroLine, value: string) => {
+                    const updated = [...branding.hero_lines] as [HeroLine, HeroLine, HeroLine];
+                    updated[idx] = { ...updated[idx], [field]: value };
+                    setBranding({ ...branding, hero_lines: updated });
+                  };
+                  return (
+                    <div key={idx} className="space-y-2 rounded-md border border-border bg-muted/20 p-3">
+                      <Label className="text-xs font-medium text-muted-foreground">Line {idx + 1}</Label>
+                      <Input
+                        value={line.text}
+                        onChange={(e) => updateLine("text", e.target.value)}
+                        placeholder={DEFAULT_HERO_LINES[idx].text}
+                      />
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="color"
+                            value={line.color}
+                            onChange={(e) => updateLine("color", e.target.value)}
+                            className="h-8 w-10 cursor-pointer rounded border border-input"
+                          />
+                          <Input
+                            value={line.color}
+                            onChange={(e) => updateLine("color", e.target.value)}
+                            className="w-24 text-xs"
+                          />
+                        </div>
+                        <Select
+                          value={line.fontFamily}
+                          onValueChange={(v) => updateLine("fontFamily", v)}
+                        >
+                          <SelectTrigger className="w-44 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {HERO_FONT_OPTIONS.map((font) => (
+                              <SelectItem key={font} value={font} className="text-xs">
+                                <span style={{ fontFamily: font }}>{font}</span>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -766,10 +879,16 @@ function BrandingPage() {
                       className="absolute inset-0"
                       style={{ backgroundColor: `rgba(0,0,0,${branding.hero_bg_opacity})` }}
                     />
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="text-sm font-semibold text-white drop-shadow-lg">
-                        {branding.gate_label?.trim() || "Enter Tour"}
-                      </span>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-0.5 px-2">
+                      {branding.hero_lines.map((line, i) => (
+                        <span
+                          key={i}
+                          className="text-xs font-bold drop-shadow-lg"
+                          style={{ color: line.color, fontFamily: line.fontFamily }}
+                        >
+                          {line.text || DEFAULT_HERO_LINES[i].text}
+                        </span>
+                      ))}
                     </div>
                   </div>
                 )}

@@ -326,6 +326,7 @@ export type Database = {
           geocoded_at: string | null
           hero_bg_opacity: number
           hero_bg_url: string | null
+          hero_lines: Json | null
           hud_bg_color: string
           id: string
           instant_payout_fee_bps: number
@@ -372,6 +373,7 @@ export type Database = {
           geocoded_at?: string | null
           hero_bg_opacity?: number
           hero_bg_url?: string | null
+          hero_lines?: Json | null
           hud_bg_color?: string
           id?: string
           instant_payout_fee_bps?: number
@@ -418,6 +420,7 @@ export type Database = {
           geocoded_at?: string | null
           hero_bg_opacity?: number
           hero_bg_url?: string | null
+          hero_lines?: Json | null
           hud_bg_color?: string
           id?: string
           instant_payout_fee_bps?: number
