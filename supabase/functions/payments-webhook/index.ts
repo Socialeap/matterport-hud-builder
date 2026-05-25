@@ -244,10 +244,29 @@ async function handleCheckoutCompleted(session: any, env: StripeEnv) {
 
   const priceId = item.price?.metadata?.lovable_external_id || item.price?.lookup_key || item.price?.id;
 
-  let resolvedProductId = 'unknown';
-  if (priceId === 'starter_onetime') resolvedProductId = 'starter_tier';
-  else if (priceId === 'pro_onetime') resolvedProductId = 'pro_tier';
-  else if (priceId === 'pro_upgrade_onetime') resolvedProductId = 'pro_upgrade';
+  // Strict priceId → product/tier mapping. Anything unknown is logged and
+  // skipped so we never silently default Pro entitlements on misconfigured
+  // prices. Recurring lookup keys (starter_annual / pro_annual) are
+  // included because the live Stripe prices for those keys are actually
+  // one-time, so they arrive here via mode=payment instead of through
+  // the subscription handlers.
+  let resolvedProductId: 'starter_tier' | 'pro_tier' | 'pro_upgrade' | null = null;
+  let newTier: 'starter' | 'pro' | null = null;
+  if (priceId === 'starter_onetime' || priceId === 'starter_annual') {
+    resolvedProductId = 'starter_tier';
+    newTier = 'starter';
+  } else if (priceId === 'pro_onetime' || priceId === 'pro_annual') {
+    resolvedProductId = 'pro_tier';
+    newTier = 'pro';
+  } else if (priceId === 'pro_upgrade_onetime') {
+    resolvedProductId = 'pro_upgrade';
+    newTier = 'pro';
+  }
+
+  if (!resolvedProductId || !newTier) {
+    console.error(`Unknown priceId on one-time checkout (skipping entitlement): ${priceId}`);
+    return;
+  }
 
   const { error } = await supabase.from("purchases").upsert(
     {
@@ -269,21 +288,35 @@ async function handleCheckoutCompleted(session: any, env: StripeEnv) {
     return;
   }
 
-  const newTier = resolvedProductId === 'starter_tier' ? 'starter' : 'pro';
+  // Upsert branding_settings so the tier denormalization stays in sync
+  // even when no row existed before checkout.
+  const { error: bsErr } = await supabase
+    .from("branding_settings")
+    .upsert(
+      { provider_id: userId, tier: newTier },
+      { onConflict: "provider_id" }
+    );
+  if (bsErr) console.error("branding_settings upsert failed:", bsErr);
 
-  if (newTier === 'pro') {
-    await supabase.from("branding_settings").update({ tier: 'pro' }).eq("provider_id", userId);
-  } else {
-    const { data: existing } = await supabase
-      .from("branding_settings")
-      .select("tier")
-      .eq("provider_id", userId)
-      .single();
+  // Upsert the license — this is the source of truth used by
+  // get_license_info / useLusLicense for tier gating. One-time purchases
+  // are lifetime (no expiry, no Stripe subscription id).
+  const { error: licErr } = await supabase.from("licenses").upsert(
+    {
+      user_id: userId,
+      tier: newTier,
+      license_status: 'active',
+      license_expiry: null,
+      stripe_subscription_id: null,
+    },
+    { onConflict: "user_id" }
+  );
+  if (licErr) console.error("licenses upsert failed:", licErr);
 
-    if (!existing) {
-      await supabase.from("branding_settings").insert({ provider_id: userId, tier: 'starter' });
-    }
-  }
+  // Mirror handleSubscriptionCreated: ensure the user has the provider role.
+  await supabase
+    .from("user_roles")
+    .upsert({ user_id: userId, role: "provider" }, { onConflict: "user_id,role" });
 
   console.log(`Purchase recorded: user=${userId}, tier=${newTier}, product=${resolvedProductId}`);
 }
