@@ -114,11 +114,8 @@ export const publishSandboxDemo = createServerFn({ method: "POST" })
 export const getPublicDemoBySlug = createServerFn({ method: "GET" })
   .inputValidator((input: { slug: string }) => input)
   .handler(async ({ data }) => {
-    const { data: branding } = await supabase
-      .from("branding_settings")
-      .select("*")
-      .eq("slug", data.slug)
-      .maybeSingle();
+    const { fetchPublicBrandingBySlug } = await import("@/lib/public-portal.functions");
+    const { branding } = await fetchPublicBrandingBySlug({ data: { slug: data.slug } });
     if (!branding) return { branding: null, demo: null };
 
     const { data: demo } = await supabase
@@ -128,12 +125,9 @@ export const getPublicDemoBySlug = createServerFn({ method: "GET" })
       .eq("is_published", true)
       .maybeSingle();
 
-    // Strip non-serializable PostGIS geometry columns.
-    const { service_center: _sc, service_polygon: _sp, ...safeBranding } =
-      branding as typeof branding & { service_center?: unknown; service_polygon?: unknown };
-    void _sc; void _sp;
-    return { branding: safeBranding, demo };
+    return { branding, demo };
   });
+
 
 /**
  * Lightweight check used on /p/$slug to decide whether to surface the
