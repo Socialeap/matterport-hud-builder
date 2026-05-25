@@ -26,18 +26,15 @@ import { PortalSignupModal } from "@/components/portal/PortalSignupModal";
 import { toast } from "sonner";
 
 
+import { fetchPublicBrandingBySlug } from "@/lib/public-portal.functions";
+
 const fetchBrandingBySlug = createServerFn({ method: "GET" })
   .inputValidator(
     (data: { slug: string; previewToken?: string | null }) => data,
   )
   .handler(async ({ data }) => {
-    const { data: branding, error } = await supabase
-      .from("branding_settings")
-      .select("*")
-      .eq("slug", data.slug)
-      .maybeSingle();
-
-    if (error || !branding) {
+    const { branding } = await fetchPublicBrandingBySlug({ data: { slug: data.slug } });
+    if (!branding) {
       return {
         branding: null,
         demoPublished: false,
@@ -47,6 +44,7 @@ const fetchBrandingBySlug = createServerFn({ method: "GET" })
         embedPreviewValid: false,
       };
     }
+
 
     const [demoCheck, licenseRes, vaultRes, paidRes] = await Promise.all([
       checkDemoPublished({ data: { providerId: branding.provider_id } }),
@@ -91,13 +89,8 @@ const fetchBrandingBySlug = createServerFn({ method: "GET" })
       }
     }
 
-    // Strip non-serializable PostGIS geometry columns.
-    const { service_center: _sc, service_polygon: _sp, ...safeBranding } =
-      branding as typeof branding & { service_center?: unknown; service_polygon?: unknown };
-    void _sc; void _sp;
-
     return {
-      branding: safeBranding,
+      branding,
       demoPublished: demoCheck.published,
       lusActive,
       vaultAssetCount: vaultRes.count ?? 0,
