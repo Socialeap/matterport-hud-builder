@@ -3,6 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { checkDemoPublished } from "@/lib/sandbox-demo.functions";
+import { useBrandedFavicon } from "@/hooks/use-branded-favicon";
 
 // UUID v4 (the format gen_random_uuid() emits) — pre-validated before the
 // RPC call so a malformed `?previewToken=` value fails fast and never
