@@ -326,6 +326,7 @@ export type Database = {
           geocoded_at: string | null
           hero_bg_opacity: number
           hero_bg_url: string | null
+          hero_lines: Json | null
           hud_bg_color: string
           id: string
           instant_payout_fee_bps: number
@@ -372,6 +373,7 @@ export type Database = {
           geocoded_at?: string | null
           hero_bg_opacity?: number
           hero_bg_url?: string | null
+          hero_lines?: Json | null
           hud_bg_color?: string
           id?: string
           instant_payout_fee_bps?: number
@@ -418,6 +420,7 @@ export type Database = {
           geocoded_at?: string | null
           hero_bg_opacity?: number
           hero_bg_url?: string | null
+          hero_lines?: Json | null
           hud_bg_color?: string
           id?: string
           instant_payout_fee_bps?: number
@@ -1296,27 +1299,6 @@ export type Database = {
         }
         Relationships: []
       }
-      site_settings: {
-        Row: {
-          key: string
-          value: Json
-          updated_at: string
-          updated_by: string | null
-        }
-        Insert: {
-          key: string
-          value?: Json
-          updated_at?: string
-          updated_by?: string | null
-        }
-        Update: {
-          key?: string
-          value?: Json
-          updated_at?: string
-          updated_by?: string | null
-        }
-        Relationships: []
-      }
       service_match_interest_events: {
         Row: {
           beacon_id: string
@@ -1351,6 +1333,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      site_settings: {
+        Row: {
+          key: string
+          updated_at: string
+          updated_by: string | null
+          value: Json
+        }
+        Insert: {
+          key: string
+          updated_at?: string
+          updated_by?: string | null
+          value?: Json
+        }
+        Update: {
+          key?: string
+          updated_at?: string
+          updated_by?: string | null
+          value?: Json
+        }
+        Relationships: []
       }
       spatial_ref_sys: {
         Row: {
