@@ -6,6 +6,7 @@ import { HudBuilderSandbox } from "@/components/portal/HudBuilderSandbox";
 import { Button } from "@/components/ui/button";
 import { IndexingProvider } from "@/lib/rag/indexing-context";
 import { AccountMenu } from "@/components/account/AccountMenu";
+import { useBrandedFavicon } from "@/hooks/use-branded-favicon";
 
 const fetchBrandingForBuilder = createServerFn({ method: "GET" })
   .inputValidator((data: { slug: string }) => data)
@@ -60,6 +61,12 @@ export const Route = createFileRoute("/p/$slug/builder")({
 function BuilderPage() {
   const { branding } = Route.useLoaderData();
   const { slug } = Route.useParams();
+
+  // Show the MSP's branded favicon in the browser tab (falls back to logo).
+  useBrandedFavicon(
+    (branding as { favicon_url?: string | null } | null)?.favicon_url,
+    (branding as { logo_url?: string | null } | null)?.logo_url,
+  );
 
   if (!branding) {
     return (
