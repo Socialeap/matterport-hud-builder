@@ -17,17 +17,17 @@ import type { Tables } from "@/integrations/supabase/types";
 
 type BrandingRow = Tables<"branding_settings">;
 
-// Strip / mask anything the public studio + builder pages do NOT need.
-// Pricing and ga_tracking_id are intentionally retained — clients see
-// pricing in the builder, and ga_tracking_id powers public-page analytics.
+export type PublicBranding = Omit<
+  BrandingRow,
+  "service_center" | "service_polygon"
+>;
+
 function sanitizePublicBranding(
   row: BrandingRow & { service_center?: unknown; service_polygon?: unknown },
-): BrandingRow {
+): PublicBranding {
   const {
-    // PostGIS geometry — not serializable.
     service_center: _sc,
     service_polygon: _sp,
-    // Truly sensitive — never leak the raw value to anon clients.
     stripe_connect_id,
     instant_payout_fee_bps: _ipf,
     directory_contact_email: _dce,
@@ -36,17 +36,15 @@ function sanitizePublicBranding(
   void _sc; void _sp; void _ipf; void _dce;
   return {
     ...rest,
-    // Preserve truthy-check semantics for the public builder
-    // (`!!branding.stripe_connect_id`) without leaking the actual ID.
     stripe_connect_id: stripe_connect_id ? "connected" : null,
     instant_payout_fee_bps: 0,
     directory_contact_email: null,
-  } as BrandingRow;
+  } as PublicBranding;
 }
 
 export const fetchPublicBrandingBySlug = createServerFn({ method: "GET" })
   .inputValidator((data: { slug: string }) => data)
-  .handler(async ({ data }) => {
+  .handler(async ({ data }): Promise<{ branding: PublicBranding | null }> => {
     const { data: branding, error } = await supabaseAdmin
       .from("branding_settings")
       .select("*")
@@ -55,3 +53,4 @@ export const fetchPublicBrandingBySlug = createServerFn({ method: "GET" })
     if (error || !branding) return { branding: null };
     return { branding: sanitizePublicBranding(branding as BrandingRow) };
   });
+
