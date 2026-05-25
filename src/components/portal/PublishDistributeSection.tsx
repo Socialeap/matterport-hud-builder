@@ -250,16 +250,16 @@ export const PublishDistributeSection = forwardRef<
 
   const openNetlifyPublishWindow = useCallback(() => {
     const width = 560;
-    const height = 760;
-    // Browsers (Chrome/Safari) require integer coordinates in the features
-    // string. Decimals from `/2` invalidate sizing and demote the window
-    // to a regular tab — wrap in Math.round to keep the popup hint valid.
+    const height = 600;
+    // Pin the popup to the top-right of the current screen with a small
+    // inset so the builder's Step 2 instructions remain visible on the
+    // left. Integer coordinates required — Chrome/Safari invalidate the
+    // features string if any value is a decimal.
+    const inset = 24;
     const left = Math.round(
-      window.screenX + Math.max(0, (window.outerWidth - width) / 2),
+      window.screenX + Math.max(0, window.outerWidth - width - inset),
     );
-    const top = Math.round(
-      window.screenY + Math.max(0, (window.outerHeight - height) / 2),
-    );
+    const top = Math.round(window.screenY + inset);
 
     // Close any previously-opened publish window so we never accumulate
     // popups across reopen clicks.
