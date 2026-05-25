@@ -485,15 +485,29 @@ export const PublishDistributeSection = forwardRef<
             {netlifyOpenedAs === "popup" && (
               <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
                 <p className="font-medium text-foreground">
-                  Netlify is open. Upload your 3DPS file or package there,
-                  then copy the live published URL and paste it below.
+                  Netlify is open on the top-right. Upload your 3DPS package
+                  from inside the Netlify page, then copy the live URL and
+                  paste it below.
                 </p>
-                <ol className="mt-2 list-decimal space-y-0.5 pl-4">
-                  <li>Drag your 3DPS file/package into Netlify.</li>
-                  <li>Wait for Netlify to publish the site.</li>
+                <ol className="mt-2 list-decimal space-y-1 pl-4">
+                  <li>
+                    In the Netlify popup, look inside the dashed drop circle
+                    for the links <strong>"browse files to upload"</strong>{" "}
+                    and <strong>"choose a folder"</strong>.
+                  </li>
+                  <li>
+                    If you downloaded a <strong>.zip file</strong> in Step 1,
+                    click <strong>"browse files to upload"</strong> and select
+                    your <code>.zip</code>.
+                  </li>
+                  <li>
+                    If you downloaded an <strong>unzipped folder</strong>,
+                    click <strong>"choose a folder"</strong> and select that
+                    folder.
+                  </li>
+                  <li>Wait for Netlify to finish publishing.</li>
                   <li>Copy the live Netlify URL.</li>
-                  <li>Paste the URL below.</li>
-                  <li>Generate your Share Kit.</li>
+                  <li>Paste the URL below and generate your Share Kit.</li>
                 </ol>
               </div>
             )}
