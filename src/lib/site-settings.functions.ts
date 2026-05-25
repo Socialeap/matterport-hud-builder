@@ -38,7 +38,7 @@ export const updateCheckoutMode = createServerFn({ method: "POST" })
     const { error } = await supabaseAdmin
       .from("site_settings")
       .update({
-        value: data.mode as unknown as Record<string, unknown>,
+        value: data.mode satisfies string,
         updated_at: new Date().toISOString(),
         updated_by: context.userId,
       })
