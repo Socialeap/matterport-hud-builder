@@ -1,4 +1,25 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
+/**
+ * Kept for backward compatibility with HudBuilderSandbox, which passes a
+ * ref expecting `consume(blob)` to optionally intercept the in-memory
+ * download Blob. In this reverted (Netlify-Drop popup) flow, we never
+ * register an interceptor handler, so `consume()` always returns false
+ * and the parent proceeds with the normal browser download — which the
+ * agent then drag-and-drops into the Netlify Drop popup (Step 2).
+ */
+export interface PublishInterceptor {
+  set: (handler: (blob: Blob) => Promise<void> | void) => void;
+  clear: () => void;
+  consume: (blob: Blob) => Promise<boolean>;
+}
 import { QRCodeCanvas } from "qrcode.react";
 import {
   Check,
