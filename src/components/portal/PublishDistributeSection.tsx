@@ -219,8 +219,16 @@ export const PublishDistributeSection = forwardRef<
     },
   }), []);
 
-  const [netlifyOpened, setNetlifyOpened] = useState(false);
-  const [netlifyBlocked, setNetlifyBlocked] = useState(false);
+  // Tri-state outcome of the most recent Netlify open attempt:
+  //   "popup"   — opened in a real floating window (size hints honored)
+  //   "tab"     — browser demoted the request to a regular tab
+  //   "blocked" — window.open returned null (popup blocker)
+  //   null      — not yet attempted
+  const [netlifyOpenedAs, setNetlifyOpenedAs] = useState<
+    "popup" | "tab" | "blocked" | null
+  >(null);
+  const lastPublishWindowRef = useRef<Window | null>(null);
+  const tabOutcomeCountRef = useRef(0);
   const [urlInput, setUrlInput] = useState("");
   const [urlError, setUrlError] = useState<string | null>(null);
   const [liveUrl, setLiveUrl] = useState<string | null>(null);
