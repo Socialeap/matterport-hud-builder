@@ -1093,27 +1093,34 @@ export const generatePresentation = createServerFn({ method: "POST" })
     // Prefer client-uploaded brand assets (in overrides) over the MSP defaults.
     // Empty/missing overrides cleanly fall back to no logo/favicon — we do NOT
     // bake in the MSP's brand assets behind the client's back.
-    const logoUrl = overrides.logoUrl || "";
-    const faviconUrl = overrides.faviconUrl || "";
+    // Prefer client-uploaded brand assets (in overrides) over the MSP defaults.
+    // Empty/missing overrides cleanly fall back to no logo/favicon — we do NOT
+    // bake in the MSP's brand assets behind the client's back.
+    // NOTE: declared `let` because the bundler below may rewrite these to
+    // relative paths (`assets/branding/…`) so the exported .zip is fully
+    // self-contained.
+    let logoUrl = overrides.logoUrl || "";
+    let faviconUrl = overrides.faviconUrl || "";
     // Always emit an icon tag so the browser never falls back to the host's
     // (MSP/Lovable) /favicon.png. Preference: client favicon -> client logo
     // -> inline 1x1 transparent PNG.
     const EMPTY_ICON_DATA_URI =
       "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
-    const effectiveFaviconUrl = faviconUrl || logoUrl || EMPTY_ICON_DATA_URI;
-    const iconMimeType = (() => {
-      const u = effectiveFaviconUrl.toLowerCase();
-      if (u.startsWith("data:image/")) {
-        const m = u.match(/^data:(image\/[a-z0-9.+-]+)/);
+    const computeIconMimeType = (u: string): string => {
+      const l = u.toLowerCase();
+      if (l.startsWith("data:image/")) {
+        const m = l.match(/^data:(image\/[a-z0-9.+-]+)/);
         return m ? m[1] : "image/png";
       }
-      const clean = u.split("?")[0].split("#")[0];
+      const clean = l.split("?")[0].split("#")[0];
       if (clean.endsWith(".svg")) return "image/svg+xml";
       if (clean.endsWith(".jpg") || clean.endsWith(".jpeg")) return "image/jpeg";
       if (clean.endsWith(".webp")) return "image/webp";
       if (clean.endsWith(".ico")) return "image/x-icon";
       return "image/png";
-    })();
+    };
+    let effectiveFaviconUrl = faviconUrl || logoUrl || EMPTY_ICON_DATA_URI;
+    let iconMimeType = computeIconMimeType(effectiveFaviconUrl);
 
     // Resolve any per-property spatial_audio vault asset selections to their
     // public asset_url. Failure to load the catalog must NOT block the build —
