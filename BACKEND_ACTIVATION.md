@@ -2,9 +2,103 @@
 
 ## Status
 
-Backend Activation Required: **NO**
+Backend Activation Required: **YES**
 
-All pending backend activations have been applied and verified.
+---
+
+## Pending Activations
+
+### Restore get_providers_for_admin() RPC (2026-05-26)
+
+**Summary:** The `get_providers_for_admin()` RPC function was accidentally overwritten by migration `20260420230205` to return only 3 fields (`provider_id`, `email`, `start_date`). This broke the Tier, Brand, and Slug columns in the admin MSP table. This activation restores the original 7-field return signature.
+
+**Migration file:** `supabase/migrations/20260526_restore_admin_providers_rpc.sql`
+
+**Safety check:**
+- **Destructive operations: NONE**
+- Uses `CREATE OR REPLACE FUNCTION` (overwrites the existing broken function, restoring it)
+- `REVOKE ALL` + `GRANT EXECUTE` restores the same permission pattern already in place
+- No `DROP`, `DELETE`, `TRUNCATE`, policy removal, or RLS weakening
+
+**Do not touch:**
+- `branding_settings` table and its policies
+- `profiles` table and its policies
+- `admin_grants` table
+- Any existing Edge Functions
+
+**Activation method:**
+
+**Option A — Supabase Dashboard SQL Editor (recommended):**
+
+1. Go to **https://supabase.com/dashboard**
+2. Select your project
+3. Click **SQL Editor** in the left sidebar
+4. Paste the SQL below into the editor
+5. Click **Run**
+6. You should see "Success. No rows returned"
+
+```sql
+CREATE OR REPLACE FUNCTION public.get_providers_for_admin()
+RETURNS TABLE (
+  provider_id   uuid,
+  brand_name    text,
+  slug          text,
+  tier          public.app_tier,
+  display_name  text,
+  email         text,
+  start_date    timestamptz
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NOT public.has_role(auth.uid(), 'admin'::public.app_role) THEN
+    RAISE EXCEPTION 'Access denied';
+  END IF;
+
+  RETURN QUERY
+  SELECT
+    bs.provider_id,
+    bs.brand_name,
+    bs.slug,
+    bs.tier,
+    p.display_name,
+    au.email::text,
+    au.created_at AS start_date
+  FROM public.branding_settings bs
+  JOIN public.profiles p ON p.user_id = bs.provider_id
+  JOIN auth.users au ON au.id = bs.provider_id
+  ORDER BY au.created_at DESC;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.get_providers_for_admin() FROM public;
+GRANT EXECUTE ON FUNCTION public.get_providers_for_admin() TO authenticated;
+```
+
+**Verification steps:**
+
+Run in SQL Editor after activation:
+
+```sql
+-- 1. Confirm the function returns 7 columns
+SELECT column_name, data_type
+  FROM information_schema.columns
+ WHERE table_name = 'get_providers_for_admin';
+```
+
+If the above returns no rows (common for function return types), use this instead:
+
+```sql
+-- 2. Call the function and check the output has all columns
+SELECT provider_id, brand_name, slug, tier, display_name, email, start_date
+  FROM public.get_providers_for_admin()
+ LIMIT 3;
+```
+
+**Expected result:** Each row should show `provider_id`, `brand_name`, `slug`, `tier` (starter or pro), `display_name`, `email`, and `start_date`. The Tier column should no longer be blank in the admin portal.
 
 ---
 
