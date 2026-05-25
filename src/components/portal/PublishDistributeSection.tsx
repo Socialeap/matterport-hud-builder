@@ -445,9 +445,10 @@ export const PublishDistributeSection = forwardRef<
                 Open Netlify Publish Window
               </h4>
               <p className="text-xs text-muted-foreground">
-                Netlify Drop opens in a small focused window so you can drag
-                your file in without losing your place here. Signup, upload,
-                and account flows all happen on Netlify's own site.
+                Netlify Drop opens in a small window pinned to the top-right
+                of your screen so these instructions stay visible on the left.
+                Don't drag from your desktop — open your file or folder
+                directly from inside the Netlify page.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
