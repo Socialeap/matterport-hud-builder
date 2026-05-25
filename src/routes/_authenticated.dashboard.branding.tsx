@@ -532,19 +532,29 @@ function BrandingPage() {
       calling_card_logo_url: callingCardLogoUrl,
     };
 
+    // hero_lines is a [HeroLine, HeroLine, HeroLine] tuple of plain objects
+    // with string properties. The payload is passed as `any` to upsert because
+    // several other fields also bypass the generated Supabase types (e.g.
+    // service_radius_miles). No additional cast is needed for hero_lines itself.
     const fullPayload = {
       ...basePayload,
-      hero_lines: branding.hero_lines as unknown as Record<string, unknown>[],
+      hero_lines: branding.hero_lines,
     };
 
     let { error } = await supabase
       .from("branding_settings")
       .upsert(fullPayload as any, { onConflict: "provider_id" });
 
-    if (error) {
-      // If the hero_lines column doesn't exist yet (migration not applied),
-      // PostgREST returns 400. Retry without hero_lines so the rest of the
-      // save still works.
+    // Only retry without hero_lines if the error specifically indicates that
+    // the column doesn't exist (PostgreSQL 42703 "undefined_column" or
+    // PostgREST schema-cache miss mentioning "hero_lines"). All other errors
+    // (RLS, permissions, validation, network) surface immediately.
+    const isUnknownColumn =
+      error &&
+      (error.code === "42703" ||
+        (error.code === "PGRST204" && error.message?.includes("hero_lines")));
+
+    if (isUnknownColumn) {
       const retry = await supabase
         .from("branding_settings")
         .upsert(basePayload as any, { onConflict: "provider_id" });

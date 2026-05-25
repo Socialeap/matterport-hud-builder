@@ -1,6 +1,6 @@
 -- Add a dedicated hero_lines JSONB column to branding_settings.
 -- Stores an array of 3 objects: [{ text, color, fontFamily }, ...].
--- NULL means "use the hardcoded default headline."
+-- Empty array [] means "use the hardcoded default headline."
 --
 -- ┌─────────────────────────────────────────────────────────────┐
 -- │  HOW TO APPLY (Supabase Dashboard)                         │
@@ -14,7 +14,7 @@
 -- └─────────────────────────────────────────────────────────────┘
 
 ALTER TABLE public.branding_settings
-  ADD COLUMN IF NOT EXISTS hero_lines jsonb DEFAULT NULL;
+  ADD COLUMN IF NOT EXISTS hero_lines jsonb DEFAULT '[]'::jsonb;
 
 -- Verification query (run separately after the ALTER):
 -- SELECT column_name, data_type
