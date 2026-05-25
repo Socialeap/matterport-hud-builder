@@ -1,40 +1,25 @@
-## Goal
+## Problem
 
-Make the MSP's uploaded favicon appear in the browser tab on **both** the studio landing page (`/p/$slug`) and the builder page (`/p/$slug/builder`). Today only the landing page overrides the parent app's `/favicon.png`; the builder still inherits the Transcendence Media icon from `__root.tsx`.
+In `src/components/portal/PublishDistributeSection.tsx` (`openNetlifyPublishWindow`, lines 243–284), the features string passed to `window.open` includes `"noopener"` and `"noreferrer"`.
 
-## Why the builder is broken
+Per the HTML spec, when `noopener` is present, `window.open` **always returns `null`**, even on a fully successful popup. The current code interprets a `null` return as "popup blocked" and sets `netlifyBlocked = true`, which is why the warning ("Your browser blocked the publish window…") appears every time — even though the Netlify Drop window actually opened.
 
-`src/routes/__root.tsx` injects `<link rel="icon" href="/favicon.png">`. TanStack Router concatenates `<link>` entries without dedup, and browsers honor the first `rel="icon"` they see. The landing route already has a runtime `useEffect` that purges every `link[rel="icon" | "shortcut icon" | "apple-touch-icon"]` and replaces them with `branding.favicon_url` (falling back to `branding.logo_url`). The builder route (`src/routes/p.$slug.builder.tsx`) loads the same `branding` row but never runs that override, so the TM favicon wins.
+## Fix
 
-## Changes
+Remove `"noopener"` and `"noreferrer"` from the `features` array. Security is already preserved by the existing defensive `publishWindow.opener = null` assignment immediately after the open call (and the popup is cross-origin, so it cannot read into 3DPS regardless).
 
-1. **Extract the favicon override into a small shared hook** so the logic stays identical and we don't duplicate the MIME-type detection / purge code.
+After the change:
+- `window.open` returns the real `Window` reference on success → `setNetlifyBlocked(false)` + `setNetlifyOpened(true)` runs, warning stays hidden.
+- A genuine popup block still returns `null` → warning correctly shows.
 
-   New file: `src/hooks/use-branded-favicon.ts`
-   - Exports `useBrandedFavicon(faviconUrl?: string | null, logoUrl?: string | null)`.
-   - Body is the same `useEffect` already in `p.$slug.index.tsx` lines 406–439 (purge competing icons, infer MIME from extension, inject new `rel="icon"` + `rel="apple-touch-icon"`).
-   - SSR-safe (`if (typeof document === "undefined") return;`).
-   - Cleanup on unmount: when the component unmounts or `branding` becomes unavailable, restore the parent `/favicon.png` so navigating back to non-MSP routes (e.g. `/dashboard`) doesn't leave the previous MSP's icon stuck in the tab.
+### Change (single edit)
 
-2. **Use the hook on the landing route**
-   File: `src/routes/p.$slug.index.tsx`
-   - Replace the inline `useEffect` (lines 401–439) with `useBrandedFavicon(branding?.favicon_url, branding?.logo_url)`. No behavior change.
-
-3. **Use the hook on the builder route**
-   File: `src/routes/p.$slug.builder.tsx`
-   - Inside `BuilderPage`, after `const { branding } = Route.useLoaderData();`, call `useBrandedFavicon(branding?.favicon_url, branding?.logo_url)`. This is the fix.
-
-## What stays the same
-
-- Parent app default favicon in `__root.tsx` — untouched.
-- Branding upload flow (`BrandingSection`, `uploadBrandAsset`, `branding_settings.favicon_url` / `logo_url`) — untouched. The MSP already has the UI to upload a favicon (and to fall back to their logo if no favicon is provided).
-- No database, RLS, or server-function changes.
-- No changes to `HudBuilderSandbox` or any other component.
+`src/components/portal/PublishDistributeSection.tsx`, in the `features` array (lines 249–258): delete the `"noopener"` and `"noreferrer"` entries. Leave the rest of the function — including the `publishWindow.opener = null` cleanup — untouched.
 
 ## Verification
 
-- Load `/p/<slug>` for an MSP with a custom favicon → tab icon = MSP favicon (already works, must not regress).
-- Load `/p/<slug>/builder` for the same MSP → tab icon = MSP favicon (the fix).
-- For an MSP with no `favicon_url` but a `logo_url` → both pages use the logo.
-- Navigate `/p/<slug>/builder` → `/dashboard` → tab icon resets to the parent `/favicon.png` (cleanup).
-- SSR build: hook is a no-op on the server; no hydration warning.
+1. Click "Open Netlify Publish Window" → popup opens, no warning underneath.
+2. Block popups for the site in the browser, click again → popup is blocked, warning appears as intended.
+3. Confirm the popup cannot navigate the parent 3DPS tab (opener already nulled).
+
+No other files, routes, server functions, or styles are affected.

@@ -246,6 +246,10 @@ export const PublishDistributeSection = forwardRef<
     const height = 760;
     const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
     const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
+    // Note: do NOT pass "noopener"/"noreferrer" here — when present,
+    // window.open returns null even on success, which would falsely
+    // trigger the "popup blocked" warning. We sever the opener
+    // reference manually below instead.
     const features = [
       `width=${width}`,
       `height=${height}`,
@@ -253,8 +257,6 @@ export const PublishDistributeSection = forwardRef<
       `top=${top}`,
       "resizable=yes",
       "scrollbars=yes",
-      "noopener",
-      "noreferrer",
     ].join(",");
     let publishWindow: Window | null = null;
     try {
