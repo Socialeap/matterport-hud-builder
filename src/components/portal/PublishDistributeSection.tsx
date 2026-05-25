@@ -480,34 +480,6 @@ export const PublishDistributeSection = forwardRef<
               </div>
             )}
 
-            {netlifyOpenedAs === "tab" && (
-              <div className="rounded-md border border-sky-500/40 bg-sky-500/5 p-3 text-xs text-sky-900/90 dark:text-sky-200/90 space-y-2">
-                {tabOutcomeCountRef.current >= 2 ? (
-                  <p>
-                    Your browser is configured to open new windows as tabs.
-                    Netlify Drop is open in another tab — switch to it to
-                    upload your package, then come back here to paste the
-                    live URL below.
-                  </p>
-                ) : (
-                  <>
-                    <p>
-                      Your browser opened Netlify in a regular tab instead
-                      of a floating window. You can keep using it there, or
-                      retry as a floating window.
-                    </p>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={openNetlifyPublishWindow}
-                    >
-                      Retry as floating window
-                    </Button>
-                  </>
-                )}
-              </div>
-            )}
 
             {netlifyOpenedAs === "popup" && (
               <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
