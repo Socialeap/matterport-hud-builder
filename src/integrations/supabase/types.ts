@@ -1941,6 +1941,15 @@ export type Database = {
         }[]
       }
       admin_get_user_id_by_email: { Args: { _email: string }; Returns: string }
+      admin_grant_tier: {
+        Args: {
+          _expires_at: string
+          _provider_id: string
+          _tier: Database["public"]["Enums"]["app_tier"]
+        }
+        Returns: string
+      }
+      admin_revoke_grant: { Args: { _grant_id: string }; Returns: undefined }
       apply_no_disposition_penalties: { Args: never; Returns: number }
       apply_outreach_feedback: {
         Args: { p_feedback_token: string }

@@ -157,52 +157,33 @@ export default function AdminProviderDetail() {
         ? new Date(Date.now() + grantDuration * 30 * 24 * 60 * 60 * 1000).toISOString()
         : null;
 
-    const { data: newGrant, error: grantErr } = await supabase
-      .from("admin_grants")
-      .insert({
-        provider_id: providerId,
-        granted_by: user.id,
-        tier: grantTier,
-        expires_at: expiresAt,
-      })
-      .select()
-      .single();
+    // Single SECURITY DEFINER RPC writes admin_grants + licenses +
+    // branding_settings atomically and enforces the admin-role check
+    // server-side. Avoids RLS gaps on licenses / branding_settings that
+    // previously made grants silently no-op for non-self provider rows.
+    const { data: newGrantId, error: grantErr } = await supabase.rpc(
+      "admin_grant_tier",
+      {
+        _provider_id: providerId,
+        _tier: grantTier,
+        _expires_at: expiresAt as string,
+      }
+    );
 
-    if (grantErr) {
-      toast.error("Failed to create grant: " + grantErr.message);
+    if (grantErr || !newGrantId) {
+      toast.error("Failed to create grant: " + (grantErr?.message ?? "unknown error"));
       setGranting(false);
       return;
     }
 
-    const { error: bsErr } = await supabase
-      .from("branding_settings")
-      .update({ tier: grantTier })
-      .eq("provider_id", providerId);
-
-    if (bsErr) {
-      // Non-fatal: branding tier is a denormalized cache; admin_grants + licenses are the source of truth.
-      toast.warning("Tier cache update failed (entitlement still applied): " + bsErr.message);
-    }
-
-    const { error: licErr } = await supabase
-      .from("licenses")
-      .upsert(
-        {
-          user_id: providerId,
-          tier: grantTier,
-          license_status: "active",
-          license_expiry: expiresAt,
-        },
-        { onConflict: "user_id" }
-      );
-
-    if (licErr) {
-      toast.error("Grant created but license upsert failed: " + licErr.message);
-    } else {
-      toast.success("Access granted successfully.");
-    }
-
-    setGrant(newGrant as Grant);
+    toast.success("Access granted successfully.");
+    setGrant({
+      id: String(newGrantId),
+      tier: grantTier,
+      expires_at: expiresAt,
+      revoked_at: null,
+      created_at: new Date().toISOString(),
+    });
     if (detail) setDetail({ ...detail, tier: grantTier });
     setGranting(false);
   }
@@ -211,10 +192,9 @@ export default function AdminProviderDetail() {
     if (!grant) return;
     setRevoking(true);
 
-    const { error: revokeErr } = await supabase
-      .from("admin_grants")
-      .update({ revoked_at: new Date().toISOString() })
-      .eq("id", grant.id);
+    const { error: revokeErr } = await supabase.rpc("admin_revoke_grant", {
+      _grant_id: grant.id,
+    });
 
     if (revokeErr) {
       toast.error("Revocation failed: " + revokeErr.message);
@@ -222,21 +202,12 @@ export default function AdminProviderDetail() {
       return;
     }
 
-    await supabase
-      .from("branding_settings")
-      .update({ tier: "starter" })
-      .eq("provider_id", providerId);
-
-    await supabase
-      .from("licenses")
-      .update({ tier: "starter", license_status: "active", license_expiry: null })
-      .eq("user_id", providerId);
-
     toast.success("Grant revoked. Tier reverted to Starter.");
     setGrant(null);
     if (detail) setDetail({ ...detail, tier: "starter" });
     setRevoking(false);
   }
+
 
   const monthlyData = buildMonthlyBuckets(visits);
 
