@@ -161,6 +161,107 @@ export async function fetchMattertagAttachment(args: {
   }
 }
 
+/** Max byte cap for inlined branding/avatar assets (4 MB). Tighter than
+ *  the Mattertag attachment cap because branding files are typically
+ *  logos/icons/avatars — anything larger is almost certainly an
+ *  unoptimized hero shot we'd rather leave as a remote URL. */
+const MAX_BYTES_PER_BRANDING = 4 * 1024 * 1024;
+
+function extFromContentType(ct: string | null | undefined): string | null {
+  if (!ct) return null;
+  const m = ct.toLowerCase().split(";")[0].trim();
+  if (m === "image/jpeg" || m === "image/jpg") return "jpg";
+  if (m === "image/png") return "png";
+  if (m === "image/gif") return "gif";
+  if (m === "image/webp") return "webp";
+  if (m === "image/avif") return "avif";
+  if (m === "image/svg+xml") return "svg";
+  if (m === "image/x-icon" || m === "image/vnd.microsoft.icon") return "ico";
+  return null;
+}
+
+function extFromUrlPath(url: string): string | null {
+  try {
+    const u = new URL(url);
+    const path = u.pathname.toLowerCase();
+    const dot = path.lastIndexOf(".");
+    if (dot < 0 || dot === path.length - 1) return null;
+    const ext = path.slice(dot + 1).replace(/[^a-z0-9]/g, "");
+    if (ext.length === 0 || ext.length > 5) return null;
+    return ext;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetch a Matterport photo/gif asset for bundling into the exported
+ * .zip. Uses the stable token-free permalink
+ * `https://my.matterport.com/resources/model/{m}/image/{id}` (same URL
+ * the /api/mp-image proxy redirects to). Returns null on any failure
+ * so the caller can leave the remote URL in place.
+ */
+export async function fetchMatterportImage(args: {
+  modelId: string;
+  assetId: string;
+}): Promise<ResolvedAttachment | null> {
+  const { modelId, assetId } = args;
+  if (!MP_ID_RE.test(modelId) || !MP_ID_RE.test(assetId)) return null;
+  const url = `https://my.matterport.com/resources/model/${modelId}/image/${assetId}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    const buf = await res.arrayBuffer();
+    if (buf.byteLength === 0 || buf.byteLength > MAX_BYTES_PER_ATTACHMENT) {
+      return null;
+    }
+    const ext =
+      extFromContentType(res.headers.get("content-type")) ||
+      extFromUrlPath(res.url || url) ||
+      "jpg";
+    return { bytes: new Uint8Array(buf), ext };
+  } catch (err) {
+    clearTimeout(timer);
+    console.error("[mattertag-bundler] mp image fetch failed:", err);
+    return null;
+  }
+}
+
+/**
+ * Fetch an arbitrary public http(s) asset (typically a branding image
+ * stored in Supabase Storage — logo, favicon, hero, agent avatar) for
+ * bundling into the exported .zip. Capped at 4 MB. Returns null on
+ * non-http URLs, oversize bodies, or any network failure.
+ */
+export async function fetchPublicAsset(
+  url: string,
+): Promise<ResolvedAttachment | null> {
+  if (typeof url !== "string" || !/^https?:\/\//i.test(url)) return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    const buf = await res.arrayBuffer();
+    if (buf.byteLength === 0 || buf.byteLength > MAX_BYTES_PER_BRANDING) {
+      return null;
+    }
+    const ext =
+      extFromContentType(res.headers.get("content-type")) ||
+      extFromUrlPath(url) ||
+      "png";
+    return { bytes: new Uint8Array(buf), ext };
+  } catch (err) {
+    clearTimeout(timer);
+    console.error("[mattertag-bundler] public asset fetch failed:", err);
+    return null;
+  }
+}
+
 /**
  * Run a list of async tasks with bounded concurrency. Order is preserved
  * in the returned array.
