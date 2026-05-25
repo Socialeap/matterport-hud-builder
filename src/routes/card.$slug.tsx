@@ -1,5 +1,5 @@
 import { createFileRoute, notFound } from "@tanstack/react-router";
-import { supabase } from "@/integrations/supabase/client";
+import { fetchPublicBrandingBySlug } from "@/lib/public-portal.functions";
 import { CallingCard, type CallingCardData } from "@/components/branding/CallingCard";
 import { buildStudioUrl } from "@/lib/public-url";
 
@@ -18,16 +18,11 @@ interface CardLoaderData {
 
 export const Route = createFileRoute("/card/$slug")({
   loader: async ({ params }) => {
-    const { data, error } = await supabase
-      .from("branding_settings")
-      .select(
-        "brand_name, slug, logo_url, accent_color, tier, custom_domain, calling_card_studio_name, calling_card_headline, calling_card_cta_label, calling_card_logo_url",
-      )
-      .eq("slug", params.slug)
-      .maybeSingle();
-    if (error || !data) throw notFound();
-    return data as unknown as CardLoaderData;
+    const { branding } = await fetchPublicBrandingBySlug({ data: { slug: params.slug } });
+    if (!branding) throw notFound();
+    return branding as unknown as CardLoaderData;
   },
+
   head: ({ params, loaderData }) => {
     const name = loaderData?.brand_name || "3D Presentation";
     const url = `https://3dps.transcendencemedia.com/card/${params.slug}`;
