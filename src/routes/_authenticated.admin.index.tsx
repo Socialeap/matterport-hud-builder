@@ -63,11 +63,17 @@ export default function AdminIndex() {
 
     const ids = providerData.map((p: any) => p.provider_id as string);
 
-    const [visitsRes, clientsRes, modelsRes] = await Promise.all([
+    const [visitsRes, clientsRes, modelsRes, brandingRes] = await Promise.all([
       supabase.from("page_visits").select("provider_id").in("provider_id", ids),
       supabase.from("client_providers").select("provider_id").in("provider_id", ids),
       supabase.from("saved_models").select("provider_id, amount_cents, status, is_released").in("provider_id", ids),
+      supabase.from("branding_settings").select("provider_id, brand_name, slug, tier").in("provider_id", ids),
     ]);
+
+    const brandingMap: Record<string, { brand_name: string; slug: string | null; tier: string }> = {};
+    for (const b of brandingRes.data ?? []) {
+      brandingMap[b.provider_id] = { brand_name: b.brand_name, slug: b.slug, tier: b.tier };
+    }
 
     const visitMap: Record<string, number> = {};
     const clientMap: Record<string, Set<string>> = {};
@@ -98,6 +104,9 @@ export default function AdminIndex() {
 
     const enriched: ProviderRow[] = providerData.map((p: any) => ({
       ...p,
+      brand_name: p.brand_name || brandingMap[p.provider_id]?.brand_name || "",
+      slug: p.slug || brandingMap[p.provider_id]?.slug || "",
+      tier: p.tier || brandingMap[p.provider_id]?.tier || "starter",
       visits: visitMap[p.provider_id] ?? 0,
       clients: clientMap[p.provider_id]?.size ?? 0,
       downloads: downloadMap[p.provider_id] ?? 0,
