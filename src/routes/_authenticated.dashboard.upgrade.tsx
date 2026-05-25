@@ -116,10 +116,10 @@ function PricingPage() {
 
       <div className="text-center">
         <h1 className="text-3xl font-bold tracking-tight text-foreground">
-          Purchase Your Studio
+          Purchase Your Studio (Join waiting list!)
         </h1>
         <p className="mt-2 text-muted-foreground">
-          One-time setup fee · then $49–$79/year upkeep license (first year free).
+          One-time setup fee + $49–$79/year upkeep license - First year free!
         </p>
       </div>
 
