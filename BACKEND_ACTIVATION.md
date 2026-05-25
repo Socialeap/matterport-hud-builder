@@ -2,18 +2,37 @@
 
 ## Status
 
-Backend Activation Required: **YES**
+Backend Activation Required: **NO**
 
-## Summary
+All pending backend activations have been applied and verified.
 
-Create the `site_settings` table for the admin-controlled waitlist/Stripe toggle feature. This table stores a global `checkout_mode` setting (`"live"` or `"waitlist"`) that controls whether home page pricing buttons open Stripe checkout or a Jotform waitlist modal.
+---
+
+## Completed Activations
+
+### site_settings table (2026-05-25) — VERIFIED
+
+**Summary:** Created the `site_settings` table for the admin-controlled waitlist/Stripe toggle feature. Stores a global `checkout_mode` setting (`"live"` or `"waitlist"`) that controls whether home page pricing buttons open Stripe checkout or a Jotform waitlist modal.
+
+**Applied via:** Supabase Dashboard SQL Editor
+**Verified on:** 2026-05-25
+**Verification result:** `SELECT * FROM public.site_settings;` returned `checkout_mode = live`
+
+**Actions completed:**
+1. Created `public.site_settings` table
+2. Seeded `checkout_mode` row with default value `"live"`
+3. Enabled RLS on the table
+4. Created public read policy
+
+---
+
+## Template for Future Backend Activations
+
+<!-- Copy the section below when a new backend change is needed -->
 
 ## Required Backend Actions
 
-1. Run the migration to create `public.site_settings` table
-2. Seed the `checkout_mode` row with default value `"live"`
-3. Enable RLS on the table
-4. Create the public read policy
+1. (list exact actions)
 
 ## Migration Files to Apply
 
