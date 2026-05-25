@@ -62,6 +62,12 @@ function BuilderPage() {
   const { branding } = Route.useLoaderData();
   const { slug } = Route.useParams();
 
+  // Show the MSP's branded favicon in the browser tab (falls back to logo).
+  useBrandedFavicon(
+    (branding as { favicon_url?: string | null } | null)?.favicon_url,
+    (branding as { logo_url?: string | null } | null)?.logo_url,
+  );
+
   if (!branding) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
