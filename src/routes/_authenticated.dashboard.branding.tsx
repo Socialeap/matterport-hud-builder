@@ -168,8 +168,14 @@ const defaultBranding: BrandingData = {
 };
 
 function parseHeroLines(raw: unknown): [HeroLine, HeroLine, HeroLine] {
-  if (!Array.isArray(raw) || raw.length < 3) return [...DEFAULT_HERO_LINES] as [HeroLine, HeroLine, HeroLine];
-  return raw.slice(0, 3).map((item: unknown, i: number) => {
+  let arr: unknown[] | null = null;
+  if (typeof raw === "string" && raw.startsWith("[")) {
+    try { arr = JSON.parse(raw); } catch { /* not valid JSON — use defaults */ }
+  } else if (Array.isArray(raw)) {
+    arr = raw;
+  }
+  if (!Array.isArray(arr) || arr.length < 3) return [...DEFAULT_HERO_LINES] as [HeroLine, HeroLine, HeroLine];
+  return arr.slice(0, 3).map((item: unknown, i: number) => {
     const fallback = DEFAULT_HERO_LINES[i];
     if (!item || typeof item !== "object") return { ...fallback };
     const obj = item as Record<string, unknown>;
@@ -315,7 +321,10 @@ function BrandingPage() {
         additional_model_fee_cents: data.additional_model_fee_cents,
         hero_bg_url: data.hero_bg_url ?? null,
         hero_bg_opacity: data.hero_bg_opacity ?? 0.45,
-        hero_lines: parseHeroLines(data.hero_lines),
+        hero_lines: parseHeroLines(
+          (data as unknown as { calling_card_headline?: string | null })
+            .calling_card_headline ?? null,
+        ),
         is_directory_public: data.is_directory_public ?? false,
         primary_city: data.primary_city ?? null,
         region: data.region ?? null,
@@ -522,7 +531,7 @@ function BrandingPage() {
           directory_contact_email: branding.directory_contact_email?.trim() || null,
           directory_phone: branding.directory_phone?.trim() || null,
           calling_card_studio_name: branding.calling_card_studio_name?.trim() || null,
-          calling_card_headline: branding.calling_card_headline?.trim() || null,
+          calling_card_headline: JSON.stringify(branding.hero_lines),
           calling_card_cta_label: branding.calling_card_cta_label?.trim() || null,
           calling_card_logo_url: callingCardLogoUrl,
         } as any,
@@ -533,24 +542,6 @@ function BrandingPage() {
       setSaving(false);
       toast.error("Failed to save branding settings");
       return;
-    }
-
-    // hero_lines is saved separately so the main upsert isn't broken
-    // if the migration hasn't been applied yet.
-    const heroLinesChanged =
-      JSON.stringify(branding.hero_lines) !== JSON.stringify(savedSnapshot.hero_lines);
-    if (heroLinesChanged) {
-      const { error: hlError } = await supabase
-        .from("branding_settings")
-        .update({
-          hero_lines: branding.hero_lines as unknown as Record<string, unknown>[],
-        } as any)
-        .eq("provider_id", user.id);
-      if (hlError) {
-        toast.warning(
-          "Branding saved, but hero headline could not be updated. The database migration may not have run yet.",
-        );
-      }
     }
 
     // Persist the polygon via the SECURITY DEFINER RPC. Geometry

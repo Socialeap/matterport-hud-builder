@@ -472,9 +472,12 @@ function PortalPage() {
       : 0.45;
 
   const heroLines = (() => {
-    const raw = (branding as Record<string, unknown>).hero_lines;
-    if (!Array.isArray(raw) || raw.length < 3) return null;
-    return raw.slice(0, 3).map((item: unknown, i: number) => {
+    const raw = (branding as Record<string, unknown>).calling_card_headline;
+    if (typeof raw !== "string" || !raw.startsWith("[")) return null;
+    let arr: unknown[];
+    try { arr = JSON.parse(raw); } catch { return null; }
+    if (!Array.isArray(arr) || arr.length < 3) return null;
+    return arr.slice(0, 3).map((item: unknown) => {
       if (!item || typeof item !== "object") return null;
       const obj = item as Record<string, unknown>;
       return {
