@@ -178,12 +178,12 @@ export default function AdminProviderDetail() {
 
     toast.success("Access granted successfully.");
     setGrant({
-      id: newGrantId as string,
+      id: String(newGrantId),
       tier: grantTier,
       expires_at: expiresAt,
       revoked_at: null,
       created_at: new Date().toISOString(),
-    } as Grant);
+    });
     if (detail) setDetail({ ...detail, tier: grantTier });
     setGranting(false);
   }
