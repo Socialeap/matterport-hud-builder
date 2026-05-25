@@ -251,8 +251,15 @@ export const PublishDistributeSection = forwardRef<
   const openNetlifyPublishWindow = useCallback(() => {
     const width = 560;
     const height = 760;
-    const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
-    const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
+    // Browsers (Chrome/Safari) require integer coordinates in the features
+    // string. Decimals from `/2` invalidate sizing and demote the window
+    // to a regular tab — wrap in Math.round to keep the popup hint valid.
+    const left = Math.round(
+      window.screenX + Math.max(0, (window.outerWidth - width) / 2),
+    );
+    const top = Math.round(
+      window.screenY + Math.max(0, (window.outerHeight - height) / 2),
+    );
 
     // Close any previously-opened publish window so we never accumulate
     // popups across reopen clicks.
@@ -266,8 +273,8 @@ export const PublishDistributeSection = forwardRef<
     // Note: do NOT pass "noopener"/"noreferrer" — they make window.open
     // return null even on success, falsely tripping the "blocked" warning.
     // We sever the opener reference manually below instead.
-    // Note: target is "_blank" (not a fixed name) so Chrome cannot rebind
-    // to a previously-opened tab and silently ignore the features string.
+    // Target is "_blank" so Chrome cannot rebind to a previously-opened
+    // tab and silently ignore the features string.
     const features = [
       "popup=yes",
       `width=${width}`,
@@ -300,27 +307,10 @@ export const PublishDistributeSection = forwardRef<
 
     lastPublishWindowRef.current = publishWindow;
 
-    // Detect whether Chrome actually honored the popup hint. A real popup
-    // matches the requested size (within a small chrome margin); a tab
-    // returns the full browser viewport (typically >> 560×760).
-    requestAnimationFrame(() => {
-      let looksLikePopup = false;
-      try {
-        const w = publishWindow!.outerWidth;
-        const h = publishWindow!.outerHeight;
-        looksLikePopup =
-          w > 0 && h > 0 && w <= width + 80 && h <= height + 120;
-      } catch {
-        looksLikePopup = false;
-      }
-      if (looksLikePopup) {
-        tabOutcomeCountRef.current = 0;
-        setNetlifyOpenedAs("popup");
-      } else {
-        tabOutcomeCountRef.current += 1;
-        setNetlifyOpenedAs("tab");
-      }
-    });
+    // Trust the browser. We cannot read outerWidth/outerHeight on a
+    // cross-origin window (https://app.netlify.com) — attempting to do so
+    // throws SecurityError and would always misreport success as a tab.
+    setNetlifyOpenedAs("popup");
   }, []);
 
   const handleGenerateShareKit = useCallback(() => {
