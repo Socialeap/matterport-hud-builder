@@ -674,4 +674,4 @@ export const PublishDistributeSection = forwardRef<
       )}
     </div>
   );
-}
+});
