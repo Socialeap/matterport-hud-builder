@@ -15,7 +15,7 @@ export const Route = createFileRoute("/p/$slug/builder")({
       { name: "description", content: "Build your branded 3D property presentation." },
     ],
   }),
-  loader: async ({ params }) => fetchBrandingForBuilder({ data: { slug: params.slug } }),
+  loader: async ({ params }) => fetchPublicBrandingBySlug({ data: { slug: params.slug } }),
   component: BuilderPage,
   errorComponent: ({ error }) => {
     const router = useRouter();
