@@ -166,7 +166,7 @@ export default function AdminProviderDetail() {
       {
         _provider_id: providerId,
         _tier: grantTier,
-        _expires_at: expiresAt,
+        _expires_at: expiresAt as string,
       }
     );
 
