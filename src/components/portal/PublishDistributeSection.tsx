@@ -187,15 +187,38 @@ function buildShareUrl(baseUrl: string, src: string | null): string {
   }
 }
 
-export function PublishDistributeSection({
-  propertyName,
-  accentColor,
-  canDownload,
-  onDownload,
-  downloading,
-  downloadingLabel,
-  downloadDisabledReason,
-}: PublishDistributeSectionProps) {
+export const PublishDistributeSection = forwardRef<
+  PublishInterceptor,
+  PublishDistributeSectionProps
+>(function PublishDistributeSection(
+  {
+    propertyName,
+    accentColor,
+    canDownload,
+    onDownload,
+    downloading,
+    downloadingLabel,
+    downloadDisabledReason,
+  },
+  ref,
+) {
+  // Interceptor stub — never registers a handler, so the parent always
+  // performs a normal browser download. Kept so HudBuilderSandbox's
+  // `publishInterceptorRef.current?.consume(blob)` call continues to
+  // return false and the existing download path is preserved.
+  const interceptorHandlerRef = useRef<((blob: Blob) => Promise<void> | void) | null>(null);
+  useImperativeHandle(ref, () => ({
+    set: (handler) => { interceptorHandlerRef.current = handler; },
+    clear: () => { interceptorHandlerRef.current = null; },
+    consume: async (blob: Blob) => {
+      const h = interceptorHandlerRef.current;
+      if (!h) return false;
+      interceptorHandlerRef.current = null;
+      await h(blob);
+      return true;
+    },
+  }), []);
+
   const [netlifyOpened, setNetlifyOpened] = useState(false);
   const [netlifyBlocked, setNetlifyBlocked] = useState(false);
   const [urlInput, setUrlInput] = useState("");
