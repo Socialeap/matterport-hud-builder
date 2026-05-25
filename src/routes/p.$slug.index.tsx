@@ -471,6 +471,38 @@ function PortalPage() {
       ? branding.hero_bg_opacity
       : 0.45;
 
+  const heroLines = (() => {
+    const raw = (branding as Record<string, unknown>).hero_lines;
+    if (!Array.isArray(raw) || raw.length < 3) return null;
+    return raw.slice(0, 3).map((item: unknown, i: number) => {
+      if (!item || typeof item !== "object") return null;
+      const obj = item as Record<string, unknown>;
+      return {
+        text: typeof obj.text === "string" ? obj.text : "",
+        color: typeof obj.color === "string" ? obj.color : "#FFFFFF",
+        fontFamily: typeof obj.fontFamily === "string" ? obj.fontFamily : "Inter",
+      };
+    });
+  })();
+
+  useEffect(() => {
+    if (!heroLines) return;
+    const families = [...new Set(heroLines.filter(Boolean).map((l) => l!.fontFamily))].filter(
+      (f) => f && f !== "Inter",
+    );
+    if (!families.length) return;
+    const id = "hero-fonts-studio";
+    let link = document.getElementById(id) as HTMLLinkElement | null;
+    const url = `https://fonts.googleapis.com/css2?${families.map((f) => `family=${encodeURIComponent(f)}:wght@400;700`).join("&")}&display=swap`;
+    if (!link) {
+      link = document.createElement("link");
+      link.id = id;
+      link.rel = "stylesheet";
+      document.head.appendChild(link);
+    }
+    link.href = url;
+  }, [heroLines]);
+
   // Build dynamic feature list
   const features: string[] = [
     "Custom branding (logo, color, contact)",
@@ -587,11 +619,27 @@ function PortalPage() {
             {/* Brand chip moved into sticky header */}
 
             <h1 className="max-w-3xl text-4xl font-bold leading-tight tracking-tight text-white drop-shadow-lg sm:text-5xl md:text-6xl">
-              Your Properties,{" "}
-              <span style={{ color: accent }} className="drop-shadow-lg">
-                Professionally Presented.
-              </span>{" "}
-              No Subscriptions.
+              {heroLines ? (
+                heroLines.map((line, i) =>
+                  line ? (
+                    <span
+                      key={i}
+                      className="block drop-shadow-lg"
+                      style={{ color: line.color, fontFamily: line.fontFamily }}
+                    >
+                      {line.text}
+                    </span>
+                  ) : null,
+                )
+              ) : (
+                <>
+                  Your Properties,{" "}
+                  <span style={{ color: accent }} className="drop-shadow-lg">
+                    Professionally Presented.
+                  </span>{" "}
+                  No Subscriptions.
+                </>
+              )}
             </h1>
 
             <p className="mt-6 max-w-2xl text-lg text-white/90 drop-shadow-md">
