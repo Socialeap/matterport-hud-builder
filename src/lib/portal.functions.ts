@@ -13,6 +13,8 @@ import {
 } from "./portal/protected-export";
 import {
   fetchMattertagAttachment,
+  fetchMatterportImage,
+  fetchPublicAsset,
   mapWithConcurrency,
 } from "./portal/mattertag-bundler.server";
 
