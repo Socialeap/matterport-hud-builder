@@ -219,16 +219,16 @@ export const PublishDistributeSection = forwardRef<
     },
   }), []);
 
-  // Tri-state outcome of the most recent Netlify open attempt:
-  //   "popup"   — opened in a real floating window (size hints honored)
-  //   "tab"     — browser demoted the request to a regular tab
+  // Outcome of the most recent Netlify open attempt:
+  //   "popup"   — window.open returned a Window (assumed success)
   //   "blocked" — window.open returned null (popup blocker)
   //   null      — not yet attempted
+  // We cannot reliably measure a cross-origin window, so we trust the
+  // browser when it returns a non-null Window.
   const [netlifyOpenedAs, setNetlifyOpenedAs] = useState<
-    "popup" | "tab" | "blocked" | null
+    "popup" | "blocked" | null
   >(null);
   const lastPublishWindowRef = useRef<Window | null>(null);
-  const tabOutcomeCountRef = useRef(0);
   const [urlInput, setUrlInput] = useState("");
   const [urlError, setUrlError] = useState<string | null>(null);
   const [liveUrl, setLiveUrl] = useState<string | null>(null);
@@ -251,8 +251,15 @@ export const PublishDistributeSection = forwardRef<
   const openNetlifyPublishWindow = useCallback(() => {
     const width = 560;
     const height = 760;
-    const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
-    const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
+    // Browsers (Chrome/Safari) require integer coordinates in the features
+    // string. Decimals from `/2` invalidate sizing and demote the window
+    // to a regular tab — wrap in Math.round to keep the popup hint valid.
+    const left = Math.round(
+      window.screenX + Math.max(0, (window.outerWidth - width) / 2),
+    );
+    const top = Math.round(
+      window.screenY + Math.max(0, (window.outerHeight - height) / 2),
+    );
 
     // Close any previously-opened publish window so we never accumulate
     // popups across reopen clicks.
@@ -266,8 +273,8 @@ export const PublishDistributeSection = forwardRef<
     // Note: do NOT pass "noopener"/"noreferrer" — they make window.open
     // return null even on success, falsely tripping the "blocked" warning.
     // We sever the opener reference manually below instead.
-    // Note: target is "_blank" (not a fixed name) so Chrome cannot rebind
-    // to a previously-opened tab and silently ignore the features string.
+    // Target is "_blank" so Chrome cannot rebind to a previously-opened
+    // tab and silently ignore the features string.
     const features = [
       "popup=yes",
       `width=${width}`,
@@ -300,27 +307,10 @@ export const PublishDistributeSection = forwardRef<
 
     lastPublishWindowRef.current = publishWindow;
 
-    // Detect whether Chrome actually honored the popup hint. A real popup
-    // matches the requested size (within a small chrome margin); a tab
-    // returns the full browser viewport (typically >> 560×760).
-    requestAnimationFrame(() => {
-      let looksLikePopup = false;
-      try {
-        const w = publishWindow!.outerWidth;
-        const h = publishWindow!.outerHeight;
-        looksLikePopup =
-          w > 0 && h > 0 && w <= width + 80 && h <= height + 120;
-      } catch {
-        looksLikePopup = false;
-      }
-      if (looksLikePopup) {
-        tabOutcomeCountRef.current = 0;
-        setNetlifyOpenedAs("popup");
-      } else {
-        tabOutcomeCountRef.current += 1;
-        setNetlifyOpenedAs("tab");
-      }
-    });
+    // Trust the browser. We cannot read outerWidth/outerHeight on a
+    // cross-origin window (https://app.netlify.com) — attempting to do so
+    // throws SecurityError and would always misreport success as a tab.
+    setNetlifyOpenedAs("popup");
   }, []);
 
   const handleGenerateShareKit = useCallback(() => {
@@ -469,7 +459,7 @@ export const PublishDistributeSection = forwardRef<
                 onClick={openNetlifyPublishWindow}
               >
                 <Rocket className="size-4" />
-                {netlifyOpenedAs === "popup" || netlifyOpenedAs === "tab" ? "Reopen Netlify Publish Window" : "Open Netlify Publish Window"}
+                {netlifyOpenedAs === "popup" ? "Reopen Netlify Publish Window" : "Open Netlify Publish Window"}
               </Button>
               <a
                 href={NETLIFY_DROP_URL}
@@ -490,34 +480,6 @@ export const PublishDistributeSection = forwardRef<
               </div>
             )}
 
-            {netlifyOpenedAs === "tab" && (
-              <div className="rounded-md border border-sky-500/40 bg-sky-500/5 p-3 text-xs text-sky-900/90 dark:text-sky-200/90 space-y-2">
-                {tabOutcomeCountRef.current >= 2 ? (
-                  <p>
-                    Your browser is configured to open new windows as tabs.
-                    Netlify Drop is open in another tab — switch to it to
-                    upload your package, then come back here to paste the
-                    live URL below.
-                  </p>
-                ) : (
-                  <>
-                    <p>
-                      Your browser opened Netlify in a regular tab instead
-                      of a floating window. You can keep using it there, or
-                      retry as a floating window.
-                    </p>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={openNetlifyPublishWindow}
-                    >
-                      Retry as floating window
-                    </Button>
-                  </>
-                )}
-              </div>
-            )}
 
             {netlifyOpenedAs === "popup" && (
               <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
