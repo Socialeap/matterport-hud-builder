@@ -219,8 +219,16 @@ export const PublishDistributeSection = forwardRef<
     },
   }), []);
 
-  const [netlifyOpened, setNetlifyOpened] = useState(false);
-  const [netlifyBlocked, setNetlifyBlocked] = useState(false);
+  // Tri-state outcome of the most recent Netlify open attempt:
+  //   "popup"   — opened in a real floating window (size hints honored)
+  //   "tab"     — browser demoted the request to a regular tab
+  //   "blocked" — window.open returned null (popup blocker)
+  //   null      — not yet attempted
+  const [netlifyOpenedAs, setNetlifyOpenedAs] = useState<
+    "popup" | "tab" | "blocked" | null
+  >(null);
+  const lastPublishWindowRef = useRef<Window | null>(null);
+  const tabOutcomeCountRef = useRef(0);
   const [urlInput, setUrlInput] = useState("");
   const [urlError, setUrlError] = useState<string | null>(null);
   const [liveUrl, setLiveUrl] = useState<string | null>(null);
@@ -241,15 +249,25 @@ export const PublishDistributeSection = forwardRef<
   );
 
   const openNetlifyPublishWindow = useCallback(() => {
-    setNetlifyBlocked(false);
     const width = 560;
     const height = 760;
     const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
     const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
-    // Note: do NOT pass "noopener"/"noreferrer" here — when present,
-    // window.open returns null even on success, which would falsely
-    // trigger the "popup blocked" warning. We sever the opener
-    // reference manually below instead.
+
+    // Close any previously-opened publish window so we never accumulate
+    // popups across reopen clicks.
+    try {
+      lastPublishWindowRef.current?.close();
+    } catch {
+      /* may be cross-origin closed already */
+    }
+    lastPublishWindowRef.current = null;
+
+    // Note: do NOT pass "noopener"/"noreferrer" — they make window.open
+    // return null even on success, falsely tripping the "blocked" warning.
+    // We sever the opener reference manually below instead.
+    // Note: target is "_blank" (not a fixed name) so Chrome cannot rebind
+    // to a previously-opened tab and silently ignore the features string.
     const features = [
       "popup=yes",
       `width=${width}`,
@@ -259,31 +277,50 @@ export const PublishDistributeSection = forwardRef<
       "resizable=yes",
       "scrollbars=yes",
     ].join(",");
+
     let publishWindow: Window | null = null;
     try {
-      publishWindow = window.open(
-        NETLIFY_DROP_URL,
-        "netlifyPublishWindow",
-        features,
-      );
+      publishWindow = window.open(NETLIFY_DROP_URL, "_blank", features);
     } catch {
       publishWindow = null;
     }
-    // Defensive: even when the browser ignores the noopener feature
-    // string, dropping the back-reference protects 3DPS from any later
-    // navigation by the popup (cross-origin so it can't read us, but
-    // it could still call window.opener.location.replace before nav).
-    if (publishWindow) {
-      try {
-        publishWindow.opener = null;
-      } catch {
-        /* cross-origin lockout — already isolated. */
-      }
-      setNetlifyOpened(true);
-      setNetlifyBlocked(false);
-    } else {
-      setNetlifyBlocked(true);
+
+    if (!publishWindow) {
+      setNetlifyOpenedAs("blocked");
+      return;
     }
+
+    // Defensive: sever opener back-reference (cross-origin so it cannot
+    // read us anyway, but it could still call window.opener.location).
+    try {
+      publishWindow.opener = null;
+    } catch {
+      /* cross-origin lockout — already isolated. */
+    }
+
+    lastPublishWindowRef.current = publishWindow;
+
+    // Detect whether Chrome actually honored the popup hint. A real popup
+    // matches the requested size (within a small chrome margin); a tab
+    // returns the full browser viewport (typically >> 560×760).
+    requestAnimationFrame(() => {
+      let looksLikePopup = false;
+      try {
+        const w = publishWindow!.outerWidth;
+        const h = publishWindow!.outerHeight;
+        looksLikePopup =
+          w > 0 && h > 0 && w <= width + 80 && h <= height + 120;
+      } catch {
+        looksLikePopup = false;
+      }
+      if (looksLikePopup) {
+        tabOutcomeCountRef.current = 0;
+        setNetlifyOpenedAs("popup");
+      } else {
+        tabOutcomeCountRef.current += 1;
+        setNetlifyOpenedAs("tab");
+      }
+    });
   }, []);
 
   const handleGenerateShareKit = useCallback(() => {
@@ -432,7 +469,7 @@ export const PublishDistributeSection = forwardRef<
                 onClick={openNetlifyPublishWindow}
               >
                 <Rocket className="size-4" />
-                {netlifyOpened ? "Reopen Netlify Publish Window" : "Open Netlify Publish Window"}
+                {netlifyOpenedAs === "popup" || netlifyOpenedAs === "tab" ? "Reopen Netlify Publish Window" : "Open Netlify Publish Window"}
               </Button>
               <a
                 href={NETLIFY_DROP_URL}
@@ -445,7 +482,7 @@ export const PublishDistributeSection = forwardRef<
               </a>
             </div>
 
-            {netlifyBlocked && (
+            {netlifyOpenedAs === "blocked" && (
               <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-900/90 dark:text-amber-200/90">
                 Your browser blocked the publish window. Please allow popups
                 for this site or use the "Open Netlify Drop in New Tab" link
@@ -453,7 +490,36 @@ export const PublishDistributeSection = forwardRef<
               </div>
             )}
 
-            {netlifyOpened && !netlifyBlocked && (
+            {netlifyOpenedAs === "tab" && (
+              <div className="rounded-md border border-sky-500/40 bg-sky-500/5 p-3 text-xs text-sky-900/90 dark:text-sky-200/90 space-y-2">
+                {tabOutcomeCountRef.current >= 2 ? (
+                  <p>
+                    Your browser is configured to open new windows as tabs.
+                    Netlify Drop is open in another tab — switch to it to
+                    upload your package, then come back here to paste the
+                    live URL below.
+                  </p>
+                ) : (
+                  <>
+                    <p>
+                      Your browser opened Netlify in a regular tab instead
+                      of a floating window. You can keep using it there, or
+                      retry as a floating window.
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={openNetlifyPublishWindow}
+                    >
+                      Retry as floating window
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
+
+            {netlifyOpenedAs === "popup" && (
               <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
                 <p className="font-medium text-foreground">
                   Netlify is open. Upload your 3DPS file or package there,
