@@ -6,6 +6,7 @@ import { HudBuilderSandbox } from "@/components/portal/HudBuilderSandbox";
 import { Button } from "@/components/ui/button";
 import { IndexingProvider } from "@/lib/rag/indexing-context";
 import { AccountMenu } from "@/components/account/AccountMenu";
+import { useBrandedFavicon } from "@/hooks/use-branded-favicon";
 
 const fetchBrandingForBuilder = createServerFn({ method: "GET" })
   .inputValidator((data: { slug: string }) => data)
