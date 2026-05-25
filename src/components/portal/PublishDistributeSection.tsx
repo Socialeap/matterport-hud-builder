@@ -1,90 +1,118 @@
-import {
-  forwardRef,
-  useCallback,
-  useEffect,
-  useImperativeHandle,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { QRCodeCanvas } from "qrcode.react";
 import {
-  AlertCircle,
   Check,
   Copy,
   Download,
   ExternalLink,
+  Globe,
   Info,
-  LinkIcon,
-  Loader2,
-  LogOut,
   QrCode,
-  RefreshCw,
   Rocket,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { useNetlifyConnection } from "@/hooks/useNetlifyConnection";
-import {
-  deployZipToNetlify,
-  isValidNetlifySlug,
-  slugifyForNetlify,
-} from "@/lib/portal/netlify-deploy";
-
-/**
- * Imperative handle the parent passes in so the download flow can hand
- * the in-memory zip Blob to the Publish flow instead of saving to disk.
- */
-export interface PublishInterceptor {
-  /** Set by the Publish flow before triggering the parent's download. */
-  set: (handler: (blob: Blob) => Promise<void> | void) => void;
-  /** Cleared automatically after one call; can be called manually too. */
-  clear: () => void;
-  /** Called by the parent right before triggering the browser download. */
-  consume: (blob: Blob) => Promise<boolean>;
-}
 
 interface PublishDistributeSectionProps {
+  /** Used as a friendly slug for QR-PNG file names. Falls back to "presentation". */
   propertyName?: string;
+  /** Brand accent color from the builder (used for primary CTAs). */
   accentColor: string;
+  /** Whether the user has at least one downloadable model configured. */
   canDownload: boolean;
+  /** Triggers the existing download / pay-and-download flow in the parent. */
   onDownload: () => void;
+  /** True while the parent is preparing or downloading. */
   downloading: boolean;
+  /** Optional in-flight step label from the parent (matches the pay/download card). */
   downloadingLabel?: string;
+  /** Optional reason the download is currently disabled (forwarded as tooltip text). */
   downloadDisabledReason?: string | null;
 }
 
 type ShareLink = {
   key: string;
+  /** Value appended as ?src=... — null means the unmodified main URL. */
   src: string | null;
   label: string;
   description: string;
+  /** When true, this link gets a downloadable QR code in the kit. */
   qr?: boolean;
 };
 
 const SHARE_LINKS: ShareLink[] = [
-  { key: "main", src: null, label: "Main Link", description: "Use anywhere you want to share the full presentation.", qr: true },
-  { key: "mls", src: "mls", label: "MLS / Unbranded Link", description: "Use only if it meets the rules of your MLS or brokerage." },
-  { key: "marketplace", src: "marketplace", label: "Zillow / Homes.com Link", description: "Use where listing platforms allow a virtual-tour or external property link." },
-  { key: "realtor", src: "realtor", label: "Realtor.com Link", description: "Use where Realtor.com or similar marketplaces allow virtual-tour URLs." },
-  { key: "email", src: "email", label: "Email Link", description: "Use in email campaigns and direct follow-ups." },
-  { key: "social", src: "social", label: "Social Link", description: "Use in social posts and DMs." },
-  { key: "open-house", src: "open-house", label: "Open House Link", description: "Use on open house signage or sign-in materials.", qr: true },
-  { key: "flyer", src: "flyer", label: "Flyer Link", description: "Use on printed flyers and brochures.", qr: true },
-  { key: "business-card", src: "business-card", label: "Business Card Link", description: "Use on cards or leave-behind materials.", qr: true },
-  { key: "window-sign", src: "window-sign", label: "Window Sign Link", description: "Use on storefront/window displays.", qr: true },
+  {
+    key: "main",
+    src: null,
+    label: "Main Link",
+    description: "Use anywhere you want to share the full presentation.",
+    qr: true,
+  },
+  {
+    key: "mls",
+    src: "mls",
+    label: "MLS / Unbranded Link",
+    description: "Use only if it meets the rules of your MLS or brokerage.",
+  },
+  {
+    key: "marketplace",
+    src: "marketplace",
+    label: "Zillow / Homes.com Link",
+    description:
+      "Use where listing platforms allow a virtual-tour or external property link.",
+  },
+  {
+    key: "realtor",
+    src: "realtor",
+    label: "Realtor.com Link",
+    description:
+      "Use where Realtor.com or similar marketplaces allow virtual-tour URLs.",
+  },
+  {
+    key: "email",
+    src: "email",
+    label: "Email Link",
+    description: "Use in email campaigns and direct follow-ups.",
+  },
+  {
+    key: "social",
+    src: "social",
+    label: "Social Link",
+    description: "Use in social posts and DMs.",
+  },
+  {
+    key: "open-house",
+    src: "open-house",
+    label: "Open House Link",
+    description: "Use on open house signage or sign-in materials.",
+    qr: true,
+  },
+  {
+    key: "flyer",
+    src: "flyer",
+    label: "Flyer Link",
+    description: "Use on printed flyers and brochures.",
+    qr: true,
+  },
+  {
+    key: "business-card",
+    src: "business-card",
+    label: "Business Card Link",
+    description: "Use on cards or leave-behind materials.",
+    qr: true,
+  },
+  {
+    key: "window-sign",
+    src: "window-sign",
+    label: "Window Sign Link",
+    description: "Use on storefront/window displays.",
+    qr: true,
+  },
 ];
 
-const NETLIFY_OAUTH_ORIGINS = new Set([
-  "https://matterport-hud-builder.lovable.app",
-  "https://3dps.transcendencemedia.com",
-]);
-
-const PUBLISHED_URL = "https://matterport-hud-builder.lovable.app";
-const CANONICAL_NETLIFY_REDIRECT_URI =
-  "https://matterport-hud-builder.lovable.app/api/public/netlify-oauth-callback";
+const NETLIFY_DROP_URL = "https://app.netlify.com/drop";
 
 function slugifyForFilename(value: string): string {
   const cleaned = value
@@ -98,73 +126,65 @@ function slugifyForFilename(value: string): string {
   return cleaned || "presentation";
 }
 
+/**
+ * Validate + normalize the live URL the agent pastes back from Netlify.
+ * Accepts http or https, prefers https. If no protocol is present we
+ * upgrade to https before validating. Returns null when the input does
+ * not parse as an absolute URL with a real-looking host.
+ */
+function normalizeLiveUrl(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const candidate = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  let parsed: URL;
+  try {
+    parsed = new URL(candidate);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+  if (!parsed.hostname.includes(".")) return null;
+  return parsed.toString();
+}
+
+/**
+ * Compose the source-tagged URL. We rebuild via URL so existing query
+ * strings, paths, and fragments on the agent's hosted URL are preserved
+ * while still letting us add (or overwrite) the src parameter.
+ */
 function buildShareUrl(baseUrl: string, src: string | null): string {
   try {
     const url = new URL(baseUrl);
-    if (src) url.searchParams.set("src", src);
-    else url.searchParams.delete("src");
+    if (src) {
+      url.searchParams.set("src", src);
+    } else {
+      url.searchParams.delete("src");
+    }
     return url.toString();
   } catch {
     return baseUrl;
   }
 }
 
-/**
- * forwardRef so the parent (HudBuilderSandbox) can pass a PublishInterceptor
- * ref into runDownload — when set, the parent hands the Blob to Publish
- * instead of triggering a browser download.
- */
-export const PublishDistributeSection = forwardRef<
-  PublishInterceptor,
-  PublishDistributeSectionProps
->(function PublishDistributeSection(
-  {
-    propertyName,
-    accentColor,
-    canDownload,
-    onDownload,
-    downloading,
-    downloadingLabel,
-    downloadDisabledReason,
-  },
-  ref,
-) {
-  const netlify = useNetlifyConnection();
-
-  // Netlify OAuth only works on the exact origins registered on the
-  // 3DPS Studio OAuth app. Any other host would make Netlify show
-  // "Error during authorization — Not Found", so block before popup.
-  const isUnsupportedNetlifyOrigin =
-    typeof window !== "undefined" &&
-    !NETLIFY_OAUTH_ORIGINS.has(window.location.origin);
-
-  const [slug, setSlug] = useState(() => slugifyForNetlify(propertyName || "presentation"));
-  const [publishing, setPublishing] = useState(false);
-  const [publishStep, setPublishStep] = useState<string>("");
+export function PublishDistributeSection({
+  propertyName,
+  accentColor,
+  canDownload,
+  onDownload,
+  downloading,
+  downloadingLabel,
+  downloadDisabledReason,
+}: PublishDistributeSectionProps) {
+  const [netlifyOpened, setNetlifyOpened] = useState(false);
+  const [netlifyBlocked, setNetlifyBlocked] = useState(false);
+  const [urlInput, setUrlInput] = useState("");
+  const [urlError, setUrlError] = useState<string | null>(null);
   const [liveUrl, setLiveUrl] = useState<string | null>(null);
-  const [showOAuthHelp, setShowOAuthHelp] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Surface Netlify connect errors as a toast as well, so they aren't missed
-  // if the publish panel is scrolled out of view.
-  useEffect(() => {
-    if (netlify.lastError) toast.error(netlify.lastError);
-  }, [netlify.lastError]);
-
-  const interceptorHandlerRef = useRef<((blob: Blob) => Promise<void> | void) | null>(null);
-  useImperativeHandle(ref, () => ({
-    set: (handler) => { interceptorHandlerRef.current = handler; },
-    clear: () => { interceptorHandlerRef.current = null; },
-    consume: async (blob: Blob) => {
-      const h = interceptorHandlerRef.current;
-      if (!h) return false;
-      interceptorHandlerRef.current = null;
-      await h(blob);
-      return true;
-    },
-  }), []);
-
+  // One container ref per QR — used to grab the underlying <canvas>
+  // for PNG export. We map by share-link key so re-renders don't lose it.
   const qrContainerRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const setQrRef = useCallback((key: string, el: HTMLDivElement | null) => {
     if (el) qrContainerRefs.current.set(key, el);
@@ -175,6 +195,72 @@ export const PublishDistributeSection = forwardRef<
     () => slugifyForFilename(propertyName || "presentation"),
     [propertyName],
   );
+
+  const openNetlifyPublishWindow = useCallback(() => {
+    setNetlifyBlocked(false);
+    const width = 560;
+    const height = 760;
+    const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
+    const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
+    const features = [
+      `width=${width}`,
+      `height=${height}`,
+      `left=${left}`,
+      `top=${top}`,
+      "resizable=yes",
+      "scrollbars=yes",
+      "noopener",
+      "noreferrer",
+    ].join(",");
+    let publishWindow: Window | null = null;
+    try {
+      publishWindow = window.open(
+        NETLIFY_DROP_URL,
+        "netlifyPublishWindow",
+        features,
+      );
+    } catch {
+      publishWindow = null;
+    }
+    // Defensive: even when the browser ignores the noopener feature
+    // string, dropping the back-reference protects 3DPS from any later
+    // navigation by the popup (cross-origin so it can't read us, but
+    // it could still call window.opener.location.replace before nav).
+    if (publishWindow) {
+      try {
+        publishWindow.opener = null;
+      } catch {
+        /* cross-origin lockout — already isolated. */
+      }
+      setNetlifyOpened(true);
+      setNetlifyBlocked(false);
+    } else {
+      setNetlifyBlocked(true);
+    }
+  }, []);
+
+  const handleGenerateShareKit = useCallback(() => {
+    const normalized = normalizeLiveUrl(urlInput);
+    if (!normalized) {
+      setUrlError(
+        "Please enter a valid published URL, such as https://your-property-site.netlify.app",
+      );
+      setLiveUrl(null);
+      return;
+    }
+    setUrlError(null);
+    setUrlInput(normalized);
+    setLiveUrl(normalized);
+  }, [urlInput]);
+
+  const handleUrlChange = useCallback((value: string) => {
+    setUrlInput(value);
+    if (urlError) setUrlError(null);
+    // Clear an existing kit if the agent edits the URL after generating —
+    // forces a fresh "Generate Share Kit" click so links never drift out
+    // of sync with the input field.
+    if (liveUrl) setLiveUrl(null);
+  }, [urlError, liveUrl]);
 
   const handleCopy = useCallback(async (key: string, value: string) => {
     try {
@@ -195,7 +281,10 @@ export const PublishDistributeSection = forwardRef<
       return;
     }
     canvas.toBlob((blob) => {
-      if (!blob) { toast.error("Couldn't export QR. Try again."); return; }
+      if (!blob) {
+        toast.error("Couldn't export QR. Try again.");
+        return;
+      }
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -207,88 +296,29 @@ export const PublishDistributeSection = forwardRef<
     }, "image/png");
   }, [filenameSlug]);
 
-  const slugValid = isValidNetlifySlug(slug);
-
-  const handlePublish = useCallback(async () => {
-    if (!netlify.connection?.connected) {
-      toast.error("Connect your Netlify account first.");
-      return;
-    }
-    if (!slugValid) {
-      toast.error("Pick a URL using lowercase letters, numbers, and hyphens only.");
-      return;
-    }
-
-    setPublishing(true);
-    setLiveUrl(null);
-
-    try {
-      // Set the interceptor BEFORE triggering the parent's download.
-      setPublishStep("Packaging presentation…");
-      const blob: Blob = await new Promise((resolve, reject) => {
-        interceptorHandlerRef.current = (b: Blob) => {
-          resolve(b);
-        };
-        try {
-          onDownload();
-        } catch (err) {
-          interceptorHandlerRef.current = null;
-          reject(err);
-        }
-        // Safety timeout: 2 minutes for big packages.
-        setTimeout(() => reject(new Error("Package build timed out.")), 120_000);
-      });
-
-      const result = await deployZipToNetlify({
-        blob,
-        desiredSlug: slug,
-        onProgress: (label) => setPublishStep(label),
-      });
-
-      setLiveUrl(result.liveUrl);
-      if (result.fellBackToAutoName) {
-        toast.warning(
-          `"${slug}" was not available in Netlify. Published at ${result.siteName}.netlify.app instead.`,
-        );
-      } else if (result.reusedExistingSite) {
-        toast.success(`Your presentation is live at ${result.siteName}.netlify.app.`);
-      } else {
-        toast.success("Your presentation is live!");
-      }
-    } catch (err) {
-      console.error("[publish] failed", err);
-      interceptorHandlerRef.current = null;
-      const msg = err instanceof Error ? err.message : "Publish failed.";
-      toast.error(msg);
-    } finally {
-      setPublishing(false);
-      setPublishStep("");
-    }
-  }, [netlify.connection?.connected, onDownload, slug, slugValid]);
-
   const shareLinksWithUrls = useMemo(() => {
     if (!liveUrl) return [] as Array<ShareLink & { fullUrl: string }>;
-    return SHARE_LINKS.map((link) => ({ ...link, fullUrl: buildShareUrl(liveUrl, link.src) }));
+    return SHARE_LINKS.map((link) => ({
+      ...link,
+      fullUrl: buildShareUrl(liveUrl, link.src),
+    }));
   }, [liveUrl]);
-
-  const publishDisabled =
-    publishing ||
-    downloading ||
-    !canDownload ||
-    !netlify.connection?.connected ||
-    !slugValid;
-
-  const publishDisabledReason = !canDownload
-    ? downloadDisabledReason
-    : !netlify.connection?.connected
-      ? "Connect your Netlify account to publish."
-      : !slugValid
-        ? "Pick a valid URL (lowercase letters, numbers, hyphens)."
-        : null;
 
   return (
     <div className="space-y-5">
-      {/* Step 1 — Connect Netlify */}
+      {/* Strategic positioning copy */}
+      <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+        <p className="font-medium text-foreground">
+          Use marketplaces for exposure. Use your 3DPS presentation for the experience.
+        </p>
+        <p className="mt-1">
+          3DPS does not lock your presentation into our hosting. You own the
+          file and can publish it wherever you prefer — Netlify, your own
+          website, a brokerage page, or another static web host.
+        </p>
+      </div>
+
+      {/* Step 1 — Download the package */}
       <div className="rounded-lg border bg-card p-4">
         <div className="flex items-start gap-3">
           <div
@@ -300,150 +330,33 @@ export const PublishDistributeSection = forwardRef<
           <div className="flex-1 space-y-2">
             <div>
               <h4 className="text-sm font-semibold text-foreground">
-                Connect your Netlify account
+                Download Your Presentation Package
               </h4>
               <p className="text-xs text-muted-foreground">
-                Publishing sends your presentation to <strong>your own</strong> free Netlify account.
-                Don't have one? You can sign up inside the popup in about 20 seconds.
+                Generate the publish-ready presentation file you'll upload to
+                your host. Same flow as the main download button — kept here
+                so you can stay in this section.
               </p>
             </div>
-
-            {isUnsupportedNetlifyOrigin ? (
-              <div className="space-y-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs">
-                <div className="flex items-start gap-2">
-                  <Info className="mt-0.5 size-4 shrink-0 text-amber-500" />
-                  <div className="space-y-1">
-                    <p className="font-medium text-foreground">
-                      Publishing isn't available on this URL.
-                    </p>
-                    <p className="text-muted-foreground">
-                      Netlify sign-in only works on the live site. Open this app at{" "}
-                      <a
-                        href={PUBLISHED_URL}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-mono underline"
-                      >
-                        matterport-hud-builder.lovable.app
-                      </a>{" "}
-                      to connect Netlify and publish.
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="h-7 gap-1.5 text-xs"
-                   onClick={() => window.open(PUBLISHED_URL, "_blank", "noopener,noreferrer")}
-                >
-                  <ExternalLink className="size-3.5" />
-                  Open live site
-                </Button>
-              </div>
-            ) : netlify.connection?.connected ? (
-              <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/30 p-2 text-xs">
-                <Check className="size-4 text-emerald-500" />
-                <span className="text-foreground">
-                  Connected as{" "}
-                  <strong>{netlify.connection.email || netlify.connection.fullName || "your Netlify account"}</strong>
-                </span>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="ml-auto h-7 gap-1 text-xs"
-                  onClick={() => void netlify.disconnect()}
-                >
-                  <LogOut className="size-3.5" />
-                  Disconnect
-                </Button>
-              </div>
-            ) : (
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  className="gap-1.5 text-white"
-                  style={{ backgroundColor: accentColor }}
-                  onClick={() => void netlify.connect()}
-                  disabled={netlify.connecting || netlify.loading}
-                >
-                  {netlify.connecting ? (
-                    <>
-                      <Loader2 className="size-4 animate-spin" />
-                      Waiting for Netlify…
-                    </>
-                  ) : (
-                    <>
-                      <LinkIcon className="size-4" />
-                      Connect Netlify Account
-                    </>
-                  )}
-                </Button>
-              </div>
-            )}
-
-            {!isUnsupportedNetlifyOrigin && netlify.lastError && (
-              <div className="space-y-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs">
-                <div className="flex items-start gap-2">
-                  <AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
-                  <p className="text-foreground">{netlify.lastError}</p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="h-7 gap-1.5 text-xs"
-                    disabled={netlify.connecting}
-                    onClick={() => {
-                      netlify.clearError();
-                      void netlify.connect();
-                    }}
-                  >
-                    <RefreshCw className="size-3.5" />
-                    Try again
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 gap-1.5 text-xs"
-                    onClick={() => setShowOAuthHelp((v) => !v)}
-                  >
-                    <Info className="size-3.5" />
-                    {showOAuthHelp ? "Hide setup help" : "Setup help"}
-                  </Button>
-                </div>
-                {showOAuthHelp && (
-                  <div className="space-y-1.5 rounded border bg-background/60 p-2 text-[11px] text-muted-foreground">
-                    <p className="text-foreground">
-                      If Netlify showed <strong>"Not Found"</strong>, the canonical redirect URI isn't
-                      registered on the 3DPS Studio OAuth app. An admin needs to add this URI in
-                      Netlify → User settings → Applications → OAuth applications → 3DPS Studio:
-                    </p>
-                    <code className="block break-all rounded bg-muted px-2 py-1 font-mono text-foreground">
-                      {CANONICAL_NETLIFY_REDIRECT_URI}
-                    </code>
-                    <a
-                      href="https://app.netlify.com/user/applications"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 underline"
-                    >
-                      Open Netlify OAuth applications
-                      <ExternalLink className="size-3" />
-                    </a>
-                  </div>
-                )}
-              </div>
-            )}
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="gap-1.5"
+              disabled={!canDownload || downloading}
+              onClick={onDownload}
+              title={downloadDisabledReason ?? undefined}
+            >
+              <Download className="size-4" />
+              {downloading
+                ? (downloadingLabel || "Preparing…")
+                : "Download Presentation Package"}
+            </Button>
           </div>
         </div>
       </div>
 
-      {/* Step 2 — Choose URL + Publish */}
+      {/* Step 2 — Open Netlify */}
       <div className="rounded-lg border bg-card p-4">
         <div className="flex items-start gap-3">
           <div
@@ -452,80 +365,136 @@ export const PublishDistributeSection = forwardRef<
           >
             2
           </div>
-          <div className="flex-1 space-y-3">
+          <div className="flex-1 space-y-2">
             <div>
               <h4 className="text-sm font-semibold text-foreground">
-                Pick your URL & publish
+                Open Netlify Publish Window
               </h4>
               <p className="text-xs text-muted-foreground">
-                Choose a friendly subdomain. We'll package your presentation and deploy it to your Netlify account.
+                Netlify Drop opens in a small focused window so you can drag
+                your file in without losing your place here. Signup, upload,
+                and account flows all happen on Netlify's own site.
               </p>
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="netlify-slug" className="text-xs font-medium">
-                Your Netlify URL
-              </Label>
-              <div className="flex items-stretch overflow-hidden rounded-md border bg-background">
-                <span className="flex items-center bg-muted/40 px-2.5 font-mono text-xs text-muted-foreground">https://</span>
-                <Input
-                  id="netlify-slug"
-                  value={slug}
-                  onChange={(e) => setSlug(slugifyForNetlify(e.target.value))}
-                  placeholder="your-property-tour"
-                  spellCheck={false}
-                  autoCapitalize="off"
-                  autoComplete="off"
-                  className="h-9 flex-1 rounded-none border-0 font-mono text-xs focus-visible:ring-0"
-                  disabled={publishing}
-                />
-                <span className="flex items-center bg-muted/40 px-2.5 font-mono text-xs text-muted-foreground">.netlify.app</span>
-              </div>
-              {!slugValid && slug.length > 0 && (
-                <p className="text-xs text-destructive">
-                  Use lowercase letters, numbers, and hyphens only (no leading/trailing hyphen).
-                </p>
-              )}
-            </div>
-
-            <Button
-              type="button"
-              size="sm"
-              className="gap-1.5 text-white"
-              style={{ backgroundColor: accentColor }}
-              onClick={() => void handlePublish()}
-              disabled={publishDisabled}
-              title={publishDisabledReason ?? undefined}
-            >
-              {publishing ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" />
-                  {publishStep || "Publishing…"}
-                </>
-              ) : (
-                <>
-                  <Rocket className="size-4" />
-                  Publish Presentation
-                </>
-              )}
-            </Button>
-
-            {/* Secondary download fallback — agents may still want the file. */}
-            <div className="pt-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button
                 type="button"
                 size="sm"
-                variant="outline"
-                className="gap-1.5"
-                disabled={!canDownload || downloading || publishing}
-                onClick={onDownload}
-                title={downloadDisabledReason ?? undefined}
+                className="gap-1.5 text-white"
+                style={{ backgroundColor: accentColor }}
+                onClick={openNetlifyPublishWindow}
               >
-                <Download className="size-4" />
-                {downloading
-                  ? (downloadingLabel || "Preparing…")
-                  : "Or download package (.zip)"}
+                <Rocket className="size-4" />
+                {netlifyOpened ? "Reopen Netlify Publish Window" : "Open Netlify Publish Window"}
               </Button>
+              <a
+                href={NETLIFY_DROP_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-input bg-background px-3 text-xs font-medium text-foreground shadow-sm transition-colors hover:bg-accent"
+              >
+                <ExternalLink className="size-3.5" />
+                Open Netlify Drop in New Tab
+              </a>
+            </div>
+
+            {netlifyBlocked && (
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-900/90 dark:text-amber-200/90">
+                Your browser blocked the publish window. Please allow popups
+                for this site or use the "Open Netlify Drop in New Tab" link
+                above.
+              </div>
+            )}
+
+            {netlifyOpened && !netlifyBlocked && (
+              <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+                <p className="font-medium text-foreground">
+                  Netlify is open. Upload your 3DPS file or package there,
+                  then copy the live published URL and paste it below.
+                </p>
+                <ol className="mt-2 list-decimal space-y-0.5 pl-4">
+                  <li>Drag your 3DPS file/package into Netlify.</li>
+                  <li>Wait for Netlify to publish the site.</li>
+                  <li>Copy the live Netlify URL.</li>
+                  <li>Paste the URL below.</li>
+                  <li>Generate your Share Kit.</li>
+                </ol>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Step 3 — Paste the live URL & generate */}
+      <div className="rounded-lg border bg-card p-4">
+        <div className="flex items-start gap-3">
+          <div
+            className="flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white"
+            style={{ backgroundColor: accentColor }}
+          >
+            3
+          </div>
+          <div className="flex-1 space-y-3">
+            <div>
+              <h4 className="text-sm font-semibold text-foreground">
+                Paste your live URL
+              </h4>
+              <p className="text-xs text-muted-foreground">
+                After your presentation is published online, paste the live
+                URL here to generate sharing links and QR codes.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="publish-live-url" className="text-xs font-medium">
+                Live Presentation URL
+              </Label>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <div className="relative flex-1">
+                  <Globe className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="publish-live-url"
+                    type="url"
+                    inputMode="url"
+                    autoComplete="off"
+                    spellCheck={false}
+                    placeholder="https://your-property-site.netlify.app"
+                    value={urlInput}
+                    onChange={(e) => handleUrlChange(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleGenerateShareKit();
+                      }
+                    }}
+                    className="pl-8"
+                    aria-invalid={urlError ? true : undefined}
+                    aria-describedby={urlError ? "publish-live-url-error" : undefined}
+                  />
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="text-white sm:w-auto"
+                  style={{ backgroundColor: accentColor }}
+                  onClick={handleGenerateShareKit}
+                  disabled={urlInput.trim().length === 0}
+                >
+                  Generate Share Kit
+                </Button>
+              </div>
+              {urlError ? (
+                <p
+                  id="publish-live-url-error"
+                  className="text-xs text-destructive"
+                >
+                  {urlError}
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Paste your live URL after publishing. We'll use it as the
+                  base for every share link below.
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -537,16 +506,12 @@ export const PublishDistributeSection = forwardRef<
           <div>
             <h3 className="flex items-center gap-2 text-base font-semibold text-foreground">
               <Rocket className="size-5" style={{ color: accentColor }} />
-              Your presentation is live
+              Listing Launch Kit
             </h3>
-            <p className="mt-1 break-all font-mono text-sm text-foreground">
-              <a href={liveUrl} target="_blank" rel="noopener noreferrer" className="underline">
-                {liveUrl}
-              </a>
-            </p>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Use the links and QR codes below to distribute your 3D presentation through listing platforms,
-              email, social media, flyers, business cards, window signs, and open houses.
+            <p className="mt-1 text-xs text-muted-foreground">
+              Use these links and QR codes to distribute your 3D presentation
+              through listing platforms, email, social media, flyers, business
+              cards, window signs, and open houses.
             </p>
           </div>
 
@@ -554,12 +519,21 @@ export const PublishDistributeSection = forwardRef<
             {shareLinksWithUrls.map((link) => {
               const justCopied = copiedKey === `link:${link.key}`;
               return (
-                <li key={link.key} className="rounded-md border bg-muted/20 p-3">
+                <li
+                  key={link.key}
+                  className="rounded-md border bg-muted/20 p-3"
+                >
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-foreground">{link.label}</p>
-                      <p className="mt-0.5 text-xs text-muted-foreground">{link.description}</p>
-                      <p className="mt-1 break-all font-mono text-[11px] text-foreground/80">{link.fullUrl}</p>
+                      <p className="text-sm font-medium text-foreground">
+                        {link.label}
+                      </p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {link.description}
+                      </p>
+                      <p className="mt-1 break-all font-mono text-[11px] text-foreground/80">
+                        {link.fullUrl}
+                      </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-1.5">
                       <Button
@@ -569,7 +543,17 @@ export const PublishDistributeSection = forwardRef<
                         className="h-8 gap-1.5 text-xs"
                         onClick={() => handleCopy(`link:${link.key}`, link.fullUrl)}
                       >
-                        {justCopied ? (<><Check className="size-3.5" />Copied</>) : (<><Copy className="size-3.5" />Copy</>)}
+                        {justCopied ? (
+                          <>
+                            <Check className="size-3.5" />
+                            Copied
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="size-3.5" />
+                            Copy
+                          </>
+                        )}
                       </Button>
                       <a
                         href={link.fullUrl}
@@ -593,16 +577,30 @@ export const PublishDistributeSection = forwardRef<
               QR Codes
             </h4>
             <p className="text-xs text-muted-foreground">
-              Each QR encodes the matching source-tagged URL. Download as PNG for print, signage, and leave-behind materials.
+              Each QR encodes the matching source-tagged URL. Download as PNG
+              for print, signage, and leave-behind materials.
             </p>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {shareLinksWithUrls
                 .filter((link) => link.qr)
                 .map((link) => (
-                  <div key={`qr-${link.key}`} className="flex flex-col items-center gap-2 rounded-md border bg-card p-3 text-center">
-                    <span className="text-xs font-medium text-foreground">{link.label}</span>
-                    <div className="rounded-md bg-white p-2" ref={(el) => setQrRef(link.key, el)}>
-                      <QRCodeCanvas value={link.fullUrl} size={140} level="M" includeMargin={false} />
+                  <div
+                    key={`qr-${link.key}`}
+                    className="flex flex-col items-center gap-2 rounded-md border bg-card p-3 text-center"
+                  >
+                    <span className="text-xs font-medium text-foreground">
+                      {link.label}
+                    </span>
+                    <div
+                      className="rounded-md bg-white p-2"
+                      ref={(el) => setQrRef(link.key, el)}
+                    >
+                      <QRCodeCanvas
+                        value={link.fullUrl}
+                        size={140}
+                        level="M"
+                        includeMargin={false}
+                      />
                     </div>
                     <Button
                       type="button"
@@ -622,12 +620,14 @@ export const PublishDistributeSection = forwardRef<
           <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-900/90 dark:text-amber-200/90">
             <Info className="mt-0.5 size-4 shrink-0" />
             <p>
-              Listing platform and MLS rules vary. Use the links where external virtual-tour or property
-              presentation URLs are supported, and confirm compliance with your MLS, brokerage, or platform requirements.
+              Listing platform and MLS rules vary. Use the links where
+              external virtual-tour or property presentation URLs are
+              supported, and confirm compliance with your MLS, brokerage,
+              or platform requirements.
             </p>
           </div>
         </div>
       )}
     </div>
   );
-});
+}
