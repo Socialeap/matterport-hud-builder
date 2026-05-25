@@ -250,16 +250,16 @@ export const PublishDistributeSection = forwardRef<
 
   const openNetlifyPublishWindow = useCallback(() => {
     const width = 560;
-    const height = 760;
-    // Browsers (Chrome/Safari) require integer coordinates in the features
-    // string. Decimals from `/2` invalidate sizing and demote the window
-    // to a regular tab — wrap in Math.round to keep the popup hint valid.
+    const height = 600;
+    // Pin the popup to the top-right of the current screen with a small
+    // inset so the builder's Step 2 instructions remain visible on the
+    // left. Integer coordinates required — Chrome/Safari invalidate the
+    // features string if any value is a decimal.
+    const inset = 24;
     const left = Math.round(
-      window.screenX + Math.max(0, (window.outerWidth - width) / 2),
+      window.screenX + Math.max(0, window.outerWidth - width - inset),
     );
-    const top = Math.round(
-      window.screenY + Math.max(0, (window.outerHeight - height) / 2),
-    );
+    const top = Math.round(window.screenY + inset);
 
     // Close any previously-opened publish window so we never accumulate
     // popups across reopen clicks.
@@ -445,9 +445,10 @@ export const PublishDistributeSection = forwardRef<
                 Open Netlify Publish Window
               </h4>
               <p className="text-xs text-muted-foreground">
-                Netlify Drop opens in a small focused window so you can drag
-                your file in without losing your place here. Signup, upload,
-                and account flows all happen on Netlify's own site.
+                Netlify Drop opens in a small window pinned to the top-right
+                of your screen so these instructions stay visible on the left.
+                Don't drag from your desktop — open your file or folder
+                directly from inside the Netlify page.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -484,15 +485,29 @@ export const PublishDistributeSection = forwardRef<
             {netlifyOpenedAs === "popup" && (
               <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
                 <p className="font-medium text-foreground">
-                  Netlify is open. Upload your 3DPS file or package there,
-                  then copy the live published URL and paste it below.
+                  Netlify is open on the top-right. Upload your 3DPS package
+                  from inside the Netlify page, then copy the live URL and
+                  paste it below.
                 </p>
-                <ol className="mt-2 list-decimal space-y-0.5 pl-4">
-                  <li>Drag your 3DPS file/package into Netlify.</li>
-                  <li>Wait for Netlify to publish the site.</li>
+                <ol className="mt-2 list-decimal space-y-1 pl-4">
+                  <li>
+                    In the Netlify popup, look inside the dashed drop circle
+                    for the links <strong>"browse files to upload"</strong>{" "}
+                    and <strong>"choose a folder"</strong>.
+                  </li>
+                  <li>
+                    If you downloaded a <strong>.zip file</strong> in Step 1,
+                    click <strong>"browse files to upload"</strong> and select
+                    your <code>.zip</code>.
+                  </li>
+                  <li>
+                    If you downloaded an <strong>unzipped folder</strong>,
+                    click <strong>"choose a folder"</strong> and select that
+                    folder.
+                  </li>
+                  <li>Wait for Netlify to finish publishing.</li>
                   <li>Copy the live Netlify URL.</li>
-                  <li>Paste the URL below.</li>
-                  <li>Generate your Share Kit.</li>
+                  <li>Paste the URL below and generate your Share Kit.</li>
                 </ol>
               </div>
             )}
