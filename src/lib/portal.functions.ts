@@ -1341,6 +1341,126 @@ export const generatePresentation = createServerFn({ method: "POST" })
       }
     }
 
+    // ── Matterport photo / gif bundling ──────────────────────────────
+    // Pull every visible photo/gif whose `proxyUrl` resolved to the
+    // stable Matterport resource permalink (set at the multimedia .map()
+    // above) and fetch the bytes server-side. Rewrite each entry's
+    // `proxyUrl` to a relative path (`assets/media/{m}/{id}.{ext}`) so
+    // the exported .zip renders thumbnails offline / from any static
+    // host. Deduped by (modelId, assetId) so the same asset reused
+    // across views only hits Matterport once.
+    const MP_RESOURCE_IMG_RE =
+      /^https?:\/\/my\.matterport\.com\/resources\/model\/([A-Za-z0-9]{11})\/image\/([A-Za-z0-9]{11})(?:[?#].*)?$/;
+    type MediaEntry = (typeof propertyEntries)[number]["multimedia"][number];
+    type ImgRef = { modelId: string; assetId: string; entries: MediaEntry[] };
+    const imgRefMap = new Map<string, ImgRef>();
+    for (const pe of propertyEntries) {
+      for (const m of pe.multimedia) {
+        if (m.kind !== "photo" && m.kind !== "gif") continue;
+        const match = MP_RESOURCE_IMG_RE.exec(m.proxyUrl || "");
+        if (!match) continue;
+        const key = `${match[1]}/${match[2]}`;
+        let r = imgRefMap.get(key);
+        if (!r) {
+          r = { modelId: match[1], assetId: match[2], entries: [] };
+          imgRefMap.set(key, r);
+        }
+        r.entries.push(m);
+      }
+    }
+    if (imgRefMap.size > 0) {
+      const uniq = Array.from(imgRefMap.values());
+      const results = await mapWithConcurrency(uniq, 4, async (r) => {
+        const got = await fetchMatterportImage({
+          modelId: r.modelId,
+          assetId: r.assetId,
+        });
+        return { ref: r, got };
+      });
+      for (const { ref, got } of results) {
+        // On failure, leave the existing remote URL untouched so the
+        // Builder preview and any online viewing still works.
+        if (!got) continue;
+        const relPath = `assets/media/${ref.modelId}/${ref.assetId}.${got.ext}`;
+        bundledAttachments.push({
+          path: relPath,
+          data: Buffer.from(got.bytes).toString("base64"),
+        });
+        for (const entry of ref.entries) entry.proxyUrl = relPath;
+      }
+    }
+
+    // ── Branding / avatar asset bundling ─────────────────────────────
+    // Inline the agent's logo, favicon, and avatar (typically Supabase
+    // Storage public URLs) into the .zip so the exported tour renders
+    // branded chrome offline. Data URIs and empty values are left
+    // alone. Deduped by URL so a shared logo/avatar is fetched once.
+    type BrandRef = { url: string; assign: (relPath: string) => void };
+    const brandRefs: BrandRef[] = [];
+    const collectBrand = (
+      url: string,
+      assign: (relPath: string) => void,
+    ): void => {
+      if (typeof url !== "string" || !/^https?:\/\//i.test(url)) return;
+      brandRefs.push({ url, assign });
+    };
+    collectBrand(logoUrl, (p) => {
+      logoUrl = p;
+    });
+    collectBrand(faviconUrl, (p) => {
+      faviconUrl = p;
+    });
+    if (typeof agent.avatarUrl === "string") {
+      collectBrand(agent.avatarUrl, (p) => {
+        agent.avatarUrl = p;
+      });
+    }
+    if (brandRefs.length > 0) {
+      const urlIndex = new Map<string, number>();
+      const uniqUrls: string[] = [];
+      for (const r of brandRefs) {
+        if (!urlIndex.has(r.url)) {
+          urlIndex.set(r.url, uniqUrls.length);
+          uniqUrls.push(r.url);
+        }
+      }
+      const fetched = await mapWithConcurrency(uniqUrls, 4, async (u) => {
+        const got = await fetchPublicAsset(u);
+        return { url: u, got };
+      });
+      const pathByUrl = new Map<string, string>();
+      // Cheap FNV-1a so filenames are deterministic + collision-resistant
+      // enough for a handful of branding assets per export.
+      const shortHash = (input: string): string => {
+        let h = 0x811c9dc5;
+        for (let i = 0; i < input.length; i++) {
+          h ^= input.charCodeAt(i);
+          h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+        }
+        return h.toString(16).padStart(8, "0");
+      };
+      for (const { url, got } of fetched) {
+        if (!got) continue;
+        const relPath = `assets/branding/${shortHash(url)}.${got.ext}`;
+        pathByUrl.set(url, relPath);
+        bundledAttachments.push({
+          path: relPath,
+          data: Buffer.from(got.bytes).toString("base64"),
+        });
+      }
+      for (const r of brandRefs) {
+        const rel = pathByUrl.get(r.url);
+        if (rel) r.assign(rel);
+      }
+      // Refresh favicon-derived state in case the source URLs were
+      // rewritten — both the <link rel="icon"> tags and iconMimeType
+      // are evaluated downstream when the HTML template is assembled.
+      effectiveFaviconUrl = faviconUrl || logoUrl || EMPTY_ICON_DATA_URI;
+      iconMimeType = computeIconMimeType(effectiveFaviconUrl);
+    }
+
+
+
 
     const qaDatabase = data.qaDatabase ?? [];
     const hasQA = qaDatabase.length > 0;
