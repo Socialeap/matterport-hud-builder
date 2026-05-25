@@ -322,8 +322,7 @@ function BrandingPage() {
         hero_bg_url: data.hero_bg_url ?? null,
         hero_bg_opacity: data.hero_bg_opacity ?? 0.45,
         hero_lines: parseHeroLines(
-          (data as unknown as { calling_card_headline?: string | null })
-            .calling_card_headline ?? null,
+          (data as any).hero_lines ?? (data as any).calling_card_headline ?? null,
         ),
         is_directory_public: data.is_directory_public ?? false,
         primary_city: data.primary_city ?? null,
@@ -503,40 +502,59 @@ function BrandingPage() {
       return opt ? !opt.proOnly || isPro : false;
     });
 
-    const { error } = await supabase
+    const basePayload = {
+      provider_id: user.id,
+      brand_name: branding.brand_name,
+      accent_color: branding.accent_color,
+      hud_bg_color: branding.hud_bg_color,
+      gate_label: branding.gate_label,
+      logo_url: logoUrl,
+      favicon_url: faviconUrl,
+      custom_domain: customDomainUnlocked ? branding.custom_domain : null,
+      slug: branding.slug,
+      base_price_cents: branding.base_price_cents,
+      model_threshold: branding.model_threshold,
+      additional_model_fee_cents: branding.additional_model_fee_cents,
+      hero_bg_url: heroUrl,
+      hero_bg_opacity: branding.hero_bg_opacity,
+      is_directory_public: branding.is_directory_public,
+      primary_city: branding.primary_city?.trim() || null,
+      region: branding.region?.trim().toUpperCase() || null,
+      service_radius_miles: branding.service_radius_miles,
+      service_zips: parsedZips,
+      specialties: allowedSpecialties,
+      directory_website_url: branding.directory_website_url?.trim() || null,
+      directory_contact_email: branding.directory_contact_email?.trim() || null,
+      directory_phone: branding.directory_phone?.trim() || null,
+      calling_card_studio_name: branding.calling_card_studio_name?.trim() || null,
+      calling_card_headline: branding.calling_card_headline?.trim() || null,
+      calling_card_cta_label: branding.calling_card_cta_label?.trim() || null,
+      calling_card_logo_url: callingCardLogoUrl,
+    };
+
+    const fullPayload = {
+      ...basePayload,
+      hero_lines: branding.hero_lines as unknown as Record<string, unknown>[],
+    };
+
+    let { error } = await supabase
       .from("branding_settings")
-      .upsert(
-        {
-          provider_id: user.id,
-          brand_name: branding.brand_name,
-          accent_color: branding.accent_color,
-          hud_bg_color: branding.hud_bg_color,
-          gate_label: branding.gate_label,
-          logo_url: logoUrl,
-          favicon_url: faviconUrl,
-          custom_domain: customDomainUnlocked ? branding.custom_domain : null,
-          slug: branding.slug,
-          base_price_cents: branding.base_price_cents,
-          model_threshold: branding.model_threshold,
-          additional_model_fee_cents: branding.additional_model_fee_cents,
-          hero_bg_url: heroUrl,
-          hero_bg_opacity: branding.hero_bg_opacity,
-          is_directory_public: branding.is_directory_public,
-          primary_city: branding.primary_city?.trim() || null,
-          region: branding.region?.trim().toUpperCase() || null,
-          service_radius_miles: branding.service_radius_miles,
-          service_zips: parsedZips,
-          specialties: allowedSpecialties,
-          directory_website_url: branding.directory_website_url?.trim() || null,
-          directory_contact_email: branding.directory_contact_email?.trim() || null,
-          directory_phone: branding.directory_phone?.trim() || null,
-          calling_card_studio_name: branding.calling_card_studio_name?.trim() || null,
-          calling_card_headline: JSON.stringify(branding.hero_lines),
-          calling_card_cta_label: branding.calling_card_cta_label?.trim() || null,
-          calling_card_logo_url: callingCardLogoUrl,
-        } as any,
-        { onConflict: "provider_id" }
-      );
+      .upsert(fullPayload as any, { onConflict: "provider_id" });
+
+    if (error) {
+      // If the hero_lines column doesn't exist yet (migration not applied),
+      // PostgREST returns 400. Retry without hero_lines so the rest of the
+      // save still works.
+      const retry = await supabase
+        .from("branding_settings")
+        .upsert(basePayload as any, { onConflict: "provider_id" });
+      error = retry.error;
+      if (!error) {
+        toast.warning(
+          "Saved, but hero headline was not persisted. Please apply the hero_lines migration in Supabase SQL Editor.",
+        );
+      }
+    }
 
     if (error) {
       setSaving(false);

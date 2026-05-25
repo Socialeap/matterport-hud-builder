@@ -472,10 +472,16 @@ function PortalPage() {
       : 0.45;
 
   const heroLines = (() => {
-    const raw = (branding as Record<string, unknown>).calling_card_headline;
-    if (typeof raw !== "string" || !raw.startsWith("[")) return null;
-    let arr: unknown[];
-    try { arr = JSON.parse(raw); } catch { return null; }
+    const b = branding as Record<string, unknown>;
+    // Prefer the proper hero_lines JSONB column; fall back to
+    // calling_card_headline for records saved under the earlier workaround.
+    const raw = b.hero_lines ?? b.calling_card_headline;
+    let arr: unknown[] | null = null;
+    if (Array.isArray(raw)) {
+      arr = raw;
+    } else if (typeof raw === "string" && raw.startsWith("[")) {
+      try { arr = JSON.parse(raw); } catch { /* invalid JSON */ }
+    }
     if (!Array.isArray(arr) || arr.length < 3) return null;
     return arr.slice(0, 3).map((item: unknown) => {
       if (!item || typeof item !== "object") return null;
