@@ -33,7 +33,16 @@ export async function sendTransactionalEmail(
     }),
   });
   if (!response.ok) {
-    throw new Error(`Failed to send email: ${response.statusText}`);
+    const raw = await response.text().catch(() => "");
+    let message = "";
+    try {
+      const parsed = raw ? JSON.parse(raw) : null;
+      message = parsed?.error || parsed?.detail || "";
+    } catch {
+      message = raw;
+    }
+    if (!message) message = response.statusText || `HTTP ${response.status}`;
+    throw new Error(`Failed to send email: ${message}`);
   }
   return response.json();
 }

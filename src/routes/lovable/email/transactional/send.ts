@@ -252,15 +252,34 @@ export const Route = createFileRoute("/lovable/email/transactional/send")({
         }
 
         // 4. Render React Email template to HTML and plain text
-        const element = React.createElement(template.component, templateData)
-        const html = await renderEmailHtml(element)
-        const plainText = htmlToPlainText(html)
-
-        // Resolve subject — supports static string or dynamic function
-        const resolvedSubject =
-          typeof template.subject === 'function'
-            ? template.subject(templateData)
-            : template.subject
+        let html: string
+        let plainText: string
+        let resolvedSubject: string
+        try {
+          const element = React.createElement(template.component, templateData)
+          html = await renderEmailHtml(element)
+          plainText = htmlToPlainText(html)
+          resolvedSubject =
+            typeof template.subject === 'function'
+              ? template.subject(templateData)
+              : template.subject
+        } catch (renderErr) {
+          const detail = String(
+            (renderErr as Error)?.stack || (renderErr as Error)?.message || renderErr
+          ).slice(0, 1000)
+          console.error('Render failed', { templateName, error: detail })
+          await supabase.from('email_send_log').insert({
+            message_id: messageId,
+            template_name: templateName,
+            recipient_email: effectiveRecipient,
+            status: 'failed',
+            error_message: `Render failed: ${detail}`.slice(0, 2000),
+          })
+          return Response.json(
+            { error: 'Failed to render email template', detail },
+            { status: 500 }
+          )
+        }
 
         // 5. Enqueue the pre-rendered email for async processing by the dispatcher.
         // The dispatcher (process-email-queue) handles sending, retries, and rate-limit backoff.
