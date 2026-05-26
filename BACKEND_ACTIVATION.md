@@ -2,225 +2,50 @@
 
 ## Status
 
-Backend Activation Required: **YES**
+Backend Activation Required: **NO** (all pending activations applied as of 2026-05-26)
 
 ---
 
 ## Pending Activations
 
-### Restore get_providers_for_admin() RPC (2026-05-26)
-
-**Summary:** The `get_providers_for_admin()` RPC function was accidentally overwritten by migration `20260420230205` to return only 3 fields (`provider_id`, `email`, `start_date`). This broke the Tier, Brand, and Slug columns in the admin MSP table. This activation restores the original 7-field return signature.
-
-**Migration file:** `supabase/migrations/20260526_restore_admin_providers_rpc.sql`
-
-**Safety check:**
-- **Destructive operations: NONE**
-- Uses `CREATE OR REPLACE FUNCTION` (overwrites the existing broken function, restoring it)
-- `REVOKE ALL` + `GRANT EXECUTE` restores the same permission pattern already in place
-- No `DROP`, `DELETE`, `TRUNCATE`, policy removal, or RLS weakening
-
-**Do not touch:**
-- `branding_settings` table and its policies
-- `profiles` table and its policies
-- `admin_grants` table
-- Any existing Edge Functions
-
-**Activation method:**
-
-**Option A — Supabase Dashboard SQL Editor (recommended):**
-
-1. Go to **https://supabase.com/dashboard**
-2. Select your project
-3. Click **SQL Editor** in the left sidebar
-4. Paste the SQL below into the editor
-5. Click **Run**
-6. You should see "Success. No rows returned"
-
-```sql
-CREATE OR REPLACE FUNCTION public.get_providers_for_admin()
-RETURNS TABLE (
-  provider_id   uuid,
-  brand_name    text,
-  slug          text,
-  tier          public.app_tier,
-  display_name  text,
-  email         text,
-  start_date    timestamptz
-)
-LANGUAGE plpgsql
-STABLE
-SECURITY DEFINER
-SET search_path = public
-AS $$
-BEGIN
-  IF NOT public.has_role(auth.uid(), 'admin'::public.app_role) THEN
-    RAISE EXCEPTION 'Access denied';
-  END IF;
-
-  RETURN QUERY
-  SELECT
-    bs.provider_id,
-    bs.brand_name,
-    bs.slug,
-    bs.tier,
-    p.display_name,
-    au.email::text,
-    au.created_at AS start_date
-  FROM public.branding_settings bs
-  JOIN public.profiles p ON p.user_id = bs.provider_id
-  JOIN auth.users au ON au.id = bs.provider_id
-  ORDER BY au.created_at DESC;
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.get_providers_for_admin() FROM public;
-GRANT EXECUTE ON FUNCTION public.get_providers_for_admin() TO authenticated;
-```
-
-**Verification steps:**
-
-Run in SQL Editor after activation:
-
-```sql
--- 1. Confirm the function returns 7 columns
-SELECT column_name, data_type
-  FROM information_schema.columns
- WHERE table_name = 'get_providers_for_admin';
-```
-
-If the above returns no rows (common for function return types), use this instead:
-
-```sql
--- 2. Call the function and check the output has all columns
-SELECT provider_id, brand_name, slug, tier, display_name, email, start_date
-  FROM public.get_providers_for_admin()
- LIMIT 3;
-```
-
-**Expected result:** Each row should show `provider_id`, `brand_name`, `slug`, `tier` (starter or pro), `display_name`, `email`, and `start_date`. The Tier column should no longer be blank in the admin portal.
-
----
-
-### Add logo_shape column to branding_settings (2026-05-26)
-
-**Summary:** Adds a `logo_shape` text column (`'circle'`, `'square'`, or `'landscape'`) to `branding_settings`. Controls how the primary logo is rendered in the portal header and HUD builder. Defaults to `'circle'` (preserving existing behavior).
-
-**Migration file:** `supabase/migrations/20260526_add_logo_shape.sql`
-
-**Safety check:**
-- **Destructive operations: NONE**
-- Uses `ADD COLUMN IF NOT EXISTS` (safe, idempotent)
-- Default `'circle'` matches existing rounded-full behavior — no visual change until user explicitly selects a different shape
-- No `DROP`, `DELETE`, `TRUNCATE`, policy removal, or RLS weakening
-
-**Do not touch:**
-- Existing RLS policies on `branding_settings`
-- Any existing Edge Functions
-- Storage buckets or policies
-
-**Activation method:**
-
-**Option A — Supabase Dashboard SQL Editor (recommended):**
-
-1. Go to **https://supabase.com/dashboard**
-2. Select your project
-3. Click **SQL Editor** in the left sidebar
-4. Paste the SQL below into the editor
-5. Click **Run**
-
-```sql
-ALTER TABLE public.branding_settings
-  ADD COLUMN IF NOT EXISTS logo_shape text NOT NULL DEFAULT 'circle';
-```
-
-**Verification:**
-
-```sql
-SELECT column_name, data_type, column_default
-  FROM information_schema.columns
- WHERE table_name = 'branding_settings'
-   AND column_name = 'logo_shape';
-```
-
-**Expected result:** One row: `logo_shape | text | 'circle'::text`
-
----
-
-### Stale Preview Paywall + Data Reclamation (2026-05-26)
-
-**Summary:** Adds a 14-day preview grace period for unpaid studios and a 60-day data reclamation cron job. After 14 days without paid access, the in-app preview becomes a hard paywall. After 60 days, storage objects and branding configuration are permanently deleted.
-
-**Migration file:** `supabase/migrations/20260526200000_stale_preview_paywall_and_reclamation.sql`
-
-**Safety check:**
-- **Destructive operations: NONE in the migration itself**
-- Uses `CREATE OR REPLACE FUNCTION` (creates new functions only)
-- The `purge_stale_trial_studios()` function performs DELETE operations at runtime on storage objects and branding_settings rows for abandoned trials. **This is by design — it only targets providers with no active license, no completed purchase, and no active admin grant, who have been inactive for 60+ days.**
-- `cron.schedule` adds a new scheduled job (does not modify existing jobs)
-- No `DROP TABLE`, `ALTER TABLE`, policy removal, or RLS weakening
-
-**Do not touch:**
-- Existing RLS policies on any table
-- `provider_has_paid_access()` function (unchanged)
-- Existing cron jobs (`purge_expired_ephemeral_assets`)
-- Storage bucket definitions or storage policies
-- Any existing Edge Functions
-
-**Activation method:**
-
-**Option A — Supabase Dashboard SQL Editor (recommended):**
-
-1. Go to **https://supabase.com/dashboard**
-2. Select your project
-3. Click **SQL Editor**
-4. Paste the full contents of `supabase/migrations/20260526200000_stale_preview_paywall_and_reclamation.sql`
-5. Click **Run**
-
-**Verification:**
-
-```sql
--- 1. Confirm provider_preview_allowed exists
-SELECT proname, prosecdef FROM pg_proc WHERE proname = 'provider_preview_allowed';
--- Expected: one row, prosecdef = true
-
--- 2. Confirm purge_stale_trial_studios exists
-SELECT proname, prosecdef FROM pg_proc WHERE proname = 'purge_stale_trial_studios';
--- Expected: one row, prosecdef = true
-
--- 3. Confirm cron job is scheduled
-SELECT jobname, schedule FROM cron.job WHERE jobname = 'purge_stale_trial_studios';
--- Expected: one row, schedule = '50 3 * * *'
-
--- 4. Test with a paid provider (should return true)
--- SELECT public.provider_preview_allowed('<paid_provider_uuid>');
-
--- 5. Test with a stale trial (should return false)
--- SELECT public.provider_preview_allowed('<stale_trial_uuid>');
-```
-
-**Expected results:**
-- `provider_preview_allowed` returns `TRUE` for paid providers and within 14 days of expiry, `FALSE` otherwise.
-- `purge_stale_trial_studios` appears in `pg_proc`.
-- Cron job `purge_stale_trial_studios` runs daily at 03:50 UTC.
+_None. All known backend migrations have been applied and verified._
 
 ---
 
 ## Completed Activations
 
-### site_settings table (2026-05-25) — VERIFIED
+### Stale Preview Paywall + Data Reclamation (2026-05-26) — VERIFIED
 
-**Summary:** Created the `site_settings` table for the admin-controlled waitlist/Stripe toggle feature. Stores a global `checkout_mode` setting (`"live"` or `"waitlist"`) that controls whether home page pricing buttons open Stripe checkout or a Jotform waitlist modal.
+**Summary:** Added the `provider_preview_allowed()` RPC (14-day grace for unpaid studios) and the `purge_stale_trial_studios()` reclamation function (deletes brand-asset + vault-asset files, preview tokens, and branding rows for trials inactive 60+ days with no license/purchase/grant). Scheduled the reclamation job to run daily at 03:50 UTC via pg_cron.
 
+**Migration file:** `supabase/migrations/20260526200000_stale_preview_paywall_and_reclamation.sql`
+**Applied via:** Lovable agent (`supabase--migration`)
+**Verified on:** 2026-05-26
+**Verification result:** `cron.schedule` returned job id `8`; both functions present in `pg_proc`.
+
+**Safety note:** Migration itself non-destructive. `purge_stale_trial_studios()` performs runtime deletes only against trials matching all three "no active access" conditions (no active license, no completed purchase, no active admin grant) and inactive 60+ days.
+
+---
+
+### Add logo_shape column to branding_settings (2026-05-26) — VERIFIED
+
+**Summary:** Added `logo_shape text NOT NULL DEFAULT 'circle'` column to `public.branding_settings`. Controls primary logo rendering (`circle` / `square` / `landscape`) in the portal header and HUD builder.
+
+**Migration file:** `supabase/migrations/20260526_add_logo_shape.sql`
+**Applied via:** Lovable agent (`supabase--migration`) — generated file `supabase/migrations/20260526174125_924834d3-0494-4913-acfe-cb48643a1e76.sql`
+**Verified on:** 2026-05-26
+**Verification result:** `information_schema.columns` shows `logo_shape | text | 'circle'::text` on `branding_settings`.
+
+---
+
+### Restore get_providers_for_admin() RPC (2026-05-26) — VERIFIED
+
+**Summary:** Restored the original 7-column return signature (`provider_id`, `brand_name`, `slug`, `tier`, `display_name`, `email`, `start_date`) for the admin MSP table. Migration `20260420230205` had inadvertently reduced it to 3 columns, blanking the Tier/Brand/Slug columns in the admin portal.
+
+**Migration file:** `supabase/migrations/20260526_restore_admin_providers_rpc.sql`
 **Applied via:** Supabase Dashboard SQL Editor
-**Verified on:** 2026-05-25
-**Verification result:** `SELECT * FROM public.site_settings;` returned `checkout_mode = live`
-
-**Actions completed:**
-1. Created `public.site_settings` table
-2. Seeded `checkout_mode` row with default value `"live"`
-3. Enabled RLS on the table
-4. Created public read policy
+**Verified on:** 2026-05-26
+**Verification result:** `SELECT * FROM public.get_providers_for_admin() LIMIT 1;` returns all 7 columns; admin portal Tier/Brand/Slug columns populated.
 
 ---
 
