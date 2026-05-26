@@ -358,7 +358,7 @@ function DemoButton({ tier }: { tier: "starter" | "pro" }) {
       disabled={activating}
     >
       <Play className="size-3.5" />
-      {activating ? "Activating…" : `View ${tier === "pro" ? "Pro" : "Starter"} Demo`}
+      {activating ? "Activating…" : "Try our Trial-Mode"}
     </Button>
   );
 }
