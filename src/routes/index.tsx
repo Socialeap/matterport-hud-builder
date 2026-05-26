@@ -358,7 +358,7 @@ function DemoButton({ tier }: { tier: "starter" | "pro" }) {
       disabled={activating}
     >
       <Play className="size-3.5" />
-      {activating ? "Activating…" : `View ${tier === "pro" ? "Pro" : "Starter"} Demo`}
+      {activating ? "Activating…" : "Try our Trial-Mode"}
     </Button>
   );
 }
@@ -977,7 +977,7 @@ function Index() {
           </p>
 
           <p className={`mx-auto mt-4 max-w-2xl text-center text-xs text-white/50`}>
-            <strong>Activate a test tier instantly</strong> — no Stripe purchase required. Explore the full dashboard, branding settings, client portal, and orders workflow. Demo purchases are recorded in sandbox mode. You can switch Demo tiers any time by returning here.
+            <strong>Activate a trial tier instantly</strong> — no Stripe purchase required. Explore the full dashboard, branding settings, client portal, and orders workflow. Demo purchases are recorded in sandbox mode. You can switch Demo tiers any time by returning here.
           </p>
         </div>
       </section>
