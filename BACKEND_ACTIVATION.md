@@ -102,6 +102,51 @@ SELECT provider_id, brand_name, slug, tier, display_name, email, start_date
 
 ---
 
+### Add logo_shape column to branding_settings (2026-05-26)
+
+**Summary:** Adds a `logo_shape` text column (`'circle'`, `'square'`, or `'landscape'`) to `branding_settings`. Controls how the primary logo is rendered in the portal header and HUD builder. Defaults to `'circle'` (preserving existing behavior).
+
+**Migration file:** `supabase/migrations/20260526_add_logo_shape.sql`
+
+**Safety check:**
+- **Destructive operations: NONE**
+- Uses `ADD COLUMN IF NOT EXISTS` (safe, idempotent)
+- Default `'circle'` matches existing rounded-full behavior — no visual change until user explicitly selects a different shape
+- No `DROP`, `DELETE`, `TRUNCATE`, policy removal, or RLS weakening
+
+**Do not touch:**
+- Existing RLS policies on `branding_settings`
+- Any existing Edge Functions
+- Storage buckets or policies
+
+**Activation method:**
+
+**Option A — Supabase Dashboard SQL Editor (recommended):**
+
+1. Go to **https://supabase.com/dashboard**
+2. Select your project
+3. Click **SQL Editor** in the left sidebar
+4. Paste the SQL below into the editor
+5. Click **Run**
+
+```sql
+ALTER TABLE public.branding_settings
+  ADD COLUMN IF NOT EXISTS logo_shape text NOT NULL DEFAULT 'circle';
+```
+
+**Verification:**
+
+```sql
+SELECT column_name, data_type, column_default
+  FROM information_schema.columns
+ WHERE table_name = 'branding_settings'
+   AND column_name = 'logo_shape';
+```
+
+**Expected result:** One row: `logo_shape | text | 'circle'::text`
+
+---
+
 ## Completed Activations
 
 ### site_settings table (2026-05-25) — VERIFIED

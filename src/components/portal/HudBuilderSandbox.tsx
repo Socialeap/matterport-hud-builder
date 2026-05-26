@@ -1856,7 +1856,13 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
               <img
                 src={branding.logo_url}
                 alt={`${branding.brand_name} logo`}
-                className="h-7 w-7 rounded-full object-cover"
+                className={
+                  (branding as any).logo_shape === "landscape"
+                    ? "h-7 max-w-[100px] w-auto rounded-md object-contain"
+                    : (branding as any).logo_shape === "square"
+                      ? "h-7 w-7 rounded-md object-cover"
+                      : "h-7 w-7 rounded-full object-cover"
+                }
               />
             ) : (
               <div
