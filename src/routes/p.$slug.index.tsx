@@ -891,7 +891,7 @@ function PortalHeader({
   onSignIn,
   onSignOut,
 }: {
-  branding: { brand_name: string; logo_url: string | null };
+  branding: { brand_name: string; logo_url: string | null; logo_shape?: string | null };
   slug: string;
   accent: string;
   hudBgColor: string;
@@ -914,6 +914,14 @@ function PortalHeader({
 
   // Tint header with MSP Portal background color at ~80% opacity (cc hex alpha)
   const headerBg = `${hudBgColor}cc`;
+
+  const logoShape = branding.logo_shape || "circle";
+  const logoClass =
+    logoShape === "landscape"
+      ? "h-8 max-w-[120px] w-auto rounded-md object-contain"
+      : logoShape === "square"
+        ? "h-8 w-8 rounded-md object-cover"
+        : "h-8 w-8 rounded-full object-cover";
 
   // Compute initials for the avatar fallback.
   const viewerLabel = viewer?.displayName || viewer?.email || "";
@@ -938,7 +946,7 @@ function PortalHeader({
             <img
               src={branding.logo_url}
               alt={`${branding.brand_name} logo`}
-              className="h-8 w-8 rounded-full object-cover"
+              className={logoClass}
             />
           ) : (
             <div

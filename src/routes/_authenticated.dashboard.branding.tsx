@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
-import { Lock, Copy, X, MapPin, CheckCircle2, AlertCircle } from "lucide-react";
+import { Lock, Copy, X, MapPin, CheckCircle2, AlertCircle, Circle, Square, RectangleHorizontal } from "lucide-react";
 
 // Lazy-loaded so the ~150 KB Leaflet bundle ships only when a Pro
 // MSP actually opens the Service Area editor.
@@ -105,6 +105,7 @@ interface BrandingData {
   gate_label: string;
   hero_lines: [HeroLine, HeroLine, HeroLine];
   logo_url: string | null;
+  logo_shape: "circle" | "square" | "landscape";
   favicon_url: string | null;
   custom_domain: string | null;
   tier: "starter" | "pro";
@@ -140,6 +141,7 @@ const defaultBranding: BrandingData = {
   gate_label: "Enter Tour",
   hero_lines: [...DEFAULT_HERO_LINES] as [HeroLine, HeroLine, HeroLine],
   logo_url: null,
+  logo_shape: "circle",
   favicon_url: null,
   custom_domain: null,
   tier: "starter",
@@ -310,6 +312,7 @@ function BrandingPage() {
         hud_bg_color: data.hud_bg_color,
         gate_label: data.gate_label,
         logo_url: data.logo_url,
+        logo_shape: (data.logo_shape === "square" || data.logo_shape === "landscape" ? data.logo_shape : "circle") as "circle" | "square" | "landscape",
         favicon_url: data.favicon_url,
         custom_domain: data.custom_domain,
         tier: data.tier as "starter" | "pro",
@@ -509,6 +512,7 @@ function BrandingPage() {
       hud_bg_color: branding.hud_bg_color,
       gate_label: branding.gate_label,
       logo_url: logoUrl,
+      logo_shape: branding.logo_shape,
       favicon_url: faviconUrl,
       custom_domain: customDomainUnlocked ? branding.custom_domain : null,
       slug: branding.slug,
@@ -835,21 +839,51 @@ function BrandingPage() {
                   <Label>
                     Primary Logo {logoOptimizing && <span className="text-xs text-muted-foreground">(optimizing…)</span>}
                   </Label>
-                  <Input
-                    type="file"
-                    accept=".png,.jpg,.jpeg,.svg,.webp"
-                    disabled={logoOptimizing}
-                    onChange={(e) => handleLogoSelect(e.target.files?.[0] || null)}
-                  />
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="file"
+                      accept=".png,.jpg,.jpeg,.svg,.webp"
+                      disabled={logoOptimizing}
+                      onChange={(e) => handleLogoSelect(e.target.files?.[0] || null)}
+                      className="flex-1 min-w-0"
+                    />
+                    <div className="flex items-center gap-0.5 shrink-0">
+                      {(["circle", "square", "landscape"] as const).map((shape) => {
+                        const Icon = shape === "circle" ? Circle : shape === "square" ? Square : RectangleHorizontal;
+                        const active = branding.logo_shape === shape;
+                        return (
+                          <button
+                            key={shape}
+                            type="button"
+                            title={`${shape.charAt(0).toUpperCase() + shape.slice(1)} logo`}
+                            onClick={() => setBranding({ ...branding, logo_shape: shape })}
+                            className={`flex h-9 w-9 items-center justify-center rounded-md border transition-colors ${
+                              active
+                                ? "border-primary bg-primary/10 text-primary"
+                                : "border-input bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
+                            }`}
+                          >
+                            <Icon className="h-4 w-4" />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                   <p className="text-xs text-muted-foreground">
-                    Auto-converted to WebP, kept under 120 KB. Portrait, landscape, and square images all display correctly.
+                    Auto-converted to WebP, kept under 120 KB. Choose a shape for how your logo displays in the portal header.
                   </p>
                   {(logoFile || branding.logo_url) && (
                     <div className="mt-2 flex items-center justify-center rounded border border-border bg-muted/30 p-2">
                       <img
                         src={logoFile ? URL.createObjectURL(logoFile) : branding.logo_url!}
                         alt="Logo preview"
-                        className="max-h-16 max-w-[160px] h-auto w-auto object-contain"
+                        className={`max-h-16 h-auto w-auto object-cover ${
+                          branding.logo_shape === "circle"
+                            ? "w-16 rounded-full"
+                            : branding.logo_shape === "square"
+                              ? "w-16 rounded-md"
+                              : "max-w-[160px] rounded-md"
+                        }`}
                       />
                     </div>
                   )}
