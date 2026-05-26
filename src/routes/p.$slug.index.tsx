@@ -41,6 +41,7 @@ const fetchBrandingBySlug = createServerFn({ method: "GET" })
         lusActive: false,
         vaultAssetCount: 0,
         providerActive: false,
+        previewAllowed: false,
         embedPreviewValid: false,
       };
     }
@@ -66,6 +67,13 @@ const fetchBrandingBySlug = createServerFn({ method: "GET" })
     }
 
     const providerActive = paidRes.data === true;
+
+    // Check if preview is still allowed (paid OR within 14-day grace).
+    const untyped2 = supabase as unknown as any;
+    const { data: previewOk } = await untyped2.rpc("provider_preview_allowed", {
+      _provider_id: branding.provider_id,
+    });
+    const previewAllowed: boolean = previewOk === true;
 
     // Server-side verification of the dashboard's iframe preview token via
     // the `verify_studio_preview_token` SECURITY DEFINER RPC. This is the
@@ -95,6 +103,7 @@ const fetchBrandingBySlug = createServerFn({ method: "GET" })
       lusActive,
       vaultAssetCount: vaultRes.count ?? 0,
       providerActive,
+      previewAllowed,
       embedPreviewValid,
     };
   });
@@ -247,6 +256,7 @@ function PortalPage() {
     lusActive,
     vaultAssetCount,
     providerActive,
+    previewAllowed,
     embedPreviewValid,
   } = Route.useLoaderData();
   const { slug } = Route.useParams();
@@ -416,7 +426,24 @@ function PortalPage() {
   //    intentionally permissive because it's only loaded inside the owner's
   //    dashboard and the bare URL is still gated).
   //  • ?preview=studio — top-level owner/admin preview tab (auth-checked).
+  //
+  // Hard-stop: after the 14-day grace period (!previewAllowed), even embed
+  // previews are blocked — the dashboard shows its own paywall instead.
   if (!providerActive) {
+    if (!previewAllowed) {
+      return (
+        <div className="flex min-h-screen items-center justify-center bg-background px-6">
+          <div className="max-w-md text-center">
+            <h1 className="text-4xl font-bold text-foreground">Studio Preview Expired</h1>
+            <p className="mt-3 text-muted-foreground">
+              The preview period for this Studio has ended. The owner needs to
+              activate a plan to restore access.
+            </p>
+          </div>
+        </div>
+      );
+    }
+
     if (!isPreviewRequest && !isEmbedPreview) {
       return (
         <div className="flex min-h-screen items-center justify-center bg-background px-6">
@@ -432,10 +459,6 @@ function PortalPage() {
     }
 
     if (isPreviewRequest && !isEmbedPreview) {
-      // Fail-closed UX: until we've positively confirmed the viewer is the
-      // owner or an admin, render the same gate the public sees. This
-      // prevents any flash of Studio content during the auth check and
-      // ensures wrong-user / unauthenticated visitors never see the page.
       if (authStatus !== "authorized") {
         return (
           <div className="flex min-h-screen items-center justify-center bg-background px-6">

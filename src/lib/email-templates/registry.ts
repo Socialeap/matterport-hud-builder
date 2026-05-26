@@ -19,6 +19,8 @@ import { template as marketplaceLeadAssigned } from './marketplace-lead-assigned
 import { template as marketplaceOutreach } from './marketplace-outreach'
 import { template as serviceMatchReady } from './service-match-ready'
 import { template as marketplaceLeadInterest } from './marketplace-lead-interest'
+import { template as trialExpired } from './trial-expired'
+import { template as trialPurgeWarning } from './trial-purge-warning'
 
 export const TEMPLATES: Record<string, TemplateEntry> = {
   'invitation': invitation,
@@ -31,4 +33,6 @@ export const TEMPLATES: Record<string, TemplateEntry> = {
   'marketplace-outreach': marketplaceOutreach,
   'service-match-ready': serviceMatchReady,
   'marketplace-lead-interest': marketplaceLeadInterest,
+  'trial-expired': trialExpired,
+  'trial-purge-warning': trialPurgeWarning,
 }

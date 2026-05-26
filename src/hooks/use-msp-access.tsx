@@ -14,6 +14,8 @@ interface MspAccessState {
   hasPaid: boolean;
   /** True if the current viewer is a client (not an MSP). */
   isClient: boolean;
+  /** True when preview is still allowed (paid OR within 14-day grace period). */
+  previewAllowed: boolean;
   /** Refetch — call after a purchase/grant change. */
   refetch: () => void;
 }
@@ -25,17 +27,20 @@ export function MspAccessProvider({ children }: { children: ReactNode }) {
   const isClient = roles.includes("client") && !roles.includes("provider") && !roles.includes("admin");
   const [loading, setLoading] = useState(true);
   const [hasPaid, setHasPaid] = useState(false);
+  const [previewAllowed, setPreviewAllowed] = useState(false);
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
     if (!user) {
       setLoading(false);
       setHasPaid(false);
+      setPreviewAllowed(false);
       return;
     }
     if (isClient) {
       // Clients inherit access via their provider — never gated here.
       setHasPaid(true);
+      setPreviewAllowed(true);
       setLoading(false);
       return;
     }
@@ -47,13 +52,19 @@ export function MspAccessProvider({ children }: { children: ReactNode }) {
       // Use the same SECURITY DEFINER RPC the public Studio route uses, so
       // the dashboard's "hasPaid" flag never disagrees with the public
       // paywall (which would let an unpaid MSP think they have a live URL).
-      const { data, error } = await supabase.rpc("provider_has_paid_access", {
-        _provider_id: user.id,
-      });
+      const [paidRes, previewRes] = await Promise.all([
+        supabase.rpc("provider_has_paid_access", {
+          _provider_id: user.id,
+        }),
+        (supabase as any).rpc("provider_preview_allowed", {
+          _provider_id: user.id,
+        }),
+      ]);
 
       if (cancelled) return;
 
-      setHasPaid(error ? false : data === true);
+      setHasPaid(paidRes.error ? false : paidRes.data === true);
+      setPreviewAllowed(previewRes.error ? false : previewRes.data === true);
       setLoading(false);
     })();
 
@@ -68,6 +79,7 @@ export function MspAccessProvider({ children }: { children: ReactNode }) {
         loading,
         hasPaid,
         isClient,
+        previewAllowed,
         refetch: () => setTick((n) => n + 1),
       }}
     >
@@ -84,6 +96,7 @@ export function useMspAccess(): MspAccessState {
       loading: true,
       hasPaid: false,
       isClient: false,
+      previewAllowed: false,
       refetch: () => {},
     };
   }
