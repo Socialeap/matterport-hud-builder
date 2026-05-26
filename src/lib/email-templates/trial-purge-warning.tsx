@@ -18,24 +18,24 @@ const TrialPurgeWarning = ({
   <Html lang="en" dir="ltr">
     <Head />
     <Preview>
-      Your Studio files will be permanently deleted on {purgeDate}
+      Final notice: Your Studio files will be permanently deleted on {purgeDate}
     </Preview>
     <Body style={main}>
       <Container style={container}>
-        <Heading style={h1}>Your Studio data is scheduled for removal</Heading>
+        <Heading style={h1}>Your Studio data will be permanently deleted</Heading>
         <Text style={text}>
-          Hi {brandName}, because your workspace has been inactive for an extended period,
-          we're reaching out to let you know that your custom configurations, templates,
-          branding files, and uploaded assets are scheduled for <strong>permanent deletion
-          on {purgeDate}</strong>.
+          Hi {brandName}, your trial workspace has been inactive for an extended period.
+          Your customized configurations and stored asset binaries — including your logo,
+          favicon, hero backgrounds, vault files, and all saved presentation settings — are
+          scheduled for <strong>complete and permanent deletion on {purgeDate}</strong>.
         </Text>
         <Text style={text}>
-          This includes your logo, hero backgrounds, gallery images, and any saved
-          presentation templates. Once removed, this data cannot be recovered.
+          Once removed, this data <strong>cannot be recovered</strong>. This is your final
+          notice before the automated cleanup runs.
         </Text>
         <Text style={text}>
-          If you'd like to keep your work, simply reactivate your Studio by choosing a
-          plan before the date above. Your full workspace will be restored immediately.
+          To save your work and keep your studio intact, choose a plan before the date
+          above. Your full workspace will be restored immediately upon purchase.
         </Text>
         {pricingUrl && (
           <Button style={button} href={pricingUrl}>
@@ -55,11 +55,11 @@ const TrialPurgeWarning = ({
 export const template = {
   component: TrialPurgeWarning,
   subject: (data: Record<string, any>) =>
-    `Action required: Your Studio files will be deleted on ${data.purgeDate ?? 'the scheduled date'}`,
+    `Final notice: Your Studio files will be deleted on ${data.purgeDate ?? 'the scheduled date'}`,
   displayName: 'Trial purge warning',
   previewData: {
     brandName: 'Acme 3D Tours',
-    purgeDate: 'June 25, 2026',
+    purgeDate: 'August 24, 2026',
     pricingUrl: 'https://3dps.transcendencemedia.com/p/acme#pricing',
   },
 } satisfies TemplateEntry

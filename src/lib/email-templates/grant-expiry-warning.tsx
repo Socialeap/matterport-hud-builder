@@ -13,32 +13,37 @@ interface GrantExpiryWarningProps {
 
 const GrantExpiryWarning = ({
   brandName = 'Your Studio',
-  daysLeft = 14,
+  daysLeft = 7,
   expiryDate = 'soon',
   pricingUrl,
 }: GrantExpiryWarningProps) => (
   <Html lang="en" dir="ltr">
     <Head />
     <Preview>
-      Your complimentary Studio access expires in {String(daysLeft)} day{daysLeft !== 1 ? 's' : ''}
+      Your free evaluation expires in {String(daysLeft)} day{daysLeft !== 1 ? 's' : ''} — lock in your studio tier
     </Preview>
     <Body style={main}>
       <Container style={container}>
-        <Heading style={h1}>Your access expires soon</Heading>
+        <Heading style={h1}>Your free evaluation window closes soon</Heading>
         <Text style={text}>
-          Hi {brandName}, your complimentary Studio access will expire in{' '}
+          Hi {brandName}, your free live presentation evaluation slot expires in{' '}
           <strong>
             {daysLeft} day{daysLeft !== 1 ? 's' : ''}
           </strong>{' '}
           on <strong>{expiryDate}</strong>.
         </Text>
         <Text style={text}>
-          To keep your studio online and continue serving your clients without
-          interruption, please purchase a plan before your access ends.
+          Now is the perfect time to capture leads, share your studio with
+          clients, and see the value of your white-label presentation workflow
+          before your trial ends.
+        </Text>
+        <Text style={text}>
+          Lock in your studio tier now to keep your branded workspace, public
+          URL, and all your configurations active without interruption.
         </Text>
         {pricingUrl && (
           <Button style={button} href={pricingUrl}>
-            View Plans &amp; Purchase
+            Lock In Your Studio Tier
           </Button>
         )}
         <Hr style={hr} />
@@ -53,12 +58,12 @@ const GrantExpiryWarning = ({
 export const template = {
   component: GrantExpiryWarning,
   subject: (data: Record<string, any>) =>
-    `Your complimentary Studio access expires in ${data.daysLeft ?? 14} day${data.daysLeft !== 1 ? 's' : ''}`,
+    `Your free Studio evaluation expires in ${data.daysLeft ?? 7} day${data.daysLeft !== 1 ? 's' : ''} — lock in your tier`,
   displayName: 'Grant expiry warning',
   previewData: {
     brandName: 'Acme 3D Tours',
     daysLeft: 7,
-    expiryDate: 'May 1, 2026',
+    expiryDate: 'June 25, 2026',
     pricingUrl: 'https://3dps.transcendencemedia.com/p/acme#pricing',
   },
 } satisfies TemplateEntry

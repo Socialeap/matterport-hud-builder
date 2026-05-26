@@ -16,27 +16,27 @@ const TrialExpired = ({
   <Html lang="en" dir="ltr">
     <Head />
     <Preview>
-      Your Studio workspace has reverted to basic mode
+      Your 30-day trial has ended — workspace now restricted
     </Preview>
     <Body style={main}>
       <Container style={container}>
-        <Heading style={h1}>Your premium access has ended</Heading>
+        <Heading style={h1}>Your free trial has reached its limit</Heading>
         <Text style={text}>
-          Hi {brandName}, your complimentary premium Studio access has now expired.
-          Your workspace has been reverted to basic functionality.
+          Hi {brandName}, your 30-day free evaluation period has now ended. Your
+          workspace has been reverted to restricted basic functionality.
         </Text>
         <Text style={text}>
-          While your account is still active, your custom branding, advanced features,
-          and public Studio URL are no longer accessible to visitors. Your saved
-          configurations are safe for now — nothing has been deleted.
+          Your builder workspace is now in read-only mode — editing, publishing, and
+          client access are paused. Your saved configurations and uploaded assets are
+          safe for now and nothing has been deleted.
         </Text>
         <Text style={text}>
-          To restore your full Studio experience and bring your public URL back online,
-          simply choose a plan that works for you.
+          To restore full access, unlock your builder, and bring your public studio
+          URL back online, choose the tier that fits your business.
         </Text>
         {pricingUrl && (
           <Button style={button} href={pricingUrl}>
-            Reactivate My Studio
+            Unlock My Studio
           </Button>
         )}
         <Hr style={hr} />
@@ -50,7 +50,7 @@ const TrialExpired = ({
 
 export const template = {
   component: TrialExpired,
-  subject: 'Your Studio workspace has reverted to basic mode',
+  subject: 'Your 30-day trial has ended — workspace restricted',
   displayName: 'Trial expired notification',
   previewData: {
     brandName: 'Acme 3D Tours',

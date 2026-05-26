@@ -289,32 +289,12 @@ function DemoButton({ tier }: { tier: "starter" | "pro" }) {
     }
     setActivating(true);
     try {
-      const { data: existingRole } = await supabase
-        .from("user_roles")
-        .select("id")
-        .eq("user_id", user.id)
-        .eq("role", "provider")
-        .maybeSingle();
+      const { error: grantError } = await (supabase as any).rpc(
+        "provision_trial_grant",
+        { _tier: tier },
+      );
 
-      if (!existingRole) {
-        await supabase
-          .from("user_roles")
-          .insert({ user_id: user.id, role: "provider" });
-      }
-
-      const productId = tier === "pro" ? "pro_tier" : "starter_tier";
-      const amount = tier === "pro" ? 29900 : 14900;
-
-      await supabase.from("purchases").insert({
-        user_id: user.id,
-        stripe_session_id: `demo_${tier}_${Date.now()}`,
-        product_id: productId,
-        price_id: `${tier}_onetime`,
-        amount_cents: amount,
-        currency: "usd",
-        status: "completed",
-        environment: "sandbox",
-      });
+      if (grantError) throw grantError;
 
       const { data: existingBranding } = await supabase
         .from("branding_settings")
@@ -339,12 +319,20 @@ function DemoButton({ tier }: { tier: "starter" | "pro" }) {
       }
 
       toast.success(
-        `${tier === "pro" ? "Pro" : "Starter"} demo activated! Redirecting…`
+        `${tier === "pro" ? "Pro" : "Starter"} 30-day trial activated! Redirecting…`
       );
       setTimeout(() => navigate({ to: "/dashboard" }), 1200);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      toast.error("Failed to activate demo. Please try again.");
+      const msg = err?.message?.includes("Already has paid access")
+        ? "You already have an active studio. Redirecting…"
+        : "Failed to activate trial. Please try again.";
+      if (err?.message?.includes("Already has paid access")) {
+        toast.info(msg);
+        setTimeout(() => navigate({ to: "/dashboard" }), 1200);
+      } else {
+        toast.error(msg);
+      }
     }
     setActivating(false);
   };
@@ -358,7 +346,7 @@ function DemoButton({ tier }: { tier: "starter" | "pro" }) {
       disabled={activating}
     >
       <Play className="size-3.5" />
-      {activating ? "Activating…" : "Try our Trial-Mode"}
+      {activating ? "Activating…" : "Start 30-Day Trial (First Presentation Free)"}
     </Button>
   );
 }
@@ -645,7 +633,7 @@ function Index() {
           <div className="mt-8 flex justify-center">
             <a href="#pricing">
               <Button size="lg" className="gap-2">
-                Try our demo
+                Start Your Free 30-Day Trial
                 <ChevronRight className="size-4" />
               </Button>
             </a>
@@ -788,8 +776,8 @@ function Index() {
             const steps = [
               {
                 step: 1,
-                title: "Claim Your Studio",
-                desc: "Choose your tier and launch your branded dashboard in seconds.",
+                title: "Start Your Free Trial",
+                desc: "Launch your branded studio for free — your first live presentation is on us for 30 days.",
               },
               {
                 step: 2,
@@ -871,10 +859,10 @@ function Index() {
       <section id="pricing" className="relative z-10 px-4 py-16 sm:py-24">
         <div className="mx-auto max-w-4xl">
           <h2 className={`text-center text-2xl font-bold tracking-tight text-white sm:text-3xl`}>
-            Purchase Your Studio
+            Claim Your White-Label Studio
           </h2>
           <p className={`mx-auto mt-3 max-w-lg text-center text-white/60`}>
-            One-time setup fee · then $49–$79/year upkeep license (first year free).
+            Claim your White-Label Studio for $0 setup. Build, brand, and launch your first live client presentation 100% free for 30 days.
           </p>
 
           <div className="mt-12 grid gap-6 sm:grid-cols-2">
@@ -977,7 +965,7 @@ function Index() {
           </p>
 
           <p className={`mx-auto mt-4 max-w-2xl text-center text-xs text-white/50`}>
-            <strong>Activate a trial tier instantly</strong> — no Stripe purchase required. Explore the full dashboard, branding settings, client portal, and orders workflow. Demo purchases are recorded in sandbox mode. You can switch Demo tiers any time by returning here.
+            <strong>Start your 30-day trial instantly</strong> — no credit card required. Get full access to the dashboard, branding studio, client portal, and builder workspace. Your first live presentation is 100% free. Upgrade to a paid tier any time to unlock unlimited presentations.
           </p>
         </div>
       </section>
