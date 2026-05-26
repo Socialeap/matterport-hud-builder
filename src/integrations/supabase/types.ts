@@ -2297,12 +2297,8 @@ export type Database = {
       get_providers_for_admin: {
         Args: never
         Returns: {
-          provider_id: string
-          brand_name: string
-          slug: string
-          tier: Database["public"]["Enums"]["app_tier"]
-          display_name: string
           email: string
+          provider_id: string
           start_date: string
         }[]
       }
