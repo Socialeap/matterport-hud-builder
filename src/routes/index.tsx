@@ -660,7 +660,7 @@ function Index() {
             The &ldquo;Service Trap&rdquo; of Traditional 3D Presentation Platforms
           </h2>
           <p className={`mx-auto mt-3 max-w-xl text-center text-white/60`}>
-            Most 3D tour presentation platforms require you to format and configure your client's models, charging you a monthly subscription just to keep the assets on their servers. At 3DPS , we flip that dynamic to give YOU ownership of the presentation service and your clients ownership of the results.
+            Most 3D tour presentation platforms require you to format and configure your client's models, charging you a monthly subscription just to keep the assets on their servers. At 3DPS, we flip that dynamic to give YOU ownership of the presentation tool and provide clients ownership of the results.
           </p>
 
           <div className="mt-12 grid gap-6 sm:grid-cols-2">
