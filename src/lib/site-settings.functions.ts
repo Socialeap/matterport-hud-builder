@@ -1,12 +1,20 @@
 import { createServerFn } from "@tanstack/react-start";
+import { createClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import {
+  getSupabaseUrl,
+  getSupabasePublishableKey,
+} from "@/integrations/supabase/env";
 
 export type CheckoutMode = "live" | "waitlist";
 
 export const fetchCheckoutMode = createServerFn({ method: "GET" }).handler(
   async (): Promise<{ mode: CheckoutMode }> => {
-    const { data, error } = await supabaseAdmin
+    // Use the publishable (anon) client — checkout_mode is a public read
+    // and this avoids requiring SUPABASE_SERVICE_ROLE_KEY at runtime.
+    const client = createClient(getSupabaseUrl(), getSupabasePublishableKey());
+    const { data, error } = await client
       .from("site_settings")
       .select("value")
       .eq("key", "checkout_mode")
@@ -14,7 +22,7 @@ export const fetchCheckoutMode = createServerFn({ method: "GET" }).handler(
 
     if (error || !data) return { mode: "live" };
 
-    const raw = data.value as unknown;
+    const raw = (data as { value: unknown }).value;
     if (raw === "waitlist") return { mode: "waitlist" };
     return { mode: "live" };
   },

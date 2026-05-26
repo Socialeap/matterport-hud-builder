@@ -312,7 +312,7 @@ function BrandingPage() {
         hud_bg_color: data.hud_bg_color,
         gate_label: data.gate_label,
         logo_url: data.logo_url,
-        logo_shape: (data.logo_shape === "square" || data.logo_shape === "landscape" ? data.logo_shape : "circle") as "circle" | "square" | "landscape",
+        logo_shape: ((data as any).logo_shape === "square" || (data as any).logo_shape === "landscape" ? (data as any).logo_shape : "circle") as "circle" | "square" | "landscape",
         favicon_url: data.favicon_url,
         custom_domain: data.custom_domain,
         tier: data.tier as "starter" | "pro",
