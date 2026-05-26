@@ -317,7 +317,7 @@ export const Route = createFileRoute("/lovable/email/transactional/send")({
           recipient_redacted: redactEmail(effectiveRecipient),
         })
 
-        return Response.json({ success: true, queued: true })
+        return Response.json({ success: true, queued: true, messageId })
       },
     },
   },
