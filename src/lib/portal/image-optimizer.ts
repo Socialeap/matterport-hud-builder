@@ -4,9 +4,9 @@
  * Strategy:
  *   - SVGs pass through unchanged (vector — already tiny + lossless).
  *   - Raster images (PNG/JPG/WebP/etc.) are downscaled to `maxWidth` and
- *     re-encoded as WebP, iterating quality levels until the result fits
- *     `targetBytes`. Throws a friendly error when even minimum quality
- *     can't fit the cap.
+ *     re-encoded as WebP, iterating quality levels and then progressively
+ *     reducing resolution until the result fits `targetBytes`. Throws a
+ *     friendly error only when all combinations are exhausted.
  *
  * Returns a real `File` (not a Blob) with a `.webp` extension so it slots
  * directly into the existing upload pipeline.
@@ -31,7 +31,15 @@ export interface OptimizeResult {
   mimeType: string;
 }
 
-const QUALITY_STEPS = [0.85, 0.75, 0.65, 0.55, 0.45];
+const QUALITY_STEPS = [0.85, 0.75, 0.65, 0.55, 0.45, 0.35];
+
+const RESOLUTION_SCALES = [1.0, 0.75, 0.5, 0.375];
+
+const MIN_WIDTH_FLOOR: Record<OptimizeOptions["kind"], number> = {
+  logo: 128,
+  favicon: 32,
+  avatar: 128,
+};
 
 function loadImage(dataUrl: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -105,39 +113,44 @@ export async function optimizeBrandImage(
   const dataUrl = await readAsDataUrl(file);
   const img = await loadImage(dataUrl);
 
-  // Compute target dimensions (preserve aspect ratio, cap width).
-  let width = img.naturalWidth || img.width;
-  let height = img.naturalHeight || img.height;
-  if (width > opts.maxWidth) {
-    height = Math.round((opts.maxWidth / width) * height);
-    width = opts.maxWidth;
-  }
+  const naturalW = img.naturalWidth || img.width;
+  const naturalH = img.naturalHeight || img.height;
+  const effectiveMaxW = Math.min(naturalW, opts.maxWidth);
+  const minFloor = MIN_WIDTH_FLOOR[opts.kind];
 
   const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Browser blocked image processing — try a different browser.");
-  ctx.drawImage(img, 0, 0, width, height);
 
-  // Iterate quality until we fit, or fail loudly.
+  // Iterate resolution scales (largest first), then quality at each scale.
   let lastBlob: Blob | null = null;
-  for (const q of QUALITY_STEPS) {
-    const blob = await canvasToBlob(canvas, "image/webp", q);
-    lastBlob = blob;
-    if (blob.size <= opts.targetBytes) {
-      const outName = swapExtension(file.name || `${opts.kind}.webp`, "webp");
-      return {
-        file: new File([blob], outName, { type: "image/webp" }),
-        originalBytes: original,
-        finalBytes: blob.size,
-        wasOptimized: true,
-        mimeType: "image/webp",
-      };
+  for (const scale of RESOLUTION_SCALES) {
+    const targetW = Math.round(effectiveMaxW * scale);
+    if (targetW < minFloor) break;
+    const targetH = Math.round((targetW / naturalW) * naturalH);
+
+    canvas.width = targetW;
+    canvas.height = targetH;
+    ctx.clearRect(0, 0, targetW, targetH);
+    ctx.drawImage(img, 0, 0, targetW, targetH);
+
+    for (const q of QUALITY_STEPS) {
+      const blob = await canvasToBlob(canvas, "image/webp", q);
+      lastBlob = blob;
+      if (blob.size <= opts.targetBytes) {
+        const outName = swapExtension(file.name || `${opts.kind}.webp`, "webp");
+        return {
+          file: new File([blob], outName, { type: "image/webp" }),
+          originalBytes: original,
+          finalBytes: blob.size,
+          wasOptimized: true,
+          mimeType: "image/webp",
+        };
+      }
     }
   }
 
-  // Even the smallest pass busted the cap — surface a clear error.
+  // All resolution + quality combinations busted the cap.
   const failedSize = lastBlob ? humanBytes(lastBlob.size) : "unknown";
   throw new Error(
     `Couldn't shrink ${opts.kind} below ${humanBytes(opts.targetBytes)} (got ${failedSize} after optimizing). Try a simpler graphic or smaller source image.`,
