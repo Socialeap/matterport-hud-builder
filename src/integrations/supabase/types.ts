@@ -332,7 +332,6 @@ export type Database = {
           instant_payout_fee_bps: number
           is_directory_public: boolean
           latitude: number | null
-          logo_shape: string
           logo_url: string | null
           longitude: number | null
           model_threshold: number | null
@@ -380,7 +379,6 @@ export type Database = {
           instant_payout_fee_bps?: number
           is_directory_public?: boolean
           latitude?: number | null
-          logo_shape?: string
           logo_url?: string | null
           longitude?: number | null
           model_threshold?: number | null
@@ -428,7 +426,6 @@ export type Database = {
           instant_payout_fee_bps?: number
           is_directory_public?: boolean
           latitude?: number | null
-          logo_shape?: string
           logo_url?: string | null
           longitude?: number | null
           model_threshold?: number | null
