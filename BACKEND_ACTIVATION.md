@@ -2,7 +2,7 @@
 
 ## Status
 
-Backend Activation Required: **YES**
+Backend Activation Required: **NO** (all pending activations applied as of 2026-05-26)
 
 ---
 
