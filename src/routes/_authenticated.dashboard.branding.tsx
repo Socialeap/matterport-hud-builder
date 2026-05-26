@@ -191,7 +191,7 @@ function parseHeroLines(raw: unknown): [HeroLine, HeroLine, HeroLine] {
 
 function BrandingPage() {
   const { user } = useAuth();
-  const { hasPaid } = useMspAccess();
+  const { hasPaid, previewAllowed } = useMspAccess();
   const [branding, setBranding] = useState<BrandingData>(defaultBranding);
   const [activeTab, setActiveTab] = useState<string>("identity");
   const [loading, setLoading] = useState(true);
@@ -1445,6 +1445,7 @@ function BrandingPage() {
             tier={savedSnapshot.tier}
             customDomain={savedSnapshot.custom_domain}
             hasPaid={hasPaid}
+            previewAllowed={previewAllowed}
             hasUnsavedChanges={hasUnsavedChanges}
             refreshKey={previewVersion}
           />

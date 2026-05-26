@@ -147,6 +147,65 @@ SELECT column_name, data_type, column_default
 
 ---
 
+### Stale Preview Paywall + Data Reclamation (2026-05-26)
+
+**Summary:** Adds a 14-day preview grace period for unpaid studios and a 60-day data reclamation cron job. After 14 days without paid access, the in-app preview becomes a hard paywall. After 60 days, storage objects and branding configuration are permanently deleted.
+
+**Migration file:** `supabase/migrations/20260526200000_stale_preview_paywall_and_reclamation.sql`
+
+**Safety check:**
+- **Destructive operations: NONE in the migration itself**
+- Uses `CREATE OR REPLACE FUNCTION` (creates new functions only)
+- The `purge_stale_trial_studios()` function performs DELETE operations at runtime on storage objects and branding_settings rows for abandoned trials. **This is by design — it only targets providers with no active license, no completed purchase, and no active admin grant, who have been inactive for 60+ days.**
+- `cron.schedule` adds a new scheduled job (does not modify existing jobs)
+- No `DROP TABLE`, `ALTER TABLE`, policy removal, or RLS weakening
+
+**Do not touch:**
+- Existing RLS policies on any table
+- `provider_has_paid_access()` function (unchanged)
+- Existing cron jobs (`purge_expired_ephemeral_assets`)
+- Storage bucket definitions or storage policies
+- Any existing Edge Functions
+
+**Activation method:**
+
+**Option A — Supabase Dashboard SQL Editor (recommended):**
+
+1. Go to **https://supabase.com/dashboard**
+2. Select your project
+3. Click **SQL Editor**
+4. Paste the full contents of `supabase/migrations/20260526200000_stale_preview_paywall_and_reclamation.sql`
+5. Click **Run**
+
+**Verification:**
+
+```sql
+-- 1. Confirm provider_preview_allowed exists
+SELECT proname, prosecdef FROM pg_proc WHERE proname = 'provider_preview_allowed';
+-- Expected: one row, prosecdef = true
+
+-- 2. Confirm purge_stale_trial_studios exists
+SELECT proname, prosecdef FROM pg_proc WHERE proname = 'purge_stale_trial_studios';
+-- Expected: one row, prosecdef = true
+
+-- 3. Confirm cron job is scheduled
+SELECT jobname, schedule FROM cron.job WHERE jobname = 'purge_stale_trial_studios';
+-- Expected: one row, schedule = '50 3 * * *'
+
+-- 4. Test with a paid provider (should return true)
+-- SELECT public.provider_preview_allowed('<paid_provider_uuid>');
+
+-- 5. Test with a stale trial (should return false)
+-- SELECT public.provider_preview_allowed('<stale_trial_uuid>');
+```
+
+**Expected results:**
+- `provider_preview_allowed` returns `TRUE` for paid providers and within 14 days of expiry, `FALSE` otherwise.
+- `purge_stale_trial_studios` appears in `pg_proc`.
+- Cron job `purge_stale_trial_studios` runs daily at 03:50 UTC.
+
+---
+
 ## Completed Activations
 
 ### site_settings table (2026-05-25) — VERIFIED

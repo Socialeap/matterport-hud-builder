@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Eye, ExternalLink, RefreshCw, Monitor, Tablet, Smartphone, AlertTriangle } from "lucide-react";
+import { Eye, ExternalLink, RefreshCw, Monitor, Tablet, Smartphone, AlertTriangle, ShieldAlert } from "lucide-react";
 import { buildStudioUrl } from "@/lib/public-url";
 import { issueStudioPreviewToken } from "@/lib/portal.functions";
 
@@ -12,6 +12,8 @@ interface StudioPreviewPanelProps {
   tier: "starter" | "pro";
   customDomain: string | null;
   hasPaid: boolean;
+  /** When false, the 14-day grace period has expired — show hard paywall. */
+  previewAllowed?: boolean;
   hasUnsavedChanges: boolean;
   /** Bumped after a successful save to force the iframe to reload. */
   refreshKey: number;
@@ -28,6 +30,7 @@ export function StudioPreviewPanel({
   tier,
   customDomain,
   hasPaid,
+  previewAllowed = true,
   hasUnsavedChanges,
   refreshKey,
 }: StudioPreviewPanelProps) {
@@ -149,7 +152,21 @@ export function StudioPreviewPanel({
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        {!trimmedSlug ? (
+        {!hasPaid && !previewAllowed ? (
+          <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-8 text-center">
+            <ShieldAlert className="mx-auto size-10 text-destructive" />
+            <h3 className="mt-4 text-lg font-semibold text-foreground">
+              Preview No Longer Available
+            </h3>
+            <p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">
+              Your trial period has ended and the 14-day grace window has passed.
+              To continue previewing and publishing your Studio, please activate a plan.
+            </p>
+            <Button type="button" size="sm" className="mt-4" asChild>
+              <a href="/dashboard/billing">Choose a Plan</a>
+            </Button>
+          </div>
+        ) : !trimmedSlug ? (
           <div className="rounded-lg border border-dashed border-border bg-muted/30 p-8 text-center">
             <p className="text-sm font-medium text-foreground">
               Set your Studio URL slug above and save to see a live preview.
