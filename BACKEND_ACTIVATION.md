@@ -2,13 +2,79 @@
 
 ## Status
 
-Backend Activation Required: **NO** (all pending activations applied as of 2026-05-26)
+Backend Activation Required: **YES**
 
 ---
 
 ## Pending Activations
 
-_None. All known backend migrations have been applied and verified._
+### Strategy A: 30-Day Trial with First Presentation Free (2026-05-26) — PENDING
+
+**Summary:** Implements Growth Strategy A with 30-day trial provisioning, updated purge logic (60-day post-expiry retention = Day 90 from signup), and a self-service `provision_trial_grant()` RPC.
+
+**Migration file:** `supabase/migrations/20260526210000_strategy_a_30day_trial.sql`
+
+**Required actions:**
+- Apply migration `20260526210000_strategy_a_30day_trial.sql`
+
+**What the migration does:**
+1. **ALTER TABLE** — Adds nullable `grant_reason text` column to `admin_grants`
+2. **CREATE FUNCTION** — `provision_trial_grant(app_tier)` SECURITY DEFINER RPC:
+   - Creates provider role + 30-day evaluation grant atomically
+   - Idempotent: updates tier if active trial grant already exists
+   - Blocked if user already has paid access
+3. **CREATE OR REPLACE FUNCTION** — `purge_stale_trial_studios()`:
+   - Now checks `admin_grants.expires_at > v_cutoff` (not just `> now()`)
+   - Ensures trial data is retained for 90 days total (30-day trial + 60-day retention)
+
+**Safety Check:**
+
+**Destructive operations: NONE**
+
+- No `DROP`, `DELETE`, `TRUNCATE`, or destructive `ALTER`
+- Only adds a nullable column (`grant_reason text`) — existing rows unaffected
+- `purge_stale_trial_studios()` replacement is **more conservative** (stricter eligibility)
+- No RLS weakening — new RPC uses SECURITY DEFINER with explicit `auth.uid()` checks
+- No secret or env var changes required
+
+**Do NOT touch:**
+- `purchases` table or its RLS policies
+- `licenses` table
+- `brand-assets` or `vault-assets` storage bucket configurations
+- `provider_has_paid_access()` function
+- `provider_preview_allowed()` function (already works correctly for 30-day + 14-day window)
+- Existing cron job schedule (the function is replaced in-place)
+
+**Activation method:**
+- **Option A** — Supabase Dashboard SQL Editor: paste contents of migration file
+- **Option B** — Lovable agent tooling: apply migration `20260526210000_strategy_a_30day_trial.sql`
+- **Option C** — Supabase CLI: `supabase db push`
+
+**Verification:**
+
+```sql
+-- 1. Verify grant_reason column exists
+SELECT column_name, data_type, is_nullable
+  FROM information_schema.columns
+ WHERE table_name = 'admin_grants' AND column_name = 'grant_reason';
+-- Expected: 1 row — text, YES
+
+-- 2. Verify provision_trial_grant RPC exists
+SELECT routine_name, security_type
+  FROM information_schema.routines
+ WHERE routine_name = 'provision_trial_grant';
+-- Expected: 1 row — DEFINER
+
+-- 3. Verify updated purge function includes grant expiry window check
+SELECT prosrc FROM pg_proc WHERE proname = 'purge_stale_trial_studios';
+-- Expected: Function body contains 'expires_at > v_cutoff' (not just 'expires_at > now()')
+
+-- 4. Verify cron job is still scheduled
+SELECT * FROM cron.job WHERE jobname = 'purge_stale_trial_studios';
+-- Expected: 1 row, schedule = '50 3 * * *'
+```
+
+**Expected result:** All 4 queries return expected rows. Trial grant provisioning is callable by authenticated users. Purge function retains trial data until Day 90.
 
 ---
 
@@ -46,131 +112,3 @@ _None. All known backend migrations have been applied and verified._
 **Applied via:** Supabase Dashboard SQL Editor
 **Verified on:** 2026-05-26
 **Verification result:** `SELECT * FROM public.get_providers_for_admin() LIMIT 1;` returns all 7 columns; admin portal Tier/Brand/Slug columns populated.
-
----
-
-## Template for Future Backend Activations
-
-<!-- Copy the section below when a new backend change is needed -->
-
-## Required Backend Actions
-
-1. (list exact actions)
-
-## Migration Files to Apply
-
-- `supabase/migrations/20260525_add_site_settings.sql`
-
-## Edge Functions to Deploy
-
-None.
-
-## Storage Buckets / Policies
-
-None.
-
-## RLS Policies
-
-- **New policy:** `"Anyone can read site_settings"` on `public.site_settings` for `SELECT` — allows all roles (anon, authenticated) to read settings
-- **Write access:** No INSERT/UPDATE/DELETE policies for anon or authenticated. All writes go through `supabaseAdmin` (service-role) in server functions.
-
-## Database Functions / Triggers
-
-None.
-
-## Secrets / Environment Variables
-
-None (uses existing `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`).
-
-## Do Not Touch
-
-- `branding_settings` table and its policies
-- `user_roles` table and its policies
-- Any existing Edge Functions
-- Stripe webhook configuration
-- Auth providers configuration
-
-## Safety Check
-
-**Destructive operations: NONE**
-
-The migration contains only:
-- `CREATE TABLE IF NOT EXISTS` (safe, idempotent)
-- `INSERT ... ON CONFLICT DO NOTHING` (safe, idempotent)
-- `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` (non-destructive)
-- `CREATE POLICY` (additive only)
-
-No `DROP`, `DELETE`, `TRUNCATE`, destructive `ALTER`, policy removal, or RLS weakening.
-
-## Activation Method
-
-**Option A — Supabase Dashboard SQL Editor (recommended):**
-Run the SQL below directly in the SQL Editor.
-
-**Option B — Lovable agent tooling:**
-Ask Lovable to apply the migration file `supabase/migrations/20260525_add_site_settings.sql`.
-
-**Option C — Supabase CLI:**
-```bash
-supabase link --project-ref cllvwdzjgqlkdquroauz
-supabase db push
-```
-
-## Exact SQL / CLI Commands
-
-```sql
--- Run in Supabase SQL Editor
-
-create table if not exists public.site_settings (
-  key   text primary key,
-  value jsonb not null default '{}'::jsonb,
-  updated_at timestamptz not null default now(),
-  updated_by uuid references auth.users(id)
-);
-
-insert into public.site_settings (key, value)
-values ('checkout_mode', '"live"'::jsonb)
-on conflict (key) do nothing;
-
-alter table public.site_settings enable row level security;
-
-create policy "Anyone can read site_settings"
-  on public.site_settings for select
-  using (true);
-```
-
-## Verification Steps
-
-Run in SQL Editor after activation:
-
-```sql
--- 1. Confirm table exists and has the seed row
-SELECT * FROM public.site_settings WHERE key = 'checkout_mode';
-
--- 2. Confirm RLS is enabled
-SELECT relname, relrowsecurity
-FROM pg_class
-WHERE relname = 'site_settings';
-
--- 3. Confirm the read policy exists
-SELECT policyname, cmd, qual
-FROM pg_policies
-WHERE tablename = 'site_settings';
-```
-
-## Expected Results
-
-1. **Row exists:**
-   | key | value | updated_at | updated_by |
-   |-----|-------|------------|------------|
-   | checkout_mode | "live" | (timestamp) | null |
-
-2. **RLS enabled:**
-   | relname | relrowsecurity |
-   |---------|----------------|
-   | site_settings | true |
-
-3. **Policy exists:**
-   | policyname | cmd | qual |
-   |------------|-----|------|
-   | Anyone can read site_settings | SELECT | true |
