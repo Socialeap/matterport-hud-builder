@@ -212,7 +212,7 @@ const ownershipFeatures = [
     icon: Globe,
     title: "Own the File. Host It Anywhere.",
     description:
-      "Clients brand, download, and own a single HTML presentation folder — optimized for human & AI search — and host it anywhere: their own site, a client site, Netlify, GitHub Pages, or another static hosting setup. No platform-locked presentation page.",
+      "Launch a 100% white-labeled, self-serve studio that automates your revenue and frees you from manual servicing, while giving clients great features like built-in AI lead generation, flexible hosting, and zero platform lock-in.",
   },
   {
     icon: BarChart3,
@@ -619,7 +619,7 @@ function Index() {
 
           {/* Subheadline */}
           <p className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-white/60 sm:text-lg">
-            Clients brand, download, and own a single HTML presentation folder — optimized for human & AI search — and host it anywhere: their own site, a client site, Netlify, GitHub Pages, or another static hosting setup. No platform-locked presentation page.
+            Launch a 100% white-labeled, self-serve studio that automates your revenue and frees you from manual servicing, while giving clients great features like built-in AI lead generation, flexible hosting, and zero platform lock-in.
           </p>
         </div>
 
@@ -660,7 +660,7 @@ function Index() {
             The &ldquo;Service Trap&rdquo; of Traditional 3D Presentation Platforms
           </h2>
           <p className={`mx-auto mt-3 max-w-xl text-center text-white/60`}>
-            Most 3D tour presentation platforms require you to format and configure your client's models, charging you a monthly subscription just to keep the assets on their servers. At 3DPS , we flip that dynamic to give YOU ownership of the presentation service and your clients ownership of the results.
+            Most 3D tour presentation platforms require you to format and configure your client's models, charging you a monthly subscription just to keep the assets on their servers. At 3DPS, we flip that dynamic to give YOU ownership of the presentation tool and provide clients ownership of the results.
           </p>
 
           <div className="mt-12 grid gap-6 sm:grid-cols-2">
@@ -748,7 +748,7 @@ function Index() {
             Clients will Love your Studio's  Self-Serve Work Flow
           </h2>
           <p className={`mx-auto mt-3 max-w-2xl text-center text-white/60`}>
-            Hand clients self-serve features — not a service ticket. They configure, brand, and walk away with a single HTML presentation folder they own and can host anywhere.
+            Hand clients self-serve features — not a manual service ticket. They configure, brand, and walk away with a single HTML presentation folder they own and can host anywhere.
           </p>
 
           {featureGroups.map((group) => (
