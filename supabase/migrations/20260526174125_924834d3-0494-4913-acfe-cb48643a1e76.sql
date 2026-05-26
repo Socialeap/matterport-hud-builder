@@ -1,0 +1,1 @@
+ALTER TABLE public.branding_settings ADD COLUMN IF NOT EXISTS logo_shape text NOT NULL DEFAULT 'circle';
