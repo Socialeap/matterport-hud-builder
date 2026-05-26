@@ -2457,6 +2457,10 @@ export type Database = {
         Args: { _provider_id: string }
         Returns: boolean
       }
+      provider_preview_allowed: {
+        Args: { _provider_id: string }
+        Returns: boolean
+      }
       public_beacon_demand: {
         Args: never
         Returns: {
@@ -2466,6 +2470,7 @@ export type Database = {
         }[]
       }
       purge_expired_ephemeral_assets: { Args: never; Returns: number }
+      purge_stale_trial_studios: { Args: never; Returns: number }
       read_ask_quota_counter: {
         Args: { p_property_uuid: string; p_saved_model_id: string }
         Returns: {
