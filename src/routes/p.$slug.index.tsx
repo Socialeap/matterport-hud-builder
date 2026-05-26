@@ -523,7 +523,7 @@ function PortalPage() {
     features.push(
       `Production Vault add-ons (${vaultAssetCount} curated plugin${vaultAssetCount === 1 ? "" : "s"} available)`,
       "Per-model pricing tiers",
-      "Custom-domain hosting",
+      "Host-Anywhere Portability",
     );
   }
 
