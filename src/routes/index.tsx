@@ -619,7 +619,7 @@ function Index() {
 
           {/* Subheadline */}
           <p className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-white/60 sm:text-lg">
-            Clients brand, download, and own a single HTML presentation folder — optimized for human & AI search — and host it anywhere: their own site, a client site, Netlify, GitHub Pages, or another static hosting setup. No platform-locked presentation page.
+            Launch a 100% white-labeled, self-serve studio that automates your revenue and frees you from manual servicing, while giving clients great features like built-in AI lead generation, flexible hosting, and zero platform lock-in.
           </p>
         </div>
 
