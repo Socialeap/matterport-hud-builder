@@ -748,7 +748,7 @@ function Index() {
             Clients will Love your Studio's  Self-Serve Work Flow
           </h2>
           <p className={`mx-auto mt-3 max-w-2xl text-center text-white/60`}>
-            Hand clients self-serve features — not a service ticket. They configure, brand, and walk away with a single HTML presentation folder they own and can host anywhere.
+            Hand clients self-serve features — not a manual service ticket. They configure, brand, and walk away with a single HTML presentation folder they own and can host anywhere.
           </p>
 
           {featureGroups.map((group) => (
