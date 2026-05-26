@@ -18,6 +18,7 @@ export type Database = {
         Row: {
           created_at: string
           expires_at: string | null
+          grant_reason: string | null
           granted_by: string
           id: string
           provider_id: string
@@ -27,6 +28,7 @@ export type Database = {
         Insert: {
           created_at?: string
           expires_at?: string | null
+          grant_reason?: string | null
           granted_by: string
           id?: string
           provider_id: string
@@ -36,6 +38,7 @@ export type Database = {
         Update: {
           created_at?: string
           expires_at?: string | null
+          grant_reason?: string | null
           granted_by?: string
           id?: string
           provider_id?: string
@@ -2460,6 +2463,10 @@ export type Database = {
       provider_preview_allowed: {
         Args: { _provider_id: string }
         Returns: boolean
+      }
+      provision_trial_grant: {
+        Args: { _tier: Database["public"]["Enums"]["app_tier"] }
+        Returns: string
       }
       public_beacon_demand: {
         Args: never
