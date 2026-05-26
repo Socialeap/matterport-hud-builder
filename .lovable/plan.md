@@ -1,69 +1,38 @@
-## Problem
+## Diagnosis
 
-The admin **Email Test** action in `_authenticated.admin.settings.tsx` calls `sendTransactionalEmail()` → `POST /lovable/email/transactional/send`. Production logs show:
+Yes — the new error is enough to identify the failing area.
 
-```
-POST https://3dps.transcendencemedia.com/lovable/email/transactional/send → 500
-```
+The 500 is coming from the email server routes’ configuration guard, not from template rendering or the email queue database calls. The server logs repeatedly show `Missing required environment variables`, and the route returns `Server configuration error` when required runtime values are unavailable.
 
-Two concrete findings from investigation:
-
-1. **No new row appears in `email_send_log`** for the failing attempts. The route inserts a `pending` row *before* calling `enqueue_email`. Since there is no `pending` row, the handler is throwing earlier than the enqueue step — somewhere in suppression check, unsubscribe-token upsert, or React Email render (`renderEmailHtml`). The handler does not wrap step 4 (render) in a try/catch, so a render error escapes as a raw 500 with no JSON body and no console log we can see.
-2. **The client helper hides the real error.** `src/lib/email/send.ts` does:
-   ```ts
-   if (!response.ok) throw new Error(`Failed to send email: ${response.statusText}`)
-   ```
-   On HTTP/2 via Cloudflare, `statusText` is empty, which is exactly the user-visible toast: `Failed to send email:` (trailing colon, nothing after). It also throws away any JSON `{ error }` body the route does return for its handled failure paths (suppression check, token lookup, enqueue), so we can never see those messages either.
-
-The send route itself (`src/routes/lovable/email/transactional/send.ts`) is otherwise sound: env vars, auth, suppression query, token upsert, and the `enqueue_email` RPC all exist (verified — `enqueue_email`, `read_email_batch`, `delete_email`, `move_to_dlq` are present in the DB).
+I also found two related issues:
+- The app email sender route reads the backend URL from `import.meta.env.VITE_SUPABASE_URL`, which is brittle in server routes and can be missing in the deployed Worker runtime.
+- The queue processor is also failing every few seconds with the same configuration error, so even if an email is enqueued, the dispatcher currently cannot process it.
+- The configured sender domain `notify.3dps.transcendencemedia.com` is in a failed verification state, which will block final delivery after the runtime configuration issue is fixed.
 
 ## Plan
 
-Scope is limited to the admin email tester path. No DB migrations, no template changes, no router or auth changes.
+1. Update the app email server routes to use the project’s existing safe runtime resolver for the backend URL instead of relying directly on `import.meta.env.VITE_SUPABASE_URL`.
+   - Apply this to:
+     - `src/routes/lovable/email/transactional/send.ts`
+     - `src/routes/lovable/email/queue/process.ts`
+     - `src/routes/lovable/email/suppression.ts`
 
-### 1. Make the client surface the real error
-Edit `src/lib/email/send.ts` so when `!response.ok`:
-- Read the response body once as text.
-- Try `JSON.parse` and prefer `body.error`; fall back to the raw text; fall back to `HTTP <status>` if both are empty.
-- Throw `new Error(message)` with that resolved message so the toast in `_authenticated.admin.settings.tsx` (`toast.error(err?.message …)`) shows the real cause.
+2. Improve configuration diagnostics without exposing secrets.
+   - Log which required setting is missing as booleans/names only.
+   - Keep secret values redacted.
+   - Return the same safe user-facing `Server configuration error` response.
 
-No signature change. All other callers (`AdminInvite`, etc.) continue to work and now get clearer errors for free.
+3. Re-run the safest runtime checks.
+   - Verify the send route no longer fails at the initial configuration guard.
+   - Check server logs for the absence of repeated configuration errors.
+   - Query recent email log rows to confirm whether the test reaches enqueue/logging.
 
-### 2. Wrap the render step in the send route
-Edit `src/routes/lovable/email/transactional/send.ts` around section `// 4. Render React Email template…`:
-- Put `React.createElement(...)`, `renderEmailHtml(element)`, `htmlToPlainText(html)`, and subject resolution inside a single `try { … } catch (err) { … }` block.
-- On catch: `console.error('Render failed', { templateName, error: String(err) })`, insert a `failed` row into `email_send_log` with `error_message` set to a truncated `String(err)`, and return `Response.json({ error: 'Failed to render email template', detail: String(err) }, { status: 500 })`.
+4. Address the sender domain activation separately if needed.
+   - Since the domain status is currently failed, final delivery may still fail after code is fixed.
+   - If needed, re-run the built-in email infrastructure setup after the domain is corrected in Cloud → Emails.
 
-This converts the silent raw 500 into a structured JSON error that both the dashboard and `email_send_log` capture.
+## Backend Activation Required
 
-### 3. Re-test from the admin tester
-After the two edits land, trigger the test from `/dashboard/admin/settings` again. Expected outcomes, one of:
-- The toast now shows the real error (e.g. a render-time message, a `enqueue_email` permission error, etc.) and we fix that specific cause in a follow-up.
-- The test succeeds because the prior failure was a transient render edge-case and the new try/catch path also no-ops on success.
+Backend Activation Required: NO for the code fix.
 
-Verification queries (run after retest):
-```sql
-SELECT message_id, template_name, status, error_message, created_at
-FROM email_send_log
-ORDER BY created_at DESC
-LIMIT 5;
-```
-Expect a fresh row for the test attempt with either `status='pending'` (then `sent`/`dlq` from the cron) or `status='failed'` with a concrete `error_message` we can act on.
-
-## Files changed
-
-- `src/lib/email/send.ts` — parse and surface the real server error.
-- `src/routes/lovable/email/transactional/send.ts` — wrap the render block in try/catch, log to `email_send_log`, return JSON 500.
-
-## Backend activation
-
-`Backend Activation Required: NO` — pure code changes. No migration, no Edge Function, no RLS, no secret changes.
-
-## Out of scope (intentionally)
-
-- Email queue dispatcher / cron job.
-- Auth email hook (`auth-email-hook`).
-- Template content or registry membership.
-- Domain / DNS / `SENDER_DOMAIN` review.
-
-If after step 3 the surfaced error points at any of these, we'll open a follow-up task.
+Reason: the primary code issue is runtime configuration access in server routes. However, final email delivery still depends on the existing email domain being successfully verified and enabled in Cloud → Emails.
