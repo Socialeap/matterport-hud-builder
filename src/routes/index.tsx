@@ -212,7 +212,7 @@ const ownershipFeatures = [
     icon: Globe,
     title: "Own the File. Host It Anywhere.",
     description:
-      "Clients brand, download, and own a single HTML presentation folder — optimized for human & AI search — and host it anywhere: their own site, a client site, Netlify, GitHub Pages, or another static hosting setup. No platform-locked presentation page.",
+      "Launch a 100% white-labeled, self-serve studio that automates your revenue and frees you from manual servicing, while giving clients great features like built-in AI lead generation, flexible hosting, and zero platform lock-in.",
   },
   {
     icon: BarChart3,
