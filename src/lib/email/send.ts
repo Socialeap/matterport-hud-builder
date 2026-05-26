@@ -7,7 +7,17 @@ interface SendTransactionalEmailParams {
   templateData?: Record<string, any>;
 }
 
-export async function sendTransactionalEmail(params: SendTransactionalEmailParams) {
+export interface SendEmailResult {
+  success: boolean;
+  queued?: boolean;
+  messageId?: string;
+  reason?: string;
+  error?: string;
+}
+
+export async function sendTransactionalEmail(
+  params: SendTransactionalEmailParams,
+): Promise<SendEmailResult> {
   const { data: { session } } = await supabase.auth.getSession();
   const response = await fetch("/lovable/email/transactional/send", {
     method: "POST",
