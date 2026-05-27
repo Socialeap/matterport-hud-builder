@@ -1,5 +1,5 @@
 import { sendLovableEmail } from '@lovable.dev/email-js'
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { createFileRoute } from '@tanstack/react-router'
 
 const MAX_RETRIES = 5
@@ -18,8 +18,8 @@ function isRateLimited(error: unknown): boolean {
   return error instanceof Error && error.message.includes('429')
 }
 
-// Check if an error is a forbidden (403) response, which means emails are
-// disabled for this project. Retrying won't help — move straight to DLQ.
+// Check if an error is a forbidden (403) response. Retrying won't help.
+// Move straight to DLQ.
 function isForbidden(error: unknown): boolean {
   if (error && typeof error === 'object' && 'status' in error) {
     return (error as { status: number }).status === 403
@@ -35,9 +35,8 @@ function getRetryAfterSeconds(error: unknown): number {
   return 60
 }
 
-// Move a message to the dead letter queue and log the reason.
 async function moveToDlq(
-  supabase: any,
+  supabase: SupabaseClient<any, any>,
   queue: string,
   msg: { msg_id: number; message: Record<string, unknown> },
   reason: string
@@ -66,29 +65,13 @@ export const Route = createFileRoute("/lovable/email/queue/process")({
     handlers: {
       POST: async ({ request }) => {
         const apiKey = process.env.LOVABLE_API_KEY
-        const supabaseUrl =
-          process.env.SUPABASE_URL ||
-          process.env.VITE_SUPABASE_URL ||
-          import.meta.env.VITE_SUPABASE_URL
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
         const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
         if (!apiKey || !supabaseUrl || !supabaseServiceKey) {
-          console.error('Missing required environment variables', {
-            has_lovable_api_key: !!apiKey,
-            has_supabase_url: !!supabaseUrl,
-            has_service_role_key: !!supabaseServiceKey,
-          })
+          console.error('Missing required environment variables')
           return Response.json(
-            {
-              error: 'Server configuration error',
-              detail: `Missing: ${[
-                !apiKey && 'LOVABLE_API_KEY',
-                !supabaseUrl && 'SUPABASE_URL',
-                !supabaseServiceKey && 'SUPABASE_SERVICE_ROLE_KEY',
-              ]
-                .filter(Boolean)
-                .join(', ')}`,
-            },
+            { error: 'Server configuration error' },
             { status: 500 }
           )
         }
@@ -105,7 +88,7 @@ export const Route = createFileRoute("/lovable/email/queue/process")({
           return Response.json({ error: 'Forbidden' }, { status: 403 })
         }
 
-        const supabase: any = createClient(supabaseUrl, supabaseServiceKey)
+        const supabase: SupabaseClient<any, any> = createClient(supabaseUrl, supabaseServiceKey)
 
         // 1. Check rate-limit cooldown and read queue config
         const { data: state } = await supabase
@@ -307,10 +290,11 @@ export const Route = createFileRoute("/lovable/email/queue/process")({
                 return Response.json({ processed: totalProcessed, stopped: 'rate_limited' })
               }
 
-              // 403 means emails are disabled for this project — retrying won't help.
+              // 403s are permanent configuration or authorization failures for this
+              // message, so move straight to DLQ and stop processing the rest of the batch.
               if (isForbidden(error)) {
-                await moveToDlq(supabase, queue, msg, 'Emails disabled for this project')
-                return Response.json({ processed: totalProcessed, stopped: 'emails_disabled' })
+                await moveToDlq(supabase, queue, msg, errorMsg.slice(0, 1000))
+                return Response.json({ processed: totalProcessed, stopped: 'forbidden' })
               }
 
               // Log non-429 failures to track real retry attempts.
