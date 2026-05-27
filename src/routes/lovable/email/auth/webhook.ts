@@ -31,7 +31,7 @@ const EMAIL_TEMPLATES: Record<string, React.ComponentType<any>> = {
 }
 
 // Configuration
-const SITE_NAME = "matterport-hud-builder"
+const SITE_NAME = "3DPS"
 const SENDER_DOMAIN = "notify.3dps.transcendencemedia.com"
 const ROOT_DOMAIN = "3dps.transcendencemedia.com"
 const FROM_DOMAIN = "3dps.transcendencemedia.com"
