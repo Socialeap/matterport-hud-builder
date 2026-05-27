@@ -34,6 +34,7 @@ import {
   Shield,
   Store,
   ClipboardCheck,
+  MessageSquare,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -226,6 +227,24 @@ export function DashboardSidebar() {
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border p-4">
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <a
+                href="https://www.transcendencemedia.com/3dps-feedback"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mb-3 flex items-center gap-2 text-xs font-medium text-sidebar-foreground/80 hover:text-sidebar-foreground"
+              >
+                <MessageSquare className="size-3.5" />
+                Feedback
+              </a>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              Use our feedback form to report any issues.
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
         <p className="truncate text-xs text-sidebar-foreground/70">
           {user?.email}
         </p>
