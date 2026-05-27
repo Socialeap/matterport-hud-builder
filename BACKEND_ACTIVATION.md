@@ -2,11 +2,41 @@
 
 ## Status
 
-Backend Activation Required: **NO** (all pending activations applied as of 2026-05-26)
+Backend Activation Required: **YES** — sender domain `notify.3dps.transcendencemedia.com` must be re-verified in **Cloud → Emails** before any email (auth or transactional) can be delivered. All code/queue-side activations are applied as of 2026-05-27.
 
 ---
 
 ## Completed Activations
+
+### Email Queue Processor Repair (2026-05-27) — VERIFIED
+
+**Symptom:** Admin Portal email test stuck at `pending` / "Timed out waiting for delivery confirmation". `pgmq.q_transactional_emails` accumulated messages; every cron call to `/lovable/email/queue/process` returned `403`.
+
+**Root cause:** The vault secret `email_queue_service_role_key` used by the `process-email-queue` pg_cron job no longer matched the runtime `SUPABASE_SERVICE_ROLE_KEY`, so the queue route rejected every cron call with `403` and queued emails were never drained.
+
+**Action applied:** Re-ran managed email infrastructure setup (idempotent). This refreshed the vault secret and re-scheduled the `process-email-queue` cron job. No destructive SQL, no RLS changes, no schema changes.
+
+**Verification:**
+- `cron.job` shows `process-email-queue` active on a 5-second schedule.
+- `net._http_response` now shows `200` responses from the queue processor (previously 100% `403`).
+- Stuck `pending` row transitioned to a terminal status (`dlq` with `error_message = "Emails disabled for this project"`), confirming the processor is draining the queue and reaching the email API.
+
+### Remaining Activation Required — Sender Domain Re-Verification
+
+**Blocker:** The next-stage error revealed by the now-working queue is `Emails disabled for this project`. This is returned because `notify.3dps.transcendencemedia.com` is in a failed DNS-verification state ("provisioning timed out — domain was not fully verified within the allowed window"). Until the sender domain is re-verified, every queued email will move straight to DLQ.
+
+**Required action (manual, in Lovable UI — NOT a SQL change):**
+1. Open **Cloud → Emails → Manage Domains** for `notify.3dps.transcendencemedia.com`.
+2. Click **Rerun Setup**. If that fails, click **Verify Domain**.
+3. If both still fail, delete the domain and re-add it via the email setup dialog, then wait up to 72 hours for DNS propagation.
+
+**Verification after re-verification:**
+- Domain status reports `active` (not `failed`).
+- A new admin test email logs `status = sent` in `public.email_send_log` and arrives in the recipient inbox.
+
+**Safety note:** No destructive SQL is required. Do not weaken RLS, do not modify cron SQL by hand, do not edit the vault secret manually — if drift recurs, re-run the managed email infrastructure setup instead.
+
+---
 
 ### Strategy A: 30-Day Trial with First Presentation Free (2026-05-26) — VERIFIED
 
