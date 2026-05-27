@@ -17,7 +17,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Upload, Trash2, Download, BarChart3, ExternalLink } from "lucide-react";
+import { Loader2, Upload, Trash2, Download, BarChart3, ExternalLink, MessageSquare } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
@@ -284,6 +285,25 @@ function AgentDashboardPage() {
             >
               ← Back to Builder
             </Button>
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="sm" asChild>
+                    <a
+                      href="https://www.transcendencemedia.com/3dps-feedback"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <MessageSquare className="size-4" />
+                      Feedback
+                    </a>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Use our feedback form to report any issues.
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             <AccountMenu className="ml-1" />
           </div>
         </div>
