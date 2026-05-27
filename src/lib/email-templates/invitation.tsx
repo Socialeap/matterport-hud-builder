@@ -4,7 +4,7 @@ import {
 } from '@react-email/components'
 import type { TemplateEntry } from './registry'
 
-const SITE_NAME = "matterport-hud-builder"
+const SITE_NAME = "3DPS"
 
 interface InvitationEmailProps {
   providerName?: string

@@ -5,7 +5,7 @@ import { TEMPLATES } from '@/lib/email-templates/registry'
 import { htmlToPlainText, renderEmailHtml } from '@/lib/email/render'
 
 // Configuration baked in at scaffold time
-const SITE_NAME = "matterport-hud-builder"
+const SITE_NAME = "3DPS"
 // SENDER_DOMAIN is the verified sender subdomain FQDN (e.g., "notify.example.com").
 // It MUST match the subdomain delegated to Lovable's nameservers. NEVER use the root domain.
 const SENDER_DOMAIN = "notify.3dps.transcendencemedia.com"

@@ -18,7 +18,7 @@ const EMAIL_TEMPLATES: Record<string, React.ComponentType<any>> = {
 }
 
 // Configuration
-const SITE_NAME = "matterport-hud-builder"
+const SITE_NAME = "3DPS"
 const ROOT_DOMAIN = "3dps.transcendencemedia.com"
 
 // Sample data for preview mode ONLY (not used in actual email sending).
