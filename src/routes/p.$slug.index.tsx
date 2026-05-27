@@ -144,7 +144,7 @@ export const Route = createFileRoute("/p/$slug/")({
         })
       | null;
     const brandName = (b?.brand_name && b.brand_name.trim()) || "3D Presentation Studio";
-    const title = `${brandName} — Branded 3D Property Tours`;
+    const title = `${brandName} — Customize your 3D Tours!`;
     const tagline = (b?.tagline && b.tagline.trim()) || null;
     const description =
       tagline ??
