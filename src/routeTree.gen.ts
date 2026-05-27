@@ -63,6 +63,8 @@ import { Route as AuthenticatedAdminServiceMatchesIndexRouteImport } from './rou
 import { Route as LovableEmailTransactionalSendRouteImport } from './routes/lovable/email/transactional/send'
 import { Route as LovableEmailTransactionalPreviewRouteImport } from './routes/lovable/email/transactional/preview'
 import { Route as LovableEmailQueueProcessRouteImport } from './routes/lovable/email/queue/process'
+import { Route as LovableEmailAuthWebhookRouteImport } from './routes/lovable/email/auth/webhook'
+import { Route as LovableEmailAuthPreviewRouteImport } from './routes/lovable/email/auth/preview'
 import { Route as AuthenticatedDashboardVaultTemplatesRouteImport } from './routes/_authenticated.dashboard.vault.templates'
 import { Route as AuthenticatedAgentDashboardWorkOrdersIdRouteImport } from './routes/_authenticated.agent-dashboard.work-orders.$id'
 import { Route as AuthenticatedAdminServiceMatchesMatchTokenRouteImport } from './routes/_authenticated.admin.service-matches.$matchToken'
@@ -360,6 +362,16 @@ const LovableEmailQueueProcessRoute =
     path: '/lovable/email/queue/process',
     getParentRoute: () => rootRouteImport,
   } as any)
+const LovableEmailAuthWebhookRoute = LovableEmailAuthWebhookRouteImport.update({
+  id: '/lovable/email/auth/webhook',
+  path: '/lovable/email/auth/webhook',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LovableEmailAuthPreviewRoute = LovableEmailAuthPreviewRouteImport.update({
+  id: '/lovable/email/auth/preview',
+  path: '/lovable/email/auth/preview',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedDashboardVaultTemplatesRoute =
   AuthenticatedDashboardVaultTemplatesRouteImport.update({
     id: '/templates',
@@ -431,6 +443,8 @@ export interface FileRoutesByFullPath {
   '/admin/service-matches/$matchToken': typeof AuthenticatedAdminServiceMatchesMatchTokenRoute
   '/agent-dashboard/work-orders/$id': typeof AuthenticatedAgentDashboardWorkOrdersIdRoute
   '/dashboard/vault/templates': typeof AuthenticatedDashboardVaultTemplatesRoute
+  '/lovable/email/auth/preview': typeof LovableEmailAuthPreviewRoute
+  '/lovable/email/auth/webhook': typeof LovableEmailAuthWebhookRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
   '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
   '/lovable/email/transactional/send': typeof LovableEmailTransactionalSendRoute
@@ -485,6 +499,8 @@ export interface FileRoutesByTo {
   '/admin/service-matches/$matchToken': typeof AuthenticatedAdminServiceMatchesMatchTokenRoute
   '/agent-dashboard/work-orders/$id': typeof AuthenticatedAgentDashboardWorkOrdersIdRoute
   '/dashboard/vault/templates': typeof AuthenticatedDashboardVaultTemplatesRoute
+  '/lovable/email/auth/preview': typeof LovableEmailAuthPreviewRoute
+  '/lovable/email/auth/webhook': typeof LovableEmailAuthWebhookRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
   '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
   '/lovable/email/transactional/send': typeof LovableEmailTransactionalSendRoute
@@ -545,6 +561,8 @@ export interface FileRoutesById {
   '/_authenticated/admin/service-matches/$matchToken': typeof AuthenticatedAdminServiceMatchesMatchTokenRoute
   '/_authenticated/agent-dashboard/work-orders/$id': typeof AuthenticatedAgentDashboardWorkOrdersIdRoute
   '/_authenticated/dashboard/vault/templates': typeof AuthenticatedDashboardVaultTemplatesRoute
+  '/lovable/email/auth/preview': typeof LovableEmailAuthPreviewRoute
+  '/lovable/email/auth/webhook': typeof LovableEmailAuthWebhookRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
   '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
   '/lovable/email/transactional/send': typeof LovableEmailTransactionalSendRoute
@@ -605,6 +623,8 @@ export interface FileRouteTypes {
     | '/admin/service-matches/$matchToken'
     | '/agent-dashboard/work-orders/$id'
     | '/dashboard/vault/templates'
+    | '/lovable/email/auth/preview'
+    | '/lovable/email/auth/webhook'
     | '/lovable/email/queue/process'
     | '/lovable/email/transactional/preview'
     | '/lovable/email/transactional/send'
@@ -659,6 +679,8 @@ export interface FileRouteTypes {
     | '/admin/service-matches/$matchToken'
     | '/agent-dashboard/work-orders/$id'
     | '/dashboard/vault/templates'
+    | '/lovable/email/auth/preview'
+    | '/lovable/email/auth/webhook'
     | '/lovable/email/queue/process'
     | '/lovable/email/transactional/preview'
     | '/lovable/email/transactional/send'
@@ -718,6 +740,8 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/service-matches/$matchToken'
     | '/_authenticated/agent-dashboard/work-orders/$id'
     | '/_authenticated/dashboard/vault/templates'
+    | '/lovable/email/auth/preview'
+    | '/lovable/email/auth/webhook'
     | '/lovable/email/queue/process'
     | '/lovable/email/transactional/preview'
     | '/lovable/email/transactional/send'
@@ -751,6 +775,8 @@ export interface RootRouteChildren {
   LovableEmailSuppressionRoute: typeof LovableEmailSuppressionRoute
   MarketplaceFeedbackTokenRoute: typeof MarketplaceFeedbackTokenRoute
   WorkOrdersRateTokenRoute: typeof WorkOrdersRateTokenRoute
+  LovableEmailAuthPreviewRoute: typeof LovableEmailAuthPreviewRoute
+  LovableEmailAuthWebhookRoute: typeof LovableEmailAuthWebhookRoute
   LovableEmailQueueProcessRoute: typeof LovableEmailQueueProcessRoute
   LovableEmailTransactionalPreviewRoute: typeof LovableEmailTransactionalPreviewRoute
   LovableEmailTransactionalSendRoute: typeof LovableEmailTransactionalSendRoute
@@ -1136,6 +1162,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LovableEmailQueueProcessRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/lovable/email/auth/webhook': {
+      id: '/lovable/email/auth/webhook'
+      path: '/lovable/email/auth/webhook'
+      fullPath: '/lovable/email/auth/webhook'
+      preLoaderRoute: typeof LovableEmailAuthWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/lovable/email/auth/preview': {
+      id: '/lovable/email/auth/preview'
+      path: '/lovable/email/auth/preview'
+      fullPath: '/lovable/email/auth/preview'
+      preLoaderRoute: typeof LovableEmailAuthPreviewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated/dashboard/vault/templates': {
       id: '/_authenticated/dashboard/vault/templates'
       path: '/templates'
@@ -1338,6 +1378,8 @@ const rootRouteChildren: RootRouteChildren = {
   LovableEmailSuppressionRoute: LovableEmailSuppressionRoute,
   MarketplaceFeedbackTokenRoute: MarketplaceFeedbackTokenRoute,
   WorkOrdersRateTokenRoute: WorkOrdersRateTokenRoute,
+  LovableEmailAuthPreviewRoute: LovableEmailAuthPreviewRoute,
+  LovableEmailAuthWebhookRoute: LovableEmailAuthWebhookRoute,
   LovableEmailQueueProcessRoute: LovableEmailQueueProcessRoute,
   LovableEmailTransactionalPreviewRoute: LovableEmailTransactionalPreviewRoute,
   LovableEmailTransactionalSendRoute: LovableEmailTransactionalSendRoute,
