@@ -1,38 +1,64 @@
 ## Diagnosis
 
-Yes — the new error is enough to identify the failing area.
+The admin test now successfully enqueues the email, but the queue processor is not draining it.
 
-The 500 is coming from the email server routes’ configuration guard, not from template rendering or the email queue database calls. The server logs repeatedly show `Missing required environment variables`, and the route returns `Server configuration error` when required runtime values are unavailable.
+Evidence found:
+- The latest send route returned `200` and logged `Transactional email enqueued`.
+- `email_send_log` shows the latest message stuck at `pending`.
+- `pgmq.q_transactional_emails` still contains queued messages.
+- The scheduled queue processor is firing every 5 seconds, but every call to `/lovable/email/queue/process` returns `403`.
+- The configured sender domain `notify.3dps.transcendencemedia.com` is still in failed verification state, so even after queue auth is fixed, final delivery may remain blocked until the email domain is repaired in Cloud → Emails.
 
-I also found two related issues:
-- The app email sender route reads the backend URL from `import.meta.env.VITE_SUPABASE_URL`, which is brittle in server routes and can be missing in the deployed Worker runtime.
-- The queue processor is also failing every few seconds with the same configuration error, so even if an email is enqueued, the dispatcher currently cannot process it.
-- The configured sender domain `notify.3dps.transcendencemedia.com` is in a failed verification state, which will block final delivery after the runtime configuration issue is fixed.
+## Root Cause
 
-## Plan
+The immediate failure is not the admin UI or template rendering. The background queue processor is being called, but it rejects the cron request with `403`, so queued emails never reach the send attempt stage.
 
-1. Update the app email server routes to use the project’s existing safe runtime resolver for the backend URL instead of relying directly on `import.meta.env.VITE_SUPABASE_URL`.
-   - Apply this to:
-     - `src/routes/lovable/email/transactional/send.ts`
-     - `src/routes/lovable/email/queue/process.ts`
-     - `src/routes/lovable/email/suppression.ts`
+Most likely cause: the stored cron credential / service-role secret used by the email queue job is stale or mismatched with the app runtime. This is consistent with the repeated `403` responses and the guidance for recovering queue processors after key rotation or infrastructure drift.
 
-2. Improve configuration diagnostics without exposing secrets.
-   - Log which required setting is missing as booleans/names only.
-   - Keep secret values redacted.
-   - Return the same safe user-facing `Server configuration error` response.
+## Safe Fix Plan
 
-3. Re-run the safest runtime checks.
-   - Verify the send route no longer fails at the initial configuration guard.
-   - Check server logs for the absence of repeated configuration errors.
-   - Query recent email log rows to confirm whether the test reaches enqueue/logging.
+1. **Refresh email queue infrastructure using the existing managed setup**
+   - Re-run the email infrastructure setup for this project.
+   - This is the safest path because it is designed to be idempotent and refreshes the queue cron job and stored queue credential without hand-editing cron SQL or secrets.
+   - Do not manually rewrite queue infrastructure SQL.
 
-4. Address the sender domain activation separately if needed.
-   - Since the domain status is currently failed, final delivery may still fail after code is fixed.
-   - If needed, re-run the built-in email infrastructure setup after the domain is corrected in Cloud → Emails.
+2. **Verify the cron job is repaired**
+   - Confirm the `process-email-queue` job still exists and is active.
+   - Confirm recent cron HTTP responses stop returning `403`.
+   - Confirm the queue table count decreases or the stuck pending message receives a later terminal log entry (`sent`, `failed`, or `dlq`).
+
+3. **Improve app-side diagnostics only if needed**
+   - If the repaired processor reaches the send attempt and fails, keep changes narrow:
+     - Surface the latest queue failure in the Admin Portal status panel instead of only timing out as `pending`.
+     - Add safe non-secret diagnostics to the queue route logs if current logs are insufficient.
+   - Avoid UI redesigns or unrelated route changes.
+
+4. **Handle sender-domain failure separately**
+   - Since `notify.3dps.transcendencemedia.com` is currently failed, email delivery may still fail after the processor starts working.
+   - The expected next-stage error should become visible in `email_send_log` once the processor can run.
+   - If delivery is blocked by domain verification, the required action is to repair/re-run sender domain setup in Cloud → Emails, not to bypass the email system.
+
+5. **Update `BACKEND_ACTIVATION.md`**
+   - Record that backend activation is required for the email queue repair.
+   - Include the exact activation action, verification checks, expected results, and note that no destructive database changes are intended.
+
+## Files/Areas Expected to Change
+
+- `BACKEND_ACTIVATION.md`
+- Possibly `src/routes/_authenticated.admin.settings.tsx` only if clearer queue-failure diagnostics are needed after backend verification
+- Possibly `src/routes/lovable/email/queue/process.ts` only if runtime logs need safer/fuller non-secret error reporting
 
 ## Backend Activation Required
 
-Backend Activation Required: NO for the code fix.
+Yes.
 
-Reason: the primary code issue is runtime configuration access in server routes. However, final email delivery still depends on the existing email domain being successfully verified and enabled in Cloud → Emails.
+Required action:
+- Re-run the managed email infrastructure setup to refresh the queue processor cron job and queue credential.
+
+Verification:
+- Check cron job `process-email-queue` is active.
+- Check recent queue processor calls no longer return `403`.
+- Check queued app emails move out of indefinite `pending` into `sent`, `failed`, or `dlq` with a specific error.
+
+Expected result:
+- The Admin Portal should no longer time out while the email remains only `pending`; it should either confirm delivery or show the real delivery blocker, likely the currently failed sender domain verification.
