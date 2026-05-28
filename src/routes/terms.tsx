@@ -15,7 +15,7 @@ export const Route = createFileRoute("/terms")({
         content:
           "License terms, payment terms, intellectual property protections, and acceptable use rules for the 3DPS platform.",
       },
-      { property: "og:url", content: "https://3dps.transcendencemedia.com/terms" },
+      { property: "og:url", content: "https://www.frontiers3d.com/terms" },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:title", content: "Terms of Service — 3D Presentation Studio" },
@@ -25,7 +25,7 @@ export const Route = createFileRoute("/terms")({
           "License terms, payment terms, intellectual property protections, and acceptable use rules for the 3DPS platform.",
       },
     ],
-    links: [{ rel: "canonical", href: "https://3dps.transcendencemedia.com/terms" }],
+    links: [{ rel: "canonical", href: "https://www.frontiers3d.com/terms" }],
   }),
   component: TermsPage,
 });

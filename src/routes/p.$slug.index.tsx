@@ -149,8 +149,8 @@ export const Route = createFileRoute("/p/$slug/")({
     const description =
       tagline ??
       `Explore branded interactive Matterport 3D property tour presentations by ${brandName}.`;
-    const url = `https://3dps.transcendencemedia.com/p/${ctx.params.slug}`;
-    const image = b?.hero_bg_url || b?.logo_url || "https://3dps.transcendencemedia.com/og-3d-presentation-studio.png";
+    const url = `https://www.frontiers3d.com/p/${ctx.params.slug}`;
+    const image = b?.hero_bg_url || b?.logo_url || "https://www.frontiers3d.com/og-3d-presentation-studio.png";
 
     const localBusiness: Record<string, unknown> = {
       "@context": "https://schema.org",

@@ -25,7 +25,7 @@ export const Route = createFileRoute("/card/$slug")({
 
   head: ({ params, loaderData }) => {
     const name = loaderData?.brand_name || "3D Presentation";
-    const url = `https://3dps.transcendencemedia.com/card/${params.slug}`;
+    const url = `https://www.frontiers3d.com/card/${params.slug}`;
     return {
       meta: [
         { title: `${name} — Calling Card` },

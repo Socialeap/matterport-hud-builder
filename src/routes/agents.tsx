@@ -68,7 +68,7 @@ type ServicePreference = "essential" | "preferable";
 
 type MarketplaceSpecialty = Database["public"]["Enums"]["marketplace_specialty"];
 
-const SITE_URL = "https://3dps.transcendencemedia.com";
+const SITE_URL = "https://www.frontiers3d.com";
 const OG_TITLE = "Find a 3D Presentation Studio for Your Listings — For Agents & Property Managers";
 const OG_DESC =
   "Browse the directory of Matterport Service Providers who deliver branded, interactive 3D tour presentations for the properties you market.";

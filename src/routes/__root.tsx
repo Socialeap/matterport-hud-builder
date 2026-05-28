@@ -1,4 +1,15 @@
+/**
+ * Frontiers3D root layout.
+ *
+ * Architectural note: this platform is intentionally **spatial-agnostic**.
+ * Matterport is the current primary 3D source, but the presentation engine,
+ * HUD, AI Concierge, and data model are designed to accept any spatial
+ * source — including Google Street View panoramas and Genie 3 generative
+ * world coordinates — without core rewrites. Future rollouts will add
+ * adapters behind a unified spatial-source interface.
+ */
 import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
+
 import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider } from "@/hooks/use-auth";
@@ -34,15 +45,16 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "3D Presentation Studio" },
-      { name: "description", content: "White-label Matterport 3D tour presentation platform by Transcendence Media." },
+      { title: "Frontiers3D" },
+      { name: "description", content: "Frontiers3D — a spatial-agnostic 3D presentation platform by Transcendence Media. Build branded, interactive property and world experiences." },
       { name: "author", content: "Transcendence Media" },
       { property: "og:type", content: "website" },
-      { property: "og:site_name", content: "3D Presentation Studio" },
-      { property: "og:title", content: "3D Presentation Studio" },
-      { property: "og:description", content: "White-label Matterport 3D tour presentation platform by Transcendence Media." },
+      { property: "og:site_name", content: "Frontiers3D" },
+      { property: "og:title", content: "Frontiers3D" },
+      { property: "og:description", content: "Spatial-agnostic 3D presentation platform — Matterport today; Google Street View and Genie 3 generative worlds next." },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "google-site-verification", content: "jjiVIwqcuUy5j_XMvbPFCMGBaNtSUGGQT5PGrcVZXDo" },
+
     ],
     links: [
       { rel: "stylesheet", href: appCss },
@@ -57,17 +69,18 @@ export const Route = createRootRoute({
           "@graph": [
             {
               "@type": "Organization",
-              "@id": "https://3dps.transcendencemedia.com/#organization",
+              "@id": "https://www.frontiers3d.com/#organization",
               name: "Transcendence Media",
-              url: "https://3dps.transcendencemedia.com",
-              logo: "https://3dps.transcendencemedia.com/favicon.png",
+              url: "https://www.frontiers3d.com",
+              logo: "https://www.frontiers3d.com/favicon.png",
             },
             {
               "@type": "WebSite",
-              "@id": "https://3dps.transcendencemedia.com/#website",
-              name: "3D Presentation Studio",
-              url: "https://3dps.transcendencemedia.com",
-              publisher: { "@id": "https://3dps.transcendencemedia.com/#organization" },
+              "@id": "https://www.frontiers3d.com/#website",
+              name: "Frontiers3D",
+
+              url: "https://www.frontiers3d.com",
+              publisher: { "@id": "https://www.frontiers3d.com/#organization" },
             },
           ],
         }),

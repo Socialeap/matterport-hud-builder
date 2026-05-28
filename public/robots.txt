@@ -10,4 +10,4 @@ Disallow: /unsubscribe
 Disallow: /work-orders/
 Disallow: /marketplace/
 
-Sitemap: https://3dps.transcendencemedia.com/sitemap.xml
+Sitemap: https://www.frontiers3d.com/sitemap.xml

@@ -1,4 +1,21 @@
+/**
+ * Frontiers3D landing route.
+ *
+ * Architectural note — SPATIAL-AGNOSTIC BY DESIGN:
+ * The Frontiers3D platform is intentionally built so the presentation engine,
+ * HUD overlays, AI Concierge, and underlying data model do not assume
+ * Matterport as the only 3D source. Matterport is the current primary
+ * adapter, but the architecture is prepared to absorb additional spatial
+ * sources without core rewrites, including:
+ *   - Google Street View panoramas (real-world geo-anchored imagery)
+ *   - Genie 3 generative worlds (interactive world-model coordinates)
+ *   - Future photogrammetry / NeRF / Gaussian splat backends
+ * Marketing copy may emphasize Matterport today, but new feature work
+ * should be authored against the generic spatial-source contract, not
+ * Matterport-specific assumptions.
+ */
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
+
 import { useAuth } from "@/hooks/use-auth";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -56,7 +73,7 @@ import { useStripeCheckout } from "@/hooks/useStripeCheckout";
 import { PaymentTestModeBanner } from "@/components/PaymentTestModeBanner";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
-const SITE_URL = "https://3dps.transcendencemedia.com";
+const SITE_URL = "https://www.frontiers3d.com";
 const OG_TITLE = "White-Label Matterport Tour Studio for MSPs";
 const OG_DESC =
   "Spin up your white-label Matterport studio. Clients customize and download a self-contained 3D tour HTML — one-time, no subscriptions.";
