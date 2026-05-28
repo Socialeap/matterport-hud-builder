@@ -2,7 +2,7 @@
  * Centralized helper for generating public-facing URLs.
  *
  * Rules:
- * - Default to the canonical production domain (3dps.transcendencemedia.com)
+ * - Default to the canonical production domain (www.frontiers3d.com)
  *   for all MSP-facing studio + presentation links, regardless of where the
  *   app is currently being viewed (preview, lovable.app subdomain, etc.).
  * - Pro-tier MSPs with a verified `custom_domain` get full whitelabel — their

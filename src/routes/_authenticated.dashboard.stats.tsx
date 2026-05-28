@@ -243,7 +243,7 @@ function StatsPage() {
     );
   }
 
-  const studioUrl = slug ? `https://3dps.transcendencemedia.com/p/${slug}` : null;
+  const studioUrl = slug ? `https://www.frontiers3d.com/p/${slug}` : null;
 
   return (
     <div className="mx-auto max-w-5xl space-y-8">
