@@ -57,17 +57,17 @@ export const Route = createRootRoute({
           "@graph": [
             {
               "@type": "Organization",
-              "@id": "https://3dps.transcendencemedia.com/#organization",
+              "@id": "https://www.frontiers3d.com/#organization",
               name: "Transcendence Media",
-              url: "https://3dps.transcendencemedia.com",
-              logo: "https://3dps.transcendencemedia.com/favicon.png",
+              url: "https://www.frontiers3d.com",
+              logo: "https://www.frontiers3d.com/favicon.png",
             },
             {
               "@type": "WebSite",
-              "@id": "https://3dps.transcendencemedia.com/#website",
+              "@id": "https://www.frontiers3d.com/#website",
               name: "3D Presentation Studio",
-              url: "https://3dps.transcendencemedia.com",
-              publisher: { "@id": "https://3dps.transcendencemedia.com/#organization" },
+              url: "https://www.frontiers3d.com",
+              publisher: { "@id": "https://www.frontiers3d.com/#organization" },
             },
           ],
         }),

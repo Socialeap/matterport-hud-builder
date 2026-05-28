@@ -12,7 +12,7 @@
  *   `{ scope: "platform" }` to enforce this.
  */
 
-const FALLBACK_PRODUCTION_DOMAIN = "https://3dps.transcendencemedia.com";
+const FALLBACK_PRODUCTION_DOMAIN = "https://www.frontiers3d.com";
 
 function getCanonicalPlatformUrl(): string {
   const envUrl = (import.meta as unknown as { env?: Record<string, string | undefined> })
@@ -54,7 +54,7 @@ export function getPublicBaseUrl(opts: PublicUrlOptions = {}): string {
 /**
  * Build a public studio URL for a given slug. Honors Pro custom domains.
  * Examples:
- *   buildStudioUrl("acme") -> "https://3dps.transcendencemedia.com/p/acme"
+ *   buildStudioUrl("acme") -> "https://www.frontiers3d.com/p/acme"
  *   buildStudioUrl("acme", { tier: "pro", customDomain: "tours.acme.com" })
  *     -> "https://tours.acme.com/p/acme"
  */

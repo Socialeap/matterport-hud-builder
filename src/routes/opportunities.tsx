@@ -17,7 +17,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
-const SITE_URL = "https://3dps.transcendencemedia.com";
+const SITE_URL = "https://www.frontiers3d.com";
 const PAGE_URL = `${SITE_URL}/opportunities`;
 const OG_TITLE = "Local Demand Board for Matterport Service Providers";
 const OG_DESC =

@@ -15,7 +15,7 @@ export const Route = createFileRoute("/privacy")({
         content:
           "How 3DPS handles account data, branding assets, payment metadata, lead capture, and third-party integrations.",
       },
-      { property: "og:url", content: "https://3dps.transcendencemedia.com/privacy" },
+      { property: "og:url", content: "https://www.frontiers3d.com/privacy" },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:title", content: "Privacy Policy — 3D Presentation Studio" },
@@ -25,7 +25,7 @@ export const Route = createFileRoute("/privacy")({
           "How 3DPS handles account data, branding assets, payments, lead capture, and third-party integrations.",
       },
     ],
-    links: [{ rel: "canonical", href: "https://3dps.transcendencemedia.com/privacy" }],
+    links: [{ rel: "canonical", href: "https://www.frontiers3d.com/privacy" }],
   }),
   component: PrivacyPage,
 });
