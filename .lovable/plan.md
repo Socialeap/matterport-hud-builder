@@ -1,64 +1,40 @@
-## Diagnosis
+# Domain Migration → Frontiers3D + Spatial-Agnostic Note
 
-The admin test now successfully enqueues the email, but the queue processor is not draining it.
+Shift the platform's canonical web identity from `3dps.transcendencemedia.com` to `www.frontiers3d.com` across SEO surfaces, and document the spatial-agnostic architecture direction. **No DB schema, no edge functions, no email templates, no backend endpoints touched.**
 
-Evidence found:
-- The latest send route returned `200` and logged `Transactional email enqueued`.
-- `email_send_log` shows the latest message stuck at `pending`.
-- `pgmq.q_transactional_emails` still contains queued messages.
-- The scheduled queue processor is firing every 5 seconds, but every call to `/lovable/email/queue/process` returns `403`.
-- The configured sender domain `notify.3dps.transcendencemedia.com` is still in failed verification state, so even after queue auth is fixed, final delivery may remain blocked until the email domain is repaired in Cloud → Emails.
+## Scope
 
-## Root Cause
+### 1. Core constant
+- `src/routes/index.tsx` line 59: `SITE_URL` → `"https://www.frontiers3d.com"`. All derived values (`OG_IMAGE`, `og:url`, canonical, JSON-LD `url`) update automatically since they reference `SITE_URL`.
 
-The immediate failure is not the admin UI or template rendering. The background queue processor is being called, but it rejects the cron request with `403`, so queued emails never reach the send attempt stage.
+### 2. SEO surfaces (canonical, og:, JSON-LD)
+- `src/routes/__root.tsx` — JSON-LD Organization/WebSite `@id`, `url`, and `logo` fields → `https://www.frontiers3d.com`. Update `name` from "3D Presentation Studio" to "Frontiers3D" and `og:site_name` / default title accordingly.
+- `src/routes/sitemap[.]xml.ts` — `BASE_URL` → `https://www.frontiers3d.com`.
+- `public/robots.txt` — `Sitemap:` line → `https://www.frontiers3d.com/sitemap.xml`.
+- `src/lib/public-url.ts` — `FALLBACK_PRODUCTION_DOMAIN` + doc comments → `https://www.frontiers3d.com`. (This is the canonical platform-URL builder used by invitations, OAuth, password resets, studio links.)
+- `src/routes/privacy.tsx` + `src/routes/terms.tsx` — canonical/og:url meta entries → frontiers3d.com.
+- `src/routes/p.$slug.index.tsx`, `src/routes/card.$slug.tsx`, `src/routes/agents.tsx`, `src/routes/opportunities.tsx` — any hardcoded `3dps.transcendencemedia.com` in head meta → frontiers3d.com.
 
-Most likely cause: the stored cron credential / service-role secret used by the email queue job is stale or mismatched with the app runtime. This is consistent with the repeated `403` responses and the guidance for recovering queue processors after key rotation or infrastructure drift.
+### 3. Architectural comment
+Add a top-of-file block comment in `src/routes/index.tsx` (and a brief mirror in `src/routes/__root.tsx`) noting:
+> The platform is intentionally **spatial-agnostic**. Matterport is the current primary 3D source, but the presentation engine, HUD, AI Concierge, and data model are designed to accept any spatial source — including Google Street View panoramas and Genie 3 generative world coordinates — without core rewrites. Future work will add adapters under a unified spatial-source interface.
 
-## Safe Fix Plan
+## Explicitly NOT in scope (will leave alone)
 
-1. **Refresh email queue infrastructure using the existing managed setup**
-   - Re-run the email infrastructure setup for this project.
-   - This is the safest path because it is designed to be idempotent and refreshes the queue cron job and stored queue credential without hand-editing cron SQL or secrets.
-   - Do not manually rewrite queue infrastructure SQL.
+- Database schema, RLS, migrations, edge functions, Supabase config.
+- Email templates (`src/lib/email-templates/*`), email infrastructure routes (`src/routes/lovable/email/**`), and the email-sender domain (`notify.3dps.transcendencemedia.com`). Keeping these stable avoids breaking DKIM/SPF until a Frontiers3D email domain is provisioned separately.
+- Parent-company footer references in `src/routes/index.tsx` (`https://transcendencemedia.com`, `info@transcendencemedia.com`). These point to the parent company brand, not the product domain, so they remain unless you say otherwise.
+- Project-wide rename of the product name string "3D Presentation Studio" → "Frontiers3D" inside body copy, dashboards, and email subjects. I will only update SEO/JSON-LD identity fields (which crawlers consume). A full product-name rebrand is a separate, larger pass — confirm if you want it bundled in.
 
-2. **Verify the cron job is repaired**
-   - Confirm the `process-email-queue` job still exists and is active.
-   - Confirm recent cron HTTP responses stop returning `403`.
-   - Confirm the queue table count decreases or the stuck pending message receives a later terminal log entry (`sent`, `failed`, or `dlq`).
+## Technical notes
 
-3. **Improve app-side diagnostics only if needed**
-   - If the repaired processor reaches the send attempt and fails, keep changes narrow:
-     - Surface the latest queue failure in the Admin Portal status panel instead of only timing out as `pending`.
-     - Add safe non-secret diagnostics to the queue route logs if current logs are insufficient.
-   - Avoid UI redesigns or unrelated route changes.
+- `SITE_URL` uses `www.frontiers3d.com` per your instruction. To avoid duplicate-content with the apex, the apex `frontiers3d.com` should 301 to `www` at the hosting/DNS layer (out of code scope — flagging it).
+- `VITE_PUBLIC_SITE_URL` env var still overrides `public-url.ts` if set; ensure the deployment env either unsets it or sets it to `https://www.frontiers3d.com`.
+- Custom-domain list already includes `frontiers3d.com` and `www.frontiers3d.com`, so routing is already live.
+- No new dependencies, no migrations, no destructive operations.
 
-4. **Handle sender-domain failure separately**
-   - Since `notify.3dps.transcendencemedia.com` is currently failed, email delivery may still fail after the processor starts working.
-   - The expected next-stage error should become visible in `email_send_log` once the processor can run.
-   - If delivery is blocked by domain verification, the required action is to repair/re-run sender domain setup in Cloud → Emails, not to bypass the email system.
+**Backend Activation Required: NO** — pure frontend config + SEO meta + comments.
 
-5. **Update `BACKEND_ACTIVATION.md`**
-   - Record that backend activation is required for the email queue repair.
-   - Include the exact activation action, verification checks, expected results, and note that no destructive database changes are intended.
+## Open question
 
-## Files/Areas Expected to Change
-
-- `BACKEND_ACTIVATION.md`
-- Possibly `src/routes/_authenticated.admin.settings.tsx` only if clearer queue-failure diagnostics are needed after backend verification
-- Possibly `src/routes/lovable/email/queue/process.ts` only if runtime logs need safer/fuller non-secret error reporting
-
-## Backend Activation Required
-
-Yes.
-
-Required action:
-- Re-run the managed email infrastructure setup to refresh the queue processor cron job and queue credential.
-
-Verification:
-- Check cron job `process-email-queue` is active.
-- Check recent queue processor calls no longer return `403`.
-- Check queued app emails move out of indefinite `pending` into `sent`, `failed`, or `dlq` with a specific error.
-
-Expected result:
-- The Admin Portal should no longer time out while the email remains only `pending`; it should either confirm delivery or show the real delivery blocker, likely the currently failed sender domain verification.
+Want me to also bundle the in-body product-name rebrand ("3D Presentation Studio" → "Frontiers3D" in dashboard headers, landing page copy, footer)? If yes, say so and I'll fold it in; if not, I'll keep this PR tightly scoped to SEO identity + the architectural comment.
