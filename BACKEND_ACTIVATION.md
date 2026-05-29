@@ -469,8 +469,9 @@ Ready for PR-A2 (directory binding) when greenlit.
 > actual staged SQL; supersedes `BACKEND_ACTIVATION_PHASE_3_6.md` (Phase 3.6)
 > and `BACKEND_ACTIVATION_PHASE_3_7.md` (Phase 3.7).
 >
-> ⚠️ **Do NOT use the repo-root `BACKEND_ACTIVATION.md`** — it is the Phase 1 /
-> Track B Gap-Discovery doc, not a Track A doc.
+> ⚠️ For PR-A2 activation, use **only this PR-A2 section** of the repo-root
+> `BACKEND_ACTIVATION.md`. Do **not** use the staging root `BACKEND_ACTIVATION.md`
+> in `frontiers3d-core`, which is the Phase 1 / Track B Gap-Discovery doc.
 
 ## What this PR lands
 
