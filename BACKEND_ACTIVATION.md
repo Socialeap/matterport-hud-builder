@@ -376,3 +376,80 @@ attribution pipe exist; the resolver answers all 20 `(source, model_count)`
 combinations (incl. `directory_request`) and rejects invalid inputs; the ledger
 is empty; no behavior changes anywhere until PR-A3. Foundation ready for PR-A2
 (directory binding) and PR-A3 (checkout + webhook).
+
+---
+
+## PR-A1 Activation Record (2026-05-29) — APPLIED & VERIFIED
+
+GitHub PR #106 merged into `main`. Backend activation applied to the live
+Lovable Cloud database and reconciled with source.
+
+### Migrations applied (in order)
+
+1. `supabase/migrations/20260528400000_frontiers3d_platform_fee_foundation.sql`
+   — `client_providers.acquisition_source` (default `scs_direct`, 4-value CHECK
+   incl. `directory_request`); `platform_fee_schedule` (20-row seed);
+   `platform_fee_ledger`; `_resolve_platform_fee_cents(text,integer)` as
+   `SECURITY DEFINER`; RLS enabled on both new tables (service-role manage +
+   admin read).
+2. `supabase/migrations/20260529020000_frontiers3d_acquisition_attribution.sql`
+   — `invitations.acquisition_source` (default `scs_direct`, 4-value CHECK);
+   `CREATE OR REPLACE handle_new_user` — byte-for-byte the prior body plus one
+   propagated `acquisition_source` field on the `client_providers` INSERT.
+
+### Follow-up REVOKE (post-migration hardening)
+
+Supabase auto-grants EXECUTE on new functions to `anon`, `authenticated`, and
+`sandbox_exec`. The migration's `REVOKE … FROM PUBLIC` alone does not strip
+those role grants. Linter flagged it; a follow-up
+`REVOKE EXECUTE ON FUNCTION public._resolve_platform_fee_cents(text,integer) FROM anon, authenticated, sandbox_exec;`
+was applied. Linter count dropped 169 → 167. Resolver is now executable by
+`service_role` only (Verification I passes).
+
+### Verification A–J — all pass
+
+| Check | Result |
+|---|---|
+| **A** Object presence (5 objects) | ✅ all present |
+| **B** Signup paths unbroken | ✅ runtime smoke tests below |
+| **C** `acquisition_source` shape; backfill = 0 non-default; CHECK includes `directory_request` on both tables | ✅ |
+| **D** RLS enabled on `platform_fee_schedule` + `platform_fee_ledger` | ✅ |
+| **E** Exactly 20 active seed rows (4 sources × 5 model counts) | ✅ |
+| **F** Resolver returns correct cents for all 20 combinations | ✅ |
+| **G** Resolver rejects invalid inputs (unknown source, 0, 6, NULLs) | ✅ errors 22023 / 22003 |
+| **H** `platform_fee_ledger` exists and is empty | ✅ 0 rows |
+| **I** Resolver EXECUTE granted to `service_role` only, not PUBLIC / anon / authenticated / sandbox_exec | ✅ after follow-up REVOKE |
+| **J** Attribution propagates invitation → `client_providers.acquisition_source` | ✅ runtime smoke test below |
+
+### Runtime signup smoke tests — PERFORMED 2026-05-29
+
+Executed against the live database via the Supabase Admin API (test users
+deleted after verification — no residual data).
+
+1. **Self-signup MSP** (no invite token) → user created (`200`); `profiles`
+   row seeded; `branding_settings` row seeded with the user as `provider_id`.
+   ✅ pass.
+2. **Invitation creation** with `acquisition_source='directory_request'`
+   against a real provider → row inserted; `acquisition_source` persisted as
+   `directory_request`. ✅ pass.
+3. **Invited-client signup** (`raw_user_meta_data.invite_token` = the
+   invitation token) → user created (`200`); `client_providers` row created
+   with `acquisition_source = 'directory_request'` (propagated from
+   invitation, NOT defaulted to `scs_direct`); `user_roles` row with
+   `role = 'client'`; `profiles.provider_id` set to the inviting provider;
+   `invitations.status` flipped to `accepted`. ✅ pass — proves the
+   attribution pipe works end-to-end.
+4. **Cleanup**: both test auth users deleted via Admin API (`200`).
+
+### Out of scope — confirmed NOT touched
+
+No changes were applied to: A2, A3, A4 migrations; Track B / Map Oracle;
+Edge Functions (no deploys, no config changes); Stripe (Connect, checkout,
+webhook, `_shared/stripe.ts`, `_shared/pricing.ts`); secrets / env vars;
+`pg_cron` jobs; data mutations beyond the two migrations and the smoke-test
+cleanup above. Marketplace routing functions, Pro exclusivity flow,
+`licenses` / `purchases`, `resolve_studio_access`, and the
+`auth.users → handle_new_user` trigger binding remain unchanged.
+
+**Status:** PR-A1 fully activated, verified, and reconciled with `main`.
+Ready for PR-A2 (directory binding) when greenlit.
