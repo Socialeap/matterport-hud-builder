@@ -1,0 +1,1 @@
+REVOKE EXECUTE ON FUNCTION public._resolve_platform_fee_cents(TEXT, INTEGER) FROM anon, authenticated, sandbox_exec;
