@@ -683,6 +683,7 @@ export type Database = {
       }
       invitations: {
         Row: {
+          acquisition_source: string
           created_at: string
           email: string
           expires_at: string
@@ -694,6 +695,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          acquisition_source?: string
           created_at?: string
           email: string
           expires_at?: string
@@ -705,6 +707,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          acquisition_source?: string
           created_at?: string
           email?: string
           expires_at?: string
