@@ -1523,6 +1523,53 @@ export type Database = {
         }
         Relationships: []
       }
+      supply_gap_signals: {
+        Row: {
+          city: string | null
+          created_at: string
+          essential_services: Database["public"]["Enums"]["marketplace_specialty"][]
+          id: string
+          notified_at: string | null
+          region: string | null
+          resolved_at: string | null
+          source_engine: string
+          work_order_id: string | null
+          zip: string | null
+        }
+        Insert: {
+          city?: string | null
+          created_at?: string
+          essential_services?: Database["public"]["Enums"]["marketplace_specialty"][]
+          id?: string
+          notified_at?: string | null
+          region?: string | null
+          resolved_at?: string | null
+          source_engine: string
+          work_order_id?: string | null
+          zip?: string | null
+        }
+        Update: {
+          city?: string | null
+          created_at?: string
+          essential_services?: Database["public"]["Enums"]["marketplace_specialty"][]
+          id?: string
+          notified_at?: string | null
+          region?: string | null
+          resolved_at?: string | null
+          source_engine?: string
+          work_order_id?: string | null
+          zip?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supply_gap_signals_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: true
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       suppressed_emails: {
         Row: {
           created_at: string
@@ -1918,6 +1965,56 @@ export type Database = {
         }
         Relationships: []
       }
+      operator_open_supply_gaps: {
+        Row: {
+          city: string | null
+          created_at: string | null
+          essential_services:
+            | Database["public"]["Enums"]["marketplace_specialty"][]
+            | null
+          id: string | null
+          notified_at: string | null
+          region: string | null
+          source_engine: string | null
+          work_order_id: string | null
+          zip: string | null
+        }
+        Insert: {
+          city?: string | null
+          created_at?: string | null
+          essential_services?:
+            | Database["public"]["Enums"]["marketplace_specialty"][]
+            | null
+          id?: string | null
+          notified_at?: string | null
+          region?: string | null
+          source_engine?: string | null
+          work_order_id?: string | null
+          zip?: string | null
+        }
+        Update: {
+          city?: string | null
+          created_at?: string | null
+          essential_services?:
+            | Database["public"]["Enums"]["marketplace_specialty"][]
+            | null
+          id?: string | null
+          notified_at?: string | null
+          region?: string | null
+          source_engine?: string | null
+          work_order_id?: string | null
+          zip?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supply_gap_signals_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: true
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       _count_eligible_pros_for_beacon: {
@@ -2170,6 +2267,10 @@ export type Database = {
       delete_email: {
         Args: { message_id: number; queue_name: string }
         Returns: boolean
+      }
+      detect_directory_supply_gaps: {
+        Args: { p_lookback?: string }
+        Returns: number
       }
       disablelongtransactions: { Args: never; Returns: string }
       dropgeometrycolumn:

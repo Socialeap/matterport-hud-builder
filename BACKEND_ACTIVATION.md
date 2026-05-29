@@ -666,3 +666,45 @@ client↔provider relationship as `directory_request` (Marketplace tier, billed
 once PR-A3 is live); unmatched directory requests are recorded as
 `supply_gap_signals` and surfaced to admins. No change to the directory UI,
 checkout, webhook, or provider pricing.
+
+---
+
+## PR-A2 — Activation Record (applied 2026-05-29)
+
+**Migrations applied (verbatim from repo):**
+- `supabase/migrations/20260529030000_frontiers3d_directory_request_binding.sql` — trigger `trg_work_order_confirm_links_client_provider` (AFTER UPDATE OF status, confirmed_provider_id) + SECURITY DEFINER `public._link_client_provider_on_work_order_confirm()`.
+- `supabase/migrations/20260529040000_frontiers3d_supply_gap_signals.sql` — table `public.supply_gap_signals` (RLS on; service-role ALL + admin SELECT), function `public.detect_directory_supply_gaps(interval)` (SECURITY DEFINER), view `public.operator_open_supply_gaps` (security_invoker).
+
+**Post-migration grant/REVOKE hygiene (mirrors PR-A1 pattern; Supabase auto-grants EXECUTE on new functions to anon/authenticated):**
+- `GRANT ALL ON public.supply_gap_signals TO service_role;`
+- `REVOKE EXECUTE ON FUNCTION public.detect_directory_supply_gaps(INTERVAL) FROM anon, authenticated;`
+- `REVOKE EXECUTE ON FUNCTION public._link_client_provider_on_work_order_confirm() FROM anon, authenticated, PUBLIC;`
+- Linter total: 169 → 167 after migration 1, then 167 after migration 2 (no new findings introduced by PR-A2; pre-existing baseline only).
+
+**Cron scheduled (only one new job):**
+- `frontiers3d-detect-supply-gaps` · `0 * * * *` · ` SELECT public.detect_directory_supply_gaps(); ` (idempotent registration via `DO` block guarding on `cron.job.jobname`).
+
+**Verification (A–F) — all pass:**
+- **A.** `pg_trigger`: `trg_work_order_confirm_links_client_provider` enabled on `public.work_orders`.
+- **B.** `directory_request` resolves to Marketplace pricing (`platform_fee_schedule` active rows): 1=$20.00, 2=$30.00, 3=$40.00, 4=$50.00, 5=$60.00.
+- **C.** `to_regclass('public.supply_gap_signals')`, `pg_proc.detect_directory_supply_gaps(interval)`, `to_regclass('public.operator_open_supply_gaps')` all present; `relrowsecurity = true`; policies: `"Service role can manage supply_gap_signals"` (ALL) + `"Admins can read supply_gap_signals"` (SELECT).
+- **D.** `operator_open_supply_gaps.reloptions = {security_invoker=true}` → admin-readable only (anon/authenticated cannot see rows; no broad SELECT policy exists for them).
+- **E.** Exactly one matching `cron.job` row: `frontiers3d-detect-supply-gaps`, `0 * * * *`. No other new cron entries.
+- **F.** EXECUTE check via `has_function_privilege` — both new functions: `anon=false`, `authenticated=false`, `service_role=true`.
+
+**Live-safe smoke test (executed and cleaned up):**
+- Reused 1 existing test agent (`shakoure@fbiib.org`) and 3 existing `mock-msp+*` providers. Confirmed pre-test that no `client_providers` rows existed for any of the (agent, provider) pairs used. All test work-orders tagged `pra2-smoke *` in `notes`.
+- **Test A — trigger-level (direct UPDATE):** WO with invites for P1 (`available`) + P2 (`invited`). UPDATE → `confirmed`, `confirmed_provider_id=P1`. Result: `client_providers(agent, P1, acquisition_source='directory_request')` created; P2 received NO `directory_request` binding (invited-but-unconfirmed correctly excluded).
+- **Test B — origin preservation:** Pre-seeded `client_providers(agent, P2, 'scs_direct')`. New WO confirmed with P2 → existing link unchanged: `acquisition_source` stayed `'scs_direct'` (ON CONFLICT DO NOTHING preserves origin).
+- **Test C — RPC-level (`confirm_work_order_msp` called as the agent):** WO with invite for P3 (`available`). Called `public.confirm_work_order_msp(wo, P3)` with `request.jwt.claims` set so `auth.uid()` resolved to the test agent. Result: `client_providers(agent, P3, 'directory_request')` created via the real RPC path.
+- **Test D — supply-gap detector:** Zero-invite WO_D inserted. `detect_directory_supply_gaps('1 day')` → first call ≥1, second call returned 0 (idempotent). `supply_gap_signals` had exactly one row for WO_D. WOs A/B/C (all had invites / were confirmed) produced ZERO supply-gap rows.
+- **Cleanup:** deleted only the 4 test work_orders (invites + WO_D's gap signal cascade-deleted) and the 3 `client_providers` rows created by this test (including the synthetic `scs_direct` seed for Test B). Post-cleanup: `leftover_wo=0`, `leftover_cp=0`. Two `supply_gap_signals` rows remain in the table — those reference pre-existing real zero-invite work_orders ("Test only" / "Testing" in Atlanta) the detector legitimately picked up; they are real observability data, not test leakage. No users deleted; no pre-existing relationships modified.
+
+**Out of scope — confirmed not touched:**
+- No A3, A4, or Track B / Map Oracle migrations applied.
+- No Edge Functions deployed or modified.
+- No Stripe settings, secrets, checkout/webhook/pricing code, or UI changes.
+- No additional cron jobs scheduled beyond `frontiers3d-detect-supply-gaps`.
+- Existing work-order RPCs (`submit_work_order`, `confirm_work_order_msp`) unchanged.
+
+**Backend Activation Required: DONE for PR-A2.** Ready for PR-A3 when greenlit.
