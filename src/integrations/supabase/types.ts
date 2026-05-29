@@ -497,6 +497,7 @@ export type Database = {
       }
       client_providers: {
         Row: {
+          acquisition_source: string
           client_id: string
           created_at: string
           id: string
@@ -504,6 +505,7 @@ export type Database = {
           provider_id: string
         }
         Insert: {
+          acquisition_source?: string
           client_id: string
           created_at?: string
           id?: string
@@ -511,6 +513,7 @@ export type Database = {
           provider_id: string
         }
         Update: {
+          acquisition_source?: string
           client_id?: string
           created_at?: string
           id?: string
@@ -680,6 +683,7 @@ export type Database = {
       }
       invitations: {
         Row: {
+          acquisition_source: string
           created_at: string
           email: string
           expires_at: string
@@ -691,6 +695,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          acquisition_source?: string
           created_at?: string
           email: string
           expires_at?: string
@@ -702,6 +707,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          acquisition_source?: string
           created_at?: string
           email?: string
           expires_at?: string
@@ -941,6 +947,114 @@ export type Database = {
           slug?: string
           user_agent?: string | null
           visited_at?: string
+        }
+        Relationships: []
+      }
+      platform_fee_ledger: {
+        Row: {
+          acquisition_source: string
+          checkout_path: string | null
+          client_id: string | null
+          collected_at: string | null
+          failed_reason: string | null
+          fee_schedule_id: string
+          id: string
+          model_count: number
+          notes: string | null
+          occurred_at: string
+          platform_fee_cents: number
+          provider_id: string | null
+          refunded_at: string | null
+          saved_model_id: string | null
+          status: string
+          stripe_application_fee_id: string | null
+          stripe_checkout_session_id: string | null
+          stripe_payment_intent_id: string | null
+        }
+        Insert: {
+          acquisition_source: string
+          checkout_path?: string | null
+          client_id?: string | null
+          collected_at?: string | null
+          failed_reason?: string | null
+          fee_schedule_id: string
+          id?: string
+          model_count: number
+          notes?: string | null
+          occurred_at?: string
+          platform_fee_cents: number
+          provider_id?: string | null
+          refunded_at?: string | null
+          saved_model_id?: string | null
+          status?: string
+          stripe_application_fee_id?: string | null
+          stripe_checkout_session_id?: string | null
+          stripe_payment_intent_id?: string | null
+        }
+        Update: {
+          acquisition_source?: string
+          checkout_path?: string | null
+          client_id?: string | null
+          collected_at?: string | null
+          failed_reason?: string | null
+          fee_schedule_id?: string
+          id?: string
+          model_count?: number
+          notes?: string | null
+          occurred_at?: string
+          platform_fee_cents?: number
+          provider_id?: string | null
+          refunded_at?: string | null
+          saved_model_id?: string | null
+          status?: string
+          stripe_application_fee_id?: string | null
+          stripe_checkout_session_id?: string | null
+          stripe_payment_intent_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_fee_ledger_fee_schedule_id_fkey"
+            columns: ["fee_schedule_id"]
+            isOneToOne: false
+            referencedRelation: "platform_fee_schedule"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "platform_fee_ledger_saved_model_id_fkey"
+            columns: ["saved_model_id"]
+            isOneToOne: false
+            referencedRelation: "saved_models"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      platform_fee_schedule: {
+        Row: {
+          created_at: string
+          effective_from: string
+          effective_until: string | null
+          fee_cents: number
+          id: string
+          model_count: number
+          source: string
+        }
+        Insert: {
+          created_at?: string
+          effective_from?: string
+          effective_until?: string | null
+          fee_cents: number
+          id?: string
+          model_count: number
+          source: string
+        }
+        Update: {
+          created_at?: string
+          effective_from?: string
+          effective_until?: string | null
+          fee_cents?: number
+          id?: string
+          model_count?: number
+          source?: string
         }
         Relationships: []
       }
@@ -1843,6 +1957,10 @@ export type Database = {
       _provider_can_receive_leads: {
         Args: { p_provider_id: string }
         Returns: boolean
+      }
+      _resolve_platform_fee_cents: {
+        Args: { p_model_count: number; p_source: string }
+        Returns: number
       }
       _st_3dintersects: {
         Args: { geom1: unknown; geom2: unknown }
