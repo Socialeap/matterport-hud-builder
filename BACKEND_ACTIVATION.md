@@ -1767,3 +1767,145 @@ green end-to-end live smoke.
 **Result:** Live end-to-end green. Google Places ingest → `raw_scrape_snapshots` → cron-driven `process_unprocessed_snapshots` → `properties` materialization all working.
 
 No B2/B3/B4, Stripe, or Track A changes touched.
+
+---
+
+## B2 — Doorway Candidates (property-centric; additive / operator-controlled)
+
+> Appended by B2. All manifest content **above** (A1–A4, PR-B1 + its activation
+> record, PR-B-Scraper) is **unchanged**. The section below is this PR's activation
+> detail, from `frontiers3d-core/BACKEND_ACTIVATION_TRACK_B2.md`. **Not yet
+> activated.** Migration `20260601000000`. No agent_beacons/promote/consent/binding,
+> no money, no cron, no Edge Function.
+
+# Backend Activation — Frontiers3D Track B · B2 (Doorway Candidates, property-centric)
+
+> Bridges normalized Map-Oracle `properties` (PR-B1) into an **operator-controlled
+> doorway/HUD discovery surface**, so operators can review/queue/surface Map-Oracle
+> candidates **without** any lead/client binding, beacon creation, consent change,
+> or money flow.
+>
+> ⚠️ For B2 activation, use **only this section** of the repo-root
+> `BACKEND_ACTIVATION.md`.
+
+## What this PR lands
+
+| Migration | Purpose |
+|---|---|
+| `supabase/migrations/20260601000000_frontiers3d_doorway_candidates.sql` | **New, strictly additive.** Property-centric doorway-candidate surface over the B1 `properties` data. **No `agent_beacons` change, no promote, no consent, no binding, no money.** |
+
+**Re-timestamp:** `20260601000000` is above current `main`'s ceiling
+(`20260531000000`, the live B1 migration). No collision.
+
+**Nature:** additive, **operator-controlled, fully reversible**. **Destructive:** NO.
+**Behavioral:** nothing fires automatically — operators invoke a function to stage
+candidates; the surface is admin-only. **Sign-off:** standard (no money, no binding).
+
+## Objects created (all net-new)
+
+- `_compose_hero_summary(uuid)` — hero-line composer (lifted **verbatim** from the
+  staged doorway bridge; a future full bridge `CREATE OR REPLACE`s the same body —
+  no conflict).
+- `compose_doorway_payload(uuid) → jsonb` — builds the HUD discovery card from
+  `properties` + the 6 child tables and **RETURNS** it (read-only; **does not write
+  to `agent_beacons`** — that beacon-write path is the deferred full bridge).
+- `doorway_candidates` table — operator triage queue keyed by `property_id`
+  (`status`: `new`|`queued`|`surfaced`|`dismissed`; snapshot `doorway_payload`;
+  `notes`; `reviewed_by`). RLS: service-role manage + admin read.
+- `detect_doorway_candidates(limit)` — operator-invoked, **idempotent** stager
+  (admin/service-role only; **no trigger, no cron**). Re-runs refresh only
+  still-`new` snapshots; operator decisions on queued/surfaced/dismissed preserved.
+- `set_doorway_candidate_status(property_id, status)` — admin-only lifecycle control.
+- `operator_doorway_candidates` view — **`security_invoker = true`** admin-only
+  surface (enforces the candidate RLS; non-admins get zero rows — same pattern as
+  B1 `operator_failed_snapshots` and A2 `operator_open_supply_gaps`).
+
+## Why this is NOT the staged beacon "doorway bridge"
+
+The staged Phase-2 bridge writes `doorway_payload` onto `agent_beacons` and returns
+0 when no beacon references a property — so it is **dormant until beacons exist**
+(which requires `promote`/B3) and adds lead-table-adjacent columns. To meet the B2
+goal (**surface candidates from `properties`, no binding, verifiable with the 5 test
+properties**), this PR instead exposes the card **from `properties`** via an operator
+queue/view, touching **no** `agent_beacons` object. The full beacon bridge remains a
+separate, later, additive PR.
+
+## Required Actions (activation — human-gated; NOT performed by this PR)
+
+1. **Apply** `supabase/migrations/20260601000000_frontiers3d_doorway_candidates.sql`
+   (depends on the live B1 `properties`/child tables + `_safe_integer`).
+2. **No cron, no Edge Function, no secret.** Operators stage candidates **on demand**
+   by calling `detect_doorway_candidates(...)`.
+3. **No Stripe, no Track A, no B3/B4, no `agent_beacons`/promote/consent.**
+
+## Verification (use the existing 5 PR-B-Scraper properties)
+
+```sql
+-- 1. Stage candidates from existing properties (operator/admin or service role).
+SELECT public.detect_doorway_candidates(100);   -- expect ≈ 5 (one per existing property)
+
+-- 2. The operator surface shows them with composed doorway cards (run as an ADMIN).
+SELECT property_id, status, name, locality, category, hero_summary
+  FROM public.operator_doorway_candidates;       -- expect 5 rows, hero_summary populated
+
+-- 3. security_invoker is set (admin-only enforcement).
+SELECT reloptions FROM pg_class
+ WHERE relname='operator_doorway_candidates' AND relkind='v';   -- {security_invoker=true}
+
+-- 4. A composed card has the expected shape.
+SELECT doorway_payload->>'name', doorway_payload->>'hero_summary',
+       doorway_payload->'location'->>'lat'
+  FROM public.operator_doorway_candidates LIMIT 1;
+
+-- 5. Operator lifecycle (reversible).
+SELECT public.set_doorway_candidate_status('<property_id>', 'queued');
+SELECT public.set_doorway_candidate_status('<property_id>', 'surfaced');
+SELECT public.set_doorway_candidate_status('<property_id>', 'dismissed');  -- reversible back to 'queued'/'new'
+SELECT status FROM public.doorway_candidates WHERE property_id='<property_id>';
+
+-- 6. Non-admin sees nothing (security_invoker + RLS).
+--    As a non-admin authenticated user: SELECT count(*) FROM public.operator_doorway_candidates; -> 0
+
+-- 7. Cleanup (optional).
+DELETE FROM public.doorway_candidates;   -- queue only; properties untouched
+```
+
+## Operator surface / UI
+
+The admin-only `operator_doorway_candidates` **view is the operator surface** —
+queryable today from the admin SQL surface / any admin tool; `detect_*` /
+`set_*_status` are the queue + lifecycle controls. A dedicated dashboard widget over
+this view is a **thin, optional follow-up** (kept out here to stay minimal,
+reversible, and free of unverifiable app-code changes).
+
+## Rollback (fully reversible)
+
+```sql
+DROP VIEW IF EXISTS public.operator_doorway_candidates;
+DROP FUNCTION IF EXISTS public.set_doorway_candidate_status(uuid, text);
+DROP FUNCTION IF EXISTS public.detect_doorway_candidates(int);
+DROP TABLE IF EXISTS public.doorway_candidates;     -- candidates only; properties untouched
+DROP FUNCTION IF EXISTS public.compose_doorway_payload(uuid);
+-- _compose_hero_summary may remain (shared with the future full bridge) or be dropped.
+```
+No existing object was altered; nothing else depends on these.
+
+## Explicitly EXCLUDED
+
+- ❌ `agent_beacons` changes (the beacon-write doorway bridge) — separate later PR.
+- ❌ B3 consent relaxation / `promote_property_to_beacon` (destructive — separate approval).
+- ❌ B4 lead/client binding, `client_providers`, attribution.
+- ❌ Stripe / platform fee / Track A changes.
+- ❌ Any automatic broad ingestion or recurring scrape scheduling; no cron added.
+- ❌ Any destructive migration.
+
+---
+
+## Backend Activation Required: YES — **B2 ready for review** (not activated)
+
+**Destructive:** NO. **Behavioral:** operator-invoked only; admin-only surface;
+nothing auto-fires. **Sign-off:** standard.
+
+**Result on activation:** operators can stage, review, and queue/surface/dismiss
+Map-Oracle doorway candidates derived from B1 `properties`, with a composed HUD card
+per candidate — with no lead/client binding, no beacon creation, and no money flow.
