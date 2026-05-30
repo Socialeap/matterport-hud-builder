@@ -1473,3 +1473,61 @@ cron). **Sign-off:** standard.
 **Result on activation:** the Map Oracle ingest pipeline schema is live and ready
 to receive scraped Google Places payloads; no regression to existing marketplace,
 branding, billing, or auth flows (zero shared tables modified).
+
+---
+
+## PR-B1 Activation Result (2026-05-30)
+
+**Status:** DONE
+
+**Migration applied:** `supabase/migrations/20260531000000_frontiers3d_gap_discovery.sql`
+(re-played via Lovable migration tool — idempotent: `CREATE ... IF NOT EXISTS` / `DO $$ ... EXCEPTION WHEN duplicate_object`).
+
+**Follow-up hardening migration:** explicit `REVOKE EXECUTE ... FROM anon, authenticated`
+on `process_raw_snapshot(uuid)` and `process_unprocessed_snapshots(int)`. The PR's
+`REVOKE ... FROM PUBLIC` alone did not strip Supabase's auto-grants to `anon` /
+`authenticated` in the `public` schema, so an explicit revoke was required to
+match the documented service-role-only posture.
+
+**Verification:**
+- ✅ All 9 tables exist with `rowsecurity = true`:
+  `scrape_runs`, `raw_scrape_snapshots`, `properties`, `property_geo`,
+  `property_contacts`, `property_hours`, `property_photos`,
+  `property_enrichment`, `property_review_summaries`.
+- ✅ Helpers + transforms exist: `_extract_address_component`,
+  `_normalize_phone_e164`, `_parse_google_time`, `_safe_numeric`,
+  `_safe_integer`, `process_raw_snapshot(uuid)`,
+  `process_unprocessed_snapshots(int)`.
+- ✅ `process_raw_snapshot` and `process_unprocessed_snapshots` are
+  `SECURITY DEFINER` and their final ACL is `postgres=X, service_role=X`
+  only (no anon / authenticated EXECUTE).
+- ✅ View `operator_failed_snapshots` exists with `security_invoker = true`
+  (RLS on underlying tables enforces admin-only visibility).
+- ✅ Cron job `frontiers3d-transform-snapshots` exists exactly once,
+  schedule `* * * * *`, command `SELECT public.process_unprocessed_snapshots(500);`,
+  `active = true`.
+
+**Synthetic smoke test:**
+Inserted one `scrape_runs` + one `raw_scrape_snapshots` (synthetic Google
+Places Details payload, place_id `ChIJ_PRB1_SMOKE_TEST_...`), called
+`process_unprocessed_snapshots(10)`, observed `processed=1 failed=0`,
+verified 1 row in `properties` and 1 row in `property_geo` (PostGIS point
+materialized). Cleanup deleted all synthetic rows; final counts on
+`scrape_runs` and `properties` returned to 0.
+
+**Out of scope / not touched (per PR-B1 contract):**
+- No scraper deployed.
+- No Google API keys / secrets added.
+- No Edge Functions deployed.
+- No Stripe configuration touched.
+- B2 / B3 / B4 not activated.
+- No legacy marketplace tables (`agent_beacons`, `client_providers`,
+  `branding_settings`, `platform_fee_*`, etc.) modified.
+
+**Linter:** 172 total findings, all pre-existing and unrelated to B1
+(extensions in public, function search_path on legacy functions, etc.).
+No new ERROR-level findings introduced by this activation.
+
+**Residual risks / follow-ups:** none specific to B1. Cron will tick
+every minute against an empty queue (cheap no-op) until a scraper begins
+writing to `raw_scrape_snapshots` under B2+.
