@@ -2448,7 +2448,9 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
                   Download Your Presentation
                 </h3>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Included with your account — no payment required.
+                  Your provider has waived their own fee. A Frontiers3D platform
+                  access fee still applies — you'll complete a quick, secure
+                  checkout for it before your download.
                 </p>
                 <Button
                   size="lg"
@@ -2458,7 +2460,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
                   onClick={handleDownload}
                 >
                   {submitting
-                    ? "Preparing…"
+                    ? "Preparing checkout…"
                     : downloading
                       ? (downloadStep || "Generating…")
                       : modelCount < 1
@@ -2466,8 +2468,8 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
                         : passwordIncomplete
                           ? "Set a password to enable protection"
                           : accessArmed
-                            ? "Download Protected Presentation"
-                            : "Download Presentation"}
+                            ? "Continue to Secure Checkout (Protected)"
+                            : "Continue to Secure Checkout"}
                 </Button>
               </div>
             ) : checkoutReady ? (
@@ -2488,11 +2490,17 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
                     </div>
                   ))}
                   <div className="border-t border-border pt-2 mt-2 flex justify-between font-semibold">
-                    <span>Total</span>
+                    <span>Provider subtotal</span>
                     <span>${(totalCents / 100).toFixed(2)}</span>
                   </div>
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>+ Frontiers3D platform access fee</span>
+                    <span>added at checkout</span>
+                  </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {modelCount} model{modelCount !== 1 ? "s" : ""} in this presentation
+                    {modelCount} model{modelCount !== 1 ? "s" : ""} in this presentation.
+                    Your full total (provider subtotal + platform fee) is shown on
+                    the secure checkout before you pay.
                   </p>
                 </div>
 
@@ -2510,8 +2518,8 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
                       : passwordIncomplete
                         ? "Set a password to enable protection"
                         : accessArmed
-                          ? `Pay $${(totalCents / 100).toFixed(2)} & Download Protected`
-                          : `Pay $${(totalCents / 100).toFixed(2)} & Download`}
+                          ? "Continue to Secure Checkout (Protected)"
+                          : "Continue to Secure Checkout"}
                 </Button>
               </div>
             ) : pricingConfigured ? (
