@@ -1385,6 +1385,7 @@ export type Database = {
           name: string
           properties: Json
           provider_id: string
+          retail_waived: boolean
           status: Database["public"]["Enums"]["model_status"]
           tour_config: Json
           updated_at: string
@@ -1399,6 +1400,7 @@ export type Database = {
           name?: string
           properties?: Json
           provider_id: string
+          retail_waived?: boolean
           status?: Database["public"]["Enums"]["model_status"]
           tour_config?: Json
           updated_at?: string
@@ -1413,6 +1415,7 @@ export type Database = {
           name?: string
           properties?: Json
           provider_id?: string
+          retail_waived?: boolean
           status?: Database["public"]["Enums"]["model_status"]
           tour_config?: Json
           updated_at?: string
