@@ -1680,3 +1680,69 @@ API spend + B1-table writes once the secret + deploy + admin invocation exist �
 **Result on activation:** operators can run a controlled, hard-capped Google
 Places ingest into `scrape_runs`/`raw_scrape_snapshots`; the existing PR-B1 cron
 normalizes the snapshots into `properties`. No regression to any existing flow.
+
+---
+
+## PR-B-Scraper Activation Result — 2026-05-30
+
+**Status:** PARTIAL — function deployed and wired correctly; live ingest blocked
+by upstream Google Cloud configuration (not a code issue).
+
+**Actions taken**
+- Added `[functions.map-oracle-ingest] verify_jwt = false` to
+  `supabase/config.toml` (function performs its own admin auth via
+  `has_role(uid,'admin')`).
+- Deployed Edge Function `map-oracle-ingest` (no other functions touched).
+- Set secret `GOOGLE_PLACES_API_KEY` (runtime, Edge Functions environment).
+- No migrations applied, no cron schedules added, no Stripe / Track A
+  changes, no B2/B3/B4 activation.
+
+**Verification**
+
+1. `dryRun:true` as admin (preview session JWT) →
+   `200 { dryRun:true, estimatedApiCalls:{search:1, details:0, max:1}, plan:{...} }`.
+   No Google call, no rows written. ✅
+2. Unauthorized call (empty `Authorization`) → `401 {"error":"Unauthorized"}`. ✅
+   Distinct authenticated-non-admin → `403` path was NOT exercised end-to-end
+   because no non-admin user JWT was available in this session; the role
+   check is `userClient.rpc('has_role', { _user_id, _role:'admin' })` and is
+   the only gate past 401. Recommend a manual non-admin smoke when an
+   ordinary client user logs into preview.
+3. Live ingest `{ category:"cafe", city:"Austin, TX", limit:5,
+   fetchDetails:false }` →
+   `200 { runId:"a5b9f1ff-5f21-4cb0-b6a1-b5c3ee2e99fb", status:"completed",
+   apiCalls:1, placesFound:0, snapshotsWritten:0, errors:["search page 1:
+   REQUEST_DENIED (You're calling a legacy API, which is not enabled for
+   your project. ... switch to the Places API (New) or Routes API)"] }`.
+   Run row opened, Google call attempted, error captured, run closed cleanly.
+   **No `raw_scrape_snapshots` rows produced** because Google rejected the
+   request upstream. ✅ (function behavior) / ⚠ (Google project config).
+4. `scrape_runs` row exists with `status='completed'`,
+   `total_snapshots=0`, `error` populated. Confirmed via direct SELECT.
+5. `SELECT * FROM public.process_unprocessed_snapshots(50);` invoked from a
+   non-service role → `42501 permission denied for function
+   process_unprocessed_snapshots`. ✅ Confirms the PR-B1 service-role-only
+   hardening is intact.
+6. `properties` count unchanged (no snapshots to normalize). Expected.
+7. Test run row left in place for audit (`runId` above); safe to delete with
+   `DELETE FROM scrape_runs WHERE id = 'a5b9f1ff-5f21-4cb0-b6a1-b5c3ee2e99fb';`.
+
+**Residual / follow-up**
+- **Operator action required in Google Cloud Console** for the project that
+  owns `GOOGLE_PLACES_API_KEY`: enable the legacy **Places API** (the
+  function calls `/maps/api/place/textsearch` and `/nearbysearch`). Without
+  this, every live ingest will return `REQUEST_DENIED` and write zero
+  snapshots (the safety/cost behavior is fine; no spend occurred).
+  Alternative: migrate the function to Places API (New) — out of scope here.
+- Once Places API is enabled, re-run step 3, then step 5 (as service role
+  via the cron, or via a privileged session) to confirm normalization into
+  `properties`. Cron `frontiers3d-transform-snapshots` (PR-B1) will pick up
+  any new snapshots automatically — no schedule changes made for this PR.
+- No recurring scraping schedule was added (per scope).
+
+**Linter / security findings:** none new. RLS / service-role gates verified
+above; admin gate on the function verified at runtime.
+
+**Sign-off:** PR-B-Scraper activation DONE for everything inside our control;
+external Google Cloud API enablement is the only remaining blocker for a
+green end-to-end live smoke.
