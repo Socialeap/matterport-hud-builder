@@ -1400,6 +1400,21 @@ SELECT c.relname, c.relrowsecurity AS rls_enabled
  ORDER BY c.relname;   -- expect rls_enabled = true for all
 ```
 
+### B2. operator_failed_snapshots enforces RLS (security_invoker, admin-only)
+```sql
+SELECT relname, reloptions
+  FROM pg_class
+ WHERE relname = 'operator_failed_snapshots' AND relkind = 'v';
+-- expect: reloptions = {security_invoker=true}
+```
+The view is created `WITH (security_invoker = true)` (matching A2's
+`operator_open_supply_gaps`), so it runs with the querying user's privileges and
+**enforces** the "Admins can read raw_scrape_snapshots" / "Admins can read
+scrape_runs" RLS rather than bypassing it (Postgres views are SECURITY DEFINER by
+default). Result: an authenticated **admin** sees failed rows; a non-admin
+authenticated user gets **zero** rows. The `GRANT SELECT … authenticated` only
+confers query access — RLS, not the GRANT, decides row visibility.
+
 ### C. Transform functions registered, service-role-only
 ```sql
 SELECT p.proname, array_to_string(p.proacl::text[], ', ') AS grants

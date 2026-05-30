@@ -1002,7 +1002,8 @@ GRANT EXECUTE ON FUNCTION public.process_unprocessed_snapshots(INT) TO service_r
 -- Snapshots that exited the queue with an error. To re-queue
 -- after fixing the underlying issue, NULL out processed_at on
 -- the relevant rows.
-CREATE OR REPLACE VIEW public.operator_failed_snapshots AS
+CREATE OR REPLACE VIEW public.operator_failed_snapshots
+  WITH (security_invoker = true) AS
   SELECT rs.id,
          rs.scrape_run_id,
          rs.source,
@@ -1019,9 +1020,14 @@ CREATE OR REPLACE VIEW public.operator_failed_snapshots AS
 COMMENT ON VIEW public.operator_failed_snapshots IS
   'Snapshots that the transform worker could not parse. processed_at is set so they no longer block the queue; investigate processing_error, fix the payload or worker, then NULL out processed_at on the affected rows to re-queue.';
 
--- Views inherit RLS from their underlying tables under SECURITY
--- INVOKER (the default), so admins reading this view are gated by
--- the "Admins can read raw_scrape_snapshots" policy created above.
+-- Postgres views are SECURITY DEFINER by default and would BYPASS the
+-- underlying tables' RLS. `WITH (security_invoker = true)` (set above)
+-- makes the view run with the QUERYING user's privileges, so the
+-- "Admins can read raw_scrape_snapshots" / "Admins can read scrape_runs"
+-- policies are enforced: an authenticated admin sees the failed rows, a
+-- non-admin authenticated user gets zero rows. (Matches the A2
+-- operator_open_supply_gaps pattern.) The GRANT only confers the ability
+-- to query the view; RLS, not the GRANT, decides which rows are visible.
 GRANT SELECT ON public.operator_failed_snapshots TO service_role, authenticated;
 
 -- ============================================================
