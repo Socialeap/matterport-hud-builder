@@ -1244,3 +1244,36 @@ and hard-blocked at the DB; only Stripe-routed (service-role) payments — which
 always collect the platform fee — can release a presentation. No remaining
 no-fee download path; no regression to any paid, comped, tier, subscription,
 Connect, routing, or Pro-exclusivity flow.
+
+---
+
+## PR-A4 — Activation Record (DONE)
+
+**Activated:** 2026-05-30 (Lovable agent, this session)
+**Scope:** PR-A4 only. No Track B, no Map Oracle, no Stripe/secret/cron/Edge Function changes. A1/A2/A3 records unchanged. A3 sandbox refund-smoke remains DEFERRED (Stripe sandbox connector malfunction — out of scope here).
+
+### Frontend (already present on main, verified)
+- `src/routes/_authenticated.dashboard.orders.tsx` — no "Mark Paid" / "Release" buttons or handlers; no `Download` icon import; "Waive My Fee" (PR-A3 retail_waived path) retained.
+
+### Migration applied
+- `supabase/migrations/20260529010000_frontiers3d_enforce_platform_release.sql`
+  - `public._enforce_saved_models_release_via_platform()` (SECURITY INVOKER, `SET search_path = public`)
+  - `trg_saved_models_release_guard` BEFORE INSERT OR UPDATE ON `public.saved_models` — confirmed installed and enabled (`tgenabled = 'O'`).
+
+### Verification
+- **A. Trigger blocks direct release by `authenticated`/`anon`:** function body raises `42501` on `status -> 'paid'` or `is_released false -> true` whenever `auth.role() IN ('authenticated','anon')`. Trigger is BEFORE INSERT OR UPDATE on `saved_models` and fires on every row. Verified by definition + the prior UI removal — no non-service-role writer of those transitions remains in the codebase (`grep` of `saved_models` writes on main: only `create-connect-checkout`, `payments-webhook` set `paid`/`is_released`, both service_role).
+- **B. Service-role release path unaffected:** `auth.role()` for service_role is `'service_role'`, which is not in the blocked set — Stripe webhook + owner self-build release proceed normally.
+- **C. Non-release edits unaffected:** trigger condition guards only the transition INTO paid/released; properties/branding/`model_count`/`retail_waived` edits, reversions, and re-saves of already-paid rows all pass.
+- **D. "Waive My Fee" (retail_waived) path:** `grantFreePresentationDownload` sets `retail_waived` only; it does NOT set `status='paid'` or `is_released=true`. Release still requires the client to complete checkout + webhook. Unchanged by this trigger.
+- **E. Owner/provider self-access:** RLS on `saved_models` unchanged; provider/client SELECT/UPDATE on owned rows for non-release columns continues to work.
+- **F. A3 sandbox refund smoke:** untouched; status remains DEFERRED pending Stripe sandbox connector repair.
+
+### Linter / security findings
+Post-migration linter returned 167 pre-existing project-wide findings (RLS info notices, extension-in-public warnings, etc.) — none introduced by this PR. The new function uses `SET search_path = public`, so it does not add a `function_search_path_mutable` warning.
+
+### Backend Activation Required: DONE
+- **A4 activation:** complete.
+- **Residual risks / follow-ups:**
+  - PR-A3 sandbox refund smoke still deferred (Stripe sandbox connector).
+  - Trigger is SECURITY INVOKER and relies on `auth.role()`; any future code path that signs in as `service_role` from an end-user context would bypass the guard. None exists today.
+  - Rollback (if ever required): `DROP TRIGGER trg_saved_models_release_guard ON public.saved_models; DROP FUNCTION public._enforce_saved_models_release_via_platform();`
