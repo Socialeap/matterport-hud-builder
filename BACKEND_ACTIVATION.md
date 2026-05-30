@@ -1953,3 +1953,41 @@ per candidate — with no lead/client binding, no beacon creation, and no money 
 ### Residual
 - 5 staged candidates left in place as the useful output of this step.
 - One candidate was transitioned new → queued → new for the smoke test; it is back in `new` state and indistinguishable from the others.
+
+---
+
+## B2 — Operator UI (Doorway Candidates) — FRONTEND-ONLY, no backend activation
+
+> Appended by the B2 Operator UI PR. All manifest content **above** (A1–A4, PR-B1,
+> PR-B-Scraper, B2 backend) is **unchanged**.
+
+**Backend activation required: NO.** This PR is **frontend-only**. It consumes the
+already-activated B2 backend (`operator_doorway_candidates` security_invoker view +
+`set_doorway_candidate_status(property_id,status)` RPC — both live on `main`). No
+migration, no Edge Function, no secret, no cron, no schema or RLS change.
+
+**What it adds:** an admin-only route `/admin/doorway-candidates`
+(`src/routes/_authenticated.admin.doorway-candidates.tsx`) + a nav link in
+`_authenticated.admin.tsx`. It lists candidates from `operator_doorway_candidates`
+(name, location, category, hero summary, rating, website/phone, status) and changes
+status via `set_doorway_candidate_status`. States: loading, empty, error,
+permission-denied. Admin gating is enforced by the existing `_authenticated/admin`
+layout (`roles.includes('admin')`) **and** server-side (the view is admin-only via
+`security_invoker` RLS; the RPC raises `42501` for non-admins).
+
+**Activation = a normal frontend build/deploy** (no DB/secret steps).
+
+**Verification (uses the 5 staged candidates):**
+1. As an **admin**, open `/admin/doorway-candidates` → the 5 candidates render with
+   name/location/category/hero summary/rating/contact/status.
+2. Change a candidate's status (e.g. `new → queued → surfaced`) → toast confirms;
+   `SELECT status FROM public.doorway_candidates WHERE property_id='…';` reflects it.
+3. As a **non-admin**, the existing admin layout redirects to `/dashboard`; if the
+   view is reached directly it shows the permission-denied panel and the RPC is
+   rejected (`42501`).
+4. Empty/error states: with `filter` set to an unused status → empty message; a
+   forced query error → error panel with “Try again”.
+
+**Excludes:** B3 consent relaxation, `promote_property_to_beacon`, `agent_beacons`
+writes, client/provider binding, billing/Stripe/platform-fee/Track A, new cron /
+scraper scheduling.
