@@ -50,3 +50,7 @@ verify_jwt = false
 
 [functions.fetch-mattertags]
 verify_jwt = false
+
+[functions.pr-a3-refund-smoke]
+verify_jwt = false
+
