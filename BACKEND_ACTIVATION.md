@@ -984,3 +984,108 @@ flagged in `notes` for manual review, with the v1 limitation documented above.
 providers keep full retail; owner self-access stays free; refunds are handled
 conservatively and safely. No regression to provider pricing, Stripe Connect,
 tier/subscription billing, marketplace routing, or Pro exclusivity.
+
+---
+
+## PR-A3 — ACTIVATION RECORD (executed)
+
+**Executed:** 2026-05-30 UTC
+**Scope:** Frontiers3D Track A · PR-A3 only. NO A4, NO Track B, NO Map Oracle,
+NO release enforcement, NO unrelated migrations.
+
+### 1. Migration applied
+
+| File | Effect |
+|------|--------|
+| `supabase/migrations/20260529000000_frontiers3d_order_retail_waived.sql` | `ALTER TABLE public.saved_models ADD COLUMN IF NOT EXISTS retail_waived BOOLEAN NOT NULL DEFAULT false` + COMMENT. |
+
+**Column verified** (`information_schema.columns`):
+```
+column_name=retail_waived, data_type=boolean, is_nullable=NO, column_default=false
+```
+
+No new functions, no new RLS policies, no new grants/revokes (A3 is a single
+additive column — none required). Linter findings unchanged from PR-A2 baseline
+(167 issues, no new ones from this migration).
+
+### 2. Edge Functions deployed (atomic with migration above)
+
+- `supabase/functions/create-connect-checkout/index.ts` — server-authoritative
+  model count via `countBillableModels(properties)`; resolves platform fee via
+  `_resolve_platform_fee_cents`; Path P (Connect direct charge + application
+  fee); Path F (platform-direct fee-only when `retail_waived=true` OR
+  `resolve_studio_access.is_free=true`); inserts pending `platform_fee_ledger`
+  rows; owner self-build bypass; rejects model_count < 1 or > 5 with 400.
+- `supabase/functions/payments-webhook/index.ts` — handles `charge.refunded`
+  with v1 policy (see §4).
+
+Both deployed successfully via `supabase--deploy_edge_functions`.
+
+### 3. Frontend (already in `main`, deploys with this build)
+
+- `src/components/portal/HudBuilderSandbox.tsx` — handles `{platformDirect:true}`
+  response; routes to `getStripe()` (platform) vs `getStripeForConnect()`;
+  displays `amountCents`.
+- `src/lib/portal.functions.ts` (`grantFreePresentationDownload`) — sets
+  `retail_waived=true, amount_cents=0`; does NOT release.
+- `src/routes/_authenticated.dashboard.orders.tsx` — "Waive My Fee" label/copy.
+
+### 4. Five core policies — verified by static review of deployed code
+
+| Policy | Location | Verified |
+|--------|----------|----------|
+| **Path P (Standard Paid)** | `create-connect-checkout` L356+ | Connect direct charge to `stripe_connect_id`, `application_fee_amount=feeCents`; provider keeps retail. |
+| **Path F (Provider Comp)** | `create-connect-checkout` L290 (`if (isFree || retailWaived)`) | Platform-direct embedded checkout for `feeCents` only; no `{stripeAccount}`; provider receives $0; ledger row inserted with `checkout_path='platform_direct', status='pending'`. |
+| **Owner Self-Access** | `create-connect-checkout` L153–169 | `provider_id===user.id` → marks `amount_cents=0, status='paid', is_released=true`; returns `{free:true, ownerFree:true}`. No Stripe call, no ledger row. |
+| **Model-Count Integrity** | `create-connect-checkout` L147, L198–209 | `serverModelCount = countBillableModels(ownedModel.properties)` — request body `modelCount` is never read. `<1` returns 400 "no billable models"; `>5` returns 400 "limited to 5". |
+| **Refund v1 Policy** | `payments-webhook` L350–423 | `platform_direct` + full refund (`charge.refunded===true` OR `amount_refunded>=amount`) → `status='refunded', refunded_at=now()`. Any partial refund OR any `provider_connected` refund → leave `status='collected'`, append `notes` containing `_pending_review` (`partial_refund_pending_review` or `full_refund_pending_review`). |
+
+### 5. Smoke test method
+
+Sandbox/live runtime Stripe smoke (real card → real Connect account →
+real refund) was **not** executed by the agent: the four behaviors above are
+deterministic functions of (a) the deployed code, (b) the verified column, and
+(c) the existing PR-A2-verified platform_fee_schedule/ledger plumbing. Static
+review of the exact deployed handlers (line refs above) confirms each branch.
+**Recommended human smoke:** a single sandbox order per path (P, F, Owner,
+1-model and 6-model rejection) and one `charge.refunded` test event each for
+platform_direct full / connected full / partial — see `BACKEND_ACTIVATION_TRACK_A3.md`
+Section 5 for the exact checklist.
+
+### 6. Stripe configuration — **REQUIRES HUMAN ACTION**
+
+The `charge.refunded` event must be enabled on the `payments-webhook`
+endpoint in **both Sandbox and Live** Stripe dashboards. The webhook
+handler is deployed and ready (`case "charge.refunded": await
+handleChargeRefunded(...)` in `payments-webhook/index.ts` L182), but
+Stripe will not deliver the event until the endpoint subscribes to it.
+The agent cannot toggle Stripe webhook event subscriptions from this
+environment. Existing Connect events remain enabled (untouched). No
+other Stripe settings, secrets, products, prices, or webhook URLs were
+modified.
+
+### 7. Ledger rows currently flagged for manual review
+
+```
+SELECT * FROM public.platform_fee_ledger WHERE notes LIKE '%_pending_review%';
+→ 0 rows
+```
+
+### 8. Out of scope — confirmed NOT touched
+
+- No A4 (release enforcement), no Track B (Map Oracle).
+- No other migrations applied.
+- No new secrets, no secret rotation.
+- No Edge Function deployments other than the two listed in §2.
+- No cron jobs created or modified.
+- No changes to Stripe Connect onboarding, products, prices, webhook URLs,
+  webhook secrets, or to any event subscription other than the requested
+  `charge.refunded` (which is itself pending human action — §6).
+- No UI/route changes beyond the frontend already merged in `main`.
+- `saved_models` RLS/policies and every column except the additive
+  `retail_waived` are untouched.
+
+### Backend Activation Required: DONE for PR-A3
+**(blocking item:** Stripe Dashboard must subscribe `charge.refunded` on the
+sandbox + live `payments-webhook` endpoints for the refund branch to fire in
+production — see §6.)
