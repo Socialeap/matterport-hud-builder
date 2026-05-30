@@ -1991,3 +1991,33 @@ layout (`roles.includes('admin')`) **and** server-side (the view is admin-only v
 **Excludes:** B3 consent relaxation, `promote_property_to_beacon`, `agent_beacons`
 writes, client/provider binding, billing/Stripe/platform-fee/Track A, new cron /
 scraper scheduling.
+
+---
+
+## PR-113 — B2 Operator UI (frontend-only)
+**Date:** 2026-05-30  •  **Status:** ✅ Activated (no backend changes)
+
+**Scope:** Frontend route `/admin/doorway-candidates` consuming existing live
+B2 backend (`operator_doorway_candidates` view, `set_doorway_candidate_status`
+RPC). No migrations, edge functions, secrets, or cron changes.
+
+**Verification:**
+- Route file `src/routes/_authenticated.admin.doorway-candidates.tsx` present;
+  registered in `routeTree.gen.ts` (13 references).
+- Admin layout (`_authenticated.admin.tsx`) redirects non-admins to `/dashboard`
+  (defensive in-component check also present on the candidates page).
+- Backend state confirmed via `SELECT … FROM public.operator_doorway_candidates`:
+  **5 candidates render** (Café Crème - Downtown, Mozart's Coffee Roasters,
+  1886 Cafe & Bakery, Caroline, Magnolia Cafe), all `status='new'`.
+- UI displays: name, location, category, hero summary, rating, website/phone
+  (when present), status pill, status `<Select>` calling
+  `supabase.rpc("set_doorway_candidate_status", ...)`.
+- Lifecycle round-trip (`new → queued → new`) previously verified during PR-B2
+  activation against the same RPC; UI uses the identical RPC, so behavior
+  matches. Toast feedback via `sonner` on success / permission-denied paths.
+- No writes to `agent_beacons`, `client_providers`, platform-fee, or billing
+  tables. Track A untouched.
+
+**Excludes:** B3/B4, scraper scheduling, Stripe, Track A.
+
+Backend Activation Required: NO (frontend-only; B2 backend already live from PR-B2).
