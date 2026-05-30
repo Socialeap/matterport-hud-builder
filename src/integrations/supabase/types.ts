@@ -1187,6 +1187,181 @@ export type Database = {
         }
         Relationships: []
       }
+      properties: {
+        Row: {
+          administrative_area: string | null
+          business_status: string | null
+          country_code: string | null
+          created_at: string
+          first_seen_at: string
+          formatted_address: string | null
+          google_place_id: string
+          google_types: string[] | null
+          hero_summary: string | null
+          id: string
+          last_seen_at: string
+          last_snapshot_id: string | null
+          locality: string | null
+          name: string
+          postal_code: string | null
+          price_level: number | null
+          primary_category: string | null
+          primary_photo_url: string | null
+          rating: number | null
+          street_name: string | null
+          street_number: string | null
+          updated_at: string
+          user_ratings_total: number | null
+        }
+        Insert: {
+          administrative_area?: string | null
+          business_status?: string | null
+          country_code?: string | null
+          created_at?: string
+          first_seen_at?: string
+          formatted_address?: string | null
+          google_place_id: string
+          google_types?: string[] | null
+          hero_summary?: string | null
+          id?: string
+          last_seen_at?: string
+          last_snapshot_id?: string | null
+          locality?: string | null
+          name: string
+          postal_code?: string | null
+          price_level?: number | null
+          primary_category?: string | null
+          primary_photo_url?: string | null
+          rating?: number | null
+          street_name?: string | null
+          street_number?: string | null
+          updated_at?: string
+          user_ratings_total?: number | null
+        }
+        Update: {
+          administrative_area?: string | null
+          business_status?: string | null
+          country_code?: string | null
+          created_at?: string
+          first_seen_at?: string
+          formatted_address?: string | null
+          google_place_id?: string
+          google_types?: string[] | null
+          hero_summary?: string | null
+          id?: string
+          last_seen_at?: string
+          last_snapshot_id?: string | null
+          locality?: string | null
+          name?: string
+          postal_code?: string | null
+          price_level?: number | null
+          primary_category?: string | null
+          primary_photo_url?: string | null
+          rating?: number | null
+          street_name?: string | null
+          street_number?: string | null
+          updated_at?: string
+          user_ratings_total?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "properties_last_snapshot_id_fkey"
+            columns: ["last_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "operator_failed_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "properties_last_snapshot_id_fkey"
+            columns: ["last_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "raw_scrape_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      property_contacts: {
+        Row: {
+          email: string | null
+          phone_display: string | null
+          phone_e164: string | null
+          property_id: string
+          updated_at: string
+          website_url: string | null
+        }
+        Insert: {
+          email?: string | null
+          phone_display?: string | null
+          phone_e164?: string | null
+          property_id: string
+          updated_at?: string
+          website_url?: string | null
+        }
+        Update: {
+          email?: string | null
+          phone_display?: string | null
+          phone_e164?: string | null
+          property_id?: string
+          updated_at?: string
+          website_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_contacts_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: true
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      property_enrichment: {
+        Row: {
+          domain: string | null
+          enriched_at: string | null
+          enrichment_source: string | null
+          estimated_annual_revenue_usd: number | null
+          estimated_employees: number | null
+          property_id: string
+          signals: Json | null
+          social_links: Json | null
+          tech_stack: string[] | null
+          updated_at: string
+        }
+        Insert: {
+          domain?: string | null
+          enriched_at?: string | null
+          enrichment_source?: string | null
+          estimated_annual_revenue_usd?: number | null
+          estimated_employees?: number | null
+          property_id: string
+          signals?: Json | null
+          social_links?: Json | null
+          tech_stack?: string[] | null
+          updated_at?: string
+        }
+        Update: {
+          domain?: string | null
+          enriched_at?: string | null
+          enrichment_source?: string | null
+          estimated_annual_revenue_usd?: number | null
+          estimated_employees?: number | null
+          property_id?: string
+          signals?: Json | null
+          social_links?: Json | null
+          tech_stack?: string[] | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_enrichment_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: true
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       property_extractions: {
         Row: {
           candidate_fields: Json | null
@@ -1259,6 +1434,167 @@ export type Database = {
             columns: ["vault_asset_id"]
             isOneToOne: false
             referencedRelation: "vault_assets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      property_geo: {
+        Row: {
+          latitude: number
+          location: unknown
+          longitude: number
+          plus_code: string | null
+          property_id: string
+          timezone: string | null
+          updated_at: string
+          viewport: Json | null
+        }
+        Insert: {
+          latitude: number
+          location?: unknown
+          longitude: number
+          plus_code?: string | null
+          property_id: string
+          timezone?: string | null
+          updated_at?: string
+          viewport?: Json | null
+        }
+        Update: {
+          latitude?: number
+          location?: unknown
+          longitude?: number
+          plus_code?: string | null
+          property_id?: string
+          timezone?: string | null
+          updated_at?: string
+          viewport?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_geo_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: true
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      property_hours: {
+        Row: {
+          closes_at: string | null
+          day_of_week: number | null
+          id: string
+          is_24h: boolean
+          is_closed: boolean
+          opens_at: string | null
+          property_id: string
+          raw_text: string | null
+          special_date: string | null
+        }
+        Insert: {
+          closes_at?: string | null
+          day_of_week?: number | null
+          id?: string
+          is_24h?: boolean
+          is_closed?: boolean
+          opens_at?: string | null
+          property_id: string
+          raw_text?: string | null
+          special_date?: string | null
+        }
+        Update: {
+          closes_at?: string | null
+          day_of_week?: number | null
+          id?: string
+          is_24h?: boolean
+          is_closed?: boolean
+          opens_at?: string | null
+          property_id?: string
+          raw_text?: string | null
+          special_date?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_hours_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      property_photos: {
+        Row: {
+          attribution: string | null
+          cdn_url: string | null
+          created_at: string
+          height: number | null
+          id: string
+          ordinal: number
+          property_id: string
+          source_photo_ref: string | null
+          width: number | null
+        }
+        Insert: {
+          attribution?: string | null
+          cdn_url?: string | null
+          created_at?: string
+          height?: number | null
+          id?: string
+          ordinal?: number
+          property_id: string
+          source_photo_ref?: string | null
+          width?: number | null
+        }
+        Update: {
+          attribution?: string | null
+          cdn_url?: string | null
+          created_at?: string
+          height?: number | null
+          id?: string
+          ordinal?: number
+          property_id?: string
+          source_photo_ref?: string | null
+          width?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_photos_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      property_review_summaries: {
+        Row: {
+          computed_at: string
+          property_id: string
+          recent_review_velocity: number | null
+          reviews_sample: Json | null
+          sentiment_score: number | null
+        }
+        Insert: {
+          computed_at?: string
+          property_id: string
+          recent_review_velocity?: number | null
+          reviews_sample?: Json | null
+          sentiment_score?: number | null
+        }
+        Update: {
+          computed_at?: string
+          property_id?: string
+          recent_review_velocity?: number | null
+          reviews_sample?: Json | null
+          sentiment_score?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_review_summaries_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: true
+            referencedRelation: "properties"
             referencedColumns: ["id"]
           },
         ]
@@ -1337,6 +1673,53 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      raw_scrape_snapshots: {
+        Row: {
+          created_at: string
+          id: string
+          processed_at: string | null
+          processing_error: string | null
+          query_context: Json | null
+          raw_payload: Json
+          scrape_run_id: string
+          scraped_at: string
+          source: string
+          source_place_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          processed_at?: string | null
+          processing_error?: string | null
+          query_context?: Json | null
+          raw_payload: Json
+          scrape_run_id: string
+          scraped_at?: string
+          source: string
+          source_place_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          processed_at?: string | null
+          processing_error?: string | null
+          query_context?: Json | null
+          raw_payload?: Json
+          scrape_run_id?: string
+          scraped_at?: string
+          source?: string
+          source_place_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "raw_scrape_snapshots_scrape_run_id_fkey"
+            columns: ["scrape_run_id"]
+            isOneToOne: false
+            referencedRelation: "scrape_runs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       sandbox_demos: {
         Row: {
@@ -1419,6 +1802,42 @@ export type Database = {
           status?: Database["public"]["Enums"]["model_status"]
           tour_config?: Json
           updated_at?: string
+        }
+        Relationships: []
+      }
+      scrape_runs: {
+        Row: {
+          completed_at: string | null
+          error: string | null
+          id: string
+          initiated_by: string | null
+          query_params: Json | null
+          scraper_version: string | null
+          started_at: string
+          status: string
+          total_snapshots: number
+        }
+        Insert: {
+          completed_at?: string | null
+          error?: string | null
+          id?: string
+          initiated_by?: string | null
+          query_params?: Json | null
+          scraper_version?: string | null
+          started_at?: string
+          status?: string
+          total_snapshots?: number
+        }
+        Update: {
+          completed_at?: string | null
+          error?: string | null
+          id?: string
+          initiated_by?: string | null
+          query_params?: Json | null
+          scraper_version?: string | null
+          started_at?: string
+          status?: string
+          total_snapshots?: number
         }
         Relationships: []
       }
@@ -1968,6 +2387,27 @@ export type Database = {
         }
         Relationships: []
       }
+      operator_failed_snapshots: {
+        Row: {
+          id: string | null
+          initiated_by: string | null
+          processed_at: string | null
+          processing_error: string | null
+          scrape_run_id: string | null
+          scraped_at: string | null
+          source: string | null
+          source_place_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "raw_scrape_snapshots_scrape_run_id_fkey"
+            columns: ["scrape_run_id"]
+            isOneToOne: false
+            referencedRelation: "scrape_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       operator_open_supply_gaps: {
         Row: {
           city: string | null
@@ -2028,6 +2468,14 @@ export type Database = {
         Args: { p_work_order_id: string }
         Returns: number
       }
+      _extract_address_component: {
+        Args: {
+          p_components: Json
+          p_type_filter: string
+          p_use_short?: boolean
+        }
+        Returns: string
+      }
       _is_provider_serving_beacon: {
         Args: { p_beacon_id: string; p_provider_id: string }
         Returns: boolean
@@ -2036,6 +2484,8 @@ export type Database = {
         Args: { p_provider_id: string; p_work_order_id: string }
         Returns: boolean
       }
+      _normalize_phone_e164: { Args: { p_intl: string }; Returns: string }
+      _parse_google_time: { Args: { p_t: string }; Returns: string }
       _postgis_deprecate: {
         Args: { newname: string; oldname: string; version: string }
         Returns: undefined
@@ -2062,6 +2512,8 @@ export type Database = {
         Args: { p_model_count: number; p_source: string }
         Returns: number
       }
+      _safe_integer: { Args: { p_v: Json }; Returns: number }
+      _safe_numeric: { Args: { p_v: Json }; Returns: number }
       _st_3dintersects: {
         Args: { geom1: unknown; geom2: unknown }
         Returns: boolean
@@ -2678,6 +3130,17 @@ export type Database = {
       }
       postgis_version: { Args: never; Returns: string }
       postgis_wagyu_version: { Args: never; Returns: string }
+      process_raw_snapshot: {
+        Args: { p_snapshot_id: string }
+        Returns: undefined
+      }
+      process_unprocessed_snapshots: {
+        Args: { p_batch_size?: number }
+        Returns: {
+          failed: number
+          processed: number
+        }[]
+      }
       provider_has_paid_access: {
         Args: { _provider_id: string }
         Returns: boolean
