@@ -1746,3 +1746,24 @@ above; admin gate on the function verified at runtime.
 **Sign-off:** PR-B-Scraper activation DONE for everything inside our control;
 external Google Cloud API enablement is the only remaining blocker for a
 green end-to-end live smoke.
+
+---
+
+## PR-B-Scraper — Live Smoke Re-run (post Places API enable)
+
+**Date:** 2026-05-30
+**Trigger:** Operator enabled legacy Places API in the Google Cloud project owning `GOOGLE_PLACES_API_KEY`.
+
+**Request:** `POST /map-oracle-ingest` `{"category":"cafe","city":"Austin, TX","limit":5,"fetchDetails":false}` as admin.
+
+**Response:** `200` — `runId=151b1b0b-2479-4e89-abb2-4fb5c36dd22c`, `placesFound=5`, `snapshotsWritten=5`, `detailsWritten=0`, `apiCalls=1`, `errors=[]`, `status=completed`.
+
+**Verification:**
+- `raw_scrape_snapshots` for run: **5** rows written ✅
+- After PR-B1 cron `frontiers3d-transform-snapshots` tick (~60s):
+  - `raw_scrape_snapshots.processed_at IS NOT NULL` for run: **5 / 5** ✅
+  - `properties` total: **0 → 5** ✅
+
+**Result:** Live end-to-end green. Google Places ingest → `raw_scrape_snapshots` → cron-driven `process_unprocessed_snapshots` → `properties` materialization all working.
+
+No B2/B3/B4, Stripe, or Track A changes touched.
