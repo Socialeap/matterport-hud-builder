@@ -708,3 +708,279 @@ checkout, webhook, or provider pricing.
 - Existing work-order RPCs (`submit_work_order`, `confirm_work_order_msp`) unchanged.
 
 **Backend Activation Required: DONE for PR-A2.** Ready for PR-A3 when greenlit.
+
+---
+
+## PR-A3 — Checkout + Webhook + Comp (behavioral, money; ATOMIC)
+
+> Appended by PR-A3. All manifest content **above** (incl. the activated
+> PR-A1 and PR-A2 records and the open email-domain blocker) is **unchanged**
+> by this PR. The section below is this PR's activation detail, consolidated
+> from `frontiers3d-core/BACKEND_ACTIVATION_TRACK_A3.md`. **Not yet activated.**
+> 💰 **Moves money — explicit business sign-off required before activation.**
+> Apply `retail_waived` **before** deploying the functions; deploy backend +
+> frontend **together**; enable `charge.refunded` on the Stripe endpoint.
+
+# Backend Activation — Frontiers3D Track A · PR-A3 (Checkout + Webhook + Comp) — ATOMIC
+
+> **Consolidated Track A activation doc** shipped with PR-A3. Built from the
+> actual staged code; supersedes `BACKEND_ACTIVATION_PHASE_3_1.md` (Phase 3.1)
+> and `BACKEND_ACTIVATION_PHASE_3_2.md` (Phase 3.2).
+>
+> ⚠️ For PR-A3 activation, use **only this PR-A3 section** of the repo-root
+> `BACKEND_ACTIVATION.md`. Do **not** use the staging root `BACKEND_ACTIVATION.md`
+> in `frontiers3d-core`, which is the Phase 1 / Track B Gap-Discovery doc.
+>
+> 💰 **This PR moves money. Explicit business sign-off is REQUIRED before live.**
+
+## What this PR lands
+
+| Artifact | Phase | Purpose |
+|---|---|---|
+| `supabase/migrations/20260529000000_frontiers3d_order_retail_waived.sql` | 3.2 | `saved_models.retail_waived BOOLEAN NOT NULL DEFAULT false`. |
+| `supabase/functions/create-connect-checkout/index.ts` (overwrite) | 3.1+3.2 | Server-authoritative model count; resolve fee; Path P (`retail + application_fee`); Path F (platform-direct fee-only); pending ledger inserts; `retail_waived` → Path F. |
+| `supabase/functions/payments-webhook/index.ts` (overwrite) | 3.1 | Settle ledger to `collected`; `platform_direct` branch; **refund handling (v1 policy — see below)**. |
+| `src/components/portal/HudBuilderSandbox.tsx` | 3.1 | Patches A–E (handle `platformDirect`; `getStripe()` vs `getStripeForConnect()`; show `amountCents`). |
+| `src/lib/portal.functions.ts` (`grantFreePresentationDownload`) | 3.2 | Comp sets `retail_waived=true, amount_cents=0`, does **not** release. |
+| `src/routes/_authenticated.dashboard.orders.tsx` | 3.2 | "Waive My Fee" relabel, toast, description. |
+| `src/routes/_authenticated.dashboard.clients.tsx` | 3.1 | Reword "free" copy. |
+
+> Staged edge functions import `../_shared/stripe.ts` / `../_shared/pricing.ts`,
+> which exist unchanged in legacy — **deploy only the two `index.ts` files**, not
+> `_shared`.
+
+**Prerequisite:** PR-A1 (resolver, schedule, ledger). PR-A2 may precede or
+follow; it only changes which schedule a `directory_request` client resolves to.
+
+**Apply order within A3:** apply the `retail_waived` migration **before**
+deploying the functions (the checkout SELECTs `retail_waived`); deploy backend
++ frontend **together** (the new backend returns `{ platformDirect: true }`,
+which the old frontend would treat as an error).
+
+## Summary — two client-pays paths
+
+```text
+Final Client Price = Frontiers3D platform fee + Provider retail fee
+```
+
+| | `provider_retail > 0` (**Path P**) | `provider_retail = 0` / waived (**Path F**) |
+|---|---|---|
+| Stripe flow | Connect direct charge **+ `application_fee_amount = fee`** | **platform-owned** Checkout (no connected account), fee only |
+| Client pays | retail + fee | fee |
+| Provider nets | retail | $0 (no Stripe cost) |
+| Platform nets | fee (via application fee) | fee (100%, platform is merchant of record) |
+| `saved_models.amount_cents` | retail only (fee subtracted) | 0 |
+| Ledger `checkout_path` | `provider_connected` | `platform_direct` |
+
+- The fee = `_resolve_platform_fee_cents(acquisition_source, model_count)`, where
+  **`model_count` is derived server-side** from `saved_models.properties`
+  (request-body `modelCount` is never trusted). 0 or >5 billable models → 400.
+- **Owner self-access** stays fully exempt: no checkout, no fee, no ledger row.
+- **Provider comp** ("Waive My Fee", 3.2) sets `retail_waived=true` and does
+  **not** release; the client then pays the platform fee via Path F, and the
+  webhook releases on payment. The mandatory platform fee is never waivable.
+
+## Refund handling (v1 policy) — **resolves Codex BLOCKER 2**
+
+`charge.refunded` is enabled on the webhook so refunds can reverse the ledger.
+But a naive "any `charge.refunded` → mark the row `refunded`" is **unsafe**,
+because:
+
+1. **`charge.refunded` fires for BOTH full and partial refunds.** A $5 partial
+   refund on a $60 charge would otherwise mark the entire platform-fee row
+   `refunded`.
+2. **A Connect `application_fee_amount` is NOT auto-reversed by a charge
+   refund.** On **Path P** (`provider_connected`) the platform fee rides as an
+   application fee on the provider's charge. Refunding the customer's charge
+   does **not** return the application fee unless `refund_application_fee=true`
+   was set on the refund. So a customer refund does **not** imply the platform
+   fee came back.
+
+### v1 policy (implemented in `payments-webhook` `handleChargeRefunded`)
+
+The handler loads the ledger row(s) by PaymentIntent, reads `checkout_path`, and
+computes full-vs-partial from the charge (`charge.refunded === true`, or
+`amount_refunded >= amount`). Then:
+
+| Case | Action | Ledger result |
+|---|---|---|
+| **Full refund** + `platform_direct` | the fee **was** the entire charge → provably returned | `status='refunded'`, `refunded_at` set |
+| **Full refund** + `provider_connected` | application fee not auto-reversed → cannot confirm | left `status='collected'`; `notes='full_refund_pending_review: … verify application_fee refund …'` |
+| **Partial refund** (any path) | v1 does not prorate per-fee | left `status='collected'`; `notes='partial_refund_pending_review: refunded X of Y cents …'` |
+| No matching ledger row | non-fee charge (e.g. tier purchase) | no-op |
+
+**Net rule:** the only case auto-marked `refunded` is a **full `platform_direct`
+refund**, where the platform fee equals the entire refunded charge — exact and
+safe. Every other refund is **left collected and flagged in `notes`** for a human
+to review. This guarantees the ledger never *under-reports* collected revenue and
+never *falsely* claims a fee was returned.
+
+### Known v1 limitation (must be stated)
+
+Exact per-fee refund accounting — auto-resolving a `provider_connected` row when
+the `application_fee` is actually refunded, or partially reversing a row on a
+partial refund — is **not implemented in v1**. The ledger schema (PR-A1) has no
+review-state enum value, so the review flag lives in `notes` (queryable via
+`WHERE notes LIKE '%_pending_review%'`); `status` stays `collected`. Operators
+must reconcile flagged rows manually (or refund the application fee in Stripe and
+mark the row `refunded` by hand). Implementing `application_fee.refunded`
+accounting and/or a first-class review status is a tracked follow-up. **No
+schema change is introduced by this fix** — PR-A1 is untouched.
+
+## Safety Check
+
+- [x] One additive migration (`ADD COLUMN IF NOT EXISTS saved_models.retail_waived`,
+      safe default). No `DROP`/`DELETE`/`TRUNCATE`/destructive ALTER; no RLS/policy
+      change; idempotent.
+- [x] No change to PR-A1 objects (`platform_fee_schedule`,
+      `_resolve_platform_fee_cents`, `platform_fee_ledger` shape) — consumed only.
+      **The refund fix uses the existing `notes` column; the `status` enum is
+      unchanged.**
+- [x] No change to Stripe Connect onboarding/payout/account-session, to provider
+      retail pricing (`_shared/pricing.ts`), or to subscription/license/tier
+      handling in the webhook (the tier branch is reached only when
+      `metadata.path !== 'platform_direct'` and is byte-for-byte preserved).
+- [x] Webhook idempotency (`processed_webhook_events`, claim + release-on-fail)
+      and signature/livemode trust model unchanged.
+- [x] Server-authoritative `model_count` — request-body `modelCount` ignored for
+      billing.
+- [x] No new secrets/env vars (platform-direct uses the same platform Stripe
+      credentials `create-checkout` already uses).
+
+## Required Actions
+
+1. Confirm PR-A1 applied (`platform_fee_schedule` seeded with 20 rows,
+   `_resolve_platform_fee_cents` present, `platform_fee_ledger` exists).
+2. Apply `20260529000000_frontiers3d_order_retail_waived.sql`. Verify
+   `saved_models.retail_waived` is `boolean NOT NULL DEFAULT false`.
+3. Deploy `create-connect-checkout` and `payments-webhook`.
+4. **Stripe Dashboard (sandbox + live):** enable `charge.refunded` on the
+   payments webhook endpoint; confirm Connect events remain enabled. (The
+   endpoint already receives `event.account`-scoped events, so connected-account
+   `charge.refunded` arrives on the same endpoint.)
+5. Apply `HudBuilderSandbox.tsx` Patches A–E; the `grantFreePresentationDownload`
+   patch; the `orders.tsx` 3.2 relabel/toast/description; the `clients.tsx`
+   "free" copy reword. Rebuild/deploy frontend **in the same release as step 3**.
+6. Run Verification A–G in **sandbox** first; obtain money-flow sign-off; promote
+   to live and re-run the smoke subset.
+
+## Verification (sandbox after deploy)
+
+### A. Path P — provider-paid (retail > 0)
+1. As an `scs_direct` client of a Connect-complete provider with retail pricing,
+   check out a 3-model presentation.
+2. Stripe checkout shows two line items: presentation (retail) + "Frontiers3D
+   platform fee" (SCS Direct, 3 models → **$20**).
+3. On pay, expect:
+   - `saved_models` → `status='paid'`, `is_released=true`, `amount_cents` =
+     **retail only** (fee subtracted).
+   - `platform_fee_ledger` row → `status='collected'`,
+     `checkout_path='provider_connected'`, `platform_fee_cents=2000`,
+     `model_count=3`, `acquisition_source='scs_direct'`, `stripe_payment_intent_id` set.
+   - Stripe: $20 application fee on the platform balance; retail on provider balance.
+```sql
+SELECT status, checkout_path, acquisition_source, model_count, platform_fee_cents,
+       stripe_payment_intent_id IS NOT NULL AS has_pi
+  FROM public.platform_fee_ledger ORDER BY occurred_at DESC LIMIT 5;
+```
+> Note: the ledger column is **`acquisition_source`** (not `lead_source`).
+
+### B. Path F — provider waived retail (free / comped client)
+1. Provider marks the client `is_free` (or comps the order — Verif F). Client
+   checks out a 5-model presentation; provider is Marketplace
+   (`map_oracle`/`agent_form`/`directory_request`).
+2. Expect a **platform** embedded checkout for the fee only — Marketplace, 5
+   models → **$60** (`getStripe()` path, no connected account).
+3. On pay, expect: `saved_models` → `paid`, `is_released=true`, `amount_cents=0`;
+   ledger row `status='collected'`, `checkout_path='platform_direct'`,
+   `platform_fee_cents=6000`, `model_count=5`. Full $60 on the **platform**
+   account; provider account untouched.
+
+### C. Owner self-access — fully exempt
+- Provider self-builds/downloads their own presentation → instant release
+  (`{free:true, ownerFree:true}`), `amount_cents=0`, **no** ledger row.
+
+### D. Model-count integrity
+- Tamper request `modelCount` (send 1 for a 4-model presentation) → fee reflects
+  the **server** count (4); ledger `model_count=4`.
+- 0 valid `matterportId`s → 400 ("no billable models"); 6 models → 400 ("limited to 5").
+
+### E. Refund handling (v1 policy — verify all four cases)
+1. **Path F full refund** → matching ledger row `status='refunded'`,
+   `refunded_at` set.
+2. **Path P full refund** (do **not** refund the application fee) → ledger row
+   stays `status='collected'`, `notes` starts `full_refund_pending_review`. (If
+   you *also* refund the application fee in Stripe, the row stays flagged in v1 —
+   resolve manually.)
+3. **Partial refund** (Path P or F) → ledger row stays `status='collected'`,
+   `notes` starts `partial_refund_pending_review: refunded X of Y cents`.
+4. **Non-fee charge** (tier purchase) refund → no ledger change.
+```sql
+SELECT status, checkout_path, notes
+  FROM public.platform_fee_ledger
+ WHERE stripe_payment_intent_id = '<pi_from_refunded_charge>';
+SELECT id, checkout_path, notes FROM public.platform_fee_ledger
+ WHERE notes LIKE '%_pending_review%';   -- operator review queue
+```
+
+### F. Comp (3.2) → fee due, no instant free release
+1. Provider clicks **"Waive My Fee"** on a pending order → `saved_models`:
+   `retail_waived=true`, `amount_cents=0`, `status` NOT `paid`,
+   `is_released=false`; **no** ledger row yet; `order_notifications` not flipped.
+2. Client downloads → platform checkout for the fee (Path F) → on pay, released,
+   one `collected/platform_direct` ledger row.
+3. Re-trigger checkout on the settled order → `{free:true, oneTimeFree:true}`,
+   no double charge, no new ledger row.
+
+### G. Regression — existing flows intact
+- Tier purchase (`create-checkout` starter/pro) → webhook still upserts
+  `purchases`/`licenses`/`branding_settings` + provider role (the
+  `platform_direct` branch is skipped; tier branch byte-for-byte preserved).
+- Connect onboarding (`account.updated`) → still flips `stripe_onboarding_complete`.
+- Subscriptions → license create/update/delete/extend unchanged.
+
+## Do NOT Touch (unchanged)
+
+- `_shared/stripe.ts`, `_shared/pricing.ts`, `create-checkout`, `get-stripe-price`,
+  `stripe-connect-onboard/status/account-session`.
+- PR-A1 objects (`platform_fee_schedule`, `_resolve_platform_fee_cents`,
+  `platform_fee_ledger` shape) — consumed read-only.
+- Marketplace routing, Pro exclusivity, `provider_has_paid_access`,
+  `get_effective_tier`, `set_my_service_polygon`, licenses/purchases/admin_grants.
+- `saved_models` RLS/policies and every column except the additive `retail_waived`.
+
+## Known follow-ups (out of scope)
+
+1. **Exact refund accounting** — `application_fee.refunded` handling and partial
+   proration; a first-class ledger review status. Until then, flagged rows are
+   reconciled manually (see "Refund handling" limitation).
+2. **`agent_beacons → client_providers` bridge** stamping `map_oracle`/`agent_form`
+   (Phase-2-dependent) — until it lands, non-directory links bill the Direct schedule.
+3. **Setup-tier pricing** ($499 Pro vs legacy paywall) — unchanged here.
+4. `stripe_application_fee_id` capture via `application_fee.created` if per-fee
+   reconciliation detail is later required.
+
+## Rollback
+
+Redeploy the **prior** `create-connect-checkout` + `payments-webhook` (from
+`main` pre-PR); revert the four frontend/server-fn patches. The `retail_waived`
+column may remain (harmless). Optionally disable `charge.refunded`. Ledger rows
+already collected stay (financial record).
+
+---
+
+## Backend Activation Required: YES — **PR-A3 PR-ready, pending money-flow sign-off**
+
+**Destructive (DB):** NO. **Behavioral / money movement:** YES — explicit
+business sign-off required before live.
+
+**Codex BLOCKER 2 status: RESOLVED.** Refund handling now distinguishes full vs
+partial and never auto-marks a row `refunded` unless the platform fee provably
+came back (full `platform_direct`); all other refunds are left `collected` and
+flagged in `notes` for manual review, with the v1 limitation documented above.
+
+**Result:** every billable client download collects the mandatory platform fee
+(Marketplace $20–$60 / Direct $10–$30 by model count) and records a ledger row;
+providers keep full retail; owner self-access stays free; refunds are handled
+conservatively and safely. No regression to provider pricing, Stripe Connect,
+tier/subscription billing, marketplace routing, or Pro exclusivity.

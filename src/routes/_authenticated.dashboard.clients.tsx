@@ -236,7 +236,7 @@ function ClientsPage() {
             </Button>
           </div>
           <p className="mt-3 text-xs text-muted-foreground">
-            Free clients can download their Presentation at no cost. Default is <strong>Pay</strong>.
+            Free = you waive your fee. The client still pays the Frontiers3D platform access fee. Default is <strong>Pay</strong>.
           </p>
         </CardContent>
       </Card>

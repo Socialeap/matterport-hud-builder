@@ -6395,12 +6395,27 @@ export const grantFreePresentationDownload = createServerFn({ method: "POST" })
       return { success: true, alreadyPaid: true };
     }
 
-    const { error: updateError } = await supabaseAdmin
+    // Waive the provider's OWN retail fee for this order. The mandatory
+    // Frontiers3D platform fee is still owed by the client, who pays it at
+    // download via the platform-direct checkout (create-connect-checkout
+    // Path F). Do NOT release here and do NOT mark the order paid — it stays
+    // pending until the client completes the platform-fee checkout, at which
+    // point payments-webhook releases it.
+    // saved_models.retail_waived is added by the A3 migration
+    // (20260529000000_frontiers3d_order_retail_waived.sql) and is NOT in the
+    // generated `Database` types yet — src/integrations/supabase/types.ts is
+    // auto-generated ("Do not edit it directly") and regenerates from the live
+    // DB at activation, when the column will exist. Match the established repo
+    // idiom for types that lag the DB (see admin_get_user_emails_by_ids and
+    // issue_studio_preview_token above): cast through unknown for this single
+    // write rather than hand-editing the generated types file.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const untypedAdmin = supabaseAdmin as unknown as any;
+    const { error: updateError } = await untypedAdmin
       .from("saved_models")
       .update({
         amount_cents: 0,
-        status: "paid",
-        is_released: true,
+        retail_waived: true,
       })
       .eq("id", data.modelId)
       .eq("provider_id", userId);
@@ -6409,13 +6424,7 @@ export const grantFreePresentationDownload = createServerFn({ method: "POST" })
       throw new Error(updateError.message);
     }
 
-    await supabaseAdmin
-      .from("order_notifications")
-      .update({ status: "paid" })
-      .eq("model_id", data.modelId)
-      .eq("provider_id", userId);
-
-    return { success: true, alreadyPaid: false };
+    return { success: true, alreadyPaid: false, feeStillDue: true };
   });
 
 /**

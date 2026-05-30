@@ -64,6 +64,75 @@ async function releaseEvent(eventId: string): Promise<void> {
   }
 }
 
+// ── Frontiers3D platform-fee ledger settlement ─────────────────────
+/**
+ * Marks the platform_fee_ledger row for a completed checkout as
+ * `collected`. The pending row is written by create-connect-checkout
+ * keyed on the Stripe checkout session id; here we flip it to collected
+ * and attach the PaymentIntent. If the pending row is missing (e.g. the
+ * pre-insert failed), we reconstruct it from the session metadata so the
+ * platform-fee record is never lost.
+ *
+ * Idempotent in practice: this only runs once per checkout completion
+ * because the outer handler is guarded by claimEvent().
+ */
+async function settlePlatformFeeLedger(
+  session: any,
+  path: "provider_connected" | "platform_direct",
+): Promise<void> {
+  const sessionId: string | undefined = session.id;
+  if (!sessionId) return;
+
+  const paymentIntentId =
+    typeof session.payment_intent === "string"
+      ? session.payment_intent
+      : session.payment_intent?.id ?? null;
+
+  const nowIso = new Date().toISOString();
+
+  const { data: updated, error: updErr } = await supabase
+    .from("platform_fee_ledger")
+    .update({
+      status: "collected",
+      checkout_path: path,
+      stripe_payment_intent_id: paymentIntentId,
+      collected_at: nowIso,
+    })
+    .eq("stripe_checkout_session_id", sessionId)
+    .select("id");
+
+  if (updErr) {
+    console.error("Failed to settle platform_fee_ledger:", updErr);
+    throw updErr;
+  }
+
+  if (Array.isArray(updated) && updated.length > 0) return;
+
+  // No pending row — reconstruct from metadata so revenue isn't lost.
+  const m = session.metadata ?? {};
+  const modelCount = parseInt(m.modelCount, 10);
+  const feeCents = parseInt(m.feeCents, 10);
+  if (!m.modelId || !m.feeScheduleId || !Number.isFinite(modelCount) || !Number.isFinite(feeCents)) {
+    console.error("Cannot reconstruct platform_fee_ledger for session", sessionId, "missing metadata");
+    return;
+  }
+  const { error: insErr } = await supabase.from("platform_fee_ledger").insert({
+    saved_model_id: m.modelId,
+    client_id: m.clientId ?? null,
+    provider_id: m.providerId ?? null,
+    acquisition_source: m.acquisitionSource,
+    model_count: modelCount,
+    platform_fee_cents: feeCents,
+    fee_schedule_id: m.feeScheduleId,
+    checkout_path: path,
+    stripe_checkout_session_id: sessionId,
+    stripe_payment_intent_id: paymentIntentId,
+    status: "collected",
+    collected_at: nowIso,
+  });
+  if (insErr) console.error("Failed to reconstruct platform_fee_ledger:", insErr);
+}
+
 serve(async (req) => {
   if (req.method !== "POST") {
     return new Response("Method not allowed", { status: 405 });
@@ -108,6 +177,10 @@ serve(async (req) => {
           } else {
             await handleCheckoutCompleted(event.data.object, env);
           }
+          break;
+
+        case "charge.refunded":
+          await handleChargeRefunded(event.data.object);
           break;
 
         case "customer.subscription.created":
@@ -175,9 +248,21 @@ async function handleConnectCheckoutCompleted(session: any, connectedAccountId: 
     return;
   }
 
+  // Frontiers3D platform fee (Phase 3.1) rides on the connected charge as
+  // an application fee. Keep saved_models.amount_cents the PROVIDER RETAIL
+  // portion by subtracting the platform fee from the gross amount_total.
+  // Sessions created before Phase 3.1 carry no feeCents metadata and no
+  // fee line item, so they fall back to amount_total (retail-only) — no
+  // behavior change for in-flight legacy checkouts.
+  const amountTotal = session.amount_total || 0;
+  const feeCents = parseInt(session.metadata?.feeCents ?? "", 10);
+  const retailCents = Number.isFinite(feeCents)
+    ? Math.max(0, amountTotal - feeCents)
+    : amountTotal;
+
   const { error: modelError } = await supabase
     .from("saved_models")
-    .update({ status: "paid", is_released: true, amount_cents: session.amount_total || 0 })
+    .update({ status: "paid", is_released: true, amount_cents: retailCents })
     .eq("id", modelId);
 
   if (modelError) {
@@ -199,7 +284,143 @@ async function handleConnectCheckoutCompleted(session: any, connectedAccountId: 
       .upsert({ user_id: clientId, role: "client" }, { onConflict: "user_id,role" });
   }
 
-  console.log(`Connect payment: model=${modelId}, provider=${providerId}, client=${clientId}, amount=${session.amount_total}`);
+  // Settle the platform-fee ledger (only when this checkout carried a fee).
+  if (Number.isFinite(feeCents)) {
+    await settlePlatformFeeLedger(session, "provider_connected");
+  }
+
+  console.log(`Connect payment: model=${modelId}, provider=${providerId}, client=${clientId}, gross=${amountTotal}, retail=${retailCents}, fee=${Number.isFinite(feeCents) ? feeCents : "n/a"}`);
+}
+
+// ── Platform-direct fee checkout (Frontiers3D as merchant of record) ─
+// Provider waived their retail fee; the client paid only the mandatory
+// platform fee directly to the platform account. Release the model and
+// settle the ledger. saved_models.amount_cents stays 0 — the provider
+// earned nothing; the platform fee lives in platform_fee_ledger.
+async function handlePlatformFeeCheckout(session: any) {
+  console.log("Platform-direct fee checkout completed:", session.id);
+
+  const modelId = session.metadata?.modelId;
+  const providerId = session.metadata?.providerId;
+  const clientId = session.metadata?.clientId;
+
+  if (!modelId) {
+    console.error("No modelId in platform-direct checkout session metadata");
+    return;
+  }
+
+  const { error: modelError } = await supabase
+    .from("saved_models")
+    .update({ status: "paid", is_released: true, amount_cents: 0 })
+    .eq("id", modelId);
+
+  if (modelError) {
+    console.error("Failed to release saved_model (platform_direct):", modelError);
+    return;
+  }
+
+  if (providerId) {
+    await supabase
+      .from("order_notifications")
+      .update({ status: "paid" })
+      .eq("model_id", modelId)
+      .eq("provider_id", providerId);
+  }
+
+  if (clientId) {
+    await supabase
+      .from("user_roles")
+      .upsert({ user_id: clientId, role: "client" }, { onConflict: "user_id,role" });
+  }
+
+  await settlePlatformFeeLedger(session, "platform_direct");
+
+  console.log(`Platform-direct fee collected: model=${modelId}, provider=${providerId}, client=${clientId}, amount=${session.amount_total}`);
+}
+
+// ── Refund → reverse / flag the platform-fee ledger row ────────────
+// v1 refund policy (see BACKEND_ACTIVATION_TRACK_A3.md "Refund handling
+// (v1 policy)"). `charge.refunded` fires for BOTH full and partial
+// refunds, and — critically — a customer charge refund does NOT
+// automatically reverse a Connect `application_fee_amount`. So we only
+// mark the ledger row `refunded` when we can be CERTAIN the platform fee
+// itself came back; otherwise we leave it `collected` and flag it for
+// manual review. Matches on the PaymentIntent id (stable across Connect
+// and platform charges). No-op for non-fee charges (e.g. tier purchases).
+async function handleChargeRefunded(charge: any) {
+  const paymentIntentId =
+    typeof charge.payment_intent === "string"
+      ? charge.payment_intent
+      : charge.payment_intent?.id ?? null;
+  if (!paymentIntentId) {
+    console.log("charge.refunded without payment_intent — skipping ledger reversal");
+    return;
+  }
+
+  // Load the platform-fee ledger row(s) for this charge. We need
+  // checkout_path to apply the policy. No row = a non-fee charge.
+  const { data: rows, error: selErr } = await supabase
+    .from("platform_fee_ledger")
+    .select("id, checkout_path, platform_fee_cents")
+    .eq("stripe_payment_intent_id", paymentIntentId)
+    .neq("status", "refunded");
+
+  if (selErr) {
+    console.error("Failed to load platform_fee_ledger for refund:", selErr);
+    throw selErr;
+  }
+  if (!Array.isArray(rows) || rows.length === 0) {
+    console.log(`charge.refunded: no platform_fee_ledger row for pi=${paymentIntentId} (non-fee charge)`);
+    return;
+  }
+
+  // Full vs partial. Stripe sets charge.refunded=true ONLY on a full
+  // refund; partial refunds leave it false with amount_refunded < amount.
+  const amount = Number(charge.amount ?? 0);
+  const amountRefunded = Number(charge.amount_refunded ?? 0);
+  const isFullRefund =
+    charge.refunded === true || (amount > 0 && amountRefunded >= amount);
+  const nowIso = new Date().toISOString();
+
+  for (const row of rows) {
+    // Mark `refunded` ONLY when the platform fee provably came back:
+    //   platform_direct + full refund → the fee WAS the entire charge.
+    // Conservative review (left `collected`, flagged in notes) otherwise:
+    //   * any PARTIAL refund — v1 does not prorate per-fee, and
+    //   * any provider_connected refund — the fee rode as an
+    //     application_fee_amount that Stripe does NOT auto-reverse on a
+    //     charge refund, so a customer refund does not imply the platform
+    //     fee was returned. Exact application-fee refund accounting is a
+    //     deferred follow-up; until then these need a human to confirm.
+    const certainFeeReturned =
+      isFullRefund && row.checkout_path === "platform_direct";
+
+    if (certainFeeReturned) {
+      const { error } = await supabase
+        .from("platform_fee_ledger")
+        .update({ status: "refunded", refunded_at: nowIso })
+        .eq("id", row.id)
+        .neq("status", "refunded");
+      if (error) {
+        console.error("Failed to mark platform_fee_ledger refunded:", error);
+        throw error;
+      }
+      console.log(`Platform fee refunded (platform_direct, full): pi=${paymentIntentId}, ledger=${row.id}`);
+    } else {
+      const reason = !isFullRefund
+        ? `partial_refund_pending_review: charge refunded ${amountRefunded} of ${amount} cents; platform fee (${row.platform_fee_cents}) not auto-reversed — manual review`
+        : `full_refund_pending_review: ${row.checkout_path} application fee not auto-reversed by charge refund — verify application_fee refund before marking refunded`;
+      const { error } = await supabase
+        .from("platform_fee_ledger")
+        .update({ notes: reason })
+        .eq("id", row.id);
+      if (error) {
+        console.error("Failed to flag platform_fee_ledger for refund review:", error);
+        throw error;
+      }
+      console.log(`Platform fee refund flagged for review: pi=${paymentIntentId}, ledger=${row.id}, path=${row.checkout_path}, full=${isFullRefund}`);
+    }
+  }
 }
 
 // ── Account updated (Connect onboarding) ───────────────────────────
@@ -221,6 +442,15 @@ async function handleAccountUpdated(account: any, connectedAccountId: string) {
 // ── Platform checkout (one-time legacy fallback) ───────────────────
 async function handleCheckoutCompleted(session: any, env: StripeEnv) {
   console.log("Checkout completed:", session.id, "mode:", session.mode);
+
+  // Frontiers3D platform-direct fee checkout (Phase 3.1). Distinct from
+  // tier purchases below; identified by metadata.path. Handle and return
+  // before the tier-purchase logic so the two never collide.
+  if (session.metadata?.path === "platform_direct") {
+    await handlePlatformFeeCheckout(session);
+    return;
+  }
+
   // For subscriptions the subscription.created event handles license creation
   if (session.mode === "subscription") {
     console.log("Subscription checkout — license handled by subscription.created event");

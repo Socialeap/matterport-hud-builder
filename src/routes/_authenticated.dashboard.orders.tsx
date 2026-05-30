@@ -187,7 +187,7 @@ function OrdersPage() {
       toast.success(
         result.alreadyPaid
           ? "Presentation is already paid"
-          : "Free download approved for this presentation",
+          : "Your fee is waived. The client pays only the Frontiers3D platform access fee at download.",
       );
       fetchOrders();
     } catch (error) {
@@ -247,7 +247,7 @@ function OrdersPage() {
             <CardDescription>
               {isClient
                 ? "Track payment status and download released presentations."
-                : "Review requests, approve one-time free downloads, mark payments, and release files."}
+                : "Review requests, waive your fee, mark payments, and release files."}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -342,7 +342,7 @@ function OrdersPage() {
                               onClick={() => handleGrantFreeDownload(order.modelId)}
                             >
                               <Gift className="mr-1 size-3" />
-                              Make Free
+                              Waive My Fee
                             </Button>
                           )}
                           {order.modelStatus !== "paid" && order.amountCents == null && (
