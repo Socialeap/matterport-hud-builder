@@ -20,7 +20,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
-import { CheckCircle, Download, Clock, Eye, Gift } from "lucide-react";
+import { CheckCircle, Clock, Eye, Gift } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/dashboard/orders")({
   component: OrdersPage,
@@ -150,36 +150,6 @@ function OrdersPage() {
     fetchOrders();
   }, [fetchOrders]);
 
-  const handleMarkPaid = async (modelId: string) => {
-    setUpdatingModelId(modelId);
-    const { error } = await supabase
-      .from("saved_models")
-      .update({ status: "paid" as const })
-      .eq("id", modelId);
-    if (error) {
-      toast.error("Failed to update status");
-    } else {
-      toast.success("Marked as paid");
-      fetchOrders();
-    }
-    setUpdatingModelId(null);
-  };
-
-  const handleRelease = async (modelId: string) => {
-    setUpdatingModelId(modelId);
-    const { error } = await supabase
-      .from("saved_models")
-      .update({ is_released: true })
-      .eq("id", modelId);
-    if (error) {
-      toast.error("Failed to release file");
-    } else {
-      toast.success("File released to client");
-      fetchOrders();
-    }
-    setUpdatingModelId(null);
-  };
-
   const handleGrantFreeDownload = async (modelId: string) => {
     setUpdatingModelId(modelId);
     try {
@@ -247,7 +217,7 @@ function OrdersPage() {
             <CardDescription>
               {isClient
                 ? "Track payment status and download released presentations."
-                : "Review requests, waive your fee, mark payments, and release files."}
+                : "Review requests and waive your fee. Payments and release are handled automatically through secure checkout."}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -343,26 +313,6 @@ function OrdersPage() {
                             >
                               <Gift className="mr-1 size-3" />
                               Waive My Fee
-                            </Button>
-                          )}
-                          {order.modelStatus !== "paid" && order.amountCents == null && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={updatingModelId === order.modelId}
-                              onClick={() => handleMarkPaid(order.modelId)}
-                            >
-                              Mark Paid
-                            </Button>
-                          )}
-                          {order.modelStatus === "paid" && !order.isReleased && order.amountCents == null && (
-                            <Button
-                              size="sm"
-                              disabled={updatingModelId === order.modelId}
-                              onClick={() => handleRelease(order.modelId)}
-                            >
-                              <Download className="mr-1 size-3" />
-                              Release
                             </Button>
                           )}
                         </div>

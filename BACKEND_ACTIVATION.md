@@ -1089,3 +1089,158 @@ SELECT * FROM public.platform_fee_ledger WHERE notes LIKE '%_pending_review%';
 **(blocking item:** Stripe Dashboard must subscribe `charge.refunded` on the
 sandbox + live `payments-webhook` endpoints for the refund branch to fire in
 production — see §6.)
+
+---
+
+## PR-A4 — Enforce Platform-Routed Release (behavioral; ATOMIC)
+
+> Appended by PR-A4. All manifest content **above** (incl. the activated
+> PR-A1/PR-A2/PR-A3 records and the open email-domain blocker) is **unchanged**
+> by this PR. The section below is this PR's activation detail, consolidated
+> from `frontiers3d-core/BACKEND_ACTIVATION_TRACK_A4.md`. **Not yet activated.**
+> Prereq: PR-A3 is live (release now routes through the platform-fee flow).
+> Ship the `orders.tsx` button removal **before/with** the trigger migration.
+
+# Backend Activation — Frontiers3D Track A · PR-A4 (Enforce Platform-Routed Release) — ATOMIC
+
+> **Consolidated Track A activation doc** shipped with PR-A4. Built from the
+> actual staged code; supersedes `BACKEND_ACTIVATION_PHASE_3_3.md` (Phase 3.3).
+>
+> ⚠️ For PR-A4 activation, use **only this PR-A4 section** of the repo-root
+> `BACKEND_ACTIVATION.md`. Do **not** use the staging root `BACKEND_ACTIVATION.md`
+> in `frontiers3d-core`, which is the Phase 1 / Track B Gap-Discovery doc.
+
+## What this PR lands
+
+| Artifact | Phase | Purpose |
+|---|---|---|
+| `supabase/migrations/20260529010000_frontiers3d_enforce_platform_release.sql` | 3.3 | `_enforce_saved_models_release_via_platform()` trigger fn + `trg_saved_models_release_guard` (BEFORE INSERT/UPDATE on `saved_models`). |
+| `src/routes/_authenticated.dashboard.orders.tsx` | 3.3 | Remove "Mark Paid"/"Release" handlers + buttons; drop unused `Download` import; description copy. |
+
+**Prerequisite:** PR-A3 deployed (the platform-fee release flow must be live —
+enforcement assumes Stripe-routed release is the only legitimate path).
+
+**Apply order within A4:** ship the `orders.tsx` button removal **before/with**
+the trigger migration (the still-deployed buttons would start erroring against
+the trigger otherwise).
+
+**Nature:** behavioral. **Destructive:** NO. **Sign-off:** required (removes a
+provider capability and hard-enforces release routing).
+
+## Summary
+
+Closes the **last** no-fee download path. The provider-facing "Mark Paid" and
+"Release" overrides in `/dashboard/orders` were direct, RLS-backed browser
+writes that set `saved_models` to `paid` / `is_released` with **no Stripe
+transaction and no platform fee**. After PR-A3 all studio-presentation download
+payments route through Stripe Connect (fee collected), so these overrides are
+obsolete — and a leak.
+
+PR-A4:
+1. **Removes** the "Mark Paid"/"Release" buttons + handlers (frontend).
+2. **Enforces server-side** (trigger) that only the **service-role** platform
+   payment flow (`create-connect-checkout` owner self-build + `payments-webhook`)
+   may transition a `saved_model` into `paid` / `is_released`. Authenticated
+   (provider/client) attempts are rejected with `42501`.
+
+> **Grounding:** the only non-service-role writers of
+> `saved_models.status='paid'` / `is_released=true` on `main` are the two removed
+> `orders.tsx` handlers. Every legitimate release path runs as `service_role`
+> and is unaffected: owner self-build, the Stripe webhook, and the PR-A3 comp
+> (which sets `retail_waived`, not paid/released).
+
+After this, "the platform fee is collected before release" is a hard DB
+invariant, not just a UI convention.
+
+## Safety Check
+
+- [x] Additive: one trigger fn (`CREATE OR REPLACE`) + one trigger
+      (`DO … duplicate_object`). No `DROP`/`DELETE`/`TRUNCATE`/destructive ALTER,
+      no RLS/policy/column change, no secret change. Idempotent.
+- [x] The trigger guards **only** the transition INTO `paid` / `released`; all
+      other edits (properties, branding, `model_count`, `retail_waived`,
+      reverting to pending/false, re-saving an already-paid/released row) pass.
+- [x] Blocks only client-reachable PostgREST roles
+      (`auth.role() IN ('authenticated','anon')`). `service_role` (all
+      release-writing Edge Functions) and direct backend/migration/admin SQL
+      (`auth.role()` NULL) pass — ops maintenance is not blocked.
+- [x] Frontend removal leaves no orphaned refs: `Download` icon dropped (only
+      used by the removed Release button); `Gift` + `updatingModelId` retained
+      (used by the PR-A3 "Waive My Fee").
+
+## Required Actions
+
+1. Confirm PR-A3 is applied/deployed.
+2. **C1 — frontend first:** apply `orders.tsx` Patches A–D (drop `Download`
+   import; remove `handleMarkPaid`/`handleRelease`; remove the two buttons;
+   description copy). Rebuild/deploy. Confirm no "Mark Paid"/"Release" buttons,
+   "Waive My Fee" remains, clean build.
+3. **C2 — trigger after C1 is live:** apply
+   `20260529010000_frontiers3d_enforce_platform_release.sql`.
+4. Run Verification A–E in sandbox; promote to live.
+5. No new secrets, no cron, no Edge Function change.
+
+## Verification (sandbox after deploy)
+
+### A. Trigger blocks direct authenticated release (critical)
+As a provider (authenticated/anon JWT):
+```sql
+-- expect: ERROR 42501 insufficient_privilege
+UPDATE public.saved_models SET is_released = true WHERE id = '<own pending order>';
+UPDATE public.saved_models SET status = 'paid'   WHERE id = '<own pending order>';
+```
+Both rejected by `trg_saved_models_release_guard`.
+
+### B. Platform flow still releases (service role)
+- Client completes a Stripe checkout (Path P or F) → `payments-webhook`
+  (service role) sets `status='paid', is_released=true` — **succeeds**; ledger
+  row `collected`.
+- Owner self-build (`create-connect-checkout`, service role) still releases the
+  provider's own presentation at $0 — **succeeds**.
+
+### C. Non-release edits unaffected
+- Edits to `properties`, branding, `model_count`, or `retail_waived` (the PR-A3
+  "Waive My Fee") still succeed.
+- Re-saving an already `paid`/`released` model (builder autosave) succeeds (the
+  guard fires only on the false→true / →'paid' transition).
+
+### D. UI
+- `/dashboard/orders` shows **no** "Mark Paid"/"Release"; "Waive My Fee" remains;
+  no console/build error from the dropped `Download` import.
+
+### E. Regression
+- Normal paid orders (Path P), comped orders (Path F), tier purchases,
+  subscriptions, Connect onboarding, marketplace routing, Pro exclusivity — all
+  unchanged.
+
+## Do NOT Touch (unchanged)
+
+- `create-connect-checkout`, `payments-webhook` (service-role release paths —
+  they satisfy the guard).
+- PR-A1/A2/A3 objects (`platform_fee_schedule`, `platform_fee_ledger`,
+  `acquisition_source`, `retail_waived`, `_resolve_platform_fee_cents`).
+- `saved_models` RLS/policies and all columns (the trigger adds enforcement; it
+  does not alter policies or schema).
+- Provider retail pricing, Stripe Connect, licenses/purchases/subscriptions,
+  marketplace routing, Pro exclusivity, the provider trial/paywall model
+  (`provision_trial_grant`, `provider_preview_allowed`).
+
+## Rollback (one-liner)
+
+```sql
+DROP TRIGGER trg_saved_models_release_guard ON public.saved_models;
+DROP FUNCTION public._enforce_saved_models_release_via_platform();
+```
+Restore the prior `orders.tsx` if the Mark Paid/Release buttons are needed back.
+
+---
+
+## Backend Activation Required: YES — **PR-A4 PR-ready** (pending sign-off)
+
+**Destructive (DB):** NO. **Behavioral:** YES — sign-off required.
+
+**Result:** the obsolete off-platform "Mark Paid"/"Release" overrides are removed
+and hard-blocked at the DB; only Stripe-routed (service-role) payments — which
+always collect the platform fee — can release a presentation. No remaining
+no-fee download path; no regression to any paid, comped, tier, subscription,
+Connect, routing, or Pro-exclusivity flow.
