@@ -1277,3 +1277,184 @@ Post-migration linter returned 167 pre-existing project-wide findings (RLS info 
   - PR-A3 sandbox refund smoke still deferred (Stripe sandbox connector).
   - Trigger is SECURITY INVOKER and relies on `auth.role()`; any future code path that signs in as `service_role` from an end-user context would bypass the guard. None exists today.
   - Rollback (if ever required): `DROP TRIGGER trg_saved_models_release_guard ON public.saved_models; DROP FUNCTION public._enforce_saved_models_release_via_platform();`
+
+---
+
+## PR-B1 — Track B / Map Oracle Ingest Foundation (Phase 1, additive / inert)
+
+> Appended by PR-B1 (first Track B PR). All manifest content **above** (the
+> activated PR-A1/A2/A3/A4 records and the open email-domain operational note)
+> is **unchanged** by this PR. The section below is this PR's activation detail,
+> consolidated from `frontiers3d-core/BACKEND_ACTIVATION_TRACK_B1.md`.
+> **Not yet activated.** Migration re-timestamped to `20260531000000` (above
+> current main's `20260530160934` ceiling). No scraper, no cron scheduled here.
+
+# Backend Activation — Frontiers3D Track B · PR-B1 (Map Oracle Ingest Foundation / Phase 1 Gap-Discovery)
+
+> **Consolidated Track B activation doc** shipped with PR-B1. Rebuilt from the
+> staged Phase-1 doc (`frontiers3d-core/BACKEND_ACTIVATION.md`) and corrected for
+> **current `main` after Track A** (migration re-timestamped above the ceiling;
+> `citext` baseline; cron documented-not-scheduled).
+>
+> ⚠️ For PR-B1 activation, use **only this PR-B1 section** of the repo-root
+> `BACKEND_ACTIVATION.md`. Do **not** use the staging root `BACKEND_ACTIVATION.md`
+> in `frontiers3d-core` (it is the original Phase-1 draft, superseded here).
+
+## What this PR lands
+
+| Migration | Phase | Purpose |
+|---|---|---|
+| `supabase/migrations/20260531000000_frontiers3d_gap_discovery.sql` | B1 / Phase 1 | Map Oracle **ingest + normalized property foundation**. Strictly additive: new tables/functions/indexes only — **no ALTERs to existing legacy tables, no policy changes**. |
+
+> **Re-timestamped:** the staged source was `20260528100000_…`, which is **below**
+> current `main`'s latest applied migration (`20260530160934`). It was renamed to
+> **`20260531000000_frontiers3d_gap_discovery.sql`** (content byte-identical) so it
+> applies *after* everything on `main` and avoids out-of-order collisions. No SQL
+> change.
+
+**Nature:** strictly additive and **inert** — nothing on `main` reads or writes
+these tables until a scraper (a **later deliverable**, not in this PR) populates
+`raw_scrape_snapshots`. **Destructive:** NO. **Sign-off:** standard.
+
+## Objects created (net-new)
+
+**Layer 1 — Ingest (immutable):** `scrape_runs`, `raw_scrape_snapshots`.
+**Layer 2 — Normalized read cache:** `properties`, `property_geo` (PostGIS point),
+`property_contacts`, `property_hours`, `property_photos`, `property_enrichment`,
+`property_review_summaries`.
+**Operator view:** `operator_failed_snapshots`.
+**Functions (7):** `_extract_address_component`, `_normalize_phone_e164`,
+`_parse_google_time`, `_safe_numeric`, `_safe_integer`, `process_raw_snapshot(uuid)`,
+`process_unprocessed_snapshots(int)` (the batch transform worker).
+
+= **9 tables + 1 view + 7 functions**, all under `public`, all net-new (verified
+absent on `main`).
+
+## Safety Check
+
+- [x] No `DROP`, no `TRUNCATE`, no destructive `ALTER`. The only `DELETE`s are
+      inside the transform body (re-import of `property_hours`/`property_photos`
+      child rows for the property being re-processed — by design, latest snapshot
+      authoritative).
+- [x] **Zero existing/legacy tables touched** — no shared-table ALTER, no policy
+      change, no RLS change on any existing object.
+- [x] RLS enabled on all 9 new tables; transform fns are `SECURITY DEFINER`,
+      `service_role`-only (`process_raw_snapshot` / `process_unprocessed_snapshots`
+      revoked from PUBLIC).
+- [x] Idempotent: `CREATE EXTENSION IF NOT EXISTS`, `CREATE TABLE IF NOT EXISTS`,
+      `CREATE INDEX IF NOT EXISTS`, `CREATE OR REPLACE FUNCTION/VIEW`, policies via
+      `DO … EXCEPTION WHEN duplicate_object`.
+- [x] No secret changes. No Edge Function added/changed. No Stripe/cron change in
+      the migration itself.
+
+## Required Actions (activation — performed separately, human-gated)
+
+1. **Confirm Supabase extensions.** The migration `CREATE EXTENSION IF NOT EXISTS`
+   `postgis`, `pg_trgm`, **`citext`**. On current `main`, **`postgis` and
+   `pg_trgm` are already enabled** (legacy); **`citext` is NEW** (used by
+   `property_contacts.email`) — confirm it provisions in Dashboard → Database →
+   Extensions.
+2. **Apply** `supabase/migrations/20260531000000_frontiers3d_gap_discovery.sql`
+   (Dashboard SQL editor or `supabase db push`).
+3. **Schedule the transform worker (pg_cron) — REQUIRED at activation, but NOT
+   scheduled by this PR.** After apply, ops schedules:
+   ```sql
+   SELECT cron.schedule(
+     'frontiers3d-transform-snapshots',
+     '* * * * *',
+     $cron$ SELECT public.process_unprocessed_snapshots(500); $cron$
+   );
+   ```
+   Cadence is ops choice; the schedule lives **outside** the migration (Track B/A
+   convention). Until a scraper writes snapshots, the worker simply drains an
+   empty queue.
+4. **No secrets / env vars** for B1 (pure PL/pgSQL; no external HTTP). The Google
+   Places scraper that fills `raw_scrape_snapshots` is a **separate later PR** and
+   will need its own API key — **out of scope here.**
+
+## Verification
+
+### A. Object presence (expect every row `exists = true`)
+```sql
+SELECT 'scrape_runs' AS object, to_regclass('public.scrape_runs') IS NOT NULL AS exists
+UNION ALL SELECT 'raw_scrape_snapshots', to_regclass('public.raw_scrape_snapshots') IS NOT NULL
+UNION ALL SELECT 'properties', to_regclass('public.properties') IS NOT NULL
+UNION ALL SELECT 'property_geo', to_regclass('public.property_geo') IS NOT NULL
+UNION ALL SELECT 'property_contacts', to_regclass('public.property_contacts') IS NOT NULL
+UNION ALL SELECT 'property_hours', to_regclass('public.property_hours') IS NOT NULL
+UNION ALL SELECT 'property_photos', to_regclass('public.property_photos') IS NOT NULL
+UNION ALL SELECT 'property_enrichment', to_regclass('public.property_enrichment') IS NOT NULL
+UNION ALL SELECT 'property_review_summaries', to_regclass('public.property_review_summaries') IS NOT NULL
+UNION ALL SELECT 'operator_failed_snapshots (view)', to_regclass('public.operator_failed_snapshots') IS NOT NULL
+ORDER BY object;
+```
+
+### B. RLS enabled on all 9 new tables
+```sql
+SELECT c.relname, c.relrowsecurity AS rls_enabled
+  FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+ WHERE n.nspname='public' AND c.relname IN
+   ('scrape_runs','raw_scrape_snapshots','properties','property_geo',
+    'property_contacts','property_hours','property_photos',
+    'property_enrichment','property_review_summaries')
+ ORDER BY c.relname;   -- expect rls_enabled = true for all
+```
+
+### C. Transform functions registered, service-role-only
+```sql
+SELECT p.proname, array_to_string(p.proacl::text[], ', ') AS grants
+  FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+ WHERE n.nspname='public' AND p.proname IN
+   ('_extract_address_component','_normalize_phone_e164','_parse_google_time',
+    '_safe_numeric','_safe_integer','process_raw_snapshot','process_unprocessed_snapshots')
+ ORDER BY p.proname;
+-- expect 7 rows; process_raw_snapshot + process_unprocessed_snapshots show service_role=X/ (not PUBLIC)
+```
+
+### D. Smoke test (optional) — synthetic snapshot → worker → property row
+Insert a synthetic `scrape_runs` + `raw_scrape_snapshots` (Google-Places-shaped
+JSONB), then `SELECT * FROM public.process_unprocessed_snapshots(10);`
+→ expect `processed=1, failed=0`; the property is queryable in `public.properties`.
+Clean up the synthetic rows afterward (cascades clear `property_geo`).
+
+### E. Failure path (optional) — malformed snapshot
+A snapshot missing `name` → `process_unprocessed_snapshots` returns
+`processed=0, failed=1`; the row surfaces in `operator_failed_snapshots` with a
+`[P0001] … has no name` error rather than stalling the worker.
+
+## Rollback
+
+Drop the new objects (no consumers exist):
+```sql
+DROP VIEW IF EXISTS public.operator_failed_snapshots;
+DROP TABLE IF EXISTS public.property_review_summaries, public.property_enrichment,
+  public.property_photos, public.property_hours, public.property_contacts,
+  public.property_geo, public.properties, public.raw_scrape_snapshots,
+  public.scrape_runs CASCADE;
+DROP FUNCTION IF EXISTS public.process_unprocessed_snapshots(int),
+  public.process_raw_snapshot(uuid), public._extract_address_component(jsonb,text),
+  public._normalize_phone_e164(text), public._parse_google_time(text),
+  public._safe_numeric(text), public._safe_integer(text);
+-- (signatures per the migration; adjust to the exact arg types it declares)
+-- Unschedule the cron if it was added. citext/postgis/pg_trgm may remain (harmless).
+```
+Safe — nothing on `main` depends on these objects.
+
+## Explicitly EXCLUDED from PR-B1 (held until B1 is merged/activated)
+
+- ❌ **Scraper implementation** (Google Places ingest edge function + API key) — later deliverable; not part of the Phase-1 migration.
+- ❌ **B2 doorway bridge** (`agent_beacons` columns, `doorway_*` queue/worker/triggers).
+- ❌ **B3 / Phase 2.5** consent-constraint relaxation + `promote_property_to_beacon` (the destructive change).
+- ❌ **B4** Map-Oracle lead→client binding, attribution stamping, `resolve_studio_access` companion, SCS assignment, and any **money-flow** behavior.
+- ❌ **Any Track A edit** — A1–A4 records/operational notes in `BACKEND_ACTIVATION.md` are preserved unchanged; this PR only appends the PR-B1 section.
+
+---
+
+## Backend Activation Required: YES — **PR-B1 ready for review** (not yet activated)
+
+**Destructive:** NO. **Behavioral change:** none (inert until a future scraper +
+cron). **Sign-off:** standard.
+
+**Result on activation:** the Map Oracle ingest pipeline schema is live and ready
+to receive scraped Google Places payloads; no regression to existing marketplace,
+branding, billing, or auth flows (zero shared tables modified).
