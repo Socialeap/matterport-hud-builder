@@ -558,6 +558,44 @@ export type Database = {
         }
         Relationships: []
       }
+      doorway_candidates: {
+        Row: {
+          created_at: string
+          doorway_payload: Json | null
+          notes: string | null
+          property_id: string
+          reviewed_by: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          doorway_payload?: Json | null
+          notes?: string | null
+          property_id: string
+          reviewed_by?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          doorway_payload?: Json | null
+          notes?: string | null
+          property_id?: string
+          reviewed_by?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "doorway_candidates_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: true
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       email_send_log: {
         Row: {
           created_at: string
@@ -2387,6 +2425,32 @@ export type Database = {
         }
         Relationships: []
       }
+      operator_doorway_candidates: {
+        Row: {
+          category: string | null
+          created_at: string | null
+          doorway_payload: Json | null
+          google_place_id: string | null
+          hero_summary: string | null
+          locality: string | null
+          name: string | null
+          notes: string | null
+          property_id: string | null
+          region: string | null
+          reviewed_by: string | null
+          status: string | null
+          updated_at: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "doorway_candidates_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: true
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       operator_failed_snapshots: {
         Row: {
           id: string | null
@@ -2460,6 +2524,10 @@ export type Database = {
       }
     }
     Functions: {
+      _compose_hero_summary: {
+        Args: { p_property_id: string }
+        Returns: string
+      }
       _count_eligible_pros_for_beacon: {
         Args: { p_beacon_id: string }
         Returns: number
@@ -2702,6 +2770,10 @@ export type Database = {
       }
       cleanup_old_outreach_bodies: { Args: never; Returns: number }
       cleanup_seed_msps: { Args: never; Returns: number }
+      compose_doorway_payload: {
+        Args: { p_property_id: string }
+        Returns: Json
+      }
       compute_priority_window_for_beacon: {
         Args: { p_beacon_id: string }
         Returns: string
@@ -2727,6 +2799,7 @@ export type Database = {
         Args: { p_lookback?: string }
         Returns: number
       }
+      detect_doorway_candidates: { Args: { p_limit?: number }; Returns: number }
       disablelongtransactions: { Args: never; Returns: string }
       dropgeometrycolumn:
         | {
@@ -3285,6 +3358,10 @@ export type Database = {
       set_client_byok_active: {
         Args: { p_active: boolean; p_client_id: string }
         Returns: number
+      }
+      set_doorway_candidate_status: {
+        Args: { p_property_id: string; p_status: string }
+        Returns: undefined
       }
       set_my_service_polygon: { Args: { p_geojson?: Json }; Returns: boolean }
       show_limit: { Args: never; Returns: number }

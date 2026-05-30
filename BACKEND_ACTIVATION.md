@@ -1909,3 +1909,47 @@ nothing auto-fires. **Sign-off:** standard.
 **Result on activation:** operators can stage, review, and queue/surface/dismiss
 Map-Oracle doorway candidates derived from B1 `properties`, with a composed HUD card
 per candidate — with no lead/client binding, no beacon creation, and no money flow.
+
+---
+
+## PR-B2 ACTIVATION RESULT — 2026-05-30 (ACTIVE)
+
+**Status:** ✅ Applied and verified. Migration `20260601000000_frontiers3d_doorway_candidates.sql` executed via Lovable migration tool, followed by two hardening migrations.
+
+### Applied
+- `public._compose_hero_summary(uuid)` — SECURITY DEFINER, `service_role` only.
+- `public.compose_doorway_payload(uuid) -> jsonb` — SECURITY DEFINER, `service_role` only. Read-only.
+- `public.doorway_candidates` table — RLS enabled, 2 policies (service-role manage; admin read). `anon` revoked; `authenticated` has SELECT only (RLS gates to admins).
+- `public.detect_doorway_candidates(int)` — admin/service-role only (internal check + EXECUTE grant to `service_role, authenticated`, revoked from `anon`).
+- `public.set_doorway_candidate_status(uuid,text)` — admin/service-role only (same pattern).
+- `public.operator_doorway_candidates` view — `security_invoker = true`. SELECT to `service_role, authenticated`; revoked from `anon`.
+
+### Hardening notes
+- Supabase post-migration auto-granted EXECUTE to `anon`/`authenticated` on the two helper functions (`_compose_hero_summary`, `compose_doorway_payload`). A follow-up migration revoked those grants. Final ACL confirmed: helpers `service_role` only.
+- `detect_doorway_candidates` and `set_doorway_candidate_status` confirmed executable only by `service_role` and `authenticated`; non-admins blocked internally by `has_role(...,'admin')` check (verified empirically — calling as authenticated non-admin returns `42501 permission denied`).
+- `anon` execute/select rights on every new B2 object explicitly revoked.
+
+### Verification
+
+| Check | Expected | Actual | Pass |
+|---|---|---|---|
+| `doorway_candidates` table exists | yes | yes | ✅ |
+| RLS enabled on `doorway_candidates` | true | true | ✅ |
+| Policies present | "Service role can manage", "Admins can read" | both present | ✅ |
+| `operator_doorway_candidates` view options | `security_invoker=true` | `{security_invoker=true}` | ✅ |
+| `detect_doorway_candidates(100)` | ~5 staged | **5 staged** | ✅ |
+| `operator_doorway_candidates` rows (as admin) | 5 with composed `hero_summary` | 5 rows, payloads populated | ✅ |
+| Lifecycle transition | new → queued → new | applied to oldest candidate via service_role | ✅ |
+| `agent_beacons` writes | none | latest row 2026-05-09 (pre-B2) | ✅ |
+| `client_providers` writes | none | latest row 2026-04-21 (pre-B2) | ✅ |
+| `platform_fee_ledger` writes | none | 0 rows | ✅ |
+| Cron schedule added | none | none | ✅ |
+| Edge Functions deployed | none | none | ✅ |
+| Secrets added/changed | none | none | ✅ |
+
+### Out of scope (untouched, per instructions)
+- `agent_beacons`, `promote_property_to_beacon`, B3 consent relaxation, B4 binding/billing, Stripe, Track A, Edge Functions, secrets, cron — none touched.
+
+### Residual
+- 5 staged candidates left in place as the useful output of this step.
+- One candidate was transitioned new → queued → new for the smoke test; it is back in `new` state and indistinguishable from the others.
