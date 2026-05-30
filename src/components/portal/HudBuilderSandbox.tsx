@@ -62,7 +62,7 @@ import { toast } from "sonner";
 import { MAX_PROPERTIES_PER_PRESENTATION } from "@/lib/limits";
 import { calculatePresentationPrice } from "@/lib/portal/pricing";
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe-js";
-import { getStripeForConnect, getStripeEnvironment } from "@/lib/stripe";
+import { getStripe, getStripeForConnect, getStripeEnvironment } from "@/lib/stripe";
 import { useServerFn } from "@tanstack/react-start";
 import { EmbeddingWorkerClient } from "@/lib/rag/embedding-worker-client";
 import { buildPropertyQAEntries } from "@/lib/rag/property-qa-builder";
@@ -495,6 +495,8 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
   const [isPolling, setIsPolling] = useState(false);
   const [connectAccountId, setConnectAccountId] = useState<string | null>(null);
   const [checkoutClientSecret, setCheckoutClientSecret] = useState<string | null>(null);
+  const [isPlatformCheckout, setIsPlatformCheckout] = useState(false);
+  const [checkoutAmountCents, setCheckoutAmountCents] = useState<number | null>(null);
   const generatePresentationFn = useServerFn(generatePresentation);
   const refreshPresentationConfigFn = useServerFn(refreshPresentationConfig);
   const getStudioAccessStateFn = useServerFn(getStudioAccessState);
@@ -1175,6 +1177,8 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
         setShowCheckout(false);
         setConnectAccountId(null);
         setCheckoutClientSecret(null);
+        setIsPlatformCheckout(false);
+        setCheckoutAmountCents(null);
       })
       .catch((err) => {
         console.warn("Approved free download lookup skipped:", err);
@@ -1765,9 +1769,29 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
         return;
       }
 
-      // Paid client → embedded checkout.
+      // Provider-paid client → Connect embedded checkout (charge on the
+      // provider's connected account; platform fee via application fee).
       if (checkoutData?.clientSecret && checkoutData?.stripeConnectAccountId) {
         setConnectAccountId(checkoutData.stripeConnectAccountId);
+        setIsPlatformCheckout(false);
+        setCheckoutAmountCents(
+          typeof checkoutData.amountCents === "number" ? checkoutData.amountCents : null
+        );
+        setCheckoutClientSecret(checkoutData.clientSecret);
+        setShowCheckout(true);
+        setSubmitting(false);
+        return;
+      }
+
+      // Provider waived retail → platform-owned fee checkout (Frontiers3D is
+      // merchant of record; no connected account). Client still pays the
+      // mandatory platform access fee.
+      if (checkoutData?.clientSecret && checkoutData?.platformDirect === true) {
+        setConnectAccountId(null);
+        setIsPlatformCheckout(true);
+        setCheckoutAmountCents(
+          typeof checkoutData.amountCents === "number" ? checkoutData.amountCents : null
+        );
         setCheckoutClientSecret(checkoutData.clientSecret);
         setShowCheckout(true);
         setSubmitting(false);
@@ -2268,15 +2292,15 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
                   Please wait while we confirm your payment, then your download will start automatically.
                 </p>
               </div>
-            ) : showCheckout && savedModelId && connectAccountId && checkoutClientSecret ? (
+            ) : showCheckout && savedModelId && checkoutClientSecret && (connectAccountId || isPlatformCheckout) ? (
               <div className="rounded-lg border p-6">
                 <h3 className="text-lg font-semibold text-foreground mb-4">Complete Payment</h3>
                 <p className="mb-4 text-sm text-muted-foreground">
-                  Total: <span className="font-semibold text-foreground">${(totalCents / 100).toFixed(2)}</span>
+                  Total: <span className="font-semibold text-foreground">${(((checkoutAmountCents ?? totalCents)) / 100).toFixed(2)}</span>
                   {" "}— your presentation will download automatically once payment is confirmed.
                 </p>
                 <EmbeddedCheckoutProvider
-                  stripe={getStripeForConnect(connectAccountId)}
+                  stripe={connectAccountId ? getStripeForConnect(connectAccountId) : getStripe()}
                   options={{ clientSecret: checkoutClientSecret }}
                 >
                   <EmbeddedCheckout />

@@ -6395,12 +6395,17 @@ export const grantFreePresentationDownload = createServerFn({ method: "POST" })
       return { success: true, alreadyPaid: true };
     }
 
+    // Waive the provider's OWN retail fee for this order. The mandatory
+    // Frontiers3D platform fee is still owed by the client, who pays it at
+    // download via the platform-direct checkout (create-connect-checkout
+    // Path F). Do NOT release here and do NOT mark the order paid — it stays
+    // pending until the client completes the platform-fee checkout, at which
+    // point payments-webhook releases it.
     const { error: updateError } = await supabaseAdmin
       .from("saved_models")
       .update({
         amount_cents: 0,
-        status: "paid",
-        is_released: true,
+        retail_waived: true,
       })
       .eq("id", data.modelId)
       .eq("provider_id", userId);
@@ -6409,13 +6414,7 @@ export const grantFreePresentationDownload = createServerFn({ method: "POST" })
       throw new Error(updateError.message);
     }
 
-    await supabaseAdmin
-      .from("order_notifications")
-      .update({ status: "paid" })
-      .eq("model_id", data.modelId)
-      .eq("provider_id", userId);
-
-    return { success: true, alreadyPaid: false };
+    return { success: true, alreadyPaid: false, feeStillDue: true };
   });
 
 /**
