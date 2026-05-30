@@ -54,3 +54,8 @@ verify_jwt = false
 [functions.pr-a3-refund-smoke]
 verify_jwt = false
 
+[functions.map-oracle-ingest]
+verify_jwt = false
+
+
+
