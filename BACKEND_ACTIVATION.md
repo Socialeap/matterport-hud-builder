@@ -1531,3 +1531,152 @@ No new ERROR-level findings introduced by this activation.
 **Residual risks / follow-ups:** none specific to B1. Cron will tick
 every minute against an empty queue (cheap no-op) until a scraper begins
 writing to `raw_scrape_snapshots` under B2+.
+
+---
+
+## PR-B-Scraper — Google Places Ingest (Edge Function; net-new)
+
+> Appended by PR-B-Scraper. All manifest content **above** (A1–A4 records,
+> the PR-B1 section + B1 activation record, and the open email-domain note) is
+> **unchanged**. The section below is this PR's activation detail, consolidated
+> from `frontiers3d-core/BACKEND_ACTIVATION_TRACK_B_SCRAPER.md`. **Not yet
+> activated.** No migration; Edge Function only; needs the `GOOGLE_PLACES_API_KEY`
+> secret (documented, not deployed) + an explicit admin invocation to do anything.
+
+# Backend Activation — Frontiers3D Track B · PR-B-Scraper (Google Places Ingest)
+
+> **Consolidated Track B activation doc** shipped with PR-B-Scraper. The
+> ingest/scraper layer that writes into the **already-activated PR-B1** tables
+> (`scrape_runs`, `raw_scrape_snapshots`), so the existing B1 cron
+> (`frontiers3d-transform-snapshots` → `process_unprocessed_snapshots`)
+> normalizes snapshots into `properties`.
+>
+> ⚠️ For PR-B-Scraper activation, use **only this section** of the repo-root
+> `BACKEND_ACTIVATION.md`.
+
+## What this PR lands
+
+| Artifact | Purpose |
+|---|---|
+| `supabase/functions/map-oracle-ingest/index.ts` | **New Edge Function** — operator-only, cost-bounded Google Places ingest into the B1 tables. **No migration** (uses the existing B1 schema: `scrape_runs.query_params`, `raw_scrape_snapshots.{source,source_place_id,query_context,raw_payload}`). |
+
+**Nature:** net-new Edge Function only. **No migration, no schema change, no
+destructive op.** **Behavioral:** outbound Google Places API calls + writes to B1
+ingest tables — **requires a secret and explicit operator invocation; inert until
+both exist.** **Sign-off:** required (introduces external API spend).
+
+## How it works
+
+One **controlled query per invocation** (no multi-city loop):
+- **Text Search** — `{ city, category }` → `"<category> in <city>"` → snapshots `source='google_places_text'`.
+- **Nearby Search** — `{ lat, lng, category, radiusMeters }` → snapshots `source='google_places_nearby'`.
+- **Optional Place Details** per result (`fetchDetails:true`, capped by `maxDetails`) → `source='google_places_details'` (richer normalization).
+
+It writes a `scrape_runs` row (`query_params`, `status`, `total_snapshots`,
+`error`) and one `raw_scrape_snapshots` row per place. It **does not normalize** —
+the B1 cron worker does. It touches **nothing** in Track A, billing, Stripe,
+`agent_beacons`, doorway/promote, or any B2/B3/B4 object.
+
+### Safe limits (no uncontrolled spend loop)
+- **Operator-only:** rejects non-admins (`has_role(uid,'admin')` → 403).
+- **One area per call:** arrays of cities/categories are rejected; no internal
+  multi-city iteration.
+- **Hard caps (cannot be exceeded by request params):** `MAX_PLACES=60`,
+  `MAX_PAGES=3`, `MAX_RADIUS_M=50000`, `maxDetails ≤ limit`. `limit`/`radius`/
+  `maxDetails` are clamped server-side.
+- **Bounded retries:** ≤1 short backoff per call, no busy-wait; non-`OK` Google
+  statuses stop pagination (no retry-spin). Per-snapshot errors are logged into
+  the run's `error` and skipped, not fatal.
+- **`dryRun:true`:** validates + echoes the plan and estimated API-call count
+  **without** calling Google or writing rows.
+- **No key → safe 400** (`scraper_not_configured`): never crashes, never spends
+  before the secret is provisioned.
+
+### Request shape (POST, admin JWT)
+```jsonc
+{
+  "category": "cafe",            // required (Places type or keyword)
+  "city": "Austin, TX",          // Text Search; OR provide lat/lng for Nearby
+  "lat": 30.2672, "lng": -97.7431, "radiusMeters": 5000,
+  "limit": 20,                   // 1..60 (clamped)
+  "fetchDetails": false,         // true → also pull Place Details (capped)
+  "maxDetails": 20,              // 0..limit
+  "dryRun": true,                // validate without spending
+  "environment": "sandbox"       // label only
+}
+```
+
+## Required Actions (activation — human-gated; NOT performed by this PR)
+
+1. **Provision the secret (do NOT commit it):** set **`GOOGLE_PLACES_API_KEY`**
+   in Supabase → Edge Functions → Secrets (restrict the Google key to the Places
+   API + your billing alerts/quotas). The function reads it via
+   `Deno.env.get("GOOGLE_PLACES_API_KEY")` and returns a safe 400 if absent.
+2. **Deploy the function:** `supabase functions deploy map-oracle-ingest`.
+   *(No other function deployed.)*
+3. **(Optional) low-volume schedule — documented, do NOT schedule high volume.**
+   If a controlled recurring ingest is desired later, schedule a **single small**
+   query via pg_cron + `pg_net` (admin-service call), e.g. one city/category per
+   night. **Not** included or scheduled here; broad/auto multi-city scraping is
+   out of scope.
+4. **No Stripe, no Track A, no B2/B3/B4 activation.**
+
+## Verification — one small sandbox/manual ingest
+
+1. **Dry run (no spend):** invoke with an **admin** JWT and `dryRun:true` →
+   expect `{ dryRun:true, plan, estimatedApiCalls }`, no `scrape_runs` row.
+2. **Non-admin rejected:** invoke with a non-admin JWT → `403`.
+3. **No key configured:** with the secret unset and `dryRun:false` →
+   `400 scraper_not_configured` (no run row, no spend).
+4. **Small live run (after secret + deploy):** `dryRun:false`,
+   `{ "category":"cafe", "city":"Austin, TX", "limit":5 }` → response
+   `status:"completed"`, `snapshotsWritten≈5`, `apiCalls` small.
+   ```sql
+   SELECT id, status, total_snapshots, query_params->>'city' AS city
+     FROM public.scrape_runs ORDER BY started_at DESC LIMIT 1;
+   SELECT source, count(*) FROM public.raw_scrape_snapshots
+    WHERE scrape_run_id = '<runId>' GROUP BY source;
+   ```
+5. **Normalize via the B1 worker (manual, no need to wait for cron):**
+   ```sql
+   SELECT * FROM public.process_unprocessed_snapshots(50);  -- expect processed≈5, failed≈0
+   SELECT count(*) FROM public.properties;                  -- increased by the new places
+   ```
+6. **Cleanup the test run:**
+   ```sql
+   -- remove the synthetic/test properties created from this run, then the run
+   DELETE FROM public.properties p
+    USING public.raw_scrape_snapshots s
+    WHERE s.scrape_run_id = '<runId>' AND p.google_place_id = s.source_place_id;
+   DELETE FROM public.scrape_runs WHERE id = '<runId>';   -- cascades raw_scrape_snapshots
+   ```
+   *(For a one-off sandbox check, prefer a tiny `limit` so cleanup is trivial.)*
+
+## Rollback
+
+Remove the deployed function (`supabase functions delete map-oracle-ingest`) or
+simply leave it undeployed; optionally unset `GOOGLE_PLACES_API_KEY`. No schema
+to roll back (no migration). Any `scrape_runs`/`raw_scrape_snapshots`/`properties`
+rows already created are harmless data (delete as above if desired).
+
+## Explicitly EXCLUDED (out of scope for this PR)
+
+- ❌ **B2 doorway bridge** (`agent_beacons` columns / doorway pipeline).
+- ❌ **B3 / Phase-2.5** consent relaxation + `promote_property_to_beacon`.
+- ❌ **B4** lead/client binding, attribution, or any money-flow behavior.
+- ❌ **Stripe** changes; ❌ **Track A** changes; ❌ any **destructive migration**.
+- ❌ **Automatic broad scrape across many cities** — one controlled area per call,
+  hard-capped; no committed high-volume schedule.
+- ❌ **Live secrets** — the Google key is documented, not deployed here.
+
+---
+
+## Backend Activation Required: YES — **PR-B-Scraper ready for review** (not activated)
+
+**Destructive:** NO (Edge Function only, no migration). **Behavioral:** outbound
+API spend + B1-table writes once the secret + deploy + admin invocation exist —
+**inert until then.** **Sign-off:** required (external spend).
+
+**Result on activation:** operators can run a controlled, hard-capped Google
+Places ingest into `scrape_runs`/`raw_scrape_snapshots`; the existing PR-B1 cron
+normalizes the snapshots into `properties`. No regression to any existing flow.
