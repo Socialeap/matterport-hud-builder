@@ -2457,3 +2457,34 @@ Backend Activation Required: NO (Map-Oracle outreach itself is fully activated a
 - Email-template default preview URLs (`pricingUrl`, `studioUrl`, etc.) — sample data only, not used in real sends
 
 **Backend Activation Required:** NO migration. Frontend/server-route change only — takes effect on next app publish. After publish, the next outreach send (e.g. msg_id 11 still in pgmq) will use `noreply@frontiers3d.com` via `notify.frontiers3d.com`, which is the verified sender.
+
+---
+
+## 2026-05-31 — PR #117 Re-verification (Map-Oracle Outreach Send)
+
+Re-verification requested after merge. All infrastructure was previously activated in prior turns and remains intact.
+
+**Verified state:**
+- ✅ `public.map_oracle_outreach_log` exists, RLS enabled
+- ✅ Policies present:
+  - `Service role can manage map_oracle_outreach_log`
+  - `Admins can read map_oracle_outreach_log`
+- ✅ `public.send_map_oracle_outreach(p_beacon_id uuid, p_dry_run boolean)` exists, `SECURITY DEFINER`
+- ✅ EXECUTE not granted to `anon` (no row in `routine_privileges` for anon/public)
+- ✅ In-body admin/service-role gate present
+- ✅ Template `map-oracle-preview-offer` registered in `src/lib/email-templates/registry.ts` (line 35)
+- ✅ Sender config in `src/routes/lovable/email/transactional/send.ts`:
+  - `SENDER_DOMAIN = "notify.frontiers3d.com"` (verified)
+  - `FROM_DOMAIN = "frontiers3d.com"`
+- ✅ CAN-SPAM physical address in template: `Transcendence Media, Atlanta, GA, USA` (default)
+- ✅ Unsubscribe base URL: token-based, resolved by send function
+
+**Dry-run attempt (Mozart beacon `d75b552b-6c91-4fb9-aa94-e0728d843c39`):**
+- ⚠️ Re-run blocked by the duplicate-guard:
+  `ERROR: beacon ... already has a queued outreach send`
+- This is **expected** — the previous live send (outreach log `d6e855da-...`, pgmq msg_id `11`, status `queued`) still occupies the unique active-queue slot. This proves the idempotency guard works as designed.
+- The earlier dry-run (in PR #117 activation) already confirmed: recipient resolved, unsubscribe URL generated with persisted token, suppression/unsubscribe guards exercised, 0 log rows / 0 pgmq rows written.
+
+**No new actions taken.** Awaiting separate instruction if the existing queued row needs to be cleared to permit a fresh dry-run.
+
+Backend Activation Required: NO (already active from prior turn).
