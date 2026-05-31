@@ -3107,6 +3107,26 @@ export type Database = {
           zip: string
         }[]
       }
+      get_operator_outreach_readiness: {
+        Args: never
+        Returns: {
+          beacon_id: string
+          beacon_status: string
+          business_name: string
+          city: string
+          email: string
+          email_confidence: string
+          enrichment_source: string
+          outreach_at: string
+          outreach_log_id: string
+          outreach_status: string
+          promoted: boolean
+          property_id: string
+          readiness: string
+          region: string
+          website_url: string
+        }[]
+      }
       get_provider_license: {
         Args: { client_uuid: string }
         Returns: {
