@@ -2400,3 +2400,38 @@ Called as `service_role` via REST RPC `POST /rest/v1/rpc/send_map_oracle_outreac
 **Status:** B3 outreach-send infrastructure is live and dry-run-verified. **Awaiting explicit approval for one live send.**
 
 Backend Activation Required: NO (further activation). Awaiting explicit approval for the single live `send_map_oracle_outreach('d75b552b-6c91-4fb9-aa94-e0728d843c39', FALSE)` call.
+
+---
+
+## 2026-06-04 — Map-Oracle Outreach: one live send executed (queued in DB) — DISPATCHER BLOCKED
+
+**Send command:** `SELECT public.send_map_oracle_outreach('d75b552b-6c91-4fb9-aa94-e0728d843c39'::uuid, FALSE);` (called as service_role via REST RPC).
+
+**Function returned:**
+```json
+{"status":"queued","beacon_id":"d75b552b-…","log_id":"d6e855da-84ec-413c-a87b-724a034cca52","pgmq_msg_id":11,"recipient":"customerservice@mozartscoffee.com"}
+```
+
+**Verifications passed:**
+1. ✅ `status='queued'`
+2. ✅ `map_oracle_outreach_log` row `d6e855da-84ec-413c-a87b-724a034cca52`: beacon_id, recipient=`customerservice@mozartscoffee.com`, template=`map-oracle-preview-offer`, status=`queued`, pgmq_msg_id=`11`, unsubscribe_token=`a5879d67e5d6…` (populated), queued_at=2026-05-31 06:21:43Z.
+3. ✅ pgmq queue `transactional_emails` contains msg_id=11 with the expected payload.
+5. ✅ Second call rejected: `23505 — beacon d75b552b-… already has a queued outreach send`. Idempotency confirmed.
+6. ✅ No changes to: `agent_beacons`, `client_providers`, `platform_fee_ledger`, Stripe, Track A, cron schedule, batch automation, B4. No other outreach was sent.
+
+**⚠️ Verification 4 (delivery) BLOCKED — pre-existing project-level issue, not caused by this PR:**
+- `email_send_log` has NO row for `customerservice@mozartscoffee.com` and the dispatcher does not appear to be draining the queue.
+- Older queue messages from prior features remain in `transactional_emails` (`msg_id` 7, 8, 10) with `read_ct=1` — they have been read but never deleted/sent.
+- Last entries in `email_send_log` are from **2026-05-27** and earlier, ALL in status `dlq` with `error_message = "Emails disabled for this project"`. No successful sends since 2026-05-27.
+- Lovable email domain status: `notify.frontiers3d.com` ✅ Verified.
+- **Likely cause:** Project-level email sending toggle is OFF (Cloud → Emails). Additionally the transactional send route hard-codes `SENDER_DOMAIN = "notify.3dps.transcendencemedia.com"` while the verified Lovable domain is `notify.frontiers3d.com` — even if the toggle is flipped on, the SENDER_DOMAIN constant in `src/routes/lovable/email/transactional/send.ts` may need updating to match the verified domain. (Note: this app's `send.ts` is one of two send paths — the pgmq dispatcher uses its own configuration.)
+
+**Result:** The outreach is **durably queued in pgmq (msg_id 11)** and `map_oracle_outreach_log` has the audit record. It will be delivered automatically once the project's email toggle is re-enabled and the SENDER_DOMAIN matches a verified domain. No data was lost; no duplicate send risk (unique index enforced).
+
+**Required user action (out of B-track scope):**
+- Re-enable email sending in Lovable Cloud → Emails (toggle ON for project `dfe7ef52-…`), OR
+- Update `SENDER_DOMAIN`/`FROM_DOMAIN` in `src/routes/lovable/email/transactional/send.ts` to the verified domain (`notify.frontiers3d.com` / `frontiers3d.com`) if the brand has migrated, AND ensure the toggle is on.
+
+After either action, the dispatcher's next cron tick (~5s) will drain msg_id 11 and deliver to `customerservice@mozartscoffee.com`. Re-check with `SELECT * FROM email_send_log WHERE recipient_email='customerservice@mozartscoffee.com';`
+
+Backend Activation Required: NO (Map-Oracle outreach itself is fully activated and the send is queued). Email-domain/toggle remediation is a separate, pre-existing platform issue.
