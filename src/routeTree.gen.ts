@@ -66,6 +66,7 @@ import { Route as LovableEmailTransactionalPreviewRouteImport } from './routes/l
 import { Route as LovableEmailQueueProcessRouteImport } from './routes/lovable/email/queue/process'
 import { Route as LovableEmailAuthWebhookRouteImport } from './routes/lovable/email/auth/webhook'
 import { Route as LovableEmailAuthPreviewRouteImport } from './routes/lovable/email/auth/preview'
+import { Route as ApiPublicAdminMozartDeliverRouteImport } from './routes/api/public/admin/mozart-deliver'
 import { Route as AuthenticatedDashboardVaultTemplatesRouteImport } from './routes/_authenticated.dashboard.vault.templates'
 import { Route as AuthenticatedAgentDashboardWorkOrdersIdRouteImport } from './routes/_authenticated.agent-dashboard.work-orders.$id'
 import { Route as AuthenticatedAdminServiceMatchesMatchTokenRouteImport } from './routes/_authenticated.admin.service-matches.$matchToken'
@@ -379,6 +380,12 @@ const LovableEmailAuthPreviewRoute = LovableEmailAuthPreviewRouteImport.update({
   path: '/lovable/email/auth/preview',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicAdminMozartDeliverRoute =
+  ApiPublicAdminMozartDeliverRouteImport.update({
+    id: '/api/public/admin/mozart-deliver',
+    path: '/api/public/admin/mozart-deliver',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AuthenticatedDashboardVaultTemplatesRoute =
   AuthenticatedDashboardVaultTemplatesRouteImport.update({
     id: '/templates',
@@ -451,6 +458,7 @@ export interface FileRoutesByFullPath {
   '/admin/service-matches/$matchToken': typeof AuthenticatedAdminServiceMatchesMatchTokenRoute
   '/agent-dashboard/work-orders/$id': typeof AuthenticatedAgentDashboardWorkOrdersIdRoute
   '/dashboard/vault/templates': typeof AuthenticatedDashboardVaultTemplatesRoute
+  '/api/public/admin/mozart-deliver': typeof ApiPublicAdminMozartDeliverRoute
   '/lovable/email/auth/preview': typeof LovableEmailAuthPreviewRoute
   '/lovable/email/auth/webhook': typeof LovableEmailAuthWebhookRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
@@ -508,6 +516,7 @@ export interface FileRoutesByTo {
   '/admin/service-matches/$matchToken': typeof AuthenticatedAdminServiceMatchesMatchTokenRoute
   '/agent-dashboard/work-orders/$id': typeof AuthenticatedAgentDashboardWorkOrdersIdRoute
   '/dashboard/vault/templates': typeof AuthenticatedDashboardVaultTemplatesRoute
+  '/api/public/admin/mozart-deliver': typeof ApiPublicAdminMozartDeliverRoute
   '/lovable/email/auth/preview': typeof LovableEmailAuthPreviewRoute
   '/lovable/email/auth/webhook': typeof LovableEmailAuthWebhookRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
@@ -571,6 +580,7 @@ export interface FileRoutesById {
   '/_authenticated/admin/service-matches/$matchToken': typeof AuthenticatedAdminServiceMatchesMatchTokenRoute
   '/_authenticated/agent-dashboard/work-orders/$id': typeof AuthenticatedAgentDashboardWorkOrdersIdRoute
   '/_authenticated/dashboard/vault/templates': typeof AuthenticatedDashboardVaultTemplatesRoute
+  '/api/public/admin/mozart-deliver': typeof ApiPublicAdminMozartDeliverRoute
   '/lovable/email/auth/preview': typeof LovableEmailAuthPreviewRoute
   '/lovable/email/auth/webhook': typeof LovableEmailAuthWebhookRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
@@ -634,6 +644,7 @@ export interface FileRouteTypes {
     | '/admin/service-matches/$matchToken'
     | '/agent-dashboard/work-orders/$id'
     | '/dashboard/vault/templates'
+    | '/api/public/admin/mozart-deliver'
     | '/lovable/email/auth/preview'
     | '/lovable/email/auth/webhook'
     | '/lovable/email/queue/process'
@@ -691,6 +702,7 @@ export interface FileRouteTypes {
     | '/admin/service-matches/$matchToken'
     | '/agent-dashboard/work-orders/$id'
     | '/dashboard/vault/templates'
+    | '/api/public/admin/mozart-deliver'
     | '/lovable/email/auth/preview'
     | '/lovable/email/auth/webhook'
     | '/lovable/email/queue/process'
@@ -753,6 +765,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/service-matches/$matchToken'
     | '/_authenticated/agent-dashboard/work-orders/$id'
     | '/_authenticated/dashboard/vault/templates'
+    | '/api/public/admin/mozart-deliver'
     | '/lovable/email/auth/preview'
     | '/lovable/email/auth/webhook'
     | '/lovable/email/queue/process'
@@ -788,6 +801,7 @@ export interface RootRouteChildren {
   LovableEmailSuppressionRoute: typeof LovableEmailSuppressionRoute
   MarketplaceFeedbackTokenRoute: typeof MarketplaceFeedbackTokenRoute
   WorkOrdersRateTokenRoute: typeof WorkOrdersRateTokenRoute
+  ApiPublicAdminMozartDeliverRoute: typeof ApiPublicAdminMozartDeliverRoute
   LovableEmailAuthPreviewRoute: typeof LovableEmailAuthPreviewRoute
   LovableEmailAuthWebhookRoute: typeof LovableEmailAuthWebhookRoute
   LovableEmailQueueProcessRoute: typeof LovableEmailQueueProcessRoute
@@ -1196,6 +1210,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LovableEmailAuthPreviewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/admin/mozart-deliver': {
+      id: '/api/public/admin/mozart-deliver'
+      path: '/api/public/admin/mozart-deliver'
+      fullPath: '/api/public/admin/mozart-deliver'
+      preLoaderRoute: typeof ApiPublicAdminMozartDeliverRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated/dashboard/vault/templates': {
       id: '/_authenticated/dashboard/vault/templates'
       path: '/templates'
@@ -1401,6 +1422,7 @@ const rootRouteChildren: RootRouteChildren = {
   LovableEmailSuppressionRoute: LovableEmailSuppressionRoute,
   MarketplaceFeedbackTokenRoute: MarketplaceFeedbackTokenRoute,
   WorkOrdersRateTokenRoute: WorkOrdersRateTokenRoute,
+  ApiPublicAdminMozartDeliverRoute: ApiPublicAdminMozartDeliverRoute,
   LovableEmailAuthPreviewRoute: LovableEmailAuthPreviewRoute,
   LovableEmailAuthWebhookRoute: LovableEmailAuthWebhookRoute,
   LovableEmailQueueProcessRoute: LovableEmailQueueProcessRoute,
