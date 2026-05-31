@@ -2223,3 +2223,40 @@ public.property_contacts SET email=NULL WHERE property_id='<id>';` and remove th
 ### Excludes
 ❌ Promote to beacon · ❌ B4 / client-provider binding · ❌ billing/Stripe/Track A ·
 ❌ batch scraping / cron · ❌ paid APIs / vendor secrets · ❌ sending outreach emails.
+
+---
+
+## B5 — Website Contact Enrichment (Activated 2026-05-31)
+
+**Deployed:** `supabase/functions/enrich-property-email` (verify_jwt=false; admin guard inside handler).
+**Config:** added `[functions.enrich-property-email] verify_jwt = false` to `supabase/config.toml`.
+**Secrets:** none required (uses only built-in `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` / `SUPABASE_ANON_KEY`).
+
+### Verification
+
+1. ✅ Edge function deployed successfully.
+2. ✅ Identified 5 properties with `website_url IS NOT NULL AND email IS NULL` (the 5 Austin cafés).
+3. ✅ Dry run on Mozart's Coffee Roasters returned `chosen_email=customerservice@mozartscoffee.com` (confidence=high, 2 pages fetched, 1 candidate, `written=false`).
+4. ✅ Live run on Mozart's wrote `customerservice@mozartscoffee.com` to `property_contacts.email`.
+5. ✅ `property_enrichment.signals.email_enrichment` populated with version, fetched_at, website_url, business_domain, pages_fetched[], candidates[] (with method/source_url/domain_match/low_quality/score), chosen_email, chosen_confidence.
+6. ✅ Non-admin path: request with `Authorization: Bearer invalid.token.here` → 401 Unauthorized (admin guard verified). The 403 branch is enforced in code (`has_role(_user_id, 'admin') !== true → 403`).
+7. ✅ No cron, no batch, no promotion, no outreach sent, no Stripe/Track A/B4 changes; `agent_beacons` untouched.
+8. Hit rate across all 5 candidates:
+
+| Property | Domain | Pages | Confidence | Email written |
+|---|---|---|---|---|
+| Mozart's Coffee Roasters | mozartscoffee.com | 2 | **high** | customerservice@mozartscoffee.com |
+| 1886 Cafe & Bakery (Driskill) | driskillhotel.com | 5 | medium | austindriskill.hyatt@hyatt.com |
+| Caroline | carolinerestaurant.com | 1 | low | forms@tambourine.com (third-party form vendor — flag before any outreach) |
+| Café Crème — Downtown | cafecremeaustin.com | 1 | none | — |
+| Magnolia Cafe | magnoliacafeaustin.com | 2 | none | — |
+
+Discovery rate: **3/5 wrote an email**, **2/5 high+medium confidence**, **1/5 high confidence**.
+
+### Eligible for separate B3 `promote_property_to_beacon` test (NOT promoted)
+
+- `f1dd778e-5d2b-4b5d-a0ef-2637efae68a8` — Mozart's Coffee Roasters (high confidence, domain-matched mailto:) — **recommended single-promotion test candidate**.
+- `a576ae3b-cb5b-4778-bf5a-d007f5631b83` — 1886 Cafe & Bakery (medium; `hyatt.com` corporate inbox — acceptable but cross-domain).
+- `fca49fbf-b3ae-42f9-bbd5-7c8f74f52334` — Caroline (low; `forms@tambourine.com` is a marketing-form vendor, not the business — recommend skipping until re-enrichment).
+
+No promotion performed in this step.
