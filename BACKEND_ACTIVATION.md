@@ -2722,3 +2722,29 @@ Query against `agent_beacons WHERE source='map_oracle' AND email IS NOT NULL AND
 **Readiness for one explicit live send:** ✅ The renderer is structurally ready. ⚠ But there is currently **no eligible `pending_render` candidate**: Mozart is the only map_oracle beacon with an email and it is already queued. To proceed with the next live send, a new eligible beacon must first be ingested (via `map-oracle-ingest`) with a valid email, then `send_map_oracle_outreach(<beacon_id>, false)` to create a `pending_render` row. Awaiting that candidate **and** explicit approval before any live `/lovable/email/map-oracle/render` (non-dryRun) invocation.
 
 **No live send performed. No infra/secret/cron/migration changes this turn.**
+
+---
+
+## PR119 Candidate #1 — Live-send Funnel Dry-Run (2026-05-31)
+
+**Candidate:** 1886 Cafe & Bakery (Austin, Texas)
+- property_id: `a576ae3b-cb5b-4778-bf5a-d007f5631b83`
+- recipient_email: `austindriskill.hyatt@hyatt.com`
+- beacon_id (new, `map_oracle`): `ca3506e3-019e-4c5a-b5e4-6afedef28bdc`
+- outreach_log_id (`status=pending_render`): `d1af7c8b-c562-4d28-8f9e-5b8eab9dd23c`
+- unsubscribe_token: `4263fab5369f2ff8580783215ba414f01cba`
+
+**Steps executed:**
+1. Selected eligible property via `properties` + `property_contacts` filtered against `agent_beacons` (no prior `map_oracle` beacon) and `suppressed_emails`.
+2. `promote_property_to_beacon` → new beacon `ca3506e3-…`.
+3. `send_map_oracle_outreach(<beacon>, false)` → returned prepared template data; wrote one `map_oracle_outreach_log` row, `status=pending_render`, `pgmq_msg_id=NULL`. No email enqueued, no `email_send_log` row written.
+4. `POST /lovable/email/map-oracle/render` with `{ outreach_log_id, dryRun: true }` and admin JWT → **200**.
+   - Payload keys (12): `message_id, to, from, sender_domain, subject, html, text, purpose, label, idempotency_key, unsubscribe_token, queued_at`
+   - Preview: subject `"A free interactive tour preview for 1886 Cafe & Bakery"`, from `3DPS <noreply@frontiers3d.com>`, sender_domain `notify.frontiers3d.com`, html_bytes 4628.
+
+**Post-dry-run verification:**
+- `map_oracle_outreach_log.d1af7c8b-…` → still `status=pending_render`, `pgmq_msg_id=NULL` (no state change).
+- `email_send_log` for `austindriskill.hyatt@hyatt.com` → **0 rows** (no log write).
+- No pgmq enqueue.
+
+**Status:** Renderer is verified end-to-end on a fresh candidate. Awaiting explicit approval for the single live renderer call (`dryRun:false`) against `outreach_log_id=d1af7c8b-c562-4d28-8f9e-5b8eab9dd23c`. No live send performed. No B4, cron, batch, Stripe, or Track A changes.
