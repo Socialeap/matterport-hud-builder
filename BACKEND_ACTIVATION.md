@@ -2435,3 +2435,25 @@ Backend Activation Required: NO (further activation). Awaiting explicit approval
 After either action, the dispatcher's next cron tick (~5s) will drain msg_id 11 and deliver to `customerservice@mozartscoffee.com`. Re-check with `SELECT * FROM email_send_log WHERE recipient_email='customerservice@mozartscoffee.com';`
 
 Backend Activation Required: NO (Map-Oracle outreach itself is fully activated and the send is queued). Email-domain/toggle remediation is a separate, pre-existing platform issue.
+
+---
+
+## Email Domain Migration — 3dps.transcendencemedia.com → frontiers3d.com (2026-05-31)
+
+**Verified via Lovable Cloud:**
+- Current project email domain: `frontiers3d.com` (sender FQDN `notify.frontiers3d.com`, status: ✅ verified)
+- DNS NS delegation active: ns3.lovable.cloud, ns4.lovable.cloud
+
+**Files updated (email routing only):**
+- `src/routes/lovable/email/transactional/send.ts` — `SENDER_DOMAIN=notify.frontiers3d.com`, `FROM_DOMAIN=frontiers3d.com`
+- `src/routes/lovable/email/auth/webhook.ts` — `SENDER_DOMAIN`, `ROOT_DOMAIN`, `FROM_DOMAIN` → frontiers3d.com
+- `src/routes/lovable/email/auth/preview.ts` — `ROOT_DOMAIN=frontiers3d.com`
+
+**Out of scope (not changed) — intentional / separate:**
+- Legal/contact `mailto:legal@transcendencemedia.com`, `info@transcendencemedia.com` (company contact, distinct from sender)
+- Marketing site links to `https://transcendencemedia.com` / `https://www.transcendencemedia.com/...`
+- Existing migration-baked dashboard URLs (`v_dashboard_url := 'https://3dps.transcendencemedia.com'`) — historical migrations are immutable; future migrations / overrides should use `https://frontiers3d.com` (or env `DASHBOARD_BASE_URL`)
+- Edge functions `synthesize-answer` and `match-beacons` fall back to `3dps.transcendencemedia.com` when `DASHBOARD_BASE_URL` env is unset — recommend setting `DASHBOARD_BASE_URL=https://frontiers3d.com` as a project secret
+- Email-template default preview URLs (`pricingUrl`, `studioUrl`, etc.) — sample data only, not used in real sends
+
+**Backend Activation Required:** NO migration. Frontend/server-route change only — takes effect on next app publish. After publish, the next outreach send (e.g. msg_id 11 still in pgmq) will use `noreply@frontiers3d.com` via `notify.frontiers3d.com`, which is the verified sender.
