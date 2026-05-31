@@ -2688,3 +2688,37 @@ send is performed by the existing email-queue dispatcher once a payload is enque
 
 ### Excludes
 ❌ batch · ❌ cron · ❌ auto-send · ❌ B4 / client-provider binding · ❌ Stripe/billing/Track A.
+
+---
+
+## PR119 — Map-Oracle Outreach Renderer Activation (2026-05-31) — VERIFIED (partial)
+
+**Scope:** Frontend/server route only. Route `POST /lovable/email/map-oracle/render`. No migrations, no secrets, no cron, no batch, no B4, no Stripe/Track A.
+
+**Route deployment:** ✅ `src/routes/lovable/email/map-oracle/render.ts` present; route ID `/lovable/email/map-oracle/render` registered in `src/routeTree.gen.ts` (lines 67, 375, 1199).
+
+**Auth gate:**
+- ✅ No JWT → `401 {"error":"Unauthorized"}`
+- ✅ Bogus Bearer → `401 {"error":"Unauthorized"}`
+- ⚠ Non-admin / admin live HTTP not exercised this turn (no test session token minted); guard correctness verified by code review: route calls `supabase.auth.getUser(token)` (401 on bad) then `has_role(_user_id,_role:'admin')` (403 if not true).
+
+**Mozart safety:**
+- ✅ Mozart outreach log: exactly **1 row**, `status='queued'`, `pgmq_msg_id=11`.
+- ✅ Mozart `email_send_log`: exactly **1 row**, `status='sent'`, `message_id=d6e855da-…`.
+- ✅ Renderer route filters `.eq('status','pending_render').eq('beacon_id', …).limit(1)` → for Mozart returns 0 rows → returns `409 {reason:"not_pending_render"}`. Confirmed by code review; no live Mozart call attempted (would correctly 409 anyway; safe).
+- ✅ No duplicate Mozart send possible: dedup guard in `send_map_oracle_outreach` blocks on `('pending_render','queued','sent')`.
+
+**Pending-render flow (items 4–7):** ⚠ **NOT EXECUTED THIS TURN — no eligible candidate.**
+Query against `agent_beacons WHERE source='map_oracle' AND email IS NOT NULL AND status<>'unsubscribed' AND NOT EXISTS pending_render/queued/sent log AND NOT suppressed` returns **0 rows**. Mozart is currently the only `map_oracle` beacon with an email, and it is already in a terminal/queued state. Cannot create a fresh `pending_render` row without either (a) ingesting a new map_oracle beacon, or (b) explicit approval to use an existing non-email beacon (would require backfilling an email — out of scope).
+
+**Code-review confirmations for items 5–7** (`render.ts`):
+- Payload shape includes all 12 required fields: `message_id, to, from, sender_domain, subject, html, text, purpose, label, idempotency_key, unsubscribe_token, queued_at`.
+- `dryRun:true` returns `{dryRun:true, outreach_log_id, payload_keys, preview}` and short-circuits **before** `email_send_log` insert, `enqueue_email` RPC, and `mark_map_oracle_outreach_queued`.
+- Suppressed recipient (`suppressed_emails` hit) → `fail('recipient is suppressed')` → `409`; dry-run does not call `mark_map_oracle_outreach_failed`.
+- Unsubscribed beacon (`status='unsubscribed'`) → `fail('beacon is unsubscribed')` → `409`.
+- Non-pending row (none matched) → `409 {reason:"not_pending_render"}`.
+- Live path inserts `email_send_log` with `status='pending'` keyed by `message_id` then enqueues; on enqueue error inserts a `failed` row and calls `mark_map_oracle_outreach_failed`. `idempotency_key=outreach_log_id` ensures at most one `sent` row per `message_id` per pending send.
+
+**Readiness for one explicit live send:** ✅ The renderer is structurally ready. ⚠ But there is currently **no eligible `pending_render` candidate**: Mozart is the only map_oracle beacon with an email and it is already queued. To proceed with the next live send, a new eligible beacon must first be ingested (via `map-oracle-ingest`) with a valid email, then `send_map_oracle_outreach(<beacon_id>, false)` to create a `pending_render` row. Awaiting that candidate **and** explicit approval before any live `/lovable/email/map-oracle/render` (non-dryRun) invocation.
+
+**No live send performed. No infra/secret/cron/migration changes this turn.**
