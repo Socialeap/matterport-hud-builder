@@ -127,7 +127,17 @@ function isJunk(email: string): boolean {
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    const reqHeaders = req.headers.get("Access-Control-Request-Headers");
+    return new Response(null, {
+      status: 204,
+      headers: {
+        ...corsHeaders,
+        ...(reqHeaders ? { "Access-Control-Allow-Headers": reqHeaders } : {}),
+        "Access-Control-Max-Age": "86400",
+      },
+    });
+  }
   if (req.method !== "POST") return json(405, { error: "Method not allowed" });
 
   // Admin / service-role only.
