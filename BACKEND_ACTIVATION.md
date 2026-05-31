@@ -2632,3 +2632,59 @@ SELECT public.mark_map_oracle_outreach_queued('<outreach_log_id>', <pgmq_msg_id>
 **No live sends performed. No batch/cron/B4/Stripe/Track A changes.**
 
 **Ready for next PR:** A thin admin-only renderer/action that consumes one `pending_render` outreach row, renders `map-oracle-preview-offer` through the existing transactional path, enqueues the pre-rendered payload, and calls `mark_map_oracle_outreach_queued` (or `mark_map_oracle_outreach_failed`).
+
+---
+
+## Map-Oracle Outreach Renderer / Admin Action — FRONTEND-ONLY (server route)
+
+> Appended by the Renderer PR. Prior records above unchanged. **Not yet activated.**
+
+**What it lands:** `src/routes/lovable/email/map-oracle/render.ts` — an **admin-only**
+server route `POST /lovable/email/map-oracle/render` that completes **one** pending
+outreach send at a time. **No migration, no secret, no cron** (reuses PR118 + the
+existing email/template infra). **Backend activation: NO** (a normal frontend deploy).
+
+### What it does (one row per call)
+Input `{ outreach_log_id }` **or** `{ beacon_id }` (+ optional `dryRun`). Validates a
+JWT **and** `has_role(admin)`; consumes exactly **one** `map_oracle_outreach_log` row
+with `status='pending_render'`; **re-checks** the beacon isn't `unsubscribed` and the
+recipient isn't on `suppressed_emails`; renders `map-oracle-preview-offer` via the
+existing `@/lib/email-templates/registry` + `@/lib/email/render`; builds the
+**identical pre-rendered payload** the transactional sender uses
+(`{message_id,to,from,sender_domain,subject,html,text,purpose,label,idempotency_key,unsubscribe_token,queued_at}`);
+enqueues via `enqueue_email('transactional_emails', …)`; then finalizes with
+`mark_map_oracle_outreach_queued(log_id, pgmq_msg_id)` on success or
+`mark_map_oracle_outreach_failed(log_id, error)` on failure.
+
+### Protections (preserved)
+- **Admin-gated**; **one row per call**; **no batch / no cron / no auto-send**.
+- **Suppression + unsubscribe** re-checked at render time (→ `mark_failed`, not enqueued).
+- **Duplicate / Mozart safety:** only `pending_render` rows are eligible, and finalizing
+  transitions them to `queued`. Mozart is already `sent` (no `pending_render` row) → the
+  renderer returns **409 `not_pending_render`** and **cannot re-send it**.
+- `idempotency_key = outreach_log_id`.
+
+### Activation
+Deploy the frontend (the route ships with it). **No DB/secret/cron steps.** The actual
+send is performed by the existing email-queue dispatcher once a payload is enqueued.
+
+### Verification (non-live-send-safe)
+1. **dryRun (no send):** create a fresh `pending_render` row, then
+   `POST /lovable/email/map-oracle/render { "beacon_id":"<fresh map_oracle beacon>", "dryRun":true }`
+   (admin Bearer JWT) → returns `payload_keys` + a `preview` (to/from/subject/label/
+   unsubscribe_token/html_head). **Nothing enqueued, no status change, no email sent** —
+   this proves the payload shape matches the dispatcher.
+2. **Mozart stays blocked:** `{ "beacon_id":"d75b552b-6c91-4fb9-aa94-e0728d843c39", "dryRun":true }`
+   → **409 `not_pending_render`** (already sent once).
+3. **Live finalize (requires explicit approval — enqueues a real send):** same call with
+   `dryRun` omitted → enqueues + `mark_map_oracle_outreach_queued`. Verify:
+   ```sql
+   SELECT status, pgmq_msg_id FROM public.map_oracle_outreach_log WHERE id='<outreach_log_id>'; -- 'queued', set
+   ```
+   Re-running → **409** (now `queued`, not `pending_render`).
+
+> ⚠️ Live finalize enqueues a real email (the dispatcher will send it). Use `dryRun` for
+> all packaging/verification; only run the live path with explicit approval.
+
+### Excludes
+❌ batch · ❌ cron · ❌ auto-send · ❌ B4 / client-provider binding · ❌ Stripe/billing/Track A.
