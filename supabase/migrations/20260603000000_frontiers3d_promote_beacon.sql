@@ -16,16 +16,15 @@
 -- (CAN-SPAM cold-outreach model — audit text + data lineage required).
 -- No row that satisfied the old rule can fail the new one.
 --
--- PRE-APPLY INVARIANT (must return 0 before applying):
---   SELECT count(*) FROM public.agent_beacons
---    WHERE NOT (
---      (source = 'agent_form' AND consent_given = TRUE AND length(consent_text) > 0)
---      OR (source = 'map_oracle' AND property_id IS NOT NULL AND length(consent_text) > 0)
---    );
--- (Before this migration adds `source`, every legacy row is treated as
---  agent_form and must already satisfy the legacy rule — so the count is
---  0 on a healthy DB. Postgres will also reject ADD CONSTRAINT if any row
---  fails, which is the hard safety net.)
+-- PRE-APPLY GATE (run on CURRENT main; must return 0 before applying):
+--   SELECT count(*) AS legacy_rows_that_violate_current_consent_constraint
+--     FROM public.agent_beacons
+--    WHERE NOT (consent_given = TRUE AND length(consent_text) > 0);
+-- This checks the CURRENT (legacy) constraint and does NOT reference the
+-- `source`/`property_id` columns (which THIS migration adds) — so it is
+-- runnable on current main. The new source/map_oracle constraint is verified
+-- POST-apply (see BACKEND_ACTIVATION.md B3 verification). Postgres also
+-- rejects ADD CONSTRAINT if any row fails — the hard safety net.
 --
 -- What it lands:
 --   1. ADDITIVE agent_beacons columns: source / property_id / doorway_payload
@@ -36,10 +35,13 @@
 --      compose_doorway_payload; conditionally marks the matching
 --      candidate_promotions row beacon_created (audit linkage to PR A).
 --
--- Prerequisite: B2 (compose_doorway_payload, properties). Sequence AFTER
--- the non-destructive Candidate-Promotion-Staging PR (candidate_promotions)
--- so the audit linkage is live; this migration also works if that table is
--- absent (the linkage is guarded by to_regclass).
+-- Required prerequisite: B2 (compose_doorway_payload, properties) — must be live.
+-- OPTIONAL (NOT a hard dependency): the non-destructive Candidate-Promotion-
+-- Staging PR's `candidate_promotions` table. B3 applies and runs STANDALONE. If
+-- that table exists, promote_property_to_beacon updates the matching 'requested'
+-- row to 'beacon_created' (audit link); if absent, that step is skipped (guarded
+-- by to_regclass). Recommended order is staging PR -> B3 only so the audit link
+-- is captured — not because B3 needs it.
 --
 -- Out of scope (NOT here): client/provider binding (B4), billing, Stripe,
 -- platform fee, Track A. NO auto-promotion, NO batch, NO trigger, NO cron.
@@ -87,11 +89,11 @@ CREATE INDEX IF NOT EXISTS idx_agent_beacons_source
 -- 2. ⚠️ DESTRUCTIVE: relax agent_beacons_consent_required
 --    (preserves the agent_form rule verbatim; adds a map_oracle branch).
 -- ------------------------------------------------------------
-DO $$ BEGIN
-  ALTER TABLE public.agent_beacons
-    DROP CONSTRAINT IF EXISTS agent_beacons_consent_required;
-EXCEPTION WHEN OTHERS THEN NULL;
-END $$;
+-- `DROP CONSTRAINT IF EXISTS` handles the "already dropped" case cleanly. We
+-- deliberately do NOT wrap this in `EXCEPTION WHEN OTHERS THEN NULL` so real
+-- lock / permission / schema errors FAIL LOUDLY instead of being swallowed.
+ALTER TABLE public.agent_beacons
+  DROP CONSTRAINT IF EXISTS agent_beacons_consent_required;
 
 ALTER TABLE public.agent_beacons
   ADD CONSTRAINT agent_beacons_consent_required

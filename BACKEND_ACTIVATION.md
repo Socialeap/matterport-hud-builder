@@ -2046,28 +2046,36 @@ Backend Activation Required: NO (frontend-only; B2 backend already live from PR-
 the legacy CHECK requires `TRUE` for every row; a CHECK can only be relaxed by
 drop-and-re-add. (Falsifying consent with a synthetic `TRUE` is rejected by design.)
 
-### 🚦 Pre-apply gate (REQUIRED) — must return 0 before applying
+### 🚦 Pre-apply gate (REQUIRED) — run on CURRENT main; must return 0 before applying
 ```sql
-SELECT count(*) AS rows_that_would_fail FROM public.agent_beacons
- WHERE NOT (
-   (source = 'agent_form' AND consent_given = TRUE AND length(consent_text) > 0)
-   OR (source = 'map_oracle' AND property_id IS NOT NULL AND length(consent_text) > 0)
- );
+SELECT count(*) AS legacy_rows_that_violate_current_consent_constraint
+  FROM public.agent_beacons
+ WHERE NOT (consent_given = TRUE AND length(consent_text) > 0);
 ```
-Before the migration adds `source`, every legacy row is treated as `agent_form` and
-must already satisfy the legacy rule → 0 on a healthy DB. If non-zero, **STOP**.
-Postgres also rejects `ADD CONSTRAINT` if any row fails (hard safety net).
+This checks the **current (legacy)** constraint and does **not** reference the new
+`source`/`property_id` columns (which this migration adds), so it is **runnable on
+current `main`**. If non-zero, **STOP** and triage the offending rows. Postgres also
+rejects `ADD CONSTRAINT` if any row fails (hard safety net). The new
+`source`/`map_oracle` constraint is verified **post-apply** (see Verification).
 
 ### Activation order (human-gated; NOT performed by this PR)
-Sequence **after** the Candidate-Promotion-Staging PR (so the audit link is live).
-Run the pre-apply gate → apply the migration → verify. **No cron, no Edge Function,
+**`candidate_promotions` (from the Candidate-Promotion-Staging PR) is OPTIONAL — NOT a
+hard dependency.** B3 applies and runs **standalone**; if that table is present,
+`promote_property_to_beacon` updates the matching `requested` row to `beacon_created`
+(audit link), otherwise that step is skipped (guarded by `to_regclass`). Recommended
+order is **staging PR → B3** only so the audit link is captured — not because B3 needs
+it. Run the pre-apply gate → apply the migration → verify. **No cron, no Edge Function,
 no secret.**
 
 ### Verification (sandbox, after sign-off)
 ```sql
+-- POST-APPLY: the new two-branch constraint is in place.
+SELECT pg_get_constraintdef(oid) FROM pg_constraint
+ WHERE conrelid='public.agent_beacons'::regclass AND conname='agent_beacons_consent_required';
+-- expect BOTH source='agent_form' and source='map_oracle' branches.
 -- agent_form beacons still gated (must FAIL):
 INSERT INTO public.agent_beacons (email,city,country,consent_given,consent_text,source)
-VALUES ('x@y.test','Austin','US',FALSE,'no',' agent_form');   -- expect CHECK violation
+VALUES ('x@y.test','Austin','US',FALSE,'no','agent_form');   -- expect CHECK violation
 -- promote one property with an email + US locality:
 SELECT public.promote_property_to_beacon('<property_id>');     -- returns beacon id
 SELECT source, consent_given, property_id IS NOT NULL AS linked,
