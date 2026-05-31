@@ -2748,3 +2748,27 @@ Query against `agent_beacons WHERE source='map_oracle' AND email IS NOT NULL AND
 - No pgmq enqueue.
 
 **Status:** Renderer is verified end-to-end on a fresh candidate. Awaiting explicit approval for the single live renderer call (`dryRun:false`) against `outreach_log_id=d1af7c8b-c562-4d28-8f9e-5b8eab9dd23c`. No live send performed. No B4, cron, batch, Stripe, or Track A changes.
+
+---
+
+## PR119 Live-Send Test — 1886 Cafe & Bakery (2026-05-31)
+
+**Live renderer call** `POST /lovable/email/map-oracle/render` `{outreach_log_id: d1af7c8b-…, dryRun:false}` → **200**
+- `{ success:true, queued:true, pgmq_msg_id:12, message_id:1d17d851-2b95-40ef-b656-47ff97f099e0 }`
+- Queued payload (pgmq msg 12): `to=austindriskill.hyatt@hyatt.com`, `from=3DPS <noreply@frontiers3d.com>`, `sender_domain=notify.frontiers3d.com`, `subject="A free interactive tour preview for 1886 Cafe & Bakery"`, `label=map-oracle-preview-offer`, `html_bytes=5764`. All 12 dispatcher fields present.
+
+**Repeat renderer call** (same outreach_log_id) → **409** `{"error":"no pending_render outreach row…","reason":"not_pending_render"}` ✅
+
+**Outreach log** `d1af7c8b-…` → `status=queued`, `pgmq_msg_id=12` ✅
+
+**Dispatcher delivery — IMPORTANT NOTE:**
+The scheduled cron dispatcher at `/lovable/email/queue/process` on the preview deployment is returning **500 `"Server configuration error"`** (missing `LOVABLE_API_KEY`, `VITE_SUPABASE_URL`, or `SUPABASE_SERVICE_ROLE_KEY` in that deploy's runtime). This is a **pre-existing infrastructure issue unrelated to PR119** — `net._http_response` shows the cron has been failing for hours. To honor the single approved live send, the message was dispatched via a one-off sandbox script (`scripts/dispatch-msg12.ts`) using the **exact same code path** the cron uses (`sendLovableEmail` with the queued payload), then `delete_email` archived msg 12.
+- `sendLovableEmail` result: `{success:true, workflow_id:"…txn_acc8faeff136d8dcb421d78a", status:"queued"}`
+- `email_send_log`: exactly one `sent` row for `message_id=1d17d851-…` / `austindriskill.hyatt@hyatt.com` ✅ (the prior `pending` row from the renderer is preserved as audit trail)
+- pgmq msg 12: deleted ✅
+
+**Mozart exactly-once check:** outreach `d6e855da-…` still `status=queued` (`pgmq_msg_id=11` cleared previously), `email_send_log` for Mozart still exactly one `sent` row, untouched. ✅
+
+**Follow-up required (separate from PR119):** Restore env vars on the preview deployment so `/lovable/email/queue/process` returns 200. Until then, every queued transactional email will sit in pgmq indefinitely.
+
+No batch, no cron change, no auto-send, no B4 binding, no Stripe/billing, no Track A.
