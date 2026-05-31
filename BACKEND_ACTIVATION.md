@@ -2157,3 +2157,69 @@ Run an ingest with `fetchDetails:true` (Place Details API) to populate `property
 ❌ B4 (client/provider binding) · ❌ Stripe / billing / platform fees / Track A · ❌ cron · ❌ batch promotion · ❌ auto promotion · ❌ outreach scheduling.
 
 **Backend Activation Required: DONE**
+
+---
+
+## B5 — Website Contact Enrichment (Edge Function; net-new) — FRONTEND/SECRET-FREE
+
+> Appended by the B5 PR. Prior records above are unchanged. **Not yet activated.**
+
+**What it lands:** `supabase/functions/enrich-property-email/index.ts` — an
+operator-only, **cost-free** (no paid APIs / vendor secrets) enrichment that
+discovers **public** business emails from the website already captured by Google
+Places. **No migration** (uses existing B1 `property_contacts.email` (CITEXT) +
+`property_enrichment.signals` (jsonb), both keyed by `property_id`).
+
+**Why a backend Edge Function (not a TanStack server fn):** it fetches third-party
+websites and writes enrichment data.
+
+### How it works — ONE property per call
+Input `{ property_id, dryRun?, overwrite? }` (admin JWT). Reads
+`property_contacts.website_url`; fetches the homepage + a small bounded set of
+**same-domain** likely-contact pages; extracts emails from `mailto:` links, visible
+text, and common obfuscations (`name [at] domain [dot] com`); filters junk + low-
+quality (`no-reply`/`abuse`/`privacy`/`legal`/… kept only as fallback); **prefers the
+business domain**; writes the best email to `property_contacts.email` (only if empty,
+or `overwrite:true`); records full provenance in
+`property_enrichment.signals.email_enrichment` (candidates, confidence, methods,
+source URLs, pages fetched, timestamp) + `enrichment_source='website_email_enrichment'`.
+
+### Strict limits (no crawl loops, no spend)
+- **Admin/service-role only** (`has_role(uid,'admin')` → else 403).
+- **One level deep** (homepage → contact pages; no recursion), **visited set** (no loops).
+- `MAX_PAGES=5` (homepage + ≤4 contact pages), `FETCH_TIMEOUT_MS=8000`,
+  `MAX_BYTES=600000` per page (streamed cap), **same-domain only**, HTML/text only.
+- **SSRF guard:** rejects localhost / private / link-local / metadata hosts; http(s) only.
+- `dryRun:true` → fetch + extract + report **without writing**.
+
+### Required Actions (activation — NOT done here)
+1. **Deploy:** `supabase functions deploy enrich-property-email`. **No secret required.**
+2. No cron, no batch (one explicit `property_id` per call). No Stripe/Track A.
+
+### Verification (use a candidate that has a website but no email)
+```sql
+SELECT property_id, website_url, email FROM public.property_contacts WHERE email IS NULL AND website_url IS NOT NULL;
+```
+1. **Dry run** (admin JWT): `{ "property_id":"<id>", "dryRun":true }` → returns
+   `candidates[]`, `chosen_email`, `chosen_confidence`, `pages_fetched`; **no write**.
+2. **Live**: `{ "property_id":"<id>" }` → writes the best email (if `email` was empty).
+```sql
+SELECT email FROM public.property_contacts WHERE property_id='<id>';                 -- now populated
+SELECT signals->'email_enrichment'->>'chosen_email',
+       signals->'email_enrichment'->>'chosen_confidence',
+       signals->'email_enrichment'->'pages_fetched'
+  FROM public.property_enrichment WHERE property_id='<id>';                          -- provenance recorded
+```
+3. **Now promotable:** the candidate satisfies `promote_property_to_beacon`'s email
+   requirement (B3) — but promotion is still a **separate, explicit** admin action.
+4. **Non-admin** → 403. **No website** → `{enriched:false, reason:"no website_url"}`.
+   **Already-set email** → not overwritten unless `overwrite:true`.
+
+### Rollback
+Undeploy the function (or leave it undeployed). To revert data: `UPDATE
+public.property_contacts SET email=NULL WHERE property_id='<id>';` and remove the
+`email_enrichment` key from `property_enrichment.signals`. No schema to roll back.
+
+### Excludes
+❌ Promote to beacon · ❌ B4 / client-provider binding · ❌ billing/Stripe/Track A ·
+❌ batch scraping / cron · ❌ paid APIs / vendor secrets · ❌ sending outreach emails.
