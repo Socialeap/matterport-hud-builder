@@ -2914,3 +2914,29 @@ sending logic):
 **Admin UI is ready for operator use.** Future Map-Oracle outreach can be operated entirely from `/admin/map-oracle-outreach` (Enrich / Promote / Create pending / Preview / Send), each gated behind explicit per-row confirmation. No scripts required.
 
 Backend Activation Required: **NO** (PR120 activation complete).
+
+---
+
+## Fix — enrich-property-email CORS preflight (x-client-info / apikey)
+
+> Appended by the CORS fix PR. **Not yet activated.**
+
+**Defect:** calling the B5 `enrich-property-email` Edge Function from the admin UI via
+`supabase.functions.invoke()` failed CORS preflight — the browser sends `x-client-info`
++ `apikey`, but the function's `Access-Control-Allow-Headers` only listed
+`content-type, authorization`, so the preflight (and the request) was blocked.
+
+**Fix:** `supabase/functions/enrich-property-email/index.ts` `Access-Control-Allow-Headers`
+→ `authorization, x-client-info, apikey, content-type` (the standard Supabase set, matching
+the browser-invoked Stripe functions). No behavior/logic change; OPTIONS + every JSON
+response already emit `corsHeaders`, so the fix covers both preflight and responses.
+
+**Activation:** redeploy `enrich-property-email` (`supabase functions deploy
+enrich-property-email`). No migration, no secret, no other function.
+
+**Verify:** from the admin Outreach UI, "Enrich email" on a candidate with a website
+completes without the CORS error; preflight `Access-Control-Allow-Headers` includes
+`x-client-info`/`apikey`.
+
+> Note (not changed here): `map-oracle-ingest` uses the same narrow `corsHeaders`; it is
+> not currently browser-invoked, but if it is wired to UI later it will need the same set.
