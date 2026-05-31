@@ -832,6 +832,59 @@ export type Database = {
         }
         Relationships: []
       }
+      map_oracle_outreach_log: {
+        Row: {
+          beacon_id: string | null
+          error: string | null
+          id: string
+          metadata: Json | null
+          pgmq_msg_id: number | null
+          property_id: string | null
+          queued_at: string
+          queued_by: string | null
+          recipient_email: string
+          status: string
+          template_name: string
+          unsubscribe_token: string | null
+        }
+        Insert: {
+          beacon_id?: string | null
+          error?: string | null
+          id?: string
+          metadata?: Json | null
+          pgmq_msg_id?: number | null
+          property_id?: string | null
+          queued_at?: string
+          queued_by?: string | null
+          recipient_email: string
+          status: string
+          template_name?: string
+          unsubscribe_token?: string | null
+        }
+        Update: {
+          beacon_id?: string | null
+          error?: string | null
+          id?: string
+          metadata?: Json | null
+          pgmq_msg_id?: number | null
+          property_id?: string | null
+          queued_at?: string
+          queued_by?: string | null
+          recipient_email?: string
+          status?: string
+          template_name?: string
+          unsubscribe_token?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "map_oracle_outreach_log_beacon_id_fkey"
+            columns: ["beacon_id"]
+            isOneToOne: false
+            referencedRelation: "agent_beacons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       marketplace_outreach: {
         Row: {
           agent_flagged_at: string | null
@@ -3361,6 +3414,10 @@ export type Database = {
           specialties: Database["public"]["Enums"]["marketplace_specialty"][]
           tier: Database["public"]["Enums"]["app_tier"]
         }[]
+      }
+      send_map_oracle_outreach: {
+        Args: { p_beacon_id: string; p_dry_run?: boolean }
+        Returns: Json
       }
       send_marketplace_outreach: {
         Args: { p_beacon_id: string; p_body: string; p_subject: string }
