@@ -57,5 +57,8 @@ verify_jwt = false
 [functions.map-oracle-ingest]
 verify_jwt = false
 
+[functions.enrich-property-email]
+verify_jwt = false
+
 
 
