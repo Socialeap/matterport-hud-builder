@@ -2772,3 +2772,35 @@ The scheduled cron dispatcher at `/lovable/email/queue/process` on the preview d
 **Follow-up required (separate from PR119):** Restore env vars on the preview deployment so `/lovable/email/queue/process` returns 200. Until then, every queued transactional email will sit in pgmq indefinitely.
 
 No batch, no cron change, no auto-send, no B4 binding, no Stripe/billing, no Track A.
+
+---
+
+## Queue Processor Diagnosis (2026-05-31)
+
+### Findings
+- `POST /lovable/email/queue/process` returns **500 `{"error":"Server configuration error"}`** on the `id-preview--dfe7ef52-…lovable.app` deployment (where pg_cron is targeting).
+- Same route on published custom domain `3dps.transcendencemedia.com` returns **403** with the route's own JSON body → env vars ARE present and route executes; only fails the bearer comparison. Published Worker is healthy.
+- Root cause is therefore confined to the **preview Worker runtime**: one of `LOVABLE_API_KEY` / `SUPABASE_SERVICE_ROLE_KEY` / `VITE_SUPABASE_URL` is not being injected. `fetch_secrets` confirms `LOVABLE_API_KEY` exists (managed); `SUPABASE_SERVICE_ROLE_KEY` is auto-managed by Lovable Cloud.
+- Re-ran `setup_email_infra` (idempotent) — vault secret refreshed, cron re-scheduled (jobid 14, every 5s). Cron URL still points at preview, which is correct for Test backend.
+- Patched `src/routes/lovable/email/queue/process.ts` to (a) accept `SUPABASE_URL` / `VITE_SUPABASE_URL` from `process.env` as fallbacks to `import.meta.env`, and (b) return which env keys are missing in the 500 body so the next preview build will self-diagnose. Awaiting preview rebuild to surface that diagnostic.
+
+### Queue contents (`pgmq.q_transactional_emails`) — old/malformed
+| msg_id | enqueued_at (UTC) | age | template_name | recipient | shape |
+|---|---|---|---|---|---|
+| 7  | 2026-05-29 14:44 | ~51h | work-order-agent-receipt | shakoure@transcendencemedia.com | **malformed** (raw `{template_name, recipient_email, data}` — missing dispatcher fields `to/from/html/message_id/…`) |
+| 8  | 2026-05-29 14:57 | ~51h | work-order-agent-receipt | shakoure@transcendencemedia.com | **malformed** (same) |
+| 10 | 2026-05-29 22:05 | ~44h | work-order-confirmed-msp | mock-msp+mile-high-matterworks@transcendencemedia.com | **malformed** (same) |
+
+All three are far beyond the 60-min transactional TTL → dispatcher will route them to `transactional_emails_dlq` on the next tick (not send). They are the same defect class as Mozart msg 11 (PR117 defect) — producers wrote raw template metadata instead of pre-rendered dispatcher payloads. Map-Oracle path is now fixed via PR118/PR119; these three are pre-fix work-order beacons and should be DLQ'd, not delivered.
+
+### Exactly-once posture preserved
+- 1886 Cafe & Bakery: 1 `email_send_log` row `sent`, outreach log `queued`, `pgmq_msg_id=12` archived. Untouched.
+- Mozart: 1 `email_send_log` row `sent`, outreach log `queued`. Untouched.
+
+### Outstanding
+1. Preview Worker env injection — confirm via the next preview build's diagnostic 500 which key is absent, then either (a) wait for Lovable Cloud to repopulate secrets in preview, or (b) publish so cron targets the healthy prod Worker.
+2. Run one safe processor tick once preview returns 200 — expected: msgs 7/8/10 → DLQ via `move_to_dlq`, no live sends, no duplicates.
+3. End-to-end Map-Oracle self-service (renderer → cron → dispatcher → delete → `email_send_log`) confirmed only after step 1 is resolved.
+
+### Constraints honoured
+No new outreach sent. No batch/cron outreach created. B4, Stripe, billing, Track A untouched.
