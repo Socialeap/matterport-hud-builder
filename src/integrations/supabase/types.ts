@@ -3217,6 +3217,14 @@ export type Database = {
           msp_brand_name: string
         }[]
       }
+      mark_map_oracle_outreach_failed: {
+        Args: { p_error: string; p_outreach_log_id: string }
+        Returns: undefined
+      }
+      mark_map_oracle_outreach_queued: {
+        Args: { p_outreach_log_id: string; p_pgmq_msg_id: number }
+        Returns: undefined
+      }
       mark_work_order_complete: {
         Args: { p_completion: string; p_work_order_id: string }
         Returns: {
