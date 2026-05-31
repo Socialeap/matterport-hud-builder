@@ -2260,3 +2260,21 @@ Discovery rate: **3/5 wrote an email**, **2/5 high+medium confidence**, **1/5 hi
 - `fca49fbf-b3ae-42f9-bbd5-7c8f74f52334` — Caroline (low; `forms@tambourine.com` is a marketing-form vendor, not the business — recommend skipping until re-enrichment).
 
 No promotion performed in this step.
+
+---
+
+## B3 Promotion Smoke Test — Mozart's Coffee Roasters (2026-05-31)
+
+**Approved single-candidate promotion** executed via `SELECT public.promote_property_to_beacon('f1dd778e-5d2b-4b5d-a0ef-2637efae68a8'::uuid);`
+
+### Result
+- **Beacon id: `d75b552b-6c91-4fb9-aa94-e0728d843c39`**
+
+### Verification
+1. ✅ Function returned a beacon id on first call.
+2. ✅ `agent_beacons` row has: `source='map_oracle'`, `consent_given=false`, `consent_text` length=131 chars (non-empty), `property_id=f1dd778e-…`, `email=customerservice@mozartscoffee.com`, `doorway_payload IS NOT NULL`, `status='waiting'`.
+3. ✅ Re-running the promotion returned the **same** beacon id (`d75b552b-…`); `agent_beacons` rows for this property = 1 (no duplicate).
+4. ✅ Unsubscribe protection intact by code path: `promote_property_to_beacon` checks `email_unsubscribe_tokens.used_at IS NOT NULL` for the candidate email and raises `P0001` if matched (no behaviour change in this run; not in the unsubscribe list).
+5. ✅ No new rows in last hour: `client_providers=0`, `platform_fee_ledger=0`, `marketplace_outreach=0`. No Stripe, no Track A, no B4, no cron, no outreach send.
+
+**Status:** B3 promotion path verified end-to-end on one approved candidate. No further candidates promoted.
