@@ -2488,3 +2488,61 @@ Re-verification requested after merge. All infrastructure was previously activat
 **No new actions taken.** Awaiting separate instruction if the existing queued row needs to be cleared to permit a fresh dry-run.
 
 Backend Activation Required: NO (already active from prior turn).
+
+---
+
+## 2026-05-31 — Map Oracle Outreach: Option A (Mozart delivery) + Option B (defect fix)
+
+### Option A — one-time Mozart delivery (LIVE)
+
+**Outreach log:** `d6e855da-84ec-413c-a87b-724a034cca52`
+**Recipient:** `customerservice@mozartscoffee.com`
+**Template:** `map-oracle-preview-offer` (rendered server-side via React Email)
+**Send path:** out-of-band one-off renderer + `sendLovableEmail` directly (sandbox script `scripts/mozart-oneoff-deliver.ts`), bypassing the broken pgmq payload.
+
+Result:
+- `sendLovableEmail` → `{ success: true, status: 'queued', workflow_id: 'email-send-…-txn_88356ffc8aa60e035d831561' }`
+- `email_send_log` now has exactly one row: `message_id=d6e855da-…`, `template_name=map-oracle-preview-offer`, `recipient=customerservice@mozartscoffee.com`, `status=sent`, `error_message=NULL`.
+- `map_oracle_outreach_log` still has a single row for Mozart (no duplicate).
+- pgmq msg_id 11 removed from `transactional_emails` via `delete_email` RPC (`delData=true`). Dispatcher will no longer retry the malformed payload.
+- Sender = `noreply@frontiers3d.com` via `notify.frontiers3d.com` (post domain switch).
+- Unsubscribe URL = `https://frontiers3d.com/email/unsubscribe?token=a5879d67…` (token reused; one token per recipient).
+- No second outreach log row, no Stripe / billing / Track A / B4 / cron / batch changes.
+
+### Option B — defect fix to `send_map_oracle_outreach` (MIGRATED)
+
+**Migration:** `20260531_map_oracle_outreach_defect_fix` (applied via Supabase migration tool).
+
+Changes:
+- Status check on `map_oracle_outreach_log` now accepts `pending_render`, `queued`, `sent`, `suppressed`, `skipped`, `failed`.
+- `send_map_oracle_outreach(p_beacon_id, p_dry_run)` rewritten:
+  - Preserves admin / service-role gate, map_oracle source check, has-email, not-unsubscribed, suppressed-recipient short-circuit, and per-beacon duplicate guard.
+  - **No longer enqueues a malformed payload into pgmq.** Postgres cannot render React Email templates, so SQL no longer attempts to.
+  - Non-dry-run path now inserts a `pending_render` outreach log row (with `pgmq_msg_id=NULL`) and returns prepared template data (recipient, business, city_display, unsubscribe_url/token, physical_address, outreach_log_id).
+  - Caller (future admin-only renderer route) must render the React template and enqueue a properly shaped pre-rendered transactional payload via `enqueue_email`, then update the outreach log row to `status=queued` with the returned `pgmq_msg_id`.
+  - Duplicate guard moved inside the non-dry-run branch so dry-run verification works on beacons with existing log rows.
+  - Unsubscribe base URL updated to `https://frontiers3d.com`.
+- Grants: revoked from PUBLIC/anon; granted to authenticated and service_role (unchanged from prior version).
+
+### Verification (no live send)
+
+```
+-- Dry-run (returns prepared data, writes nothing):
+SELECT public.send_map_oracle_outreach('d75b552b-6c91-4fb9-aa94-e0728d843c39'::uuid, TRUE);
+-- → status=dry_run, business=Mozart's Coffee Roasters, unsubscribe_url=https://frontiers3d.com/email/unsubscribe?token=a5879d67…
+
+-- Non-dry-run on Mozart hits the duplicate-active-send guard, as expected:
+SELECT public.send_map_oracle_outreach('d75b552b-6c91-4fb9-aa94-e0728d843c39'::uuid, FALSE);
+-- → ERROR 23505: beacon d75b552b-… already has an active or completed outreach send
+```
+
+No further live email sent. No batch, cron, B4, Stripe, billing, or Track A changes.
+
+### Reported identifiers
+
+- outreach log id: `d6e855da-84ec-413c-a87b-724a034cca52`
+- pgmq msg id (delivered out-of-band & removed): `11`
+- Lovable Email workflow id: `email-send-dfe7ef52-7b3c-4410-9d43-246ae3e3509c-txn_88356ffc8aa60e035d831561`
+- `email_send_log.status` for this message_id: `sent`
+
+**Backend Activation Required: NO further activation.** Migration applied; one-off delivery completed; defect fix verified via dry-run only.
