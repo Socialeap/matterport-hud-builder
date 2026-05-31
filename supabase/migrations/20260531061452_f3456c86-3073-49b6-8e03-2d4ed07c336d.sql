@@ -1,0 +1,1 @@
+REVOKE EXECUTE ON FUNCTION public.send_map_oracle_outreach(UUID, BOOLEAN) FROM anon;
