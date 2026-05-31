@@ -1,0 +1,1 @@
+REVOKE EXECUTE ON FUNCTION public.promote_property_to_beacon(UUID, TEXT) FROM anon;
