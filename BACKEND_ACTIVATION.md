@@ -2873,3 +2873,44 @@ sending logic):
 
 ### Excludes
 ❌ batch · ❌ cron · ❌ auto-send · ❌ B4 / client-provider binding · ❌ Stripe/billing/Track A.
+
+---
+
+## PR120 — Map-Oracle Operator Controls (2026-05-31) — VERIFIED
+
+**Scope applied:** Migration `20260606000000_frontiers3d_operator_outreach_readiness.sql` + frontend route `/admin/map-oracle-outreach`. Read-only, admin-gated. No new send engine, no cron, no batch, no auto-send, no B4/binding, no Stripe/billing, no Track A.
+
+### Migration / Function
+- `public.get_operator_outreach_readiness()` exists. `pg_proc`: `prosecdef=true` (SECURITY DEFINER), `provolatile='s'` (STABLE).
+- EXECUTE revoked from PUBLIC; granted to `service_role, authenticated` (gate is enforced inside the function body via `has_role(auth.uid(),'admin')` + service_role check).
+- Non-admin caller verified: `supabase--read_query` (authenticated, non-admin session) → `ERROR 42501: permission denied for function get_operator_outreach_readiness`. ✅
+- Function body is `RETURN QUERY SELECT ...` only — no INSERT/UPDATE/DELETE/ALTER. No writes to outreach, beacon, billing, Stripe, or client-provider tables. ✅
+
+### Frontend route
+- Registered in `src/routeTree.gen.ts` as `/admin/map-oracle-outreach` (file `src/routes/_authenticated.admin.map-oracle-outreach.tsx`).
+- Lives under the `_authenticated` + `admin` layout — non-admin is blocked by the existing admin layout guard.
+- Table renders: business name, city/region, website, discovered email, email confidence/provenance, beacon status (promotion), and outreach status (via `readiness` column with StatusPill).
+
+### UI state safety (per-row action mapping in source)
+- `sent` / `queued` (Mozart, 1886, Caroline) — no Send button exposed; row shows status pill only.
+- `no_email` → Enrich.
+- `not_promoted` (with email) → Promote.
+- `ready` (promoted + email, no outreach) → Create pending.
+- `pending_render` → Preview + Send.
+- `suppressed` / `failed` → blocked, no Send.
+
+### Dry-run preview
+- No `pending_render` rows currently exist (`map_oracle_outreach_log` status counts: queued=3). Per instructions, did **not** create a new pending_render solely for verification. Preview path was verified end-to-end in PR119 activation.
+
+### Live-send safety
+- Did **not** click Send. No outreach email was sent. Send action in UI is wrapped in `confirmState` requiring explicit user confirmation and acts on one `outreach_log_id` at a time.
+
+### Regression
+- `email_send_log` exactly-once preserved: `austindriskill.hyatt@hyatt.com=1`, `customerservice@mozartscoffee.com=1`, `forms@tambourine.com=1` (sent, `map-oracle-preview-offer`). ✅
+- `pgmq.q_transactional_emails` empty (no unexpected enqueue). ✅
+- Queue processor cron unchanged; PR120 introduced no new cron, batch, or auto-send.
+
+### Result
+**Admin UI is ready for operator use.** Future Map-Oracle outreach can be operated entirely from `/admin/map-oracle-outreach` (Enrich / Promote / Create pending / Preview / Send), each gated behind explicit per-row confirmation. No scripts required.
+
+Backend Activation Required: **NO** (PR120 activation complete).
