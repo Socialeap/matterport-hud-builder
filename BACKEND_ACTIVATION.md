@@ -2024,56 +2024,94 @@ Backend Activation Required: NO (frontend-only; B2 backend already live from PR-
 
 ---
 
-## B2.x — Candidate Promotion Staging (non-destructive; additive)
+## B3 — Map-Oracle Promotion (beacon creation) — ⚠️ DESTRUCTIVE · BUSINESS-APPROVED (in principle) · activation still human-gated
 
-> Appended by the Candidate-Promotion-Staging PR. All manifest content **above**
-> (A1–A4, PR-B1, PR-B-Scraper, B2, B2 UI) is **unchanged**. **Not yet activated.**
+> Appended by the B3 PR. **Business sign-off for cold-outreach promotion is APPROVED
+> IN PRINCIPLE.** The migration is still **DESTRUCTIVE** and **activation remains
+> human-gated**: it must NOT be applied until the pre-apply gate returns 0 and a
+> human runs the apply with the constraint change reviewed. Prior records above are
+> unchanged.
 
-**What it lands:** `supabase/migrations/20260602000000_frontiers3d_candidate_promotions.sql`
-— strictly additive. Lets an admin **explicitly** promote **one** doorway candidate
-at a time, recording a **fully auditable** promotion request, **without** touching
-`agent_beacons` or the consent constraint.
+### Business policy (approved in principle)
+- **Cold outreach is core to the Map Oracle funnel.** Outreach is an **offer to
+  preview interactive functionality** for businesses with Google Maps Street View /
+  360 / inside-tour potential — or to **connect them with a local provider** to
+  virtualize first.
+- **CAN-SPAM compliant, with unsubscribe.** The `map_oracle` beacon carries the
+  cold-outreach consent sentinel; `promote_property_to_beacon` **respects prior
+  unsubscribes** (raises rather than re-engaging).
+- **Auditable** to the source property/candidate (snapshots + `property_id` lineage;
+  audit-linked to `candidate_promotions` when present).
+- **Initial activation stays controlled:** **no batch** promotion, **no automatic**
+  promotion, **no cron**, **no B4** binding, **no billing/Stripe** — one property per
+  explicit admin/service-role call.
 
-- `candidate_promotions` table (snapshots `property_id` + `google_place_id` +
-  `candidate_name` + `doorway_payload` + `requested_by`; status
-  `requested`/`beacon_created`/`cancelled`; unique active-request-per-property index).
-- `request_candidate_promotion(property_id, notes?)` — admin/service-role only,
-  explicit, **one candidate**, errors if an active request exists; snapshots for
-  audit; marks the candidate `surfaced`.
-- `cancel_candidate_promotion(property_id)` — reversible (returns the candidate to `queued`).
-- `operator_candidate_promotions` view (`security_invoker = true`, admin-only).
+**What it lands:** `supabase/migrations/20260603000000_frontiers3d_promote_beacon.sql`
+1. **Additive** `agent_beacons` columns: `source` (`agent_form`|`map_oracle`, default
+   `agent_form`), `property_id` (FK properties), `doorway_payload` (jsonb) + indexes.
+2. **⚠️ DESTRUCTIVE:** `DROP` + re-`ADD` `agent_beacons_consent_required` with a
+   `map_oracle` branch that permits `consent_given=FALSE` (cold-outreach). The
+   `agent_form` rule is preserved **verbatim**; strictly more permissive.
+3. `promote_property_to_beacon(property_id, consent_text?)` — admin/service-role
+   only, **explicit, ONE property per call**, idempotent on (email, city), respects
+   unsubscribes, sets `doorway_payload` via the live B2 `compose_doorway_payload`,
+   and marks the matching `candidate_promotions` row `beacon_created` (audit link to
+   the staging PR) when that table is present.
 
-**Why this boundary:** real beacon creation needs the **destructive** consent-
-constraint relaxation (cold-outreach `consent_given=FALSE`); that is a **separate,
-explicitly-approved B3 PR**. This PR only stages the auditable decision.
+**Why destructive is unavoidable:** Map-Oracle prospects have `consent_given=FALSE`;
+the legacy CHECK requires `TRUE` for every row; a CHECK can only be relaxed by
+drop-and-re-add. (Falsifying consent with a synthetic `TRUE` is rejected by design.)
 
-**Backend activation: required (apply migration).** No cron, no Edge Function, no
-secret, no agent_beacons/consent/binding/Stripe/Track A change.
-
-**Verification (uses the 5 staged candidates):**
+### 🚦 Pre-apply gate (REQUIRED) — run on CURRENT main; must return 0 before applying
 ```sql
--- as admin/service role
-SELECT public.request_candidate_promotion('<property_id>', 'manual review ok');  -- returns a uuid
-SELECT id, property_id, candidate_name, status, requested_by
-  FROM public.operator_candidate_promotions;            -- one 'requested' row, snapshotted
-SELECT status FROM public.doorway_candidates WHERE property_id='<property_id>';   -- 'surfaced'
--- one-at-a-time guard:
-SELECT public.request_candidate_promotion('<property_id>');                       -- ERROR 23505 (active request exists)
--- reversible:
-SELECT public.cancel_candidate_promotion('<property_id>');                        -- status -> 'cancelled', candidate -> 'queued'
--- security_invoker / admin-only:
-SELECT reloptions FROM pg_class WHERE relname='operator_candidate_promotions' AND relkind='v';  -- {security_invoker=true}
--- non-admin: SELECT count(*) FROM public.operator_candidate_promotions; -> 0; request_* -> 42501
+SELECT count(*) AS legacy_rows_that_violate_current_consent_constraint
+  FROM public.agent_beacons
+ WHERE NOT (consent_given = TRUE AND length(consent_text) > 0);
+```
+This checks the **current (legacy)** constraint and does **not** reference the new
+`source`/`property_id` columns (which this migration adds), so it is **runnable on
+current `main`**. If non-zero, **STOP** and triage the offending rows. Postgres also
+rejects `ADD CONSTRAINT` if any row fails (hard safety net). The new
+`source`/`map_oracle` constraint is verified **post-apply** (see Verification).
+
+### Activation order (human-gated; NOT performed by this PR)
+**`candidate_promotions` (from the Candidate-Promotion-Staging PR) is OPTIONAL — NOT a
+hard dependency.** B3 applies and runs **standalone**; if that table is present,
+`promote_property_to_beacon` updates the matching `requested` row to `beacon_created`
+(audit link), otherwise that step is skipped (guarded by `to_regclass`). Recommended
+order is **staging PR → B3** only so the audit link is captured — not because B3 needs
+it. Run the pre-apply gate → apply the migration → verify. **No cron, no Edge Function,
+no secret.**
+
+### Verification (sandbox, after sign-off)
+```sql
+-- POST-APPLY: the new two-branch constraint is in place.
+SELECT pg_get_constraintdef(oid) FROM pg_constraint
+ WHERE conrelid='public.agent_beacons'::regclass AND conname='agent_beacons_consent_required';
+-- expect BOTH source='agent_form' and source='map_oracle' branches.
+-- agent_form beacons still gated (must FAIL):
+INSERT INTO public.agent_beacons (email,city,country,consent_given,consent_text,source)
+VALUES ('x@y.test','Austin','US',FALSE,'no','agent_form');   -- expect CHECK violation
+-- promote one property with an email + US locality:
+SELECT public.promote_property_to_beacon('<property_id>');     -- returns beacon id
+SELECT source, consent_given, property_id IS NOT NULL AS linked,
+       doorway_payload->>'name' AS card_name
+  FROM public.agent_beacons WHERE property_id='<property_id>'; -- map_oracle, f, t, name
+-- idempotent: second call returns the same id; audit row -> beacon_created:
+SELECT status, target_beacon_id FROM public.candidate_promotions WHERE property_id='<property_id>';
+-- unsubscribe respected: set status='unsubscribed' then re-promote -> P0001.
 ```
 
-**Rollback (fully reversible):**
+### Rollback
 ```sql
-DROP VIEW IF EXISTS public.operator_candidate_promotions;
-DROP FUNCTION IF EXISTS public.cancel_candidate_promotion(uuid);
-DROP FUNCTION IF EXISTS public.request_candidate_promotion(uuid, text);
-DROP TABLE IF EXISTS public.candidate_promotions;   -- audit only; properties/candidates untouched
+DROP FUNCTION IF EXISTS public.promote_property_to_beacon(uuid, text);
+-- restore the strict constraint:
+ALTER TABLE public.agent_beacons DROP CONSTRAINT IF EXISTS agent_beacons_consent_required;
+ALTER TABLE public.agent_beacons ADD CONSTRAINT agent_beacons_consent_required
+  CHECK (consent_given = TRUE AND length(consent_text) > 0);
+-- (only safe if no map_oracle rows exist; otherwise delete/triage them first)
+-- the additive source/property_id/doorway_payload columns may remain (harmless).
 ```
 
-**Excludes:** B3 consent relaxation / `promote_property_to_beacon` / `agent_beacons`
-writes (separate destructive PR), client/provider binding, billing/Stripe/Track A,
-any auto/batch promotion, any cron.
+### Excludes
+❌ client/provider binding (B4) · ❌ billing/Stripe/platform-fee/Track A · ❌ auto/batch promotion · ❌ trigger/cron.
