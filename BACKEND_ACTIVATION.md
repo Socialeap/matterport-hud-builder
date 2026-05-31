@@ -2115,3 +2115,45 @@ ALTER TABLE public.agent_beacons ADD CONSTRAINT agent_beacons_consent_required
 
 ### Excludes
 ❌ client/provider binding (B4) · ❌ billing/Stripe/platform-fee/Track A · ❌ auto/batch promotion · ❌ trigger/cron.
+
+---
+
+## ✅ PR-115 / B3 Map-Oracle Promotion — ACTIVATED (2026-05-31)
+
+**Business sign-off:** cold-outreach promotion approved in principle as part of the Map Oracle funnel (CAN-SPAM compliance, unsubscribe support, audit tracing, controlled initial operation).
+
+### Pre-apply gate
+```sql
+SELECT count(*) FROM public.agent_beacons
+ WHERE NOT (consent_given = TRUE AND length(consent_text) > 0);
+-- => 0  ✅ (safe to drop & re-add agent_beacons_consent_required)
+```
+
+### Applied migration
+- `supabase/migrations/20260603000000_frontiers3d_promote_beacon.sql` (logic reproduced inline; the file's preflight check uses `to_regproc('name(args)')` which always returns NULL for parenthesized signatures — applied an equivalent migration that uses `to_regprocedure` instead. Functional payload identical to the PR.)
+- Hardening follow-up: `REVOKE EXECUTE ... FROM anon` on `promote_property_to_beacon` (Supabase default-grants EXECUTE to anon on every public function; the function body already rejects non-admin/non-service callers, but explicit revoke is defense-in-depth).
+
+### Verification
+| # | Check | Result |
+|---|---|---|
+| 1 | `agent_beacons` has `source`, `property_id`, `doorway_payload` | ✅ all 3 columns present |
+| 2 | `agent_beacons_consent_required` has both branches | ✅ `CHECK (((source='agent_form' AND consent_given=true AND length(consent_text)>0) OR (source='map_oracle' AND property_id IS NOT NULL AND length(consent_text)>0)))` |
+| 3 | `promote_property_to_beacon(uuid,text)` exists | ✅ `SECURITY DEFINER`, `search_path=public` |
+| 4 | Function is admin/service-role gated | ✅ body raises `42501` unless `has_role(auth.uid(),'admin')` OR `auth.role()='service_role'`; EXECUTE revoked from anon |
+| 5 | `source='agent_form'` with `consent_given=false` fails CHECK | ✅ insert rejected with `check_violation` (verified via DO block) |
+| 6 | Email-eligible candidates in `property_contacts` | ❌ **0 / 5** — the live ingest run used `fetchDetails:false`, so no contacts/locality/country were fetched |
+| 7 | Promote one candidate end-to-end | ⏭ **Skipped** — no candidate has an email; per the task spec ("do not fake one"), no synthetic data was inserted |
+| 8 | Unsubscribe protection | ✅ verified by code path: `promote_property_to_beacon` looks up any existing beacon on `(lower(email), lower(city))` and raises `P0001 "...is unsubscribed"` if `status='unsubscribed'`. No new beacon is created and no existing unsubscribed beacon is re-armed. |
+
+### State after activation
+- `agent_beacons`: schema extended, no new rows written.
+- `client_providers`, `platform_fee_ledger`, Stripe/billing, Track A: **untouched**.
+- No cron, no batch, no auto-promotion, no outreach scheduled.
+
+### Path to first real promotion
+Run an ingest with `fetchDetails:true` (Place Details API) to populate `property_contacts.email` + `properties.locality`/`country_code`, then call `SELECT public.promote_property_to_beacon('<property_id>'::uuid);` from an admin session.
+
+### Excludes
+❌ B4 (client/provider binding) · ❌ Stripe / billing / platform fees / Track A · ❌ cron · ❌ batch promotion · ❌ auto promotion · ❌ outreach scheduling.
+
+**Backend Activation Required: DONE**
