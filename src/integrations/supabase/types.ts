@@ -61,6 +61,7 @@ export type Database = {
           disposition: Database["public"]["Enums"]["beacon_disposition"] | null
           disposition_set_at: string | null
           disposition_set_by: string | null
+          doorway_payload: Json | null
           email: string
           essential_services: Database["public"]["Enums"]["marketplace_specialty"][]
           exclusive_provider_id: string | null
@@ -77,8 +78,10 @@ export type Database = {
           name: string | null
           preferable_services: Database["public"]["Enums"]["marketplace_specialty"][]
           pro_visibility_until: string | null
+          property_id: string | null
           region: string | null
           service_match_notified_at: string | null
+          source: string
           source_ip: string | null
           status: Database["public"]["Enums"]["beacon_status"]
           updated_at: string
@@ -98,6 +101,7 @@ export type Database = {
           disposition?: Database["public"]["Enums"]["beacon_disposition"] | null
           disposition_set_at?: string | null
           disposition_set_by?: string | null
+          doorway_payload?: Json | null
           email: string
           essential_services?: Database["public"]["Enums"]["marketplace_specialty"][]
           exclusive_provider_id?: string | null
@@ -114,8 +118,10 @@ export type Database = {
           name?: string | null
           preferable_services?: Database["public"]["Enums"]["marketplace_specialty"][]
           pro_visibility_until?: string | null
+          property_id?: string | null
           region?: string | null
           service_match_notified_at?: string | null
+          source?: string
           source_ip?: string | null
           status?: Database["public"]["Enums"]["beacon_status"]
           updated_at?: string
@@ -135,6 +141,7 @@ export type Database = {
           disposition?: Database["public"]["Enums"]["beacon_disposition"] | null
           disposition_set_at?: string | null
           disposition_set_by?: string | null
+          doorway_payload?: Json | null
           email?: string
           essential_services?: Database["public"]["Enums"]["marketplace_specialty"][]
           exclusive_provider_id?: string | null
@@ -151,15 +158,25 @@ export type Database = {
           name?: string | null
           preferable_services?: Database["public"]["Enums"]["marketplace_specialty"][]
           pro_visibility_until?: string | null
+          property_id?: string | null
           region?: string | null
           service_match_notified_at?: string | null
+          source?: string
           source_ip?: string | null
           status?: Database["public"]["Enums"]["beacon_status"]
           updated_at?: string
           user_agent?: string | null
           zip?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "agent_beacons_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       ask_quota_counters: {
         Row: {
@@ -3213,6 +3230,10 @@ export type Database = {
           failed: number
           processed: number
         }[]
+      }
+      promote_property_to_beacon: {
+        Args: { p_consent_text_override?: string; p_property_id: string }
+        Returns: string
       }
       provider_has_paid_access: {
         Args: { _provider_id: string }
