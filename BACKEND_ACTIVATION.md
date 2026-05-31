@@ -2546,3 +2546,70 @@ No further live email sent. No batch, cron, B4, Stripe, billing, or Track A chan
 - `email_send_log.status` for this message_id: `sent`
 
 **Backend Activation Required: NO further activation.** Migration applied; one-off delivery completed; defect fix verified via dry-run only.
+
+---
+
+## Map-Oracle Outreach — RECONCILE (PR117 defect fix) + durable renderer path
+
+> Appended by the reconcile PR. **Supersedes the behavior described in the earlier
+> "Map-Oracle Outreach Send" section** (which described the buggy raw-enqueue path).
+> Prior records above are otherwise unchanged. **Not yet activated.**
+
+### The defect (PR117) and the fix
+PR117's `send_map_oracle_outreach` enqueued **raw template data** (`template_name`+`data`)
+straight into the `transactional_emails` pgmq queue. The dispatcher expects a
+**PRE-RENDERED** payload, so the raw shape was malformed. Lovable patched the **live**
+function; `supabase/migrations/20260605000000_frontiers3d_map_oracle_outreach_reconcile.sql`
+brings the canonical frontiers3d source in line (idempotent `CREATE OR REPLACE` + CHECK
+re-add — matches live; safe to re-apply).
+
+### Corrected `send_map_oracle_outreach` (now live)
+- `map_oracle_outreach_log.status` allows **`pending_render`** and **`sent`** (CHECK widened).
+- It **no longer enqueues**. It validates (admin/service-role; `source='map_oracle'`; not
+  `unsubscribed`; has email; **not** on `suppressed_emails`), refuses a **duplicate**
+  (`status IN ('pending_render','queued','sent')` → `23505`), writes a **`pending_render`**
+  log row, and **returns the prepared template data** (`outreach_log_id`, `recipient`,
+  `business`, `city_display`, `unsubscribe_url` + `unsubscribe_token`, `physical_address`)
+  plus a `next_step`. `dry_run:true` returns the plan **without** writing.
+- Base URL corrected to **`https://frontiers3d.com`**; postal address constant retained
+  (confirm before activation).
+
+### Durable production send path (the renderer step)
+```
+send_map_oracle_outreach(beacon)                 -- admin, ONE beacon, explicit
+   -> map_oracle_outreach_log row status='pending_render' + prepared data
+   -> ADMIN RENDERER (one log at a time):
+        renders the `map-oracle-preview-offer` React template into the PRE-RENDERED
+        transactional payload (subject/html/text) and enqueues it via the EXISTING
+        transactional sender, then finalizes the log:
+   -> mark_map_oracle_outreach_queued(outreach_log_id, pgmq_msg_id)   -- success
+      / mark_map_oracle_outreach_failed(outreach_log_id, error)        -- failure
+```
+**Recommended renderer implementation (reuses proven infra):** for a `pending_render`
+log, call the existing transactional sender (`POST /lovable/email/transactional/send`)
+with `{ template_name:'map-oracle-preview-offer', recipientEmail, data:{ businessName,
+city, unsubscribeUrl, physicalAddress } }` — it already renders via the template
+**registry**, checks `suppressed_emails`, manages the **unsubscribe token / List-Unsubscribe**,
+and enqueues the **correct pre-rendered** payload. Then call
+`mark_map_oracle_outreach_queued(log_id, <message id>)`. This makes the Map-Oracle path
+use the identical render+dispatch as every other transactional email — no bespoke pgmq
+shape. (The renderer is a thin admin-gated server route; this PR adds the DB primitives +
+this contract; the route can be added next or wired to an existing admin action.)
+
+**Primitives added by this migration:** `mark_map_oracle_outreach_queued(uuid,bigint)` and
+`mark_map_oracle_outreach_failed(uuid,text)` — admin/service-role only, **one log row**,
+only transition **from** `pending_render` (preserves duplicate protection + gating).
+
+### Verification (Mozart's beacon already sent once; use a fresh map_oracle beacon)
+```sql
+SELECT public.send_map_oracle_outreach('<beacon_id>', TRUE);   -- dry_run: prepared data, no write
+SELECT public.send_map_oracle_outreach('<beacon_id>');         -- writes status='pending_render'
+SELECT status, pgmq_msg_id, unsubscribe_token IS NOT NULL FROM public.map_oracle_outreach_log
+  WHERE beacon_id='<beacon_id>' ORDER BY queued_at DESC LIMIT 1;             -- 'pending_render', NULL, true
+-- after the renderer enqueues the pre-rendered payload:
+SELECT public.mark_map_oracle_outreach_queued('<outreach_log_id>', <pgmq_msg_id>);
+-- guards: second send -> 23505; unsubscribed beacon -> P0001; suppressed -> 'suppressed' (no write).
+```
+
+### Excludes
+❌ batch · ❌ cron · ❌ auto-send · ❌ B4 / client-provider binding · ❌ Stripe / billing / Track A.
