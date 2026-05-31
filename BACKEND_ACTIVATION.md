@@ -2024,11 +2024,27 @@ Backend Activation Required: NO (frontend-only; B2 backend already live from PR-
 
 ---
 
-## B3 — Map-Oracle Promotion (beacon creation) — ⚠️ DESTRUCTIVE, NOT YET APPROVED
+## B3 — Map-Oracle Promotion (beacon creation) — ⚠️ DESTRUCTIVE · BUSINESS-APPROVED (in principle) · activation still human-gated
 
-> Appended by the B3 PR. **This migration is DESTRUCTIVE and must NOT be applied
-> without explicit human sign-off.** It is packaged for **review in isolation**
-> (you chose “A now, draft B3 separately”). Prior records above are unchanged.
+> Appended by the B3 PR. **Business sign-off for cold-outreach promotion is APPROVED
+> IN PRINCIPLE.** The migration is still **DESTRUCTIVE** and **activation remains
+> human-gated**: it must NOT be applied until the pre-apply gate returns 0 and a
+> human runs the apply with the constraint change reviewed. Prior records above are
+> unchanged.
+
+### Business policy (approved in principle)
+- **Cold outreach is core to the Map Oracle funnel.** Outreach is an **offer to
+  preview interactive functionality** for businesses with Google Maps Street View /
+  360 / inside-tour potential — or to **connect them with a local provider** to
+  virtualize first.
+- **CAN-SPAM compliant, with unsubscribe.** The `map_oracle` beacon carries the
+  cold-outreach consent sentinel; `promote_property_to_beacon` **respects prior
+  unsubscribes** (raises rather than re-engaging).
+- **Auditable** to the source property/candidate (snapshots + `property_id` lineage;
+  audit-linked to `candidate_promotions` when present).
+- **Initial activation stays controlled:** **no batch** promotion, **no automatic**
+  promotion, **no cron**, **no B4** binding, **no billing/Stripe** — one property per
+  explicit admin/service-role call.
 
 **What it lands:** `supabase/migrations/20260603000000_frontiers3d_promote_beacon.sql`
 1. **Additive** `agent_beacons` columns: `source` (`agent_form`|`map_oracle`, default
