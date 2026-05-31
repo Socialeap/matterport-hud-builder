@@ -2021,3 +2021,59 @@ RPC). No migrations, edge functions, secrets, or cron changes.
 **Excludes:** B3/B4, scraper scheduling, Stripe, Track A.
 
 Backend Activation Required: NO (frontend-only; B2 backend already live from PR-B2).
+
+---
+
+## B2.x — Candidate Promotion Staging (non-destructive; additive)
+
+> Appended by the Candidate-Promotion-Staging PR. All manifest content **above**
+> (A1–A4, PR-B1, PR-B-Scraper, B2, B2 UI) is **unchanged**. **Not yet activated.**
+
+**What it lands:** `supabase/migrations/20260602000000_frontiers3d_candidate_promotions.sql`
+— strictly additive. Lets an admin **explicitly** promote **one** doorway candidate
+at a time, recording a **fully auditable** promotion request, **without** touching
+`agent_beacons` or the consent constraint.
+
+- `candidate_promotions` table (snapshots `property_id` + `google_place_id` +
+  `candidate_name` + `doorway_payload` + `requested_by`; status
+  `requested`/`beacon_created`/`cancelled`; unique active-request-per-property index).
+- `request_candidate_promotion(property_id, notes?)` — admin/service-role only,
+  explicit, **one candidate**, errors if an active request exists; snapshots for
+  audit; marks the candidate `surfaced`.
+- `cancel_candidate_promotion(property_id)` — reversible (returns the candidate to `queued`).
+- `operator_candidate_promotions` view (`security_invoker = true`, admin-only).
+
+**Why this boundary:** real beacon creation needs the **destructive** consent-
+constraint relaxation (cold-outreach `consent_given=FALSE`); that is a **separate,
+explicitly-approved B3 PR**. This PR only stages the auditable decision.
+
+**Backend activation: required (apply migration).** No cron, no Edge Function, no
+secret, no agent_beacons/consent/binding/Stripe/Track A change.
+
+**Verification (uses the 5 staged candidates):**
+```sql
+-- as admin/service role
+SELECT public.request_candidate_promotion('<property_id>', 'manual review ok');  -- returns a uuid
+SELECT id, property_id, candidate_name, status, requested_by
+  FROM public.operator_candidate_promotions;            -- one 'requested' row, snapshotted
+SELECT status FROM public.doorway_candidates WHERE property_id='<property_id>';   -- 'surfaced'
+-- one-at-a-time guard:
+SELECT public.request_candidate_promotion('<property_id>');                       -- ERROR 23505 (active request exists)
+-- reversible:
+SELECT public.cancel_candidate_promotion('<property_id>');                        -- status -> 'cancelled', candidate -> 'queued'
+-- security_invoker / admin-only:
+SELECT reloptions FROM pg_class WHERE relname='operator_candidate_promotions' AND relkind='v';  -- {security_invoker=true}
+-- non-admin: SELECT count(*) FROM public.operator_candidate_promotions; -> 0; request_* -> 42501
+```
+
+**Rollback (fully reversible):**
+```sql
+DROP VIEW IF EXISTS public.operator_candidate_promotions;
+DROP FUNCTION IF EXISTS public.cancel_candidate_promotion(uuid);
+DROP FUNCTION IF EXISTS public.request_candidate_promotion(uuid, text);
+DROP TABLE IF EXISTS public.candidate_promotions;   -- audit only; properties/candidates untouched
+```
+
+**Excludes:** B3 consent relaxation / `promote_property_to_beacon` / `agent_beacons`
+writes (separate destructive PR), client/provider binding, billing/Stripe/Track A,
+any auto/batch promotion, any cron.
