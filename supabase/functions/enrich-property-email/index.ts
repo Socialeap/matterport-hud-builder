@@ -21,12 +21,15 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 // set (no loops); SSRF guard (no localhost/private/metadata hosts).
 // ============================================================
 
+// supabase-js `functions.invoke()` (browser) sends authorization + apikey +
+// x-client-info; all must be allowed or the CORS preflight is rejected. The
+// OPTIONS handler below also REFLECTS the browser's requested headers so the
+// preflight passes for whatever header set the client adds.
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  // supabase-js `functions.invoke()` (browser) sends authorization + apikey +
-  // x-client-info; all must be allowed or the CORS preflight is rejected.
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Max-Age": "86400",
 };
 const json = (status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -127,7 +130,17 @@ function isJunk(email: string): boolean {
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    // Reflect the browser's requested headers so the preflight passes for any
+    // header set supabase-js sends (x-client-info, apikey, …).
+    const reqHeaders = req.headers.get("access-control-request-headers");
+    return new Response(null, {
+      status: 204,
+      headers: reqHeaders
+        ? { ...corsHeaders, "Access-Control-Allow-Headers": reqHeaders }
+        : corsHeaders,
+    });
+  }
   if (req.method !== "POST") return json(405, { error: "Method not allowed" });
 
   // Admin / service-role only.

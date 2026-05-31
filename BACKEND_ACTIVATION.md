@@ -2940,3 +2940,18 @@ completes without the CORS error; preflight `Access-Control-Allow-Headers` inclu
 
 > Note (not changed here): `map-oracle-ingest` uses the same narrow `corsHeaders`; it is
 > not currently browser-invoked, but if it is wired to UI later it will need the same set.
+
+### ⚠️ Update — why the error persisted after the first fix
+The fix is correct, but an Edge Function only changes behavior **after it is redeployed**
+(`supabase functions deploy enrich-property-email`). Merging the PR does **not** auto-deploy
+the function, so a re-test before redeploy still hit the **old** live code — which is why the
+identical `x-client-info` preflight error recurred. `config.toml` already has
+`[functions.enrich-property-email] verify_jwt = false`, so the gateway is **not** blocking the
+preflight; the function's own (stale) CORS headers were being served.
+
+**Hardening (in addition to the explicit header set):** the `OPTIONS` handler now **reflects**
+the browser's `Access-Control-Request-Headers` (and returns 204 + `Access-Control-Max-Age`),
+so the preflight passes for whatever header set `supabase-js` sends — bulletproof once deployed.
+
+**Required to take effect:** `supabase functions deploy enrich-property-email` (no migration,
+no secret). Until that runs, the live function keeps the old behavior.
