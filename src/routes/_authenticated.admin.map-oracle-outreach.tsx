@@ -5,7 +5,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import {
-  RefreshCw, ShieldAlert, AlertTriangle, Globe, Sparkles, Megaphone, FilePlus2, Eye, Send, MapPinned,
+  RefreshCw, ShieldAlert, AlertTriangle, Globe, Search, Megaphone, FilePlus2, Eye, Send, MapPinned,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/admin/map-oracle-outreach")({
@@ -21,12 +21,17 @@ interface ReadinessRow {
   email: string | null;
   email_confidence: string | null;
   enrichment_source: string | null;
+  enrichment_candidate_count: number | null;
+  enrichment_pages_fetched: number | null;
+  enrichment_note: string | null;
+  enriched_at: string | null;
   beacon_id: string | null;
   beacon_status: string | null;
   promoted: boolean | null;
   outreach_log_id: string | null;
   outreach_status: string | null;
   outreach_at: string | null;
+  email_sent: boolean | null;
   readiness: string | null;
 }
 
@@ -45,10 +50,15 @@ const STATUS_STYLE: Record<string, string> = {
   suppressed: "bg-zinc-200 text-zinc-700 border border-zinc-300",
   failed: "bg-red-100 text-red-900 border border-red-300",
 };
+const STATUS_LABEL: Record<string, string> = {
+  queued: "queued / already processed",
+  not_promoted: "not promoted",
+  no_email: "no email",
+};
 function StatusPill({ s }: { s: string }) {
   return (
     <span className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${STATUS_STYLE[s] ?? STATUS_STYLE.not_promoted}`}>
-      {s.replace(/_/g, " ")}
+      {STATUS_LABEL[s] ?? s.replace(/_/g, " ")}
     </span>
   );
 }
@@ -102,14 +112,28 @@ function AdminMapOracleOutreach() {
   // ── Actions ─────────────────────────────────────────────────────────
   const enrich = (r: ReadinessRow) =>
     withBusy(r.property_id, async () => {
-      const { error: err } = await sbAny.functions.invoke("enrich-property-email", {
+      // Read the function response `data`, not only `error`. functions.invoke
+      // returns the JSON body in `data` on 2xx; on non-2xx it sets `err` with
+      // the body available on err.context.
+      const { data, error: err } = await sbAny.functions.invoke("enrich-property-email", {
         body: { property_id: r.property_id },
       });
-      if (err) toast.error(`Enrich failed: ${err.message}`);
-      else {
-        toast.success("Enrichment run.");
-        await load();
+      if (err) {
+        let detail = err.message as string;
+        try { const b = await err.context?.json?.(); if (b?.error) detail = b.error; } catch { /* ignore */ }
+        toast.error(`Find email failed: ${detail}`);
+        return;
       }
+      if (data?.reason === "no website_url to enrich") {
+        toast.warning("No website available to scan.");
+      } else if (data?.wrote_email === true) {
+        toast.success(`Email found and saved: ${data.chosen_email}`);
+      } else if (data?.chosen_email) {
+        toast.warning(`Email found but not written: ${data.chosen_email}`);
+      } else {
+        toast.warning(`No public email found after checking ${data?.pages_fetched ?? 0} page(s).`);
+      }
+      await load();
     });
 
   const promote = (r: ReadinessRow) =>
@@ -197,8 +221,8 @@ function AdminMapOracleOutreach() {
             Map Oracle — Outreach Operator
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            One-at-a-time outreach: enrich → promote → create pending → preview → send.
-            Sends require confirmation; already-sent candidates can't be re-sent.
+            One-at-a-time: <strong>Find email</strong> (scans the website — never sends) → Promote → Create pending → Preview → <strong>Send</strong>.
+            Only “Send” emails anyone, and it always asks for confirmation. Already-sent candidates can’t be re-sent.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
@@ -240,6 +264,7 @@ function AdminMapOracleOutreach() {
             <tbody>
               {rows.map((r) => {
                 const status = r.readiness ?? "not_promoted";
+                const displayStatus = status === "queued" && r.email_sent ? "sent" : status;
                 const isBusy = busy === r.property_id;
                 const terminalSent = status === "queued" || status === "sent";
                 return (
@@ -265,14 +290,28 @@ function AdminMapOracleOutreach() {
                             <div className="text-xs text-muted-foreground">confidence: {r.email_confidence}{r.enrichment_source ? ` · ${r.enrichment_source}` : ""}</div>
                           )}
                         </div>
-                      ) : <span className="text-muted-foreground">none</span>}
+                      ) : r.enriched_at ? (
+                        <div className="text-xs text-muted-foreground">
+                          <div className="font-medium text-foreground/70">no email found</div>
+                          <div>
+                            {(r.enrichment_candidate_count ?? 0)} candidate(s)
+                            {r.enrichment_pages_fetched != null ? ` · ${r.enrichment_pages_fetched} page(s)` : ""}
+                            {r.email_confidence ? ` · ${r.email_confidence}` : ""}
+                          </div>
+                          {r.enrichment_note && <div className="italic">{r.enrichment_note}</div>}
+                          <div>scanned {new Date(r.enriched_at).toLocaleString()}</div>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">none — not scanned</span>
+                      )}
                     </td>
-                    <td className="px-3 py-2"><StatusPill s={status} /></td>
+                    <td className="px-3 py-2"><StatusPill s={displayStatus} /></td>
                     <td className="px-3 py-2">
                       <div className="flex flex-wrap items-center justify-end gap-1.5">
                         {!r.email && (
-                          <Button size="sm" variant="outline" disabled={isBusy} onClick={() => void enrich(r)}>
-                            <Sparkles className="mr-1 size-3.5" /> Enrich email
+                          <Button size="sm" variant="outline" disabled={isBusy} onClick={() => void enrich(r)}
+                            title="Scans the business website for a public email. Does not send anything.">
+                            <Search className="mr-1 size-3.5" /> Find email
                           </Button>
                         )}
                         {r.email && !r.promoted && (

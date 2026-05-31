@@ -2940,3 +2940,29 @@ completes without the CORS error; preflight `Access-Control-Allow-Headers` inclu
 
 > Note (not changed here): `map-oracle-ingest` uses the same narrow `corsHeaders`; it is
 > not currently browser-invoked, but if it is wired to UI later it will need the same set.
+
+---
+
+## Patch — Outreach Operator UI feedback + readiness provenance
+
+> Appended by the UI-feedback PR. **Not yet activated.**
+
+**Backend (1 read-only fn):** `20260607000000_frontiers3d_outreach_readiness_provenance.sql`
+DROP+CREATE `get_operator_outreach_readiness()` (admin-gated, read-only) adding
+`enrichment_candidate_count`, `enrichment_pages_fetched`, `enrichment_note`,
+`enriched_at`, and `email_sent` (a `sent` row exists in `email_send_log` for the
+recipient + `map-oracle-preview-offer`). **No send-behavior change.**
+
+**Frontend (`/admin/map-oracle-outreach`):**
+- Action renamed **"Enrich email" → "Find email"** (with a tooltip "scans the website;
+  does not send anything"); header clarifies only **Send** emails anyone.
+- `enrich()` now reads the function **response body** and shows specific results:
+  email found+saved / found-but-not-written / no-email-after-N-pages / no-website / error.
+- Table surfaces enrichment **provenance even when email is null** (candidate count,
+  pages scanned, confidence, note, last-scanned time).
+- Outreach label: `queued` → "queued / already processed", and shows **"sent"** when an
+  `email_send_log` sent row exists (`email_sent`).
+
+**Activation:** apply the migration; deploy the frontend. No secret, no cron, no send change.
+**Verify:** Find email on a no-email candidate → clear toast + the row shows scan provenance;
+already-processed rows read "queued / already processed" or "sent". No emails sent.
