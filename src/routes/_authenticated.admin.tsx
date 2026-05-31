@@ -65,6 +65,12 @@ function AdminLayout() {
             Doorway Candidates
           </Link>
           <Link
+            to="/admin/map-oracle-outreach"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Outreach
+          </Link>
+          <Link
             to="/admin/settings"
             className="text-sm text-muted-foreground hover:text-foreground transition-colors"
           >

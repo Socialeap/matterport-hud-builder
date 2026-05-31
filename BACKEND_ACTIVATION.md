@@ -2821,3 +2821,55 @@ No new outreach sent. No batch/cron outreach created. B4, Stripe, billing, Track
 **Diagnostics retained:** The `missing` object and the `process.env.SUPABASE_URL` / `VITE_SUPABASE_URL` fallbacks added to `src/routes/lovable/email/queue/process.ts` remain in place as defense-in-depth — they would surface the exact missing key on any future env-var drift.
 
 **Status:** Future Map-Oracle sends no longer require manual scripts. Renderer enqueues → cron picks up (≤5s) → dispatcher sends → message deleted from queue → `email_send_log` records `sent`/`failed`/`dlq`. Backend activation for the email queue processor is complete.
+
+---
+
+## Map-Oracle Outreach Operator Controls (admin UI) — backend: 1 read-only fn
+
+> Appended by the Operator-Controls PR. Prior records above unchanged. **Not yet activated.**
+
+**What it lands:**
+- `supabase/migrations/20260606000000_frontiers3d_operator_outreach_readiness.sql` —
+  `get_operator_outreach_readiness()` (SECURITY DEFINER, **admin-gated**, read-only) that
+  joins per-candidate business/location/website/email + email-enrichment confidence +
+  promotion (beacon) status + latest outreach status into one row set.
+- `src/routes/_authenticated.admin.map-oracle-outreach.tsx` — admin route
+  `/admin/map-oracle-outreach` + nav link; `src/routeTree.gen.ts` regenerated.
+
+**Backend activation:** apply the one additive read-only function; then deploy the
+frontend. **No secret, no cron, no batch.**
+
+### The operator UI (one-at-a-time)
+Lists each Map-Oracle candidate with: **business name, city/region, website, discovered
+email, email confidence/provenance, promotion status, outreach status** (`not_promoted` /
+`no_email` / `ready` / `pending_render` / `queued` / `sent` / `suppressed` / `failed`).
+Per-row admin actions, **gated by state**, wired to the **existing** backend (no new
+sending logic):
+- **Enrich email** → `enrich-property-email` edge fn (B5).
+- **Promote to beacon** → `promote_property_to_beacon` (B3) — *confirm*.
+- **Create pending outreach** → `send_map_oracle_outreach` (creates `pending_render`) — *confirm*.
+- **Dry-run preview** → `POST /lovable/email/map-oracle/render {dryRun:true}` — renders a
+  preview; **does not enqueue/send**.
+- **Send (one)** → `POST /lovable/email/map-oracle/render` (live finalize) — **explicit
+  confirmation required** (warns it enqueues a real, irreversible send).
+
+### Guards preserved (all enforced by the existing backend; UI only surfaces them)
+- **Admin-only** (admin layout + `get_operator_outreach_readiness` 42501).
+- **One at a time / exactly-once:** Send acts on a single `pending_render` row; the
+  renderer transitions it to `queued`; **already-sent (`queued`/`sent`) rows show "already
+  sent" and expose no send action and can't be re-sent (renderer 409)**.
+- **Suppressed / unsubscribed / no-email** states are visible and **block** sending.
+- **No batch send, no cron, no auto-send.** Every send requires the confirm step.
+
+### Verification
+1. As **admin**, open `/admin/map-oracle-outreach` → readiness table renders.
+2. **Non-admin** → redirected by the admin layout (and the fn raises 42501).
+3. **Dry-run** on a `pending_render` row → preview modal; `map_oracle_outreach_log` status
+   unchanged; **nothing enqueued/sent**.
+4. **Send** (with confirmation) on one `pending_render` row → enqueues one; status → `queued`.
+   The Mozart beacon (`sent`) shows "already sent" with **no send button** (and the renderer
+   returns 409 if forced).
+5. Rows with no email show **Enrich**; un-promoted show **Promote**; suppressed/failed show **blocked**.
+
+### Excludes
+❌ batch · ❌ cron · ❌ auto-send · ❌ B4 / client-provider binding · ❌ Stripe/billing/Track A.
