@@ -2337,3 +2337,66 @@ Plus revert the template + registry entry (frontend).
 
 ### Excludes
 ❌ B4 / client-provider binding · ❌ billing/Stripe/Track A · ❌ auto-send · ❌ batch send · ❌ cron.
+
+---
+
+## 2026-06-04 — PR #117 Map-Oracle Outreach Send activated (infra only, no live send)
+
+**Scope applied:** infra only. No live email sent. No B4. No cron. No batch. No client/provider binding. No Stripe / billing / Track A changes.
+
+**Migrations applied (against live DB; PR #117 file mirrors this):**
+- `map_oracle_outreach_log` table created with RLS enabled.
+  - Policies: `Service role can manage map_oracle_outreach_log` (ALL, service_role), `Admins can read map_oracle_outreach_log` (SELECT, has_role(admin)).
+  - GRANTs: `SELECT` to authenticated (RLS-gated), `ALL` to service_role.
+  - Unique partial index `uq_map_oracle_outreach_active` on `beacon_id WHERE status='queued'` enforces no duplicate active queued send.
+- `public.send_map_oracle_outreach(uuid, boolean)` SECURITY DEFINER created.
+  - In-body guard: `has_role(auth.uid(),'admin') OR auth.role()='service_role'` (raises 42501 otherwise).
+  - `REVOKE EXECUTE ... FROM PUBLIC, anon`; `GRANT EXECUTE TO service_role, authenticated` (authenticated is gated by the in-body admin check). Verified `has_function_privilege('anon', ...) = false`.
+  - Search path set to `public, extensions, pgmq`; fixed `gen_random_bytes` to `extensions.gen_random_bytes` so token generation resolves under SECURITY DEFINER.
+
+**Pre-apply verification:**
+- Base URL `https://3dps.transcendencemedia.com` matches existing transactional sender (`FROM_DOMAIN` in `src/routes/lovable/email/transactional/send.ts`), matches `map-oracle-preview-offer.tsx` preview data, and the `/email/unsubscribe` route is served from this app. `www.frontiers3d.com` also resolves to this app but is not the canonical sender — no correction needed.
+- Postal address `Transcendence Media, 1100 Peachtree St NE, Suite 200, Atlanta, GA 30309, USA` matches the template baseline.
+- Transactional email infra live (enqueue_email RPC, transactional_emails pgmq queue, process-email-queue cron, suppressed_emails, email_unsubscribe_tokens — all from prior activations).
+- Sender domain `notify.3dps.transcendencemedia.com` live.
+
+**Frontend / template registry:**
+- `map-oracle-preview-offer` template already exists at `src/lib/email-templates/map-oracle-preview-offer.tsx` and is registered in `src/lib/email-templates/registry.ts` (verified: 1 match for `'map-oracle-preview-offer':`).
+- Preview endpoint: `POST /lovable/email/transactional/preview` (gated by `LOVABLE_API_KEY`) renders this template with its bundled `previewData` (Mozart's Coffee Roasters, Austin TX). The Lovable dashboard email-preview surface consumes this endpoint.
+- Template includes CAN-SPAM footer (sender identification, physical postal address, unsubscribe link/instruction) and uses dynamic `unsubscribeUrl` injected at send time.
+
+**Dry-run result — Mozart beacon `d75b552b-6c91-4fb9-aa94-e0728d843c39`:**
+Called as `service_role` via REST RPC `POST /rest/v1/rpc/send_map_oracle_outreach { p_beacon_id, p_dry_run: true }`:
+
+```json
+{
+  "status": "dry_run",
+  "beacon_id": "d75b552b-6c91-4fb9-aa94-e0728d843c39",
+  "recipient": "customerservice@mozartscoffee.com",
+  "template": "map-oracle-preview-offer",
+  "business": "Mozart's Coffee Roasters",
+  "unsubscribe_url": "https://3dps.transcendencemedia.com/email/unsubscribe?token=a5879d67e5d61e4057852622340cd21de6a3",
+  "note": "no email enqueued, no log written"
+}
+```
+
+- ✅ recipient `customerservice@mozartscoffee.com`
+- ✅ template `map-oracle-preview-offer`
+- ✅ working unsubscribe URL (token persisted to `email_unsubscribe_tokens`; same table the send pipeline uses; `/email/unsubscribe` route is live)
+- ✅ no pgmq message enqueued (dry_run branch returns before `enqueue_email`)
+- ✅ `map_oracle_outreach_log` rows for this beacon = 0
+- ✅ `email_send_log` rows for `customerservice@mozartscoffee.com` = 0 (no live send ever)
+
+**Guards verified by code/path:**
+- Suppression: function early-returns `status='suppressed'` if `lower(email)` is in `suppressed_emails`; on non-dry-run it logs a `suppressed` audit row.
+- Unsubscribe: beacons with `status='unsubscribed'` raise `P0001` and refuse send.
+- Idempotency: unique partial index + pre-check raises `23505` if a `queued` row already exists for the beacon.
+- Anon: `has_function_privilege('anon', ...) = false`. Authenticated non-admin users are blocked by the in-body `has_role` guard (raises `42501`).
+- Source filter: non-`map_oracle` beacons are rejected (`22023`).
+- Missing email: rejected (`P0001`, "run B5 enrichment first").
+
+**Preview render URL:** `POST https://3dps.transcendencemedia.com/lovable/email/transactional/preview` (returns rendered HTML for all registered templates including `map-oracle-preview-offer`; LOVABLE_API_KEY gated). The user-facing preview is the Lovable dashboard's email preview pane backed by this route.
+
+**Status:** B3 outreach-send infrastructure is live and dry-run-verified. **Awaiting explicit approval for one live send.**
+
+Backend Activation Required: NO (further activation). Awaiting explicit approval for the single live `send_map_oracle_outreach('d75b552b-6c91-4fb9-aa94-e0728d843c39', FALSE)` call.
