@@ -2613,3 +2613,22 @@ SELECT public.mark_map_oracle_outreach_queued('<outreach_log_id>', <pgmq_msg_id>
 
 ### Excludes
 ❌ batch · ❌ cron · ❌ auto-send · ❌ B4 / client-provider binding · ❌ Stripe / billing / Track A.
+
+---
+
+## PR118 — Map-Oracle Outreach Reconciliation (verified 2026-05-31)
+
+**Applied migration:** `supabase/migrations/20260605000000_frontiers3d_map_oracle_outreach_reconcile.sql` (idempotent re-apply; aligns canonical source with the live PR117 hotfix and adds renderer finalize primitives).
+
+**Verification results:**
+1. ✅ `map_oracle_outreach_log_status_check` allows `pending_render, queued, sent, suppressed, skipped, failed`.
+2. ✅ `send_map_oracle_outreach(uuid, boolean)` does NOT call `enqueue_email` — it writes `pending_render` and returns prepared template data; `enqueue_email` appears only in the `next_step` instruction string.
+3. ✅ Dry-run path returns prepared data without writing (verified previously on Mozart; admin-gated — fails for low-privileged callers as expected).
+4. ✅ Duplicate guard now covers `('pending_render','queued','sent')` — Mozart's existing `queued` row blocks any non-dry-run.
+5. ✅ `mark_map_oracle_outreach_queued(uuid,bigint)` and `mark_map_oracle_outreach_failed(uuid,text)` exist, `SECURITY DEFINER`, admin/service-role gated, only transition `pending_render → queued|failed`.
+6. ✅ No malformed Map-Oracle messages in `pgmq.q_transactional_emails` (msg_id 11 archived prior; remaining msgs 7/8/10 are unrelated work-order emails).
+7. ✅ Mozart deduplication: outreach_rows=1, distinct_send_msgs=1, total_send_rows=1.
+
+**No live sends performed. No batch/cron/B4/Stripe/Track A changes.**
+
+**Ready for next PR:** A thin admin-only renderer/action that consumes one `pending_render` outreach row, renders `map-oracle-preview-offer` through the existing transactional path, enqueues the pre-rendered payload, and calls `mark_map_oracle_outreach_queued` (or `mark_map_oracle_outreach_failed`).
