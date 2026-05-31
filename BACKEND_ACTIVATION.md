@@ -2804,3 +2804,20 @@ All three are far beyond the 60-min transactional TTL → dispatcher will route 
 
 ### Constraints honoured
 No new outreach sent. No batch/cron outreach created. B4, Stripe, billing, Track A untouched.
+
+---
+
+## 2026-05-31 18:12 UTC — Queue Processor Restored (post-publish verification)
+
+**Trigger:** Project republished. Preview Worker now has `LOVABLE_API_KEY`, `SUPABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY` populated.
+
+**Verification:**
+- `POST /lovable/email/queue/process` (cron URL, id-preview host) now returns **200** with `{"processed":0}` instead of 500 `Server configuration error`. Last 8 `cron.job_run_details` rows for jobid 14 = `succeeded`. Last 5 `net._http_response` rows = `200 {"processed":0}`.
+- Unauth probe returns **401** (expected — service-role Bearer required). Published custom domain returns **403** for invalid Bearer (also expected).
+- Stale malformed messages (`pgmq.q_transactional_emails` msg_ids 7, 8, 10) were auto-moved to `pgmq.q_transactional_emails_dlq` at 18:05:43 — within seconds of the processor coming back online. `q_transactional_emails` and `q_auth_emails` are now empty.
+- No new live Map-Oracle outreach sent. Mozart (`d6e855da-…`) and 1886 Cafe (`d1af7c8b-…`) remain exactly-once in `email_send_log`.
+- Cron job 14 still targets the `id-preview` host (`https://id-preview--…lovable.app/lovable/email/queue/process?__lovable_token=…`) with Bearer `email_queue_service_role_key`. This is the configuration `setup_email_infra` installs and is now functional end-to-end.
+
+**Diagnostics retained:** The `missing` object and the `process.env.SUPABASE_URL` / `VITE_SUPABASE_URL` fallbacks added to `src/routes/lovable/email/queue/process.ts` remain in place as defense-in-depth — they would surface the exact missing key on any future env-var drift.
+
+**Status:** Future Map-Oracle sends no longer require manual scripts. Renderer enqueues → cron picks up (≤5s) → dispatcher sends → message deleted from queue → `email_send_log` records `sent`/`failed`/`dlq`. Backend activation for the email queue processor is complete.
