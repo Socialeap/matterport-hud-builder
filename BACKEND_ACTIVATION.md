@@ -2278,3 +2278,62 @@ No promotion performed in this step.
 5. ✅ No new rows in last hour: `client_providers=0`, `platform_fee_ledger=0`, `marketplace_outreach=0`. No Stripe, no Track A, no B4, no cron, no outreach send.
 
 **Status:** B3 promotion path verified end-to-end on one approved candidate. No further candidates promoted.
+
+---
+
+## Map-Oracle Outreach Send (controlled, one beacon) — additive
+
+> Appended by the Outreach-Send PR. Prior records above unchanged. **Not yet activated.**
+
+**What it lands:**
+- `supabase/migrations/20260604000000_frontiers3d_map_oracle_outreach.sql` (additive):
+  `map_oracle_outreach_log` (send audit, RLS service-role manage + admin read; unique
+  active-queued-per-beacon index) + `send_map_oracle_outreach(beacon_id, dry_run)` —
+  admin/service-role only, **EXPLICIT, ONE beacon per call**.
+- `src/lib/email-templates/map-oracle-preview-offer.tsx` + registry entry — the
+  **CAN-SPAM** preview-offer email (offer to preview interactive functionality on the
+  business's Street View / 360 / inside-tour presence, or connect with a local provider
+  to virtualize first; clear sender ID, physical postal address, working unsubscribe).
+
+**Uses existing infra:** `enqueue_email('transactional_emails', …)` → the existing send
+pipeline (`/lovable/email/transactional/send`) which already checks `suppressed_emails`
+and manages per-recipient unsubscribe tokens + List-Unsubscribe. The RPC also
+get-or-creates the `email_unsubscribe_tokens` row and passes a working `unsubscribeUrl`
+so the visible CAN-SPAM link is guaranteed.
+
+**Behavior:** `send_map_oracle_outreach` validates the beacon is `source='map_oracle'`,
+**not `unsubscribed`**, has an email, and is **not on `suppressed_emails`**; refuses a
+**duplicate** queued send (unique index); `dry_run:true` returns the plan + unsubscribe
+URL **without** enqueuing or logging. NO trigger, NO cron, NO batch, NO auto-send.
+
+### ⚠️ Confirm before activation
+- The **base URL** (`v_base_url`) and **physical postal address** (`v_postal`) constants
+  in the migration — set to the real production values for CAN-SPAM compliance.
+- The `transactional_emails` queue + send pipeline + sender domain are live (they are).
+
+### Required Actions (human-gated; NOT done here)
+Apply the migration; deploy the frontend (so the new template is in the registry). **No
+secret, no cron.** The actual send happens via the existing email-queue pipeline.
+
+### Verification (the Mozart's beacon `d75b552b-6c91-4fb9-aa94-e0728d843c39`)
+```sql
+-- dry run: plan only, no enqueue/log
+SELECT public.send_map_oracle_outreach('d75b552b-6c91-4fb9-aa94-e0728d843c39', TRUE);
+-- live: one queued send + audit row
+SELECT public.send_map_oracle_outreach('d75b552b-6c91-4fb9-aa94-e0728d843c39');
+SELECT beacon_id, recipient_email, status, pgmq_msg_id, unsubscribe_token IS NOT NULL AS has_unsub
+  FROM public.map_oracle_outreach_log ORDER BY queued_at DESC LIMIT 1;       -- status 'queued'
+-- guards: second call -> 23505 (already queued); an unsubscribed beacon -> P0001;
+--         a suppressed recipient -> status 'suppressed' (not enqueued).
+```
+Template preview: `/lovable/email/transactional/preview?template=map-oracle-preview-offer`.
+
+### Rollback
+```sql
+DROP FUNCTION IF EXISTS public.send_map_oracle_outreach(uuid, boolean);
+DROP TABLE IF EXISTS public.map_oracle_outreach_log;   -- audit only
+```
+Plus revert the template + registry entry (frontend).
+
+### Excludes
+❌ B4 / client-provider binding · ❌ billing/Stripe/Track A · ❌ auto-send · ❌ batch send · ❌ cron.

@@ -17,6 +17,7 @@ import { template as askQuotaWarning } from './ask-quota-warning'
 import { template as beaconMatchFound } from './beacon-match-found'
 import { template as marketplaceLeadAssigned } from './marketplace-lead-assigned'
 import { template as marketplaceOutreach } from './marketplace-outreach'
+import { template as mapOraclePreviewOffer } from './map-oracle-preview-offer'
 import { template as serviceMatchReady } from './service-match-ready'
 import { template as marketplaceLeadInterest } from './marketplace-lead-interest'
 import { template as trialExpired } from './trial-expired'
@@ -31,6 +32,7 @@ export const TEMPLATES: Record<string, TemplateEntry> = {
   'beacon-match-found': beaconMatchFound,
   'marketplace-lead-assigned': marketplaceLeadAssigned,
   'marketplace-outreach': marketplaceOutreach,
+  'map-oracle-preview-offer': mapOraclePreviewOffer,
   'service-match-ready': serviceMatchReady,
   'marketplace-lead-interest': marketplaceLeadInterest,
   'trial-expired': trialExpired,
