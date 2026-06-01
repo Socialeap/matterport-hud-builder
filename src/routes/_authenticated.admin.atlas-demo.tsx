@@ -157,7 +157,7 @@ function AdminAtlasDemo() {
     if (typeof window !== "undefined" && !window.confirm(`Delete “${r.title}”? This cannot be undone.`)) return;
     const { error: err } = await sbAny.from("atlas_demo_listings").delete().eq("id", r.id);
     if (err) toast.error(`Delete failed: ${err.message}`);
-    else { toast.success("Listing deleted."); if (form.id === r.id) setForm(BLANK); await load(); }
+    else { toast.success("Listing deleted."); if (form.id === r.id) resetForm(); await load(); }
   };
 
   const toggleActive = async (r: AtlasDemoListing) => {
@@ -203,7 +203,7 @@ function AdminAtlasDemo() {
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold">{editing ? "Edit listing" : "New listing"}</h2>
           {editing && (
-            <button onClick={() => setForm(BLANK)} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+            <button onClick={() => resetForm()} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
               <X className="size-3.5" /> Cancel edit
             </button>
           )}
@@ -269,7 +269,7 @@ function AdminAtlasDemo() {
           </label>
         </div>
         <div className="mt-4 flex justify-end gap-2">
-          {editing && <Button variant="outline" size="sm" onClick={() => setForm(BLANK)}>Cancel</Button>}
+          {editing && <Button variant="outline" size="sm" onClick={() => resetForm()}>Cancel</Button>}
           <Button size="sm" onClick={() => void save()} disabled={saving}>
             {saving ? "Saving…" : editing ? "Update listing" : "Create listing"}
           </Button>
