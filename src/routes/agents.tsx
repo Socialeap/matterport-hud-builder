@@ -269,6 +269,12 @@ function AgentsPage() {
             <a href="#directory" className="text-sm text-white/70 transition-colors hover:text-white">
               MSP Directory
             </a>
+            <Link to="/businesses" className="text-sm text-white/70 transition-colors hover:text-white">
+              For Businesses
+            </Link>
+            <Link to="/atlas" className="text-sm text-white/70 transition-colors hover:text-white">
+              Atlas
+            </Link>
             <Link to="/" className="text-sm text-white/70 transition-colors hover:text-white">
               I'm an MSP →
             </Link>
@@ -290,26 +296,28 @@ function AgentsPage() {
         <div className="mx-auto max-w-4xl text-center">
           <Badge className="mb-4 bg-white/10 text-white/80 backdrop-blur">For Agents · Property Managers · Marketers</Badge>
           <h1 className="mx-auto max-w-3xl text-4xl font-bold leading-[1.1] tracking-tight text-amber-300 lg:text-6xl sm:text-5xl">
-            Find a 3D Presentation Studio for{" "}
+            Turn property tours into branded,{" "}
             <span className="bg-gradient-to-r from-cyan-300 to-blue-400 bg-clip-text text-transparent">
-              Your Listings
+              lead-generating listing presentations
             </span>
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-white/60 sm:text-lg">
-            ​
+            Find a local 3D capture partner, then publish branded, interactive presentations for your listings.
+            Eligible properties can also be showcased in the Frontiers3D Atlas — so buyers, renters, and visitors
+            can discover and explore spaces before they schedule a showing.
           </p>
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <a href="#directory">
               <Button size="lg" className="gap-2">
-                Browse the MSP Directory
+                Find a 3D Capture Partner
                 <ChevronRight className="size-4" />
               </Button>
             </a>
-            <a href="#how-it-works">
+            <Link to="/atlas">
               <Button size="lg" variant="outline" className="border-white/20 bg-white/5 text-white hover:bg-white/10">
-                Learn How It Works
+                View Atlas Demo
               </Button>
-            </a>
+            </Link>
           </div>
         </div>
 

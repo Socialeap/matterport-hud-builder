@@ -550,6 +550,8 @@ function Index() {
             <a href="#pricing" className="text-sm text-white/70 transition-colors hover:text-white">Pricing</a>
             <a href="#how-it-works" className="text-sm text-white/70 transition-colors hover:text-white">How It Works</a>
             <Link to="/agents" className="text-sm text-white/70 transition-colors hover:text-white">For Agents →</Link>
+            <Link to="/businesses" className="text-sm text-white/70 transition-colors hover:text-white">For Businesses →</Link>
+            <Link to="/atlas" className="text-sm text-white/70 transition-colors hover:text-white">Atlas</Link>
 
             {/* Theme toggle */}
             <button
@@ -598,6 +600,8 @@ function Index() {
               <a href="#pricing" className="rounded-lg px-3 py-2 text-sm text-white/70 hover:bg-white/5 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Pricing</a>
               <a href="#how-it-works" className="rounded-lg px-3 py-2 text-sm text-white/70 hover:bg-white/5 hover:text-white" onClick={() => setMobileMenuOpen(false)}>How It Works</a>
               <Link to="/agents" className="rounded-lg px-3 py-2 text-sm text-white/70 hover:bg-white/5 hover:text-white" onClick={() => setMobileMenuOpen(false)}>For Agents →</Link>
+              <Link to="/businesses" className="rounded-lg px-3 py-2 text-sm text-white/70 hover:bg-white/5 hover:text-white" onClick={() => setMobileMenuOpen(false)}>For Businesses →</Link>
+              <Link to="/atlas" className="rounded-lg px-3 py-2 text-sm text-white/70 hover:bg-white/5 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Atlas</Link>
               {isAuthenticated ? (
                 <Button size="sm" className="mt-2" onClick={() => navigate({ to: "/dashboard" })}>Dashboard</Button>
               ) : (
