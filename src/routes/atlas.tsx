@@ -152,7 +152,10 @@ function AtlasPage() {
       `,
         { closeButton: false, maxWidth: 260 },
       );
-      marker.on("click", () => setSelectedId(entry.id));
+      marker.on("click", () => {
+        setSelectedId(entry.id);
+        if (entry.presentation_url) setActive(entry);
+      });
       marker.addTo(layer);
       markers.set(entry.id, marker);
     });
@@ -191,15 +194,14 @@ function AtlasPage() {
     });
   }, [selectedId, pinned]);
 
-  // Card click: pan to marker + open popup.
+  // Card click: pan to marker + open the in-page 3D presentation modal.
   const focusEntry = (entry: AtlasEntry) => {
     setSelectedId(entry.id);
     const refs = refsRef.current;
     if (refs && entry.latitude != null && entry.longitude != null) {
       refs.map.flyTo([entry.latitude, entry.longitude], 13, { duration: 1.2 });
-      const m = refs.markers.get(entry.id);
-      if (m) m.openPopup();
     }
+    if (entry.presentation_url) setActive(entry);
   };
 
   // Esc closes modal.
