@@ -101,6 +101,9 @@ function AdminMapOracleOutreach() {
     unsubscribeToken: string | null;
     html: string;
     text: string;
+    evidenceSummary: string | null;
+    verificationNote: string | null;
+    evidence: Record<string, boolean> | null;
   } | null>(null);
   const [testStatus, setTestStatus] = useState<{
     businessName: string;
@@ -111,6 +114,8 @@ function AdminMapOracleOutreach() {
     subject: string;
     phase: TestPhase;
     detail?: string | null;
+    evidenceSummary?: string | null;
+    verificationNote?: string | null;
   } | null>(null);
 
   const load = useCallback(async () => {
@@ -227,6 +232,9 @@ function AdminMapOracleOutreach() {
           unsubscribeToken: p.unsubscribe_token ?? null,
           html: p.html ?? "",
           text: p.text ?? "",
+          evidenceSummary: p.evidence_summary ?? null,
+          verificationNote: p.verification_note ?? null,
+          evidence: (p.evidence ?? null) as Record<string, boolean> | null,
         });
       } else {
         toast.error(j?.error || j?.reason || "Preview failed");
@@ -290,6 +298,8 @@ function AdminMapOracleOutreach() {
         label: j.template_label ?? "map-oracle-preview-offer-test",
         subject: j.subject ?? "",
         phase: "queued",
+        evidenceSummary: j.evidence_summary ?? null,
+        verificationNote: j.verification_note ?? null,
       });
       toast.success("Test queued (not yet delivered) — confirming delivery…");
       // Out-of-band: don't keep the row busy for the whole 30s poll window.
@@ -523,6 +533,37 @@ function AdminMapOracleOutreach() {
                 </dd>
               </dl>
 
+              {/* Evidence basis — what the email is actually allowed to claim */}
+              {(preview.evidenceSummary || preview.evidence) && (
+                <div className="mt-4 rounded border border-border bg-muted/30 p-3">
+                  <div className="text-xs font-semibold text-foreground">Evidence basis</div>
+                  {preview.evidenceSummary && (
+                    <div className="mt-1 text-xs text-foreground">{preview.evidenceSummary}</div>
+                  )}
+                  <div className="text-xs text-amber-700">
+                    {preview.verificationNote ?? "360 verification: not checked / not verified"}
+                  </div>
+                  {preview.evidence && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {Object.entries(preview.evidence).map(([k, v]) => (
+                        <span
+                          key={k}
+                          className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium ${
+                            v ? "border-green-300 bg-green-50 text-green-800" : "border-border bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          {v ? "✓" : "✕"} {k}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <p className="mt-2 text-[11px] text-muted-foreground">
+                    The email only claims what a ✓ flag backs. 360 / Street View / virtual-tour
+                    presence is never asserted unless an explicit verified flag is set.
+                  </p>
+                </div>
+              )}
+
               {/* Rendered HTML — sandboxed iframe so links/scripts are inert */}
               <div className="mt-4">
                 <div className="mb-1 text-xs font-medium text-muted-foreground">Rendered HTML</div>
@@ -586,6 +627,13 @@ function AdminMapOracleOutreach() {
               </p>
             ) : (
               <p className="mt-2 text-xs text-muted-foreground">Enqueued to the operator inbox only — confirming delivery…</p>
+            )}
+
+            {(testStatus.evidenceSummary || testStatus.verificationNote) && (
+              <div className="mt-2 rounded border border-border bg-muted/30 p-2 text-[11px]">
+                {testStatus.evidenceSummary && <div className="text-foreground">{testStatus.evidenceSummary}</div>}
+                <div className="text-amber-700">{testStatus.verificationNote ?? "360 verification: not checked / not verified"}</div>
+              </div>
             )}
 
             <dl className="mt-3 space-y-1 rounded bg-muted/50 p-2 text-[11px]">

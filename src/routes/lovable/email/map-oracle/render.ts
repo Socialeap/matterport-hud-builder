@@ -199,6 +199,38 @@ export const Route = createFileRoute('/lovable/email/map-oracle/render')({
           if (typeof url === 'string' && /^https:\/\//i.test(url)) previewImageUrl = url
         }
 
+        // Website detection (for the truthful "listing + website" claim).
+        let websiteDetected = false
+        if (log.property_id) {
+          const { data: contact } = await supabase
+            .from('property_contacts')
+            .select('website_url')
+            .eq('property_id', log.property_id)
+            .maybeSingle()
+          websiteDetected = typeof contact?.website_url === 'string' && contact.website_url.length > 0
+        }
+        const emailDetected = typeof recipient === 'string' && recipient.length > 0
+
+        // ── Evidence model ──────────────────────────────────────────
+        // What we ACTUALLY know. The email may only claim what a flag backs. The
+        // pipeline does not verify any indoor Street View / photosphere / panorama
+        // / virtual-tour / Matterport-embed signal, so every 360-specific flag is
+        // FALSE here. A future verification step can set them and the copy adapts.
+        const evidence = {
+          listing_detected: true,                  // candidate came from a Google Places listing
+          website_detected: websiteDetected,
+          photo_detected: previewImageUrl !== null,
+          indoor_360_verified: false,              // not checked by the pipeline
+          virtual_tour_url_detected: false,        // not checked by the pipeline
+          matterport_or_360_embed_detected: false, // not checked by the pipeline
+        }
+        const evidenceParts = ['Google Places listing']
+        if (evidence.website_detected) evidenceParts.push('website')
+        if (emailDetected) evidenceParts.push('public email')
+        if (evidence.photo_detected) evidenceParts.push('public photo')
+        const evidenceSummary = `Evidence: ${evidenceParts.join(' + ')}`
+        const verificationNote = '360 verification: not checked / not verified'
+
         const templateData = {
           businessName: beacon.name,
           city: cityDisplay,
@@ -207,6 +239,7 @@ export const Route = createFileRoute('/lovable/email/map-oracle/render')({
           learnMoreUrl: LEARN_MORE_URL,
           replyToEmail: REPLY_TO_EMAIL,
           previewImageUrl,
+          evidence,
         }
 
         // ── TEST SEND: deliver ONLY to the operator inbox ───────────
@@ -290,6 +323,9 @@ export const Route = createFileRoute('/lovable/email/map-oracle/render')({
             outreach_log_id: log.id,
             outreach_status: 'pending_render', // unchanged — proven, not mutated
             beacon_unsubscribed: beacon.status === 'unsubscribed',
+            evidence,
+            evidence_summary: evidenceSummary,
+            verification_note: verificationNote,
             note: 'Internal test ENQUEUED to the operator inbox only (not yet delivered). Prospect NOT contacted; outreach log unchanged; unsubscribe link inert.',
           })
         }
@@ -342,6 +378,9 @@ export const Route = createFileRoute('/lovable/email/map-oracle/render')({
               html_bytes: html.length,
               html, text,
               html_head: html.slice(0, 300), text_head: text.slice(0, 300),
+              evidence,
+              evidence_summary: evidenceSummary,
+              verification_note: verificationNote,
             },
           })
         }

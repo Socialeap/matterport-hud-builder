@@ -14,6 +14,30 @@ import {
 } from '@react-email/components'
 import type { TemplateEntry } from './registry'
 
+/**
+ * Future-safe evidence model for what we actually know about a prospect. The
+ * email may ONLY make a claim that a corresponding flag backs. The pipeline does
+ * not (yet) verify any indoor Street View / photosphere / panorama / virtual-tour
+ * / Matterport-embed signal, so all 360-specific flags default to FALSE and the
+ * email must not assert a 3D / 360 / Street View presence until a verifier sets
+ * them. A later verification step can populate the `*_verified` / `*_detected`
+ * flags and the copy will adapt automatically.
+ */
+export interface OutreachEvidence {
+  /** A public Google Places / Maps business listing was found. */
+  listing_detected?: boolean
+  /** A public website was found for the business. */
+  website_detected?: boolean
+  /** A genuine public (cached) photo is available. */
+  photo_detected?: boolean
+  /** VERIFIED indoor 360 / photosphere. Not checked by the current pipeline. */
+  indoor_360_verified?: boolean
+  /** A virtual-tour URL was detected. Not checked by the current pipeline. */
+  virtual_tour_url_detected?: boolean
+  /** A Matterport / 360 embed was detected. Not checked by the current pipeline. */
+  matterport_or_360_embed_detected?: boolean
+}
+
 interface MapOraclePreviewOfferProps {
   businessName?: string | null
   city?: string | null
@@ -27,10 +51,12 @@ interface MapOraclePreviewOfferProps {
   replyToEmail?: string
   /**
    * Optional visual proof. ONLY a genuine, public, cached photo of the business
-   * (a real `property_photos.cdn_url`). When absent, a polished "presence
-   * detected" callout is shown instead — we never fabricate a business image.
+   * (a real `property_photos.cdn_url`). When absent, a truthful "listing found"
+   * callout is shown instead — we never fabricate a business image.
    */
   previewImageUrl?: string | null
+  /** What we actually verified about this prospect. Gates every factual claim. */
+  evidence?: OutreachEvidence
 }
 
 function MapOraclePreviewOfferEmail({
@@ -41,14 +67,30 @@ function MapOraclePreviewOfferEmail({
   learnMoreUrl = 'https://www.frontiers3d.com',
   replyToEmail = 'info@transcendencemedia.com',
   previewImageUrl = null,
+  evidence,
 }: MapOraclePreviewOfferProps) {
   const who = businessName ? businessName : 'your business'
   const place = city ? ` in ${city}` : ''
 
+  // Resolve evidence with claim-safe defaults: every factual claim defaults to
+  // NOT asserted. 360-specific signals are not verified by the pipeline, so they
+  // stay false unless a caller explicitly proves them.
+  const ev: Required<OutreachEvidence> = {
+    listing_detected: true, // candidate came from a Google Places listing
+    website_detected: false,
+    photo_detected: previewImageUrl != null,
+    indoor_360_verified: false,
+    virtual_tour_url_detected: false,
+    matterport_or_360_embed_detected: false,
+    ...evidence,
+  }
+  const has360Evidence =
+    ev.indoor_360_verified || ev.virtual_tour_url_detected || ev.matterport_or_360_embed_detected
+
   return (
     <Html lang="en" dir="ltr">
       <Head />
-      <Preview>A free interactive 3D tour preview for {who} — no cost, no obligation</Preview>
+      <Preview>A free interactive presentation preview for {who} — no cost, no obligation</Preview>
       <Body style={main}>
         <Container style={container}>
           {/* Brand header */}
@@ -57,10 +99,12 @@ function MapOraclePreviewOfferEmail({
             <Text style={brandTagline}>Interactive 3D for real-world places</Text>
           </Section>
 
-          <Heading style={h1}>Turn your Google Maps presence into an interactive tour</Heading>
+          <Heading style={h1}>Turn your Google Maps listing into an interactive customer experience</Heading>
 
           {/* Visual proof: a real cached photo if we have one, otherwise a
-              polished "presence detected" callout (never a faked screenshot). */}
+              TRUTHFUL "listing found" callout. We only claim what evidence backs —
+              never a 3D / 360 / Street View presence (the pipeline doesn't verify
+              those), and never a faked screenshot. */}
           {previewImageUrl ? (
             <Section style={proofImageWrap}>
               <Img
@@ -73,10 +117,14 @@ function MapOraclePreviewOfferEmail({
             </Section>
           ) : (
             <Section style={proofCallout}>
-              <Text style={proofBadge}>◍ PUBLIC 3D PRESENCE DETECTED</Text>
+              <Text style={proofBadge}>◍ PUBLIC BUSINESS LISTING FOUND</Text>
               <Text style={proofCalloutText}>
-                We spotted that {who}{place} already has a public Google Maps / Street View / 360
-                presence — a great starting point for an interactive walkthrough.
+                We found {who}'s public Google Maps listing
+                {ev.website_detected ? ' and website' : ''}
+                {place}.
+                {has360Evidence
+                  ? ' We also detected existing 360 / virtual-tour imagery we can build on.'
+                  : ''}
               </Text>
             </Section>
           )}
@@ -84,19 +132,19 @@ function MapOraclePreviewOfferEmail({
           <Section style={card}>
             {/* One-sentence offer */}
             <Text style={offerLine}>
-              We'd like to build you a <strong>free preview</strong> of an interactive 3D tour for{' '}
-              {who} — at no cost and no obligation.
+              We'd like to build you a <strong>free preview</strong> of an interactive presentation
+              for {who} — at no cost and no obligation.
             </Text>
 
             <Text style={text}>
-              If {who} already has a Google Maps, Street View, 360, or inside-view presence, we can
-              add <strong>interactive functionality</strong> on top of it so prospective customers
+              If you already have Street View, 360, or virtual-tour imagery, Frontiers3D can add an{' '}
+              <strong>interactive presentation layer</strong> on top of it — so prospective customers
               can explore your space online before they ever visit.
             </Text>
 
             <Text style={text}>
-              Don't have 3D imagery yet? We can also <strong>connect you with a local provider</strong>{' '}
-              to virtualize your space first, then layer the interactive experience on top.
+              If you don't, Frontiers3D can help <strong>connect you with a local provider</strong> to
+              capture your space first, then layer the interactive experience on top.
             </Text>
 
             {/* Primary CTA */}
@@ -123,7 +171,7 @@ function MapOraclePreviewOfferEmail({
             <Text style={footerLine}>
               This is a one-time outreach offer from Frontiers3D (Transcendence Media). You're
               receiving it because {who} appears in public business listings as a candidate for
-              interactive 3D presentation.
+              an interactive presentation.
             </Text>
             <Text style={footerLine}>{physicalAddress}</Text>
             <Text style={footerLine}>
@@ -156,9 +204,20 @@ export const template = {
     physicalAddress: 'Transcendence Media, 1100 Peachtree St NE, Suite 200, Atlanta, GA 30309, USA',
     learnMoreUrl: 'https://www.frontiers3d.com',
     replyToEmail: 'info@transcendencemedia.com',
-    // Left null so the gallery shows the "presence detected" callout (the common
-    // real case before a cached photo exists). A genuine cdn_url renders an image.
+    // Left null so the gallery shows the truthful "listing found" callout (the
+    // common real case before a cached photo exists). A genuine cdn_url renders
+    // an image instead.
     previewImageUrl: null,
+    // Only listing + website are known; all 360-specific signals stay false until
+    // a verifier proves them.
+    evidence: {
+      listing_detected: true,
+      website_detected: true,
+      photo_detected: false,
+      indoor_360_verified: false,
+      virtual_tour_url_detected: false,
+      matterport_or_360_embed_detected: false,
+    },
   },
 } satisfies TemplateEntry
 

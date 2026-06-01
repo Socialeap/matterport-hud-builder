@@ -3066,3 +3066,44 @@ honestly rather than a false "sent".)
 panel confirms actual delivery (or exact failure/timeout) to `shakoure@transcendencemedia.com`
 only; prospect not contacted; outreach row stays `pending_render`. No batch, no cron outreach,
 no B4, no Stripe/billing, no Track A.
+
+---
+
+## Patch — Remove false-positive 3D/360 claims; truthful evidence model
+
+> Appended by the truthful-evidence PR. **Not yet activated. No DB migration.**
+
+**Problem:** the email asserted **"PUBLIC 3D PRESENCE DETECTED"** and a public Google Maps /
+Street View / 360 presence. The pipeline does **not** verify indoor Street View, photospheres,
+panorama IDs, virtual-tour embeds, or Matterport — it only knows the business has a Google Places
+listing and (maybe) a website/email. That claim was a false positive.
+
+**Email template (`map-oracle-preview-offer`)** — claims now gated by a **future-safe evidence
+model** (`OutreachEvidence`): `listing_detected`, `website_detected`, `photo_detected`,
+`indoor_360_verified`, `virtual_tour_url_detected`, `matterport_or_360_embed_detected`. Every
+360-specific flag defaults **false** and is only set by a future verifier.
+- Callout **"PUBLIC 3D PRESENCE DETECTED" → "PUBLIC BUSINESS LISTING FOUND"**, copy →
+  *"We found {business}'s public Google Maps listing[ and website][ in {city}]."*
+- No "Street View / 360 / inside-view / interactive walkthrough starting point" **assertion**
+  unless a verified flag is set (a verified-360 line appears only if `has360Evidence`).
+- Body copy is a truthful **conditional both-ways**: *if you already have Street View / 360 /
+  virtual-tour imagery, we add an interactive presentation layer; if not, we connect you with a
+  local provider to capture it first.* No-cost/no-obligation kept. CAN-SPAM footer, postal
+  address, sender identity, and unsubscribe unchanged. (Verified by a standalone render — 15/15
+  assertions incl. the 360 line appearing ONLY when a flag is verified.)
+
+**Render route** — computes the evidence object at render time (listing = true; website from
+`property_contacts.website_url`; photo from a genuine `property_photos.cdn_url`; all 360 flags
+false) and passes it to the template for all modes. Returns `evidence`, `evidence_summary`
+("Evidence: Google Places listing + website + public email"), and `verification_note`
+("360 verification: not checked / not verified") in the **dryRun preview** and **testSend**
+responses.
+
+**Operator UI** — the **Preview** modal and the **test-send trace panel** now show the evidence
+basis: the summary line, the "not checked / not verified" note, and per-flag ✓/✕ chips.
+
+**Activation:** deploy the frontend (the render route ships with it). No migration, no secret, no
+cron, no change to the live send or its guards.
+**Verify:** Preview/Test show **"PUBLIC BUSINESS LISTING FOUND"** (never "3D PRESENCE DETECTED")
+and the evidence basis with **360 = not verified**; no prospect email sent. No batch, no cron, no
+B4, no Stripe/billing, no Track A.
