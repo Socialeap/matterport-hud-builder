@@ -2,13 +2,11 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import {
   Coffee, BedDouble, PartyPopper, Palette, Flower2, Store,
-  MapPin, X, ArrowRight, Compass, Play, Sparkles, Eye, MessageSquareText,
+  MapPin, X, ArrowRight, Compass, Play, Sparkles, Eye, MessageSquareText, ExternalLink, MapPinned,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import {
-  getDemoAtlasEntries, CATEGORY_LABELS,
-  type AtlasEntry, type AtlasCategory,
-} from "@/lib/atlas-demo-data";
+import { listActiveAtlasDemoListings } from "@/lib/atlas-demo.functions";
+import { categoryLabel, type AtlasDemoListing, type AtlasCategory } from "@/lib/atlas-demo-data";
 
 export const Route = createFileRoute("/atlas")({
   head: () => ({
@@ -17,7 +15,7 @@ export const Route = createFileRoute("/atlas")({
       {
         name: "description",
         content:
-          "A public immersive discovery layer. See how venues, stays, studios, and spaces can be explored online before the visit — a sample of the Frontiers3D Atlas.",
+          "A public immersive discovery layer. See how venues, stays, studios, and spaces can be explored online before the visit — sample Atlas listings from Frontiers3D.",
       },
       { property: "og:title", content: "Frontiers3D Atlas — Step inside real places from the map" },
       {
@@ -26,10 +24,11 @@ export const Route = createFileRoute("/atlas")({
       },
     ],
   }),
+  loader: async () => await listActiveAtlasDemoListings(),
   component: AtlasDemoPage,
 });
 
-// Category → presentation (icon + accent + soft gradient for the placeholder hero).
+// Category → presentation (icon + accent + soft gradient placeholder).
 const CATEGORY_UI: Record<AtlasCategory, { icon: LucideIcon; accent: string; tint: string }> = {
   cafe:        { icon: Coffee,      accent: "#b45309", tint: "from-amber-200/70 to-orange-100" },
   restaurant:  { icon: Coffee,      accent: "#9a3412", tint: "from-orange-200/70 to-rose-100" },
@@ -38,33 +37,41 @@ const CATEGORY_UI: Record<AtlasCategory, { icon: LucideIcon; accent: string; tin
   gallery:     { icon: Palette,     accent: "#be185d", tint: "from-pink-200/70 to-rose-100" },
   wellness:    { icon: Flower2,     accent: "#15803d", tint: "from-emerald-200/70 to-teal-100" },
   retail:      { icon: Store,       accent: "#4f46e5", tint: "from-indigo-200/70 to-blue-100" },
+  other:       { icon: MapPinned,   accent: "#4f46e5", tint: "from-slate-200/70 to-slate-100" },
 };
+const uiFor = (category: string) => CATEGORY_UI[category as AtlasCategory] ?? CATEGORY_UI.other;
 
 function AtlasDemoPage() {
-  const entries = useMemo(() => getDemoAtlasEntries(), []);
+  const { listings } = Route.useLoaderData();
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [activeEntry, setActiveEntry] = useState<AtlasEntry | null>(null);
+  const [active, setActive] = useState<AtlasDemoListing | null>(null);
 
-  // Esc closes the sample viewer (effect runs client-side only — SSR-safe).
+  // Esc closes the viewer (effect runs client-side only — SSR-safe).
   useEffect(() => {
-    if (!activeEntry) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setActiveEntry(null); };
+    if (!active) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setActive(null); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [activeEntry]);
+  }, [active]);
 
-  // Simple equirectangular projection of the sample set into the map panel.
+  // Pins only for listings that have coordinates.
+  const pinned = useMemo(
+    () => listings.filter((l) => l.latitude != null && l.longitude != null),
+    [listings],
+  );
   const bounds = useMemo(() => {
-    const lats = entries.map((e) => e.latitude);
-    const lngs = entries.map((e) => e.longitude);
+    if (pinned.length === 0) return null;
+    const lats = pinned.map((l) => l.latitude as number);
+    const lngs = pinned.map((l) => l.longitude as number);
     return {
       minLat: Math.min(...lats), maxLat: Math.max(...lats),
       minLng: Math.min(...lngs), maxLng: Math.max(...lngs),
     };
-  }, [entries]);
-  const project = (e: AtlasEntry) => {
-    const px = (e.longitude - bounds.minLng) / ((bounds.maxLng - bounds.minLng) || 1);
-    const py = (e.latitude - bounds.minLat) / ((bounds.maxLat - bounds.minLat) || 1);
+  }, [pinned]);
+  const project = (l: AtlasDemoListing) => {
+    if (!bounds) return { left: "50%", top: "50%" };
+    const px = ((l.longitude as number) - bounds.minLng) / ((bounds.maxLng - bounds.minLng) || 1);
+    const py = ((l.latitude as number) - bounds.minLat) / ((bounds.maxLat - bounds.minLat) || 1);
     return { left: `${10 + px * 80}%`, top: `${10 + (1 - py) * 80}%` };
   };
 
@@ -113,127 +120,155 @@ function AtlasDemoPage() {
         </div>
       </section>
 
-      {/* Discovery: map (top on mobile, right on desktop) + list */}
-      <section className="mx-auto max-w-6xl px-4 pb-12">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Discover spaces on the map</h2>
-          <span className="text-sm text-muted-foreground">{entries.length} sample listings</span>
-        </div>
-
-        <div className="flex flex-col-reverse gap-6 lg:grid lg:grid-cols-[1.15fr_0.85fr] lg:items-start">
-          {/* List */}
-          <div className="space-y-4">
-            {entries.map((e) => {
-              const ui = CATEGORY_UI[e.category];
-              const Icon = ui.icon;
-              const selected = selectedId === e.id;
-              return (
-                <article
-                  key={e.id}
-                  id={`atlas-card-${e.id}`}
-                  onMouseEnter={() => setSelectedId(e.id)}
-                  className={`overflow-hidden rounded-xl border bg-card transition-shadow ${
-                    selected ? "border-indigo-400 shadow-md" : "border-border"
-                  }`}
-                >
-                  <div className="flex flex-col sm:flex-row">
-                    {/* Placeholder hero (no fake business photo) */}
-                    <div className={`relative flex h-32 w-full items-center justify-center bg-gradient-to-br sm:h-auto sm:w-40 ${ui.tint}`}>
-                      <Icon className="size-9" style={{ color: ui.accent }} />
-                      <span className="absolute bottom-1.5 left-1.5 rounded bg-white/80 px-1.5 py-0.5 text-[10px] font-medium text-zinc-600">
-                        Sample listing
-                      </span>
-                    </div>
-                    {/* Body */}
-                    <div className="flex flex-1 flex-col p-4">
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium text-white" style={{ backgroundColor: ui.accent }}>
-                          {CATEGORY_LABELS[e.category]}
-                        </span>
-                        <span className="inline-flex items-center gap-1 text-muted-foreground">
-                          <MapPin className="size-3.5" /> {e.city}, {e.region}
-                        </span>
-                      </div>
-                      <h3 className="mt-1.5 text-base font-semibold">{e.title}</h3>
-                      <p className="mt-1 text-sm text-muted-foreground">{e.summary}</p>
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {e.tags.slice(0, 4).map((t) => (
-                          <span key={t} className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">#{t}</span>
-                        ))}
-                      </div>
-                      <div className="mt-3 flex items-center justify-between">
-                        {e.capacity ? (
-                          <span className="text-xs text-muted-foreground">Up to {e.capacity} guests</span>
-                        ) : <span />}
-                        <button
-                          onClick={() => setActiveEntry(e)}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700"
-                        >
-                          <Play className="size-3.5" /> Step Inside
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-
-          {/* Map-like discovery panel */}
-          <div className="lg:sticky lg:top-20">
-            <div
-              className="relative h-72 overflow-hidden rounded-xl border border-border bg-[#0b1020] lg:h-[520px]"
-              style={{ backgroundImage: "radial-gradient(rgba(255,255,255,0.10) 1px, transparent 1px)", backgroundSize: "22px 22px" }}
-              aria-label="Sample discovery map of the United States"
-            >
-              {/* abstract landmass glows */}
-              <div className="pointer-events-none absolute -left-10 top-10 h-40 w-56 rounded-full bg-indigo-500/10 blur-2xl" />
-              <div className="pointer-events-none absolute right-0 bottom-6 h-44 w-60 rounded-full bg-cyan-500/10 blur-2xl" />
-              <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded bg-white/10 px-2 py-1 text-[11px] font-medium text-white/80">
-                <Compass className="size-3.5" /> Sample discovery map · U.S.
-              </span>
-
-              {entries.map((e) => {
-                const ui = CATEGORY_UI[e.category];
-                const pos = project(e);
-                const selected = selectedId === e.id;
-                return (
-                  <button
-                    key={e.id}
-                    onClick={() => selectEntry(e.id)}
-                    onMouseEnter={() => setSelectedId(e.id)}
-                    style={{ left: pos.left, top: pos.top }}
-                    className="group absolute -translate-x-1/2 -translate-y-1/2"
-                    aria-label={`${e.title} — ${e.city}, ${e.region}`}
-                  >
-                    <span
-                      className={`block rounded-full ring-2 ring-white/80 transition-all ${selected ? "size-4" : "size-3"}`}
-                      style={{ backgroundColor: ui.accent }}
-                    />
-                    <span className={`pointer-events-none absolute left-1/2 top-5 -translate-x-1/2 whitespace-nowrap rounded bg-white px-1.5 py-0.5 text-[10px] font-medium text-zinc-700 shadow transition-opacity ${selected ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
-                      {e.title}
-                    </span>
-                  </button>
-                );
-              })}
-
-              <span className="absolute bottom-3 right-3 rounded bg-white/10 px-2 py-1 text-[10px] text-white/60">
-                Pins are sample locations
-              </span>
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Tap a pin to highlight its listing. A live Atlas adds filters for category, location, amenities, and more.
+      {listings.length === 0 ? (
+        <section className="mx-auto max-w-6xl px-4 pb-16">
+          <div className="rounded-xl border border-border bg-card px-6 py-16 text-center">
+            <MapPinned className="mx-auto mb-3 size-8 text-muted-foreground" />
+            <h2 className="text-lg font-semibold">Sample listings are on the way</h2>
+            <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+              The Frontiers3D Atlas demo is being curated. Check back shortly to step inside sample spaces.
             </p>
           </div>
-        </div>
+        </section>
+      ) : (
+        <section className="mx-auto max-w-6xl px-4 pb-12">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Discover spaces on the map</h2>
+            <span className="text-sm text-muted-foreground">{listings.length} sample {listings.length === 1 ? "listing" : "listings"}</span>
+          </div>
 
-        {/* Truthful framing */}
-        <p className="mt-8 rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-          <strong className="text-foreground">About this demo:</strong> these are sample listings that show how spaces
-          appear in the Frontiers3D Atlas. They’re for demonstration — not specific businesses’ tours, and not a preview
-          built for any one business.
-        </p>
-      </section>
+          <div className="flex flex-col-reverse gap-6 lg:grid lg:grid-cols-[1.15fr_0.85fr] lg:items-start">
+            {/* List */}
+            <div className="space-y-4">
+              {listings.map((l) => {
+                const ui = uiFor(l.category);
+                const Icon = ui.icon;
+                const selected = selectedId === l.id;
+                const loc = [l.city, l.region].filter(Boolean).join(", ");
+                return (
+                  <article
+                    key={l.id}
+                    id={`atlas-card-${l.id}`}
+                    onMouseEnter={() => setSelectedId(l.id)}
+                    className={`overflow-hidden rounded-xl border bg-card transition-shadow ${
+                      selected ? "border-indigo-400 shadow-md" : "border-border"
+                    }`}
+                  >
+                    <div className="flex flex-col sm:flex-row">
+                      {l.hero_image_url ? (
+                        <img
+                          src={l.hero_image_url}
+                          alt={`${l.title} (sample listing)`}
+                          className="h-32 w-full object-cover sm:h-auto sm:w-40"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className={`relative flex h-32 w-full items-center justify-center bg-gradient-to-br sm:h-auto sm:w-40 ${ui.tint}`}>
+                          <Icon className="size-9" style={{ color: ui.accent }} />
+                          <span className="absolute bottom-1.5 left-1.5 rounded bg-white/80 px-1.5 py-0.5 text-[10px] font-medium text-zinc-600">
+                            Sample listing
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex flex-1 flex-col p-4">
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                          <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium text-white" style={{ backgroundColor: ui.accent }}>
+                            {categoryLabel(l.category)}
+                          </span>
+                          {loc && (
+                            <span className="inline-flex items-center gap-1 text-muted-foreground">
+                              <MapPin className="size-3.5" /> {loc}
+                            </span>
+                          )}
+                        </div>
+                        <h3 className="mt-1.5 text-base font-semibold">{l.title}</h3>
+                        {l.summary && <p className="mt-1 text-sm text-muted-foreground">{l.summary}</p>}
+                        {l.tags && l.tags.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {l.tags.slice(0, 4).map((t) => (
+                              <span key={t} className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">#{t}</span>
+                            ))}
+                          </div>
+                        )}
+                        <div className="mt-3 flex items-center justify-end">
+                          {l.presentation_url ? (
+                            <button
+                              onClick={() => setActive(l)}
+                              className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700"
+                            >
+                              <Play className="size-3.5" /> Step Inside
+                            </button>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">Presentation coming soon</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+
+            {/* Map-like discovery panel */}
+            <div className="lg:sticky lg:top-20">
+              <div
+                className="relative h-72 overflow-hidden rounded-xl border border-border bg-[#0b1020] lg:h-[520px]"
+                style={{ backgroundImage: "radial-gradient(rgba(255,255,255,0.10) 1px, transparent 1px)", backgroundSize: "22px 22px" }}
+                aria-label="Sample discovery map"
+              >
+                <div className="pointer-events-none absolute -left-10 top-10 h-40 w-56 rounded-full bg-indigo-500/10 blur-2xl" />
+                <div className="pointer-events-none absolute right-0 bottom-6 h-44 w-60 rounded-full bg-cyan-500/10 blur-2xl" />
+                <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded bg-white/10 px-2 py-1 text-[11px] font-medium text-white/80">
+                  <Compass className="size-3.5" /> Sample discovery map
+                </span>
+
+                {pinned.map((l) => {
+                  const ui = uiFor(l.category);
+                  const pos = project(l);
+                  const selected = selectedId === l.id;
+                  return (
+                    <button
+                      key={l.id}
+                      onClick={() => selectEntry(l.id)}
+                      onMouseEnter={() => setSelectedId(l.id)}
+                      style={{ left: pos.left, top: pos.top }}
+                      className="group absolute -translate-x-1/2 -translate-y-1/2"
+                      aria-label={`${l.title}${l.city ? ` — ${l.city}` : ""}`}
+                    >
+                      <span
+                        className={`block rounded-full ring-2 ring-white/80 transition-all ${selected ? "size-4" : "size-3"}`}
+                        style={{ backgroundColor: ui.accent }}
+                      />
+                      <span className={`pointer-events-none absolute left-1/2 top-5 -translate-x-1/2 whitespace-nowrap rounded bg-white px-1.5 py-0.5 text-[10px] font-medium text-zinc-700 shadow transition-opacity ${selected ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
+                        {l.title}
+                      </span>
+                    </button>
+                  );
+                })}
+
+                {pinned.length === 0 && (
+                  <span className="absolute inset-0 flex items-center justify-center text-xs text-white/50">
+                    Listings without coordinates won’t appear on the map.
+                  </span>
+                )}
+                <span className="absolute bottom-3 right-3 rounded bg-white/10 px-2 py-1 text-[10px] text-white/60">
+                  Pins are sample locations
+                </span>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Tap a pin to highlight its listing. A live Atlas adds filters for category, location, amenities, and more.
+              </p>
+            </div>
+          </div>
+
+          {/* Truthful framing */}
+          <p className="mt-8 rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+            <strong className="text-foreground">About this demo:</strong> these are Frontiers3D sample Atlas listings that
+            show how spaces appear in the discovery layer. They’re for demonstration — not specific businesses’ tours, and
+            not a preview built for any one business.
+          </p>
+        </section>
+      )}
 
       {/* Footer */}
       <footer className="border-t border-border bg-[#070b1f] px-4 py-10 text-white/70">
@@ -249,49 +284,52 @@ function AtlasDemoPage() {
         </div>
       </footer>
 
-      {/* Sample immersive presentation modal (fully unmounts on close) */}
-      {activeEntry && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true">
-          <div className="flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
-            <div className="flex items-center justify-between border-b border-border px-4 py-3">
-              <div className="flex items-center gap-2">
+      {/* Presentation viewer (opens the listing's hosted URL; fully unmounts on close) */}
+      {active && active.presentation_url && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 sm:p-4" role="dialog" aria-modal="true">
+          <div className="flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
+            <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2.5">
+              <div className="flex min-w-0 items-center gap-2">
                 <span className="rounded bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-800">SAMPLE</span>
-                <span className="text-sm font-semibold">{activeEntry.title} — immersive presentation</span>
+                <span className="truncate text-sm font-semibold">{active.title} — immersive presentation</span>
               </div>
-              <button onClick={() => setActiveEntry(null)} aria-label="Close" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
-                <X className="size-5" />
-              </button>
-            </div>
-
-            {/* Stylized sample viewer (not a live tour) */}
-            <div className="relative aspect-video w-full bg-[#0b1020]">
-              <div className={`absolute inset-0 bg-gradient-to-br opacity-90 ${CATEGORY_UI[activeEntry.category].tint}`} />
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                <span className="mb-3 inline-flex size-14 items-center justify-center rounded-full bg-white/85 shadow-lg">
-                  <Play className="size-6 text-indigo-700" />
-                </span>
-                <p className="px-6 text-sm font-medium text-zinc-800">
-                  In a live Atlas listing, this opens a fully interactive 3D walkthrough — explore room by room, at your own pace.
-                </p>
-              </div>
-              <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/50 px-3 py-1 text-[11px] text-white/90">
-                Drag to look · Click to move · Sample preview
+              <div className="flex shrink-0 items-center gap-1">
+                <a
+                  href={active.presentation_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-semibold text-foreground hover:bg-muted"
+                >
+                  Open in new tab <ExternalLink className="size-3.5" />
+                </a>
+                <button onClick={() => setActive(null)} aria-label="Close" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
+                  <X className="size-5" />
+                </button>
               </div>
             </div>
 
-            <div className="space-y-3 p-4">
-              <p className="text-sm text-muted-foreground">
-                <strong className="text-foreground">This is a sample for demonstration</strong> — it isn’t a specific business’s
-                tour. It shows the kind of immersive presentation a real Atlas listing opens.
-              </p>
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                  <MapPin className="size-3.5" /> {activeEntry.city}, {activeEntry.region} · {CATEGORY_LABELS[activeEntry.category]}
-                </span>
-                <Link to="/" className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-semibold text-foreground hover:bg-muted">
-                  How Atlas works <ArrowRight className="size-3.5" />
-                </Link>
-              </div>
+            {/* Admin-curated, Frontiers3D-owned presentation URL. */}
+            <div className="relative aspect-video w-full bg-black">
+              <iframe
+                key={active.id}
+                src={active.presentation_url}
+                title={`${active.title} — sample immersive presentation`}
+                className="absolute inset-0 h-full w-full"
+                loading="lazy"
+                allow="accelerometer; autoplay; fullscreen; gyroscope; xr-spatial-tracking"
+                sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-presentation"
+                referrerPolicy="no-referrer-when-downgrade"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                <MapPin className="size-3.5" />
+                {[active.city, active.region].filter(Boolean).join(", ") || "Sample location"} · {categoryLabel(active.category)}
+              </span>
+              <span className="text-[11px] text-muted-foreground">
+                Sample Frontiers3D Atlas listing — not a specific business’s tour.
+              </span>
             </div>
           </div>
         </div>
