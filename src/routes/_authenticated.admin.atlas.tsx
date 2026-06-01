@@ -403,8 +403,14 @@ function AdminAtlas() {
             <input className={inputCls} value={form.region} onChange={(e) => set("region", e.target.value)} />
           </label>
           <label>
-            <span className={labelCls}>Country</span>
-            <input className={inputCls} value={form.country} onChange={(e) => set("country", e.target.value)} />
+            <span className={labelCls}>Country (ISO-2)</span>
+            <input
+              className={inputCls}
+              value={form.country}
+              maxLength={2}
+              placeholder="US"
+              onChange={(e) => set("country", e.target.value.toUpperCase().slice(0, 2))}
+            />
           </label>
           <label>
             <span className={labelCls}>Latitude</span>
