@@ -71,10 +71,10 @@ function AdminLayout() {
             Outreach
           </Link>
           <Link
-            to="/admin/atlas-demo"
+            to="/admin/atlas"
             className="text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
-            Atlas Demo
+            Atlas
           </Link>
           <Link
             to="/admin/settings"

@@ -309,6 +309,90 @@ export type Database = {
         }
         Relationships: []
       }
+      atlas_entries: {
+        Row: {
+          address: string | null
+          category: string
+          city: string | null
+          country: string | null
+          created_at: string
+          hero_image_url: string | null
+          id: string
+          is_active: boolean | null
+          kind: string
+          latitude: number | null
+          longitude: number | null
+          owner_user_id: string | null
+          presentation_url: string | null
+          region: string | null
+          rejection_reason: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          saved_model_id: string | null
+          sort_order: number
+          status: string
+          submitted_at: string | null
+          summary: string | null
+          tags: string[]
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          category?: string
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          hero_image_url?: string | null
+          id?: string
+          is_active?: boolean | null
+          kind?: string
+          latitude?: number | null
+          longitude?: number | null
+          owner_user_id?: string | null
+          presentation_url?: string | null
+          region?: string | null
+          rejection_reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          saved_model_id?: string | null
+          sort_order?: number
+          status?: string
+          submitted_at?: string | null
+          summary?: string | null
+          tags?: string[]
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          category?: string
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          hero_image_url?: string | null
+          id?: string
+          is_active?: boolean | null
+          kind?: string
+          latitude?: number | null
+          longitude?: number | null
+          owner_user_id?: string | null
+          presentation_url?: string | null
+          region?: string | null
+          rejection_reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          saved_model_id?: string | null
+          sort_order?: number
+          status?: string
+          submitted_at?: string | null
+          summary?: string | null
+          tags?: string[]
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       beacon_match_pool: {
         Row: {
           attempted_at: string | null
@@ -2853,6 +2937,7 @@ export type Database = {
         Args: { p_feedback_token: string }
         Returns: boolean
       }
+      atlas_entry_owner_withdraw: { Args: { _id: string }; Returns: undefined }
       cancel_work_order: { Args: { p_work_order_id: string }; Returns: boolean }
       claim_ask_exhaustion_email: {
         Args: { p_property_uuid: string; p_saved_model_id: string }
