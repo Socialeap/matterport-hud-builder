@@ -20,6 +20,7 @@ export interface PublishInterceptor {
   clear: () => void;
   consume: (blob: Blob) => Promise<boolean>;
 }
+import { AtlasOptInCard } from "./AtlasOptInCard";
 import { QRCodeCanvas } from "qrcode.react";
 import {
   Check,
