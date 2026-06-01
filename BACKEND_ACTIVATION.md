@@ -3012,3 +3012,57 @@ secret, no cron, no change to the live send or its guards.
 delivers a `[TEST …]`-subject copy to `shakoure@transcendencemedia.com` only; the prospect is
 untouched and the row remains `pending_render`; Send to prospect still requires confirmation;
 already-sent rows cannot be re-sent.
+
+---
+
+## Patch — Outreach email redesign + reliable/transparent test-send trace
+
+> Appended by the email-redesign / test-trace PR. **Stacked on the test-send PR above.**
+> **Not yet activated.** Adds ONE read-only migration.
+
+### Backend (1 read-only fn) — `20260608000000_frontiers3d_test_email_status.sql`
+`email_send_log` SELECT is **service-role only**, so the admin UI cannot read delivery status.
+New admin-gated `SECURITY DEFINER` `get_test_email_status(p_message_id text)` resolves ONE test
+message's state (`sent` / `dlq` / `failed` / `suppressed` / `pending` / `unknown`) plus attempts,
+last error, and timestamp. **Scoped to `template_name = 'map-oracle-preview-offer-test'`** so it
+can never expose prospect send logs. Read-only.
+
+### Email template (`map-oracle-preview-offer`) — Goal A
+Redesigned cold-outreach email (verified via a standalone render of both variants):
+- **Frontiers3D brand header** + tagline.
+- **Primary CTA button** "See what Frontiers3D does" → `https://www.frontiers3d.com`.
+- **Secondary CTA** mailto → `info@transcendencemedia.com` ("reply to ask us to prepare your
+  free preview").
+- **Visual proof:** renders a real photo ONLY from a genuine `property_photos.cdn_url` (https);
+  otherwise a polished **"PUBLIC 3D PRESENCE DETECTED"** callout. It deliberately does **not**
+  use `properties.primary_photo_url` (which can be a generic Google Places category icon) — we
+  never fabricate a business-specific image.
+- **Clearer copy:** one-sentence offer; enhance an existing Google Maps / Street View / 360 /
+  inside-view presence, or be connected with a local provider to virtualize first; **no cost,
+  no obligation** emphasized.
+- **CAN-SPAM preserved:** one-time-outreach identification, postal address, sender identity, and
+  token unsubscribe link unchanged.
+
+### Render route (`/lovable/email/map-oracle/render.ts`)
+- Looks up the genuine cached photo (`property_photos.cdn_url`, https) by `property_id` and
+  passes `previewImageUrl` (+ `learnMoreUrl`, `replyToEmail`) to the template for all modes.
+- **`testSend` now returns trace IDs:** `message_id`, `pgmq_msg_id`, `to`, `template_label`,
+  `subject`, `delivered:false` (delivery is confirmed later by the poll, not at enqueue). All the
+  test-send guarantees are unchanged (operator inbox only; prospect untouched; row stays
+  `pending_render`; fresh id / distinct label; no duplicate-guard impact).
+
+### Operator UI (`/admin/map-oracle-outreach`) — Goal B
+- "Test sent" → **"Test queued (not yet delivered)"**; then polls `get_test_email_status` for
+  ~30s and shows a live trace panel: **queued → pending → delivered / failed / dlq / suppressed**,
+  or a clear **timeout** ("still queued"). On success: **"Test delivered to
+  `shakoure@transcendencemedia.com`."** On non-delivery: the status + `message_id` + `pgmq_msg_id`
+  are shown for queue/log inspection.
+
+**Activation:** apply the migration; deploy the frontend (render route ships with it). No secret,
+no cron, no change to the live send or its guards. (The trace will only reach **delivered** once
+the email queue processor runs — if a test stays "queued", that is the dispatcher/cron, surfaced
+honestly rather than a false "sent".)
+**Verify:** Preview shows the improved email; **Send test to admin** returns trace IDs and the
+panel confirms actual delivery (or exact failure/timeout) to `shakoure@transcendencemedia.com`
+only; prospect not contacted; outreach row stays `pending_render`. No batch, no cron outreach,
+no B4, no Stripe/billing, no Track A.
