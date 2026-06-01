@@ -3193,3 +3193,36 @@ send pipeline). The `get_test_email_status` migration is now **obsolete** (left 
 `shakoure@transcendencemedia.com` within seconds with the `[TEST …]` subject + banner, and the
 panel reads **"Test delivered."** No console 404s. Prospect not contacted; row still
 `pending_render`.
+
+---
+
+## Atlas PR-0 — public Atlas Demo MVP (`/atlas`)
+
+> Appended by Atlas PR-0. **Frontend-only; deploy to activate. NO backend activation.**
+
+First credible public Atlas/demo destination, so Map Oracle outreach can link somewhere real.
+Pure frontend with **static sample data** — no schema, no functions, no secrets, no cron.
+
+**Files:**
+- `src/lib/atlas-demo-data.ts` (new) — `AtlasEntry` type **shaped like the future `atlas_entries`
+  table** (snake_case columns, same statuses/visibility tiers from the PRD) + a curated
+  `DEMO_ATLAS_ENTRIES` array (`visibility_tier: 'demo'`, `source: 'demo_sample'`). One module,
+  swappable to a Supabase `select()` on the public Atlas view in PR-1 with no UI change.
+- `src/routes/atlas.tsx` (new) — public `/atlas` route (no auth): hero + truthful Atlas copy,
+  responsive map-like discovery panel + listing cards, sample "Step Inside" modal. SSR-safe; no
+  Leaflet/external tiles; no external iframes.
+- `src/routeTree.gen.ts` — regenerated to register `/atlas`.
+
+**Truthfulness:** sample listings are clearly labeled "Sample"; "Step Inside" opens a clearly
+marked **sample** immersive-presentation modal (no live Matterport, no business-specific preview
+claim). No "we built your preview" language.
+
+**Out of scope (deferred):** `atlas_entries` schema (PR-1), verification tokens (PR-2), dynamic
+map (PR-3), dashboards (PR-4), outreach CTA repoint (PR-5), analytics (PR-6), CPC/sponsored (PR-7).
+The outreach email CTA still points at the site root — **unchanged** in this PR.
+
+**Activation:** **deploy the frontend.** No migration, no secret, no cron, no Stripe/Track A, no
+Map Oracle/outreach behavior change.
+**Verify:** `/atlas` loads without auth on desktop and mobile; shows ≥3 sample listings on a
+map + list; "Step Inside" opens and fully closes the sample viewer; copy implies no
+business-specific preview.
