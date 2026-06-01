@@ -719,6 +719,14 @@ export const PublishDistributeSection = forwardRef<
           </div>
         </div>
       )}
+
+      {liveUrl && (
+        <AtlasOptInCard
+          liveUrl={liveUrl}
+          propertyName={propertyName}
+          accentColor={accentColor}
+        />
+      )}
     </div>
   );
 });
