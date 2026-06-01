@@ -42,7 +42,7 @@ const CATEGORY_UI: Record<AtlasCategory, { icon: LucideIcon; accent: string; tin
 const uiFor = (category: string) => CATEGORY_UI[category as AtlasCategory] ?? CATEGORY_UI.other;
 
 function AtlasDemoPage() {
-  const { listings } = Route.useLoaderData();
+  const { listings } = Route.useLoaderData() as { listings: AtlasDemoListing[]; error: string | null };
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [active, setActive] = useState<AtlasDemoListing | null>(null);
 

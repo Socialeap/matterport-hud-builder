@@ -3246,3 +3246,40 @@ the code uses casts for the new table.) After activation, an admin adds listings
 exist); an admin can create a listing at `/admin/atlas-demo` and it appears on `/atlas`; only
 `is_active = true` rows are publicly visible; "Step Inside" opens the hosted presentation and fully
 closes; no prospect email sent; no business-specific preview implied.
+
+---
+
+## PR #129 Activation Result — Atlas Demo MVP (2026-06-01)
+
+**Migration applied:** `20260609000000_atlas_demo_listings.sql` ✅
+- Table `public.atlas_demo_listings` created with all PR-0 columns.
+- RLS enabled. Policies verified via `pg_policy`:
+  - `atlas_demo service role all` (FOR ALL)
+  - `atlas_demo admin all` (FOR ALL, gated by `public.has_role(auth.uid(), 'admin')`)
+  - `atlas_demo public read active` (FOR SELECT, `is_active = true`)
+- GRANTs: anon → SELECT only; authenticated → SELECT/INSERT/UPDATE/DELETE (gated by admin policy); service_role → ALL.
+- `updated_at` trigger installed.
+- Index `idx_atlas_demo_listings_active_sort` present.
+
+**Frontend deployed:**
+- Public route `/atlas` — loads without authentication, reads active rows via `listActiveAtlasDemoListings` server fn (resilient empty state).
+- Admin route `/admin/atlas-demo` — admin-gated CRUD (create/edit/activate/sort/delete). All required fields exposed: title, address, city, region, country, latitude, longitude, category, summary, presentation_url, hero_image_url, tags, is_active, sort_order.
+- Fixed one TS build issue in `src/routes/atlas.tsx` (typed `Route.useLoaderData()` to `{ listings: AtlasDemoListing[] }`).
+
+**Access verification:**
+- Admin/service role: full management (RLS policy match).
+- Anon/authenticated public: read of `is_active = true` rows only; no write path.
+- Inactive listings are excluded by the loader (`.eq("is_active", true)`).
+
+**Seed content:** none included by PR #129. Table is empty.
+To seed the first three Frontiers3D-owned **sample** Atlas listings, an admin should sign in and visit `/admin/atlas-demo` → "New listing" for each, filling at minimum:
+- title (e.g., "Sample — The Greenhouse Café")
+- category (cafe / hotel / event_space / …)
+- presentation_url (hosted Matterport URL)
+- city, region, country, latitude, longitude (for map pin)
+- summary, optional hero_image_url, tags
+- is_active = true, sort_order
+
+**Untouched (confirmed):** Map Oracle, outreach pipeline, agent_beacons, Stripe/Connect, billing/refunds, Track A. No Edge Functions deployed, no cron added, no prospect emails sent.
+
+**Result:** Atlas Demo MVP is **activated and ready for operator use**. No blockers before connecting outreach email CTAs to `/atlas` — that work is deferred to PR-5 per the PR-0 scope.
