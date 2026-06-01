@@ -42,6 +42,9 @@ const FROM_DOMAIN = 'frontiers3d.com'
 const UNSUB_BASE = 'https://frontiers3d.com'
 const POSTAL = 'Transcendence Media, 1100 Peachtree St NE, Suite 200, Atlanta, GA 30309, USA'
 const TEMPLATE_NAME = 'map-oracle-preview-offer'
+// CTA destinations baked into the outreach email.
+const LEARN_MORE_URL = 'https://www.frontiers3d.com' // primary CTA — public explainer
+const REPLY_TO_EMAIL = 'info@transcendencemedia.com'  // secondary CTA — monitored inbox
 
 // ── Internal test-send constants ────────────────────────────────────────────
 // A test send renders the EXACT same template/data as the live prospect send but
@@ -176,11 +179,34 @@ export const Route = createFileRoute('/lovable/email/map-oracle/render')({
         if (!template) return json(500, { error: `template '${TEMPLATE_NAME}' not in registry` })
         const cityDisplay = beacon.region && beacon.city ? `${beacon.city}, ${beacon.region}` : beacon.city
         const realUnsubUrl = `${UNSUB_BASE}/email/unsubscribe?token=${log.unsubscribe_token}`
+
+        // Visual proof: use ONLY a genuine cached photo of the business
+        // (property_photos.cdn_url, https). We deliberately do NOT fall back to
+        // properties.primary_photo_url — that can be a generic Google Places
+        // category icon, and showing it as "proof" would be misleading. No safe
+        // asset → the template renders a "presence detected" callout instead.
+        let previewImageUrl: string | null = null
+        if (log.property_id) {
+          const { data: photo } = await supabase
+            .from('property_photos')
+            .select('cdn_url')
+            .eq('property_id', log.property_id)
+            .not('cdn_url', 'is', null)
+            .order('ordinal', { ascending: true })
+            .limit(1)
+            .maybeSingle()
+          const url = photo?.cdn_url
+          if (typeof url === 'string' && /^https:\/\//i.test(url)) previewImageUrl = url
+        }
+
         const templateData = {
           businessName: beacon.name,
           city: cityDisplay,
           unsubscribeUrl: realUnsubUrl,
           physicalAddress: POSTAL,
+          learnMoreUrl: LEARN_MORE_URL,
+          replyToEmail: REPLY_TO_EMAIL,
+          previewImageUrl,
         }
 
         // ── TEST SEND: deliver ONLY to the operator inbox ───────────
@@ -237,7 +263,7 @@ export const Route = createFileRoute('/lovable/email/map-oracle/render')({
           await supabase.from('email_send_log').insert({
             message_id: testMessageId, template_name: TEST_TEMPLATE_NAME, recipient_email: TEST_RECIPIENT, status: 'pending',
           })
-          const { error: enqErr } = await supabase.rpc('enqueue_email', {
+          const { data: pgmqMsgId, error: enqErr } = await supabase.rpc('enqueue_email', {
             queue_name: 'transactional_emails', payload: testPayload,
           })
           if (enqErr) {
@@ -245,18 +271,26 @@ export const Route = createFileRoute('/lovable/email/map-oracle/render')({
               message_id: testMessageId, template_name: TEST_TEMPLATE_NAME, recipient_email: TEST_RECIPIENT,
               status: 'failed', error_message: 'enqueue failed (test)',
             })
-            return json(500, { test: true, error: 'Failed to enqueue test email', outreach_log_id: log.id })
+            return json(500, { test: true, error: 'Failed to enqueue test email', message_id: testMessageId, outreach_log_id: log.id })
           }
 
+          // Enqueued — NOT yet delivered. The dispatcher (queue processor) sends
+          // it asynchronously; the UI polls get_test_email_status(message_id) to
+          // confirm actual delivery. Trace IDs are returned for that polling and
+          // for queue/log inspection.
           return json(200, {
             test: true,
             queued: true,
+            delivered: false, // delivery is confirmed later via the status poll, not here
             to: TEST_RECIPIENT,
+            message_id: testMessageId,
+            pgmq_msg_id: typeof pgmqMsgId === 'number' ? pgmqMsgId : (pgmqMsgId != null ? Number(pgmqMsgId) : null),
+            template_label: TEST_TEMPLATE_NAME,
             subject: testSubject,
             outreach_log_id: log.id,
             outreach_status: 'pending_render', // unchanged — proven, not mutated
             beacon_unsubscribed: beacon.status === 'unsubscribed',
-            note: 'Internal test enqueued to the operator inbox only. Prospect NOT contacted; outreach log unchanged; unsubscribe link inert.',
+            note: 'Internal test ENQUEUED to the operator inbox only (not yet delivered). Prospect NOT contacted; outreach log unchanged; unsubscribe link inert.',
           })
         }
 
