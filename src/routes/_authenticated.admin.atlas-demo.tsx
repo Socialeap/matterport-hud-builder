@@ -41,6 +41,38 @@ const BLANK: FormState = {
   latitude: "", longitude: "", tags: "", is_active: true, sort_order: "0",
 };
 
+const DRAFT_KEY = "3dps:atlas-demo:form-draft";
+
+function loadDraft(): FormState {
+  if (typeof window === "undefined") return BLANK;
+  try {
+    const raw = window.localStorage.getItem(DRAFT_KEY);
+    if (!raw) return BLANK;
+    const parsed = JSON.parse(raw) as Partial<FormState>;
+    return { ...BLANK, ...parsed };
+  } catch {
+    return BLANK;
+  }
+}
+
+function saveDraft(state: FormState): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(DRAFT_KEY, JSON.stringify(state));
+  } catch {
+    /* ignore quota errors */
+  }
+}
+
+function clearDraft(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(DRAFT_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 const inputCls = "w-full rounded-md border border-border bg-background px-3 py-2 text-sm";
 const labelCls = "text-xs font-medium text-muted-foreground";
 
