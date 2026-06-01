@@ -3283,3 +3283,91 @@ To seed the first three Frontiers3D-owned **sample** Atlas listings, an admin sh
 **Untouched (confirmed):** Map Oracle, outreach pipeline, agent_beacons, Stripe/Connect, billing/refunds, Track A. No Edge Functions deployed, no cron added, no prospect emails sent.
 
 **Result:** Atlas Demo MVP is **activated and ready for operator use**. No blockers before connecting outreach email CTAs to `/atlas` — that work is deferred to PR-5 per the PR-0 scope.
+
+---
+
+## Atlas v1 — `atlas_entries` (post-PR #129 evolution)
+
+**Status:** Activated and verified 2026-06-01.
+
+Replaces the PR #129 `atlas_demo_listings` table (which remains in place but is no longer read by the app). Introduces a future-facing `atlas_entries` table that supports both Frontiers3D-owned demo entries and client-submitted listings from the `/builder` Publish flow.
+
+### Migration applied
+
+File: `supabase/migrations/20260601_atlas_entries.sql`
+
+Creates `public.atlas_entries` with:
+
+- **Columns:** `id`, `kind` (`demo` | `client_submitted`), `status` (`pending_review` | `active` | `inactive` | `rejected`), `is_active` (generated stored column = `status = 'active'`), `title`, `summary`, `hero_image_url`, `category`, `tags`, `sort_order`, `address`, `city`, `region`, `country`, `latitude`, `longitude`, `presentation_url`, `saved_model_id`, `owner_user_id`, `submitted_at`, `reviewed_at`, `reviewed_by`, `rejection_reason`, `created_at`, `updated_at`.
+- **CHECK constraints:** kind/status whitelists, title 1–160, summary ≤600, https-only `hero_image_url`, category 1–40, lat ∈ [-90, 90], lng ∈ [-180, 180], https-only `presentation_url` ≤2048 (no `javascript:`/`data:`), rejection_reason ≤500.
+- **Indexes:** partial unique `(owner_user_id, saved_model_id)` and `(owner_user_id, presentation_url)` for client_submitted; `(status, sort_order, created_at)`; `(owner_user_id)`.
+- **GRANTs:** `select` to `anon`; `select,insert,update,delete` to `authenticated`; `all` to `service_role`.
+- **6 RLS policies** (verified, see below).
+- **Function:** `public.atlas_entry_owner_withdraw(uuid)` — SECURITY DEFINER; lets an owner flip a live listing back to `pending_review` for editing.
+- **Trigger:** `atlas_entries_set_updated_at` using `public.update_updated_at_column()`.
+
+### Required actions
+
+All applied — no further migration steps required.
+
+### Verification (run against prod DB)
+
+```sql
+-- 1. Six RLS policies
+select polname from pg_policy where polrelid='public.atlas_entries'::regclass order by polname;
+-- Expect exactly 6 rows:
+--   atlas_entries admin all
+--   atlas_entries owner insert own pending
+--   atlas_entries owner read own
+--   atlas_entries owner update own non-active
+--   atlas_entries public read active
+--   atlas_entries service role all
+
+-- 2. Public anon read returns only active
+set role anon;
+select id, title, status from public.atlas_entries where is_active;
+reset role;
+
+-- 3. Owner-withdraw RPC exists with security definer
+select proname, prosecdef from pg_proc where proname='atlas_entry_owner_withdraw';
+-- Expect: atlas_entry_owner_withdraw | t
+```
+
+**Verification result (2026-06-01):** All six RLS policies present; `atlas_entry_owner_withdraw` exists with `prosecdef = true`; anon select returns 0 rows (no active listings yet).
+
+### Routes / surfaces activated
+
+- **Public:** `/atlas` — Leaflet dark-map sidebar/modal experience, reads `atlas_entries WHERE status='active'`.
+- **Admin:** `/admin/atlas` — manage all entries (approve, reject, deactivate, edit). Replaces `/admin/atlas-demo`.
+- **Client:** `/builder` Publish & Distribute — new "List this tour on the Frontiers3D Atlas" card calls `submitAtlasClientEntry`; listings go to `pending_review` until an admin sets `status='active'`.
+
+### RLS / admin / public access — verified behavior
+
+- Public (anon): can read rows where `status = 'active'`; nothing else.
+- Owner (authenticated): can read all own rows; can insert own `client_submitted` rows but only at `status='pending_review'`; can update own `client_submitted` rows only while not `active`, and the result is forced back to `pending_review` (owners cannot self-approve or edit live).
+- Admin (`has_role(auth.uid(), 'admin')`): full read/write.
+- Service role: full read/write.
+
+### Demo listings visibility
+
+`atlas_entries` is empty at activation time. The public `/atlas` page renders the empty state copy:
+
+> "Active approved listings appear in Atlas. Inactive listings remain hidden until restored by an admin."
+
+To seed the first three Frontiers3D-owned demo listings, an admin creates them at `/admin/atlas` with these fields:
+
+- `kind = 'demo'`, `status = 'active'`
+- `title`, `category`, `summary`
+- `presentation_url` (must be https; tested for iframe-embeddability)
+- `hero_image_url` (optional, https)
+- `city`, `region`, `country` (defaults to `US`)
+- `latitude`, `longitude` (optional; omitting them shows the entry in the sidebar only with a "Location pending" badge)
+- `tags`, `sort_order` (optional)
+
+### Blockers before connecting outreach email CTAs
+
+None for the Atlas surface itself. The `/atlas` route is publicly accessible and ready for inbound traffic. Outreach send + CTA wiring remains deferred per the agreed scope (out of scope: Map Oracle, outreach pipeline, prospect emails, CPC/sponsored placement).
+
+**Result:** Atlas v1 is **activated and verified**. No backend blockers.
+
+Backend Activation Required: NO (already applied this turn — table, policies, and RPC verified).
