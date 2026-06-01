@@ -249,6 +249,66 @@ export type Database = {
         }
         Relationships: []
       }
+      atlas_demo_listings: {
+        Row: {
+          address: string | null
+          category: string
+          city: string | null
+          country: string | null
+          created_at: string
+          hero_image_url: string | null
+          id: string
+          is_active: boolean
+          latitude: number | null
+          longitude: number | null
+          presentation_url: string | null
+          region: string | null
+          sort_order: number
+          summary: string | null
+          tags: string[]
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          category?: string
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          hero_image_url?: string | null
+          id?: string
+          is_active?: boolean
+          latitude?: number | null
+          longitude?: number | null
+          presentation_url?: string | null
+          region?: string | null
+          sort_order?: number
+          summary?: string | null
+          tags?: string[]
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          category?: string
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          hero_image_url?: string | null
+          id?: string
+          is_active?: boolean
+          latitude?: number | null
+          longitude?: number | null
+          presentation_url?: string | null
+          region?: string | null
+          sort_order?: number
+          summary?: string | null
+          tags?: string[]
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       beacon_match_pool: {
         Row: {
           attempted_at: string | null
