@@ -190,7 +190,9 @@ function AdminAtlas() {
       longitude: num(form.longitude),
     });
     if (!parsed.success) {
-      toast.error(parsed.error.issues[0]?.message ?? "Validation failed");
+      const issue = parsed.error.issues[0];
+      const field = issue?.path?.join(".") ?? "field";
+      toast.error(`${field}: ${issue?.message ?? "Validation failed"}`);
       return;
     }
     if (form.status === "rejected" && !form.rejection_reason.trim()) {
@@ -401,8 +403,14 @@ function AdminAtlas() {
             <input className={inputCls} value={form.region} onChange={(e) => set("region", e.target.value)} />
           </label>
           <label>
-            <span className={labelCls}>Country</span>
-            <input className={inputCls} value={form.country} onChange={(e) => set("country", e.target.value)} />
+            <span className={labelCls}>Country (ISO-2)</span>
+            <input
+              className={inputCls}
+              value={form.country}
+              maxLength={2}
+              placeholder="US"
+              onChange={(e) => set("country", e.target.value.toUpperCase().slice(0, 2))}
+            />
           </label>
           <label>
             <span className={labelCls}>Latitude</span>
