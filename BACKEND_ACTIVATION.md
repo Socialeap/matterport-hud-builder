@@ -2966,3 +2966,49 @@ recipient + `map-oracle-preview-offer`). **No send-behavior change.**
 **Activation:** apply the migration; deploy the frontend. No secret, no cron, no send change.
 **Verify:** Find email on a no-email candidate → clear toast + the row shows scan provenance;
 already-processed rows read "queued / already processed" or "sent". No emails sent.
+
+---
+
+## Patch — Outreach Operator UI: transparent Preview + admin test-send
+
+> Appended by the test-send/preview PR. **Not yet activated. No DB migration.**
+
+**Why:** the old Preview modal only showed subject/to/from + a 300-char HTML head, so
+operators could not see what the actual outreach email looks like, and there was no safe
+way to validate delivery before contacting a prospect.
+
+**Server route (`src/routes/lovable/email/map-oracle/render.ts`):** adds a third mode
+alongside `live` and `dryRun`. No live-send behavior changed.
+- `dryRun` now returns the **full** rendered `html` + `text` + `unsubscribe_url` (not just a
+  head snippet) so the UI can render an accurate preview. Still: not enqueued, no status
+  change, no email sent.
+- New **`testSend:true`** mode: renders the SAME `map-oracle-preview-offer` template with the
+  SAME business/city data, then delivers **only** to the hard-coded operator inbox
+  `shakoure@transcendencemedia.com`:
+  - subject prefixed `[TEST - NOT SENT TO PROSPECT]`;
+  - a red **"INTERNAL TEST PREVIEW — NOT SENT TO THE PROSPECT"** banner injected at the top
+    of the HTML body + a matching plain-text banner;
+  - unsubscribe link **neutralized** to an inert non-matching token (a click in the test
+    inbox cannot suppress the real prospect);
+  - enqueued to the existing `transactional_emails` pipeline with a **fresh `message_id`** and
+    a **distinct `label`/`idempotency_key`** (`map-oracle-preview-offer-test`), so it can never
+    collide with or trip the live send's duplicate guards;
+  - **does NOT** read-lock, mark, consume, or status-change the outreach log — the row stays
+    `pending_render`; the prospect is never contacted. Fail-closed suppression check on the
+    test recipient. (Prospect suppression/unsubscribe are surfaced as flags, not gates, since
+    the prospect isn't emailed.)
+
+**Frontend (`/admin/map-oracle-outreach`):**
+- Preview modal rewritten: **"Preview only — NOT SENT"** banner, header table (Subject /
+  To-prospect / From / Sender domain / Unsubscribe URL+token), the **full rendered HTML** in a
+  `sandbox=""` iframe (links inert), and a collapsible **plain-text fallback**.
+- New **"Send test to admin"** action on `pending_render` rows (one click, no prospect impact).
+- Live action relabeled **"Send"→"Send to prospect"**; still one row, still confirmation-gated,
+  still marks queued only after enqueue. No batch, no cron, no auto-send.
+
+**Activation:** deploy the frontend (the `render` server route ships with it). No migration, no
+secret, no cron, no change to the live send or its guards.
+**Verify:** Preview shows the rendered email with a NOT-SENT banner; **Send test to admin**
+delivers a `[TEST …]`-subject copy to `shakoure@transcendencemedia.com` only; the prospect is
+untouched and the row remains `pending_render`; Send to prospect still requires confirmation;
+already-sent rows cannot be re-sent.
