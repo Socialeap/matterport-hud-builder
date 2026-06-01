@@ -83,7 +83,7 @@ function AdminAtlasDemo() {
   const [rows, setRows] = useState<AtlasDemoListing[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState<FormState>(BLANK);
+  const [form, setForm] = useState<FormState>(() => loadDraft());
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
