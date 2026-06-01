@@ -200,6 +200,10 @@ function OpportunitiesPage() {
               </Button>
             </a>
           </div>
+          <p className="mx-auto mt-5 max-w-xl text-sm text-white/50">
+            Help local businesses and property teams turn captures into public Atlas listings.{" "}
+            <Link to="/atlas" className="text-amber-300 underline-offset-2 hover:underline">See the Atlas →</Link>
+          </p>
         </div>
       </section>
 

@@ -226,6 +226,10 @@ function AtlasPage() {
             <p>Immersive 3D spaces, mapped.</p>
           </div>
         </Link>
+        <nav className="hidden items-center gap-4 sm:flex">
+          <Link to="/agents" className="text-[13px] text-slate-400 transition-colors hover:text-white">For Agents</Link>
+          <Link to="/businesses" className="text-[13px] text-slate-400 transition-colors hover:text-white">For Businesses</Link>
+        </nav>
         <div className="atlas-header-meta">
           <div>
             <p className="atlas-header-kicker">Listings</p>

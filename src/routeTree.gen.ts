@@ -18,6 +18,7 @@ import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as OpportunitiesRouteImport } from './routes/opportunities'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
+import { Route as BusinessesRouteImport } from './routes/businesses'
 import { Route as AtlasRouteImport } from './routes/atlas'
 import { Route as AgentsRouteImport } from './routes/agents'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
@@ -117,6 +118,11 @@ const LoginRoute = LoginRouteImport.update({
 const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
   id: '/forgot-password',
   path: '/forgot-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BusinessesRoute = BusinessesRouteImport.update({
+  id: '/businesses',
+  path: '/businesses',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AtlasRoute = AtlasRouteImport.update({
@@ -428,6 +434,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/agents': typeof AgentsRouteWithChildren
   '/atlas': typeof AtlasRoute
+  '/businesses': typeof BusinessesRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/opportunities': typeof OpportunitiesRoute
@@ -493,6 +500,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/agents': typeof AgentsRouteWithChildren
   '/atlas': typeof AtlasRoute
+  '/businesses': typeof BusinessesRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/opportunities': typeof OpportunitiesRoute
@@ -556,6 +564,7 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/agents': typeof AgentsRouteWithChildren
   '/atlas': typeof AtlasRoute
+  '/businesses': typeof BusinessesRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/opportunities': typeof OpportunitiesRoute
@@ -623,6 +632,7 @@ export interface FileRouteTypes {
     | '/'
     | '/agents'
     | '/atlas'
+    | '/businesses'
     | '/forgot-password'
     | '/login'
     | '/opportunities'
@@ -688,6 +698,7 @@ export interface FileRouteTypes {
     | '/'
     | '/agents'
     | '/atlas'
+    | '/businesses'
     | '/forgot-password'
     | '/login'
     | '/opportunities'
@@ -750,6 +761,7 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/agents'
     | '/atlas'
+    | '/businesses'
     | '/forgot-password'
     | '/login'
     | '/opportunities'
@@ -817,6 +829,7 @@ export interface RootRouteChildren {
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   AgentsRoute: typeof AgentsRouteWithChildren
   AtlasRoute: typeof AtlasRoute
+  BusinessesRoute: typeof BusinessesRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   LoginRoute: typeof LoginRoute
   OpportunitiesRoute: typeof OpportunitiesRoute
@@ -910,6 +923,13 @@ declare module '@tanstack/react-router' {
       path: '/forgot-password'
       fullPath: '/forgot-password'
       preLoaderRoute: typeof ForgotPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/businesses': {
+      id: '/businesses'
+      path: '/businesses'
+      fullPath: '/businesses'
+      preLoaderRoute: typeof BusinessesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/atlas': {
@@ -1465,6 +1485,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   AgentsRoute: AgentsRouteWithChildren,
   AtlasRoute: AtlasRoute,
+  BusinessesRoute: BusinessesRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
   LoginRoute: LoginRoute,
   OpportunitiesRoute: OpportunitiesRoute,

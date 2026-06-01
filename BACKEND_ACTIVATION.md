@@ -3371,3 +3371,35 @@ None for the Atlas surface itself. The `/atlas` route is publicly accessible and
 **Result:** Atlas v1 is **activated and verified**. No backend blockers.
 
 Backend Activation Required: NO (already applied this turn — table, policies, and RPC verified).
+
+---
+
+## Public audience refactor (Agents / Businesses / Atlas)
+
+> Frontend/public-copy + routing only. **Backend Activation Required: NO.**
+
+Refactors the public landing structure around distinct audiences, with `/atlas` as the shared
+discovery layer. No migrations, Edge Functions, Stripe, outreach sends, or schema changes.
+
+**Files:**
+- `src/routes/businesses.tsx` (new) — public `/businesses` landing for restaurants/cafés/hotels/
+  venues/galleries/wellness/retail/coworking. Core message "Help customers experience your space
+  before they visit"; CTAs **"See Sample Atlas Listings" → `/atlas`** and **"Request a Local 3D
+  Provider" → `/agents#directory`**.
+- `src/routes/agents.tsx` — repositioned to "Turn property tours into branded, lead-generating
+  listing presentations" + Atlas angle ("**eligible** properties **can** be showcased…"); CTAs
+  **"Find a 3D Capture Partner" → `#directory`**, **"View Atlas Demo" → `/atlas`**; nav adds
+  For Businesses + Atlas.
+- `src/routes/atlas.tsx` — header adds "For Agents / For Businesses" cross-links (desktop).
+- `src/routes/opportunities.tsx` — provider Atlas angle + "See the Atlas →" link.
+- `src/routes/index.tsx` — nav (desktop + mobile) adds "For Businesses →" and "Atlas".
+- `src/routeTree.gen.ts` — regenerated for `/businesses`.
+
+**Truthful copy:** uses "sample/demo/eligible/approved listing"; never claims a business already
+has a Matterport/360/custom preview/Atlas listing; no ROI promises; no internal jargon.
+
+**Activation:** deploy the frontend. No migration, no secret, no cron, no Stripe/Track A, no
+outreach behavior change.
+**Verify:** `/businesses` loads without auth (desktop + mobile); cross-links resolve
+(`/` → For Businesses/Atlas; `/agents` ↔ `/businesses` ↔ `/atlas`; `/agents` "View Atlas Demo" →
+`/atlas`; `/businesses` primary → `/atlas`, secondary → `/agents#directory`); no email sent.
