@@ -3155,3 +3155,41 @@ neutral listing callout that drops "+ WEBSITE" when none; **no** "free preview /
 build you a" per-lead language; CTA "See an example" → demo URL; reply-"interested" mailto;
 360 line appears ONLY when a flag is verified; no hype words; CAN-SPAM intact. No prospect email
 sent. No batch, no cron, no B4, no Stripe/billing, no Track A.
+
+---
+
+## Fix — "Send test to admin" now sends synchronously (was queued, never delivered)
+
+> Appended by the test-send hotfix. **Frontend-only; deploy to activate. No migration.**
+
+**Symptom:** "Send test to admin" produced no email, and the browser console repeated
+`POST /rest/v1/rpc/get_test_email_status 404 (Not Found)`.
+
+**Root cause (two unactivated dependencies):**
+1. The status-poll RPC `get_test_email_status` (migration `20260608000000`) was **never applied**
+   to the live DB → PostgREST 404 on every poll.
+2. The test **enqueued** to `transactional_emails` and relied on the **queue-processor cron** to
+   deliver. That cron wasn't draining the queue, so the test sat queued and was never sent —
+   exactly the "queued ≠ delivered" gap the trace was meant to surface, except the trace itself
+   404'd.
+
+**Fix (removes BOTH external dependencies):** the test send now delivers **synchronously** from
+the admin render route via the same `sendLovableEmail` transport the queue processor uses —
+instead of enqueuing. It returns a real `delivered: true/false` (+ `error`) immediately, so the
+UI needs **no status RPC and no polling**. If `LOVABLE_API_KEY` is missing or the transport
+rejects, the route returns `delivered:false` with the exact error (logged to `email_send_log` as
+`failed`) rather than failing silently.
+- Test guarantees unchanged: operator inbox only (`shakoure@transcendencemedia.com`), visible
+  TEST banner, fresh `message_id` + distinct `map-oracle-preview-offer-test` label, inert
+  unsubscribe, prospect never contacted, outreach row stays `pending_render`.
+- UI: removed the `get_test_email_status` polling; the trace panel now shows the immediate result
+  ("Test delivered to …" or "Not delivered" + error + `message_id`).
+- The live **Send to prospect** path is untouched (still enqueues through the normal pipeline).
+
+**Activation:** **deploy the frontend** (the render server route ships with it). No migration, no
+secret, no cron. `LOVABLE_API_KEY` must be present in the deploy env (it already powers the live
+send pipeline). The `get_test_email_status` migration is now **obsolete** (left in place, harmless).
+**Verify:** click **Send test to admin** on a `pending_render` row → an email arrives at
+`shakoure@transcendencemedia.com` within seconds with the `[TEST …]` subject + banner, and the
+panel reads **"Test delivered."** No console 404s. Prospect not contacted; row still
+`pending_render`.

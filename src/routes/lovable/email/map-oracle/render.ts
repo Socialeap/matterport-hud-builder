@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { sendLovableEmail } from '@lovable.dev/email-js'
 import { createClient } from '@supabase/supabase-js'
 import { createFileRoute } from '@tanstack/react-router'
 import { TEMPLATES } from '@/lib/email-templates/registry'
@@ -247,9 +248,10 @@ export const Route = createFileRoute('/lovable/email/map-oracle/render')({
 
         // ── TEST SEND: deliver ONLY to the operator inbox ───────────
         // Same template + same business/city data; subject prefixed; banner
-        // injected; unsubscribe neutralized. Enqueues to the SAME transactional
-        // pipeline with a FRESH message_id and a distinct label/idempotency_key,
-        // so it can never collide with — or trip the guards of — the live send.
+        // injected; unsubscribe neutralized. Sent SYNCHRONOUSLY (not enqueued) via
+        // the same transport as the live pipeline, with a FRESH message_id and a
+        // distinct label/idempotency_key, so it can never collide with — or trip
+        // the guards of — the live send, and delivery is confirmed immediately.
         // The outreach log is NOT read-locked, marked, or status-changed here.
         if (testSend) {
           // Fail-closed suppression check for the operator/test recipient itself.
@@ -294,33 +296,68 @@ export const Route = createFileRoute('/lovable/email/map-oracle/render')({
             queued_at: new Date().toISOString(),
           }
 
-          // Log + enqueue ONLY against the test template_name / operator recipient.
-          // Never inserts a prospect-keyed row, so prospect readiness is unaffected.
-          await supabase.from('email_send_log').insert({
-            message_id: testMessageId, template_name: TEST_TEMPLATE_NAME, recipient_email: TEST_RECIPIENT, status: 'pending',
-          })
-          const { data: pgmqMsgId, error: enqErr } = await supabase.rpc('enqueue_email', {
-            queue_name: 'transactional_emails', payload: testPayload,
-          })
-          if (enqErr) {
+          // ── Deliver the test SYNCHRONOUSLY to the operator inbox ────
+          // Send directly via the SAME transport the queue processor uses, rather
+          // than enqueuing. This makes the test independent of the dispatcher cron
+          // (which is what left earlier tests "queued but never delivered"), and
+          // returns a real delivered/failed result immediately — no status RPC and
+          // no polling required. Still test-only: distinct label + fresh
+          // message_id; the prospect is never contacted and the log is untouched.
+          const lovableApiKey = process.env.LOVABLE_API_KEY
+          if (!lovableApiKey) {
             await supabase.from('email_send_log').insert({
               message_id: testMessageId, template_name: TEST_TEMPLATE_NAME, recipient_email: TEST_RECIPIENT,
-              status: 'failed', error_message: 'enqueue failed (test)',
+              status: 'failed', error_message: 'LOVABLE_API_KEY not configured (test)',
             })
-            return json(500, { test: true, error: 'Failed to enqueue test email', message_id: testMessageId, outreach_log_id: log.id })
+            return json(500, {
+              test: true, delivered: false, message_id: testMessageId, to: TEST_RECIPIENT,
+              template_label: TEST_TEMPLATE_NAME, subject: testSubject, outreach_log_id: log.id,
+              error: 'Email transport not configured (LOVABLE_API_KEY missing) — cannot send test.',
+            })
           }
 
-          // Enqueued — NOT yet delivered. The dispatcher (queue processor) sends
-          // it asynchronously; the UI polls get_test_email_status(message_id) to
-          // confirm actual delivery. Trace IDs are returned for that polling and
-          // for queue/log inspection.
+          try {
+            await sendLovableEmail(
+              {
+                to: testPayload.to,
+                from: testPayload.from,
+                sender_domain: testPayload.sender_domain,
+                subject: testPayload.subject,
+                html: testPayload.html,
+                text: testPayload.text,
+                purpose: testPayload.purpose,
+                label: testPayload.label,
+                idempotency_key: testPayload.idempotency_key,
+                unsubscribe_token: testPayload.unsubscribe_token,
+                message_id: testPayload.message_id,
+              },
+              { apiKey: lovableApiKey, sendUrl: process.env.LOVABLE_SEND_URL }
+            )
+          } catch (sendErr) {
+            const detail = String((sendErr as Error)?.message || sendErr).slice(0, 500)
+            await supabase.from('email_send_log').insert({
+              message_id: testMessageId, template_name: TEST_TEMPLATE_NAME, recipient_email: TEST_RECIPIENT,
+              status: 'failed', error_message: `test send failed: ${detail}`.slice(0, 1000),
+            })
+            return json(502, {
+              test: true, delivered: false, message_id: testMessageId, to: TEST_RECIPIENT,
+              template_label: TEST_TEMPLATE_NAME, subject: testSubject, error: detail,
+              outreach_log_id: log.id, outreach_status: 'pending_render',
+              evidence, evidence_summary: evidenceSummary, verification_note: verificationNote,
+              note: 'Internal test FAILED to send to the operator inbox. Prospect NOT contacted; outreach log unchanged.',
+            })
+          }
+
+          // Delivered. Record a 'sent' row (test template_name + operator recipient).
+          await supabase.from('email_send_log').insert({
+            message_id: testMessageId, template_name: TEST_TEMPLATE_NAME, recipient_email: TEST_RECIPIENT, status: 'sent',
+          })
+
           return json(200, {
             test: true,
-            queued: true,
-            delivered: false, // delivery is confirmed later via the status poll, not here
+            delivered: true, // sent synchronously — confirmed, not merely queued
             to: TEST_RECIPIENT,
             message_id: testMessageId,
-            pgmq_msg_id: typeof pgmqMsgId === 'number' ? pgmqMsgId : (pgmqMsgId != null ? Number(pgmqMsgId) : null),
             template_label: TEST_TEMPLATE_NAME,
             subject: testSubject,
             outreach_log_id: log.id,
@@ -329,7 +366,7 @@ export const Route = createFileRoute('/lovable/email/map-oracle/render')({
             evidence,
             evidence_summary: evidenceSummary,
             verification_note: verificationNote,
-            note: 'Internal test ENQUEUED to the operator inbox only (not yet delivered). Prospect NOT contacted; outreach log unchanged; unsubscribe link inert.',
+            note: 'Internal test DELIVERED to the operator inbox only. Prospect NOT contacted; outreach log unchanged; unsubscribe link inert.',
           })
         }
 

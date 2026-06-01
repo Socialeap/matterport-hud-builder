@@ -109,7 +109,6 @@ function AdminMapOracleOutreach() {
     businessName: string;
     to: string;
     messageId: string;
-    pgmqMsgId: number | null;
     label: string;
     subject: string;
     phase: TestPhase;
@@ -241,69 +240,32 @@ function AdminMapOracleOutreach() {
       }
     });
 
-  // Poll the admin-gated status RPC to confirm whether the test was ACTUALLY
-  // delivered (vs merely enqueued). Distinguishes pending / sent / failed / dlq,
-  // and falls back to a clear timeout. Runs out-of-band so the row isn't locked.
-  const pollTestStatus = async (messageId: string) => {
-    const deadlineMs = Date.now() + 30_000;
-    let sawRpcError = false;
-    while (Date.now() < deadlineMs) {
-      await new Promise((res) => setTimeout(res, 2500));
-      const { data, error: rpcErr } = await sbAny.rpc("get_test_email_status", { p_message_id: messageId });
-      if (rpcErr) { sawRpcError = true; continue; }
-      sawRpcError = false;
-      const row = Array.isArray(data) ? data[0] : data;
-      const st = (row?.resolved_status as string | undefined) ?? "unknown";
-      if (st === "sent") {
-        setTestStatus((p) => (p && p.messageId === messageId ? { ...p, phase: "sent" } : p));
-        toast.success(`Test delivered to ${TEST_RECIPIENT}.`);
-        return;
-      }
-      if (st === "failed" || st === "dlq" || st === "suppressed") {
-        setTestStatus((p) => (p && p.messageId === messageId
-          ? { ...p, phase: st as TestPhase, detail: (row?.last_error as string | null) ?? null } : p));
-        toast.error(`Test ${st}. message_id ${messageId}`);
-        return;
-      }
-      // pending / unknown → keep waiting, reflect progress
-      setTestStatus((p) => (p && p.messageId === messageId ? { ...p, phase: "pending" } : p));
-    }
-    // No terminal status within the window.
-    setTestStatus((p) => (p && p.messageId === messageId
-      ? {
-          ...p,
-          phase: sawRpcError ? "error" : "timeout",
-          detail: sawRpcError ? "Could not read delivery status (is the status migration applied?)." : null,
-        }
-      : p));
-    toast.warning(`Test still queued after 30s. message_id ${messageId} — inspect queue/logs.`);
-  };
-
-  // Send test to admin: deliver the SAME email to the operator inbox only, then
-  // confirm actual delivery. The prospect is never contacted; row stays pending_render.
+  // Send test to admin: the server route delivers the SAME email SYNCHRONOUSLY to
+  // the operator inbox and returns a real delivered/failed result — no enqueue, no
+  // status RPC, no polling. The prospect is never contacted; row stays pending_render.
   const testSend = (r: ReadinessRow) =>
     withBusy(r.property_id, async () => {
       const j = await renderCall(r, { testSend: true });
-      if (!(j?.test && j?.queued)) {
+      if (!j?.test) {
         if (j?.reason) toast.warning(`Test not sent: ${j.reason}`);
         else toast.error(j?.error || "Test send failed");
         return;
       }
       const messageId = String(j.message_id ?? "");
+      const delivered = j.delivered === true;
       setTestStatus({
         businessName: r.business_name ?? "candidate",
         to: j.to ?? TEST_RECIPIENT,
         messageId,
-        pgmqMsgId: typeof j.pgmq_msg_id === "number" ? j.pgmq_msg_id : null,
         label: j.template_label ?? "map-oracle-preview-offer-test",
         subject: j.subject ?? "",
-        phase: "queued",
+        phase: delivered ? "sent" : "failed",
+        detail: delivered ? null : (j.error ?? "send failed"),
         evidenceSummary: j.evidence_summary ?? null,
         verificationNote: j.verification_note ?? null,
       });
-      toast.success("Test queued (not yet delivered) — confirming delivery…");
-      // Out-of-band: don't keep the row busy for the whole 30s poll window.
-      if (messageId) void pollTestStatus(messageId);
+      if (delivered) toast.success(`Test delivered to ${j.to ?? TEST_RECIPIENT}.`);
+      else toast.error(`Test send failed: ${j.error ?? "unknown error"}`);
     });
 
   // Send to prospect: the live send (one row, confirmed). Unchanged.
@@ -342,9 +304,9 @@ function AdminMapOracleOutreach() {
           <p className="mt-1 text-sm text-muted-foreground">
             One-at-a-time: <strong>Find email</strong> (scans the website — never sends) → Promote → Create pending → Preview →
             {" "}<strong>Send test to admin</strong> → <strong>Send to prospect</strong>.
-            “Preview” and “Send test to admin” never contact the business — the test copy goes only to{" "}
-            <span className="font-mono">{TEST_RECIPIENT}</span>, and its actual delivery is tracked (queued → delivered) in the
-            panel that appears. Only “Send to prospect” emails the business, and it always asks for confirmation.
+            “Preview” and “Send test to admin” never contact the business — the test copy is sent immediately and only to{" "}
+            <span className="font-mono">{TEST_RECIPIENT}</span>, and the panel that appears confirms actual delivery (or the exact
+            send error). Only “Send to prospect” emails the business, and it always asks for confirmation.
             Already-sent candidates can’t be re-sent.
           </p>
         </div>
@@ -619,14 +581,14 @@ function AdminMapOracleOutreach() {
             </div>
 
             {testStatus.phase === "sent" ? (
-              <p className="mt-2 text-xs text-green-800">Test delivered to <span className="font-mono">{testStatus.to}</span>. The prospect was not contacted.</p>
+              <p className="mt-2 text-xs text-green-800">Test delivered to <span className="font-mono">{testStatus.to}</span>. The prospect was not contacted. (Check spam if it isn't in the inbox.)</p>
             ) : (testStatus.phase === "timeout" || testStatus.phase === "error" || testStatus.phase === "failed" || testStatus.phase === "dlq" || testStatus.phase === "suppressed") ? (
-              <p className="mt-2 text-xs text-muted-foreground">
-                Not confirmed delivered. {testStatus.detail ? <span>{testStatus.detail} </span> : null}
-                Share the message id below with Lovable to inspect the queue/logs.
+              <p className="mt-2 text-xs text-red-700">
+                Not delivered. {testStatus.detail ? <span>{testStatus.detail} </span> : null}
+                Share the message id and error below with Lovable to inspect the send logs.
               </p>
             ) : (
-              <p className="mt-2 text-xs text-muted-foreground">Enqueued to the operator inbox only — confirming delivery…</p>
+              <p className="mt-2 text-xs text-muted-foreground">Sending to the operator inbox only…</p>
             )}
 
             {(testStatus.evidenceSummary || testStatus.verificationNote) && (
@@ -638,7 +600,6 @@ function AdminMapOracleOutreach() {
 
             <dl className="mt-3 space-y-1 rounded bg-muted/50 p-2 text-[11px]">
               <div className="flex justify-between gap-2"><dt className="text-muted-foreground">message_id</dt><dd className="break-all font-mono text-foreground">{testStatus.messageId}</dd></div>
-              <div className="flex justify-between gap-2"><dt className="text-muted-foreground">pgmq_msg_id</dt><dd className="font-mono text-foreground">{testStatus.pgmqMsgId ?? "—"}</dd></div>
               <div className="flex justify-between gap-2"><dt className="text-muted-foreground">recipient</dt><dd className="font-mono text-foreground">{testStatus.to}</dd></div>
               <div className="flex justify-between gap-2"><dt className="text-muted-foreground">template</dt><dd className="font-mono text-foreground">{testStatus.label}</dd></div>
               <div className="flex flex-col gap-0.5"><dt className="text-muted-foreground">subject</dt><dd className="text-foreground">{testStatus.subject}</dd></div>
