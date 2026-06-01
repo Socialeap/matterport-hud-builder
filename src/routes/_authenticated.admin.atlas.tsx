@@ -190,7 +190,9 @@ function AdminAtlas() {
       longitude: num(form.longitude),
     });
     if (!parsed.success) {
-      toast.error(parsed.error.issues[0]?.message ?? "Validation failed");
+      const issue = parsed.error.issues[0];
+      const field = issue?.path?.join(".") ?? "field";
+      toast.error(`${field}: ${issue?.message ?? "Validation failed"}`);
       return;
     }
     if (form.status === "rejected" && !form.rejection_reason.trim()) {
