@@ -149,7 +149,7 @@ function AdminAtlasDemo() {
     setSaving(false);
     if (res.error) { toast.error(`Save failed: ${res.error.message}`); return; }
     toast.success(editing ? "Listing updated." : "Listing created.");
-    setForm(BLANK);
+    resetForm();
     await load();
   };
 
