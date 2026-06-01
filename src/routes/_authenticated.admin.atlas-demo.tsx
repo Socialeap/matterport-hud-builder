@@ -105,8 +105,13 @@ function AdminAtlasDemo() {
     else setLoading(false);
   }, [authLoading, isAdmin, load]);
 
+  // Persist in-progress form to localStorage so navigation away doesn't lose work.
+  useEffect(() => { saveDraft(form); }, [form]);
+
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm((f) => ({ ...f, [k]: v }));
   const editing = form.id !== null;
+
+  const resetForm = () => { setForm(BLANK); clearDraft(); };
 
   const startNew = () => setForm({ ...BLANK, sort_order: String(rows.length) });
   const startEdit = (r: AtlasDemoListing) => setForm({
