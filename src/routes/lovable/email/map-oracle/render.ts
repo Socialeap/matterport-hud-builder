@@ -43,8 +43,11 @@ const UNSUB_BASE = 'https://frontiers3d.com'
 const POSTAL = 'Transcendence Media, 1100 Peachtree St NE, Suite 200, Atlanta, GA 30309, USA'
 const TEMPLATE_NAME = 'map-oracle-preview-offer'
 // CTA destinations baked into the outreach email.
-const LEARN_MORE_URL = 'https://www.frontiers3d.com' // primary CTA — public explainer
-const REPLY_TO_EMAIL = 'info@transcendencemedia.com'  // secondary CTA — monitored inbox
+// DEMO_URL is the primary CTA ("See an example") — a REUSABLE demo/example, never
+// a per-lead mock-up. No dedicated public demo route is configured, so it points
+// at the public site; repoint here if a specific example tour is published.
+const DEMO_URL = 'https://www.frontiers3d.com'
+const REPLY_TO_EMAIL = 'info@transcendencemedia.com'  // reply CTA — monitored inbox
 
 // ── Internal test-send constants ────────────────────────────────────────────
 // A test send renders the EXACT same template/data as the live prospect send but
@@ -199,14 +202,47 @@ export const Route = createFileRoute('/lovable/email/map-oracle/render')({
           if (typeof url === 'string' && /^https:\/\//i.test(url)) previewImageUrl = url
         }
 
+        // Website detection (for the truthful "listing + website" claim).
+        let websiteDetected = false
+        if (log.property_id) {
+          const { data: contact } = await supabase
+            .from('property_contacts')
+            .select('website_url')
+            .eq('property_id', log.property_id)
+            .maybeSingle()
+          websiteDetected = typeof contact?.website_url === 'string' && contact.website_url.length > 0
+        }
+        const emailDetected = typeof recipient === 'string' && recipient.length > 0
+
+        // ── Evidence model ──────────────────────────────────────────
+        // What we ACTUALLY know. The email may only claim what a flag backs. The
+        // pipeline does not verify any indoor Street View / photosphere / panorama
+        // / virtual-tour / Matterport-embed signal, so every 360-specific flag is
+        // FALSE here. A future verification step can set them and the copy adapts.
+        const evidence = {
+          listing_detected: true,                  // candidate came from a Google Places listing
+          website_detected: websiteDetected,
+          photo_detected: previewImageUrl !== null,
+          indoor_360_verified: false,              // not checked by the pipeline
+          virtual_tour_url_detected: false,        // not checked by the pipeline
+          matterport_or_360_embed_detected: false, // not checked by the pipeline
+        }
+        const evidenceParts = ['Google Places listing']
+        if (evidence.website_detected) evidenceParts.push('website')
+        if (emailDetected) evidenceParts.push('public email')
+        if (evidence.photo_detected) evidenceParts.push('public photo')
+        const evidenceSummary = `Evidence: ${evidenceParts.join(' + ')}`
+        const verificationNote = '360 verification: not checked / not verified'
+
         const templateData = {
           businessName: beacon.name,
           city: cityDisplay,
           unsubscribeUrl: realUnsubUrl,
           physicalAddress: POSTAL,
-          learnMoreUrl: LEARN_MORE_URL,
+          demoUrl: DEMO_URL,
           replyToEmail: REPLY_TO_EMAIL,
           previewImageUrl,
+          evidence,
         }
 
         // ── TEST SEND: deliver ONLY to the operator inbox ───────────
@@ -290,6 +326,9 @@ export const Route = createFileRoute('/lovable/email/map-oracle/render')({
             outreach_log_id: log.id,
             outreach_status: 'pending_render', // unchanged — proven, not mutated
             beacon_unsubscribed: beacon.status === 'unsubscribed',
+            evidence,
+            evidence_summary: evidenceSummary,
+            verification_note: verificationNote,
             note: 'Internal test ENQUEUED to the operator inbox only (not yet delivered). Prospect NOT contacted; outreach log unchanged; unsubscribe link inert.',
           })
         }
@@ -342,6 +381,9 @@ export const Route = createFileRoute('/lovable/email/map-oracle/render')({
               html_bytes: html.length,
               html, text,
               html_head: html.slice(0, 300), text_head: text.slice(0, 300),
+              evidence,
+              evidence_summary: evidenceSummary,
+              verification_note: verificationNote,
             },
           })
         }
