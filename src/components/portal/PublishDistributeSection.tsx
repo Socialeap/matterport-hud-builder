@@ -20,6 +20,7 @@ export interface PublishInterceptor {
   clear: () => void;
   consume: (blob: Blob) => Promise<boolean>;
 }
+import { AtlasOptInCard } from "./AtlasOptInCard";
 import { QRCodeCanvas } from "qrcode.react";
 import {
   Check,
@@ -717,6 +718,14 @@ export const PublishDistributeSection = forwardRef<
             </p>
           </div>
         </div>
+      )}
+
+      {liveUrl && (
+        <AtlasOptInCard
+          liveUrl={liveUrl}
+          propertyName={propertyName}
+          accentColor={accentColor}
+        />
       )}
     </div>
   );
