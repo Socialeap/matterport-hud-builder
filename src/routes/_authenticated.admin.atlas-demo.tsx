@@ -41,6 +41,38 @@ const BLANK: FormState = {
   latitude: "", longitude: "", tags: "", is_active: true, sort_order: "0",
 };
 
+const DRAFT_KEY = "3dps:atlas-demo:form-draft";
+
+function loadDraft(): FormState {
+  if (typeof window === "undefined") return BLANK;
+  try {
+    const raw = window.localStorage.getItem(DRAFT_KEY);
+    if (!raw) return BLANK;
+    const parsed = JSON.parse(raw) as Partial<FormState>;
+    return { ...BLANK, ...parsed };
+  } catch {
+    return BLANK;
+  }
+}
+
+function saveDraft(state: FormState): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(DRAFT_KEY, JSON.stringify(state));
+  } catch {
+    /* ignore quota errors */
+  }
+}
+
+function clearDraft(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(DRAFT_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 const inputCls = "w-full rounded-md border border-border bg-background px-3 py-2 text-sm";
 const labelCls = "text-xs font-medium text-muted-foreground";
 
@@ -51,7 +83,7 @@ function AdminAtlasDemo() {
   const [rows, setRows] = useState<AtlasDemoListing[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState<FormState>(BLANK);
+  const [form, setForm] = useState<FormState>(() => loadDraft());
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -73,8 +105,13 @@ function AdminAtlasDemo() {
     else setLoading(false);
   }, [authLoading, isAdmin, load]);
 
+  // Persist in-progress form to localStorage so navigation away doesn't lose work.
+  useEffect(() => { saveDraft(form); }, [form]);
+
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm((f) => ({ ...f, [k]: v }));
   const editing = form.id !== null;
+
+  const resetForm = () => { setForm(BLANK); clearDraft(); };
 
   const startNew = () => setForm({ ...BLANK, sort_order: String(rows.length) });
   const startEdit = (r: AtlasDemoListing) => setForm({
@@ -112,7 +149,7 @@ function AdminAtlasDemo() {
     setSaving(false);
     if (res.error) { toast.error(`Save failed: ${res.error.message}`); return; }
     toast.success(editing ? "Listing updated." : "Listing created.");
-    setForm(BLANK);
+    resetForm();
     await load();
   };
 
@@ -120,7 +157,7 @@ function AdminAtlasDemo() {
     if (typeof window !== "undefined" && !window.confirm(`Delete “${r.title}”? This cannot be undone.`)) return;
     const { error: err } = await sbAny.from("atlas_demo_listings").delete().eq("id", r.id);
     if (err) toast.error(`Delete failed: ${err.message}`);
-    else { toast.success("Listing deleted."); if (form.id === r.id) setForm(BLANK); await load(); }
+    else { toast.success("Listing deleted."); if (form.id === r.id) resetForm(); await load(); }
   };
 
   const toggleActive = async (r: AtlasDemoListing) => {
@@ -166,7 +203,7 @@ function AdminAtlasDemo() {
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold">{editing ? "Edit listing" : "New listing"}</h2>
           {editing && (
-            <button onClick={() => setForm(BLANK)} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+            <button onClick={() => resetForm()} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
               <X className="size-3.5" /> Cancel edit
             </button>
           )}
@@ -232,7 +269,7 @@ function AdminAtlasDemo() {
           </label>
         </div>
         <div className="mt-4 flex justify-end gap-2">
-          {editing && <Button variant="outline" size="sm" onClick={() => setForm(BLANK)}>Cancel</Button>}
+          {editing && <Button variant="outline" size="sm" onClick={() => resetForm()}>Cancel</Button>}
           <Button size="sm" onClick={() => void save()} disabled={saving}>
             {saving ? "Saving…" : editing ? "Update listing" : "Create listing"}
           </Button>
