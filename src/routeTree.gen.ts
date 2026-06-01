@@ -18,6 +18,7 @@ import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as OpportunitiesRouteImport } from './routes/opportunities'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
+import { Route as AtlasRouteImport } from './routes/atlas'
 import { Route as AgentsRouteImport } from './routes/agents'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
@@ -59,6 +60,7 @@ import { Route as AuthenticatedAdminSettingsRouteImport } from './routes/_authen
 import { Route as AuthenticatedAdminServiceMatchesRouteImport } from './routes/_authenticated.admin.service-matches'
 import { Route as AuthenticatedAdminMapOracleOutreachRouteImport } from './routes/_authenticated.admin.map-oracle-outreach'
 import { Route as AuthenticatedAdminDoorwayCandidatesRouteImport } from './routes/_authenticated.admin.doorway-candidates'
+import { Route as AuthenticatedAdminAtlasDemoRouteImport } from './routes/_authenticated.admin.atlas-demo'
 import { Route as AuthenticatedAdminProviderIdRouteImport } from './routes/_authenticated.admin.$providerId'
 import { Route as AuthenticatedAgentDashboardWorkOrdersIndexRouteImport } from './routes/_authenticated.agent-dashboard.work-orders.index'
 import { Route as AuthenticatedAdminServiceMatchesIndexRouteImport } from './routes/_authenticated.admin.service-matches.index'
@@ -115,6 +117,11 @@ const LoginRoute = LoginRouteImport.update({
 const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
   id: '/forgot-password',
   path: '/forgot-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AtlasRoute = AtlasRouteImport.update({
+  id: '/atlas',
+  path: '/atlas',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AgentsRoute = AgentsRouteImport.update({
@@ -341,6 +348,12 @@ const AuthenticatedAdminDoorwayCandidatesRoute =
     path: '/doorway-candidates',
     getParentRoute: () => AuthenticatedAdminRoute,
   } as any)
+const AuthenticatedAdminAtlasDemoRoute =
+  AuthenticatedAdminAtlasDemoRouteImport.update({
+    id: '/atlas-demo',
+    path: '/atlas-demo',
+    getParentRoute: () => AuthenticatedAdminRoute,
+  } as any)
 const AuthenticatedAdminProviderIdRoute =
   AuthenticatedAdminProviderIdRouteImport.update({
     id: '/$providerId',
@@ -415,6 +428,7 @@ const AuthenticatedAdminServiceMatchesMatchTokenRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/agents': typeof AgentsRouteWithChildren
+  '/atlas': typeof AtlasRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/opportunities': typeof OpportunitiesRoute
@@ -438,6 +452,7 @@ export interface FileRoutesByFullPath {
   '/invite/$token': typeof InviteTokenRoute
   '/p/$slug': typeof PSlugRouteWithChildren
   '/admin/$providerId': typeof AuthenticatedAdminProviderIdRoute
+  '/admin/atlas-demo': typeof AuthenticatedAdminAtlasDemoRoute
   '/admin/doorway-candidates': typeof AuthenticatedAdminDoorwayCandidatesRoute
   '/admin/map-oracle-outreach': typeof AuthenticatedAdminMapOracleOutreachRoute
   '/admin/service-matches': typeof AuthenticatedAdminServiceMatchesRouteWithChildren
@@ -478,6 +493,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/agents': typeof AgentsRouteWithChildren
+  '/atlas': typeof AtlasRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/opportunities': typeof OpportunitiesRoute
@@ -498,6 +514,7 @@ export interface FileRoutesByTo {
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/invite/$token': typeof InviteTokenRoute
   '/admin/$providerId': typeof AuthenticatedAdminProviderIdRoute
+  '/admin/atlas-demo': typeof AuthenticatedAdminAtlasDemoRoute
   '/admin/doorway-candidates': typeof AuthenticatedAdminDoorwayCandidatesRoute
   '/admin/map-oracle-outreach': typeof AuthenticatedAdminMapOracleOutreachRoute
   '/admin/settings': typeof AuthenticatedAdminSettingsRoute
@@ -539,6 +556,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/agents': typeof AgentsRouteWithChildren
+  '/atlas': typeof AtlasRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/opportunities': typeof OpportunitiesRoute
@@ -562,6 +580,7 @@ export interface FileRoutesById {
   '/invite/$token': typeof InviteTokenRoute
   '/p/$slug': typeof PSlugRouteWithChildren
   '/_authenticated/admin/$providerId': typeof AuthenticatedAdminProviderIdRoute
+  '/_authenticated/admin/atlas-demo': typeof AuthenticatedAdminAtlasDemoRoute
   '/_authenticated/admin/doorway-candidates': typeof AuthenticatedAdminDoorwayCandidatesRoute
   '/_authenticated/admin/map-oracle-outreach': typeof AuthenticatedAdminMapOracleOutreachRoute
   '/_authenticated/admin/service-matches': typeof AuthenticatedAdminServiceMatchesRouteWithChildren
@@ -604,6 +623,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/agents'
+    | '/atlas'
     | '/forgot-password'
     | '/login'
     | '/opportunities'
@@ -627,6 +647,7 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/p/$slug'
     | '/admin/$providerId'
+    | '/admin/atlas-demo'
     | '/admin/doorway-candidates'
     | '/admin/map-oracle-outreach'
     | '/admin/service-matches'
@@ -667,6 +688,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/agents'
+    | '/atlas'
     | '/forgot-password'
     | '/login'
     | '/opportunities'
@@ -687,6 +709,7 @@ export interface FileRouteTypes {
     | '/email/unsubscribe'
     | '/invite/$token'
     | '/admin/$providerId'
+    | '/admin/atlas-demo'
     | '/admin/doorway-candidates'
     | '/admin/map-oracle-outreach'
     | '/admin/settings'
@@ -727,6 +750,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_authenticated'
     | '/agents'
+    | '/atlas'
     | '/forgot-password'
     | '/login'
     | '/opportunities'
@@ -750,6 +774,7 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/p/$slug'
     | '/_authenticated/admin/$providerId'
+    | '/_authenticated/admin/atlas-demo'
     | '/_authenticated/admin/doorway-candidates'
     | '/_authenticated/admin/map-oracle-outreach'
     | '/_authenticated/admin/service-matches'
@@ -792,6 +817,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   AgentsRoute: typeof AgentsRouteWithChildren
+  AtlasRoute: typeof AtlasRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   LoginRoute: typeof LoginRoute
   OpportunitiesRoute: typeof OpportunitiesRoute
@@ -885,6 +911,13 @@ declare module '@tanstack/react-router' {
       path: '/forgot-password'
       fullPath: '/forgot-password'
       preLoaderRoute: typeof ForgotPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/atlas': {
+      id: '/atlas'
+      path: '/atlas'
+      fullPath: '/atlas'
+      preLoaderRoute: typeof AtlasRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/agents': {
@@ -1174,6 +1207,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminDoorwayCandidatesRouteImport
       parentRoute: typeof AuthenticatedAdminRoute
     }
+    '/_authenticated/admin/atlas-demo': {
+      id: '/_authenticated/admin/atlas-demo'
+      path: '/atlas-demo'
+      fullPath: '/admin/atlas-demo'
+      preLoaderRoute: typeof AuthenticatedAdminAtlasDemoRouteImport
+      parentRoute: typeof AuthenticatedAdminRoute
+    }
     '/_authenticated/admin/$providerId': {
       id: '/_authenticated/admin/$providerId'
       path: '/$providerId'
@@ -1281,6 +1321,7 @@ const AuthenticatedAdminServiceMatchesRouteWithChildren =
 
 interface AuthenticatedAdminRouteChildren {
   AuthenticatedAdminProviderIdRoute: typeof AuthenticatedAdminProviderIdRoute
+  AuthenticatedAdminAtlasDemoRoute: typeof AuthenticatedAdminAtlasDemoRoute
   AuthenticatedAdminDoorwayCandidatesRoute: typeof AuthenticatedAdminDoorwayCandidatesRoute
   AuthenticatedAdminMapOracleOutreachRoute: typeof AuthenticatedAdminMapOracleOutreachRoute
   AuthenticatedAdminServiceMatchesRoute: typeof AuthenticatedAdminServiceMatchesRouteWithChildren
@@ -1290,6 +1331,7 @@ interface AuthenticatedAdminRouteChildren {
 
 const AuthenticatedAdminRouteChildren: AuthenticatedAdminRouteChildren = {
   AuthenticatedAdminProviderIdRoute: AuthenticatedAdminProviderIdRoute,
+  AuthenticatedAdminAtlasDemoRoute: AuthenticatedAdminAtlasDemoRoute,
   AuthenticatedAdminDoorwayCandidatesRoute:
     AuthenticatedAdminDoorwayCandidatesRoute,
   AuthenticatedAdminMapOracleOutreachRoute:
@@ -1423,6 +1465,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   AgentsRoute: AgentsRouteWithChildren,
+  AtlasRoute: AtlasRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
   LoginRoute: LoginRoute,
   OpportunitiesRoute: OpportunitiesRoute,

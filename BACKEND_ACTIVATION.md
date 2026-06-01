@@ -3193,3 +3193,56 @@ send pipeline). The `get_test_email_status` migration is now **obsolete** (left 
 `shakoure@transcendencemedia.com` within seconds with the `[TEST …]` subject + banner, and the
 panel reads **"Test delivered."** No console 404s. Prospect not contacted; row still
 `pending_render`.
+
+---
+
+## Atlas PR-0 — public Atlas Demo MVP, admin-managed registry (`/atlas`)
+
+> Appended by Atlas PR-0. **Backend activation REQUIRED: apply ONE additive migration.**
+> (Revised from the initial static-data cut to an admin-managed demo registry.)
+
+First credible public Atlas/demo destination, backed by an admin-managed registry of
+Frontiers3D-owned **sample** listings (each points at a hosted 3D presentation URL). No
+hard-coded listings in frontend code.
+
+**Backend (1 additive migration):** `20260609000000_atlas_demo_listings.sql`
+- New table `public.atlas_demo_listings` (title, address, city/region/country, latitude/longitude,
+  category, summary, `presentation_url`, hero_image_url, tags[], is_active, sort_order, timestamps).
+  Column names kept close to the future `atlas_entries` for a clean later migration.
+- RLS enabled. Policies: service_role (all); admins `has_role(auth.uid(),'admin')` (all);
+  **public SELECT only where `is_active = true`** (no public write path).
+- Grants: `anon` SELECT; `authenticated` SELECT/INSERT/UPDATE/DELETE (gated by the admin policy);
+  `service_role` ALL. Index on `(is_active, sort_order, created_at)`; `updated_at` trigger.
+- Additive only — does NOT touch agent_beacons, Map Oracle, outreach, Stripe/Track A, or any
+  existing table. No verification tokens, no URL crawling, no CPC.
+
+**Frontend:**
+- `src/lib/atlas-demo-data.ts` — `AtlasDemoListing` row type (close to `atlas_entries`) + category
+  labels/options. (Static sample array removed.)
+- `src/lib/atlas-demo.functions.ts` (new) — public read server fn `listActiveAtlasDemoListings`
+  (active rows only; resilient — returns empty if the table doesn't exist yet).
+- `src/routes/atlas.tsx` — public `/atlas` reads the registry via loader; map-like discovery + list;
+  **"Step Inside" opens the listing's hosted `presentation_url`** (iframe + "Open in new tab",
+  unmounts on close); graceful empty state.
+- `src/routes/_authenticated.admin.atlas-demo.tsx` (new) — admin-only CRUD UI (`/admin/atlas-demo`):
+  create/edit/activate/sort/delete listings, all fields above. Admin-gated by the admin layout +
+  RLS.
+- `src/routes/_authenticated.admin.tsx` — adds the "Atlas Demo" admin nav link.
+- `src/routeTree.gen.ts` — regenerated (`/atlas`, `/admin/atlas-demo`).
+
+**Truthfulness:** listings are clearly "Sample"; the viewer + copy state they are Frontiers3D
+sample Atlas listings, **not a specific business's tour and not a prospect-specific preview**.
+
+**Out of scope (deferred):** `atlas_entries` canonical model (PR-1), verification tokens (PR-2),
+dynamic map (PR-3), dashboards (PR-4), outreach CTA repoint (PR-5), analytics (PR-6),
+CPC/sponsored (PR-7). Outreach email CTA **unchanged**. No Stripe/Track A, no Map Oracle/outreach
+behavior change.
+
+**Activation:** **apply the migration** `20260609000000_atlas_demo_listings.sql`, then **deploy the
+frontend**. No secrets, no cron, no Edge Functions. (Regenerating Supabase TS types is optional —
+the code uses casts for the new table.) After activation, an admin adds listings at
+`/admin/atlas-demo`; the public `/atlas` then shows active ones.
+**Verify:** migration applied + RLS on; `/atlas` loads without auth (empty state until listings
+exist); an admin can create a listing at `/admin/atlas-demo` and it appears on `/atlas`; only
+`is_active = true` rows are publicly visible; "Step Inside" opens the hosted presentation and fully
+closes; no prospect email sent; no business-specific preview implied.
