@@ -152,7 +152,10 @@ function AtlasPage() {
       `,
         { closeButton: false, maxWidth: 260 },
       );
-      marker.on("click", () => setSelectedId(entry.id));
+      marker.on("click", () => {
+        setSelectedId(entry.id);
+        if (entry.presentation_url) setActive(entry);
+      });
       marker.addTo(layer);
       markers.set(entry.id, marker);
     });
