@@ -3107,3 +3107,51 @@ cron, no change to the live send or its guards.
 **Verify:** Preview/Test show **"PUBLIC BUSINESS LISTING FOUND"** (never "3D PRESENCE DETECTED")
 and the evidence basis with **360 = not verified**; no prospect email sent. No batch, no cron, no
 B4, no Stripe/billing, no Track A.
+
+---
+
+## Patch — Conversion-focused outreach copy (founder-voice; still evidence-gated)
+
+> Appended by the conversion-copy PR. **Not yet activated. No DB migration.**
+
+**Why:** the email explained Frontiers3D but lacked a sharp hook, business outcome, ROI frame,
+persuasive CTA, and proof. Rewritten as a concise founder/operator note — while keeping every
+claim gated by the `OutreachEvidence` model (no Street View / 360 / Matterport / virtual-tour /
+3D claim unless an explicit verified flag is set; 360 flags stay false).
+
+**Email template (`map-oracle-preview-offer`):**
+- Subject → **"Help guests picture {business} before they visit"** (founder voice; no 3D claim).
+- Hook → *"Most guests start deciding before they ever walk through your front door."*
+- Personalized observation uses only known evidence: *"We found {business}'s public business
+  listing[ and website]…"* (the "+ website" clause is gated on `website_detected`).
+- Value + 5 outcome bullets (atmosphere/layout/rooms/patios/event spaces; "is this the right
+  place for us?"; reservations/private events/group visits; reusable website/Google/social/sales
+  asset; stand out vs photo-only competitors).
+- **Carefully-hedged proof/ROI note** (rendered as muted fine print): "industry signals suggest";
+  Google Business Profiles; Matterport "300% more engaged with 3D tours than 2D imagery"; explicit
+  *"we can't promise a specific result"* + the one-additional-inquiry business-case frame.
+- **No per-lead custom preview/mock-up.** Primary CTA **"See an example"** → reusable demo URL
+  (`DEMO_URL`, currently the public site; repoint when a specific example tour is published).
+- Reply CTA: *reply "interested"* (prefilled `mailto:` to `info@transcendencemedia.com`).
+- Conditional both-ways offer ("if you already have a compatible tour or 360 imagery… if not, we
+  can connect you with a local capture provider"). Closer line. No hype words. No implication that
+  Frontiers3D auto-builds from Google Maps imagery.
+- **Visual module:** real cached photo → caption "Public listing image"; otherwise a NEUTRAL
+  "PUBLIC LISTING[ + WEBSITE] FOUND" callout (never "3D/Street View/virtual tour detected").
+- CAN-SPAM footer, sender identity, postal address, and unsubscribe preserved.
+
+**Render route:** CTA constant `LEARN_MORE_URL` → `DEMO_URL`; passes `demoUrl` to the template
+(replaces `learnMoreUrl`). Evidence computation + dryRun/testSend evidence fields unchanged.
+
+**Test-send unchanged & intact:** same template rendered to the operator inbox with the visible
+TEST banner; the UI still polls and confirms **actual delivery** (not just queued); the prospect
+is never contacted and the row stays `pending_render`.
+
+**Activation:** deploy the frontend (the render route ships with it). No migration, no secret, no
+cron, no change to the live send or its guards.
+**Verify (standalone render, 35 assertions):** founder-voice subject; hook/observation/value/
+bullets/ROI/offer/closer present; **no** "3D presence detected / Street View / virtual tour found";
+neutral listing callout that drops "+ WEBSITE" when none; **no** "free preview / prepare your /
+build you a" per-lead language; CTA "See an example" → demo URL; reply-"interested" mailto;
+360 line appears ONLY when a flag is verified; no hype words; CAN-SPAM intact. No prospect email
+sent. No batch, no cron, no B4, no Stripe/billing, no Track A.

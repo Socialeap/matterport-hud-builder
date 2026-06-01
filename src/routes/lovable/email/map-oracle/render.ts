@@ -43,8 +43,11 @@ const UNSUB_BASE = 'https://frontiers3d.com'
 const POSTAL = 'Transcendence Media, 1100 Peachtree St NE, Suite 200, Atlanta, GA 30309, USA'
 const TEMPLATE_NAME = 'map-oracle-preview-offer'
 // CTA destinations baked into the outreach email.
-const LEARN_MORE_URL = 'https://www.frontiers3d.com' // primary CTA — public explainer
-const REPLY_TO_EMAIL = 'info@transcendencemedia.com'  // secondary CTA — monitored inbox
+// DEMO_URL is the primary CTA ("See an example") — a REUSABLE demo/example, never
+// a per-lead mock-up. No dedicated public demo route is configured, so it points
+// at the public site; repoint here if a specific example tour is published.
+const DEMO_URL = 'https://www.frontiers3d.com'
+const REPLY_TO_EMAIL = 'info@transcendencemedia.com'  // reply CTA — monitored inbox
 
 // ── Internal test-send constants ────────────────────────────────────────────
 // A test send renders the EXACT same template/data as the live prospect send but
@@ -236,7 +239,7 @@ export const Route = createFileRoute('/lovable/email/map-oracle/render')({
           city: cityDisplay,
           unsubscribeUrl: realUnsubUrl,
           physicalAddress: POSTAL,
-          learnMoreUrl: LEARN_MORE_URL,
+          demoUrl: DEMO_URL,
           replyToEmail: REPLY_TO_EMAIL,
           previewImageUrl,
           evidence,
