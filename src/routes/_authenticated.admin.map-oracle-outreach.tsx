@@ -5,12 +5,16 @@ import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import {
-  RefreshCw, ShieldAlert, AlertTriangle, Globe, Search, Megaphone, FilePlus2, Eye, Send, MapPinned,
+  RefreshCw, ShieldAlert, AlertTriangle, Globe, Search, Megaphone, FilePlus2, Eye, Send, FlaskConical, MapPinned,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/admin/map-oracle-outreach")({
   component: AdminMapOracleOutreach,
 });
+
+// Hard-coded operator inbox for internal test sends. A test send delivers ONLY
+// here (never to the prospect) and does not change the outreach row.
+const TEST_RECIPIENT = "shakoure@transcendencemedia.com";
 
 interface ReadinessRow {
   property_id: string;
@@ -74,7 +78,17 @@ function AdminMapOracleOutreach() {
   const [confirmState, setConfirmState] = useState<
     { label: string; warn?: string; run: () => Promise<void> } | null
   >(null);
-  const [preview, setPreview] = useState<{ title: string; body: string } | null>(null);
+  const [preview, setPreview] = useState<{
+    businessName: string;
+    to: string | null;
+    from: string | null;
+    senderDomain: string | null;
+    subject: string | null;
+    unsubscribeUrl: string | null;
+    unsubscribeToken: string | null;
+    html: string;
+    text: string;
+  } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -159,7 +173,7 @@ function AdminMapOracleOutreach() {
       }
     });
 
-  const renderCall = async (r: ReadinessRow, dryRun: boolean) => {
+  const renderCall = async (r: ReadinessRow, extra: Record<string, unknown>) => {
     const token = await sessionToken();
     if (!token) {
       toast.error("No active session.");
@@ -168,31 +182,54 @@ function AdminMapOracleOutreach() {
     const res = await fetch("/lovable/email/map-oracle/render", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ outreach_log_id: r.outreach_log_id, dryRun }),
+      body: JSON.stringify({ outreach_log_id: r.outreach_log_id, ...extra }),
     });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (await res.json().catch(() => null)) as Record<string, any> | null;
   };
 
+  // Preview: render the EXACT live email and show it (no enqueue, no send).
   const dryRun = (r: ReadinessRow) =>
     withBusy(r.property_id, async () => {
-      const j = await renderCall(r, true);
+      const j = await renderCall(r, { dryRun: true });
       if (j?.dryRun) {
         const p = j.preview ?? {};
         setPreview({
-          title: `Preview — ${r.business_name ?? "candidate"} (not sent)`,
-          body: `Subject: ${p.subject}\nTo: ${p.to}\nFrom: ${p.from}\nUnsubscribe token: ${p.unsubscribe_token}\nHTML bytes: ${p.html_bytes}\n\n${p.html_head ?? ""}…`,
+          businessName: r.business_name ?? "candidate",
+          to: p.to ?? null,
+          from: p.from ?? null,
+          senderDomain: p.sender_domain ?? null,
+          subject: p.subject ?? null,
+          unsubscribeUrl: p.unsubscribe_url ?? null,
+          unsubscribeToken: p.unsubscribe_token ?? null,
+          html: p.html ?? "",
+          text: p.text ?? "",
         });
       } else {
-        toast.error(j?.error || j?.reason || "Dry-run failed");
+        toast.error(j?.error || j?.reason || "Preview failed");
       }
     });
 
+  // Send test to admin: deliver the SAME email to the operator inbox only.
+  // The prospect is never contacted and the outreach row stays pending_render.
+  const testSend = (r: ReadinessRow) =>
+    withBusy(r.property_id, async () => {
+      const j = await renderCall(r, { testSend: true });
+      if (j?.test && j?.queued) {
+        toast.success(`Test sent to ${j.to ?? TEST_RECIPIENT}. Prospect NOT contacted; row unchanged.`);
+      } else if (j?.reason) {
+        toast.warning(`Test not sent: ${j.reason}`);
+      } else {
+        toast.error(j?.error || "Test send failed");
+      }
+    });
+
+  // Send to prospect: the live send (one row, confirmed). Unchanged.
   const sendOne = (r: ReadinessRow) =>
     withBusy(r.property_id, async () => {
-      const j = await renderCall(r, false);
+      const j = await renderCall(r, { dryRun: false });
       if (j?.success) {
-        toast.success("Outreach enqueued (one email).");
+        toast.success("Outreach enqueued (one email to the prospect).");
         await load();
       } else {
         toast.error(j?.error || j?.reason || "Send failed");
@@ -221,8 +258,11 @@ function AdminMapOracleOutreach() {
             Map Oracle — Outreach Operator
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            One-at-a-time: <strong>Find email</strong> (scans the website — never sends) → Promote → Create pending → Preview → <strong>Send</strong>.
-            Only “Send” emails anyone, and it always asks for confirmation. Already-sent candidates can’t be re-sent.
+            One-at-a-time: <strong>Find email</strong> (scans the website — never sends) → Promote → Create pending → Preview →
+            {" "}<strong>Send test to admin</strong> → <strong>Send to prospect</strong>.
+            “Preview” and “Send test to admin” never contact the business — the test copy goes only to{" "}
+            <span className="font-mono">{TEST_RECIPIENT}</span>. Only “Send to prospect” emails the business, and it always asks for
+            confirmation. Already-sent candidates can’t be re-sent.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
@@ -328,16 +368,22 @@ function AdminMapOracleOutreach() {
                         )}
                         {status === "pending_render" && (
                           <>
-                            <Button size="sm" variant="outline" disabled={isBusy} onClick={() => void dryRun(r)}>
+                            <Button size="sm" variant="outline" disabled={isBusy} onClick={() => void dryRun(r)}
+                              title="Renders the exact email and shows it here. Sends nothing.">
                               <Eye className="mr-1 size-3.5" /> Preview
                             </Button>
+                            <Button size="sm" variant="outline" disabled={isBusy} onClick={() => void testSend(r)}
+                              title={`Delivers a copy of this email only to ${TEST_RECIPIENT}. The prospect is NOT contacted and this row stays pending.`}>
+                              <FlaskConical className="mr-1 size-3.5" /> Send test to admin
+                            </Button>
                             <Button size="sm" disabled={isBusy}
+                              title="Sends ONE real email to the prospect. Requires confirmation."
                               onClick={() => setConfirmState({
-                                label: `Send ONE outreach email to ${r.email}?`,
-                                warn: "This enqueues a real email that the dispatcher will deliver. It cannot be undone, and this candidate cannot be re-sent.",
+                                label: `Send ONE outreach email to the prospect ${r.email}?`,
+                                warn: "This enqueues a real email to the BUSINESS that the dispatcher will deliver. It cannot be undone, and this candidate cannot be re-sent. (Use “Send test to admin” first if you only want to preview delivery.)",
                                 run: () => sendOne(r),
                               })}>
-                              <Send className="mr-1 size-3.5" /> Send
+                              <Send className="mr-1 size-3.5" /> Send to prospect
                             </Button>
                           </>
                         )}
@@ -372,13 +418,60 @@ function AdminMapOracleOutreach() {
         </div>
       )}
 
-      {/* Dry-run preview modal */}
+      {/* Preview modal — renders the EXACT live email; nothing is sent */}
       {preview && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-2xl rounded-lg border border-border bg-card p-6 shadow-lg">
-            <h3 className="text-lg font-semibold text-foreground">{preview.title}</h3>
-            <pre className="mt-3 max-h-[60vh] overflow-auto whitespace-pre-wrap rounded bg-muted/50 p-3 text-xs text-foreground">{preview.body}</pre>
-            <div className="mt-4 flex justify-end">
+          <div className="flex max-h-[90vh] w-full max-w-3xl flex-col rounded-lg border border-border bg-card shadow-lg">
+            {/* NOT SENT banner */}
+            <div className="flex items-center gap-2 rounded-t-lg border-b border-amber-300 bg-amber-50 px-5 py-3 text-amber-900">
+              <Eye className="size-4 shrink-0" />
+              <span className="text-sm font-semibold">Preview only — NOT SENT. No email was delivered to anyone.</span>
+            </div>
+
+            <div className="overflow-y-auto px-5 py-4">
+              <h3 className="text-base font-semibold text-foreground">{preview.businessName} — outreach preview</h3>
+
+              {/* Headers / metadata */}
+              <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+                <dt className="font-medium text-muted-foreground">Subject</dt>
+                <dd className="text-foreground">{preview.subject ?? "—"}</dd>
+                <dt className="font-medium text-muted-foreground">To (prospect)</dt>
+                <dd className="font-mono text-foreground">{preview.to ?? "—"}</dd>
+                <dt className="font-medium text-muted-foreground">From</dt>
+                <dd className="text-foreground">{preview.from ?? "—"}</dd>
+                <dt className="font-medium text-muted-foreground">Sender domain</dt>
+                <dd className="text-foreground">{preview.senderDomain ?? "—"}</dd>
+                <dt className="font-medium text-muted-foreground">Unsubscribe</dt>
+                <dd className="break-all text-foreground">
+                  {preview.unsubscribeUrl ?? "—"}
+                  {preview.unsubscribeToken && (
+                    <span className="text-muted-foreground"> (token: {preview.unsubscribeToken})</span>
+                  )}
+                </dd>
+              </dl>
+
+              {/* Rendered HTML — sandboxed iframe so links/scripts are inert */}
+              <div className="mt-4">
+                <div className="mb-1 text-xs font-medium text-muted-foreground">Rendered HTML</div>
+                <iframe
+                  title="Rendered email preview"
+                  sandbox=""
+                  srcDoc={preview.html}
+                  className="h-[50vh] w-full rounded border border-border bg-white"
+                />
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Links are disabled in this preview. Use “Send test to admin” to receive a live copy in your inbox.
+                </p>
+              </div>
+
+              {/* Plain-text fallback */}
+              <details className="mt-4">
+                <summary className="cursor-pointer text-xs font-medium text-muted-foreground">Plain-text fallback</summary>
+                <pre className="mt-2 max-h-60 overflow-auto whitespace-pre-wrap rounded bg-muted/50 p-3 text-xs text-foreground">{preview.text || "—"}</pre>
+              </details>
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-border px-5 py-3">
               <Button variant="outline" size="sm" onClick={() => setPreview(null)}>Close</Button>
             </div>
           </div>
