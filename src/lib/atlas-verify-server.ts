@@ -24,7 +24,7 @@ import {
   sha256,
   type PresentationTokenPayload,
 } from "./presentation-token-canonical";
-import type { AtlasEntry } from "./atlas-demo-data";
+import type { AtlasEntry, AtlasVerifyState } from "./atlas-demo-data";
 
 const MANIFEST_FILENAME = "atlas-manifest.json";
 const FETCH_TIMEOUT_MS = 5000;
@@ -309,6 +309,33 @@ export async function verifyAtlasToken(token: string): Promise<TokenVerifyResult
   if (recomputedHash !== row.token_hash) return { ok: false };
 
   return { ok: true, savedModelId: row.saved_model_id as string };
+}
+
+/**
+ * Run the full verification pipeline for a pasted live URL — fetch the manifest
+ * (SSRF-safe), verify the token, and confirm ownership — WITHOUT creating any
+ * row. Shared by the verify-only pre-check and the final verify-and-submit, so
+ * the final submit always re-verifies server-side (the client can't bypass it).
+ * Returns the terminal state and, on success, the owning saved_model id.
+ */
+export async function runAtlasVerification(
+  presentationUrl: string,
+  userId: string,
+): Promise<{ state: AtlasVerifyState; savedModelId: string | null }> {
+  const fetched = await fetchAtlasManifest(presentationUrl);
+  if (fetched.state === "fetch_failed") return { state: "fetch_failed", savedModelId: null };
+  if (fetched.state === "missing_manifest") return { state: "missing_manifest", savedModelId: null };
+
+  const token = extractManifestToken(fetched.manifest);
+  if (!token) return { state: "missing_manifest", savedModelId: null };
+
+  const tokenResult = await verifyAtlasToken(token);
+  if (!tokenResult.ok) return { state: "token_mismatch", savedModelId: null };
+
+  const owns = await userOwnsModel(tokenResult.savedModelId, userId);
+  if (!owns) return { state: "unverified", savedModelId: null };
+
+  return { state: "verified", savedModelId: tokenResult.savedModelId };
 }
 
 /** The verified token's saved_model must belong to the caller (client or provider). */

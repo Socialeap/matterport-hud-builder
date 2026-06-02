@@ -1,11 +1,11 @@
 /**
- * Atlas opt-in card shown inside the Listing Launch Kit (Publish &
- * Distribute) once the user has pasted their live presentation URL.
+ * Atlas listing-details form, shown in Publish & Distribute ONLY after the
+ * published URL has passed the verify-first gate in the parent section.
  *
- * Verification-first: "Verify & Submit" fetches `atlas-manifest.json` from the
- * published URL, verifies the opaque token belongs to the caller's presentation,
- * and only then activates the listing. An unverified URL creates no row — the
- * card surfaces the specific failure (missing manifest / mismatch / unreachable).
+ * Collects the listing-card fields and submits via `verifyAndSubmitAtlasEntry`,
+ * which RE-verifies the manifest server-side before activating (so a stale gate
+ * or direct call can't bypass verification). An unverified URL creates no row —
+ * the card surfaces the specific failure (missing manifest / mismatch / unreachable).
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
@@ -253,14 +253,13 @@ export function AtlasOptInCard({
         <div>
           <h3 className="flex items-center gap-2 text-base font-semibold text-foreground">
             <Globe2 className="size-5" style={{ color: accentColor }} />
-            Submit this presentation for Atlas visibility
+            Atlas listing details
           </h3>
           <p className="mt-1 text-xs text-muted-foreground">
-            The Atlas is the public discovery map at{" "}
-            <span className="font-medium text-foreground">/atlas</span>. We verify
-            your published presentation by checking this URL for its Frontiers3D
-            Atlas manifest — once <span className="font-medium text-foreground">verified</span>,
-            your entry appears publicly with a map pin and an embedded preview.
+            Your published presentation is verified. Add the details shown on your
+            public Atlas card at{" "}
+            <span className="font-medium text-foreground">/atlas</span> — submitting
+            publishes your listing with a map pin and an embedded preview.
           </p>
         </div>
         {badge && (
@@ -473,7 +472,7 @@ export function AtlasOptInCard({
           <div className="flex items-center gap-2">
             <Button type="submit" size="sm" disabled={submitting}>
               {submitting && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
-              {existing ? "Verify & Re-submit Atlas Listing" : "Verify & Submit Atlas Listing"}
+              {existing ? "Update Atlas Listing" : "Submit Atlas Listing"}
             </Button>
             {existing && (
               <Button

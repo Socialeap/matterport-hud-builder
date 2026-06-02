@@ -101,6 +101,50 @@ export const listMyAtlasEntries = createServerFn({ method: "GET" })
     return { entries: (data ?? []) as AtlasEntry[] };
   });
 
+// ── Verification ─────────────────────────────────────────────────────────────
+
+/** Shared user-facing copy per verification state (submit success copy differs). */
+const VERIFY_MESSAGES: Record<AtlasVerifyState, string> = {
+  verified:
+    "Verified. This published presentation has a valid Frontiers3D Atlas manifest.",
+  missing_manifest:
+    "Unverified: no valid Frontiers3D Atlas manifest was found at this URL.",
+  token_mismatch:
+    "Unverified. This published URL does not contain a valid Frontiers3D Atlas manifest.",
+  unverified:
+    "Unverified: this published presentation belongs to a different account.",
+  fetch_failed:
+    "We couldn't reach that URL to verify it. Make sure the presentation is published and publicly reachable over https, then try again.",
+};
+
+export interface AtlasVerifyCheckResponse {
+  result: AtlasVerifyState;
+  verified: boolean;
+  message: string;
+}
+
+/**
+ * Verify-only pre-check: fetch + verify the manifest at the pasted URL WITHOUT
+ * creating a row and WITHOUT requiring listing fields. Gates the UI so the
+ * listing form only opens after the URL is confirmed. Purely a UX gate — the
+ * final submit re-verifies server-side, so this never grants anything on its own.
+ */
+export const verifyAtlasUrl = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => z.object({ presentation_url: httpsUrl }).parse(input))
+  .handler(async ({ data, context }): Promise<AtlasVerifyCheckResponse> => {
+    const verify = await import("./atlas-verify-server");
+    const { state } = await verify.runAtlasVerification(
+      data.presentation_url,
+      context.userId,
+    );
+    return {
+      result: state,
+      verified: state === "verified",
+      message: VERIFY_MESSAGES[state],
+    };
+  });
+
 // ── Verification-first submit ────────────────────────────────────────────────
 
 export interface AtlasVerifyResponse {
@@ -110,70 +154,28 @@ export interface AtlasVerifyResponse {
 }
 
 /**
- * Verification-first Atlas submission. Fetches `atlas-manifest.json` from the
- * pasted live URL under SSRF protections, verifies the opaque `atlas_v1` token
- * against `presentation_tokens`, confirms the token's saved_model belongs to the
- * caller, and ONLY on success activates the entry. An unverified URL never
- * creates a row. All server-only logic (node:dns, crypto, service-role) lives in
- * the dynamically-imported `atlas-verify-server` so it stays out of the client.
+ * Verification-first Atlas submission. Re-verifies the manifest server-side
+ * (even when the UI already pre-checked via `verifyAtlasUrl`) and ONLY on
+ * success activates the entry. An unverified URL never creates a row. All
+ * server-only logic (node:dns, crypto, service-role) lives in the
+ * dynamically-imported `atlas-verify-server` so it stays out of the client.
  */
 export const verifyAndSubmitAtlasEntry = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) => atlasEntryInput.parse(input))
   .handler(async ({ data, context }): Promise<AtlasVerifyResponse> => {
     const verify = await import("./atlas-verify-server");
-
-    const fetched = await verify.fetchAtlasManifest(data.presentation_url);
-    if (fetched.state === "fetch_failed") {
-      return {
-        result: "fetch_failed",
-        entry: null,
-        message:
-          "We couldn't reach that URL to verify it. Make sure the presentation is published and publicly reachable over https, then try again.",
-      };
-    }
-    if (fetched.state === "missing_manifest") {
-      return {
-        result: "missing_manifest",
-        entry: null,
-        message:
-          "Unverified: no valid Frontiers3D Atlas manifest was found at this URL.",
-      };
-    }
-
-    const token = verify.extractManifestToken(fetched.manifest);
-    if (!token) {
-      return {
-        result: "missing_manifest",
-        entry: null,
-        message:
-          "Unverified: no valid Frontiers3D Atlas manifest was found at this URL.",
-      };
-    }
-
-    const tokenResult = await verify.verifyAtlasToken(token);
-    if (!tokenResult.ok) {
-      return {
-        result: "token_mismatch",
-        entry: null,
-        message:
-          "Unverified. This published URL does not contain a valid Frontiers3D Atlas manifest.",
-      };
-    }
-
-    const owns = await verify.userOwnsModel(tokenResult.savedModelId, context.userId);
-    if (!owns) {
-      return {
-        result: "unverified",
-        entry: null,
-        message:
-          "Unverified: this published presentation belongs to a different account.",
-      };
+    const { state, savedModelId } = await verify.runAtlasVerification(
+      data.presentation_url,
+      context.userId,
+    );
+    if (state !== "verified" || !savedModelId) {
+      return { result: state, entry: null, message: VERIFY_MESSAGES[state] };
     }
 
     const entry = await verify.activateVerifiedEntry({
       ownerUserId: context.userId,
-      savedModelId: tokenResult.savedModelId,
+      savedModelId,
       presentationUrl: data.presentation_url,
       fields: {
         title: data.title,
