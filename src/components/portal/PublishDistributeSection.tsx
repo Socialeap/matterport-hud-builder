@@ -32,11 +32,14 @@ import {
   QrCode,
   Rocket,
 } from "lucide-react";
+import { useServerFn } from "@tanstack/react-start";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
+import { verifyAtlasUrl } from "@/lib/atlas.functions";
+import type { AtlasVerifyState } from "@/lib/atlas-demo-data";
 
 interface PublishDistributeSectionProps {
   /** Used as a friendly slug for QR-PNG file names. Falls back to "presentation". */
@@ -237,13 +240,36 @@ export const PublishDistributeSection = forwardRef<
   const [urlInput, setUrlInput] = useState("");
   const [urlError, setUrlError] = useState<string | null>(null);
   const [liveUrl, setLiveUrl] = useState<string | null>(null);
-  // Atlas opt-in. Defaults on so the listing panel reveals automatically once a
-  // live URL exists (and any existing submission's status surfaces); the user can
-  // switch it off to skip Atlas. Forced visually off + disabled until a valid URL
-  // exists. Opting in only reveals the form — submission still requires an explicit
-  // "Verify & Submit" click, so nothing is published without intent.
+  // Atlas opt-in. Defaults on so the verify step reveals once a live URL exists;
+  // the user can switch it off to skip Atlas. Disabled until a valid URL exists.
   const [atlasOptIn, setAtlasOptIn] = useState(true);
   const atlasPanelOpen = Boolean(liveUrl) && atlasOptIn;
+  // Verify-first gate: the manifest at the live URL must verify BEFORE the
+  // listing form opens. "idle" = not checked, "checking" = in flight, otherwise
+  // the terminal AtlasVerifyState. Resets whenever the live URL changes.
+  const [atlasVerifyStatus, setAtlasVerifyStatus] =
+    useState<"idle" | "checking" | AtlasVerifyState>("idle");
+  const [atlasVerifyMsg, setAtlasVerifyMsg] = useState<string | null>(null);
+  const atlasVerified = atlasVerifyStatus === "verified";
+  const verifyAtlas = useServerFn(verifyAtlasUrl);
+
+  const handleVerifyAtlas = useCallback(async () => {
+    if (!liveUrl) return;
+    setAtlasVerifyStatus("checking");
+    setAtlasVerifyMsg(null);
+    try {
+      const res = await verifyAtlas({ data: { presentation_url: liveUrl } });
+      setAtlasVerifyStatus(res.result);
+      setAtlasVerifyMsg(res.message);
+      if (res.verified) toast.success(res.message);
+      else toast.error(res.message);
+    } catch (err) {
+      setAtlasVerifyStatus("fetch_failed");
+      const msg = err instanceof Error ? err.message : "Verification failed";
+      setAtlasVerifyMsg(msg);
+      toast.error(msg);
+    }
+  }, [liveUrl, verifyAtlas]);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -337,6 +363,9 @@ export const PublishDistributeSection = forwardRef<
     setUrlError(null);
     setUrlInput(normalized);
     setLiveUrl(normalized);
+    // A new URL must be re-verified before the listing form can open.
+    setAtlasVerifyStatus("idle");
+    setAtlasVerifyMsg(null);
   }, [urlInput]);
 
   const handleUrlChange = useCallback((value: string) => {
@@ -345,7 +374,11 @@ export const PublishDistributeSection = forwardRef<
     // Clear an existing kit if the agent edits the URL after generating —
     // forces a fresh "Generate Share Kit" click so links never drift out
     // of sync with the input field.
-    if (liveUrl) setLiveUrl(null);
+    if (liveUrl) {
+      setLiveUrl(null);
+      setAtlasVerifyStatus("idle");
+      setAtlasVerifyMsg(null);
+    }
   }, [urlError, liveUrl]);
 
   const handleCopy = useCallback(async (key: string, value: string) => {
@@ -756,7 +789,7 @@ export const PublishDistributeSection = forwardRef<
             </Label>
             <p className="mt-0.5 text-[11px] text-muted-foreground">
               {liveUrl
-                ? "Fill in a few listing details below to submit for Atlas verification."
+                ? "Verify your published presentation first — then add your listing details."
                 : "Paste your live presentation URL above to enable Atlas submission."}
             </p>
           </div>
@@ -769,13 +802,51 @@ export const PublishDistributeSection = forwardRef<
           />
         </div>
 
-        {atlasPanelOpen && liveUrl && (
-          <AtlasOptInCard
-            liveUrl={liveUrl}
-            propertyName={propertyName}
-            accentColor={accentColor}
-            savedModelId={savedModelId}
-          />
+        {/* Verify-first gate: confirm the manifest before any listing fields. */}
+        {atlasPanelOpen && liveUrl && !atlasVerified && (
+          <div className="space-y-2 rounded-md border bg-muted/10 p-3">
+            <p className="text-xs text-muted-foreground">
+              Verify this URL before adding listing details — we check{" "}
+              <span className="font-mono text-[11px] text-foreground/80">/atlas-manifest.json</span>{" "}
+              at your published presentation to confirm it's yours. No point filling out the
+              form for a URL that can't be listed.
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              className="gap-1.5 text-white"
+              style={{ backgroundColor: accentColor }}
+              onClick={handleVerifyAtlas}
+              disabled={atlasVerifyStatus === "checking"}
+            >
+              <Globe className="size-4" />
+              {atlasVerifyStatus === "checking"
+                ? "Verifying…"
+                : "Verify published presentation"}
+            </Button>
+            {atlasVerifyStatus !== "idle" &&
+              atlasVerifyStatus !== "checking" &&
+              atlasVerifyMsg && (
+                <p className="text-xs text-destructive">{atlasVerifyMsg}</p>
+              )}
+          </div>
+        )}
+
+        {/* Verified → reveal the listing-details form. */}
+        {atlasPanelOpen && liveUrl && atlasVerified && (
+          <>
+            <div className="flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/5 p-2.5 text-xs text-emerald-700 dark:text-emerald-300">
+              <Check className="size-4 shrink-0" />
+              Verified — this presentation has a valid Atlas manifest. Add your listing
+              details below.
+            </div>
+            <AtlasOptInCard
+              liveUrl={liveUrl}
+              propertyName={propertyName}
+              accentColor={accentColor}
+              savedModelId={savedModelId}
+            />
+          </>
         )}
       </div>
     </div>
