@@ -170,8 +170,11 @@
   .atlas-search input { width:100%; height:2.5rem; padding-left:2.25rem; padding-right:1rem; background:#0f172a; border:1px solid #1e293b; border-radius:0.5rem; font-size:0.875rem; color:#e2e8f0; }
   .atlas-search input::placeholder { color:#64748b; }
   .atlas-search input:focus { outline:none; border-color:#3b82f6; }
+  .atlas-chips-head { display:flex; align-items:center; gap:0.375rem; font-size:0.625rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#64748b; margin-bottom:0.5rem; }
+  .atlas-chips-head svg { width:0.875rem; height:0.875rem; color:#3b82f6; }
   .atlas-chips { display:flex; flex-wrap:wrap; gap:0.375rem; }
-  .atlas-chip { padding:0.25rem 0.75rem; font-size:0.6875rem; border-radius:9999px; border:1px solid #1e293b; background:#0f172a; color:#94a3b8; font-weight:500; transition:all 0.15s; cursor:pointer; }
+  .atlas-chip { display:inline-flex; align-items:center; gap:0.3rem; padding:0.25rem 0.625rem; font-size:0.6875rem; border-radius:9999px; border:1px solid #1e293b; background:#0f172a; color:#94a3b8; font-weight:500; transition:all 0.15s; cursor:pointer; }
+  .atlas-chip svg { width:0.8125rem; height:0.8125rem; opacity:0.85; }
   .atlas-chip:hover { color:#e2e8f0; border-color:#334155; }
   .atlas-chip.is-active { background:#2563eb; border-color:#3b82f6; color:#fff; }
 
@@ -209,6 +212,11 @@
   @media(min-width:768px) { .atlas-mobile-toggle { display:none; } }
   .atlas-mobile-toggle svg { color:#3b82f6; }
   .atlas-map-badge { position:absolute; top:0.75rem; left:0.75rem; display:inline-flex; align-items:center; gap:0.25rem; background:rgba(15,23,42,0.7); padding:0.25rem 0.5rem; border-radius:4px; font-size:11px; color:rgba(255,255,255,0.8); border:1px solid rgba(255,255,255,0.05); }
+  .atlas-map-controls { position:absolute; bottom:1.25rem; right:1.25rem; z-index:500; display:flex; flex-direction:column; gap:0.5rem; }
+  .atlas-map-ctrl { width:2.25rem; height:2.25rem; display:inline-flex; align-items:center; justify-content:center; background:#0f172a; border:1px solid #1e293b; color:#e2e8f0; border-radius:0.5rem; box-shadow:0 12px 32px -12px rgba(0,0,0,0.6); cursor:pointer; transition:all 0.15s; }
+  .atlas-map-ctrl:hover { background:#1e293b; border-color:#334155; }
+  .atlas-map-ctrl svg { width:1.05rem; height:1.05rem; color:#3b82f6; transition:color 0.15s; }
+  .atlas-map-ctrl:hover svg { color:#fff; }
 
   /* Leaflet dark overrides */
   .leaflet-container { background:#020617 !important; font-family:inherit !important; }
