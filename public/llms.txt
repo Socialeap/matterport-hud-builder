@@ -10,6 +10,7 @@
 
 - [Home](/): Product overview, features, and pricing for MSPs.
 - [For Agents](/agents): Directory of MSPs serving real estate agents, with location-based search.
+- [Atlas](/atlas): Interactive dark-themed map of verified immersive 3D listings.
 - [Opportunities](/opportunities): Local Demand Board showing markets where agents are waiting for an MSP.
 - [Privacy Policy](/privacy): How 3DPS collects, uses, and protects data.
 - [Terms of Service](/terms): License terms, payment terms, IP, and acceptable use.
