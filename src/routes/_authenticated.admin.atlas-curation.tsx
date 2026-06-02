@@ -105,16 +105,27 @@ function AdminAtlasCuration() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // Create form
-  const [matterportUrl, setMatterportUrl] = useState("");
-  const [name, setName] = useState("");
-  const [address, setAddress] = useState("");
-  const [city, setCity] = useState("");
-  const [region, setRegion] = useState("");
-  const [country, setCountry] = useState("US");
-  const [category, setCategory] = useState("");
-  const [rightsNote, setRightsNote] = useState("");
-  const [rightsAck, setRightsAck] = useState(false);
+  // Create form (persisted to localStorage so navigating away or refreshing
+  // does not wipe in-progress input).
+  const initialCreate = useMemo(loadPersistedCreateForm, []);
+  const [matterportUrl, setMatterportUrl] = useState(initialCreate.matterportUrl);
+  const [name, setName] = useState(initialCreate.name);
+  const [address, setAddress] = useState(initialCreate.address);
+  const [city, setCity] = useState(initialCreate.city);
+  const [region, setRegion] = useState(initialCreate.region);
+  const [country, setCountry] = useState(initialCreate.country);
+  const [category, setCategory] = useState(initialCreate.category);
+  const [rightsNote, setRightsNote] = useState(initialCreate.rightsNote);
+  const [rightsAck, setRightsAck] = useState(initialCreate.rightsAck);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(CREATE_FORM_KEY, JSON.stringify({
+        matterportUrl, name, address, city, region, country, category, rightsNote, rightsAck,
+      }));
+    } catch { /* ignore quota errors */ }
+  }, [matterportUrl, name, address, city, region, country, category, rightsNote, rightsAck]);
 
   // Review/edit form (mirrors the selected job's draft)
   const [draft, setDraft] = useState<DraftForm>(() => draftToForm(null));
