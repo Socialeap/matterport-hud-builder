@@ -3,17 +3,60 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Search,
   MapPin,
+  MapPinOff,
   Compass,
   ExternalLink,
   X,
-  Menu,
   ShieldCheck,
   Sparkles,
   Box,
-  ArrowRight,
+  Play,
+  SlidersHorizontal,
+  LocateFixed,
+  House,
+  List,
+  Map as MapIcon,
+  Layers,
+  Building2,
+  Hotel,
+  UtensilsCrossed,
+  Landmark,
+  ShoppingBag,
+  Flower2,
+  PartyPopper,
+  Image as ImageIcon,
+  Tag,
+  type LucideIcon,
 } from "lucide-react";
+import { toast } from "sonner";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { listActiveAtlasEntries } from "@/lib/atlas.functions";
 import { categoryLabel, type AtlasEntry } from "@/lib/atlas-demo-data";
+
+/** Lucide icon per known category (text-light scanning). Falls back to a tag. */
+const CATEGORY_ICONS: Record<string, LucideIcon> = {
+  residential: House,
+  commercial: Building2,
+  hospitality: Hotel,
+  hotel: Hotel,
+  cultural: Landmark,
+  gallery: ImageIcon,
+  restaurant: UtensilsCrossed,
+  event_space: PartyPopper,
+  wellness: Flower2,
+  retail: ShoppingBag,
+  other: Tag,
+};
+
+function CategoryIcon({ category, className }: { category: string; className?: string }) {
+  const Icon = CATEGORY_ICONS[category] ?? Tag;
+  return <Icon className={className} aria-hidden="true" />;
+}
 
 export const Route = createFileRoute("/atlas")({
   head: () => ({
@@ -149,7 +192,7 @@ function AtlasPage() {
           <h4 class="atlas-popup-title">${escapeHtml(entry.title)}</h4>
           ${loc ? `<p class="atlas-popup-loc">📍 ${escapeHtml(loc)}</p>` : ""}
           <button class="atlas-popup-cta" data-atlas-open="${entry.id}">
-            Step Inside 3D Showcase →
+            ▶ Step Inside 3D Showcase
           </button>
         </div>
       `,
@@ -207,6 +250,42 @@ function AtlasPage() {
     if (entry.presentation_url) setActive(entry);
   };
 
+  // Map control: pan to the visitor's location.
+  const handleNearMe = () => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      toast.error("Location isn't available in this browser.");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        refsRef.current?.map.flyTo(
+          [pos.coords.latitude, pos.coords.longitude],
+          11,
+          { duration: 1.2 },
+        );
+      },
+      () =>
+        toast.error(
+          "Couldn't get your location. Check your browser's location permission.",
+        ),
+      { enableHighAccuracy: false, timeout: 8000 },
+    );
+  };
+
+  // Map control: re-frame all pins (or recenter when none are mapped).
+  const resetView = () => {
+    const refs = refsRef.current;
+    if (!refs) return;
+    if (pinned.length > 0) {
+      const bounds = refs.L.latLngBounds(
+        pinned.map((e) => [e.latitude as number, e.longitude as number]),
+      );
+      refs.map.fitBounds(bounds, { padding: [40, 40], maxZoom: 12 });
+    } else {
+      refs.map.setView([39.5, -98.35], 4);
+    }
+  };
+
   // Esc closes modal.
   useEffect(() => {
     if (!active) return;
@@ -240,7 +319,7 @@ function AtlasPage() {
             <p className="atlas-header-kicker">Listings</p>
             <p className="atlas-header-value">
               <span className="atlas-pulse-dot" />
-              {entries.length} approved live
+              {entries.length} live now
             </p>
           </div>
           <span className="atlas-header-divider" />
@@ -266,20 +345,28 @@ function AtlasPage() {
                 aria-label="Search listings"
               />
             </div>
-            <div className="atlas-chips">
+            <div className="atlas-chips-head">
+              <SlidersHorizontal aria-hidden="true" />
+              <span>Filter by type</span>
+            </div>
+            <div className="atlas-chips" role="group" aria-label="Filter listings by category">
               <button
+                type="button"
                 onClick={() => setActiveCategory("all")}
+                aria-pressed={activeCategory === "all"}
                 className={`atlas-chip ${activeCategory === "all" ? "is-active" : ""}`}
               >
-                All listings
+                <Layers aria-hidden="true" /> All listings
               </button>
               {categories.map((c) => (
                 <button
                   key={c}
+                  type="button"
                   onClick={() => setActiveCategory(c)}
+                  aria-pressed={activeCategory === c}
                   className={`atlas-chip ${activeCategory === c ? "is-active" : ""}`}
                 >
-                  {categoryLabel(c)}
+                  <CategoryIcon category={c} /> {categoryLabel(c)}
                 </button>
               ))}
             </div>
@@ -318,17 +405,55 @@ function AtlasPage() {
         {/* Map */}
         <main className="atlas-map-pane">
           <div ref={mapElRef} className="atlas-map" />
+
+          {/* Icon-only map controls — labelled + tooltipped for a11y. */}
+          <TooltipProvider delayDuration={300}>
+            <div className="atlas-map-controls">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="atlas-map-ctrl"
+                    onClick={handleNearMe}
+                    aria-label="Find listings near me"
+                  >
+                    <LocateFixed aria-hidden="true" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="left">Near me</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="atlas-map-ctrl"
+                    onClick={resetView}
+                    aria-label="Reset map view"
+                  >
+                    <House aria-hidden="true" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="left">Reset view</TooltipContent>
+              </Tooltip>
+            </div>
+          </TooltipProvider>
+
           <button
             type="button"
             className="atlas-mobile-toggle"
             onClick={() => setSidebarOpen((v) => !v)}
-            aria-label="Toggle listings panel"
+            aria-label={sidebarOpen ? "Hide listings, show map" : "Show listings"}
+            title={sidebarOpen ? "Map" : "Listings"}
           >
-            <Menu className="size-4" />
-            {sidebarOpen ? "Hide listings" : "Show listings"}
+            {sidebarOpen ? (
+              <MapIcon className="size-4" aria-hidden="true" />
+            ) : (
+              <List className="size-4" aria-hidden="true" />
+            )}
+            {sidebarOpen ? "Map" : "Listings"}
           </button>
           <span className="atlas-map-badge">
-            <Compass className="size-3.5" />
+            <Compass className="size-3.5" aria-hidden="true" />
             Sample discovery map
           </span>
         </main>
@@ -381,11 +506,11 @@ function ListingCard({
       <h3 className="atlas-card-title">{entry.title}</h3>
       {loc ? (
         <p className="atlas-card-loc">
-          <MapPin className="size-3.5" /> {loc}
+          <MapPin className="size-3.5" aria-hidden="true" /> {loc}
         </p>
       ) : (
         <p className="atlas-card-loc atlas-card-loc--pending">
-          <MapPin className="size-3.5" /> Location pending
+          <MapPinOff className="size-3.5" aria-hidden="true" /> Location pending
         </p>
       )}
       {entry.summary && <p className="atlas-card-summary">{entry.summary}</p>}
@@ -403,8 +528,9 @@ function ListingCard({
               onOpen();
             }}
             className="atlas-card-cta"
+            aria-label={`Step inside ${entry.title}`}
           >
-            Step Inside <ArrowRight className="size-3.5" />
+            <Play className="size-3.5" aria-hidden="true" /> Step Inside
           </button>
         ) : (
           <span className="atlas-card-meta atlas-card-meta--muted">
