@@ -2267,6 +2267,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
                             : null
                     }
                     onDownload={handleDownload}
+                    savedModelId={savedModelId}
                   />
                 </AccordionContent>
               </AccordionItem>

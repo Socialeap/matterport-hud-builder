@@ -35,6 +35,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 
 interface PublishDistributeSectionProps {
@@ -52,6 +53,8 @@ interface PublishDistributeSectionProps {
   downloadingLabel?: string;
   /** Optional reason the download is currently disabled (forwarded as tooltip text). */
   downloadDisabledReason?: string | null;
+  /** Saved model id for this presentation, if one exists — links the Atlas entry to the model. */
+  savedModelId?: string | null;
 }
 
 type ShareLink = {
@@ -200,6 +203,7 @@ export const PublishDistributeSection = forwardRef<
     downloading,
     downloadingLabel,
     downloadDisabledReason,
+    savedModelId,
   },
   ref,
 ) {
@@ -233,6 +237,13 @@ export const PublishDistributeSection = forwardRef<
   const [urlInput, setUrlInput] = useState("");
   const [urlError, setUrlError] = useState<string | null>(null);
   const [liveUrl, setLiveUrl] = useState<string | null>(null);
+  // Atlas opt-in. Defaults on so the listing panel reveals automatically once a
+  // live URL exists (and any existing submission's status surfaces); the user can
+  // switch it off to skip Atlas. Forced visually off + disabled until a valid URL
+  // exists. Opting in only reveals the form — submission still requires an explicit
+  // "Verify & Submit" click, so nothing is published without intent.
+  const [atlasOptIn, setAtlasOptIn] = useState(true);
+  const atlasPanelOpen = Boolean(liveUrl) && atlasOptIn;
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -720,13 +731,53 @@ export const PublishDistributeSection = forwardRef<
         </div>
       )}
 
-      {liveUrl && (
-        <AtlasOptInCard
-          liveUrl={liveUrl}
-          propertyName={propertyName}
-          accentColor={accentColor}
-        />
-      )}
+      {/* Atlas discovery opportunity — visible before a live URL exists */}
+      <div className="space-y-3 rounded-lg border bg-card p-4">
+        <div className="flex items-start gap-3">
+          <Globe className="mt-0.5 size-5 shrink-0" style={{ color: accentColor }} />
+          <div className="flex-1 space-y-1">
+            <h4 className="text-sm font-semibold text-foreground">
+              Add this presentation to the Frontiers|3D Atlas
+            </h4>
+            <p className="text-xs text-muted-foreground">
+              The Atlas is the public discovery map for immersive spaces at{" "}
+              <span className="font-medium text-foreground">/atlas</span>. Once your
+              3D Presentation is published, you can submit its live URL for Atlas
+              verification — verified entries can appear publicly on the map. You'll
+              need your live URL before you can submit.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/20 p-3">
+          <div className="min-w-0">
+            <Label htmlFor="atlas-opt-in" className="text-xs font-medium text-foreground">
+              Submit this presentation for Atlas visibility
+            </Label>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              {liveUrl
+                ? "Fill in a few listing details below to submit for Atlas verification."
+                : "Paste your live presentation URL above to enable Atlas submission."}
+            </p>
+          </div>
+          <Switch
+            id="atlas-opt-in"
+            checked={atlasPanelOpen}
+            disabled={!liveUrl}
+            onCheckedChange={setAtlasOptIn}
+            aria-label="Submit this presentation for Atlas visibility"
+          />
+        </div>
+
+        {atlasPanelOpen && liveUrl && (
+          <AtlasOptInCard
+            liveUrl={liveUrl}
+            propertyName={propertyName}
+            accentColor={accentColor}
+            savedModelId={savedModelId}
+          />
+        )}
+      </div>
     </div>
   );
 });

@@ -36,22 +36,28 @@ type FormState = {
   title: string;
   category: string;
   summary: string;
+  address: string;
   city: string;
   region: string;
   country: string;
   latitude: string;
   longitude: string;
+  heroImageUrl: string;
+  tags: string;
 };
 
 const EMPTY_FORM: FormState = {
   title: "",
   category: "residential",
   summary: "",
+  address: "",
   city: "",
   region: "",
   country: "US",
   latitude: "",
   longitude: "",
+  heroImageUrl: "",
+  tags: "",
 };
 
 const CATEGORY_OPTIONS = Object.entries(CATEGORY_LABELS ?? {}).length
@@ -69,7 +75,7 @@ function statusBadge(status: AtlasEntry["status"]) {
     case "active":
       return { label: "Active on Atlas", className: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" };
     case "pending_review":
-      return { label: "Pending review", className: "bg-amber-500/15 text-amber-300 border-amber-500/30" };
+      return { label: "Pending verification", className: "bg-amber-500/15 text-amber-300 border-amber-500/30" };
     case "inactive":
       return { label: "Inactive", className: "bg-slate-500/15 text-slate-300 border-slate-500/30" };
     case "rejected":
@@ -119,11 +125,14 @@ export function AtlasOptInCard({
           title: match.title ?? propertyName ?? "",
           category: match.category ?? "residential",
           summary: match.summary ?? "",
+          address: match.address ?? "",
           city: match.city ?? "",
           region: match.region ?? "",
           country: match.country ?? "US",
           latitude: match.latitude != null ? String(match.latitude) : "",
           longitude: match.longitude != null ? String(match.longitude) : "",
+          heroImageUrl: match.hero_image_url ?? "",
+          tags: (match.tags ?? []).join(", "),
         });
       }
     } catch (err) {
@@ -168,22 +177,29 @@ export function AtlasOptInCard({
 
       setSubmitting(true);
       try {
+        const tags = form.tags
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean)
+          .slice(0, 12);
         await submit({
           data: {
             title: form.title.trim(),
             category: form.category,
             summary: form.summary.trim() || undefined,
+            hero_image_url: form.heroImageUrl.trim() || undefined,
             presentation_url: liveUrl,
+            address: form.address.trim() || undefined,
             city: form.city.trim() || undefined,
             region: form.region.trim() || undefined,
             country: form.country.trim() || "US",
             latitude: lat ?? undefined,
             longitude: lng ?? undefined,
             saved_model_id: savedModelId ?? undefined,
-            tags: [],
+            tags,
           },
         });
-        toast.success("Submitted to the Frontiers|3D Atlas for review");
+        toast.success("Submitted for Atlas verification — pending review");
         setEditMode(false);
         await refresh();
       } catch (err) {
@@ -228,13 +244,14 @@ export function AtlasOptInCard({
         <div>
           <h3 className="flex items-center gap-2 text-base font-semibold text-foreground">
             <Globe2 className="size-5" style={{ color: accentColor }} />
-            List this tour on the Frontiers|3D Atlas
+            Submit this presentation for Atlas visibility
           </h3>
           <p className="mt-1 text-xs text-muted-foreground">
-            The Atlas is our public discovery layer at{" "}
-            <span className="font-medium text-foreground">/atlas</span>.
-            Approved listings appear publicly with a map pin and an embedded
-            preview. Submissions are reviewed by an admin before they go live.
+            The Atlas is the public discovery map at{" "}
+            <span className="font-medium text-foreground">/atlas</span>. Verified
+            entries can appear publicly with a map pin and an embedded preview.
+            New submissions start as <span className="font-medium text-foreground">pending
+            verification</span> until they're verified and activated.
           </p>
         </div>
         {badge && (
@@ -283,7 +300,7 @@ export function AtlasOptInCard({
             </Button>
           )}
           {existing.status === "active" && (
-            <span>Your listing is live on /atlas.</span>
+            <span>Your entry is verified and live on /atlas.</span>
           )}
         </div>
       )}
@@ -394,10 +411,50 @@ export function AtlasOptInCard({
             </div>
           </div>
 
+          <div className="space-y-1.5">
+            <Label htmlFor="atlas-address" className="text-xs">
+              Address <span className="text-muted-foreground">(optional)</span>
+            </Label>
+            <Input
+              id="atlas-address"
+              value={form.address}
+              onChange={(e) => handleChange("address", e.target.value)}
+              maxLength={200}
+              placeholder="Street address (optional)"
+            />
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="atlas-hero" className="text-xs">
+                Hero image URL <span className="text-muted-foreground">(optional)</span>
+              </Label>
+              <Input
+                id="atlas-hero"
+                value={form.heroImageUrl}
+                onChange={(e) => handleChange("heroImageUrl", e.target.value)}
+                type="url"
+                inputMode="url"
+                placeholder="https://… (optional)"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="atlas-tags" className="text-xs">
+                Tags <span className="text-muted-foreground">(optional)</span>
+              </Label>
+              <Input
+                id="atlas-tags"
+                value={form.tags}
+                onChange={(e) => handleChange("tags", e.target.value)}
+                placeholder="comma, separated (max 12)"
+              />
+            </div>
+          </div>
+
           <p className="text-[11px] text-muted-foreground">
-            Listings without coordinates appear in the Atlas sidebar with a
-            "Location pending" label. Active approved listings appear in
-            Atlas; inactive listings remain hidden until restored by an admin.
+            No coordinates? Your entry shows a "location pin pending" label until
+            you add them. Verified entries can appear publicly on /atlas; inactive
+            entries stay hidden.
           </p>
 
           {formError && (
@@ -407,7 +464,7 @@ export function AtlasOptInCard({
           <div className="flex items-center gap-2">
             <Button type="submit" size="sm" disabled={submitting}>
               {submitting && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
-              {existing ? "Resubmit for review" : "Submit to Atlas"}
+              {existing ? "Verify & Re-submit Atlas Listing" : "Verify & Submit Atlas Listing"}
             </Button>
             {existing && (
               <Button
