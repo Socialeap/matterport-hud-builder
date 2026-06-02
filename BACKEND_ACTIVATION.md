@@ -3395,8 +3395,12 @@ discovery layer. No migrations, Edge Functions, Stripe, outreach sends, or schem
 - `src/routes/index.tsx` — nav (desktop + mobile) adds "For Businesses →" and "Atlas".
 - `src/routeTree.gen.ts` — regenerated for `/businesses`.
 
-**Truthful copy:** uses "sample/demo/eligible/approved listing"; never claims a business already
-has a Matterport/360/custom preview/Atlas listing; no ROI promises; no internal jargon.
+**Truthful copy:** uses "sample/demo/eligible/verified/active listing"; never claims a business
+already has a Matterport/360/custom preview/Atlas listing; no ROI promises; no internal jargon.
+The `/businesses` "how it works" describes the intended **publish → submit live URL → Atlas
+verification → eligible listing can appear** flow in forward-looking terms (verification is not
+yet implemented), and does not present the Atlas manifest as a current public capability — the
+manifest/token mechanism lives only in the internal Atlas checklist (Phase 2 planning note).
 
 **Activation:** deploy the frontend. No migration, no secret, no cron, no Stripe/Track A, no
 outreach behavior change.

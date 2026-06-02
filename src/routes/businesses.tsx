@@ -36,9 +36,9 @@ const VALUE = [
 ];
 
 const STEPS = [
-  { icon: Camera, title: "Get your space captured", body: "Work with a local 3D capture provider to turn your storefront, venue, or public space into a Frontiers3D presentation package." },
-  { icon: CheckCircle2, title: "Publish & verify", body: "Your presentation package includes a hidden Atlas manifest. Publish it, then paste your live URL back into Frontiers3D to verify." },
-  { icon: Compass, title: "Customers discover & step inside", body: "Once your live URL verifies, your eligible listing can appear in the public Atlas discovery map, where people explore before they visit." },
+  { icon: Camera, title: "Get your space captured", body: "Work with a local 3D capture provider to turn your storefront, venue, or public space into an Atlas-ready Frontiers3D presentation." },
+  { icon: CheckCircle2, title: "Publish & submit", body: "After your Frontiers3D presentation is published, submit the live URL for Atlas verification." },
+  { icon: Compass, title: "Customers discover & step inside", body: "Once verified, your eligible listing can appear in the public Atlas discovery map, where people explore before they visit." },
 ];
 
 function BusinessesPage() {
@@ -95,8 +95,9 @@ function BusinessesPage() {
             </a>
           </div>
           <p className="mx-auto mt-4 max-w-xl text-xs text-white/40">
-            The Atlas shows <strong className="text-white/60">sample / demo</strong> listings today. Your space appears only
-            after its published package’s Atlas manifest verifies — we never claim a listing exists before it does.
+            The Atlas shows <strong className="text-white/60">sample / demo</strong> listings today. As Atlas
+            verification rolls out, you’ll publish your Frontiers3D presentation and submit its live URL — your
+            space appears only after it’s verified, and we never claim a listing exists before it does.
           </p>
         </div>
       </section>
@@ -122,8 +123,9 @@ function BusinessesPage() {
         <div className="mx-auto max-w-4xl">
           <h2 className="text-center text-2xl font-bold sm:text-3xl">How it works</h2>
           <p className="mx-auto mt-3 max-w-2xl text-center text-sm leading-relaxed text-white/55">
-            Publish and verify your Atlas listing. Your Frontiers3D presentation package includes a hidden Atlas
-            manifest — once your live URL verifies, your listing can appear in the discovery map.
+            Publish and submit your Atlas-ready presentation. After your Frontiers3D presentation is published, you
+            submit the live URL for Atlas verification — once verified, your eligible listing can appear in the
+            discovery map.
           </p>
           <div className="mt-8 grid gap-4 sm:grid-cols-3">
             {STEPS.map(({ icon: Icon, title, body }, i) => (
@@ -174,7 +176,7 @@ function BusinessesPage() {
           </div>
           <p className="mt-4 flex items-center gap-1.5 text-xs text-white/40">
             <MapPin className="size-3.5" />
-            © {new Date().getFullYear()} Transcendence Media · Frontiers3D. Atlas listings appear only after a published package’s Atlas manifest verifies.
+            © {new Date().getFullYear()} Transcendence Media · Frontiers3D. Atlas listings appear only after a published Frontiers3D presentation is verified.
           </p>
         </div>
       </footer>
