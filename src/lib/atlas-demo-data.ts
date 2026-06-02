@@ -164,11 +164,19 @@ export interface AtlasCurationJob {
   package_filename?: string | null;
   package_size_bytes?: number | null;
   build_error?: string | null;
+  // Showcase publishing state (present once the publish migration is applied).
+  showcase_slug?: string | null;
+  publish_status?: AtlasPublishStatus;
+  showcase_pr_url?: string | null;
+  deployed_url?: string | null;
+  published_at?: string | null;
+  publish_error?: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export type AtlasBuildStatus = "none" | "building" | "built" | "failed";
+export type AtlasPublishStatus = "none" | "pr_open" | "published" | "failed";
 
 /** Human label for a category value (known → friendly label, else Title Case). */
 export function categoryLabel(category: string): string {

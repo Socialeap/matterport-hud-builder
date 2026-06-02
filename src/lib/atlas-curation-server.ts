@@ -250,7 +250,7 @@ function escapeHtml(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
-function slugify(value: string): string {
+export function slugify(value: string): string {
   return (
     value
       .normalize("NFKD")
@@ -335,6 +335,26 @@ ${summary ? `<footer class="f3d-foot">${summary}</footer>` : ""}
 }
 
 /**
+ * The files that make up a curated showcase folder: index.html (branded
+ * Matterport embed) + atlas-manifest.json. Shared by the downloadable zip and
+ * the GitHub-repo publishing path so both produce an identical folder.
+ */
+export function buildShowcaseFiles(input: CuratedPackageInput): Record<string, string> {
+  const manifest = {
+    service: "frontiers3d-atlas",
+    version: 1 as const,
+    kind: "curated_showcase" as const,
+    curation_job_id: input.curationJobId,
+    matterport_id: input.matterportId,
+    issued_at: new Date().toISOString(),
+  };
+  return {
+    "index.html": renderCuratedHtml(input),
+    "atlas-manifest.json": JSON.stringify(manifest, null, 2),
+  };
+}
+
+/**
  * Build the curated package zip (flat root: index.html + atlas-manifest.json).
  * Reuses fflate (Node-compatible) + the Atlas manifest shape. Returns base64 so
  * the admin server fn can hand it straight to the browser for download — the
@@ -344,24 +364,15 @@ export async function buildCuratedPackageZip(
   input: CuratedPackageInput,
 ): Promise<CuratedPackageResult> {
   const { zipSync, strToU8 } = await import("fflate");
-  const issuedAt = new Date().toISOString();
-  const html = renderCuratedHtml(input);
-  const manifest = {
-    service: "frontiers3d-atlas",
-    version: 1 as const,
-    kind: "curated_showcase" as const,
-    curation_job_id: input.curationJobId,
-    matterport_id: input.matterportId,
-    issued_at: issuedAt,
-  };
-  const zipInput: Record<string, Uint8Array> = {
-    "index.html": strToU8(html),
-    "atlas-manifest.json": strToU8(JSON.stringify(manifest, null, 2)),
-  };
+  const files = buildShowcaseFiles(input);
+  const zipInput: Record<string, Uint8Array> = {};
+  for (const [path, content] of Object.entries(files)) {
+    zipInput[path] = strToU8(content);
+  }
   const zipped = zipSync(zipInput, { level: 6 });
   return {
     base64: Buffer.from(zipped).toString("base64"),
-    filename: `${slugify(input.title)}-frontiers3d-${issuedAt.slice(0, 10)}.zip`,
+    filename: `${slugify(input.title)}-frontiers3d-${new Date().toISOString().slice(0, 10)}.zip`,
     sizeBytes: zipped.length,
   };
 }
