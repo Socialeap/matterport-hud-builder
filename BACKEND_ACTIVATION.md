@@ -8,6 +8,22 @@ Backend Activation Required: **YES** — sender domain `notify.3dps.transcendenc
 
 ## Completed Activations
 
+### Atlas Curation Jobs Table Activation (2026-06-02) — VERIFIED
+
+**Symptom:** Submitting via `/admin/atlas-curation` failed with `Could not find the table 'public.atlas_curation_jobs' in the schema cache`.
+
+**Root cause:** The migration `supabase/migrations/20260610000000_frontiers3d_atlas_curation_jobs.sql` had been merged into the repo but never applied to the live Lovable Cloud database. `SELECT to_regclass('public.atlas_curation_jobs')` returned NULL.
+
+**Action applied:** Replayed the migration verbatim via `supabase--migration`. Created `public.atlas_curation_jobs` with indexes, GRANTs (authenticated + service_role), RLS enabled, two RLS policies (`admin all`, `service role all`), and the `update_updated_at_column()` trigger. Also extended `public.atlas_entries` to allow `kind = 'curated_showcase'` and to track an optional `relationship_status`. Non-destructive — no DROP TABLE / DELETE / TRUNCATE, and the only constraint dropped (`atlas_entries_kind_check`) was immediately re-added in a widened form.
+
+**Verification:**
+- `to_regclass('public.atlas_curation_jobs')` returns the table.
+- Two RLS policies present on the new table.
+- `atlas_entries_kind_check` and `atlas_entries_relationship_status_check` both present on `atlas_entries`.
+- `/admin/atlas-curation` submission no longer raises the schema-cache error.
+
+
+
 ### Email Queue Processor Repair (2026-05-27) — VERIFIED
 
 **Symptom:** Admin Portal email test stuck at `pending` / "Timed out waiting for delivery confirmation". `pgmq.q_transactional_emails` accumulated messages; every cron call to `/lovable/email/queue/process` returned `403`.
