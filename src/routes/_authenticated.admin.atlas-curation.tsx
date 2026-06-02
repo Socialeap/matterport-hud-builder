@@ -178,14 +178,40 @@ function AdminAtlasCuration() {
     else setLoading(false);
   }, [authLoading, isAdmin, load]);
 
-  // Sync the editable draft when the selected job changes.
+  // Sync the editable draft when the selected job changes. If the user has
+  // unsaved edits in localStorage for this job, restore those instead of
+  // resetting to the server payload.
   useEffect(() => {
+    if (!selectedId) {
+      setDraft(draftToForm(null));
+      return;
+    }
+    if (typeof window !== "undefined") {
+      try {
+        const raw = window.localStorage.getItem(DRAFT_FORM_KEY_PREFIX + selectedId);
+        if (raw) {
+          setDraft({ ...draftToForm(selected?.draft_payload ?? null), ...(JSON.parse(raw) as Partial<DraftForm>) });
+          return;
+        }
+      } catch { /* ignore */ }
+    }
     setDraft(draftToForm(selected?.draft_payload ?? null));
   }, [selectedId, selected?.draft_payload]);
+
+  // Persist in-progress draft edits per job id.
+  useEffect(() => {
+    if (!selectedId || typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(DRAFT_FORM_KEY_PREFIX + selectedId, JSON.stringify(draft));
+    } catch { /* ignore */ }
+  }, [selectedId, draft]);
 
   const resetCreate = () => {
     setMatterportUrl(""); setName(""); setAddress(""); setCity("");
     setRegion(""); setCountry("US"); setCategory(""); setRightsNote(""); setRightsAck(false);
+    if (typeof window !== "undefined") {
+      try { window.localStorage.removeItem(CREATE_FORM_KEY); } catch { /* ignore */ }
+    }
   };
 
   const handleCreate = async () => {
