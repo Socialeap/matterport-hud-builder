@@ -1675,6 +1675,32 @@ export const generatePresentation = createServerFn({ method: "POST" })
         "Ask AI is in limited mode for this export — visitor questions will be answered from the local Q&A database only. Configure Ask AI in your environment to enable smart answers.";
     }
 
+    // Atlas manifest token (best-effort, scope `atlas_v1`). Emitted as a
+    // sibling `atlas-manifest.json` in the package so the owner can later
+    // verify the published URL for the public Atlas. Unlike the Ask-AI
+    // mint above, a failure here must NOT block the export — the package
+    // simply ships without an Atlas manifest (later verification returns
+    // `missing_manifest`). The raw signature is never persisted (only its
+    // sha256), and the manifest carries the opaque token only — no user id.
+    let atlasManifestToken = "";
+    let atlasManifestIssuedAt = "";
+    if (_supabaseOrigin && tokenEnvReady) {
+      try {
+        const { ensureAtlasManifestToken } = await import(
+          "./presentation-token-server"
+        );
+        const atlasIssued = await ensureAtlasManifestToken(model.id);
+        atlasManifestToken = atlasIssued.value;
+        atlasManifestIssuedAt = atlasIssued.payload.issued_at;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(
+          "[generatePresentation] Atlas manifest token mint failed (export continues without manifest):",
+          msg,
+        );
+      }
+    }
+
     // Synthesis URL is gated on the token: when no token was minted,
     // omit the URL too so the runtime's `canSynthesize` flag is false
     // and the deterministic ladder runs end-to-end (instead of every
@@ -6217,6 +6243,24 @@ if(frame){
     // snippet + line so regressions surface in server logs instead
     // of at the visitor's browser.
     assertRuntimeRegexSafety(html);
+
+    // Emit the Atlas manifest as a root sibling of index.html (the client
+    // writes attachments next to index.html in both the download and the
+    // flat publish zip). Contains only the opaque atlas_v1 token — no user
+    // id, no model id — so verification (PR-2) fetches `/atlas-manifest.json`
+    // from the published URL and matches the token hash to confirm ownership.
+    if (atlasManifestToken) {
+      const atlasManifest = {
+        service: "frontiers3d-atlas",
+        version: 1 as const,
+        token: atlasManifestToken,
+        issued_at: atlasManifestIssuedAt,
+      };
+      bundledAttachments.push({
+        path: "atlas-manifest.json",
+        data: Buffer.from(JSON.stringify(atlasManifest, null, 2), "utf8").toString("base64"),
+      });
+    }
 
     const attachments = bundledAttachments.length > 0 ? bundledAttachments : undefined;
     return askAiWarning

@@ -20,10 +20,12 @@
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.103.0";
 
+export type PresentationTokenScope = "ask_ai_v1" | "atlas_v1";
+
 export interface PresentationTokenPayload {
   saved_model_id: string;
   issued_at: string; // ISO 8601
-  scope: "ask_ai_v1";
+  scope: PresentationTokenScope;
 }
 
 export type VerifyResult =
@@ -40,7 +42,8 @@ export type VerifyResult =
         | "secret_missing"
         | "saved_model_missing"
         | "not_released"
-        | "not_paid";
+        | "not_paid"
+        | "wrong_scope";
     };
 
 const enc = new TextEncoder();
@@ -99,6 +102,13 @@ export interface VerifyOptions {
   expectedSavedModelId?: string;
   /** When true, also require the linked model is paid + is_released. */
   requireReleased?: boolean;
+  /**
+   * Required token scope. Defaults to `ask_ai_v1` so the public Ask-AI
+   * endpoint rejects tokens minted for other purposes (e.g. the public
+   * `atlas_v1` manifest token), even though both are valid signatures for
+   * the same model. Scope isolation prevents cross-feature token replay.
+   */
+  expectedScope?: PresentationTokenScope;
 }
 
 export async function verifyPresentationToken(
@@ -139,6 +149,13 @@ export async function verifyPresentationToken(
   const payload = row.payload as PresentationTokenPayload | null;
   if (!payload || typeof payload !== "object" || !payload.saved_model_id) {
     return { ok: false, reason: "malformed" };
+  }
+  // Scope isolation: reject a validly-signed token minted for a different
+  // scope (e.g. a public atlas_v1 manifest token replayed at the Ask-AI
+  // endpoint). Defaults to ask_ai_v1 to harden existing callers.
+  const expectedScope = opts.expectedScope ?? "ask_ai_v1";
+  if (payload.scope !== expectedScope) {
+    return { ok: false, reason: "wrong_scope" };
   }
   const recomputed = await hmacSha256(secret, canonicalisePayload(payload));
   if (!bytesEqualConstantTime(recomputed, signatureBytes)) {
