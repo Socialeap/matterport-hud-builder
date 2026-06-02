@@ -557,13 +557,11 @@ function EmptyState() {
 
 function PresentationModal({ entry, onClose }: { entry: AtlasEntry; onClose: () => void }) {
   const [loaded, setLoaded] = useState(false);
-  const [failed, setFailed] = useState(false);
-  useEffect(() => {
-    const t = setTimeout(() => {
-      if (!loaded) setFailed(true);
-    }, 6000);
-    return () => clearTimeout(t);
-  }, [loaded]);
+  // We no longer auto-flag the iframe as "failed" after a fixed timeout —
+  // Matterport tours can take 10–30s to first-paint, and the warning was
+  // misleading visitors into clicking "Open in new tab". The fallback link
+  // remains available in the header for any space that truly refuses to embed.
+  const failed = false;
   const loc = [entry.city, entry.region].filter(Boolean).join(", ") || "Sample location";
 
   return (

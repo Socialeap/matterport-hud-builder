@@ -239,7 +239,7 @@
 
   /* Modal */
   .atlas-modal-backdrop { position:fixed; inset:0; background:rgba(2,6,23,0.85); backdrop-filter:blur(4px); z-index:9999; display:flex; align-items:center; justify-content:center; padding:0.75rem; }
-  .atlas-modal { background:#0f172a; width:100%; max-width:64rem; max-height:90vh; border-radius:0.75rem; border:1px solid #1e293b; box-shadow:0 25px 50px -12px rgba(0,0,0,0.6); display:flex; flex-direction:column; overflow:hidden; }
+  .atlas-modal { background:#0f172a; width:100%; max-width:64rem; height:90vh; max-height:90vh; border-radius:0.75rem; border:1px solid #1e293b; box-shadow:0 25px 50px -12px rgba(0,0,0,0.6); display:flex; flex-direction:column; overflow:hidden; }
   .atlas-modal-header { height:3.5rem; flex-shrink:0; padding:0 1rem; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #1e293b; }
   .atlas-modal-titlebox { display:flex; align-items:center; gap:0.75rem; min-width:0; }
   .atlas-modal-dot { width:8px; height:8px; border-radius:9999px; background:#34d399; animation:atlas-pulse 1.6s infinite; flex-shrink:0; }
@@ -251,7 +251,7 @@
   .atlas-modal-close { width:2.25rem; height:2.25rem; background:#1e293b; border:1px solid #334155; border-radius:0.5rem; color:#94a3b8; display:flex; align-items:center; justify-content:center; cursor:pointer; }
   .atlas-modal-close:hover { background:#334155; color:#fff; }
   .atlas-modal-warn { padding:0.5rem 1rem; background:rgba(251,191,36,0.1); color:#fcd34d; font-size:0.75rem; border-bottom:1px solid rgba(251,191,36,0.2); }
-  .atlas-modal-frame { flex:1; position:relative; background:#000; }
+  .atlas-modal-frame { flex:1 1 auto; min-height:0; position:relative; background:#000; }
   .atlas-modal-frame iframe { position:absolute; inset:0; width:100%; height:100%; border:0; }
   .atlas-modal-footer { padding:0.75rem 1rem; font-size:11px; color:#64748b; border-top:1px solid #1e293b; }
 }
