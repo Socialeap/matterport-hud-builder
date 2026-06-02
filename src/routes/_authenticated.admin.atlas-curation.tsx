@@ -316,6 +316,9 @@ function AdminAtlasCuration() {
         },
       });
       replaceJob(job);
+      if (typeof window !== "undefined") {
+        try { window.localStorage.removeItem(DRAFT_FORM_KEY_PREFIX + selected.id); } catch { /* ignore */ }
+      }
       toast.success(status === "ready_for_review" ? "Saved — ready for review." : "Draft saved.");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Save failed.");
