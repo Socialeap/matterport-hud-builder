@@ -60,7 +60,7 @@ export const template = {
   previewData: {
     brandName: 'Acme 3D Tours',
     purgeDate: 'August 24, 2026',
-    pricingUrl: 'https://3dps.transcendencemedia.com/p/acme#pricing',
+    pricingUrl: 'https://www.frontiers3d.com/p/acme#pricing',
   },
 } satisfies TemplateEntry
 

@@ -157,7 +157,7 @@ function OrdersPage() {
       toast.success(
         result.alreadyPaid
           ? "Presentation is already paid"
-          : "Your fee is waived. The client pays only the Frontiers3D platform access fee at download.",
+          : "Your fee is waived. The client pays only the Frontiers|3D platform access fee at download.",
       );
       fetchOrders();
     } catch (error) {

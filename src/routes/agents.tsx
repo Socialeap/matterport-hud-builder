@@ -303,7 +303,7 @@ function AgentsPage() {
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-white/60 sm:text-lg">
             Find a local 3D capture partner, then publish branded, interactive presentations for your listings.
-            Eligible properties can also be showcased in the Frontiers3D Atlas — so buyers, renters, and visitors
+            Eligible properties can also be showcased in the Frontiers|3D Atlas — so buyers, renters, and visitors
             can discover and explore spaces before they schedule a showing.
           </p>
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">

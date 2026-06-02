@@ -296,9 +296,9 @@ function AdminAtlas() {
             <MapPinned className="size-6 text-primary" /> Atlas Listings
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Manage the public Frontiers3D{" "}
+            Manage the public Frontiers|3D{" "}
             <Link to="/atlas" className="text-primary hover:underline">/atlas</Link>{" "}
-            map. Approve client submissions and curate Frontiers3D demo entries.
+            map. Approve client submissions and curate Frontiers|3D demo entries.
             Only <strong>active</strong> listings appear publicly.
           </p>
         </div>
@@ -353,7 +353,7 @@ function AdminAtlas() {
           <label>
             <span className={labelCls}>Kind</span>
             <select className={inputCls} value={form.kind} onChange={(e) => set("kind", e.target.value as AtlasEntryKind)}>
-              <option value="demo">Demo (Frontiers3D-owned)</option>
+              <option value="demo">Demo (Frontiers|3D-owned)</option>
               <option value="client_submitted">Client-submitted</option>
             </select>
           </label>

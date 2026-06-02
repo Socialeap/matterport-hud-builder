@@ -54,7 +54,7 @@ export const template = {
   displayName: 'Trial expired notification',
   previewData: {
     brandName: 'Acme 3D Tours',
-    pricingUrl: 'https://3dps.transcendencemedia.com/p/acme#pricing',
+    pricingUrl: 'https://www.frontiers3d.com/p/acme#pricing',
   },
 } satisfies TemplateEntry
 

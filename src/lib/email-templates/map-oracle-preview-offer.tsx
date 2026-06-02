@@ -148,7 +148,7 @@ function MapOraclePreviewOfferEmail({
 
             {/* Value */}
             <Text style={text}>
-              Frontiers3D helps turn real-world places into interactive 3D presentations people can
+              Frontiers|3D helps turn real-world places into interactive 3D presentations people can
               explore before they arrive. For businesses with a strong physical environment, that can
               make the space easier to understand, remember, and choose.
             </Text>
@@ -175,7 +175,7 @@ function MapOraclePreviewOfferEmail({
 
             {/* Offer — reusable example, conditional both-ways (no per-lead mock-up) */}
             <Text style={text}>
-              Click below to see an example of the kind of interactive 3D presentation Frontiers3D can
+              Click below to see an example of the kind of interactive 3D presentation Frontiers|3D can
               create for places like yours. If you already have a compatible tour or 360 imagery, we
               can build on it — and if not, we can help connect you with a local capture provider.
             </Text>
@@ -208,7 +208,7 @@ function MapOraclePreviewOfferEmail({
           {/* CAN-SPAM footer: clear identification, postal address, unsubscribe. */}
           <Section style={footerCard}>
             <Text style={footerLine}>
-              This is a one-time outreach offer from Frontiers3D (Transcendence Media). You're
+              This is a one-time outreach offer from Frontiers|3D (Transcendence Media). You're
               receiving it because {who} appears in public business listings as a candidate for an
               interactive presentation.
             </Text>
@@ -224,7 +224,7 @@ function MapOraclePreviewOfferEmail({
             </Text>
           </Section>
 
-          <Text style={footer}>Frontiers3D · powered by Transcendence Media</Text>
+          <Text style={footer}>Frontiers|3D · powered by Transcendence Media</Text>
         </Container>
       </Body>
     </Html>

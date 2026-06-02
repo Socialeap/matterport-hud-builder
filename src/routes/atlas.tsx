@@ -18,13 +18,13 @@ import { categoryLabel, type AtlasEntry } from "@/lib/atlas-demo-data";
 export const Route = createFileRoute("/atlas")({
   head: () => ({
     meta: [
-      { title: "Frontiers3D Atlas — Step inside real places from the map" },
+      { title: "Frontiers|3D Atlas — Step inside real places from the map" },
       {
         name: "description",
         content:
-          "Frontiers3D Atlas is a discovery layer for immersive 3D spaces. Explore verified sample listings and step inside before you visit, book, or inquire.",
+          "Frontiers|3D Atlas is a discovery layer for immersive 3D spaces. Explore verified sample listings and step inside before you visit, book, or inquire.",
       },
-      { property: "og:title", content: "Frontiers3D Atlas — Immersive discovery layer" },
+      { property: "og:title", content: "Frontiers|3D Atlas — Immersive discovery layer" },
       {
         property: "og:description",
         content: "Discover verified immersive 3D spaces on a dark interactive map.",
@@ -422,7 +422,7 @@ function EmptyState() {
       <Compass className="atlas-empty-icon" />
       <h2>Sample listings are on the way</h2>
       <p>
-        The Frontiers3D Atlas demo is being curated. Check back shortly to step
+        The Frontiers|3D Atlas demo is being curated. Check back shortly to step
         inside sample spaces.
       </p>
     </div>
@@ -496,8 +496,8 @@ function PresentationModal({ entry, onClose }: { entry: AtlasEntry; onClose: () 
         <div className="atlas-modal-footer">
           <span>
             {entry.kind === "demo"
-              ? "Sample Frontiers3D Atlas listing — for demonstration."
-              : "Verified Frontiers3D Atlas listing."}
+              ? "Sample Frontiers|3D Atlas listing — for demonstration."
+              : "Verified Frontiers|3D Atlas listing."}
           </span>
         </div>
       </div>

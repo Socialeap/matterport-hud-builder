@@ -64,7 +64,7 @@ export const template = {
     brandName: 'Acme 3D Tours',
     daysLeft: 7,
     expiryDate: 'June 25, 2026',
-    pricingUrl: 'https://3dps.transcendencemedia.com/p/acme#pricing',
+    pricingUrl: 'https://www.frontiers3d.com/p/acme#pricing',
   },
 } satisfies TemplateEntry
 
