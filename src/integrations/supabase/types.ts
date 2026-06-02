@@ -249,6 +249,104 @@ export type Database = {
         }
         Relationships: []
       }
+      atlas_curation_jobs: {
+        Row: {
+          atlas_entry_id: string | null
+          created_at: string
+          created_by: string
+          draft_payload: Json | null
+          drafted_category: string | null
+          drafted_summary: string | null
+          drafted_tags: string[]
+          drafted_title: string | null
+          error_message: string | null
+          extracted_matterport_id: string | null
+          formatted_address: string | null
+          geocode_confidence: string | null
+          google_place_id: string | null
+          id: string
+          input_address: string | null
+          input_category: string | null
+          input_matterport_url: string | null
+          input_name: string | null
+          latitude: number | null
+          longitude: number | null
+          needs_human_review: boolean
+          phone: string | null
+          place_candidates: Json
+          rights_note: string | null
+          status: string
+          updated_at: string
+          website_url: string | null
+        }
+        Insert: {
+          atlas_entry_id?: string | null
+          created_at?: string
+          created_by: string
+          draft_payload?: Json | null
+          drafted_category?: string | null
+          drafted_summary?: string | null
+          drafted_tags?: string[]
+          drafted_title?: string | null
+          error_message?: string | null
+          extracted_matterport_id?: string | null
+          formatted_address?: string | null
+          geocode_confidence?: string | null
+          google_place_id?: string | null
+          id?: string
+          input_address?: string | null
+          input_category?: string | null
+          input_matterport_url?: string | null
+          input_name?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          needs_human_review?: boolean
+          phone?: string | null
+          place_candidates?: Json
+          rights_note?: string | null
+          status?: string
+          updated_at?: string
+          website_url?: string | null
+        }
+        Update: {
+          atlas_entry_id?: string | null
+          created_at?: string
+          created_by?: string
+          draft_payload?: Json | null
+          drafted_category?: string | null
+          drafted_summary?: string | null
+          drafted_tags?: string[]
+          drafted_title?: string | null
+          error_message?: string | null
+          extracted_matterport_id?: string | null
+          formatted_address?: string | null
+          geocode_confidence?: string | null
+          google_place_id?: string | null
+          id?: string
+          input_address?: string | null
+          input_category?: string | null
+          input_matterport_url?: string | null
+          input_name?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          needs_human_review?: boolean
+          phone?: string | null
+          place_candidates?: Json
+          rights_note?: string | null
+          status?: string
+          updated_at?: string
+          website_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "atlas_curation_jobs_atlas_entry_id_fkey"
+            columns: ["atlas_entry_id"]
+            isOneToOne: false
+            referencedRelation: "atlas_entries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       atlas_demo_listings: {
         Row: {
           address: string | null
@@ -326,6 +424,7 @@ export type Database = {
           presentation_url: string | null
           region: string | null
           rejection_reason: string | null
+          relationship_status: string | null
           reviewed_at: string | null
           reviewed_by: string | null
           saved_model_id: string | null
@@ -353,6 +452,7 @@ export type Database = {
           presentation_url?: string | null
           region?: string | null
           rejection_reason?: string | null
+          relationship_status?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
           saved_model_id?: string | null
@@ -380,6 +480,7 @@ export type Database = {
           presentation_url?: string | null
           region?: string | null
           rejection_reason?: string | null
+          relationship_status?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
           saved_model_id?: string | null
