@@ -3543,3 +3543,41 @@ access required"); create a job with a valid Matterport URL (invalid → clear r
 reaches `ready_for_review` (coords resolved) or `blocked` ("Coordinates needed before map pin"); a
 multi-match shows candidate selection; "Create inactive Atlas entry" yields an `inactive`
 `curated_showcase` row visible under the **Curated** tab in `/admin/atlas` (never active by default).
+
+---
+
+## Curated Presentation Package Generation — 2026-06-02
+
+> **Backend Activation Required: APPLY THE MIGRATION** `20260611000000_frontiers3d_atlas_curation_build.sql`.
+> No new secret, no Edge function, no Netlify, no Stripe/outreach/billing.
+
+Adds an admin-only **"Generate Presentation Package"** action in `/admin/atlas-curation`: from a
+curated job's `extracted_matterport_id` + draft, it builds a **minimal-but-real** Frontiers3D
+package server-side and downloads it. No deploy, no public activation.
+
+**Migration applies:** five build-tracking columns on `atlas_curation_jobs` —
+`build_status` (`none`/`building`/`built`/`failed`, default `none`), `built_at`, `package_filename`,
+`package_size_bytes`, `build_error`. Existing `atlas_curation_jobs` reads use `select('*')` and the
+new type fields are optional, so the frontend is migration-safe; the build feature itself needs the
+migration.
+
+**What it builds:** a flat-root zip — `index.html` (default-branded Frontiers3D page embedding the
+live Matterport tour `https://my.matterport.com/show/?m=<id>`) + `atlas-manifest.json`
+(`{service:'frontiers3d-atlas', version:1, kind:'curated_showcase', curation_job_id, matterport_id,
+issued_at}`). Reuses the existing manifest shape + the `fflate` zip from the builder, run **in Node**
+(server-side). **No browser/Playwright**; the Q&A Web-Worker embedding is intentionally skipped
+(curated = no Q&A). The package is a few KB (tour is embedded, not bundled), returned base64 and
+downloaded by the admin browser — **no Storage blob persisted**, only build state.
+
+**Deliberate scope:** curated manifest is **not** a verify-token (curated entries are admin-activated
+and bypass verify-first; avoids creating throwaway paid `saved_models`). Netlify deploy + attaching
+`presentation_url` remain a **separate later PR**. The generated package does not deploy or activate.
+
+**Security:** admin-only (`has_role` re-checked in the server fn + admin RLS). Build/zip/env logic is
+server-only (`atlas-curation-server`, dynamic-imported; verified absent from the client bundle).
+
+**Verify (after migration applies):** as admin, open a job with a valid Matterport ID + a draft
+title → "Generate Presentation Package" downloads `…-frontiers3d-<date>.zip`; unzip → `index.html`
+opens the embedded tour + `atlas-manifest.json` present; the job shows `build_status='built'` with
+filename/size; a job missing a title or valid Matterport ID can't build (clear hint); a build error
+surfaces `build_status='failed'` + `build_error`. Nothing is deployed or made public.

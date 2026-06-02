@@ -238,3 +238,130 @@ export function buildDraft(args: {
     hero_image_url: "",
   };
 }
+
+// ── Minimal-but-real curated presentation package ────────────────────────────
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function slugify(value: string): string {
+  return (
+    value
+      .normalize("NFKD")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 60) || "frontiers3d-presentation"
+  );
+}
+
+export interface CuratedPackageInput {
+  curationJobId: string;
+  matterportId: string;
+  title: string;
+  summary: string;
+  category: string;
+  city: string;
+  region: string;
+  tags: string[];
+  heroImageUrl: string;
+}
+
+export interface CuratedPackageResult {
+  base64: string;
+  filename: string;
+  sizeBytes: number;
+}
+
+/**
+ * Render a self-contained, default-branded Frontiers3D presentation page that
+ * embeds the curated Matterport tour. Minimal but real: a single index.html with
+ * inline styles and the live Matterport iframe — no build step, deployable as-is.
+ */
+function renderCuratedHtml(input: CuratedPackageInput): string {
+  const title = escapeHtml(input.title || "Frontiers3D Showcase");
+  const loc = escapeHtml([input.city, input.region].filter(Boolean).join(", "));
+  const summary = escapeHtml(input.summary || "");
+  const desc = summary || `${title}${loc ? ` — ${loc}` : ""}. An immersive 3D showcase on the Frontiers3D Atlas.`;
+  const embedSrc = `https://my.matterport.com/show/?m=${encodeURIComponent(input.matterportId)}&play=1`;
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>${title} — Frontiers3D</title>
+<meta name="description" content="${escapeHtml(desc)}" />
+<meta property="og:title" content="${title} — Frontiers3D" />
+<meta property="og:description" content="${escapeHtml(desc)}" />
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:#0a0e27;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  body{display:flex;flex-direction:column}
+  .f3d-bar{display:flex;align-items:center;gap:.75rem;padding:.6rem 1rem;background:rgba(10,14,39,.92);border-bottom:1px solid rgba(255,255,255,.08);backdrop-filter:blur(8px)}
+  .f3d-logo{font-weight:800;letter-spacing:.18em;font-size:.8rem}
+  .f3d-logo span{background:linear-gradient(90deg,#67e8f9,#818cf8);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .f3d-meta{display:flex;flex-direction:column;min-width:0;line-height:1.2}
+  .f3d-title{font-weight:700;font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .f3d-loc{font-size:.7rem;color:#94a3b8}
+  .f3d-badge{margin-left:auto;font-size:.65rem;font-weight:700;color:#a5b4fc;background:rgba(129,140,248,.12);border:1px solid rgba(129,140,248,.25);padding:.15rem .5rem;border-radius:9999px;white-space:nowrap}
+  .f3d-stage{position:relative;flex:1;min-height:0}
+  .f3d-frame{position:absolute;inset:0;width:100%;height:100%;border:0;background:#020617}
+  .f3d-foot{padding:.6rem 1rem;font-size:.75rem;color:#94a3b8;background:#070b1f;border-top:1px solid rgba(255,255,255,.05)}
+</style>
+</head>
+<body>
+<header class="f3d-bar">
+  <span class="f3d-logo">FRONTIERS<span>3D</span></span>
+  <div class="f3d-meta">
+    <span class="f3d-title">${title}</span>
+    ${loc ? `<span class="f3d-loc">${loc}</span>` : ""}
+  </div>
+  <span class="f3d-badge">Curated showcase</span>
+</header>
+<main class="f3d-stage">
+  <iframe class="f3d-frame" src="${embedSrc}" title="${title} — 3D tour"
+    allow="xr-spatial-tracking; gyroscope; accelerometer; fullscreen; autoplay"
+    allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe>
+</main>
+${summary ? `<footer class="f3d-foot">${summary}</footer>` : ""}
+</body>
+</html>`;
+}
+
+/**
+ * Build the curated package zip (flat root: index.html + atlas-manifest.json).
+ * Reuses fflate (Node-compatible) + the Atlas manifest shape. Returns base64 so
+ * the admin server fn can hand it straight to the browser for download — the
+ * package is a few KB (the Matterport tour is embedded, not bundled).
+ */
+export async function buildCuratedPackageZip(
+  input: CuratedPackageInput,
+): Promise<CuratedPackageResult> {
+  const { zipSync, strToU8 } = await import("fflate");
+  const issuedAt = new Date().toISOString();
+  const html = renderCuratedHtml(input);
+  const manifest = {
+    service: "frontiers3d-atlas",
+    version: 1 as const,
+    kind: "curated_showcase" as const,
+    curation_job_id: input.curationJobId,
+    matterport_id: input.matterportId,
+    issued_at: issuedAt,
+  };
+  const zipInput: Record<string, Uint8Array> = {
+    "index.html": strToU8(html),
+    "atlas-manifest.json": strToU8(JSON.stringify(manifest, null, 2)),
+  };
+  const zipped = zipSync(zipInput, { level: 6 });
+  return {
+    base64: Buffer.from(zipped).toString("base64"),
+    filename: `${slugify(input.title)}-frontiers3d-${issuedAt.slice(0, 10)}.zip`,
+    sizeBytes: zipped.length,
+  };
+}

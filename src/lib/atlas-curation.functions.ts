@@ -434,3 +434,84 @@ export const deleteCurationJob = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
+// ── Generate a minimal-but-real presentation package (download) ──────────────
+
+export const generateCuratedPackage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => z.object({ jobId: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }): Promise<{
+    job: AtlasCurationJob;
+    filename: string;
+    sizeBytes: number;
+    zipBase64: string;
+  }> => {
+    await requireAdmin(context as Ctx);
+    const sb = (context as Ctx).supabase;
+
+    const { data: job, error: loadErr } = await sb
+      .from("atlas_curation_jobs")
+      .select(JOB_COLUMNS)
+      .eq("id", data.jobId)
+      .single();
+    if (loadErr || !job) throw new Error(loadErr?.message ?? "Curation job not found.");
+
+    const matterportId = (job.extracted_matterport_id ?? "").trim();
+    const draft = job.draft_payload as AtlasCurationDraft | null;
+    const fail = async (msg: string): Promise<never> => {
+      await sb
+        .from("atlas_curation_jobs")
+        .update({ build_status: "failed", build_error: msg })
+        .eq("id", data.jobId);
+      throw new Error(msg);
+    };
+    if (!MATTERPORT_ID_RE.test(matterportId)) {
+      return fail("Missing or invalid Matterport model ID — can't build a presentation.");
+    }
+    if (!draft || !draft.title.trim()) {
+      return fail("Add a title in review before generating the presentation package.");
+    }
+
+    await sb
+      .from("atlas_curation_jobs")
+      .update({ build_status: "building", build_error: null })
+      .eq("id", data.jobId);
+
+    try {
+      const builder = await import("./atlas-curation-server");
+      const pkg = await builder.buildCuratedPackageZip({
+        curationJobId: job.id,
+        matterportId,
+        title: draft.title,
+        summary: draft.summary,
+        category: draft.category,
+        city: draft.city,
+        region: draft.region,
+        tags: draft.tags ?? [],
+        heroImageUrl: draft.hero_image_url,
+      });
+
+      const { data: updated, error: updErr } = await sb
+        .from("atlas_curation_jobs")
+        .update({
+          build_status: "built",
+          built_at: new Date().toISOString(),
+          package_filename: pkg.filename,
+          package_size_bytes: pkg.sizeBytes,
+          build_error: null,
+        })
+        .eq("id", data.jobId)
+        .select(JOB_COLUMNS)
+        .single();
+      if (updErr) throw new Error(updErr.message);
+
+      return {
+        job: updated as AtlasCurationJob,
+        filename: pkg.filename,
+        sizeBytes: pkg.sizeBytes,
+        zipBase64: pkg.base64,
+      };
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : "Package build failed.");
+    }
+  });

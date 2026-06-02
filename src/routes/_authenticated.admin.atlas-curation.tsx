@@ -18,6 +18,8 @@ import {
   CheckCircle2,
   Globe2,
   ArrowLeft,
+  Package,
+  Download,
 } from "lucide-react";
 import {
   CATEGORY_OPTIONS,
@@ -34,6 +36,7 @@ import {
   updateCurationJob,
   createAtlasEntryFromJob,
   deleteCurationJob,
+  generateCuratedPackage,
 } from "@/lib/atlas-curation.functions";
 
 export const Route = createFileRoute("/_authenticated/admin/atlas-curation")({
@@ -108,6 +111,22 @@ function statusBadge(status: AtlasCurationStatus) {
   return <span className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${cls}`}>{label}</span>;
 }
 
+/** Trigger a browser download of a base64-encoded zip. */
+function downloadZip(base64: string, filename: string) {
+  if (typeof document === "undefined") return;
+  const bin = atob(base64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const url = URL.createObjectURL(new Blob([bytes], { type: "application/zip" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 function AdminAtlasCuration() {
   const { roles, isLoading: authLoading } = useAuth();
   const isAdmin = roles.includes("admin");
@@ -118,6 +137,7 @@ function AdminAtlasCuration() {
   const update = useServerFn(updateCurationJob);
   const createEntry = useServerFn(createAtlasEntryFromJob);
   const removeJob = useServerFn(deleteCurationJob);
+  const genPackage = useServerFn(generateCuratedPackage);
 
   const [jobs, setJobs] = useState<AtlasCurationJob[]>([]);
   const [loading, setLoading] = useState(true);
@@ -363,6 +383,21 @@ function AdminAtlasCuration() {
     }
   };
 
+  const handleGeneratePackage = async () => {
+    if (!selected) return;
+    setBusy(true);
+    try {
+      const res = await genPackage({ data: { jobId: selected.id } });
+      replaceJob(res.job);
+      downloadZip(res.zipBase64, res.filename);
+      toast.success(`Package built (${(res.sizeBytes / 1024).toFixed(1)} KB) and downloaded.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Package build failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleDelete = async (job: AtlasCurationJob) => {
     if (typeof window !== "undefined" && !window.confirm("Delete this curation job? This cannot be undone.")) return;
     setBusy(true);
@@ -504,6 +539,7 @@ function AdminAtlasCuration() {
           onSaveDraft={() => void saveDraft()}
           onMarkReady={() => void saveDraft("ready_for_review")}
           onCreateEntry={() => void handleCreateEntry()}
+          onGeneratePackage={() => void handleGeneratePackage()}
           onReject={() => void handleReject()}
           onClose={() => setSelectedId(null)}
         />
@@ -581,7 +617,7 @@ function AdminAtlasCuration() {
 
 function JobReviewPanel({
   job, draft, setDraft, coordsMissing, busy,
-  onSelectCandidate, onSaveDraft, onMarkReady, onCreateEntry, onReject, onClose,
+  onSelectCandidate, onSaveDraft, onMarkReady, onCreateEntry, onGeneratePackage, onReject, onClose,
 }: {
   job: AtlasCurationJob;
   draft: DraftForm;
@@ -592,12 +628,15 @@ function JobReviewPanel({
   onSaveDraft: () => void;
   onMarkReady: () => void;
   onCreateEntry: () => void;
+  onGeneratePackage: () => void;
   onReject: () => void;
   onClose: () => void;
 }) {
   const set = <K extends keyof DraftForm>(k: K, v: DraftForm[K]) =>
     setDraft((f) => ({ ...f, [k]: v }));
   const created = job.status === "atlas_entry_created";
+  const canBuild = !!draft.title.trim() && /^[A-Za-z0-9]{11}$/.test(job.extracted_matterport_id ?? "");
+  const buildStatus = job.build_status ?? "none";
   const confidenceLabel =
     job.geocode_confidence === "google_places" ? "Google Places (precise)"
     : job.geocode_confidence === "city_level" ? "City-level (approximate — refine for a precise pin)"
@@ -712,6 +751,47 @@ function JobReviewPanel({
           <input className={inputCls} value={draft.hero_image_url} onChange={(e) => set("hero_image_url", e.target.value)} />
         </label>
       </fieldset>
+
+      {/* Presentation package */}
+      <div className="mt-4 rounded-md border border-border bg-muted/20 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+            <Package className="size-4 text-primary" /> Presentation package
+            {buildStatus === "built" && (
+              <span className="inline-flex items-center gap-1 text-xs font-normal text-emerald-600 dark:text-emerald-400"><CheckCircle2 className="size-3.5" /> built</span>
+            )}
+            {buildStatus === "failed" && (
+              <span className="text-xs font-normal text-rose-600 dark:text-rose-400">build failed</span>
+            )}
+          </div>
+          <Button size="sm" variant="outline" onClick={onGeneratePackage} disabled={busy || !canBuild}>
+            {buildStatus === "built"
+              ? <><Download className="mr-1 size-4" /> Re-generate &amp; download</>
+              : <><Package className="mr-1 size-4" /> Generate Presentation Package</>}
+          </Button>
+        </div>
+        <p className="mt-1.5 text-[11px] text-muted-foreground">
+          Builds a minimal Frontiers3D package (an <code>index.html</code> embedding the Matterport
+          tour + <code>atlas-manifest.json</code>) from the Matterport ID and this draft, then
+          downloads it. Publish it (e.g. via Netlify), then attach the live URL to the listing.
+          Generating does not deploy or activate anything.
+        </p>
+        {!canBuild && (
+          <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
+            Needs a title and a valid 11-character Matterport model ID before building.
+          </p>
+        )}
+        {buildStatus === "built" && job.package_filename && (
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Last build: <span className="font-mono">{job.package_filename}</span>
+            {job.package_size_bytes ? ` · ${(job.package_size_bytes / 1024).toFixed(1)} KB` : ""}
+            {job.built_at ? ` · ${new Date(job.built_at).toLocaleString()}` : ""}
+          </p>
+        )}
+        {buildStatus === "failed" && job.build_error && (
+          <p className="mt-1 text-[11px] text-rose-600 dark:text-rose-400">{job.build_error}</p>
+        )}
+      </div>
 
       {created ? (
         <div className="mt-4 flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/5 p-2.5 text-xs text-emerald-700 dark:text-emerald-300">

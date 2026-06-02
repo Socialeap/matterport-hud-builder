@@ -158,9 +158,17 @@ export interface AtlasCurationJob {
   draft_payload: AtlasCurationDraft | null;
   atlas_entry_id: string | null;
   error_message: string | null;
+  // Package build state (present once the build migration is applied).
+  build_status?: AtlasBuildStatus;
+  built_at?: string | null;
+  package_filename?: string | null;
+  package_size_bytes?: number | null;
+  build_error?: string | null;
   created_at: string;
   updated_at: string;
 }
+
+export type AtlasBuildStatus = "none" | "building" | "built" | "failed";
 
 /** Human label for a category value (known → friendly label, else Title Case). */
 export function categoryLabel(category: string): string {
