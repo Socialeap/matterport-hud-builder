@@ -3407,3 +3407,38 @@ outreach behavior change.
 **Verify:** `/businesses` loads without auth (desktop + mobile); cross-links resolve
 (`/` → For Businesses/Atlas; `/agents` ↔ `/businesses` ↔ `/atlas`; `/agents` "View Atlas Demo" →
 `/atlas`; `/businesses` primary → `/atlas`, secondary → `/agents#directory`); no email sent.
+
+---
+
+## Atlas manifest generation (PR-1 of verify-first Atlas) — 2026-06-02
+
+> Frontend/server-fn change + one Edge hardening. **Backend Activation Required: redeploy Edge
+> function `synthesize-answer` (recommended, non-blocking). No migration. No new secret.**
+
+First of a two-PR split toward verification-first Atlas submission. PR-1 makes exported packages
+**Atlas-ready**; PR-2 (separate) adds the SSRF-safe verify-and-submit flow that consumes the
+manifest. No user-facing behavior change in PR-1.
+
+**What it does:**
+- `generatePresentation` (`src/lib/portal.functions.ts`) now mints a second, scope-isolated
+  token (`atlas_v1`) and emits a root sibling **`atlas-manifest.json`** in the package
+  (`{ service, version, token, issued_at }` — opaque token only, **no user id, no model id**).
+  Best-effort: if token env is unset or mint fails, the export still ships (just without the
+  manifest). Reuses the existing `presentation_tokens` table — **no schema change** (scope lives
+  in the existing jsonb payload; rotation is now scope-aware so the atlas token never revokes the
+  Ask-AI token).
+- Edge hardening: `supabase/functions/_shared/presentation-token.ts` now enforces token **scope**
+  (default `ask_ai_v1`), so the public `atlas_v1` manifest token cannot be replayed against the
+  Ask-AI endpoint. Low severity (same model, already-public Ask AI), but correct scope isolation.
+
+**Env (already required for Ask AI — no new secret):** `PRESENTATION_TOKEN_SECRET` (≥32 chars) +
+`SUPABASE_SERVICE_ROLE_KEY` on the TanStack server-fn runtime. Without them, exports ship with no
+manifest (degraded, not broken).
+
+**Activation:** publish the frontend (server-fn change). **Redeploy `synthesize-answer`** so the
+shared verifier picks up the scope check — non-blocking: until redeployed, Ask AI keeps working
+and the only gap is that the (already-public, same-model) atlas token isn't yet rejected there.
+
+**Verify:** export a presentation → unzip the package → confirm `atlas-manifest.json` sits next to
+`index.html` with `service:"frontiers3d-atlas"` and an `id.signature` token; Ask AI still answers
+on the published page; `synthesize-answer` returns `wrong_scope` if handed the atlas token.

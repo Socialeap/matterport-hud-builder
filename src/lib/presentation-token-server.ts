@@ -28,9 +28,10 @@ import {
   hmacSha256,
   sha256,
   type PresentationTokenPayload,
+  type PresentationTokenScope,
 } from "./presentation-token-canonical";
 
-export type { PresentationTokenPayload };
+export type { PresentationTokenPayload, PresentationTokenScope };
 export { canonicalisePayload };
 
 export interface IssuedToken {
@@ -73,14 +74,17 @@ function getServiceClient() {
 export async function issuePresentationToken(args: {
   savedModelId: string;
   rotate?: boolean;
+  /** Token scope. Defaults to `ask_ai_v1` to preserve existing callers. */
+  scope?: PresentationTokenScope;
 }): Promise<IssuedToken> {
   const service = getServiceClient();
   const secret = getSecret();
+  const scope: PresentationTokenScope = args.scope ?? "ask_ai_v1";
   const issuedAt = new Date().toISOString();
   const payload: PresentationTokenPayload = {
     saved_model_id: args.savedModelId,
     issued_at: issuedAt,
-    scope: "ask_ai_v1",
+    scope,
   };
 
   // Insert a row first (Supabase generates the uuid) so we can fold
@@ -94,12 +98,15 @@ export async function issuePresentationToken(args: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const untyped = service as unknown as any;
 
-  // If rotating, revoke prior active token(s) atomically.
+  // If rotating, revoke prior active token(s) atomically — but only within
+  // the SAME scope, so issuing an `atlas_v1` token never revokes the live
+  // `ask_ai_v1` token (or vice versa). The two scopes are independent.
   if (args.rotate) {
     await untyped
       .from("presentation_tokens")
       .update({ revoked_at: issuedAt })
       .eq("saved_model_id", args.savedModelId)
+      .eq("payload->>scope", scope)
       .is("revoked_at", null);
   }
 
@@ -129,6 +136,7 @@ export async function issuePresentationToken(args: {
  */
 export async function ensurePresentationToken(
   savedModelId: string,
+  scope: PresentationTokenScope = "ask_ai_v1",
 ): Promise<IssuedToken> {
   // Look up an existing non-revoked row first. Note: we deliberately
   // do NOT recover the embedded token value from the DB — only the
@@ -137,5 +145,18 @@ export async function ensurePresentationToken(
   // when it actually wants the value to embed). For the export
   // pipeline we always issue fresh on every export click — the
   // signature is cheap, and rotation is the safer default.
-  return issuePresentationToken({ savedModelId, rotate: true });
+  return issuePresentationToken({ savedModelId, rotate: true, scope });
+}
+
+/**
+ * Issue a fresh `atlas_v1` token for the model, returning the opaque value
+ * to embed in the exported package's `atlas-manifest.json`. Rotates the
+ * prior atlas token (same-scope only — leaves the Ask-AI token untouched).
+ * Verification (PR-2) fetches the manifest from the published URL and
+ * matches this token's hash to confirm the publisher owns the model.
+ */
+export async function ensureAtlasManifestToken(
+  savedModelId: string,
+): Promise<IssuedToken> {
+  return issuePresentationToken({ savedModelId, rotate: true, scope: "atlas_v1" });
 }

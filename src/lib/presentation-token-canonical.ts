@@ -8,10 +8,18 @@
  * the Supabase client being present.
  */
 
+export type PresentationTokenScope = "ask_ai_v1" | "atlas_v1";
+
 export interface PresentationTokenPayload {
   saved_model_id: string;
   issued_at: string;
-  scope: "ask_ai_v1";
+  /**
+   * Token scope. `ask_ai_v1` gates the public Ask-AI runtime; `atlas_v1`
+   * proves a published package was built by the owner of this saved_model
+   * for Frontiers3D Atlas verification. Scopes are isolated: rotation only
+   * revokes tokens of the same scope, so the two lifecycles never collide.
+   */
+  scope: PresentationTokenScope;
 }
 
 const enc = new TextEncoder();
