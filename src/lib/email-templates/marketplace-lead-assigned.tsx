@@ -40,7 +40,7 @@ function MarketplaceLeadAssignedEmail({
   agentName = null,
   city = 'your area',
   expiresAtIso,
-  dashboardUrl = 'https://3dps.transcendencemedia.com/dashboard/marketplace',
+  dashboardUrl = 'https://www.frontiers3d.com/dashboard/marketplace',
 }: MarketplaceLeadAssignedProps) {
   const expiry = formatExpiry(expiresAtIso)
   const agentLabel = agentName ? agentName : 'A new agent'
@@ -108,8 +108,8 @@ export const template = {
     agentName: 'Sarah Lin',
     city: 'Atlanta, GA',
     expiresAtIso: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-    dashboardUrl: 'https://3dps.transcendencemedia.com/dashboard/marketplace',
-    studioUrl: 'https://3dps.transcendencemedia.com/p/magnolia-immersive',
+    dashboardUrl: 'https://www.frontiers3d.com/dashboard/marketplace',
+    studioUrl: 'https://www.frontiers3d.com/p/magnolia-immersive',
   },
 } satisfies TemplateEntry
 

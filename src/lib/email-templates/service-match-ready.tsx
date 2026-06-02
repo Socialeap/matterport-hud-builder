@@ -64,7 +64,7 @@ export const template = {
     city: 'Atlanta, GA',
     essentialServices: ['scan-matterport-pro3', 'scan-floor-plans'],
     preferableServices: ['scan-drone-aerial'],
-    matchUrl: 'https://3dps.transcendencemedia.com/agents/match/00000000-0000-0000-0000-000000000000',
+    matchUrl: 'https://www.frontiers3d.com/agents/match/00000000-0000-0000-0000-000000000000',
   },
 } satisfies TemplateEntry
 

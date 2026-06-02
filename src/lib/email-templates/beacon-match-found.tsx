@@ -84,7 +84,7 @@ export const template = {
     agentName: 'Sarah',
     city: 'Atlanta, GA',
     mspBrandName: 'Magnolia Immersive',
-    studioUrl: 'https://3dps.transcendencemedia.com/p/magnolia-immersive',
+    studioUrl: 'https://www.frontiers3d.com/p/magnolia-immersive',
   },
 } satisfies TemplateEntry
 

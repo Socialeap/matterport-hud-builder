@@ -106,7 +106,7 @@ export const template = {
     body:
       "Hi Sarah,\n\nI saw your listing on Peachtree and wanted to introduce myself — I'm the studio owner at Magnolia Immersive, a Pro Partner in the 3DPS Marketplace.\n\nWe just delivered a 4-bedroom in West Buckhead last week with a same-day Matterport scan and a branded interactive tour. Would you like to see the result?\n\nHappy to chat about pricing or schedule a walkthrough.",
     feedbackUrl:
-      'https://3dps.transcendencemedia.com/marketplace/feedback/00000000-0000-0000-0000-000000000000',
+      'https://www.frontiers3d.com/marketplace/feedback/00000000-0000-0000-0000-000000000000',
   },
 } satisfies TemplateEntry
 
