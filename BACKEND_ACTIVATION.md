@@ -3481,3 +3481,49 @@ package → paste its live URL → "Verify & Submit Atlas Listing" → expect `v
 appears on `/atlas`; paste a URL with no manifest → `missing_manifest` ("Unverified: no valid
 Frontiers3D Atlas manifest was found at this URL.") and **no row** is created; private/localhost
 URLs return `fetch_failed`.
+
+---
+
+## Curated Atlas Listing Assistant (admin) — 2026-06-02
+
+> **Backend Activation Required: APPLY THE MIGRATION** `20260610000000_frontiers3d_atlas_curation_jobs.sql`.
+> Optional: set `GOOGLE_PLACES_API_KEY` in the TanStack/Netlify server runtime to enable precise
+> Google Places resolution. No Stripe/outreach/billing.
+
+Admin-only workflow to seed the public Atlas with curated showcase listings from minimal inputs
+(Matterport URL + name/address), enrich/geocode/draft, review, then create an **inactive**
+`atlas_entries` row. New admin route `/admin/atlas-curation`.
+
+**Migration applies:**
+- New table `public.atlas_curation_jobs` (admin-only RLS via `has_role`, service-role policy,
+  `updated_at` trigger, grants to authenticated/service_role).
+- `atlas_entries.kind` CHECK extended to allow **`curated_showcase`** (was demo/client_submitted).
+- New nullable `atlas_entries.relationship_status` (`unclaimed`/`claim_requested`/`claimed`/`removed`)
+  with CHECK. Frontend reads of `atlas_entries` are migration-safe (the public `COLUMNS` select does
+  NOT name the new column; the type field is optional), so the frontend can deploy before/after the
+  migration without 500s — but the **curation feature itself needs the migration applied** (it reads
+  `atlas_curation_jobs` and writes `kind='curated_showcase'`/`relationship_status='unclaimed'`).
+
+**Geocoding policy:** prefers Google Places (legacy Text Search + Details, reads
+`process.env.GOOGLE_PLACES_API_KEY`; multi-match → admin selects a candidate; stores place_id /
+formatted_address / lat-lng / website / phone). Falls back to the existing free city-level
+`geocodeAddress()` (Census + Nominatim), then to manual admin lat/lng. **No `GOOGLE_PLACES_API_KEY`
+in this runtime → the flow still works** via city-level + manual (Places is the precision upgrade).
+Only the fixed Google host is fetched (no arbitrary-URL fetch → no SSRF). All Places/geocode/env
+logic is in the server-only `atlas-curation-server` (dynamic-imported; verified absent from the
+client bundle). Each server fn re-checks `has_role(admin)`.
+
+**Security:** admin-only (UI gate + `has_role` in every server fn + admin RLS). No service-role key
+in client code. Created Atlas entries are always `status='inactive'`, `kind='curated_showcase'`,
+`relationship_status='unclaimed'`, `presentation_url=null` — never public until an admin activates
+them in `/admin/atlas`. Public-facing labels: "Curated by Frontiers3D" / "Curated showcase" /
+"Unclaimed" / "Claimable" — never "official/partner/approved by business".
+
+**Deferred (future PRs):** automated package generation, Netlify deploy, atlas-manifest token
+verification for curated entries, business claim workflow, outreach, maintenance fees, CPC.
+
+**Verify (after migration applies):** open `/admin/atlas-curation` as admin (non-admin sees "Admin
+access required"); create a job with a valid Matterport URL (invalid → clear rejection); a job
+reaches `ready_for_review` (coords resolved) or `blocked` ("Coordinates needed before map pin"); a
+multi-match shows candidate selection; "Create inactive Atlas entry" yields an `inactive`
+`curated_showcase` row visible under the **Curated** tab in `/admin/atlas` (never active by default).

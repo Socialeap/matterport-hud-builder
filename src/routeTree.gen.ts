@@ -61,6 +61,7 @@ import { Route as AuthenticatedAdminSettingsRouteImport } from './routes/_authen
 import { Route as AuthenticatedAdminServiceMatchesRouteImport } from './routes/_authenticated.admin.service-matches'
 import { Route as AuthenticatedAdminMapOracleOutreachRouteImport } from './routes/_authenticated.admin.map-oracle-outreach'
 import { Route as AuthenticatedAdminDoorwayCandidatesRouteImport } from './routes/_authenticated.admin.doorway-candidates'
+import { Route as AuthenticatedAdminAtlasCurationRouteImport } from './routes/_authenticated.admin.atlas-curation'
 import { Route as AuthenticatedAdminAtlasRouteImport } from './routes/_authenticated.admin.atlas'
 import { Route as AuthenticatedAdminProviderIdRouteImport } from './routes/_authenticated.admin.$providerId'
 import { Route as AuthenticatedAgentDashboardWorkOrdersIndexRouteImport } from './routes/_authenticated.agent-dashboard.work-orders.index'
@@ -354,6 +355,12 @@ const AuthenticatedAdminDoorwayCandidatesRoute =
     path: '/doorway-candidates',
     getParentRoute: () => AuthenticatedAdminRoute,
   } as any)
+const AuthenticatedAdminAtlasCurationRoute =
+  AuthenticatedAdminAtlasCurationRouteImport.update({
+    id: '/atlas-curation',
+    path: '/atlas-curation',
+    getParentRoute: () => AuthenticatedAdminRoute,
+  } as any)
 const AuthenticatedAdminAtlasRoute = AuthenticatedAdminAtlasRouteImport.update({
   id: '/atlas',
   path: '/atlas',
@@ -459,6 +466,7 @@ export interface FileRoutesByFullPath {
   '/p/$slug': typeof PSlugRouteWithChildren
   '/admin/$providerId': typeof AuthenticatedAdminProviderIdRoute
   '/admin/atlas': typeof AuthenticatedAdminAtlasRoute
+  '/admin/atlas-curation': typeof AuthenticatedAdminAtlasCurationRoute
   '/admin/doorway-candidates': typeof AuthenticatedAdminDoorwayCandidatesRoute
   '/admin/map-oracle-outreach': typeof AuthenticatedAdminMapOracleOutreachRoute
   '/admin/service-matches': typeof AuthenticatedAdminServiceMatchesRouteWithChildren
@@ -522,6 +530,7 @@ export interface FileRoutesByTo {
   '/invite/$token': typeof InviteTokenRoute
   '/admin/$providerId': typeof AuthenticatedAdminProviderIdRoute
   '/admin/atlas': typeof AuthenticatedAdminAtlasRoute
+  '/admin/atlas-curation': typeof AuthenticatedAdminAtlasCurationRoute
   '/admin/doorway-candidates': typeof AuthenticatedAdminDoorwayCandidatesRoute
   '/admin/map-oracle-outreach': typeof AuthenticatedAdminMapOracleOutreachRoute
   '/admin/settings': typeof AuthenticatedAdminSettingsRoute
@@ -589,6 +598,7 @@ export interface FileRoutesById {
   '/p/$slug': typeof PSlugRouteWithChildren
   '/_authenticated/admin/$providerId': typeof AuthenticatedAdminProviderIdRoute
   '/_authenticated/admin/atlas': typeof AuthenticatedAdminAtlasRoute
+  '/_authenticated/admin/atlas-curation': typeof AuthenticatedAdminAtlasCurationRoute
   '/_authenticated/admin/doorway-candidates': typeof AuthenticatedAdminDoorwayCandidatesRoute
   '/_authenticated/admin/map-oracle-outreach': typeof AuthenticatedAdminMapOracleOutreachRoute
   '/_authenticated/admin/service-matches': typeof AuthenticatedAdminServiceMatchesRouteWithChildren
@@ -657,6 +667,7 @@ export interface FileRouteTypes {
     | '/p/$slug'
     | '/admin/$providerId'
     | '/admin/atlas'
+    | '/admin/atlas-curation'
     | '/admin/doorway-candidates'
     | '/admin/map-oracle-outreach'
     | '/admin/service-matches'
@@ -720,6 +731,7 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/admin/$providerId'
     | '/admin/atlas'
+    | '/admin/atlas-curation'
     | '/admin/doorway-candidates'
     | '/admin/map-oracle-outreach'
     | '/admin/settings'
@@ -786,6 +798,7 @@ export interface FileRouteTypes {
     | '/p/$slug'
     | '/_authenticated/admin/$providerId'
     | '/_authenticated/admin/atlas'
+    | '/_authenticated/admin/atlas-curation'
     | '/_authenticated/admin/doorway-candidates'
     | '/_authenticated/admin/map-oracle-outreach'
     | '/_authenticated/admin/service-matches'
@@ -1226,6 +1239,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminDoorwayCandidatesRouteImport
       parentRoute: typeof AuthenticatedAdminRoute
     }
+    '/_authenticated/admin/atlas-curation': {
+      id: '/_authenticated/admin/atlas-curation'
+      path: '/atlas-curation'
+      fullPath: '/admin/atlas-curation'
+      preLoaderRoute: typeof AuthenticatedAdminAtlasCurationRouteImport
+      parentRoute: typeof AuthenticatedAdminRoute
+    }
     '/_authenticated/admin/atlas': {
       id: '/_authenticated/admin/atlas'
       path: '/atlas'
@@ -1341,6 +1361,7 @@ const AuthenticatedAdminServiceMatchesRouteWithChildren =
 interface AuthenticatedAdminRouteChildren {
   AuthenticatedAdminProviderIdRoute: typeof AuthenticatedAdminProviderIdRoute
   AuthenticatedAdminAtlasRoute: typeof AuthenticatedAdminAtlasRoute
+  AuthenticatedAdminAtlasCurationRoute: typeof AuthenticatedAdminAtlasCurationRoute
   AuthenticatedAdminDoorwayCandidatesRoute: typeof AuthenticatedAdminDoorwayCandidatesRoute
   AuthenticatedAdminMapOracleOutreachRoute: typeof AuthenticatedAdminMapOracleOutreachRoute
   AuthenticatedAdminServiceMatchesRoute: typeof AuthenticatedAdminServiceMatchesRouteWithChildren
@@ -1351,6 +1372,7 @@ interface AuthenticatedAdminRouteChildren {
 const AuthenticatedAdminRouteChildren: AuthenticatedAdminRouteChildren = {
   AuthenticatedAdminProviderIdRoute: AuthenticatedAdminProviderIdRoute,
   AuthenticatedAdminAtlasRoute: AuthenticatedAdminAtlasRoute,
+  AuthenticatedAdminAtlasCurationRoute: AuthenticatedAdminAtlasCurationRoute,
   AuthenticatedAdminDoorwayCandidatesRoute:
     AuthenticatedAdminDoorwayCandidatesRoute,
   AuthenticatedAdminMapOracleOutreachRoute:

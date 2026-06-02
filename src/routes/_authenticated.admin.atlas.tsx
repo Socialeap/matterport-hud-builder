@@ -17,6 +17,7 @@ import {
   X,
   CheckCircle2,
   XCircle,
+  Wand2,
 } from "lucide-react";
 import {
   CATEGORY_OPTIONS,
@@ -103,6 +104,7 @@ const TABS: Array<{ key: string; label: string; filter: (r: AtlasEntry) => boole
   { key: "pending", label: "Pending review", filter: (r) => r.status === "pending_review" },
   { key: "demo", label: "Demo", filter: (r) => r.kind === "demo" },
   { key: "client", label: "Client", filter: (r) => r.kind === "client_submitted" },
+  { key: "curated", label: "Curated", filter: (r) => r.kind === "curated_showcase" },
   { key: "inactive", label: "Inactive", filter: (r) => r.status === "inactive" },
   { key: "rejected", label: "Rejected", filter: (r) => r.status === "rejected" },
 ];
@@ -303,6 +305,9 @@ function AdminAtlas() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button asChild variant="outline" size="sm">
+            <Link to="/admin/atlas-curation"><Wand2 className="mr-1 size-4" /> Curation assistant</Link>
+          </Button>
           <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
             <RefreshCw className={`mr-1 size-4 ${loading ? "animate-spin" : ""}`} /> Refresh
           </Button>
@@ -355,6 +360,7 @@ function AdminAtlas() {
             <select className={inputCls} value={form.kind} onChange={(e) => set("kind", e.target.value as AtlasEntryKind)}>
               <option value="demo">Demo (Frontiers|3D-owned)</option>
               <option value="client_submitted">Client-submitted</option>
+              <option value="curated_showcase">Curated showcase</option>
             </select>
           </label>
           <label>
@@ -474,7 +480,7 @@ function AdminAtlas() {
                   <td className="px-3 py-2 text-muted-foreground">{r.sort_order}</td>
                   <td className="px-3 py-2 font-medium text-foreground">{r.title}</td>
                   <td className="px-3 py-2 text-muted-foreground">
-                    {r.kind === "demo" ? "Demo" : "Client"}
+                    {r.kind === "demo" ? "Demo" : r.kind === "curated_showcase" ? "Curated" : "Client"}
                   </td>
                   <td className="px-3 py-2">
                     <StatusBadge status={r.status} />

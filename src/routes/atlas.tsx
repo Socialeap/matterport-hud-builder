@@ -9,6 +9,7 @@ import {
   X,
   ShieldCheck,
   Sparkles,
+  Star,
   Box,
   Play,
   SlidersHorizontal,
@@ -496,6 +497,10 @@ function ListingCard({
         {entry.kind === "demo" ? (
           <span className="atlas-card-kind atlas-card-kind--sample">
             <Sparkles className="size-3" /> Sample
+          </span>
+        ) : entry.kind === "curated_showcase" ? (
+          <span className="atlas-card-kind atlas-card-kind--curated">
+            <Star className="size-3" /> Curated
           </span>
         ) : (
           <span className="atlas-card-kind atlas-card-kind--verified">
