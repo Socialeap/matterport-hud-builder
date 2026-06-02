@@ -75,6 +75,26 @@ function draftToForm(d: AtlasCurationDraft | null): DraftForm {
   };
 }
 
+const CREATE_FORM_KEY = "atlas-curation:create-form:v1";
+const DRAFT_FORM_KEY_PREFIX = "atlas-curation:draft-form:v1:";
+type CreateFormState = {
+  matterportUrl: string; name: string; address: string; city: string;
+  region: string; country: string; category: string; rightsNote: string;
+  rightsAck: boolean;
+};
+const EMPTY_CREATE_FORM: CreateFormState = {
+  matterportUrl: "", name: "", address: "", city: "",
+  region: "", country: "US", category: "", rightsNote: "", rightsAck: false,
+};
+function loadPersistedCreateForm(): CreateFormState {
+  if (typeof window === "undefined") return EMPTY_CREATE_FORM;
+  try {
+    const raw = window.localStorage.getItem(CREATE_FORM_KEY);
+    if (!raw) return EMPTY_CREATE_FORM;
+    return { ...EMPTY_CREATE_FORM, ...(JSON.parse(raw) as Partial<CreateFormState>) };
+  } catch { return EMPTY_CREATE_FORM; }
+}
+
 function statusBadge(status: AtlasCurationStatus) {
   const map: Record<AtlasCurationStatus, { label: string; cls: string }> = {
     draft: { label: "draft", cls: "bg-zinc-200 text-zinc-700 dark:bg-zinc-700/40 dark:text-zinc-200" },
@@ -105,16 +125,27 @@ function AdminAtlasCuration() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // Create form
-  const [matterportUrl, setMatterportUrl] = useState("");
-  const [name, setName] = useState("");
-  const [address, setAddress] = useState("");
-  const [city, setCity] = useState("");
-  const [region, setRegion] = useState("");
-  const [country, setCountry] = useState("US");
-  const [category, setCategory] = useState("");
-  const [rightsNote, setRightsNote] = useState("");
-  const [rightsAck, setRightsAck] = useState(false);
+  // Create form (persisted to localStorage so navigating away or refreshing
+  // does not wipe in-progress input).
+  const initialCreate = useMemo(loadPersistedCreateForm, []);
+  const [matterportUrl, setMatterportUrl] = useState(initialCreate.matterportUrl);
+  const [name, setName] = useState(initialCreate.name);
+  const [address, setAddress] = useState(initialCreate.address);
+  const [city, setCity] = useState(initialCreate.city);
+  const [region, setRegion] = useState(initialCreate.region);
+  const [country, setCountry] = useState(initialCreate.country);
+  const [category, setCategory] = useState(initialCreate.category);
+  const [rightsNote, setRightsNote] = useState(initialCreate.rightsNote);
+  const [rightsAck, setRightsAck] = useState(initialCreate.rightsAck);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(CREATE_FORM_KEY, JSON.stringify({
+        matterportUrl, name, address, city, region, country, category, rightsNote, rightsAck,
+      }));
+    } catch { /* ignore quota errors */ }
+  }, [matterportUrl, name, address, city, region, country, category, rightsNote, rightsAck]);
 
   // Review/edit form (mirrors the selected job's draft)
   const [draft, setDraft] = useState<DraftForm>(() => draftToForm(null));
@@ -147,14 +178,40 @@ function AdminAtlasCuration() {
     else setLoading(false);
   }, [authLoading, isAdmin, load]);
 
-  // Sync the editable draft when the selected job changes.
+  // Sync the editable draft when the selected job changes. If the user has
+  // unsaved edits in localStorage for this job, restore those instead of
+  // resetting to the server payload.
   useEffect(() => {
+    if (!selectedId) {
+      setDraft(draftToForm(null));
+      return;
+    }
+    if (typeof window !== "undefined") {
+      try {
+        const raw = window.localStorage.getItem(DRAFT_FORM_KEY_PREFIX + selectedId);
+        if (raw) {
+          setDraft({ ...draftToForm(selected?.draft_payload ?? null), ...(JSON.parse(raw) as Partial<DraftForm>) });
+          return;
+        }
+      } catch { /* ignore */ }
+    }
     setDraft(draftToForm(selected?.draft_payload ?? null));
   }, [selectedId, selected?.draft_payload]);
+
+  // Persist in-progress draft edits per job id.
+  useEffect(() => {
+    if (!selectedId || typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(DRAFT_FORM_KEY_PREFIX + selectedId, JSON.stringify(draft));
+    } catch { /* ignore */ }
+  }, [selectedId, draft]);
 
   const resetCreate = () => {
     setMatterportUrl(""); setName(""); setAddress(""); setCity("");
     setRegion(""); setCountry("US"); setCategory(""); setRightsNote(""); setRightsAck(false);
+    if (typeof window !== "undefined") {
+      try { window.localStorage.removeItem(CREATE_FORM_KEY); } catch { /* ignore */ }
+    }
   };
 
   const handleCreate = async () => {
@@ -259,6 +316,9 @@ function AdminAtlasCuration() {
         },
       });
       replaceJob(job);
+      if (typeof window !== "undefined") {
+        try { window.localStorage.removeItem(DRAFT_FORM_KEY_PREFIX + selected.id); } catch { /* ignore */ }
+      }
       toast.success(status === "ready_for_review" ? "Saved — ready for review." : "Draft saved.");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Save failed.");
@@ -310,6 +370,9 @@ function AdminAtlasCuration() {
       await removeJob({ data: { jobId: job.id } });
       setJobs((prev) => prev.filter((j) => j.id !== job.id));
       if (selectedId === job.id) setSelectedId(null);
+      if (typeof window !== "undefined") {
+        try { window.localStorage.removeItem(DRAFT_FORM_KEY_PREFIX + job.id); } catch { /* ignore */ }
+      }
       toast.success("Curation job deleted.");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Delete failed.");
