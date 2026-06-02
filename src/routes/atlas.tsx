@@ -100,6 +100,9 @@ function AtlasPage() {
   const [activeCategory, setActiveCategory] = useState<string>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [active, setActive] = useState<AtlasEntry | null>(null);
+  // Business card shown over the map when a pin is clicked (replaces the old
+  // Leaflet mini-popup). Cleared by its close button or a background map click.
+  const [preview, setPreview] = useState<AtlasEntry | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Category chips built from the union of active-listing categories.
@@ -150,6 +153,8 @@ function AtlasPage() {
         maxZoom: 19,
       }).addTo(map);
       L.control.zoom({ position: "topright" }).addTo(map);
+      // Clicking the empty map (not a pin) dismisses the floating card.
+      map.on("click", () => setPreview(null));
       const layer = L.layerGroup().addTo(map);
       refsRef.current = { L, map, layer, markers: new Map() };
       setMapReady(true);
@@ -177,30 +182,17 @@ function AtlasPage() {
         iconAnchor: [12, 12],
       });
       const marker = L.marker([entry.latitude as number, entry.longitude as number], { icon });
-      const loc = [entry.city, entry.region].filter(Boolean).join(", ");
-      const kindLabel =
-        entry.kind === "demo"
-          ? `<span class="atlas-pop-pill atlas-pop-pill--sample">Sample</span>`
-          : `<span class="atlas-pop-pill atlas-pop-pill--verified">Verified</span>`;
-      marker.bindPopup(
-        `
-        <div class="atlas-popup">
-          <div class="atlas-popup-row">
-            <span class="atlas-popup-cat">${escapeHtml(categoryLabel(entry.category))}</span>
-            ${kindLabel}
-          </div>
-          <h4 class="atlas-popup-title">${escapeHtml(entry.title)}</h4>
-          ${loc ? `<p class="atlas-popup-loc">📍 ${escapeHtml(loc)}</p>` : ""}
-          <button class="atlas-popup-cta" data-atlas-open="${entry.id}">
-            ▶ Step Inside 3D Showcase
-          </button>
-        </div>
-      `,
-        { closeButton: false, maxWidth: 260 },
-      );
+      // Clicking a pin surfaces the full business card (not a mini popup):
+      // select it, show the floating card over the map, and bring the matching
+      // sidebar card into view.
       marker.on("click", () => {
         setSelectedId(entry.id);
-        if (entry.presentation_url) setActive(entry);
+        setPreview(entry);
+        if (typeof document !== "undefined") {
+          document
+            .getElementById(`atlas-card-${entry.id}`)
+            ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }
       });
       marker.addTo(layer);
       markers.set(entry.id, marker);
@@ -214,20 +206,6 @@ function AtlasPage() {
       refs.map.fitBounds(bounds, { padding: [40, 40], maxZoom: 12 });
     }
   }, [pinned, mapReady]);
-
-  // Delegate clicks on popup CTA → open modal.
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      const target = e.target as HTMLElement | null;
-      const btn = target?.closest?.("[data-atlas-open]") as HTMLElement | null;
-      if (!btn) return;
-      const id = btn.getAttribute("data-atlas-open");
-      const entry = entries.find((x) => x.id === id);
-      if (entry) setActive(entry);
-    };
-    document.addEventListener("click", handler);
-    return () => document.removeEventListener("click", handler);
-  }, [entries]);
 
   // Highlight selected marker.
   useEffect(() => {
@@ -456,6 +434,28 @@ function AtlasPage() {
             <Compass className="size-3.5" aria-hidden="true" />
             Sample discovery map
           </span>
+
+          {/* Pin click → the full business card over the map (with Step Inside). */}
+          {preview && (
+            <div className="atlas-map-preview">
+              <button
+                type="button"
+                className="atlas-map-preview-close"
+                onClick={() => setPreview(null)}
+                aria-label="Close card"
+                title="Close"
+              >
+                <X className="size-4" aria-hidden="true" />
+              </button>
+              <ListingCard
+                entry={preview}
+                selected
+                onHover={() => setSelectedId(preview.id)}
+                onFocus={() => focusEntry(preview)}
+                onOpen={() => preview.presentation_url && setActive(preview)}
+              />
+            </div>
+          )}
         </main>
       </div>
 
@@ -629,13 +629,4 @@ function PresentationModal({ entry, onClose }: { entry: AtlasEntry; onClose: () 
       </div>
     </div>
   );
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
 }
