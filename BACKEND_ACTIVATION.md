@@ -3442,3 +3442,42 @@ and the only gap is that the (already-public, same-model) atlas token isn't yet 
 **Verify:** export a presentation → unzip the package → confirm `atlas-manifest.json` sits next to
 `index.html` with `service:"frontiers3d-atlas"` and an `id.signature` token; Ask AI still answers
 on the published page; `synthesize-answer` returns `wrong_scope` if handed the atlas token.
+
+---
+
+## Atlas verify-and-submit (PR-2 of verify-first Atlas) — 2026-06-02
+
+> Server-fn + UI change. **Backend Activation Required: NO migration, NO Edge function, NO new
+> secret.** Reuses `PRESENTATION_TOKEN_SECRET` + `SUPABASE_SERVICE_ROLE_KEY` (already required).
+
+Second of the two-PR split. Makes Atlas submission **verification-first**: a published package's
+manifest must verify before any `atlas_entries` row is created. Builds on PR-1 (manifest in the
+package) and the merged #132 opt-in UI.
+
+**Behavior change:** the old blind `submitAtlasClientEntry` (which created a `pending_review` row
+for ANY pasted URL) is **removed**. The Atlas card now calls `verifyAndSubmitAtlasEntry`, which:
+1. SSRF-safe `GET ${baseUrl}/atlas-manifest.json` — https-only, no creds, port 443 only, every
+   resolved IP checked against loopback/private/link-local/CGNAT/metadata ranges, ≤3 redirects
+   (re-validated per hop), 5s timeout, 256 KB cap, JSON-only (never executes anything).
+2. Verifies the opaque `atlas_v1` token against `presentation_tokens` (recompute HMAC, constant-
+   time compare, sha256 hash match, scope check, non-revoked).
+3. Confirms the token's `saved_model` belongs to the caller (`client_id` or `provider_id`).
+4. **Only then** activates the entry to `status='active'` via the **service-role** client (owners
+   can't self-activate under RLS). No verified token → **no row** (5 states: `verified`,
+   `unverified`, `missing_manifest`, `token_mismatch`, `fetch_failed`).
+
+All server-only logic (`node:dns`, crypto, service-role) lives in `src/lib/atlas-verify-server.ts`,
+reached only via dynamic import inside the server fn — verified absent from the client bundle.
+
+**Security:** opaque/signed tokens, hash-only at rest, no raw user IDs in the manifest, SSRF
+guards per above. The manifest token is public by design; the **ownership check** (token's model
+must belong to the caller) is what prevents claiming someone else's published presentation.
+
+**Not included (deferred):** an `atlas_verification_attempts` audit table (failures currently log
+to server console only) — add later if abuse monitoring is needed. No CPC/crawler/outreach.
+
+**Activation:** publish the frontend (server-fn change). **Verify:** publish a real exported
+package → paste its live URL → "Verify & Submit Atlas Listing" → expect `verified` + the entry
+appears on `/atlas`; paste a URL with no manifest → `missing_manifest` ("Unverified: no valid
+Frontiers3D Atlas manifest was found at this URL.") and **no row** is created; private/localhost
+URLs return `fetch_failed`.

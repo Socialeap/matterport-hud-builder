@@ -45,6 +45,14 @@ export const CATEGORY_OPTIONS: AtlasCategory[] = [
 export type AtlasEntryKind = "demo" | "client_submitted";
 export type AtlasEntryStatus = "pending_review" | "active" | "inactive" | "rejected";
 
+/** Terminal outcome of verification-first Atlas submission (client + server). */
+export type AtlasVerifyState =
+  | "verified"
+  | "unverified"
+  | "missing_manifest"
+  | "token_mismatch"
+  | "fetch_failed";
+
 /** A row of `atlas_entries`. */
 export interface AtlasEntry {
   id: string;

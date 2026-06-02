@@ -1,19 +1,23 @@
 /**
  * Server functions for the Frontiers3D Atlas (`atlas_entries`).
  *
- * - `listActiveAtlasEntries`: public read of active listings (anon-friendly).
- * - `listMyAtlasEntries`:     owner reads all their own submissions.
- * - `submitAtlasClientEntry`: owner upserts a pending_review client entry.
- * - `withdrawForEdit`:        owner pulls an active listing back to pending_review
- *                              via the SECURITY DEFINER RPC (RLS would otherwise
- *                              block editing live rows).
- * - `deleteMyAtlasEntry`:     owner deletes their own pending/inactive/rejected entry.
+ * - `listActiveAtlasEntries`:   public read of active listings (anon-friendly).
+ * - `listMyAtlasEntries`:       owner reads all their own submissions.
+ * - `verifyAndSubmitAtlasEntry`: verification-first submit — fetches the live
+ *                                URL's `atlas-manifest.json` (SSRF-safe), verifies
+ *                                the opaque `atlas_v1` token belongs to the caller,
+ *                                and ONLY then activates the entry. No verified
+ *                                token → no row is created.
+ * - `withdrawForEdit`:          owner pulls an active listing back to pending_review
+ *                                via the SECURITY DEFINER RPC (RLS would otherwise
+ *                                block editing live rows).
+ * - `deleteMyAtlasEntry`:       owner deletes their own pending/inactive/rejected entry.
  */
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import type { AtlasEntry } from "./atlas-demo-data";
+import type { AtlasEntry, AtlasVerifyState } from "./atlas-demo-data";
 
 const HTTPS_URL_RE = /^https:\/\/[^\s<>"']+$/i;
 const FORBIDDEN_URL_RE = /^(javascript|data|vbscript|file|about):/i;
@@ -97,78 +101,100 @@ export const listMyAtlasEntries = createServerFn({ method: "GET" })
     return { entries: (data ?? []) as AtlasEntry[] };
   });
 
-// ── Owner upsert ─────────────────────────────────────────────────────────────
+// ── Verification-first submit ────────────────────────────────────────────────
 
-export const submitAtlasClientEntry = createServerFn({ method: "POST" })
+export interface AtlasVerifyResponse {
+  result: AtlasVerifyState;
+  entry: AtlasEntry | null;
+  message: string;
+}
+
+/**
+ * Verification-first Atlas submission. Fetches `atlas-manifest.json` from the
+ * pasted live URL under SSRF protections, verifies the opaque `atlas_v1` token
+ * against `presentation_tokens`, confirms the token's saved_model belongs to the
+ * caller, and ONLY on success activates the entry. An unverified URL never
+ * creates a row. All server-only logic (node:dns, crypto, service-role) lives in
+ * the dynamically-imported `atlas-verify-server` so it stays out of the client.
+ */
+export const verifyAndSubmitAtlasEntry = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) => atlasEntryInput.parse(input))
-  .handler(async ({ data, context }): Promise<{ entry: AtlasEntry }> => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const sb = context.supabase as unknown as any;
+  .handler(async ({ data, context }): Promise<AtlasVerifyResponse> => {
+    const verify = await import("./atlas-verify-server");
 
-    const nowIso = new Date().toISOString();
-    const payload = {
-      kind: "client_submitted" as const,
-      status: "pending_review" as const,
-      owner_user_id: context.userId,
-      submitted_at: nowIso,
-      reviewed_at: null,
-      reviewed_by: null,
-      rejection_reason: null,
-      title: data.title,
-      summary: data.summary,
-      category: data.category,
-      tags: data.tags,
-      hero_image_url: data.hero_image_url,
-      presentation_url: data.presentation_url,
-      address: data.address,
-      city: data.city,
-      region: data.region,
-      country: data.country,
-      latitude: data.latitude ?? null,
-      longitude: data.longitude ?? null,
-      saved_model_id: data.saved_model_id ?? null,
-    };
-
-    // Find any existing client_submitted row for this owner, keyed by
-    // saved_model_id when present, otherwise by presentation_url.
-    let existingQuery = sb
-      .from("atlas_entries")
-      .select("id,status")
-      .eq("owner_user_id", context.userId)
-      .eq("kind", "client_submitted");
-    existingQuery = data.saved_model_id
-      ? existingQuery.eq("saved_model_id", data.saved_model_id)
-      : existingQuery
-          .is("saved_model_id", null)
-          .eq("presentation_url", data.presentation_url);
-    const { data: existing } = await existingQuery.maybeSingle();
-
-    if (existing) {
-      // RLS blocks owner edits to active rows — withdraw first, then update.
-      if (existing.status === "active") {
-        const { error: wErr } = await sb.rpc("atlas_entry_owner_withdraw", {
-          _id: existing.id,
-        });
-        if (wErr) throw new Error(wErr.message);
-      }
-      const { data: updated, error } = await sb
-        .from("atlas_entries")
-        .update(payload)
-        .eq("id", existing.id)
-        .select(COLUMNS)
-        .single();
-      if (error) throw new Error(error.message);
-      return { entry: updated as AtlasEntry };
+    const fetched = await verify.fetchAtlasManifest(data.presentation_url);
+    if (fetched.state === "fetch_failed") {
+      return {
+        result: "fetch_failed",
+        entry: null,
+        message:
+          "We couldn't reach that URL to verify it. Make sure the presentation is published and publicly reachable over https, then try again.",
+      };
+    }
+    if (fetched.state === "missing_manifest") {
+      return {
+        result: "missing_manifest",
+        entry: null,
+        message:
+          "Unverified: no valid Frontiers3D Atlas manifest was found at this URL.",
+      };
     }
 
-    const { data: inserted, error } = await sb
-      .from("atlas_entries")
-      .insert(payload)
-      .select(COLUMNS)
-      .single();
-    if (error) throw new Error(error.message);
-    return { entry: inserted as AtlasEntry };
+    const token = verify.extractManifestToken(fetched.manifest);
+    if (!token) {
+      return {
+        result: "missing_manifest",
+        entry: null,
+        message:
+          "Unverified: no valid Frontiers3D Atlas manifest was found at this URL.",
+      };
+    }
+
+    const tokenResult = await verify.verifyAtlasToken(token);
+    if (!tokenResult.ok) {
+      return {
+        result: "token_mismatch",
+        entry: null,
+        message:
+          "Unverified. This published URL does not contain a valid Frontiers3D Atlas manifest.",
+      };
+    }
+
+    const owns = await verify.userOwnsModel(tokenResult.savedModelId, context.userId);
+    if (!owns) {
+      return {
+        result: "unverified",
+        entry: null,
+        message:
+          "Unverified: this published presentation belongs to a different account.",
+      };
+    }
+
+    const entry = await verify.activateVerifiedEntry({
+      ownerUserId: context.userId,
+      savedModelId: tokenResult.savedModelId,
+      presentationUrl: data.presentation_url,
+      fields: {
+        title: data.title,
+        summary: data.summary,
+        category: data.category,
+        tags: data.tags,
+        hero_image_url: data.hero_image_url,
+        address: data.address,
+        city: data.city,
+        region: data.region,
+        country: data.country,
+        latitude: data.latitude ?? null,
+        longitude: data.longitude ?? null,
+      },
+    });
+
+    return {
+      result: "verified",
+      entry,
+      message: "Verified. Your Atlas listing is ready for the public Atlas.",
+    };
   });
 
 // ── Owner withdraw (active → pending_review) ─────────────────────────────────
