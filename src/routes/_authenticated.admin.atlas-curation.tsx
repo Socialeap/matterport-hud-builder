@@ -75,6 +75,26 @@ function draftToForm(d: AtlasCurationDraft | null): DraftForm {
   };
 }
 
+const CREATE_FORM_KEY = "atlas-curation:create-form:v1";
+const DRAFT_FORM_KEY_PREFIX = "atlas-curation:draft-form:v1:";
+type CreateFormState = {
+  matterportUrl: string; name: string; address: string; city: string;
+  region: string; country: string; category: string; rightsNote: string;
+  rightsAck: boolean;
+};
+const EMPTY_CREATE_FORM: CreateFormState = {
+  matterportUrl: "", name: "", address: "", city: "",
+  region: "", country: "US", category: "", rightsNote: "", rightsAck: false,
+};
+function loadPersistedCreateForm(): CreateFormState {
+  if (typeof window === "undefined") return EMPTY_CREATE_FORM;
+  try {
+    const raw = window.localStorage.getItem(CREATE_FORM_KEY);
+    if (!raw) return EMPTY_CREATE_FORM;
+    return { ...EMPTY_CREATE_FORM, ...(JSON.parse(raw) as Partial<CreateFormState>) };
+  } catch { return EMPTY_CREATE_FORM; }
+}
+
 function statusBadge(status: AtlasCurationStatus) {
   const map: Record<AtlasCurationStatus, { label: string; cls: string }> = {
     draft: { label: "draft", cls: "bg-zinc-200 text-zinc-700 dark:bg-zinc-700/40 dark:text-zinc-200" },
