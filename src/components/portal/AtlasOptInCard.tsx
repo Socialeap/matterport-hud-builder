@@ -2,9 +2,10 @@
  * Atlas opt-in card shown inside the Listing Launch Kit (Publish &
  * Distribute) once the user has pasted their live presentation URL.
  *
- * Lets owners submit their published tour for inclusion on the public
- * Frontiers3D Atlas (`/atlas`). Submissions land as kind='client_submitted'
- * status='pending_review'; only an admin can flip them to 'active'.
+ * Verification-first: "Verify & Submit" fetches `atlas-manifest.json` from the
+ * published URL, verifies the opaque token belongs to the caller's presentation,
+ * and only then activates the listing. An unverified URL creates no row — the
+ * card surfaces the specific failure (missing manifest / mismatch / unreachable).
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
@@ -17,7 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
   listMyAtlasEntries,
-  submitAtlasClientEntry,
+  verifyAndSubmitAtlasEntry,
   withdrawForEdit,
 } from "@/lib/atlas.functions";
 import {
@@ -92,7 +93,7 @@ export function AtlasOptInCard({
   savedModelId,
 }: AtlasOptInCardProps) {
   const listMine = useServerFn(listMyAtlasEntries);
-  const submit = useServerFn(submitAtlasClientEntry);
+  const verifyAndSubmit = useServerFn(verifyAndSubmitAtlasEntry);
   const withdraw = useServerFn(withdrawForEdit);
 
   const [loading, setLoading] = useState(true);
@@ -182,7 +183,10 @@ export function AtlasOptInCard({
           .map((t) => t.trim())
           .filter(Boolean)
           .slice(0, 12);
-        await submit({
+        // Verification-first: the server fetches the manifest at this URL and
+        // only activates a listing when the opaque token verifies. We get a
+        // structured result (no throw) for verification failures.
+        const res = await verifyAndSubmit({
           data: {
             title: form.title.trim(),
             category: form.category,
@@ -195,22 +199,27 @@ export function AtlasOptInCard({
             country: form.country.trim() || "US",
             latitude: lat ?? undefined,
             longitude: lng ?? undefined,
-            saved_model_id: savedModelId ?? undefined,
             tags,
           },
         });
-        toast.success("Submitted for Atlas verification — pending review");
-        setEditMode(false);
-        await refresh();
+        if (res.result === "verified") {
+          setFormError(null);
+          toast.success(res.message);
+          setEditMode(false);
+          await refresh();
+        } else {
+          setFormError(res.message);
+          toast.error(res.message);
+        }
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "Submission failed";
+        const msg = err instanceof Error ? err.message : "Verification failed";
         setFormError(msg);
         toast.error(msg);
       } finally {
         setSubmitting(false);
       }
     },
-    [form, liveUrl, savedModelId, submit, refresh],
+    [form, liveUrl, verifyAndSubmit, refresh],
   );
 
   const onWithdraw = useCallback(async () => {
@@ -248,10 +257,10 @@ export function AtlasOptInCard({
           </h3>
           <p className="mt-1 text-xs text-muted-foreground">
             The Atlas is the public discovery map at{" "}
-            <span className="font-medium text-foreground">/atlas</span>. Verified
-            entries can appear publicly with a map pin and an embedded preview.
-            New submissions start as <span className="font-medium text-foreground">pending
-            verification</span> until they're verified and activated.
+            <span className="font-medium text-foreground">/atlas</span>. We verify
+            your published presentation by checking this URL for its Frontiers3D
+            Atlas manifest — once <span className="font-medium text-foreground">verified</span>,
+            your entry appears publicly with a map pin and an embedded preview.
           </p>
         </div>
         {badge && (
