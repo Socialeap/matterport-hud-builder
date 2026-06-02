@@ -187,6 +187,7 @@
   .atlas-card-kind { display:inline-flex; align-items:center; gap:3px; font-size:10px; font-weight:600; padding:2px 8px; border-radius:4px; border:1px solid; }
   .atlas-card-kind--sample { color:#fbbf24; background:rgba(251,191,36,0.08); border-color:rgba(251,191,36,0.2); }
   .atlas-card-kind--verified { color:#34d399; background:rgba(52,211,153,0.08); border-color:rgba(52,211,153,0.2); }
+  .atlas-card-kind--curated { color:#818cf8; background:rgba(129,140,248,0.08); border-color:rgba(129,140,248,0.2); }
   .atlas-card-title { font-size:1rem; font-weight:700; color:#fff; letter-spacing:-0.01em; margin:0; }
   .atlas-card:hover .atlas-card-title { color:#60a5fa; }
   .atlas-card-loc { font-size:0.75rem; color:#94a3b8; margin:0.125rem 0 0 0; display:flex; align-items:center; gap:0.25rem; }
