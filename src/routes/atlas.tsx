@@ -29,8 +29,11 @@ export const Route = createFileRoute("/atlas")({
         property: "og:description",
         content: "Discover verified immersive 3D spaces on a dark interactive map.",
       },
+      { property: "og:url", content: "https://www.frontiers3d.com/atlas" },
     ],
+    links: [{ rel: "canonical", href: "https://www.frontiers3d.com/atlas" }],
   }),
+
   loader: async () => await listActiveAtlasEntries(),
   component: AtlasPage,
 });
