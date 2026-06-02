@@ -370,6 +370,9 @@ function AdminAtlasCuration() {
       await removeJob({ data: { jobId: job.id } });
       setJobs((prev) => prev.filter((j) => j.id !== job.id));
       if (selectedId === job.id) setSelectedId(null);
+      if (typeof window !== "undefined") {
+        try { window.localStorage.removeItem(DRAFT_FORM_KEY_PREFIX + job.id); } catch { /* ignore */ }
+      }
       toast.success("Curation job deleted.");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Delete failed.");
