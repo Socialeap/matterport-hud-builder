@@ -2448,7 +2448,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
                   Download Your Presentation
                 </h3>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Your provider has waived their own fee. A Frontiers3D platform
+                  Your provider has waived their own fee. A Frontiers|3D platform
                   access fee still applies — you'll complete a quick, secure
                   checkout for it before your download.
                 </p>
@@ -2494,7 +2494,7 @@ export function HudBuilderSandbox({ branding, slug }: HudBuilderSandboxProps) {
                     <span>${(totalCents / 100).toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between text-muted-foreground">
-                    <span>+ Frontiers3D platform access fee</span>
+                    <span>+ Frontiers|3D platform access fee</span>
                     <span>added at checkout</span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">

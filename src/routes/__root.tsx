@@ -77,7 +77,7 @@ export const Route = createRootRoute({
             {
               "@type": "WebSite",
               "@id": "https://www.frontiers3d.com/#website",
-              name: "Frontiers3D",
+              name: "Frontiers|3D",
 
               url: "https://www.frontiers3d.com",
               publisher: { "@id": "https://www.frontiers3d.com/#organization" },

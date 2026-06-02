@@ -183,7 +183,7 @@ export function AtlasOptInCard({
             tags: [],
           },
         });
-        toast.success("Submitted to the Frontiers3D Atlas for review");
+        toast.success("Submitted to the Frontiers|3D Atlas for review");
         setEditMode(false);
         await refresh();
       } catch (err) {
@@ -228,7 +228,7 @@ export function AtlasOptInCard({
         <div>
           <h3 className="flex items-center gap-2 text-base font-semibold text-foreground">
             <Globe2 className="size-5" style={{ color: accentColor }} />
-            List this tour on the Frontiers3D Atlas
+            List this tour on the Frontiers|3D Atlas
           </h3>
           <p className="mt-1 text-xs text-muted-foreground">
             The Atlas is our public discovery layer at{" "}

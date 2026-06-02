@@ -11,13 +11,13 @@ const SITE_URL = "https://www.frontiers3d.com";
 export const Route = createFileRoute("/businesses")({
   head: () => ({
     meta: [
-      { title: "Frontiers3D for Businesses — Help customers experience your space before they visit" },
+      { title: "Frontiers|3D for Businesses — Help customers experience your space before they visit" },
       {
         name: "description",
         content:
-          "Restaurants, cafés, hotels, venues, galleries, wellness studios, retail showrooms and coworking spaces: get your space represented in the Frontiers3D Atlas, an immersive discovery map.",
+          "Restaurants, cafés, hotels, venues, galleries, wellness studios, retail showrooms and coworking spaces: get your space represented in the Frontiers|3D Atlas, an immersive discovery map.",
       },
-      { property: "og:title", content: "Frontiers3D for Businesses — Your space in the immersive Atlas" },
+      { property: "og:title", content: "Frontiers|3D for Businesses — Your space in the immersive Atlas" },
       {
         property: "og:description",
         content: "Help customers experience your space before they visit. See sample Atlas listings.",
@@ -37,7 +37,7 @@ const VALUE = [
 
 const STEPS = [
   { icon: Camera, title: "Get your space captured", body: "Work with a local 3D capture provider to virtualize your storefront, venue, or public space." },
-  { icon: CheckCircle2, title: "Become an eligible listing", body: "An eligible space can be approved as a Frontiers3D Atlas listing (no listing exists until it’s approved)." },
+  { icon: CheckCircle2, title: "Become an eligible listing", body: "An eligible space can be approved as a Frontiers|3D Atlas listing (no listing exists until it’s approved)." },
   { icon: Compass, title: "Customers discover & step inside", body: "Approved listings appear in the public Atlas discovery map, where people explore before they visit." },
 ];
 
@@ -51,8 +51,8 @@ function BusinessesPage() {
       <header className="fixed inset-x-0 top-0 z-50 border-b border-white/10 bg-[#0a0e27]/70 backdrop-blur-xl">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
           <div className="flex items-center gap-3">
-            <Link to="/" className="text-sm font-extrabold tracking-[0.2em] text-white" aria-label="Frontiers3D — home">
-              FRONTIERS3D
+            <Link to="/" className="text-sm font-extrabold tracking-[0.2em] text-white" aria-label="Frontiers|3D — home">
+              FRONTIERS|3D
             </Link>
             <span className="hidden text-sm font-semibold text-white/80 sm:inline">for Businesses</span>
           </div>
@@ -79,7 +79,7 @@ function BusinessesPage() {
             <span className="bg-gradient-to-r from-cyan-300 to-indigo-400 bg-clip-text text-transparent">before they visit</span>
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-white/60 sm:text-lg">
-            Get your storefront, venue, or public space represented in the Frontiers3D Atlas — an immersive
+            Get your storefront, venue, or public space represented in the Frontiers|3D Atlas — an immersive
             discovery map where guests, buyers, and customers can step inside before they book, visit, or inquire.
           </p>
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -161,7 +161,7 @@ function BusinessesPage() {
       <footer className="border-t border-white/5 bg-[#070b1f] px-4 py-10">
         <div className="mx-auto max-w-6xl">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="text-sm font-extrabold tracking-[0.2em] text-white">FRONTIERS3D</span>
+            <span className="text-sm font-extrabold tracking-[0.2em] text-white">FRONTIERS|3D</span>
             <nav className="flex flex-wrap items-center gap-4 text-sm text-white/60">
               <Link to="/atlas" className="hover:text-white">Atlas</Link>
               <Link to="/agents" className="hover:text-white">For Agents</Link>
@@ -170,7 +170,7 @@ function BusinessesPage() {
           </div>
           <p className="mt-4 flex items-center gap-1.5 text-xs text-white/40">
             <MapPin className="size-3.5" />
-            © {new Date().getFullYear()} Transcendence Media · Frontiers3D. Atlas listings appear only after capture and admin approval.
+            © {new Date().getFullYear()} Transcendence Media · Frontiers|3D. Atlas listings appear only after capture and admin approval.
           </p>
         </div>
       </footer>
