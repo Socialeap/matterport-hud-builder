@@ -283,8 +283,9 @@ function AtlasPage() {
           </span>
           <div className="atlas-brand-text">
             <h1>
-              FRONTIERS3D ATLAS
-              <span className="atlas-brand-pill">Discovery Layer</span>
+              Frontiers|3D Atlas
+              <br />
+              <span className="atlas-brand-pill">DISCOVERY MAP</span>
             </h1>
             <p>Immersive 3D spaces, mapped.</p>
           </div>
