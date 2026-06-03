@@ -263,6 +263,7 @@ function AdminAtlas() {
   };
 
   const approve = async (r: AtlasEntry) => {
+    if (!(await confirmActivationOk(r))) return;
     const { error: err } = await sbAny
       .from("atlas_entries")
       .update({
@@ -294,6 +295,7 @@ function AdminAtlas() {
 
   const toggleActive = async (r: AtlasEntry) => {
     const next: AtlasEntryStatus = r.status === "active" ? "inactive" : "active";
+    if (next === "active" && !(await confirmActivationOk(r))) return;
     const { error: err } = await sbAny
       .from("atlas_entries")
       .update({
