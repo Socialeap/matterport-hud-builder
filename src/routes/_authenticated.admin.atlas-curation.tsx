@@ -599,22 +599,24 @@ function AdminAtlasCuration() {
 
       {/* Review panel */}
       {selected && (
-        <JobReviewPanel
-          job={selected}
-          draft={draft}
-          setDraft={setDraft}
-          coordsMissing={coordsMissing}
-          busy={busy}
-          onSelectCandidate={handleSelectCandidate}
-          onSaveDraft={() => void saveDraft()}
-          onMarkReady={() => void saveDraft("ready_for_review")}
-          onCreateEntry={() => void handleCreateEntry()}
-          onGeneratePackage={() => void handleGeneratePackage()}
-          onPublishShowcase={() => void handlePublishShowcase()}
-          onMarkDeployed={(url) => void handleMarkDeployed(url)}
-          onReject={() => void handleReject()}
-          onClose={() => setSelectedId(null)}
-        />
+        <div ref={reviewPanelRef} id="curation-review-panel" style={{ scrollMarginTop: "5rem" }}>
+          <JobReviewPanel
+            job={selected}
+            draft={draft}
+            setDraft={setDraft}
+            coordsMissing={coordsMissing}
+            busy={busy}
+            onSelectCandidate={handleSelectCandidate}
+            onSaveDraft={() => void saveDraft()}
+            onMarkReady={() => void saveDraft("ready_for_review")}
+            onCreateEntry={() => void handleCreateEntry()}
+            onGeneratePackage={() => void handleGeneratePackage()}
+            onPublishShowcase={() => void handlePublishShowcase()}
+            onMarkDeployed={(url) => void handleMarkDeployed(url)}
+            onReject={() => void handleReject()}
+            onClose={() => setSelectedId(null)}
+          />
+        </div>
       )}
 
       {/* Jobs table */}
