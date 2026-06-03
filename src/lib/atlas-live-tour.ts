@@ -216,31 +216,32 @@ const LAUNCH_BUTTON_HTML = `<button id="lt-launch-btn" type="button" class="f3d-
 
 const STAGE_OVERLAY_HTML = `<div id="lt-navlock" aria-hidden="true"></div>
     <canvas id="anno-canvas"></canvas>
-    <div id="remote-pointer" aria-hidden="true"></div>
-    <div id="anno-toolbar" role="toolbar" aria-label="Shared tour annotations">
-      <button type="button" class="anno-tool-btn" data-tool="pointer" title="Pointer (P)" aria-keyshortcuts="P">Pointer</button>
-      <button type="button" class="anno-tool-btn" data-tool="draw" title="Draw (D)" aria-keyshortcuts="D">Draw</button>
-      <label class="anno-color-wrap" title="Stroke color">
-        <span class="anno-color-swatch" id="anno-color-swatch" aria-hidden="true"></span>
-        <select class="anno-color-select" id="anno-color-select" aria-label="Stroke color">
-          <option value="#ff3b30">Red</option>
-          <option value="#1e90ff">Blue</option>
-          <option value="#22c55e">Green</option>
-          <option value="#ffffff">White</option>
-        </select>
-      </label>
-      <span class="anno-rope-group" role="group" aria-label="Focus Rope">
-        <button type="button" class="anno-tool-btn" data-tool="rope" id="anno-rope-btn" title="Focus Rope (R)" aria-keyshortcuts="R">Focus Rope</button>
-        <label class="anno-shape-wrap" title="Rope shape">
-          <select class="anno-shape-select" id="anno-shape-select" aria-label="Rope shape">
-            <option value="circle">Circle</option>
-            <option value="box">Box</option>
-          </select>
-        </label>
-      </span>
-      <button type="button" class="anno-tool-btn" id="anno-clear-btn" title="Clear annotations (C)" aria-keyshortcuts="C">Clear</button>
-      <button type="button" class="anno-tool-btn anno-exit-btn" id="anno-exit-btn" title="Exit annotation mode" aria-label="Exit annotation mode">&times;</button>
-    </div>`;
+    <div id="remote-pointer" aria-hidden="true"></div>`;
+
+const TOOLBAR_HTML = `<div id="anno-toolbar" role="toolbar" aria-label="Shared tour annotations">
+  <button type="button" class="anno-tool-btn" data-tool="pointer" title="Pointer (P)" aria-keyshortcuts="P">Pointer</button>
+  <button type="button" class="anno-tool-btn" data-tool="draw" title="Draw (D)" aria-keyshortcuts="D">Draw</button>
+  <label class="anno-color-wrap" title="Stroke color">
+    <span class="anno-color-swatch" id="anno-color-swatch" aria-hidden="true"></span>
+    <select class="anno-color-select" id="anno-color-select" aria-label="Stroke color">
+      <option value="#ff3b30">Red</option>
+      <option value="#1e90ff">Blue</option>
+      <option value="#22c55e">Green</option>
+      <option value="#ffffff">White</option>
+    </select>
+  </label>
+  <span class="anno-rope-group" role="group" aria-label="Focus Rope">
+    <button type="button" class="anno-tool-btn" data-tool="rope" id="anno-rope-btn" title="Focus Rope (R)" aria-keyshortcuts="R">Focus Rope</button>
+    <label class="anno-shape-wrap" title="Rope shape">
+      <select class="anno-shape-select" id="anno-shape-select" aria-label="Rope shape">
+        <option value="circle">Circle</option>
+        <option value="box">Box</option>
+      </select>
+    </label>
+  </span>
+  <button type="button" class="anno-tool-btn" id="anno-clear-btn" title="Clear annotations (C)" aria-keyshortcuts="C">Clear</button>
+  <button type="button" class="anno-tool-btn anno-exit-btn" id="anno-exit-btn" title="Exit annotation mode" aria-label="Exit annotation mode">&times;</button>
+</div>`;
 
 const PANEL_HTML = `<aside id="lt-panel" class="lt-panel" role="dialog" aria-label="Explore Together" aria-modal="false">
   <div class="lt-panel-head">
