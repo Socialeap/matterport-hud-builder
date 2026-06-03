@@ -198,15 +198,19 @@ function AdminAtlasCuration() {
   const [category, setCategory] = useState(initialCreate.category);
   const [rightsNote, setRightsNote] = useState(initialCreate.rightsNote);
   const [rightsAck, setRightsAck] = useState(initialCreate.rightsAck);
+  const [summary, setSummary] = useState(initialCreate.summary);
+  const [latitude, setLatitude] = useState(initialCreate.latitude);
+  const [longitude, setLongitude] = useState(initialCreate.longitude);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
       window.localStorage.setItem(CREATE_FORM_KEY, JSON.stringify({
         matterportUrl, name, address, city, region, country, category, rightsNote, rightsAck,
+        summary, latitude, longitude,
       }));
     } catch { /* ignore quota errors */ }
-  }, [matterportUrl, name, address, city, region, country, category, rightsNote, rightsAck]);
+  }, [matterportUrl, name, address, city, region, country, category, rightsNote, rightsAck, summary, latitude, longitude]);
 
   // Review/edit form (mirrors the selected job's draft)
   const [draft, setDraft] = useState<DraftForm>(() => draftToForm(null));
