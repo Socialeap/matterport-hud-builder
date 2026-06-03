@@ -92,10 +92,12 @@ type CreateFormState = {
   matterportUrl: string; name: string; address: string; city: string;
   region: string; country: string; category: string; rightsNote: string;
   rightsAck: boolean;
+  summary: string; latitude: string; longitude: string;
 };
 const EMPTY_CREATE_FORM: CreateFormState = {
   matterportUrl: "", name: "", address: "", city: "",
   region: "", country: "US", category: "", rightsNote: "", rightsAck: false,
+  summary: "", latitude: "", longitude: "",
 };
 function loadPersistedCreateForm(): CreateFormState {
   if (typeof window === "undefined") return EMPTY_CREATE_FORM;
