@@ -506,6 +506,15 @@ function AdminAtlasCuration() {
           <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
             <RefreshCw className={`mr-1 size-4 ${loading ? "animate-spin" : ""}`} /> Refresh
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void onPublishRootIndex()}
+            disabled={publishingRootIndex}
+            title="Open a PR adding /index.html so the bare showcases site URL is not a 404."
+          >
+            <Globe2 className={`mr-1 size-4 ${publishingRootIndex ? "animate-spin" : ""}`} /> Publish root index
+          </Button>
         </div>
       </div>
 
