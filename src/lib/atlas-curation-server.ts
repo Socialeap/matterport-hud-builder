@@ -414,6 +414,7 @@ ${liveTour.headHtml}
     ${claimBtnHtml}
   </div>
 </header>
+${liveTour.toolbarHtml}
 <main class="f3d-stage" id="viewer">
   <div id="anno-letterbox-wrap">
     <iframe id="matterport-frame" class="f3d-frame" src="${embedSrc}" title="${title} — 3D tour"

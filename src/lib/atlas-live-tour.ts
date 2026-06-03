@@ -71,6 +71,8 @@ export interface AtlasLiveTourAssets {
   launchButtonHtml: string;
   /** Overlay markup spliced INSIDE the #anno-letterbox-wrap, after the iframe. */
   stageOverlayHtml: string;
+  /** Annotation toolbar strip; place between the page header and the stage so it never overlays the Matterport iframe. Hidden until a live session is active. */
+  toolbarHtml: string;
   /** The control panel + status chip + location-sync pill + audio sink (near </body>). */
   bodyHtml: string;
   /** Config + runtime <script> blocks (placed last, before </body>). */
@@ -109,7 +111,7 @@ function buildCss(accent: string): string {
 body.live-tour-active #lt-navlock.locked{display:block}
 body.live-tour-active #anno-letterbox-wrap:has(#lt-navlock.locked) #matterport-frame{pointer-events:none}
 
-#anno-toolbar{position:absolute;left:50%;top:14px;transform:translateX(-50%);display:none;gap:6px;z-index:10;background:rgba(10,12,20,0.7);-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:6px;box-shadow:0 6px 24px rgba(0,0,0,0.35)}
+#anno-toolbar{display:none;justify-content:center;align-items:center;flex-wrap:wrap;gap:6px;padding:8px 12px;background:rgba(10,12,20,0.92);border-bottom:1px solid rgba(255,255,255,0.08);position:relative;z-index:1250}
 body.live-tour-active #anno-toolbar{display:flex}
 .anno-tool-btn{appearance:none;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.85);border-radius:6px;padding:6px 10px;font:600 12px/1 inherit;cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:background 0.15s,border-color 0.15s,color 0.15s;font-family:inherit}
 .anno-tool-btn:hover{background:rgba(255,255,255,0.14);color:#fff}
@@ -129,7 +131,7 @@ body.anno-rope-active .anno-rope-group .anno-shape-wrap{display:inline-flex}
 
 /* Engage the 16:9 letterbox once a session is live. */
 body.live-tour-active #viewer{display:flex;align-items:center;justify-content:center;background:#000}
-body.live-tour-active #anno-letterbox-wrap{position:relative;inset:auto;aspect-ratio:16/9;width:min(100%,calc((100vh - 52px) * 16 / 9));height:auto;max-height:100%}
+body.live-tour-active #anno-letterbox-wrap{position:relative;inset:auto;aspect-ratio:16/9;width:min(100%,calc((100vh - 100px) * 16 / 9));height:auto;max-height:100%}
 body.live-tour-active.live-tour-host #anno-letterbox-wrap.follow-pulse{box-shadow:0 0 0 3px var(--lt-accent),0 0 0 6px rgba(129,140,248,0.2);transition:box-shadow 1.5s ease-out}
 
 /* ── Explore Together launch button (top bar) ─────────────────────── */
@@ -214,31 +216,32 @@ const LAUNCH_BUTTON_HTML = `<button id="lt-launch-btn" type="button" class="f3d-
 
 const STAGE_OVERLAY_HTML = `<div id="lt-navlock" aria-hidden="true"></div>
     <canvas id="anno-canvas"></canvas>
-    <div id="remote-pointer" aria-hidden="true"></div>
-    <div id="anno-toolbar" role="toolbar" aria-label="Shared tour annotations">
-      <button type="button" class="anno-tool-btn" data-tool="pointer" title="Pointer (P)" aria-keyshortcuts="P">Pointer</button>
-      <button type="button" class="anno-tool-btn" data-tool="draw" title="Draw (D)" aria-keyshortcuts="D">Draw</button>
-      <label class="anno-color-wrap" title="Stroke color">
-        <span class="anno-color-swatch" id="anno-color-swatch" aria-hidden="true"></span>
-        <select class="anno-color-select" id="anno-color-select" aria-label="Stroke color">
-          <option value="#ff3b30">Red</option>
-          <option value="#1e90ff">Blue</option>
-          <option value="#22c55e">Green</option>
-          <option value="#ffffff">White</option>
-        </select>
-      </label>
-      <span class="anno-rope-group" role="group" aria-label="Focus Rope">
-        <button type="button" class="anno-tool-btn" data-tool="rope" id="anno-rope-btn" title="Focus Rope (R)" aria-keyshortcuts="R">Focus Rope</button>
-        <label class="anno-shape-wrap" title="Rope shape">
-          <select class="anno-shape-select" id="anno-shape-select" aria-label="Rope shape">
-            <option value="circle">Circle</option>
-            <option value="box">Box</option>
-          </select>
-        </label>
-      </span>
-      <button type="button" class="anno-tool-btn" id="anno-clear-btn" title="Clear annotations (C)" aria-keyshortcuts="C">Clear</button>
-      <button type="button" class="anno-tool-btn anno-exit-btn" id="anno-exit-btn" title="Exit annotation mode" aria-label="Exit annotation mode">&times;</button>
-    </div>`;
+    <div id="remote-pointer" aria-hidden="true"></div>`;
+
+const TOOLBAR_HTML = `<div id="anno-toolbar" role="toolbar" aria-label="Shared tour annotations">
+  <button type="button" class="anno-tool-btn" data-tool="pointer" title="Pointer (P)" aria-keyshortcuts="P">Pointer</button>
+  <button type="button" class="anno-tool-btn" data-tool="draw" title="Draw (D)" aria-keyshortcuts="D">Draw</button>
+  <label class="anno-color-wrap" title="Stroke color">
+    <span class="anno-color-swatch" id="anno-color-swatch" aria-hidden="true"></span>
+    <select class="anno-color-select" id="anno-color-select" aria-label="Stroke color">
+      <option value="#ff3b30">Red</option>
+      <option value="#1e90ff">Blue</option>
+      <option value="#22c55e">Green</option>
+      <option value="#ffffff">White</option>
+    </select>
+  </label>
+  <span class="anno-rope-group" role="group" aria-label="Focus Rope">
+    <button type="button" class="anno-tool-btn" data-tool="rope" id="anno-rope-btn" title="Focus Rope (R)" aria-keyshortcuts="R">Focus Rope</button>
+    <label class="anno-shape-wrap" title="Rope shape">
+      <select class="anno-shape-select" id="anno-shape-select" aria-label="Rope shape">
+        <option value="circle">Circle</option>
+        <option value="box">Box</option>
+      </select>
+    </label>
+  </span>
+  <button type="button" class="anno-tool-btn" id="anno-clear-btn" title="Clear annotations (C)" aria-keyshortcuts="C">Clear</button>
+  <button type="button" class="anno-tool-btn anno-exit-btn" id="anno-exit-btn" title="Exit annotation mode" aria-label="Exit annotation mode">&times;</button>
+</div>`;
 
 const PANEL_HTML = `<aside id="lt-panel" class="lt-panel" role="dialog" aria-label="Explore Together" aria-modal="false">
   <div class="lt-panel-head">
@@ -317,6 +320,7 @@ ${glueJs}
     css: buildCss(opts.accentColor),
     launchButtonHtml: LAUNCH_BUTTON_HTML,
     stageOverlayHtml: STAGE_OVERLAY_HTML,
+    toolbarHtml: TOOLBAR_HTML,
     bodyHtml: PANEL_HTML,
     scriptHtml,
   };
