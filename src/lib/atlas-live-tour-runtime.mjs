@@ -1,0 +1,1315 @@
+// Atlas Curated Showcase — "Explore Together" (Shared Tour) runtime glue.
+//
+// Self-contained controller binding for the Atlas curated showcase page.
+// It REUSES the tested createLiveSession() controller (injected verbatim
+// just before this file inside the same <script> via getLiveSessionRuntimeJS)
+// and wires it to a minimal, portal-free DOM. The wire protocol and the
+// normalized-[0,1] annotation pipeline are identical to the builder export,
+// so the same controller drives both surfaces.
+//
+// Roles map to user-facing language: the controller "agent" is the Host,
+// the controller "visitor" is the Guest. The controller role strings are
+// internal and never shown.
+//
+// Browser-safety constraints (shared with the other runtime .mjs modules,
+// enforced by scripts/verify-portal-html.mjs): NO single-quote string
+// literals, NO import/export, NO TypeScript syntax. Single backslashes are
+// correct here because this file is injected via ?raw, not nested inside a
+// TS template literal.
+//
+// Graceful degradation:
+//   - PeerJS missing / blocked CDN  -> createLiveSession is absent OR
+//     init resolves to an error state; the static tour stays fully usable
+//     and only the Explore Together button is disabled / shows a message.
+//   - Microphone denied / unavailable -> the controller falls back to a
+//     silent track; session + annotation + location sync still work.
+//   - Clipboard read unavailable (Safari/Firefox) -> ambient location sync
+//     degrades silently; everything else is unaffected.
+
+(function initAtlasLiveTour() {
+  if (typeof document === "undefined") return;
+
+  var launchBtn = document.getElementById("lt-launch-btn");
+
+  // Hard guard: the controller factory is injected just above. If it is
+  // missing (script assembly bug) the page must still work as a plain
+  // tour — disable only the live-tour affordance.
+  if (typeof createLiveSession !== "function") {
+    if (launchBtn) {
+      launchBtn.disabled = true;
+      launchBtn.setAttribute("title", "Live tour unavailable in this browser");
+    }
+    return;
+  }
+
+  var CONFIG =
+    window.__ATLAS_LT_CONFIG && typeof window.__ATLAS_LT_CONFIG === "object"
+      ? window.__ATLAS_LT_CONFIG
+      : {};
+  var ACCENT = typeof CONFIG.accent === "string" ? CONFIG.accent : "#818cf8";
+  var MP_BASE = typeof CONFIG.matterportBaseUrl === "string" ? CONFIG.matterportBaseUrl : "";
+  var SHARE_TITLE = typeof CONFIG.shareTitle === "string" ? CONFIG.shareTitle : "Frontiers3D Showcase";
+  var STOPS = Array.isArray(CONFIG.stops) ? CONFIG.stops : [];
+
+  // ── DOM refs ────────────────────────────────────────────────────────
+  var panel = document.getElementById("lt-panel");
+  var panelClose = document.getElementById("lt-panel-close");
+  var roleChoose = document.getElementById("lt-role-choose");
+  var hostStartBtn = document.getElementById("lt-host-start-btn");
+  var guestChooseBtn = document.getElementById("lt-guest-choose-btn");
+  var hostBlock = document.getElementById("lt-host-block");
+  var guestBlock = document.getElementById("lt-guest-block");
+  var pinValue = document.getElementById("lt-pin-value");
+  var pinInput = document.getElementById("lt-pin-input");
+  var joinBtn = document.getElementById("lt-join-btn");
+  var hostStatus = document.getElementById("lt-host-status");
+  var guestStatus = document.getElementById("lt-guest-status");
+  var inviteBtn = document.getElementById("lt-invite-btn");
+  var inviteStatus = document.getElementById("lt-invite-status");
+  var backLinks = document.querySelectorAll(".lt-back-link");
+  var stopsWrap = document.getElementById("lt-stops");
+  var leaveBtns = document.querySelectorAll(".lt-leave-btn");
+  var statusChip = document.getElementById("lt-status-chip");
+  var audioEl = document.getElementById("lt-audio");
+
+  // Annotation overlay refs.
+  var letterboxWrap = document.getElementById("anno-letterbox-wrap");
+  var frame = document.getElementById("matterport-frame");
+  var annoCanvas = document.getElementById("anno-canvas");
+  var annoCtx = annoCanvas ? annoCanvas.getContext("2d") : null;
+  var annoToolbar = document.getElementById("anno-toolbar");
+  var remotePointer = document.getElementById("remote-pointer");
+  var clearBtn = document.getElementById("anno-clear-btn");
+  var navlockEl = document.getElementById("lt-navlock");
+
+  // Location-sync pill refs.
+  var syncBtn = document.getElementById("loc-sync");
+  var syncLabelEl = syncBtn ? syncBtn.querySelector(".loc-sync-label") : null;
+  var tipsEl = document.getElementById("loc-sync-tips");
+
+  var session = createLiveSession({});
+  var lastTeleportTs = 0;
+  var lastShareTs = 0;
+  var wasConnected = false;
+
+  // ── Annotation state (normalized [0,1] over the 16:9 letterbox) ──────
+  var ANNO_STROKE_COLOR = "#ff3b30";
+  var ANNO_STROKE_WIDTH = 0.004;
+  var ANNO_REMOTE_POINTER_TIMEOUT_MS = 2500;
+  var ANNO_ROPE_SHAPE = "circle";
+  var ANNO_ROPE_SHAPE_WHITELIST = { circle: 1, box: 1 };
+  var ANNO_COLOR_WHITELIST = { "#ff3b30": 1, "#1e90ff": 1, "#22c55e": 1, "#ffffff": 1 };
+  var ANNO_ROPE_CIRCLE_SAMPLES = 48;
+  var ANNO_LATCH_PX = 10;
+
+  var toolMode = "none";
+  var currentViewKey = "";
+  var localStrokes = [];
+  var activeStroke = null;
+  var pendingStrokePoints = null;
+  var pendingStrokeId = null;
+  var strokeFlushScheduled = false;
+  var lastPointerSeq = 0;
+  var lastStrokeSeq = 0;
+  var lastClearSeq = 0;
+  var lastNavLockSeq = 0;
+  var remotePointerHideTimer = null;
+  var activeRope = null;
+  var ropeDragging = false;
+  var ropeLatchDragging = false;
+  var ropeFlushScheduled = false;
+
+  // ── Small helpers ───────────────────────────────────────────────────
+  function setText(el, text) {
+    if (el) el.textContent = text;
+  }
+  function show(el) {
+    if (el) el.hidden = false;
+  }
+  function hide(el) {
+    if (el) el.hidden = true;
+  }
+  function shareUrl() {
+    try {
+      return String(window.location.href).split("#")[0];
+    } catch (_e) {
+      return "";
+    }
+  }
+
+  function openPanel() {
+    if (panel) panel.classList.add("open");
+    if (launchBtn) launchBtn.setAttribute("aria-expanded", "true");
+  }
+  function closePanel() {
+    if (panel) panel.classList.remove("open");
+    if (launchBtn) launchBtn.setAttribute("aria-expanded", "false");
+  }
+  function togglePanel() {
+    if (panel && panel.classList.contains("open")) closePanel();
+    else openPanel();
+  }
+
+  function setHudButtonState(state) {
+    if (!launchBtn) return;
+    launchBtn.classList.remove("is-waiting", "connected");
+    if (state.isConnected) launchBtn.classList.add("connected");
+    else if (
+      state.status === "waiting" ||
+      state.status === "connecting" ||
+      state.status === "initializing"
+    ) {
+      launchBtn.classList.add("is-waiting");
+    }
+  }
+
+  function showRoleChoose() {
+    show(roleChoose);
+    hide(hostBlock);
+    hide(guestBlock);
+  }
+
+  function resetUiToIdle() {
+    showRoleChoose();
+    if (joinBtn) joinBtn.disabled = false;
+    if (hostStartBtn) hostStartBtn.disabled = false;
+    if (pinInput) pinInput.value = "";
+    if (pinValue) pinValue.textContent = "----";
+    setText(hostStatus, "");
+    setText(guestStatus, "");
+    setText(inviteStatus, "");
+    if (stopsWrap) stopsWrap.innerHTML = "";
+    if (statusChip) statusChip.hidden = true;
+    if (audioEl) {
+      try {
+        audioEl.srcObject = null;
+      } catch (_e) {}
+    }
+  }
+
+  // ── Letterbox / body-class engagement ───────────────────────────────
+  function setBodyLetterboxClass(active, isHost) {
+    if (!document || !document.body) return;
+    if (active) {
+      document.body.classList.add("live-tour-active");
+      if (isHost) {
+        document.body.classList.add("live-tour-host");
+        document.body.classList.remove("live-tour-guest");
+      } else {
+        document.body.classList.add("live-tour-guest");
+        document.body.classList.remove("live-tour-host");
+      }
+    } else {
+      document.body.classList.remove("live-tour-active");
+      document.body.classList.remove("live-tour-host");
+      document.body.classList.remove("live-tour-guest");
+    }
+  }
+
+  // ── Annotation rendering ────────────────────────────────────────────
+  function setToolMode(mode) {
+    var prev = toolMode;
+    toolMode = mode;
+    if (annoCanvas) {
+      annoCanvas.classList.remove("pointer-mode", "draw-mode", "rope-mode");
+      if (mode === "pointer") annoCanvas.classList.add("pointer-mode");
+      else if (mode === "draw") annoCanvas.classList.add("draw-mode");
+      else if (mode === "rope") annoCanvas.classList.add("rope-mode");
+    }
+    if (annoToolbar) {
+      var btns = annoToolbar.querySelectorAll(".anno-tool-btn[data-tool]");
+      for (var i = 0; i < btns.length; i++) {
+        var b = btns[i];
+        if (b.getAttribute("data-tool") === mode) b.classList.add("active");
+        else b.classList.remove("active");
+      }
+    }
+    try {
+      document.body.classList.toggle("anno-rope-active", mode === "rope");
+    } catch (_e) {}
+    if (prev !== "rope" && mode === "rope") {
+      try {
+        var sel = document.getElementById("anno-shape-select");
+        if (sel) {
+          sel.focus();
+          if (typeof sel.showPicker === "function") sel.showPicker();
+        }
+      } catch (_e) {}
+    }
+    if (prev === "pointer" && mode !== "pointer") {
+      var s = session.getState();
+      if ((s.role === "agent" || s.role === "visitor") && s.isConnected) {
+        session.sendPointer(currentViewKey, null, null);
+      }
+    }
+    if (prev === "rope" && mode !== "rope") {
+      commitActiveRope();
+    }
+    try {
+      var sess = session.getState();
+      if ((sess.role === "agent" || sess.role === "visitor") && sess.isConnected) {
+        var locked = mode === "pointer" || mode === "draw" || mode === "rope";
+        session.sendNavLock(currentViewKey, locked);
+      }
+    } catch (_e) {}
+  }
+
+  function resizeAnnoCanvas() {
+    if (!annoCanvas || !letterboxWrap || !annoCtx) return;
+    var rect = letterboxWrap.getBoundingClientRect();
+    var w = Math.max(1, Math.round(rect.width));
+    var h = Math.max(1, Math.round(rect.height));
+    var dpr = window.devicePixelRatio || 1;
+    annoCanvas.width = Math.max(1, Math.round(w * dpr));
+    annoCanvas.height = Math.max(1, Math.round(h * dpr));
+    annoCanvas.style.width = w + "px";
+    annoCanvas.style.height = h + "px";
+    try {
+      annoCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    } catch (_e) {}
+    redrawAllStrokes();
+  }
+
+  function redrawAllStrokes() {
+    if (!annoCtx || !annoCanvas) return;
+    var dpr = window.devicePixelRatio || 1;
+    var w = annoCanvas.width / dpr;
+    var h = annoCanvas.height / dpr;
+    annoCtx.clearRect(0, 0, w, h);
+    for (var i = 0; i < localStrokes.length; i++) drawStroke(localStrokes[i], w, h);
+    if (activeStroke) drawStroke(activeStroke, w, h);
+    if (activeRope) drawRopeLatch(activeRope, w, h);
+  }
+
+  function drawStroke(stroke, w, h) {
+    if (!stroke || !stroke.points || stroke.points.length === 0) return;
+    var color = stroke.color || ANNO_STROKE_COLOR;
+    var width = typeof stroke.width === "number" ? stroke.width : ANNO_STROKE_WIDTH;
+    annoCtx.strokeStyle = color;
+    annoCtx.lineWidth = Math.max(1, width * w);
+    annoCtx.lineCap = "round";
+    annoCtx.lineJoin = "round";
+    annoCtx.beginPath();
+    var p0 = stroke.points[0];
+    annoCtx.moveTo(p0[0] * w, p0[1] * h);
+    if (stroke.points.length === 1) {
+      annoCtx.lineTo(p0[0] * w + 0.01, p0[1] * h + 0.01);
+    } else {
+      for (var i = 1; i < stroke.points.length; i++) {
+        var p = stroke.points[i];
+        annoCtx.lineTo(p[0] * w, p[1] * h);
+      }
+    }
+    annoCtx.stroke();
+  }
+
+  function findLocalStroke(id) {
+    for (var i = 0; i < localStrokes.length; i++) {
+      if (localStrokes[i].strokeId === id) return localStrokes[i];
+    }
+    return null;
+  }
+
+  function clientToNorm(e) {
+    if (!letterboxWrap) return { x: 0, y: 0 };
+    var rect = letterboxWrap.getBoundingClientRect();
+    var w = rect.width || 1;
+    var h = rect.height || 1;
+    var x = (e.clientX - rect.left) / w;
+    var y = (e.clientY - rect.top) / h;
+    if (x < 0) x = 0;
+    else if (x > 1) x = 1;
+    if (y < 0) y = 0;
+    else if (y > 1) y = 1;
+    return { x: x, y: y };
+  }
+
+  function scheduleStrokeFlush() {
+    if (strokeFlushScheduled) return;
+    strokeFlushScheduled = true;
+    var raf =
+      window.requestAnimationFrame ||
+      function (cb) {
+        return setTimeout(cb, 16);
+      };
+    raf(function () {
+      strokeFlushScheduled = false;
+      if (!pendingStrokeId || !pendingStrokePoints || pendingStrokePoints.length === 0) return;
+      var batch = pendingStrokePoints;
+      pendingStrokePoints = [];
+      session.sendStrokePatch(currentViewKey, pendingStrokeId, batch);
+    });
+  }
+
+  // ── Focus Rope helpers (rendered as polylines so they ride the normal
+  //    stroke pipeline; the latch is a local affordance only) ──────────
+  function ropeBBox(rope) {
+    var x0 = Math.min(rope.x0, rope.x1),
+      y0 = Math.min(rope.y0, rope.y1);
+    var x1 = Math.max(rope.x0, rope.x1),
+      y1 = Math.max(rope.y0, rope.y1);
+    return { x0: x0, y0: y0, x1: x1, y1: y1 };
+  }
+  function ropeToPoints(rope) {
+    var b = ropeBBox(rope);
+    var cx = (b.x0 + b.x1) / 2,
+      cy = (b.y0 + b.y1) / 2;
+    var rx = (b.x1 - b.x0) / 2,
+      ry = (b.y1 - b.y0) / 2;
+    var out = [];
+    if (rope.shape === "box") {
+      out.push([b.x0, b.y0]);
+      out.push([b.x1, b.y0]);
+      out.push([b.x1, b.y1]);
+      out.push([b.x0, b.y1]);
+      out.push([b.x0, b.y0]);
+    } else {
+      var n = ANNO_ROPE_CIRCLE_SAMPLES;
+      for (var i = 0; i <= n; i++) {
+        var t = (i / n) * Math.PI * 2;
+        var x = cx + Math.cos(t) * rx;
+        var y = cy + Math.sin(t) * ry;
+        if (x < 0) x = 0;
+        else if (x > 1) x = 1;
+        if (y < 0) y = 0;
+        else if (y > 1) y = 1;
+        out.push([x, y]);
+      }
+    }
+    return out;
+  }
+  function ropeLatchPos(rope) {
+    var b = ropeBBox(rope);
+    return { x: b.x1, y: b.y1 };
+  }
+  function drawRopeLatch(rope, w, h) {
+    if (!annoCtx) return;
+    var lp = ropeLatchPos(rope);
+    var px = lp.x * w,
+      py = lp.y * h;
+    var r = Math.max(5, Math.min(ANNO_LATCH_PX, 12));
+    annoCtx.beginPath();
+    annoCtx.arc(px, py, r, 0, Math.PI * 2);
+    annoCtx.fillStyle = rope.color || ANNO_STROKE_COLOR;
+    annoCtx.fill();
+    annoCtx.lineWidth = 2;
+    annoCtx.strokeStyle = "#ffffff";
+    annoCtx.stroke();
+  }
+  function ropeRegenerate(rope) {
+    rope.points = ropeToPoints(rope);
+  }
+  function scheduleRopeFlush() {
+    if (ropeFlushScheduled) return;
+    ropeFlushScheduled = true;
+    var raf =
+      window.requestAnimationFrame ||
+      function (cb) {
+        return setTimeout(cb, 16);
+      };
+    raf(function () {
+      ropeFlushScheduled = false;
+      if (!activeRope) return;
+      var s = session.getState();
+      if ((s.role !== "agent" && s.role !== "visitor") || !s.isConnected) return;
+      session.sendStrokeBegin(
+        currentViewKey,
+        activeRope.strokeId,
+        activeRope.color,
+        activeRope.width,
+        activeRope.points,
+      );
+    });
+  }
+  function commitActiveRope() {
+    if (!activeRope) return;
+    var s = session.getState();
+    if ((s.role === "agent" || s.role === "visitor") && s.isConnected) {
+      session.sendStrokeBegin(
+        currentViewKey,
+        activeRope.strokeId,
+        activeRope.color,
+        activeRope.width,
+        activeRope.points,
+      );
+      session.sendStrokeCommit(currentViewKey, activeRope.strokeId);
+    }
+    activeRope = null;
+    ropeDragging = false;
+    ropeLatchDragging = false;
+    redrawAllStrokes();
+  }
+
+  function wipeAnnotations() {
+    localStrokes = [];
+    activeStroke = null;
+    pendingStrokeId = null;
+    pendingStrokePoints = null;
+    activeRope = null;
+    ropeDragging = false;
+    ropeLatchDragging = false;
+    if (remotePointer) remotePointer.style.display = "none";
+    if (remotePointerHideTimer) {
+      try {
+        clearTimeout(remotePointerHideTimer);
+      } catch (_e) {}
+      remotePointerHideTimer = null;
+    }
+    redrawAllStrokes();
+  }
+
+  function applyNavLock(locked) {
+    try {
+      if (!navlockEl) return;
+      if (locked) navlockEl.classList.add("locked");
+      else navlockEl.classList.remove("locked");
+    } catch (_e) {}
+  }
+
+  function handleClearLocallyAndBroadcast() {
+    wipeAnnotations();
+    var s = session.getState();
+    if ((s.role === "agent" || s.role === "visitor") && s.isConnected) {
+      session.sendClear(currentViewKey);
+    }
+  }
+
+  function canAnnotateLocal() {
+    var r = session.getState().role;
+    return r === "agent" || r === "visitor";
+  }
+
+  // ── Canvas wiring (bidirectional: Host and Guest both annotate) ──────
+  if (annoCanvas) {
+    annoCanvas.addEventListener("pointerdown", function (e) {
+      if (!canAnnotateLocal()) return;
+      if (toolMode === "draw") {
+        var pt = clientToNorm(e);
+        var sid = String(Date.now()) + "_" + Math.random().toString(36).slice(2, 8);
+        activeStroke = { strokeId: sid, color: ANNO_STROKE_COLOR, width: ANNO_STROKE_WIDTH, points: [[pt.x, pt.y]] };
+        pendingStrokeId = sid;
+        pendingStrokePoints = [];
+        session.sendStrokeBegin(currentViewKey, sid, activeStroke.color, activeStroke.width, [[pt.x, pt.y]]);
+        redrawAllStrokes();
+        try {
+          annoCanvas.setPointerCapture(e.pointerId);
+        } catch (_e) {}
+        e.preventDefault();
+        return;
+      }
+      if (toolMode === "rope") {
+        var rpt = clientToNorm(e);
+        if (activeRope) {
+          var lp = ropeLatchPos(activeRope);
+          var rect = letterboxWrap ? letterboxWrap.getBoundingClientRect() : { width: 1, height: 1 };
+          var dx = (rpt.x - lp.x) * rect.width;
+          var dy = (rpt.y - lp.y) * rect.height;
+          if (Math.sqrt(dx * dx + dy * dy) <= ANNO_LATCH_PX * 2) {
+            ropeLatchDragging = true;
+            try {
+              annoCanvas.setPointerCapture(e.pointerId);
+            } catch (_e) {}
+            e.preventDefault();
+            return;
+          }
+          commitActiveRope();
+        }
+        var rsid = String(Date.now()) + "_" + Math.random().toString(36).slice(2, 8);
+        activeRope = {
+          strokeId: rsid,
+          color: ANNO_STROKE_COLOR,
+          width: ANNO_STROKE_WIDTH,
+          shape: ANNO_ROPE_SHAPE,
+          x0: rpt.x,
+          y0: rpt.y,
+          x1: rpt.x,
+          y1: rpt.y,
+          points: [[rpt.x, rpt.y]],
+        };
+        ropeRegenerate(activeRope);
+        localStrokes.push(activeRope);
+        ropeDragging = true;
+        scheduleRopeFlush();
+        redrawAllStrokes();
+        try {
+          annoCanvas.setPointerCapture(e.pointerId);
+        } catch (_e) {}
+        e.preventDefault();
+        return;
+      }
+    });
+    annoCanvas.addEventListener("pointermove", function (e) {
+      if (!canAnnotateLocal()) return;
+      var pt = clientToNorm(e);
+      if (toolMode === "pointer") {
+        session.sendPointer(currentViewKey, pt.x, pt.y);
+      } else if (toolMode === "draw" && activeStroke) {
+        activeStroke.points.push([pt.x, pt.y]);
+        if (!pendingStrokePoints) pendingStrokePoints = [];
+        pendingStrokePoints.push([pt.x, pt.y]);
+        scheduleStrokeFlush();
+        redrawAllStrokes();
+      } else if (toolMode === "rope" && activeRope && (ropeDragging || ropeLatchDragging)) {
+        activeRope.x1 = pt.x;
+        activeRope.y1 = pt.y;
+        ropeRegenerate(activeRope);
+        scheduleRopeFlush();
+        redrawAllStrokes();
+      }
+    });
+    annoCanvas.addEventListener("pointerup", function (e) {
+      if (!canAnnotateLocal()) return;
+      if (toolMode === "draw" && activeStroke) {
+        if (pendingStrokePoints && pendingStrokePoints.length > 0) {
+          session.sendStrokePatch(currentViewKey, pendingStrokeId, pendingStrokePoints);
+          pendingStrokePoints = null;
+        }
+        session.sendStrokeCommit(currentViewKey, activeStroke.strokeId);
+        localStrokes.push(activeStroke);
+        activeStroke = null;
+        pendingStrokeId = null;
+        try {
+          annoCanvas.releasePointerCapture(e.pointerId);
+        } catch (_e) {}
+      } else if (toolMode === "rope" && activeRope && (ropeDragging || ropeLatchDragging)) {
+        ropeDragging = false;
+        ropeLatchDragging = false;
+        var s = session.getState();
+        if ((s.role === "agent" || s.role === "visitor") && s.isConnected) {
+          session.sendStrokeBegin(currentViewKey, activeRope.strokeId, activeRope.color, activeRope.width, activeRope.points);
+        }
+        try {
+          annoCanvas.releasePointerCapture(e.pointerId);
+        } catch (_e) {}
+        redrawAllStrokes();
+      }
+    });
+    annoCanvas.addEventListener("pointerleave", function () {
+      if (!canAnnotateLocal()) return;
+      if (toolMode === "pointer") session.sendPointer(currentViewKey, null, null);
+    });
+  }
+
+  // Toolbar buttons (shown to both roles).
+  if (annoToolbar) {
+    annoToolbar.addEventListener("click", function (e) {
+      var btn = e.target && e.target.closest ? e.target.closest(".anno-tool-btn") : null;
+      if (!btn) return;
+      var t = btn.getAttribute("data-tool");
+      if (t === "pointer" || t === "draw" || t === "rope") {
+        setToolMode(t);
+        return;
+      }
+      if (btn === clearBtn) {
+        handleClearLocallyAndBroadcast();
+        return;
+      }
+      if (btn.id === "anno-exit-btn") {
+        handleClearLocallyAndBroadcast();
+        setToolMode("none");
+        try {
+          var st = session.getState();
+          if ((st.role === "agent" || st.role === "visitor") && st.isConnected) {
+            session.sendNavLock(currentViewKey, false);
+          }
+        } catch (_e) {}
+        return;
+      }
+    });
+  }
+
+  // Stroke color picker (whitelist-guarded).
+  var annoColorSelect = document.getElementById("anno-color-select");
+  var annoColorSwatch = document.getElementById("anno-color-swatch");
+  if (annoColorSelect) {
+    annoColorSelect.value = ANNO_STROKE_COLOR;
+    annoColorSelect.addEventListener("change", function () {
+      var v = String(annoColorSelect.value || "").toLowerCase();
+      if (!ANNO_COLOR_WHITELIST[v]) {
+        annoColorSelect.value = ANNO_STROKE_COLOR;
+        return;
+      }
+      ANNO_STROKE_COLOR = v;
+      if (annoColorSwatch) annoColorSwatch.style.background = v;
+      if (activeRope) {
+        activeRope.color = v;
+        scheduleRopeFlush();
+        redrawAllStrokes();
+      }
+    });
+  }
+
+  // Focus Rope shape picker (whitelist-guarded).
+  var annoShapeSelect = document.getElementById("anno-shape-select");
+  if (annoShapeSelect) {
+    annoShapeSelect.value = ANNO_ROPE_SHAPE;
+    annoShapeSelect.addEventListener("change", function () {
+      var v = String(annoShapeSelect.value || "").toLowerCase();
+      if (!ANNO_ROPE_SHAPE_WHITELIST[v]) {
+        annoShapeSelect.value = ANNO_ROPE_SHAPE;
+        return;
+      }
+      ANNO_ROPE_SHAPE = v;
+      if (activeRope) {
+        activeRope.shape = v;
+        ropeRegenerate(activeRope);
+        scheduleRopeFlush();
+        redrawAllStrokes();
+      }
+    });
+  }
+
+  // Hotkeys — fire for whichever role is connected, unless typing.
+  document.addEventListener("keydown", function (e) {
+    var s = session.getState();
+    if ((s.role !== "agent" && s.role !== "visitor") || !s.isConnected) return;
+    var tgt = e.target;
+    if (tgt && (tgt.tagName === "INPUT" || tgt.tagName === "TEXTAREA" || tgt.isContentEditable)) return;
+    var k = (e.key || "").toLowerCase();
+    if (k === "p") {
+      setToolMode("pointer");
+      e.preventDefault();
+    } else if (k === "d") {
+      setToolMode("draw");
+      e.preventDefault();
+    } else if (k === "r") {
+      setToolMode("rope");
+      e.preventDefault();
+    } else if (k === "c") {
+      handleClearLocallyAndBroadcast();
+      e.preventDefault();
+    } else if (e.key === "Escape") {
+      setToolMode("none");
+      e.preventDefault();
+    }
+  });
+
+  if (typeof ResizeObserver === "function" && letterboxWrap) {
+    try {
+      var ro = new ResizeObserver(function () {
+        resizeAnnoCanvas();
+      });
+      ro.observe(letterboxWrap);
+    } catch (_e) {
+      window.addEventListener("resize", resizeAnnoCanvas);
+    }
+  } else if (letterboxWrap) {
+    window.addEventListener("resize", resizeAnnoCanvas);
+  }
+
+  // ── Location sync (clipboard auto-share, both roles) ─────────────────
+  var LOC_SYNC_POLL_THROTTLE_MS = 800;
+  var LOC_SYNC_SUCCESS_RESET_MS = 1800;
+  var LOC_SYNC_TIPS_HIDE_DELAY_MS = 250;
+  var SYNC_SUPPRESS_MS = 500;
+  var locSyncLastPollTs = 0;
+  var lastReadClipText = "";
+  var lastSentLocationKey = "";
+  var lastSentLocationTs = 0;
+  var lastOwnSendTs = 0;
+  var syncResetTimer = null;
+  var tipsTimer = null;
+
+  var LOC_SYNC_LABELS = {
+    idle: "To sync your view…",
+    syncing: "Aligning the other view…",
+    success: "View Synced",
+    waiting: "Connecting…",
+  };
+
+  function showTips() {
+    if (!tipsEl) return;
+    if (tipsTimer) {
+      try {
+        clearTimeout(tipsTimer);
+      } catch (_e) {}
+      tipsTimer = null;
+    }
+    tipsEl.hidden = false;
+  }
+  function scheduleHideTips() {
+    if (!tipsEl) return;
+    if (tipsTimer) {
+      try {
+        clearTimeout(tipsTimer);
+      } catch (_e) {}
+    }
+    tipsTimer = setTimeout(function () {
+      if (tipsEl) tipsEl.hidden = true;
+      tipsTimer = null;
+    }, LOC_SYNC_TIPS_HIDE_DELAY_MS);
+  }
+  function hideTips() {
+    if (tipsEl) tipsEl.hidden = true;
+    if (tipsTimer) {
+      try {
+        clearTimeout(tipsTimer);
+      } catch (_e) {}
+      tipsTimer = null;
+    }
+  }
+
+  function setPulseState(name) {
+    if (!syncBtn) return;
+    var state = LOC_SYNC_LABELS[name] ? name : "idle";
+    syncBtn.setAttribute("data-state", state);
+    if (syncLabelEl) syncLabelEl.textContent = LOC_SYNC_LABELS[state];
+    if (syncResetTimer) {
+      try {
+        clearTimeout(syncResetTimer);
+      } catch (_e) {}
+      syncResetTimer = null;
+    }
+  }
+  function scheduleSyncIdleReset() {
+    if (syncResetTimer) {
+      try {
+        clearTimeout(syncResetTimer);
+      } catch (_e) {}
+    }
+    syncResetTimer = setTimeout(function () {
+      var cur = syncBtn ? syncBtn.getAttribute("data-state") : "idle";
+      if (cur === "success") setPulseState("idle");
+    }, LOC_SYNC_SUCCESS_RESET_MS);
+  }
+  function resetLocationSyncUi() {
+    locSyncLastPollTs = 0;
+    lastReadClipText = "";
+    lastSentLocationKey = "";
+    lastSentLocationTs = 0;
+    lastOwnSendTs = 0;
+    hideTips();
+    setPulseState("waiting");
+  }
+
+  function parseMatterportLocationUrl(text) {
+    if (!text || typeof text !== "string") return null;
+    var trimmed = text.trim();
+    if (trimmed.length === 0 || trimmed.length > 2000) return null;
+    var u;
+    try {
+      u = new URL(trimmed);
+    } catch (_e) {
+      return null;
+    }
+    if (!/(^|\.)matterport\.com$/i.test(u.hostname || "")) return null;
+    var ss = u.searchParams.get("ss");
+    var sr = u.searchParams.get("sr") || "";
+    if (!ss || !/^\d+$/.test(ss)) return null;
+    if (sr && !/^-?\d*\.?\d+,-?\d*\.?\d+$/.test(sr)) return null;
+    return { ss: ss, sr: sr };
+  }
+
+  function attemptSendLocation(parsed) {
+    if (!parsed) return false;
+    var key = parsed.ss + "|" + parsed.sr;
+    var now = Date.now();
+    if (currentViewKey && key === currentViewKey) {
+      setPulseState("success");
+      scheduleSyncIdleReset();
+      return true;
+    }
+    if (key === lastSentLocationKey && now - lastSentLocationTs < 5000) {
+      setPulseState("success");
+      scheduleSyncIdleReset();
+      return true;
+    }
+    var ok = false;
+    var role = session.getState().role;
+    try {
+      if (role === "visitor") ok = session.shareLocationWithAgent(parsed.ss, parsed.sr);
+      else if (role === "agent") ok = session.teleportVisitor(parsed.ss, parsed.sr);
+    } catch (_e) {
+      ok = false;
+    }
+    if (ok) {
+      lastSentLocationKey = key;
+      lastSentLocationTs = now;
+      lastOwnSendTs = now;
+      setPulseState("success");
+      scheduleSyncIdleReset();
+      return true;
+    }
+    setPulseState("idle");
+    return false;
+  }
+
+  function readClipboardAndSend() {
+    var s = session.getState();
+    if ((s.role !== "visitor" && s.role !== "agent") || !s.isConnected) return;
+    if (!navigator || !navigator.clipboard || typeof navigator.clipboard.readText !== "function") return;
+    var p;
+    try {
+      p = navigator.clipboard.readText();
+    } catch (_e) {
+      return;
+    }
+    if (!p || typeof p.then !== "function") return;
+    p.then(
+      function (text) {
+        if (typeof text !== "string") return;
+        if (text === lastReadClipText) return;
+        var parsed = parseMatterportLocationUrl(text);
+        if (!parsed) {
+          lastReadClipText = text;
+          return;
+        }
+        setPulseState("syncing");
+        if (attemptSendLocation(parsed)) lastReadClipText = text;
+      },
+      function () {
+        // Read rejected (denied / no focus). Stay silent; retry later.
+      },
+    );
+  }
+
+  function schedulePoll() {
+    if (document.hidden) return;
+    var s = session.getState();
+    if ((s.role !== "visitor" && s.role !== "agent") || !s.isConnected) return;
+    var now = Date.now();
+    if (now - locSyncLastPollTs < LOC_SYNC_POLL_THROTTLE_MS) return;
+    locSyncLastPollTs = now;
+    readClipboardAndSend();
+  }
+
+  if (syncBtn) {
+    syncBtn.addEventListener("mouseenter", showTips);
+    syncBtn.addEventListener("mouseleave", scheduleHideTips);
+    syncBtn.addEventListener("focus", showTips);
+    syncBtn.addEventListener("blur", scheduleHideTips);
+  }
+  if (tipsEl) {
+    tipsEl.addEventListener("mouseenter", showTips);
+    tipsEl.addEventListener("mouseleave", scheduleHideTips);
+  }
+  window.addEventListener("focus", schedulePoll);
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) schedulePoll();
+  });
+  if (letterboxWrap) {
+    letterboxWrap.addEventListener("pointerenter", schedulePoll);
+    letterboxWrap.addEventListener("pointerenter", function () {
+      var st = session.getState();
+      if (st.role !== "visitor" && st.role !== "agent") return;
+      var ae = document.activeElement;
+      if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable)) return;
+      if (frame) {
+        try {
+          frame.focus({ preventScroll: true });
+        } catch (_e) {
+          try {
+            frame.focus();
+          } catch (_e2) {}
+        }
+      }
+    });
+  }
+  try {
+    if (navigator && navigator.clipboard && typeof navigator.clipboard.addEventListener === "function") {
+      navigator.clipboard.addEventListener("clipboardchange", schedulePoll);
+    }
+  } catch (_e) {}
+
+  function preGrantClipboard() {
+    try {
+      if (navigator && navigator.clipboard && typeof navigator.clipboard.readText === "function") {
+        navigator.clipboard.readText().then(
+          function () {},
+          function () {},
+        );
+      }
+    } catch (_e) {}
+  }
+
+  // ── Teleport / iframe rewrite (single iframe) ────────────────────────
+  function rewriteIframeForTeleport(baseUrl, ss, sr) {
+    if (!baseUrl) return baseUrl;
+    var stripped = baseUrl.replace(/[?&](ss|sr|qs|play|title|brand)=[^&]*/g, function (m) {
+      return m.charAt(0) === "?" ? "?" : "";
+    });
+    stripped = stripped.replace(/\?&/g, "?").replace(/[?&]$/, "");
+    var sep = stripped.indexOf("?") === -1 ? "?" : "&";
+    var qs = "ss=" + encodeURIComponent(ss);
+    if (sr) qs += "&sr=" + encodeURIComponent(sr);
+    qs += "&qs=1&play=1&title=0&brand=0";
+    return stripped + sep + qs;
+  }
+
+  function applyTeleport(ss, sr) {
+    if (!frame || !MP_BASE) return;
+    currentViewKey = (ss || "") + "|" + (sr || "");
+    wipeAnnotations();
+    try {
+      frame.src = rewriteIframeForTeleport(MP_BASE, ss, sr);
+    } catch (_e) {}
+  }
+
+  // ── Tour stops (optional; Host only) ─────────────────────────────────
+  function renderStops() {
+    if (!stopsWrap) return;
+    stopsWrap.innerHTML = "";
+    if (!STOPS.length) {
+      var empty = document.createElement("div");
+      empty.className = "lt-stops-empty";
+      empty.textContent = "No saved stops yet — press U inside the tour and copy the link to bring your guest along.";
+      stopsWrap.appendChild(empty);
+      return;
+    }
+    var connected = session.getState().isConnected;
+    STOPS.forEach(function (stop) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "lt-stop-btn";
+      btn.textContent = stop.name || "Stop";
+      btn.disabled = !connected;
+      btn.addEventListener("click", function () {
+        var sent = session.teleportVisitor(stop.ss, stop.sr || "");
+        if (sent) {
+          lastOwnSendTs = Date.now();
+          applyTeleport(stop.ss, stop.sr || "");
+        }
+      });
+      stopsWrap.appendChild(btn);
+    });
+  }
+
+  // ── Invite / share-the-PIN ───────────────────────────────────────────
+  function currentInviteText() {
+    var pin = session.getState().pin;
+    var url = shareUrl();
+    var lines = ["Join my live tour of " + SHARE_TITLE + " on Frontiers3D:", url];
+    if (pin) lines.push("Tour PIN: " + pin);
+    return lines.join("\n");
+  }
+  if (inviteBtn) {
+    inviteBtn.addEventListener("click", function () {
+      var text = currentInviteText();
+      var done = function (msg) {
+        setText(inviteStatus, msg);
+        setTimeout(function () {
+          setText(inviteStatus, "");
+        }, 2500);
+      };
+      if (navigator && typeof navigator.share === "function") {
+        navigator
+          .share({ title: SHARE_TITLE, text: text, url: shareUrl() })
+          .then(
+            function () {
+              done("Invite shared.");
+            },
+            function () {
+              // share cancelled / failed -> fall back to clipboard
+              copyInvite(text, done);
+            },
+          );
+        return;
+      }
+      copyInvite(text, done);
+    });
+  }
+  function copyInvite(text, done) {
+    if (navigator && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+      navigator.clipboard.writeText(text).then(
+        function () {
+          done("Invite copied to clipboard.");
+        },
+        function () {
+          done("Copy failed — select and copy manually.");
+        },
+      );
+    } else {
+      done("Copy unavailable in this browser.");
+    }
+  }
+
+  // ── Role / panel wiring ──────────────────────────────────────────────
+  if (launchBtn) {
+    launchBtn.addEventListener("click", togglePanel);
+  }
+  if (panelClose) {
+    panelClose.addEventListener("click", closePanel);
+  }
+  if (backLinks) {
+    for (var bi = 0; bi < backLinks.length; bi++) {
+      backLinks[bi].addEventListener("click", function () {
+        // Only allowed before a session is live; tears nothing down.
+        if (session.getState().isConnected) return;
+        try {
+          session.dispose();
+        } catch (_e) {}
+        session = createLiveSession({});
+        session.subscribe(onState);
+        resetUiToIdle();
+      });
+    }
+  }
+
+  if (guestChooseBtn) {
+    guestChooseBtn.addEventListener("click", function () {
+      hide(roleChoose);
+      hide(hostBlock);
+      show(guestBlock);
+      if (pinInput) {
+        try {
+          pinInput.focus();
+        } catch (_e) {}
+      }
+    });
+  }
+
+  if (hostStartBtn) {
+    hostStartBtn.addEventListener("click", function () {
+      hide(roleChoose);
+      hide(guestBlock);
+      show(hostBlock);
+      hostStartBtn.disabled = true;
+      setText(hostStatus, "Reserving session…");
+      preGrantClipboard();
+      session.initializeAsAgent().catch(function () {
+        // surfaced via subscribe()
+      });
+    });
+  }
+
+  if (joinBtn && pinInput) {
+    joinBtn.addEventListener("click", function () {
+      var pin = (pinInput.value || "").replace(/\D/g, "").slice(0, 4);
+      if (pin.length !== 4) {
+        setText(guestStatus, "Enter the 4-digit PIN from your host.");
+        return;
+      }
+      joinBtn.disabled = true;
+      setText(guestStatus, "Connecting…");
+      preGrantClipboard();
+      session.joinAsVisitor(pin).catch(function () {
+        // surfaced via subscribe()
+      });
+    });
+    pinInput.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        joinBtn.click();
+      }
+    });
+    pinInput.addEventListener("input", function () {
+      pinInput.value = (pinInput.value || "").replace(/\D/g, "").slice(0, 4);
+    });
+  }
+
+  function teardownSession() {
+    try {
+      session.dispose();
+    } catch (_e) {}
+    if (leaveBtns) {
+      for (var i = 0; i < leaveBtns.length; i++) leaveBtns[i].hidden = true;
+    }
+    wasConnected = false;
+    setBodyLetterboxClass(false, false);
+    setToolMode("none");
+    wipeAnnotations();
+    currentViewKey = "";
+    lastPointerSeq = 0;
+    lastStrokeSeq = 0;
+    lastClearSeq = 0;
+    lastNavLockSeq = 0;
+    try {
+      applyNavLock(false);
+    } catch (_e) {}
+    resetLocationSyncUi();
+    resetUiToIdle();
+    session = createLiveSession({});
+    session.subscribe(onState);
+  }
+
+  if (leaveBtns) {
+    for (var li = 0; li < leaveBtns.length; li++) {
+      leaveBtns[li].addEventListener("click", teardownSession);
+    }
+  }
+
+  // ── State subscriber ─────────────────────────────────────────────────
+  function onState(state) {
+    if (pinValue && state.pin) pinValue.textContent = state.pin;
+
+    if (state.role === "agent" && hostStatus) {
+      if (state.status === "initializing") setText(hostStatus, "Reserving session…");
+      else if (state.status === "waiting") setText(hostStatus, "Share the PIN with your guest.");
+      else if (state.status === "connected") setText(hostStatus, "Connected. Your guest is with you.");
+      else if (state.status === "ended") setText(hostStatus, "Session ended.");
+      else if (state.status === "error") setText(hostStatus, state.error || "Live tour is unavailable right now.");
+      if (state.status === "error" && hostStartBtn) hostStartBtn.disabled = false;
+      // Render stops once we have a PIN; refresh disabled state cheaply.
+      if (state.pin && stopsWrap) {
+        if (!stopsWrap.firstChild) renderStops();
+        var sbtns = stopsWrap.querySelectorAll(".lt-stop-btn");
+        for (var i = 0; i < sbtns.length; i++) sbtns[i].disabled = !state.isConnected;
+      }
+    }
+
+    if (state.role === "visitor" && guestStatus) {
+      if (state.status === "connecting") setText(guestStatus, "Connecting…");
+      else if (state.status === "connected") setText(guestStatus, "Connected to your host.");
+      else if (state.status === "ended") {
+        setText(guestStatus, "Session ended.");
+        if (joinBtn) joinBtn.disabled = false;
+      } else if (state.status === "error") {
+        setText(guestStatus, state.error || "Could not connect. Check the PIN and try again.");
+        if (joinBtn) joinBtn.disabled = false;
+      }
+    }
+
+    if (!wasConnected && state.isConnected && state.status === "connected") {
+      wasConnected = true;
+      var isHost = state.role === "agent";
+      if (leaveBtns) {
+        for (var l = 0; l < leaveBtns.length; l++) leaveBtns[l].hidden = false;
+      }
+      if (statusChip) statusChip.hidden = false;
+      setBodyLetterboxClass(true, isHost);
+      resizeAnnoCanvas();
+      // Guest: collapse the panel so the tour fills the screen. Host keeps
+      // the panel so they can use stops / invite. Both can reopen via the
+      // Explore Together button.
+      if (!isHost) closePanel();
+    }
+    setHudButtonState(state);
+
+    if (wasConnected && (state.status === "ended" || state.status === "error")) {
+      setTimeout(teardownSession, 0);
+    }
+
+    // Voice attach.
+    if (audioEl) {
+      try {
+        if (state.remoteStream && audioEl.srcObject !== state.remoteStream) {
+          audioEl.srcObject = state.remoteStream;
+          var pp = audioEl.play();
+          if (pp && typeof pp.catch === "function") pp.catch(function () {});
+        } else if (!state.remoteStream && audioEl.srcObject) {
+          audioEl.srcObject = null;
+        }
+      } catch (_e) {}
+    }
+
+    // Guest follows host teleports (dedupe by ts; last-sender-wins).
+    if (state.role === "visitor" && state.incomingTeleportEvent && state.incomingTeleportEvent.ts !== lastTeleportTs) {
+      lastTeleportTs = state.incomingTeleportEvent.ts;
+      if (lastOwnSendTs === 0 || Date.now() - lastOwnSendTs >= SYNC_SUPPRESS_MS) {
+        applyTeleport(state.incomingTeleportEvent.ss, state.incomingTeleportEvent.sr);
+        lastSentLocationKey = state.incomingTeleportEvent.ss + "|" + state.incomingTeleportEvent.sr;
+        lastSentLocationTs = Date.now();
+      }
+    }
+
+    // Host auto-follows guest location shares (dedupe by ts).
+    if (state.role === "agent" && state.incomingLocationShareEvent && state.incomingLocationShareEvent.ts !== lastShareTs) {
+      lastShareTs = state.incomingLocationShareEvent.ts;
+      if (lastOwnSendTs === 0 || Date.now() - lastOwnSendTs >= SYNC_SUPPRESS_MS) {
+        applyTeleport(state.incomingLocationShareEvent.ss, state.incomingLocationShareEvent.sr);
+        lastSentLocationKey = state.incomingLocationShareEvent.ss + "|" + state.incomingLocationShareEvent.sr;
+        lastSentLocationTs = Date.now();
+        if (letterboxWrap) {
+          try {
+            letterboxWrap.classList.add("follow-pulse");
+            setTimeout(function () {
+              if (letterboxWrap) letterboxWrap.classList.remove("follow-pulse");
+            }, 1500);
+          } catch (_e) {}
+        }
+      }
+    }
+
+    // Pulse pill connection reflection.
+    if ((state.role === "visitor" || state.role === "agent") && syncBtn) {
+      var curState = syncBtn.getAttribute("data-state");
+      if (!state.isConnected) {
+        if (curState !== "syncing") setPulseState("waiting");
+      } else if (curState === "waiting") {
+        setPulseState("idle");
+      }
+    }
+
+    // Annotation receive paths.
+    var canReceive = state.role === "agent" || state.role === "visitor";
+    var pev = state.incomingPointerEvent;
+    if (pev && pev.seq !== lastPointerSeq) {
+      lastPointerSeq = pev.seq;
+      if (canReceive && remotePointer && letterboxWrap) {
+        if (pev.x == null || pev.y == null) {
+          remotePointer.style.display = "none";
+          if (remotePointerHideTimer) {
+            try {
+              clearTimeout(remotePointerHideTimer);
+            } catch (_e) {}
+            remotePointerHideTimer = null;
+          }
+        } else {
+          var rect = letterboxWrap.getBoundingClientRect();
+          remotePointer.style.left = pev.x * rect.width + "px";
+          remotePointer.style.top = pev.y * rect.height + "px";
+          remotePointer.style.display = "block";
+          if (remotePointerHideTimer) {
+            try {
+              clearTimeout(remotePointerHideTimer);
+            } catch (_e) {}
+          }
+          remotePointerHideTimer = setTimeout(function () {
+            if (remotePointer) remotePointer.style.display = "none";
+          }, ANNO_REMOTE_POINTER_TIMEOUT_MS);
+        }
+      }
+    }
+
+    var sev = state.incomingStrokeEvent;
+    if (sev && sev.seq !== lastStrokeSeq) {
+      lastStrokeSeq = sev.seq;
+      if (canReceive) {
+        if (sev.kind === "begin") {
+          var existingBegin = findLocalStroke(sev.strokeId);
+          if (existingBegin) {
+            if (sev.points) existingBegin.points = sev.points.slice();
+            if (typeof sev.color === "string") existingBegin.color = sev.color;
+            if (typeof sev.width === "number") existingBegin.width = sev.width;
+          } else {
+            localStrokes.push({
+              strokeId: sev.strokeId,
+              color: sev.color || ANNO_STROKE_COLOR,
+              width: typeof sev.width === "number" ? sev.width : ANNO_STROKE_WIDTH,
+              points: sev.points ? sev.points.slice() : [],
+            });
+          }
+          redrawAllStrokes();
+        } else if (sev.kind === "patch") {
+          var existing = findLocalStroke(sev.strokeId);
+          if (existing && sev.points) {
+            for (var pi = 0; pi < sev.points.length; pi++) existing.points.push(sev.points[pi]);
+            redrawAllStrokes();
+          }
+        }
+      }
+    }
+
+    var cev = state.incomingClearEvent;
+    if (cev && cev.seq !== lastClearSeq) {
+      lastClearSeq = cev.seq;
+      if (canReceive) {
+        wipeAnnotations();
+        applyNavLock(false);
+      }
+    }
+
+    var nlev = state.incomingNavLockEvent;
+    if (nlev && nlev.seq !== lastNavLockSeq) {
+      lastNavLockSeq = nlev.seq;
+      if (canReceive) applyNavLock(nlev.locked === true);
+    }
+  }
+
+  // Tint the accent-driven affordances created at runtime.
+  try {
+    if (ACCENT && remotePointer) remotePointer.style.background = ACCENT;
+  } catch (_e) {}
+
+  session.subscribe(onState);
+})();
