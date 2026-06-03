@@ -257,6 +257,7 @@ export type Database = {
           built_at: string | null
           created_at: string
           created_by: string
+          deployed_url: string | null
           draft_payload: Json | null
           drafted_category: string | null
           drafted_summary: string | null
@@ -279,7 +280,12 @@ export type Database = {
           package_size_bytes: number | null
           phone: string | null
           place_candidates: Json
+          publish_error: string | null
+          publish_status: string
+          published_at: string | null
           rights_note: string | null
+          showcase_pr_url: string | null
+          showcase_slug: string | null
           status: string
           updated_at: string
           website_url: string | null
@@ -291,6 +297,7 @@ export type Database = {
           built_at?: string | null
           created_at?: string
           created_by: string
+          deployed_url?: string | null
           draft_payload?: Json | null
           drafted_category?: string | null
           drafted_summary?: string | null
@@ -313,7 +320,12 @@ export type Database = {
           package_size_bytes?: number | null
           phone?: string | null
           place_candidates?: Json
+          publish_error?: string | null
+          publish_status?: string
+          published_at?: string | null
           rights_note?: string | null
+          showcase_pr_url?: string | null
+          showcase_slug?: string | null
           status?: string
           updated_at?: string
           website_url?: string | null
@@ -325,6 +337,7 @@ export type Database = {
           built_at?: string | null
           created_at?: string
           created_by?: string
+          deployed_url?: string | null
           draft_payload?: Json | null
           drafted_category?: string | null
           drafted_summary?: string | null
@@ -347,7 +360,12 @@ export type Database = {
           package_size_bytes?: number | null
           phone?: string | null
           place_candidates?: Json
+          publish_error?: string | null
+          publish_status?: string
+          published_at?: string | null
           rights_note?: string | null
+          showcase_pr_url?: string | null
+          showcase_slug?: string | null
           status?: string
           updated_at?: string
           website_url?: string | null
