@@ -71,6 +71,8 @@ export interface AtlasLiveTourAssets {
   launchButtonHtml: string;
   /** Overlay markup spliced INSIDE the #anno-letterbox-wrap, after the iframe. */
   stageOverlayHtml: string;
+  /** Annotation toolbar strip; place between the page header and the stage so it never overlays the Matterport iframe. Hidden until a live session is active. */
+  toolbarHtml: string;
   /** The control panel + status chip + location-sync pill + audio sink (near </body>). */
   bodyHtml: string;
   /** Config + runtime <script> blocks (placed last, before </body>). */
