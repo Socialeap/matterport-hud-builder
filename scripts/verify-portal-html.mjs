@@ -48,6 +48,10 @@ const LIVE_SESSION_SOURCE = path.join(
   ROOT,
   "src/lib/portal/live-session.mjs",
 );
+const ATLAS_LIVE_TOUR_SOURCE = path.join(
+  ROOT,
+  "src/lib/atlas-live-tour-runtime.mjs",
+);
 
 // Escapes that are legal/intentional in a TS template literal and that we
 // do NOT want to flag:
@@ -309,6 +313,39 @@ function verifyLiveSessionRuntime() {
 }
 
 /**
+ * Same anti-drift gate for the Atlas "Explore Together" shared-tour runtime
+ * (src/lib/atlas-live-tour-runtime.mjs). It is injected via ?raw into the
+ * curated showcase HTML by atlas-live-tour.ts under the same browser-safety
+ * rules — no imports, no TS syntax, no single-quote string literals.
+ */
+function verifyAtlasLiveTourRuntime() {
+  if (!fs.existsSync(ATLAS_LIVE_TOUR_SOURCE)) {
+    console.error(`[verify-html] Atlas live-tour source not found: ${ATLAS_LIVE_TOUR_SOURCE}`);
+    process.exit(2);
+  }
+  const raw = fs.readFileSync(ATLAS_LIVE_TOUR_SOURCE, "utf8");
+  const stripped = stripExports(raw);
+  const offenders = findForbiddenTokens(stripped);
+  if (offenders.length > 0) {
+    console.error(
+      `[verify-html] ❌ atlas-live-tour-runtime.mjs contains browser-incompatible syntax:`,
+    );
+    for (const o of offenders) console.error(`    ${o}`);
+    process.exit(1);
+  }
+  try {
+    // eslint-disable-next-line no-new-func
+    new Function(stripped);
+    console.log(
+      `[verify-html] ✅ Atlas live-tour runtime is browser-safe and parses cleanly (${stripped.length} chars).`,
+    );
+  } catch (err) {
+    console.error(`[verify-html] ❌ atlas-live-tour-runtime.mjs failed to parse: ${err.message}`);
+    process.exit(1);
+  }
+}
+
+/**
  * Catch markdown auto-link corruption in source. The generated HTML
  * has been hit by a Slack/Markdown auto-linker (most likely upstream
  * in the Lovable preview pipeline) that rewrites any `word.word` token
@@ -483,6 +520,7 @@ function main() {
   verifyAskRuntimeModules();
   parseAskRuntime();
   verifyLiveSessionRuntime();
+  verifyAtlasLiveTourRuntime();
 
   const src = readSource();
   const { start, end } = findTemplateLiteral(src);
