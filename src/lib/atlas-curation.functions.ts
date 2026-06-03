@@ -90,6 +90,9 @@ const createInput = z.object({
   input_country: COUNTRY,
   input_category: z.string().trim().max(40).optional().default(""),
   rights_note: z.string().trim().max(1000).optional().default(""),
+  summary: z.string().trim().max(600).optional().default(""),
+  latitude: z.number().min(-90).max(90).nullable().optional(),
+  longitude: z.number().min(-180).max(180).nullable().optional(),
 });
 
 export const createCurationJob = createServerFn({ method: "POST" })
@@ -157,6 +160,13 @@ export const createCurationJob = createServerFn({ method: "POST" })
       }
     }
 
+    // User-supplied coordinates take precedence over Places / city-level resolution.
+    if (data.latitude != null && data.longitude != null) {
+      latitude = data.latitude;
+      longitude = data.longitude;
+      confidence = "manual";
+    }
+
     const draft: AtlasCurationDraft = enrich.buildDraft({
       inputName: data.input_name,
       inputAddress: data.input_address,
@@ -168,6 +178,11 @@ export const createCurationJob = createServerFn({ method: "POST" })
       latitude,
       longitude,
     });
+
+    // User-supplied summary overrides the auto-drafted one.
+    if (data.summary && data.summary.trim()) {
+      draft.summary = data.summary.trim().slice(0, 600);
+    }
 
     if (status !== "needs_selection") {
       if (latitude != null && longitude != null) {

@@ -1,46 +1,63 @@
-## Problem
+## Goal
 
-In the generated curated showcase `index.html`, the annotation toolbar (Pointer / Draw / color / Focus Rope / Clear / ×) is absolutely positioned at `top: 14px` inside `#anno-letterbox-wrap`, which sits over the Matterport iframe. Once an Explore Together session activates, the toolbar overlays the top center of the 3D tour and blocks Matterport's own controls (visible in the attached screenshot).
+Add **Summary**, **Latitude**, and **Longitude** inputs to the "New curated listing job" form on `/admin/atlas-curation` (the Curated Atlas Listing Assistant), and wire them through to the same `atlas_curation_jobs` columns / `draft_payload` fields that the regular Atlas Listing form uses — so curators can seed these values upfront instead of only being able to edit them in the post-enrichment Review panel.
 
-The black area above the tour in the screenshot is the page header (`.f3d-bar`) plus the letterbox gap when 16:9 engages — the natural place to host the toolbar.
+Today the create form only collects: Matterport URL, name, address, city, region, country, category override, rights note. The Review panel (after enrichment) already exposes Summary / Latitude / Longitude editors and the underlying DB columns exist — this is purely a "lift the fields to the top form and pass them through to the create server fn" change.
 
-## Fix (single file: `src/lib/atlas-live-tour.ts`)
+## Scope
 
-1. **Extract the toolbar from the stage overlay.** Remove the `<div id="anno-toolbar">…</div>` block from `STAGE_OVERLAY_HTML` (lines 218–241). Keep `#lt-navlock`, `#anno-canvas`, and `#remote-pointer` inside the stage — those must remain aligned to the iframe.
+Frontend + the `createCurationJob` server function only. No DB schema change, no UI changes to the Review panel, regular Atlas Listings form, or generation/publish pipeline.
 
-2. **Expose the toolbar as a new render slot.** Add a new constant `TOOLBAR_HTML` containing the same `<div id="anno-toolbar" role="toolbar" …>…</div>` markup (no changes to button IDs, data attributes, or order — the runtime in `atlas-live-tour-runtime.mjs` queries by `#anno-toolbar`, `.anno-tool-btn[data-tool=…]`, `#anno-color-select`, `#anno-shape-select`, `#anno-rope-btn`, `#anno-clear-btn`, `#anno-exit-btn`, so the DOM contract is preserved). Return it from `renderAtlasLiveTour` as a new field, e.g. `toolbarHtml`.
+## Changes
 
-3. **Restyle the toolbar as a header strip** (replace the existing `#anno-toolbar` rule near line 112):
-   - Remove `position:absolute; left:50%; top:14px; transform:translateX(-50%); z-index:10; box-shadow:…`.
-   - Make it a full-width flex bar: `display:none; justify-content:center; align-items:center; gap:6px; padding:8px 12px; background:rgba(10,12,20,0.92); border-bottom:1px solid rgba(255,255,255,0.08); flex-wrap:wrap;` and keep the existing `body.live-tour-active #anno-toolbar{display:flex}` rule so it only appears during a live session.
-   - No changes to `.anno-tool-btn`, `.anno-color-wrap`, `.anno-rope-group`, `.anno-shape-wrap`, `.anno-exit-btn` styles.
+### 1. `src/routes/_authenticated.admin.atlas-curation.tsx` — create form UI
 
-4. **Place the toolbar in the curated HTML** (`src/lib/atlas-curation-server.ts`, `renderCuratedHtml`): render `${liveTour.toolbarHtml}` immediately after the closing `</header>` and before `<main class="f3d-stage">`. This puts it in the black band directly above the iframe — exactly where the screenshot annotation points — and it stays hidden until `body.live-tour-active` flips on, so normal viewers see no extra chrome.
+In the "New curated listing job" card (around lines 580–634):
 
-5. **Letterbox sizing already accounts for the header** via `calc((100vh - 52px) * 16 / 9)`. With the toolbar inserted between header and stage, bump that subtracted height to roughly `100px` (52px header + ~48px toolbar) so the 16:9 frame doesn't push the bottom of the iframe off-screen when annotation mode is active. Only this one constant in the `body.live-tour-active #anno-letterbox-wrap` rule changes.
+- Add three controlled inputs alongside the existing ones:
+  - `summary` — textarea, full-width, `maxLength={600}`, placeholder "Short marketing summary (optional — assistant will draft one if blank)".
+  - `latitude` — text input, placeholder "-90 to 90 (optional)".
+  - `longitude` — text input, placeholder "-180 to 180 (optional)".
+- Add corresponding `useState` hooks at the top of the component next to `matterportUrl`, `name`, `address`, etc.
+- Light client-side validation in `handleCreate`: if either lat or lng is filled, both must be filled and parse to numbers in range; otherwise toast an error and abort. Empty = "let the assistant resolve it" (current behavior).
+- Pass the new values into the existing `createCurationJob({ data: ... })` call:
+  - `summary: summary.trim()`
+  - `latitude: <parsed number | null>`
+  - `longitude: <parsed number | null>`
+- Include the three new state setters in `resetCreate()` so the Clear button still works.
+
+### 2. `src/lib/atlas-curation.functions.ts` — extend `createCurationJob`
+
+Extend the `createInput` zod schema (around lines 84–93) with three optional fields:
+
+```ts
+summary: z.string().trim().max(600).optional().default(""),
+latitude: z.number().min(-90).max(90).nullable().optional(),
+longitude: z.number().min(-180).max(180).nullable().optional(),
+```
+
+In the handler (around lines 98–207):
+
+- After the existing Places + city-level resolution block, if `data.latitude != null && data.longitude != null`, override `latitude`/`longitude` with the user-supplied values and set `confidence = "manual"`. This matches how the Review panel's `updateCurationJob` already handles manual coord entry (see lines 341–349).
+- After `buildDraft(...)`, if `data.summary` is non-empty, replace `draft.summary` with it (trimmed, max 600). This keeps the draft and `drafted_summary` column in sync — the regular flow already mirrors `draft.summary → drafted_summary` and `draft → draft_payload` on insert (lines 202, 205).
+- Because the user may now supply coordinates directly, recompute the post-resolution status block so that user-supplied coords are sufficient to move the job to `ready_for_review` (currently `blocked` when Places + city-level both fail). Mirror the existing logic that already treats any non-null lat/lng as enough.
+
+No other server fns change. `updateCurationJob`, `createAtlasEntryFromJob`, `generatePackage`, and the publish/merge/deploy pipeline already read from `draft_payload` / the `latitude`/`longitude`/`drafted_summary` columns, so the seeded values flow into the generated package and the eventual Atlas entry with no further wiring.
 
 ## Out of scope
 
-- No changes to `atlas-live-tour-runtime.mjs` (DOM IDs/classes preserved).
-- No changes to publish/verify pipeline, `atlas-showcase-publish.ts`, `atlas-curation.functions.ts`, the admin route, or any backend.
-- No visual/behavioral changes to the page when an Explore Together session is not active.
-- No changes to Matterport embed URL, Share, About, or Claim controls.
+- `src/lib/atlas-curation-server.ts`, `atlas-live-tour.ts`, `atlas-showcase-publish.ts`, the Review panel JSX, the regular Atlas Listings admin page, RLS, migrations, generated end-product HTML.
+- Backfilling existing jobs.
 
 ## Verification
 
-1. Generate a fresh Opera Gallery package from `/admin/atlas-curation` and open `index.html` locally (or via the existing Netlify deploy after merge).
-2. Launch Explore Together as host → confirm:
-   - Toolbar appears as a horizontal strip directly under the FRONTIERS3D header, not over the Matterport viewport.
-   - Pointer / Draw / Color / Focus Rope / Shape / Clear / Exit all still function (runtime selectors unchanged).
-   - Matterport's own bottom-left search and "Presented by" overlays are no longer occluded.
-3. Confirm no toolbar is rendered before a session starts (static viewing of the tour is unchanged).
-4. Republish via the existing flow; `verifyDeployedShowcase` should still 200 both URLs and assert manifest `service`/`kind` (no manifest changes).
+1. Open `/admin/atlas-curation`, fill the create form with a valid Matterport URL plus an explicit Summary, Latitude, and Longitude. Submit.
+2. The new job appears with status `ready_for_review`, the Coords column shows the green "yes" pin, and clicking Review shows the typed Summary / Latitude / Longitude already populated in the editable draft.
+3. Submit again with Summary + lat/lng left blank → behavior is identical to today (Places/city-level resolution runs; `blocked` only if no coords could be resolved).
+4. Submit with only one of lat/lng filled → client toast error, no server call.
+5. Submit with lat=200 → client toast error, no server call.
+6. Generate package on the seeded job → the downloaded showcase shows the typed summary and the map pin uses the typed coordinates.
 
-## Backend Activation
+## Backend Activation Required: NO
 
-**Backend Activation Required: NO** — frontend-only change to the generated static HTML.
-
-## Files to change
-
-- `src/lib/atlas-live-tour.ts` — toolbar CSS, extract `TOOLBAR_HTML`, export `toolbarHtml`, remove toolbar from `STAGE_OVERLAY_HTML`, adjust letterbox height calc.
-- `src/lib/atlas-curation-server.ts` — insert `${liveTour.toolbarHtml}` between `</header>` and `<main class="f3d-stage">` in `renderCuratedHtml`.
+Reason: All target columns already exist on `atlas_curation_jobs` (`latitude`, `longitude`, `drafted_summary`, `draft_payload`). This is a frontend + server-function change only.

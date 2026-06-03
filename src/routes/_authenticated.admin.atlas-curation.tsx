@@ -92,10 +92,12 @@ type CreateFormState = {
   matterportUrl: string; name: string; address: string; city: string;
   region: string; country: string; category: string; rightsNote: string;
   rightsAck: boolean;
+  summary: string; latitude: string; longitude: string;
 };
 const EMPTY_CREATE_FORM: CreateFormState = {
   matterportUrl: "", name: "", address: "", city: "",
   region: "", country: "US", category: "", rightsNote: "", rightsAck: false,
+  summary: "", latitude: "", longitude: "",
 };
 function loadPersistedCreateForm(): CreateFormState {
   if (typeof window === "undefined") return EMPTY_CREATE_FORM;
@@ -196,15 +198,19 @@ function AdminAtlasCuration() {
   const [category, setCategory] = useState(initialCreate.category);
   const [rightsNote, setRightsNote] = useState(initialCreate.rightsNote);
   const [rightsAck, setRightsAck] = useState(initialCreate.rightsAck);
+  const [summary, setSummary] = useState(initialCreate.summary);
+  const [latitude, setLatitude] = useState(initialCreate.latitude);
+  const [longitude, setLongitude] = useState(initialCreate.longitude);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
       window.localStorage.setItem(CREATE_FORM_KEY, JSON.stringify({
         matterportUrl, name, address, city, region, country, category, rightsNote, rightsAck,
+        summary, latitude, longitude,
       }));
     } catch { /* ignore quota errors */ }
-  }, [matterportUrl, name, address, city, region, country, category, rightsNote, rightsAck]);
+  }, [matterportUrl, name, address, city, region, country, category, rightsNote, rightsAck, summary, latitude, longitude]);
 
   // Review/edit form (mirrors the selected job's draft)
   const [draft, setDraft] = useState<DraftForm>(() => draftToForm(null));
@@ -268,6 +274,7 @@ function AdminAtlasCuration() {
   const resetCreate = () => {
     setMatterportUrl(""); setName(""); setAddress(""); setCity("");
     setRegion(""); setCountry("US"); setCategory(""); setRightsNote(""); setRightsAck(false);
+    setSummary(""); setLatitude(""); setLongitude("");
     if (typeof window !== "undefined") {
       try { window.localStorage.removeItem(CREATE_FORM_KEY); } catch { /* ignore */ }
     }
@@ -286,6 +293,29 @@ function AdminAtlasCuration() {
       toast.error("Confirm you have legitimate access/permission before curating this listing.");
       return;
     }
+    // Coordinates: either both blank (let the assistant resolve) or both valid numbers in range.
+    const latStr = latitude.trim();
+    const lngStr = longitude.trim();
+    let latNum: number | null = null;
+    let lngNum: number | null = null;
+    if (latStr || lngStr) {
+      if (!latStr || !lngStr) {
+        toast.error("Enter both latitude and longitude, or leave both blank.");
+        return;
+      }
+      const lat = parseFloat(latStr);
+      const lng = parseFloat(lngStr);
+      if (!Number.isFinite(lat) || lat < -90 || lat > 90) {
+        toast.error("Latitude must be a number between -90 and 90.");
+        return;
+      }
+      if (!Number.isFinite(lng) || lng < -180 || lng > 180) {
+        toast.error("Longitude must be a number between -180 and 180.");
+        return;
+      }
+      latNum = lat;
+      lngNum = lng;
+    }
     setBusy(true);
     try {
       const { job } = await create({
@@ -298,6 +328,9 @@ function AdminAtlasCuration() {
           input_country: country.trim(),
           input_category: category.trim(),
           rights_note: rightsNote.trim(),
+          summary: summary.trim(),
+          latitude: latNum,
+          longitude: lngNum,
         },
       });
       toast.success(
@@ -615,6 +648,36 @@ function AdminAtlasCuration() {
               <option value="">Auto-detect</option>
               {CATEGORY_OPTIONS.map((c) => <option key={c} value={c}>{categoryLabel(c)}</option>)}
             </select>
+          </label>
+          <label className="sm:col-span-2 lg:col-span-3">
+            <span className={labelCls}>Summary (optional — assistant will draft one if blank)</span>
+            <textarea
+              className={`${inputCls} min-h-[60px]`}
+              value={summary}
+              maxLength={600}
+              onChange={(e) => setSummary(e.target.value)}
+              placeholder="Short marketing summary shown on the Atlas card and curated showcase."
+            />
+          </label>
+          <label>
+            <span className={labelCls}>Latitude (optional)</span>
+            <input
+              className={inputCls}
+              value={latitude}
+              onChange={(e) => setLatitude(e.target.value)}
+              placeholder="-90 to 90"
+              inputMode="decimal"
+            />
+          </label>
+          <label>
+            <span className={labelCls}>Longitude (optional)</span>
+            <input
+              className={inputCls}
+              value={longitude}
+              onChange={(e) => setLongitude(e.target.value)}
+              placeholder="-180 to 180"
+              inputMode="decimal"
+            />
           </label>
           <label className="sm:col-span-2 lg:col-span-3">
             <span className={labelCls}>Rights / access note (optional)</span>
