@@ -39,6 +39,7 @@ import {
   generateCuratedPackage,
   publishCuratedShowcase,
   markShowcaseDeployed,
+  publishShowcasesRootIndexPr,
 } from "@/lib/atlas-curation.functions";
 
 export const Route = createFileRoute("/_authenticated/admin/atlas-curation")({
@@ -142,6 +143,25 @@ function AdminAtlasCuration() {
   const genPackage = useServerFn(generateCuratedPackage);
   const pubShowcase = useServerFn(publishCuratedShowcase);
   const markDeployed = useServerFn(markShowcaseDeployed);
+  const publishRootIndex = useServerFn(publishShowcasesRootIndexPr);
+  const [publishingRootIndex, setPublishingRootIndex] = useState(false);
+
+  const onPublishRootIndex = async () => {
+    setPublishingRootIndex(true);
+    try {
+      const res = await publishRootIndex();
+      if (res.alreadyExists) {
+        toast.info("Root index.html already exists on the showcases repo.");
+      } else if (res.prUrl) {
+        toast.success("Opened PR to add root landing page.");
+        if (typeof window !== "undefined") window.open(res.prUrl, "_blank", "noopener");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to open root index PR.");
+    } finally {
+      setPublishingRootIndex(false);
+    }
+  };
 
   const [jobs, setJobs] = useState<AtlasCurationJob[]>([]);
   const [loading, setLoading] = useState(true);
@@ -485,6 +505,15 @@ function AdminAtlasCuration() {
           </Button>
           <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
             <RefreshCw className={`mr-1 size-4 ${loading ? "animate-spin" : ""}`} /> Refresh
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void onPublishRootIndex()}
+            disabled={publishingRootIndex}
+            title="Open a PR adding /index.html so the bare showcases site URL is not a 404."
+          >
+            <Globe2 className={`mr-1 size-4 ${publishingRootIndex ? "animate-spin" : ""}`} /> Publish root index
           </Button>
         </div>
       </div>
