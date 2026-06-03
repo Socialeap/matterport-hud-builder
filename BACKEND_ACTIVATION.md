@@ -8,6 +8,60 @@ Backend Activation Required: **YES** — sender domain `notify.3dps.transcendenc
 
 ## Completed Activations
 
+### Atlas Showcase Publishing Activation (2026-06-03) — VERIFIED
+
+**Context:** PR 140 introduced the curated Atlas showcase publishing workflow (admin curation UI → presentation package build → PR against `Socialeap/frontiers3d-atlas-showcases` → one Netlify site deploys all curated showcases → "Mark deployed & attach URL" writes `atlas_entries.presentation_url`; listing remains **inactive** until an admin explicitly activates it). Code was merged but backend was un-activated.
+
+**Migrations applied (both newly applied in this activation):**
+- `supabase/migrations/20260611000000_frontiers3d_atlas_curation_build.sql` — adds `build_status`, `built_at`, `package_filename`, `package_size_bytes`, `build_error` to `public.atlas_curation_jobs`.
+- `supabase/migrations/20260612000000_frontiers3d_atlas_showcase_publish.sql` — adds `showcase_slug`, `publish_status`, `showcase_pr_url`, `deployed_url`, `published_at`, `publish_error` to `public.atlas_curation_jobs`.
+
+Both are additive (`add column if not exists`) with `check` constraints on the two status columns. **Non-destructive** — no DROP / DELETE / TRUNCATE, no RLS or GRANT changes (existing policies and grants on the table cover the new columns).
+
+**Secrets configured (server-only, never bundled to the client):**
+- `ATLAS_SHOWCASES_GITHUB_TOKEN` — GitHub token with contents + pull-requests write on `Socialeap/frontiers3d-atlas-showcases`.
+- `NETLIFY_ATLAS_DEPLOY_TOKEN` — **freshly rotated** Netlify personal access token. (Security note: a previous Netlify token was pasted in chat and is considered exposed; it must be revoked in Netlify if not already.)
+- `NETLIFY_ATLAS_SITE_ID` — API ID of the single connected Netlify site serving the showcases repo.
+
+These are consumed only inside `src/lib/atlas-showcase-publish.ts`, which is loaded via dynamic `await import(...)` inside server-fn handlers — so the tokens stay out of the client bundle. Only `api.github.com` and `api.netlify.com` are fetched (no SSRF surface).
+
+**Verification (run against the live database):**
+```sql
+SELECT column_name FROM information_schema.columns
+WHERE table_schema='public' AND table_name='atlas_curation_jobs'
+  AND column_name IN ('build_status','built_at','package_filename','package_size_bytes','build_error',
+                      'showcase_slug','publish_status','showcase_pr_url','deployed_url','published_at','publish_error')
+ORDER BY column_name;
+```
+Result: **11/11** rows returned. ✅
+
+**Safety boundaries (must not regress):**
+- No prospect outreach, no email sends, no Stripe/billing changes, no auto-activation of Atlas listings.
+- One dedicated showcase repo + one connected Netlify site — **never** one Netlify site per listing.
+- Tokens stay server-only; never place in source code, docs, PR text, client bundles, or logs.
+- Curated showcase listings remain `kind='curated_showcase'` + `status='inactive'` (or `pending_review`) until an admin manually flips status to `active` in `/admin/atlas`.
+- No unrelated changes to Map Oracle, Track A, provider directory, or outreach modules.
+
+**Manual checks the agent cannot perform (deferred to admin):**
+1. Confirm the Netlify site identified by `NETLIFY_ATLAS_SITE_ID` is in fact connected to `Socialeap/frontiers3d-atlas-showcases` (Netlify → Site settings → Build & deploy → Repository).
+2. End-to-end smoke test from `/admin/atlas-curation`:
+   - Create or load a curated job with a valid Matterport model ID.
+   - Generate the curated presentation package.
+   - Open a showcase PR; confirm it modifies only `<slug>/index.html` and `<slug>/atlas-manifest.json` and preserves all existing folders.
+   - Merge the PR; confirm Netlify deploys the single site.
+   - Click "Mark deployed & attach URL".
+   - Verify with SQL:
+     ```sql
+     SELECT id, kind, status, presentation_url
+       FROM public.atlas_entries
+      WHERE id = '<atlas_entry_id from the curation job>';
+     ```
+     Expect `presentation_url` populated with the `https://<site>/<slug>/` URL and `status` still `inactive` (or `pending_review`) — NOT `active`.
+
+---
+
+
+
 ### Atlas Curation Jobs Table Activation (2026-06-02) — VERIFIED
 
 **Symptom:** Submitting via `/admin/atlas-curation` failed with `Could not find the table 'public.atlas_curation_jobs' in the schema cache`.
