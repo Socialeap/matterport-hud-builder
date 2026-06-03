@@ -1,52 +1,55 @@
-## Current state (verified just now)
+# Atlas Curated Showcase HUD — Post-Merge Verification & Republish
 
-- `public.atlas_curation_jobs` exists ✅ (applied 2026-06-02).
-- Columns added by `20260611…_atlas_curation_build.sql` (`build_status`, `built_at`, `package_filename`, `package_size_bytes`, `build_error`) → **not present**.
-- Columns added by `20260612…_atlas_showcase_publish.sql` (`showcase_slug`, `publish_status`, `showcase_pr_url`, `deployed_url`, `published_at`, `publish_error`) → **not present**.
-- Source already merged: `src/lib/atlas-showcase-publish.ts`, `atlas-curation-server.ts`, updated `atlas-curation.functions.ts`.
-- Configured secrets do **not** include `ATLAS_SHOWCASES_GITHUB_TOKEN`, `NETLIFY_ATLAS_DEPLOY_TOKEN`, or `NETLIFY_ATLAS_SITE_ID`. `NETLIFY_OAUTH_CLIENT_ID` / `NETLIFY_OAUTH_CLIENT_SECRET` exist but are unrelated (different purpose).
+## Goal
+Confirm the merged PR (curated showcase HUD + Explore Together) is live in code, regenerate the Opera Gallery New York showcase so its static `index.html` includes the new HUD, publish it through the existing GitHub → Netlify pipeline, and smoke-test the shared live tour. No unrelated systems are touched.
 
-So PR 140 is merged in code but **fully un-activated** on the backend.
+## Step 1 — Confirm code state (no edits)
+- Read `src/lib/atlas-curation-server.ts` `renderCuratedHtml` and confirm it renders: top `f3d-bar` with Share, About, optional Claim, and the Live Tour launch button; About/Summary backdrop; `atlas-live-tour` overlay.
+- Read `src/lib/atlas-live-tour.ts` and `src/lib/atlas-live-tour-runtime.mjs` to confirm Explore Together is wired (host/guest PIN, PeerJS via CDN, mic + graceful fallback, location sync, annotations, cleanup).
+- Read `src/lib/atlas-showcase-publish.ts` + `src/lib/atlas-curation.functions.ts` to confirm the publish pipeline (PR to `Socialeap/frontiers3d-atlas-showcases`, `verifyDeployedShowcase` gate, `markShowcaseDeployed`) is unchanged.
+- Read `src/routes/_authenticated.admin.atlas-curation.tsx` to confirm the admin "Generate package → open PR → Mark deployed" flow.
 
-## What I will do (build mode)
+## Step 2 — Backend activation check
+- Diff recent migrations under `supabase/migrations/` against the last activation entry in `BACKEND_ACTIVATION.md`. Expected: **NO** new migration, **NO** new secret. The HUD/Live Tour ships inside the generated static `index.html`; existing secrets (`ATLAS_SHOWCASES_GITHUB_TOKEN`, `NETLIFY_ATLAS_DEPLOY_TOKEN`, `NETLIFY_ATLAS_SITE_ID`) cover publishing.
+- Append a short "Atlas HUD Republish (2026-06-03)" section to `BACKEND_ACTIVATION.md` recording the verification (no DB/secret change).
 
-1. **Apply migration 20260611000000_frontiers3d_atlas_curation_build.sql** verbatim via `supabase--migration` (additive `add column if not exists` only — non-destructive, idempotent, no RLS/grant changes needed since the table already has them).
+## Step 3 — Regenerate Opera Gallery New York
+- From `/admin/atlas-curation`, open the existing Opera Gallery New York job and run **Generate package** so a fresh `index.html` + `atlas-manifest.json` are produced from the current `renderCuratedHtml` + `atlas-live-tour` template (includes Share, About, Claim if wired, Explore Together).
+- Use **Open PR** to push the regenerated `opera-gallery-new-york/` folder to `Socialeap/frontiers3d-atlas-showcases`. Capture the PR URL.
 
-2. **Apply migration 20260612000000_frontiers3d_atlas_showcase_publish.sql** verbatim via `supabase--migration` (same shape: additive `add column if not exists` with a status check). Run as a separate migration call so each is reviewable.
+## Step 4 — Merge + deploy
+- Merge the showcase PR on GitHub. Netlify auto-deploys the showcases site.
+- Wait for the Netlify build to finish, then run **Mark deployed & attach URL** in the admin. `verifyDeployedShowcase` hard-gates `publish_status='published'` on:
+  - HTTP 200 at `/opera-gallery-new-york/`
+  - HTTP 200 at `/opera-gallery-new-york/atlas-manifest.json`
+  - `manifest.service === "frontiers3d-atlas"` and `manifest.kind === "curated_showcase"`
 
-3. **Request the three server-only secrets** via `secrets--add_secret`:
-   - `ATLAS_SHOWCASES_GITHUB_TOKEN` — fine-grained GitHub PAT scoped to `Socialeap/frontiers3d-atlas-showcases` with Contents: read/write + Pull requests: read/write.
-   - `NETLIFY_ATLAS_DEPLOY_TOKEN` — **freshly rotated** Netlify personal access token (the one previously pasted in chat is considered exposed and must not be reused).
-   - `NETLIFY_ATLAS_SITE_ID` — the API ID of the one Netlify site connected to the showcases repo (Netlify → Site → Site configuration → Site details → Site ID).
+## Step 5 — Live URL verification
+- Manually re-curl the two URLs above on both Netlify and GitHub Pages and record status codes + manifest values in the final report.
 
-4. **Update `BACKEND_ACTIVATION.md`** with a new "Atlas Showcase Publishing Activation (2026-06-03)" entry: which migrations were applied, verification SQL + results, secrets requested, security note about the rotated Netlify token, and the explicit boundary list (no outreach, no email, no billing, no auto-activation, no per-listing Netlify sites, no client-bundle token exposure).
+## Step 6 — Two-browser Explore Together smoke test
+Using the browser tool on the deployed Netlify URL:
+- Browser A: open the showcase, click **Explore Together**, host a session, capture PIN.
+- Browser B: open the same URL in a fresh session, join with PIN, confirm guest connects.
+- Verify: mic prompt path (and graceful fallback when denied), shared location/view sync, annotation/draw/focus if exposed, leave/close cleans up overlay and re-shows the page footer.
+- Note: real microphone capture and cross-browser WebRTC peering may be limited inside the automation sandbox; if so, report the limitation and recommend a human re-test.
 
-5. **Verification SQL I will run after each migration:**
-   ```sql
-   SELECT column_name FROM information_schema.columns
-   WHERE table_schema='public' AND table_name='atlas_curation_jobs'
-     AND column_name IN ('build_status','publish_status','showcase_slug',
-       'showcase_pr_url','deployed_url','published_at','publish_error',
-       'built_at','package_filename','package_size_bytes','build_error');
-   ```
-   Expect all 11 column names.
+## Step 7 — Confirm exclusions
+Grep the regenerated `index.html` (downloaded from Netlify) to confirm it does **not** contain: Ask AI, floor map, media gallery, password gate, Stripe, billing, outreach/email, or auto-activation hooks. Curated listing stays `kind='curated_showcase'` and is NOT auto-flipped to `status='active'`.
 
-## What I cannot do for you (and will report as blockers)
+## Step 8 — Final report
+Deliver in chat:
+- Backend activation required (expected NO + reason)
+- Showcase repo PR URL
+- Deployed Netlify showcase URL
+- Manifest verification result (service / kind / both 200s)
+- Two-browser Explore Together result (with any permission caveats)
+- Confirmation that no unrelated systems were touched
 
-These require either platform-side access or live admin interaction and cannot be done from the agent:
+## Out of scope (will not touch)
+Outreach/email, Stripe/billing, Map Oracle, Track A, provider directory, auto-activation of any Atlas listing, prospect emails.
 
-- **Confirm the Netlify site is connected to `Socialeap/frontiers3d-atlas-showcases`** — visible only in your Netlify account. I'll list it as a manual check.
-- **Confirm GitHub token + Netlify token are valid against the repo / site** — first real PR open call will surface this; I'll add a one-shot diagnostic note in `BACKEND_ACTIVATION.md`.
-- **Run the end-to-end smoke test** (create curated job → generate package → open PR → merge → "Mark deployed & attach URL" → verify `presentation_url`, listing stays inactive). This is the `/admin/atlas-curation` flow and must be driven by a signed-in admin in the browser. I'll provide a checklist mirroring your 6 sub-steps.
-
-## Final report I'll deliver
-
-Per your "Please report" list:
-- Migrations: state before/after for both files (newly applied).
-- Secrets: which 3 were just added vs already present.
-- Showcase PR URL, deployed Netlify URL, atlas_entry id, inactive status → **deferred to your smoke test** (with the exact SQL to confirm `atlas_entries.status='inactive'` and `presentation_url` set).
-- Blockers/follow-ups: Netlify site-connection check + token validity, plus the smoke test itself.
-
-## Safety boundaries respected
-
-Only additive column changes; no DROP/DELETE/TRUNCATE; no RLS or grant edits; no outreach, email, Stripe, or auto-activation code touched; secrets stay server-only (consumed via `process.env` inside `src/lib/atlas-showcase-publish.ts`, which is reached only via dynamic import from server-fn handlers, so they never enter the client bundle).
+## Technical notes
+- All HUD code lives in `src/lib/atlas-curation-server.ts` + `src/lib/atlas-live-tour*` and is inlined into the generated static `index.html` (self-contained, no phone-home).
+- PeerJS loads from CDN at runtime inside the showcase page; the showcase still requires no backend calls.
+- If verification fails post-merge, `markShowcaseDeployed` will set `publish_status='failed'` rather than silently publishing — that is the intended guard.
