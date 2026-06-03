@@ -252,6 +252,9 @@ export type Database = {
       atlas_curation_jobs: {
         Row: {
           atlas_entry_id: string | null
+          build_error: string | null
+          build_status: string
+          built_at: string | null
           created_at: string
           created_by: string
           draft_payload: Json | null
@@ -272,6 +275,8 @@ export type Database = {
           latitude: number | null
           longitude: number | null
           needs_human_review: boolean
+          package_filename: string | null
+          package_size_bytes: number | null
           phone: string | null
           place_candidates: Json
           rights_note: string | null
@@ -281,6 +286,9 @@ export type Database = {
         }
         Insert: {
           atlas_entry_id?: string | null
+          build_error?: string | null
+          build_status?: string
+          built_at?: string | null
           created_at?: string
           created_by: string
           draft_payload?: Json | null
@@ -301,6 +309,8 @@ export type Database = {
           latitude?: number | null
           longitude?: number | null
           needs_human_review?: boolean
+          package_filename?: string | null
+          package_size_bytes?: number | null
           phone?: string | null
           place_candidates?: Json
           rights_note?: string | null
@@ -310,6 +320,9 @@ export type Database = {
         }
         Update: {
           atlas_entry_id?: string | null
+          build_error?: string | null
+          build_status?: string
+          built_at?: string | null
           created_at?: string
           created_by?: string
           draft_payload?: Json | null
@@ -330,6 +343,8 @@ export type Database = {
           latitude?: number | null
           longitude?: number | null
           needs_human_review?: boolean
+          package_filename?: string | null
+          package_size_bytes?: number | null
           phone?: string | null
           place_candidates?: Json
           rights_note?: string | null
