@@ -39,6 +39,7 @@ import {
   generateCuratedPackage,
   publishCuratedShowcase,
   markShowcaseDeployed,
+  publishShowcasesRootIndexPr,
 } from "@/lib/atlas-curation.functions";
 
 export const Route = createFileRoute("/_authenticated/admin/atlas-curation")({
