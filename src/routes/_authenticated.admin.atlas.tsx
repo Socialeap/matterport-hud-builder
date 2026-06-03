@@ -27,6 +27,8 @@ import {
   type AtlasEntryStatus,
 } from "@/lib/atlas-demo-data";
 import { atlasEntryInput } from "@/lib/atlas.functions";
+import { useServerFn } from "@tanstack/react-start";
+import { verifyShowcaseDeployment } from "@/lib/atlas-curation.functions";
 
 export const Route = createFileRoute("/_authenticated/admin/atlas")({
   component: AdminAtlas,
