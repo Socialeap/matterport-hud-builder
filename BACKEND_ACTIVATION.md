@@ -4,6 +4,62 @@
 
 Backend Activation Required: **YES** — sender domain `notify.3dps.transcendencemedia.com` must be re-verified in **Cloud → Emails** before any email (auth or transactional) can be delivered. All code/queue-side activations are applied as of 2026-05-27.
 
+Backend Activation Required: **YES (new, 2026-06-03)** — apply migration `20260613000000_frontiers3d_atlas_showcase_merge.sql` so the admin "Approve & Publish" (programmatic merge & deploy) action can record PR number/branch/merge state. Details in the next section. No new secrets.
+
+---
+
+## Pending Activation
+
+### Atlas Showcase "Approve & Publish" — programmatic merge & deploy (2026-06-03) — NEEDS APPLY
+
+**Context:** Previously, after the curation assistant opened a showcase PR, an admin had to leave the app, merge the PR in GitHub by hand, wait for Netlify, then return to attach the URL. This change adds an admin-only **"Approve & Publish"** action that merges the pipeline's own open PR through the GitHub API, polls the Netlify deploy, verifies it, and attaches `atlas_entries.presentation_url` — all in-app. The manual flow (View PR / Mark deployed & attach URL / activate in Atlas Listings) is retained as a fallback.
+
+**Migration to apply (additive, non-destructive):**
+- `supabase/migrations/20260613000000_frontiers3d_atlas_showcase_merge.sql`
+
+Exact SQL:
+```sql
+alter table public.atlas_curation_jobs
+  add column if not exists showcase_pr_number integer,
+  add column if not exists showcase_branch text,
+  add column if not exists merged_at timestamptz;
+
+alter table public.atlas_curation_jobs
+  drop constraint if exists atlas_curation_jobs_publish_status_check;
+alter table public.atlas_curation_jobs
+  add constraint atlas_curation_jobs_publish_status_check
+  check (publish_status in ('none','pr_open','merged','pending_deploy','published','failed'));
+```
+The only `drop` is `DROP CONSTRAINT IF EXISTS` on the **CHECK** that this same statement immediately re-adds (widened to allow `merged` + `pending_deploy`). **No DROP TABLE / DELETE / TRUNCATE, no RLS / GRANT / policy changes, no data loss.** Existing rows keep their `publish_status` values (all of which are still in the widened set).
+
+**Secrets — NO new secrets required.** The merge reuses the existing server-only `ATLAS_SHOWCASES_GITHUB_TOKEN`.
+- **GitHub token scope check (answers the CODEX question):** the GitHub "Merge a pull request" endpoint (`PUT /repos/{owner}/{repo}/pulls/{pull_number}/merge`) needs, for a fine-grained PAT, **Contents: Read and write** + **Pull requests: Read and write** on `Socialeap/frontiers3d-atlas-showcases` (classic PAT: `repo`, or `public_repo` if the repo is public). The token is already provisioned with **Contents R/W + Pull requests R/W** (see `.lovable/plan.md`), so **it is sufficient — no scope change needed.**
+- **Caveat the token cannot satisfy:** if the showcases repo's default branch has a **branch-protection rule** requiring a review/approval or status check, the API merge returns HTTP 403/405. The action surfaces that as a clear admin message. To use programmatic merge, the showcases repo default branch must NOT require reviews (or the token's app must be allowed to bypass protection).
+
+**Verification (run against the live database after applying):**
+```sql
+SELECT column_name FROM information_schema.columns
+WHERE table_schema='public' AND table_name='atlas_curation_jobs'
+  AND column_name IN ('showcase_pr_number','showcase_branch','merged_at')
+ORDER BY column_name;
+-- Expect 3/3 rows.
+
+SELECT pg_get_constraintdef(oid) FROM pg_constraint
+WHERE conrelid='public.atlas_curation_jobs'::regclass
+  AND conname='atlas_curation_jobs_publish_status_check';
+-- Expect: CHECK ((publish_status = ANY (ARRAY['none','pr_open','merged','pending_deploy','published','failed'])))
+```
+
+**Safety boundaries (must not regress):**
+- Merge targets ONLY the fixed `Socialeap/frontiers3d-atlas-showcases` repo. The PR number + branch come from the curation job row (persisted at PR-open time), never from user input; the live PR is re-validated (base repo == showcases repo, head branch == stored branch AND begins with `curate/`) before merge. No arbitrary repo/branch/PR merging.
+- No client-side secrets — the token stays in `src/lib/atlas-showcase-publish.ts`, reached only via dynamic `await import(...)` in server fns.
+- No auto-activation: success attaches `presentation_url` and sets `publish_status='published'` but leaves the Atlas listing **inactive** (`status` untouched). A failed/unverified deploy sets `pending_deploy` and does NOT attach a URL or activate anything.
+- No changes to outreach/email, Stripe/billing, or Map Oracle.
+
+**Manual checks deferred to admin:**
+1. Confirm the showcases repo default branch has no protection rule blocking API merges (or grant the token bypass).
+2. End-to-end smoke test from `/admin/atlas-curation`: open a showcase PR → create the inactive Atlas entry → click **Approve & Publish** → confirm the PR merges, Netlify deploys, the URL attaches, and the listing remains `status='inactive'` in `/admin/atlas`.
+
 ---
 
 ## Completed Activations

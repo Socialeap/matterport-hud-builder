@@ -20,7 +20,11 @@ import {
   ArrowLeft,
   Package,
   Download,
+  Rocket,
+  Clock,
+  Info,
 } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   CATEGORY_OPTIONS,
   categoryLabel,
@@ -38,6 +42,7 @@ import {
   deleteCurationJob,
   generateCuratedPackage,
   publishCuratedShowcase,
+  mergeAndPublishShowcase,
   markShowcaseDeployed,
   publishShowcasesRootIndexPr,
 } from "@/lib/atlas-curation.functions";
@@ -142,6 +147,7 @@ function AdminAtlasCuration() {
   const removeJob = useServerFn(deleteCurationJob);
   const genPackage = useServerFn(generateCuratedPackage);
   const pubShowcase = useServerFn(publishCuratedShowcase);
+  const mergeDeploy = useServerFn(mergeAndPublishShowcase);
   const markDeployed = useServerFn(markShowcaseDeployed);
   const publishRootIndex = useServerFn(publishShowcasesRootIndexPr);
   const [publishingRootIndex, setPublishingRootIndex] = useState(false);
@@ -436,6 +442,36 @@ function AdminAtlasCuration() {
     }
   };
 
+  const handleMergeAndDeploy = async () => {
+    if (!selected) return;
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(
+        "Approve & Publish this showcase?\n\nThis merges the open showcase PR in the showcases repo via the GitHub API, waits for Netlify to deploy, then attaches the live URL to the listing. The Atlas listing stays INACTIVE — you still activate it separately in Atlas Listings.",
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await mergeDeploy({ data: { jobId: selected.id } });
+      replaceJob(res.job);
+      if (res.status === "published") {
+        toast.success(
+          "Merged, deployed & URL attached. Listing is still inactive — activate it in Atlas Listings when ready.",
+        );
+      } else {
+        toast.info(
+          "PR merged. Netlify is still deploying — re-run “Approve & Publish” in a moment to finish attaching the URL.",
+        );
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Merge & deploy failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleMarkDeployed = async (url?: string) => {
     if (!selected) return;
     setBusy(true);
@@ -602,6 +638,7 @@ function AdminAtlasCuration() {
           onCreateEntry={() => void handleCreateEntry()}
           onGeneratePackage={() => void handleGeneratePackage()}
           onPublishShowcase={() => void handlePublishShowcase()}
+          onMergeAndDeploy={() => void handleMergeAndDeploy()}
           onMarkDeployed={(url) => void handleMarkDeployed(url)}
           onReject={() => void handleReject()}
           onClose={() => setSelectedId(null)}
@@ -681,7 +718,7 @@ function AdminAtlasCuration() {
 function JobReviewPanel({
   job, draft, setDraft, coordsMissing, busy,
   onSelectCandidate, onSaveDraft, onMarkReady, onCreateEntry, onGeneratePackage,
-  onPublishShowcase, onMarkDeployed, onReject, onClose,
+  onPublishShowcase, onMergeAndDeploy, onMarkDeployed, onReject, onClose,
 }: {
   job: AtlasCurationJob;
   draft: DraftForm;
@@ -694,6 +731,7 @@ function JobReviewPanel({
   onCreateEntry: () => void;
   onGeneratePackage: () => void;
   onPublishShowcase: () => void;
+  onMergeAndDeploy: () => void;
   onMarkDeployed: (url?: string) => void;
   onReject: () => void;
   onClose: () => void;
@@ -862,24 +900,68 @@ function JobReviewPanel({
         )}
       </div>
 
-      {/* Publish to the Atlas showcases repo (GitHub PR → Netlify) */}
+      {/* Publish to the Atlas showcases repo (GitHub PR → merge → Netlify) */}
       <div className="mt-3 rounded-md border border-border bg-muted/20 p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-sm font-medium text-foreground">
             <Globe2 className="size-4 text-primary" /> Publish to Atlas showcases
+            <Popover>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded text-[11px] font-normal text-muted-foreground hover:text-foreground"
+                >
+                  <Info className="size-3.5" /> Merge requirements
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-80 text-xs leading-relaxed">
+                <p className="font-medium text-foreground">About “Approve &amp; Publish”</p>
+                <p className="mt-1 text-muted-foreground">
+                  Merges this showcase PR for you via the GitHub API using a server-only token
+                  (Contents + Pull requests write) — no new secrets, and the token never reaches
+                  the browser.
+                </p>
+                <p className="mt-2 text-muted-foreground">
+                  It can only merge if the <code>frontiers3d-atlas-showcases</code> default branch
+                  has <strong>no branch-protection rule</strong> requiring a review or status check.
+                  If protection is on, GitHub returns 403/405 and you'll see a clear error — merge
+                  that PR manually in GitHub, then click <strong>Mark deployed &amp; attach URL</strong>.
+                </p>
+                <p className="mt-2 text-muted-foreground">
+                  Either way, the Atlas listing stays <strong>inactive</strong> until you activate it
+                  in Atlas Listings.
+                </p>
+              </PopoverContent>
+            </Popover>
             {publishStatus === "pr_open" && <span className="text-xs font-normal text-amber-600 dark:text-amber-400">PR open</span>}
+            {publishStatus === "merged" && <span className="inline-flex items-center gap-1 text-xs font-normal text-sky-600 dark:text-sky-400"><Clock className="size-3.5" /> merged · deploying</span>}
+            {publishStatus === "pending_deploy" && <span className="inline-flex items-center gap-1 text-xs font-normal text-amber-600 dark:text-amber-400"><Clock className="size-3.5" /> awaiting deploy</span>}
             {publishStatus === "published" && <span className="inline-flex items-center gap-1 text-xs font-normal text-emerald-600 dark:text-emerald-400"><CheckCircle2 className="size-3.5" /> published</span>}
             {publishStatus === "failed" && <span className="text-xs font-normal text-rose-600 dark:text-rose-400">failed</span>}
           </div>
-          <Button size="sm" variant="outline" onClick={onPublishShowcase} disabled={busy || !canBuild}>
-            <Globe2 className="mr-1 size-4" /> {publishStatus === "none" ? "Open showcase PR" : "Re-open showcase PR"}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="outline" onClick={onPublishShowcase} disabled={busy || !canBuild}>
+              <Globe2 className="mr-1 size-4" /> {publishStatus === "none" ? "Open showcase PR" : "Re-open showcase PR"}
+            </Button>
+            {(publishStatus === "pr_open" || publishStatus === "merged" || publishStatus === "pending_deploy") && (
+              <Button
+                size="sm"
+                onClick={onMergeAndDeploy}
+                disabled={busy || !hasEntry || !job.showcase_pr_url}
+                title="Merge the showcase PR via the GitHub API, wait for Netlify, then attach the live URL. Keeps the listing inactive."
+              >
+                <Rocket className="mr-1 size-4" />
+                {publishStatus === "pr_open" ? "Approve & Publish" : "Retry deploy & attach"}
+              </Button>
+            )}
+          </div>
         </div>
         <p className="mt-1.5 text-[11px] text-muted-foreground">
           Commits <code>/{job.showcase_slug || "<slug>"}/</code> to the{" "}
-          <code>frontiers3d-atlas-showcases</code> repo as a PR. Merge it → the connected Netlify
-          site deploys → attach the live URL below. The listing stays <strong>inactive</strong>{" "}
-          until you activate it in Atlas Listings.
+          <code>frontiers3d-atlas-showcases</code> repo as a PR. <strong>Approve &amp; Publish</strong>{" "}
+          merges that PR for you via the GitHub API (no manual GitHub step), waits for the connected
+          Netlify site to deploy, verifies it, then attaches the live URL. The listing stays{" "}
+          <strong>inactive</strong> until you activate it in Atlas Listings.
         </p>
         {!hasEntry && (
           <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
@@ -889,11 +971,18 @@ function JobReviewPanel({
         {job.showcase_pr_url && (
           <p className="mt-1 text-[11px]">
             <a href={job.showcase_pr_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-              View showcase PR <ExternalLink className="inline size-3" />
+              View showcase PR{job.showcase_pr_number ? ` #${job.showcase_pr_number}` : ""} <ExternalLink className="inline size-3" />
             </a>
           </p>
         )}
-        {(publishStatus === "pr_open" || publishStatus === "published") && (
+        {(publishStatus === "merged" || publishStatus === "pending_deploy") && (
+          <p className="mt-1 flex items-start gap-1.5 text-[11px] text-sky-700 dark:text-sky-300">
+            <Clock className="mt-0.5 size-3.5 shrink-0" />
+            PR merged{job.merged_at ? ` ${new Date(job.merged_at).toLocaleString()}` : ""}. Netlify deploys can take a minute —
+            click <strong>Retry deploy &amp; attach</strong> (or use the manual field below) to finish once it's live.
+          </p>
+        )}
+        {(publishStatus === "pr_open" || publishStatus === "merged" || publishStatus === "pending_deploy" || publishStatus === "published") && (
           <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
             <input
               className={`${inputCls} sm:flex-1`}
@@ -911,8 +1000,8 @@ function JobReviewPanel({
             Attached: <a href={job.deployed_url} target="_blank" rel="noopener noreferrer" className="underline">{job.deployed_url}</a> — listing still inactive.
           </p>
         )}
-        {publishStatus === "failed" && job.publish_error && (
-          <p className="mt-1 text-[11px] text-rose-600 dark:text-rose-400">{job.publish_error}</p>
+        {(publishStatus === "failed" || publishStatus === "pending_deploy") && job.publish_error && (
+          <p className={`mt-1 text-[11px] ${publishStatus === "failed" ? "text-rose-600 dark:text-rose-400" : "text-amber-600 dark:text-amber-400"}`}>{job.publish_error}</p>
         )}
       </div>
 

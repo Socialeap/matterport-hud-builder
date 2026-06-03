@@ -171,12 +171,22 @@ export interface AtlasCurationJob {
   deployed_url?: string | null;
   published_at?: string | null;
   publish_error?: string | null;
+  // Programmatic merge & deploy ("Approve & Publish"; merge migration applied).
+  showcase_pr_number?: number | null;
+  showcase_branch?: string | null;
+  merged_at?: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export type AtlasBuildStatus = "none" | "building" | "built" | "failed";
-export type AtlasPublishStatus = "none" | "pr_open" | "published" | "failed";
+export type AtlasPublishStatus =
+  | "none"
+  | "pr_open"
+  | "merged"
+  | "pending_deploy"
+  | "published"
+  | "failed";
 
 /** Human label for a category value (known → friendly label, else Title Case). */
 export function categoryLabel(category: string): string {

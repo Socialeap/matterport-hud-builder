@@ -24,6 +24,13 @@ const GITHUB_API = "https://api.github.com";
 const NETLIFY_API = "https://api.netlify.com/api/v1";
 const SHOWCASES_REPO = "Socialeap/frontiers3d-atlas-showcases";
 const FETCH_TIMEOUT_MS = 12000;
+// Every branch this pipeline opens is `curate/<slug>-<rand>`. The merge path
+// refuses to touch any branch that doesn't carry this prefix, so a stored PR
+// number can never be used to merge an unrelated branch.
+const PIPELINE_BRANCH_PREFIX = "curate/";
+// Public host for the single Netlify site connected to the showcases repo. Used
+// as the canonical deployed-URL pattern when the Netlify API isn't configured.
+const SHOWCASES_NETLIFY_BASE = "https://frontiers3d-atlas-showcases.netlify.app";
 
 function env(name: string): string | null {
   const v = (process.env[name] ?? "").trim();
@@ -72,6 +79,7 @@ async function gh<T = unknown>(
 
 export interface PublishResult {
   prUrl: string;
+  prNumber: number;
   branch: string;
   slug: string;
 }
@@ -143,7 +151,7 @@ export async function publishShowcasePr(args: {
     method: "POST",
     body: JSON.stringify({ ref: `refs/heads/${branch}`, sha: commit.sha }),
   });
-  const pr = await gh<{ html_url: string }>(token, `/repos/${SHOWCASES_REPO}/pulls`, {
+  const pr = await gh<{ html_url: string; number: number }>(token, `/repos/${SHOWCASES_REPO}/pulls`, {
     method: "POST",
     body: JSON.stringify({
       title: `Curated showcase: ${args.input.title} (${slug})`,
@@ -156,7 +164,136 @@ export async function publishShowcasePr(args: {
     }),
   });
 
-  return { prUrl: pr.html_url, branch, slug };
+  return { prUrl: pr.html_url, prNumber: pr.number, branch, slug };
+}
+
+// ── Programmatic merge (admin "Approve & Publish") ───────────────────────────
+
+export interface MergeResult {
+  merged: boolean;
+  /** true when the PR was already merged before this call (idempotent retry). */
+  alreadyMerged: boolean;
+  sha: string | null;
+  mergeMethod: string | null;
+}
+
+/**
+ * Parse a PR number out of a GitHub PR html_url
+ * (https://github.com/<owner>/<repo>/pull/<n>). Returns null if not found —
+ * used as a fallback for jobs created before the PR number was persisted.
+ */
+export function parsePrNumberFromUrl(prUrl: string | null | undefined): number | null {
+  if (!prUrl) return null;
+  const m = /\/pull\/(\d+)(?:[/?#]|$)/.exec(prUrl);
+  return m ? Number(m[1]) : null;
+}
+
+/** Read the head branch of a showcase PR (for older jobs that didn't store it). */
+export async function fetchPrHeadBranch(prNumber: number): Promise<string> {
+  const token = env("ATLAS_SHOWCASES_GITHUB_TOKEN");
+  if (!token) {
+    throw new Error("Showcase publishing is not configured — set ATLAS_SHOWCASES_GITHUB_TOKEN.");
+  }
+  const pr = await gh<{ head?: { ref?: string } }>(
+    token,
+    `/repos/${SHOWCASES_REPO}/pulls/${Math.trunc(prNumber)}`,
+  );
+  return pr.head?.ref ?? "";
+}
+
+/**
+ * Merge a showcase PR through the GitHub API. Hard safety boundaries:
+ *   - Only the fixed SHOWCASES_REPO is ever targeted (never user-supplied).
+ *   - The PR number + branch come from the caller (the curation job row), never
+ *     from raw user input, and are re-validated against the LIVE PR:
+ *       • base repo must equal SHOWCASES_REPO,
+ *       • head branch must equal the stored branch AND begin with `curate/`.
+ *   - Idempotent: an already-merged PR returns { alreadyMerged: true }.
+ * Tries the allowed merge methods in turn so the showcases repo's merge-method
+ * settings can't block the merge. Surfaces GitHub's status code (403 perms /
+ * branch protection, 404 missing, 405 not-mergeable) in the error message.
+ */
+export async function mergeShowcasePr(args: {
+  prNumber: number;
+  branch: string;
+}): Promise<MergeResult> {
+  const token = env("ATLAS_SHOWCASES_GITHUB_TOKEN");
+  if (!token) {
+    throw new Error(
+      "Showcase publishing is not configured — set ATLAS_SHOWCASES_GITHUB_TOKEN (GitHub token with Contents + Pull requests write on the showcases repo).",
+    );
+  }
+  const prNumber = Math.trunc(args.prNumber);
+  if (!Number.isInteger(prNumber) || prNumber <= 0) {
+    throw new Error("Invalid showcase PR number — cannot merge.");
+  }
+  const branch = (args.branch ?? "").trim();
+  if (!branch.startsWith(PIPELINE_BRANCH_PREFIX)) {
+    throw new Error(
+      `Refusing to merge: PR head branch "${branch || "(unknown)"}" was not created by the Atlas showcase pipeline (expected a "${PIPELINE_BRANCH_PREFIX}…" branch).`,
+    );
+  }
+
+  // Re-read the live PR and assert it is the pipeline's PR on the fixed repo.
+  const pr = await gh<{
+    number: number;
+    state: string;
+    merged: boolean;
+    head: { ref: string };
+    base: { repo: { full_name: string } };
+  }>(token, `/repos/${SHOWCASES_REPO}/pulls/${prNumber}`);
+
+  if ((pr.base?.repo?.full_name ?? "").toLowerCase() !== SHOWCASES_REPO.toLowerCase()) {
+    throw new Error("Refusing to merge: PR base repo is not the Atlas showcases repo.");
+  }
+  if (pr.head?.ref !== branch) {
+    throw new Error(
+      `Refusing to merge: live PR head "${pr.head?.ref ?? "(unknown)"}" does not match the stored pipeline branch "${branch}".`,
+    );
+  }
+  if (pr.merged) {
+    return { merged: true, alreadyMerged: true, sha: null, mergeMethod: null };
+  }
+  if (pr.state !== "open") {
+    throw new Error(
+      `Showcase PR #${prNumber} is ${pr.state} and not merged — re-open the showcase PR before publishing.`,
+    );
+  }
+
+  // Try the merge methods in order; a repo that disallows one (e.g. squash-only)
+  // will accept another. 405 = not mergeable / method disabled → try next.
+  const methods = ["squash", "merge", "rebase"] as const;
+  let lastErr = "";
+  for (const method of methods) {
+    try {
+      const res = await gh<{ sha: string; merged: boolean }>(
+        token,
+        `/repos/${SHOWCASES_REPO}/pulls/${prNumber}/merge`,
+        { method: "PUT", body: JSON.stringify({ merge_method: method }) },
+      );
+      if (res.merged) {
+        return { merged: true, alreadyMerged: false, sha: res.sha, mergeMethod: method };
+      }
+      lastErr = `GitHub did not complete the ${method} merge.`;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      lastErr = msg;
+      if (/\(403\)/.test(msg)) {
+        throw new Error(
+          `GitHub refused the merge (403) — the token lacks repo write (Contents + Pull requests), or branch protection on the showcases repo requires a review/status check before merge. ${msg}`,
+        );
+      }
+      if (/\(404\)/.test(msg)) {
+        throw new Error(
+          `Showcase PR #${prNumber} was not found (404) — it may have been closed or deleted. ${msg}`,
+        );
+      }
+      // 405 (not mergeable / method disabled) or 409 (head moved): try next method.
+    }
+  }
+  throw new Error(
+    `Couldn't merge showcase PR #${prNumber} — ${lastErr}. If this says "not mergeable", the PR likely has a conflict or a branch-protection rule requiring a review/status check before merge.`,
+  );
 }
 
 // ── Netlify ──────────────────────────────────────────────────────────────────
@@ -185,6 +322,16 @@ export async function resolveShowcaseUrl(slug: string): Promise<string> {
     throw new Error("Netlify site has no resolvable https URL.");
   }
   return `${baseUrl}/${slug}/`;
+}
+
+/**
+ * The canonical deployed URL for a slug on the connected showcases site, used
+ * when the Netlify API isn't configured (or its lookup fails). Matches the
+ * single Netlify site that serves the showcases repo: `<base>/<slug>/`.
+ */
+export function defaultShowcaseUrl(slug: string): string {
+  const clean = slug.trim().replace(/^\/+|\/+$/g, "");
+  return `${SHOWCASES_NETLIFY_BASE}/${clean}/`;
 }
 
 // ── Deployment verification ──────────────────────────────────────────────────
@@ -221,6 +368,7 @@ export interface ShowcaseVerifyResult {
  */
 export async function verifyDeployedShowcase(
   url: string,
+  opts: { expectedJobId?: string } = {},
 ): Promise<ShowcaseVerifyResult> {
   const checks = {
     indexStatus: null as number | null,
@@ -282,7 +430,62 @@ export async function verifyDeployedShowcase(
   if (!checks.kindOk) {
     return { ok: false, reason: "Manifest kind is not 'curated_showcase'.", checks, manifest };
   }
+  // Optional: confirm the deployed folder belongs to THIS curation job. Only
+  // enforced when both an expected id is given and the manifest carries one, so
+  // older showcases without curation_job_id don't fail the gate.
+  if (
+    opts.expectedJobId &&
+    manifest?.curation_job_id &&
+    manifest.curation_job_id !== opts.expectedJobId
+  ) {
+    return {
+      ok: false,
+      reason: `Manifest curation_job_id (${manifest.curation_job_id}) does not match this job (${opts.expectedJobId}) — the deployed folder belongs to a different curation job.`,
+      checks,
+      manifest,
+    };
+  }
   return { ok: true, checks, manifest };
+}
+
+export interface ShowcasePollResult extends ShowcaseVerifyResult {
+  attempts: number;
+}
+
+/**
+ * Poll verifyDeployedShowcase while a freshly-merged showcase deploys on Netlify.
+ * Keeps retrying only for transient "deploy not up yet" signals (no response,
+ * 404, or 5xx); a hard manifest mismatch / wrong-service result short-circuits
+ * because it won't fix itself. Bounded (attempts × intervalMs) so the calling
+ * server fn stays well under any request timeout — the client continues polling
+ * for longer windows by re-invoking the publish action.
+ */
+export async function pollDeployedShowcase(
+  url: string,
+  opts: { expectedJobId?: string; attempts?: number; intervalMs?: number } = {},
+): Promise<ShowcasePollResult> {
+  const attempts = Math.max(1, Math.min(opts.attempts ?? 5, 12));
+  const intervalMs = Math.max(1000, Math.min(opts.intervalMs ?? 3000, 10000));
+  let last: ShowcaseVerifyResult = {
+    ok: false,
+    reason: "not attempted",
+    checks: { indexStatus: null, manifestStatus: null, serviceOk: false, kindOk: false },
+  };
+  for (let i = 0; i < attempts; i++) {
+    if (i > 0) await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    last = await verifyDeployedShowcase(url, { expectedJobId: opts.expectedJobId });
+    if (last.ok) return { ...last, attempts: i + 1 };
+    const { indexStatus, manifestStatus } = last.checks;
+    const transient =
+      indexStatus === null ||
+      indexStatus === 404 ||
+      (indexStatus !== null && indexStatus >= 500) ||
+      manifestStatus === null ||
+      manifestStatus === 404 ||
+      (manifestStatus !== null && manifestStatus >= 500);
+    if (!transient) return { ...last, attempts: i + 1 };
+  }
+  return { ...last, attempts };
 }
 
 // ── Root index.html for the showcases site (follow-up PR) ────────────────────
