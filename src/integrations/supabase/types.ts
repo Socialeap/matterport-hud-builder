@@ -275,7 +275,6 @@ export type Database = {
           input_name: string | null
           latitude: number | null
           longitude: number | null
-          merged_at: string | null
           needs_human_review: boolean
           package_filename: string | null
           package_size_bytes: number | null
@@ -285,8 +284,6 @@ export type Database = {
           publish_status: string
           published_at: string | null
           rights_note: string | null
-          showcase_branch: string | null
-          showcase_pr_number: number | null
           showcase_pr_url: string | null
           showcase_slug: string | null
           status: string
@@ -318,7 +315,6 @@ export type Database = {
           input_name?: string | null
           latitude?: number | null
           longitude?: number | null
-          merged_at?: string | null
           needs_human_review?: boolean
           package_filename?: string | null
           package_size_bytes?: number | null
@@ -328,8 +324,6 @@ export type Database = {
           publish_status?: string
           published_at?: string | null
           rights_note?: string | null
-          showcase_branch?: string | null
-          showcase_pr_number?: number | null
           showcase_pr_url?: string | null
           showcase_slug?: string | null
           status?: string
@@ -361,7 +355,6 @@ export type Database = {
           input_name?: string | null
           latitude?: number | null
           longitude?: number | null
-          merged_at?: string | null
           needs_human_review?: boolean
           package_filename?: string | null
           package_size_bytes?: number | null
@@ -371,8 +364,6 @@ export type Database = {
           publish_status?: string
           published_at?: string | null
           rights_note?: string | null
-          showcase_branch?: string | null
-          showcase_pr_number?: number | null
           showcase_pr_url?: string | null
           showcase_slug?: string | null
           status?: string
