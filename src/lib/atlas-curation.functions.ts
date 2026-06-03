@@ -637,6 +637,21 @@ export const markShowcaseDeployed = createServerFn({ method: "POST" })
       deployedUrl = await publish.resolveShowcaseUrl(job.showcase_slug);
     }
 
+    // Hard verification gate: the URL MUST serve a real Frontiers3D Atlas
+    // curated_showcase before we set publish_status='published' or attach
+    // presentation_url to the Atlas listing. This prevents marking a 404,
+    // a wrong-folder deploy, or someone else's site as "deployed".
+    const { verifyDeployedShowcase } = await import("./atlas-showcase-publish");
+    const verification = await verifyDeployedShowcase(deployedUrl);
+    if (!verification.ok) {
+      const msg = `Deployed URL verification failed — ${verification.reason ?? "unknown error"}`;
+      await sb
+        .from("atlas_curation_jobs")
+        .update({ publish_status: "failed", publish_error: msg })
+        .eq("id", data.jobId);
+      throw new Error(msg);
+    }
+
     // Attach to the listing's presentation_url. Status is left untouched, so the
     // listing stays inactive until an admin explicitly activates it.
     const { error: entErr } = await sb
@@ -658,4 +673,44 @@ export const markShowcaseDeployed = createServerFn({ method: "POST" })
       .single();
     if (updErr) throw new Error(updErr.message);
     return { job: updated as AtlasCurationJob, deployedUrl };
+  });
+
+// ── Verify a deployed showcase URL (used by Atlas admin before activation) ───
+
+export const verifyShowcaseDeployment = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => z.object({ url: HTTPS_URL }).parse(input))
+  .handler(async ({ data, context }): Promise<{
+    ok: boolean;
+    reason: string | null;
+    indexStatus: number | null;
+    manifestStatus: number | null;
+    serviceOk: boolean;
+    kindOk: boolean;
+  }> => {
+    await requireAdmin(context as Ctx);
+    const { verifyDeployedShowcase } = await import("./atlas-showcase-publish");
+    const r = await verifyDeployedShowcase(data.url);
+    return {
+      ok: r.ok,
+      reason: r.reason ?? null,
+      indexStatus: r.checks.indexStatus,
+      manifestStatus: r.checks.manifestStatus,
+      serviceOk: r.checks.serviceOk,
+      kindOk: r.checks.kindOk,
+    };
+  });
+
+// ── Publish a root index.html landing page to the showcases repo ─────────────
+
+export const publishShowcasesRootIndexPr = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<{
+    prUrl: string | null;
+    alreadyExists: boolean;
+  }> => {
+    await requireAdmin(context as Ctx);
+    const { publishShowcasesRootIndex } = await import("./atlas-showcase-publish");
+    const res = await publishShowcasesRootIndex();
+    return { prUrl: res.prUrl, alreadyExists: res.alreadyExists };
   });
