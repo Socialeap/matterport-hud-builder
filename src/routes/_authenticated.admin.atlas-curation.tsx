@@ -274,6 +274,7 @@ function AdminAtlasCuration() {
   const resetCreate = () => {
     setMatterportUrl(""); setName(""); setAddress(""); setCity("");
     setRegion(""); setCountry("US"); setCategory(""); setRightsNote(""); setRightsAck(false);
+    setSummary(""); setLatitude(""); setLongitude("");
     if (typeof window !== "undefined") {
       try { window.localStorage.removeItem(CREATE_FORM_KEY); } catch { /* ignore */ }
     }
