@@ -293,6 +293,29 @@ function AdminAtlasCuration() {
       toast.error("Confirm you have legitimate access/permission before curating this listing.");
       return;
     }
+    // Coordinates: either both blank (let the assistant resolve) or both valid numbers in range.
+    const latStr = latitude.trim();
+    const lngStr = longitude.trim();
+    let latNum: number | null = null;
+    let lngNum: number | null = null;
+    if (latStr || lngStr) {
+      if (!latStr || !lngStr) {
+        toast.error("Enter both latitude and longitude, or leave both blank.");
+        return;
+      }
+      const lat = parseFloat(latStr);
+      const lng = parseFloat(lngStr);
+      if (!Number.isFinite(lat) || lat < -90 || lat > 90) {
+        toast.error("Latitude must be a number between -90 and 90.");
+        return;
+      }
+      if (!Number.isFinite(lng) || lng < -180 || lng > 180) {
+        toast.error("Longitude must be a number between -180 and 180.");
+        return;
+      }
+      latNum = lat;
+      lngNum = lng;
+    }
     setBusy(true);
     try {
       const { job } = await create({
@@ -305,6 +328,9 @@ function AdminAtlasCuration() {
           input_country: country.trim(),
           input_category: category.trim(),
           rights_note: rightsNote.trim(),
+          summary: summary.trim(),
+          latitude: latNum,
+          longitude: lngNum,
         },
       });
       toast.success(
