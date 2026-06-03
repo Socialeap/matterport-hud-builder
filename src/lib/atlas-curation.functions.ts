@@ -160,6 +160,13 @@ export const createCurationJob = createServerFn({ method: "POST" })
       }
     }
 
+    // User-supplied coordinates take precedence over Places / city-level resolution.
+    if (data.latitude != null && data.longitude != null) {
+      latitude = data.latitude;
+      longitude = data.longitude;
+      confidence = "manual";
+    }
+
     const draft: AtlasCurationDraft = enrich.buildDraft({
       inputName: data.input_name,
       inputAddress: data.input_address,
@@ -171,6 +178,11 @@ export const createCurationJob = createServerFn({ method: "POST" })
       latitude,
       longitude,
     });
+
+    // User-supplied summary overrides the auto-drafted one.
+    if (data.summary && data.summary.trim()) {
+      draft.summary = data.summary.trim().slice(0, 600);
+    }
 
     if (status !== "needs_selection") {
       if (latitude != null && longitude != null) {
