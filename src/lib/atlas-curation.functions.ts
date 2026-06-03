@@ -90,6 +90,9 @@ const createInput = z.object({
   input_country: COUNTRY,
   input_category: z.string().trim().max(40).optional().default(""),
   rights_note: z.string().trim().max(1000).optional().default(""),
+  summary: z.string().trim().max(600).optional().default(""),
+  latitude: z.number().min(-90).max(90).nullable().optional(),
+  longitude: z.number().min(-180).max(180).nullable().optional(),
 });
 
 export const createCurationJob = createServerFn({ method: "POST" })
