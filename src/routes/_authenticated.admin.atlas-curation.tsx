@@ -37,6 +37,8 @@ import {
   createAtlasEntryFromJob,
   deleteCurationJob,
   generateCuratedPackage,
+  publishCuratedShowcase,
+  markShowcaseDeployed,
 } from "@/lib/atlas-curation.functions";
 
 export const Route = createFileRoute("/_authenticated/admin/atlas-curation")({
@@ -138,6 +140,8 @@ function AdminAtlasCuration() {
   const createEntry = useServerFn(createAtlasEntryFromJob);
   const removeJob = useServerFn(deleteCurationJob);
   const genPackage = useServerFn(generateCuratedPackage);
+  const pubShowcase = useServerFn(publishCuratedShowcase);
+  const markDeployed = useServerFn(markShowcaseDeployed);
 
   const [jobs, setJobs] = useState<AtlasCurationJob[]>([]);
   const [loading, setLoading] = useState(true);
@@ -398,6 +402,34 @@ function AdminAtlasCuration() {
     }
   };
 
+  const handlePublishShowcase = async () => {
+    if (!selected) return;
+    setBusy(true);
+    try {
+      const res = await pubShowcase({ data: { jobId: selected.id } });
+      replaceJob(res.job);
+      toast.success("Showcase PR opened. Merge it, then mark it deployed to attach the URL.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Publish failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleMarkDeployed = async (url?: string) => {
+    if (!selected) return;
+    setBusy(true);
+    try {
+      const res = await markDeployed({ data: { jobId: selected.id, ...(url ? { url } : {}) } });
+      replaceJob(res.job);
+      toast.success("Deployed URL attached to the listing (still inactive — activate it in Atlas Listings).");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't attach the deployed URL.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleDelete = async (job: AtlasCurationJob) => {
     if (typeof window !== "undefined" && !window.confirm("Delete this curation job? This cannot be undone.")) return;
     setBusy(true);
@@ -540,6 +572,8 @@ function AdminAtlasCuration() {
           onMarkReady={() => void saveDraft("ready_for_review")}
           onCreateEntry={() => void handleCreateEntry()}
           onGeneratePackage={() => void handleGeneratePackage()}
+          onPublishShowcase={() => void handlePublishShowcase()}
+          onMarkDeployed={(url) => void handleMarkDeployed(url)}
           onReject={() => void handleReject()}
           onClose={() => setSelectedId(null)}
         />
@@ -617,7 +651,8 @@ function AdminAtlasCuration() {
 
 function JobReviewPanel({
   job, draft, setDraft, coordsMissing, busy,
-  onSelectCandidate, onSaveDraft, onMarkReady, onCreateEntry, onGeneratePackage, onReject, onClose,
+  onSelectCandidate, onSaveDraft, onMarkReady, onCreateEntry, onGeneratePackage,
+  onPublishShowcase, onMarkDeployed, onReject, onClose,
 }: {
   job: AtlasCurationJob;
   draft: DraftForm;
@@ -629,6 +664,8 @@ function JobReviewPanel({
   onMarkReady: () => void;
   onCreateEntry: () => void;
   onGeneratePackage: () => void;
+  onPublishShowcase: () => void;
+  onMarkDeployed: (url?: string) => void;
   onReject: () => void;
   onClose: () => void;
 }) {
@@ -637,6 +674,9 @@ function JobReviewPanel({
   const created = job.status === "atlas_entry_created";
   const canBuild = !!draft.title.trim() && /^[A-Za-z0-9]{11}$/.test(job.extracted_matterport_id ?? "");
   const buildStatus = job.build_status ?? "none";
+  const publishStatus = job.publish_status ?? "none";
+  const hasEntry = !!job.atlas_entry_id;
+  const [manualUrl, setManualUrl] = useState("");
   const confidenceLabel =
     job.geocode_confidence === "google_places" ? "Google Places (precise)"
     : job.geocode_confidence === "city_level" ? "City-level (approximate — refine for a precise pin)"
@@ -790,6 +830,60 @@ function JobReviewPanel({
         )}
         {buildStatus === "failed" && job.build_error && (
           <p className="mt-1 text-[11px] text-rose-600 dark:text-rose-400">{job.build_error}</p>
+        )}
+      </div>
+
+      {/* Publish to the Atlas showcases repo (GitHub PR → Netlify) */}
+      <div className="mt-3 rounded-md border border-border bg-muted/20 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+            <Globe2 className="size-4 text-primary" /> Publish to Atlas showcases
+            {publishStatus === "pr_open" && <span className="text-xs font-normal text-amber-600 dark:text-amber-400">PR open</span>}
+            {publishStatus === "published" && <span className="inline-flex items-center gap-1 text-xs font-normal text-emerald-600 dark:text-emerald-400"><CheckCircle2 className="size-3.5" /> published</span>}
+            {publishStatus === "failed" && <span className="text-xs font-normal text-rose-600 dark:text-rose-400">failed</span>}
+          </div>
+          <Button size="sm" variant="outline" onClick={onPublishShowcase} disabled={busy || !canBuild}>
+            <Globe2 className="mr-1 size-4" /> {publishStatus === "none" ? "Open showcase PR" : "Re-open showcase PR"}
+          </Button>
+        </div>
+        <p className="mt-1.5 text-[11px] text-muted-foreground">
+          Commits <code>/{job.showcase_slug || "<slug>"}/</code> to the{" "}
+          <code>frontiers3d-atlas-showcases</code> repo as a PR. Merge it → the connected Netlify
+          site deploys → attach the live URL below. The listing stays <strong>inactive</strong>{" "}
+          until you activate it in Atlas Listings.
+        </p>
+        {!hasEntry && (
+          <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
+            Create the Atlas entry first — the deployed URL attaches to that listing.
+          </p>
+        )}
+        {job.showcase_pr_url && (
+          <p className="mt-1 text-[11px]">
+            <a href={job.showcase_pr_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+              View showcase PR <ExternalLink className="inline size-3" />
+            </a>
+          </p>
+        )}
+        {(publishStatus === "pr_open" || publishStatus === "published") && (
+          <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <input
+              className={`${inputCls} sm:flex-1`}
+              placeholder="Deployed URL (optional — leave blank to resolve from Netlify)"
+              value={manualUrl}
+              onChange={(e) => setManualUrl(e.target.value)}
+            />
+            <Button size="sm" variant="outline" onClick={() => onMarkDeployed(manualUrl.trim() || undefined)} disabled={busy || !hasEntry}>
+              Mark deployed &amp; attach URL
+            </Button>
+          </div>
+        )}
+        {publishStatus === "published" && job.deployed_url && (
+          <p className="mt-1 text-[11px] text-emerald-700 dark:text-emerald-300">
+            Attached: <a href={job.deployed_url} target="_blank" rel="noopener noreferrer" className="underline">{job.deployed_url}</a> — listing still inactive.
+          </p>
+        )}
+        {publishStatus === "failed" && job.publish_error && (
+          <p className="mt-1 text-[11px] text-rose-600 dark:text-rose-400">{job.publish_error}</p>
         )}
       </div>
 

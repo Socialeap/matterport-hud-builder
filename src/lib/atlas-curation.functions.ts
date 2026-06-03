@@ -23,6 +23,12 @@ import type {
   GeocodeConfidence,
 } from "./atlas-demo-data";
 
+const HTTPS_URL = z
+  .string()
+  .trim()
+  .max(2048)
+  .regex(/^https:\/\/[^\s<>"']+$/i, "Must be an https:// URL");
+
 const MATTERPORT_ID_RE = /^[A-Za-z0-9]{11}$/;
 const JOB_COLUMNS = "*";
 
@@ -514,4 +520,142 @@ export const generateCuratedPackage = createServerFn({ method: "POST" })
     } catch (err) {
       return fail(err instanceof Error ? err.message : "Package build failed.");
     }
+  });
+
+// ── Publish to the showcases repo (GitHub PR) ────────────────────────────────
+
+export const publishCuratedShowcase = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => z.object({ jobId: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }): Promise<{ job: AtlasCurationJob; prUrl: string }> => {
+    await requireAdmin(context as Ctx);
+    const sb = (context as Ctx).supabase;
+
+    const { data: job, error: loadErr } = await sb
+      .from("atlas_curation_jobs")
+      .select(JOB_COLUMNS)
+      .eq("id", data.jobId)
+      .single();
+    if (loadErr || !job) throw new Error(loadErr?.message ?? "Curation job not found.");
+
+    const matterportId = (job.extracted_matterport_id ?? "").trim();
+    const draft = job.draft_payload as AtlasCurationDraft | null;
+    const failPublish = async (msg: string): Promise<never> => {
+      await sb
+        .from("atlas_curation_jobs")
+        .update({ publish_status: "failed", publish_error: msg })
+        .eq("id", data.jobId);
+      throw new Error(msg);
+    };
+    if (!MATTERPORT_ID_RE.test(matterportId)) {
+      return failPublish("Missing or invalid Matterport model ID — can't publish a presentation.");
+    }
+    if (!draft || !draft.title.trim()) {
+      return failPublish("Add a title in review before publishing the showcase.");
+    }
+
+    try {
+      // Resolve a stable, unique folder slug. Re-publishing the same job reuses its
+      // stored slug (updates the same `<slug>/` folder); a first publish derives the
+      // slug from the title and disambiguates it against any OTHER job already using
+      // that slug, so two listings with the same/similar title can't silently
+      // overwrite each other's folder in the showcases repo.
+      let slug = job.showcase_slug as string | null;
+      if (!slug) {
+        const { slugify } = await import("./atlas-curation-server");
+        const baseSlug = slugify(draft.title);
+        const { data: clash } = await sb
+          .from("atlas_curation_jobs")
+          .select("id")
+          .eq("showcase_slug", baseSlug)
+          .neq("id", job.id)
+          .limit(1)
+          .maybeSingle();
+        slug = clash ? `${baseSlug}-${String(job.id).slice(0, 6)}` : baseSlug;
+      }
+
+      const publish = await import("./atlas-showcase-publish");
+      const res = await publish.publishShowcasePr({
+        slug,
+        input: {
+          curationJobId: job.id,
+          matterportId,
+          title: draft.title,
+          summary: draft.summary,
+          category: draft.category,
+          city: draft.city,
+          region: draft.region,
+          tags: draft.tags ?? [],
+          heroImageUrl: draft.hero_image_url,
+        },
+      });
+      const { data: updated, error: updErr } = await sb
+        .from("atlas_curation_jobs")
+        .update({
+          showcase_slug: res.slug,
+          publish_status: "pr_open",
+          showcase_pr_url: res.prUrl,
+          publish_error: null,
+        })
+        .eq("id", data.jobId)
+        .select(JOB_COLUMNS)
+        .single();
+      if (updErr) throw new Error(updErr.message);
+      return { job: updated as AtlasCurationJob, prUrl: res.prUrl };
+    } catch (err) {
+      return failPublish(err instanceof Error ? err.message : "Showcase publish failed.");
+    }
+  });
+
+// ── Mark deployed + attach the live URL to the Atlas entry ───────────────────
+
+export const markShowcaseDeployed = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z.object({ jobId: z.string().uuid(), url: HTTPS_URL.optional() }).parse(input),
+  )
+  .handler(async ({ data, context }): Promise<{ job: AtlasCurationJob; deployedUrl: string }> => {
+    await requireAdmin(context as Ctx);
+    const sb = (context as Ctx).supabase;
+
+    const { data: job, error: loadErr } = await sb
+      .from("atlas_curation_jobs")
+      .select(JOB_COLUMNS)
+      .eq("id", data.jobId)
+      .single();
+    if (loadErr || !job) throw new Error(loadErr?.message ?? "Curation job not found.");
+    if (!job.atlas_entry_id) {
+      throw new Error("Create the Atlas entry first — the deployed URL attaches to that listing.");
+    }
+    if (!job.showcase_slug) {
+      throw new Error("Open the showcase PR first so there's a folder/slug to deploy.");
+    }
+
+    let deployedUrl = data.url ?? "";
+    if (!deployedUrl) {
+      const publish = await import("./atlas-showcase-publish");
+      deployedUrl = await publish.resolveShowcaseUrl(job.showcase_slug);
+    }
+
+    // Attach to the listing's presentation_url. Status is left untouched, so the
+    // listing stays inactive until an admin explicitly activates it.
+    const { error: entErr } = await sb
+      .from("atlas_entries")
+      .update({ presentation_url: deployedUrl })
+      .eq("id", job.atlas_entry_id);
+    if (entErr) throw new Error(`Couldn't attach URL to the Atlas entry: ${entErr.message}`);
+
+    const { data: updated, error: updErr } = await sb
+      .from("atlas_curation_jobs")
+      .update({
+        publish_status: "published",
+        deployed_url: deployedUrl,
+        published_at: new Date().toISOString(),
+        publish_error: null,
+      })
+      .eq("id", data.jobId)
+      .select(JOB_COLUMNS)
+      .single();
+    if (updErr) throw new Error(updErr.message);
+    return { job: updated as AtlasCurationJob, deployedUrl };
   });
