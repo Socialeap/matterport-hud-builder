@@ -320,6 +320,7 @@ ${glueJs}
     css: buildCss(opts.accentColor),
     launchButtonHtml: LAUNCH_BUTTON_HTML,
     stageOverlayHtml: STAGE_OVERLAY_HTML,
+    toolbarHtml: TOOLBAR_HTML,
     bodyHtml: PANEL_HTML,
     scriptHtml,
   };
