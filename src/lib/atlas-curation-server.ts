@@ -303,36 +303,20 @@ function renderCuratedHtml(input: CuratedPackageInput): string {
   *{box-sizing:border-box}
   html,body{margin:0;height:100%;background:#0a0e27;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
   body{display:flex;flex-direction:column}
-  .f3d-bar{display:flex;align-items:center;gap:.75rem;padding:.6rem 1rem;background:rgba(10,14,39,.92);border-bottom:1px solid rgba(255,255,255,.08);backdrop-filter:blur(8px)}
-  .f3d-logo{font-weight:800;letter-spacing:.18em;font-size:.8rem}
-  .f3d-logo span{background:linear-gradient(90deg,#67e8f9,#818cf8);-webkit-background-clip:text;background-clip:text;color:transparent}
-  .f3d-meta{display:flex;flex-direction:column;min-width:0;line-height:1.2}
-  .f3d-title{font-weight:700;font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .f3d-loc{font-size:.7rem;color:#94a3b8}
-  .f3d-badge{margin-left:auto;font-size:.65rem;font-weight:700;color:#a5b4fc;background:rgba(129,140,248,.12);border:1px solid rgba(129,140,248,.25);padding:.15rem .5rem;border-radius:9999px;white-space:nowrap}
   .f3d-stage{position:relative;flex:1;min-height:0}
   .f3d-frame{position:absolute;inset:0;width:100%;height:100%;border:0;background:#020617}
-  .f3d-foot{padding:.6rem 1rem;font-size:.75rem;color:#94a3b8;background:#070b1f;border-top:1px solid rgba(255,255,255,.05)}
 </style>
 </head>
 <body>
-<header class="f3d-bar">
-  <span class="f3d-logo">FRONTIERS<span>3D</span></span>
-  <div class="f3d-meta">
-    <span class="f3d-title">${title}</span>
-    ${loc ? `<span class="f3d-loc">${loc}</span>` : ""}
-  </div>
-  <span class="f3d-badge">Curated showcase</span>
-</header>
 <main class="f3d-stage">
   <iframe class="f3d-frame" src="${embedSrc}" title="${title} — 3D tour"
     allow="xr-spatial-tracking; gyroscope; accelerometer; fullscreen; autoplay"
     allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe>
 </main>
-${summary ? `<footer class="f3d-foot">${summary}</footer>` : ""}
 </body>
 </html>`;
 }
+
 
 /**
  * The files that make up a curated showcase folder: index.html (branded
