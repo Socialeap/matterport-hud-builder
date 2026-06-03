@@ -101,9 +101,23 @@ export async function publishShowcasePr(args: {
     token,
     `/repos/${SHOWCASES_REPO}/git/ref/heads/${encodeURIComponent(base)}`,
   );
-  const baseSha = ref.object.sha;
+  const baseCommitSha = ref.object.sha;
 
-  // 2. Build a tree off the base with the folder's files.
+  // The branch ref points at a COMMIT, but GitHub's Create Tree API expects
+  // `base_tree` to be the SHA of a TREE object — NOT a commit SHA. Fetch the base
+  // commit and use its `tree.sha`. Passing the commit SHA as base_tree is wrong and
+  // can drop the repo's existing folders from the new tree (each publish would
+  // overwrite everything). Do NOT regress this. The new commit's `parents` below
+  // intentionally stays the COMMIT SHA (baseCommitSha).
+  const baseCommit = await gh<{ tree: { sha: string } }>(
+    token,
+    `/repos/${SHOWCASES_REPO}/git/commits/${baseCommitSha}`,
+  );
+  const baseTreeSha = baseCommit.tree.sha;
+
+  // 2. Build a tree off the base TREE with the folder's files. The folder is keyed
+  // by `slug`; slug uniqueness across listings is enforced by the caller
+  // (publishCuratedShowcase) so two listings can't silently overwrite one folder.
   const tree = Object.entries(files).map(([name, content]) => ({
     path: `${slug}/${name}`,
     mode: "100644" as const,
@@ -112,16 +126,16 @@ export async function publishShowcasePr(args: {
   }));
   const treeRes = await gh<{ sha: string }>(token, `/repos/${SHOWCASES_REPO}/git/trees`, {
     method: "POST",
-    body: JSON.stringify({ base_tree: baseSha, tree }),
+    body: JSON.stringify({ base_tree: baseTreeSha, tree }),
   });
 
-  // 3. Commit, branch, PR.
+  // 3. Commit (parent = base COMMIT sha), branch, PR.
   const commit = await gh<{ sha: string }>(token, `/repos/${SHOWCASES_REPO}/git/commits`, {
     method: "POST",
     body: JSON.stringify({
       message: `Curated showcase: ${slug}`,
       tree: treeRes.sha,
-      parents: [baseSha],
+      parents: [baseCommitSha],
     }),
   });
   const branch = `curate/${slug}-${Date.now().toString(36)}`;

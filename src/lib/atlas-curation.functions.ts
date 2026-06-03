@@ -555,9 +555,28 @@ export const publishCuratedShowcase = createServerFn({ method: "POST" })
     }
 
     try {
+      // Resolve a stable, unique folder slug. Re-publishing the same job reuses its
+      // stored slug (updates the same `<slug>/` folder); a first publish derives the
+      // slug from the title and disambiguates it against any OTHER job already using
+      // that slug, so two listings with the same/similar title can't silently
+      // overwrite each other's folder in the showcases repo.
+      let slug = job.showcase_slug as string | null;
+      if (!slug) {
+        const { slugify } = await import("./atlas-curation-server");
+        const baseSlug = slugify(draft.title);
+        const { data: clash } = await sb
+          .from("atlas_curation_jobs")
+          .select("id")
+          .eq("showcase_slug", baseSlug)
+          .neq("id", job.id)
+          .limit(1)
+          .maybeSingle();
+        slug = clash ? `${baseSlug}-${String(job.id).slice(0, 6)}` : baseSlug;
+      }
+
       const publish = await import("./atlas-showcase-publish");
       const res = await publish.publishShowcasePr({
-        slug: job.showcase_slug ?? undefined,
+        slug,
         input: {
           curationJobId: job.id,
           matterportId,
