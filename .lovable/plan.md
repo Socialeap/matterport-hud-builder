@@ -1,55 +1,54 @@
-# Atlas Curated Showcase HUD — Post-Merge Verification & Republish
+# Fix: "Review" button on /admin/atlas-curation appears unresponsive
 
-## Goal
-Confirm the merged PR (curated showcase HUD + Explore Together) is live in code, regenerate the Opera Gallery New York showcase so its static `index.html` includes the new HUD, publish it through the existing GitHub → Netlify pipeline, and smoke-test the shared live tour. No unrelated systems are touched.
+## Root cause
 
-## Step 1 — Confirm code state (no edits)
-- Read `src/lib/atlas-curation-server.ts` `renderCuratedHtml` and confirm it renders: top `f3d-bar` with Share, About, optional Claim, and the Live Tour launch button; About/Summary backdrop; `atlas-live-tour` overlay.
-- Read `src/lib/atlas-live-tour.ts` and `src/lib/atlas-live-tour-runtime.mjs` to confirm Explore Together is wired (host/guest PIN, PeerJS via CDN, mic + graceful fallback, location sync, annotations, cleanup).
-- Read `src/lib/atlas-showcase-publish.ts` + `src/lib/atlas-curation.functions.ts` to confirm the publish pipeline (PR to `Socialeap/frontiers3d-atlas-showcases`, `verifyDeployedShowcase` gate, `markShowcaseDeployed`) is unchanged.
-- Read `src/routes/_authenticated.admin.atlas-curation.tsx` to confirm the admin "Generate package → open PR → Mark deployed" flow.
+The Review button (row action in the jobs table) DOES fire — it calls `setSelectedId(j.id)` and React mounts `<JobReviewPanel />`. The problem is purely positional:
 
-## Step 2 — Backend activation check
-- Diff recent migrations under `supabase/migrations/` against the last activation entry in `BACKEND_ACTIVATION.md`. Expected: **NO** new migration, **NO** new secret. The HUD/Live Tour ships inside the generated static `index.html`; existing secrets (`ATLAS_SHOWCASES_GITHUB_TOKEN`, `NETLIFY_ATLAS_DEPLOY_TOKEN`, `NETLIFY_ATLAS_SITE_ID`) cover publishing.
-- Append a short "Atlas HUD Republish (2026-06-03)" section to `BACKEND_ACTIVATION.md` recording the verification (no DB/secret change).
+In `src/routes/_authenticated.admin.atlas-curation.tsx` the page is laid out as:
 
-## Step 3 — Regenerate Opera Gallery New York
-- From `/admin/atlas-curation`, open the existing Opera Gallery New York job and run **Generate package** so a fresh `index.html` + `atlas-manifest.json` are produced from the current `renderCuratedHtml` + `atlas-live-tour` template (includes Share, About, Claim if wired, Explore Together).
-- Use **Open PR** to push the regenerated `opera-gallery-new-york/` folder to `Socialeap/frontiers3d-atlas-showcases`. Capture the PR URL.
+```
+[Header]
+[Create-and-enrich form]
+[Review panel]        ← renders here when selectedId is set (line 591-609)
+[Jobs table]          ← Review buttons live here (line 665)
+```
 
-## Step 4 — Merge + deploy
-- Merge the showcase PR on GitHub. Netlify auto-deploys the showcases site.
-- Wait for the Netlify build to finish, then run **Mark deployed & attach URL** in the admin. `verifyDeployedShowcase` hard-gates `publish_status='published'` on:
-  - HTTP 200 at `/opera-gallery-new-york/`
-  - HTTP 200 at `/opera-gallery-new-york/atlas-manifest.json`
-  - `manifest.service === "frontiers3d-atlas"` and `manifest.kind === "curated_showcase"`
+When the admin scrolls to the bottom of the page to click "Review" on a job row, the panel mounts hundreds of pixels above the viewport. Nothing visibly changes near the click target, so the button feels broken. There is no thrown error, no failed server call, no auth issue — the panel is simply off-screen.
 
-## Step 5 — Live URL verification
-- Manually re-curl the two URLs above on both Netlify and GitHub Pages and record status codes + manifest values in the final report.
+This also explains why the rest of the curation flow (Generate package → Open PR → Mark deployed) is currently blocked: those controls all live inside the panel the user can't see.
 
-## Step 6 — Two-browser Explore Together smoke test
-Using the browser tool on the deployed Netlify URL:
-- Browser A: open the showcase, click **Explore Together**, host a session, capture PIN.
-- Browser B: open the same URL in a fresh session, join with PIN, confirm guest connects.
-- Verify: mic prompt path (and graceful fallback when denied), shared location/view sync, annotation/draw/focus if exposed, leave/close cleans up overlay and re-shows the page footer.
-- Note: real microphone capture and cross-browser WebRTC peering may be limited inside the automation sandbox; if so, report the limitation and recommend a human re-test.
+## Fix (frontend only, surgical)
 
-## Step 7 — Confirm exclusions
-Grep the regenerated `index.html` (downloaded from Netlify) to confirm it does **not** contain: Ask AI, floor map, media gallery, password gate, Stripe, billing, outreach/email, or auto-activation hooks. Curated listing stays `kind='curated_showcase'` and is NOT auto-flipped to `status='active'`.
+1. Add a ref to the Review panel wrapper: `const reviewPanelRef = useRef<HTMLDivElement>(null)`.
+2. Wrap the `{selected && <JobReviewPanel … />}` block in a `<div ref={reviewPanelRef} … />` so we have a stable scroll target.
+3. Add an effect that runs when `selectedId` becomes non-null:
+   ```ts
+   useEffect(() => {
+     if (!selectedId) return;
+     // Wait one frame so the panel is in the DOM before scrolling.
+     requestAnimationFrame(() => {
+       reviewPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+     });
+   }, [selectedId]);
+   ```
+4. Tiny UX nicety in the row action: keep the existing `onClick={() => setSelectedId(j.id)}` — no behavior change beyond scroll. If `selectedId` is already this row, the effect still re-runs and re-scrolls, which is the desired "take me back to the panel" behavior.
 
-## Step 8 — Final report
-Deliver in chat:
-- Backend activation required (expected NO + reason)
-- Showcase repo PR URL
-- Deployed Netlify showcase URL
-- Manifest verification result (service / kind / both 200s)
-- Two-browser Explore Together result (with any permission caveats)
-- Confirmation that no unrelated systems were touched
+Optional (same edit, no scope creep): give the panel container `id="curation-review-panel"` and add `scroll-margin-top: 5rem` so it isn't tucked under any sticky header.
 
-## Out of scope (will not touch)
-Outreach/email, Stripe/billing, Map Oracle, Track A, provider directory, auto-activation of any Atlas listing, prospect emails.
+## Out of scope
 
-## Technical notes
-- All HUD code lives in `src/lib/atlas-curation-server.ts` + `src/lib/atlas-live-tour*` and is inlined into the generated static `index.html` (self-contained, no phone-home).
-- PeerJS loads from CDN at runtime inside the showcase page; the showcase still requires no backend calls.
-- If verification fails post-merge, `markShowcaseDeployed` will set `publish_status='failed'` rather than silently publishing — that is the intended guard.
+- No changes to server functions (`listCurationJobs`, `createAtlasEntryFromJob`, `generateCuratedPackage`, `publishCuratedShowcase`, `markShowcaseDeployed`, `verifyDeployedShowcase`).
+- No changes to RLS, migrations, secrets, or `BACKEND_ACTIVATION.md`.
+- No layout reshuffle of the page (moving the panel below the table would be more invasive and would break existing muscle memory / docs).
+- No changes to Atlas curation runtime, HUD, Explore Together, billing, outreach, or Map Oracle.
+
+## Verification
+
+1. Open `/admin/atlas-curation`, scroll to the jobs table, click **Review** on the Opera Gallery New York row.
+2. Page smoothly scrolls up to the highlighted "Review curated job" panel.
+3. Form fields are populated from the job's draft; Save / Mark ready / Generate package buttons are now reachable.
+4. Click **Review** on a different row → panel updates and re-scrolls into view.
+5. Click **Close** in the panel → panel unmounts, scroll position is preserved (no jump).
+
+## Backend Activation Required: NO
+Reason: Frontend-only UX fix — adds a ref, a wrapper `div`, and a `useEffect` that calls `scrollIntoView`. No schema, RLS, secret, server function, or edge function changes.
