@@ -111,7 +111,7 @@ function buildCss(accent: string): string {
 body.live-tour-active #lt-navlock.locked{display:block}
 body.live-tour-active #anno-letterbox-wrap:has(#lt-navlock.locked) #matterport-frame{pointer-events:none}
 
-#anno-toolbar{position:absolute;left:50%;top:14px;transform:translateX(-50%);display:none;gap:6px;z-index:10;background:rgba(10,12,20,0.7);-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:6px;box-shadow:0 6px 24px rgba(0,0,0,0.35)}
+#anno-toolbar{display:none;justify-content:center;align-items:center;flex-wrap:wrap;gap:6px;padding:8px 12px;background:rgba(10,12,20,0.92);border-bottom:1px solid rgba(255,255,255,0.08);position:relative;z-index:1250}
 body.live-tour-active #anno-toolbar{display:flex}
 .anno-tool-btn{appearance:none;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.85);border-radius:6px;padding:6px 10px;font:600 12px/1 inherit;cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:background 0.15s,border-color 0.15s,color 0.15s;font-family:inherit}
 .anno-tool-btn:hover{background:rgba(255,255,255,0.14);color:#fff}
