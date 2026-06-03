@@ -650,6 +650,36 @@ function AdminAtlasCuration() {
             </select>
           </label>
           <label className="sm:col-span-2 lg:col-span-3">
+            <span className={labelCls}>Summary (optional — assistant will draft one if blank)</span>
+            <textarea
+              className={`${inputCls} min-h-[60px]`}
+              value={summary}
+              maxLength={600}
+              onChange={(e) => setSummary(e.target.value)}
+              placeholder="Short marketing summary shown on the Atlas card and curated showcase."
+            />
+          </label>
+          <label>
+            <span className={labelCls}>Latitude (optional)</span>
+            <input
+              className={inputCls}
+              value={latitude}
+              onChange={(e) => setLatitude(e.target.value)}
+              placeholder="-90 to 90"
+              inputMode="decimal"
+            />
+          </label>
+          <label>
+            <span className={labelCls}>Longitude (optional)</span>
+            <input
+              className={inputCls}
+              value={longitude}
+              onChange={(e) => setLongitude(e.target.value)}
+              placeholder="-180 to 180"
+              inputMode="decimal"
+            />
+          </label>
+          <label className="sm:col-span-2 lg:col-span-3">
             <span className={labelCls}>Rights / access note (optional)</span>
             <input className={inputCls} value={rightsNote} onChange={(e) => setRightsNote(e.target.value)} placeholder="e.g. Public Matterport tour; building permission on file." />
           </label>
