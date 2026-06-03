@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
@@ -174,6 +174,15 @@ function AdminAtlasCuration() {
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const reviewPanelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    const id = requestAnimationFrame(() => {
+      reviewPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [selectedId]);
 
   // Create form (persisted to localStorage so navigating away or refreshing
   // does not wipe in-progress input).
@@ -626,23 +635,25 @@ function AdminAtlasCuration() {
 
       {/* Review panel */}
       {selected && (
-        <JobReviewPanel
-          job={selected}
-          draft={draft}
-          setDraft={setDraft}
-          coordsMissing={coordsMissing}
-          busy={busy}
-          onSelectCandidate={handleSelectCandidate}
-          onSaveDraft={() => void saveDraft()}
-          onMarkReady={() => void saveDraft("ready_for_review")}
-          onCreateEntry={() => void handleCreateEntry()}
-          onGeneratePackage={() => void handleGeneratePackage()}
-          onPublishShowcase={() => void handlePublishShowcase()}
-          onMergeAndDeploy={() => void handleMergeAndDeploy()}
-          onMarkDeployed={(url) => void handleMarkDeployed(url)}
-          onReject={() => void handleReject()}
-          onClose={() => setSelectedId(null)}
-        />
+        <div ref={reviewPanelRef} id="curation-review-panel" style={{ scrollMarginTop: "5rem" }}>
+          <JobReviewPanel
+            job={selected}
+            draft={draft}
+            setDraft={setDraft}
+            coordsMissing={coordsMissing}
+            busy={busy}
+            onSelectCandidate={handleSelectCandidate}
+            onSaveDraft={() => void saveDraft()}
+            onMarkReady={() => void saveDraft("ready_for_review")}
+            onCreateEntry={() => void handleCreateEntry()}
+            onGeneratePackage={() => void handleGeneratePackage()}
+            onPublishShowcase={() => void handlePublishShowcase()}
+            onMergeAndDeploy={() => void handleMergeAndDeploy()}
+            onMarkDeployed={(url) => void handleMarkDeployed(url)}
+            onReject={() => void handleReject()}
+            onClose={() => setSelectedId(null)}
+          />
+        </div>
       )}
 
       {/* Jobs table */}

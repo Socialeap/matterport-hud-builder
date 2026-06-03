@@ -1,52 +1,54 @@
-## Current state (verified just now)
+# Fix: "Review" button on /admin/atlas-curation appears unresponsive
 
-- `public.atlas_curation_jobs` exists ✅ (applied 2026-06-02).
-- Columns added by `20260611…_atlas_curation_build.sql` (`build_status`, `built_at`, `package_filename`, `package_size_bytes`, `build_error`) → **not present**.
-- Columns added by `20260612…_atlas_showcase_publish.sql` (`showcase_slug`, `publish_status`, `showcase_pr_url`, `deployed_url`, `published_at`, `publish_error`) → **not present**.
-- Source already merged: `src/lib/atlas-showcase-publish.ts`, `atlas-curation-server.ts`, updated `atlas-curation.functions.ts`.
-- Configured secrets do **not** include `ATLAS_SHOWCASES_GITHUB_TOKEN`, `NETLIFY_ATLAS_DEPLOY_TOKEN`, or `NETLIFY_ATLAS_SITE_ID`. `NETLIFY_OAUTH_CLIENT_ID` / `NETLIFY_OAUTH_CLIENT_SECRET` exist but are unrelated (different purpose).
+## Root cause
 
-So PR 140 is merged in code but **fully un-activated** on the backend.
+The Review button (row action in the jobs table) DOES fire — it calls `setSelectedId(j.id)` and React mounts `<JobReviewPanel />`. The problem is purely positional:
 
-## What I will do (build mode)
+In `src/routes/_authenticated.admin.atlas-curation.tsx` the page is laid out as:
 
-1. **Apply migration 20260611000000_frontiers3d_atlas_curation_build.sql** verbatim via `supabase--migration` (additive `add column if not exists` only — non-destructive, idempotent, no RLS/grant changes needed since the table already has them).
+```
+[Header]
+[Create-and-enrich form]
+[Review panel]        ← renders here when selectedId is set (line 591-609)
+[Jobs table]          ← Review buttons live here (line 665)
+```
 
-2. **Apply migration 20260612000000_frontiers3d_atlas_showcase_publish.sql** verbatim via `supabase--migration` (same shape: additive `add column if not exists` with a status check). Run as a separate migration call so each is reviewable.
+When the admin scrolls to the bottom of the page to click "Review" on a job row, the panel mounts hundreds of pixels above the viewport. Nothing visibly changes near the click target, so the button feels broken. There is no thrown error, no failed server call, no auth issue — the panel is simply off-screen.
 
-3. **Request the three server-only secrets** via `secrets--add_secret`:
-   - `ATLAS_SHOWCASES_GITHUB_TOKEN` — fine-grained GitHub PAT scoped to `Socialeap/frontiers3d-atlas-showcases` with Contents: read/write + Pull requests: read/write.
-   - `NETLIFY_ATLAS_DEPLOY_TOKEN` — **freshly rotated** Netlify personal access token (the one previously pasted in chat is considered exposed and must not be reused).
-   - `NETLIFY_ATLAS_SITE_ID` — the API ID of the one Netlify site connected to the showcases repo (Netlify → Site → Site configuration → Site details → Site ID).
+This also explains why the rest of the curation flow (Generate package → Open PR → Mark deployed) is currently blocked: those controls all live inside the panel the user can't see.
 
-4. **Update `BACKEND_ACTIVATION.md`** with a new "Atlas Showcase Publishing Activation (2026-06-03)" entry: which migrations were applied, verification SQL + results, secrets requested, security note about the rotated Netlify token, and the explicit boundary list (no outreach, no email, no billing, no auto-activation, no per-listing Netlify sites, no client-bundle token exposure).
+## Fix (frontend only, surgical)
 
-5. **Verification SQL I will run after each migration:**
-   ```sql
-   SELECT column_name FROM information_schema.columns
-   WHERE table_schema='public' AND table_name='atlas_curation_jobs'
-     AND column_name IN ('build_status','publish_status','showcase_slug',
-       'showcase_pr_url','deployed_url','published_at','publish_error',
-       'built_at','package_filename','package_size_bytes','build_error');
+1. Add a ref to the Review panel wrapper: `const reviewPanelRef = useRef<HTMLDivElement>(null)`.
+2. Wrap the `{selected && <JobReviewPanel … />}` block in a `<div ref={reviewPanelRef} … />` so we have a stable scroll target.
+3. Add an effect that runs when `selectedId` becomes non-null:
+   ```ts
+   useEffect(() => {
+     if (!selectedId) return;
+     // Wait one frame so the panel is in the DOM before scrolling.
+     requestAnimationFrame(() => {
+       reviewPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+     });
+   }, [selectedId]);
    ```
-   Expect all 11 column names.
+4. Tiny UX nicety in the row action: keep the existing `onClick={() => setSelectedId(j.id)}` — no behavior change beyond scroll. If `selectedId` is already this row, the effect still re-runs and re-scrolls, which is the desired "take me back to the panel" behavior.
 
-## What I cannot do for you (and will report as blockers)
+Optional (same edit, no scope creep): give the panel container `id="curation-review-panel"` and add `scroll-margin-top: 5rem` so it isn't tucked under any sticky header.
 
-These require either platform-side access or live admin interaction and cannot be done from the agent:
+## Out of scope
 
-- **Confirm the Netlify site is connected to `Socialeap/frontiers3d-atlas-showcases`** — visible only in your Netlify account. I'll list it as a manual check.
-- **Confirm GitHub token + Netlify token are valid against the repo / site** — first real PR open call will surface this; I'll add a one-shot diagnostic note in `BACKEND_ACTIVATION.md`.
-- **Run the end-to-end smoke test** (create curated job → generate package → open PR → merge → "Mark deployed & attach URL" → verify `presentation_url`, listing stays inactive). This is the `/admin/atlas-curation` flow and must be driven by a signed-in admin in the browser. I'll provide a checklist mirroring your 6 sub-steps.
+- No changes to server functions (`listCurationJobs`, `createAtlasEntryFromJob`, `generateCuratedPackage`, `publishCuratedShowcase`, `markShowcaseDeployed`, `verifyDeployedShowcase`).
+- No changes to RLS, migrations, secrets, or `BACKEND_ACTIVATION.md`.
+- No layout reshuffle of the page (moving the panel below the table would be more invasive and would break existing muscle memory / docs).
+- No changes to Atlas curation runtime, HUD, Explore Together, billing, outreach, or Map Oracle.
 
-## Final report I'll deliver
+## Verification
 
-Per your "Please report" list:
-- Migrations: state before/after for both files (newly applied).
-- Secrets: which 3 were just added vs already present.
-- Showcase PR URL, deployed Netlify URL, atlas_entry id, inactive status → **deferred to your smoke test** (with the exact SQL to confirm `atlas_entries.status='inactive'` and `presentation_url` set).
-- Blockers/follow-ups: Netlify site-connection check + token validity, plus the smoke test itself.
+1. Open `/admin/atlas-curation`, scroll to the jobs table, click **Review** on the Opera Gallery New York row.
+2. Page smoothly scrolls up to the highlighted "Review curated job" panel.
+3. Form fields are populated from the job's draft; Save / Mark ready / Generate package buttons are now reachable.
+4. Click **Review** on a different row → panel updates and re-scrolls into view.
+5. Click **Close** in the panel → panel unmounts, scroll position is preserved (no jump).
 
-## Safety boundaries respected
-
-Only additive column changes; no DROP/DELETE/TRUNCATE; no RLS or grant edits; no outreach, email, Stripe, or auto-activation code touched; secrets stay server-only (consumed via `process.env` inside `src/lib/atlas-showcase-publish.ts`, which is reached only via dynamic import from server-fn handlers, so they never enter the client bundle).
+## Backend Activation Required: NO
+Reason: Frontend-only UX fix — adds a ref, a wrapper `div`, and a `useEffect` that calls `scrollIntoView`. No schema, RLS, secret, server function, or edge function changes.

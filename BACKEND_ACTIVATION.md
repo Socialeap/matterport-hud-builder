@@ -64,7 +64,31 @@ WHERE conrelid='public.atlas_curation_jobs'::regclass
 
 ## Completed Activations
 
+### Atlas Curated Showcase HUD Republish (2026-06-03)
+
+**Context:** Post-merge verification of the curated showcase HUD + Explore Together PR. The HUD (Share, About/Summary, optional Claim, Explore Together launch) and the shared live tour runtime are inlined into the generated static `index.html` by `src/lib/atlas-curation-server.ts` + `src/lib/atlas-live-tour.ts` + `src/lib/atlas-live-tour-runtime.mjs`. Self-contained — no phone-home.
+
+**Backend Activation Required: NO**
+- No new migrations: most recent atlas-related migrations remain `20260611000000_frontiers3d_atlas_curation_build.sql` and `20260612000000_frontiers3d_atlas_showcase_publish.sql`, both already applied in the 2026-06-03 activation below.
+- No new secrets: republish uses the existing `ATLAS_SHOWCASES_GITHUB_TOKEN`, `NETLIFY_ATLAS_DEPLOY_TOKEN`, `NETLIFY_ATLAS_SITE_ID`.
+- Code verification: confirmed `renderCuratedHtml` emits `f3d-bar` with `${liveTour.launchButtonHtml}`, `about-btn`, `share-btn`, and optional `f3d-claim`; `atlas-live-tour-runtime.mjs` carries host/guest PIN flow, mic + graceful fallback, location sync, annotations.
+
+**Action checklist (admin, in the live preview):**
+1. `/admin/atlas-curation` → open the Opera Gallery New York job → **Generate package** (rebuilds `index.html` from current template).
+2. **Open PR** → captures PR URL against `Socialeap/frontiers3d-atlas-showcases`.
+3. Merge the PR on GitHub → Netlify auto-deploys.
+4. After the Netlify build finishes, click **Mark deployed & attach URL**. `verifyDeployedShowcase` hard-gates publish on:
+   - HTTP 200 at `/opera-gallery-new-york/`
+   - HTTP 200 at `/opera-gallery-new-york/atlas-manifest.json`
+   - `manifest.service === "frontiers3d-atlas"` && `manifest.kind === "curated_showcase"`
+   If any check fails, `publish_status` is set to `failed` (intended guard).
+5. Two-browser Explore Together smoke test on the deployed Netlify URL: host in Browser A → share PIN → join in Browser B → exercise mic (and deny path), location sync, annotations, leave/cleanup.
+6. Confirm exclusions in the deployed `index.html` (no Ask AI, floor map, media gallery, password gate, Stripe, billing, outreach, auto-activation). Curated listing stays `kind='curated_showcase'`, `status` unchanged.
+
+---
+
 ### Atlas Showcase Publishing Activation (2026-06-03) — VERIFIED
+
 
 **Context:** PR 140 introduced the curated Atlas showcase publishing workflow (admin curation UI → presentation package build → PR against `Socialeap/frontiers3d-atlas-showcases` → one Netlify site deploys all curated showcases → "Mark deployed & attach URL" writes `atlas_entries.presentation_url`; listing remains **inactive** until an admin explicitly activates it). Code was merged but backend was un-activated.
 
