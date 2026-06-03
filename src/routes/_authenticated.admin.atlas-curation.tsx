@@ -168,6 +168,15 @@ function AdminAtlasCuration() {
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const reviewPanelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    const id = requestAnimationFrame(() => {
+      reviewPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [selectedId]);
 
   // Create form (persisted to localStorage so navigating away or refreshing
   // does not wipe in-progress input).
