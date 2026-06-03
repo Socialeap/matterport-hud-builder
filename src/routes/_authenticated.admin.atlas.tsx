@@ -121,6 +121,44 @@ function AdminAtlas() {
   const [form, setForm] = useState<FormState>(() => loadDraft());
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState<string>("all");
+  const verifyShowcase = useServerFn(verifyShowcaseDeployment);
+
+  /**
+   * Before flipping a curated_showcase listing to "active", verify its
+   * presentation_url actually serves a real Frontiers3D Atlas showcase
+   * (200 on the URL, 200 on atlas-manifest.json, service+kind match). If
+   * verification fails the admin gets a confirm() warning explaining why,
+   * and can still choose to proceed (e.g. URL works but DNS is propagating).
+   * Non-curated listings and listings without a URL are skipped — this only
+   * guards the curated-showcase publishing flow.
+   */
+  const confirmActivationOk = async (r: AtlasEntry): Promise<boolean> => {
+    if (r.kind !== "curated_showcase") return true;
+    if (!r.presentation_url) {
+      if (typeof window === "undefined") return true;
+      return window.confirm(
+        `“${r.title}” has no presentation_url yet. Activate anyway? It won't be usable on the Atlas until a URL is attached.`,
+      );
+    }
+    try {
+      const v = await verifyShowcase({ data: { url: r.presentation_url } });
+      if (v.ok) return true;
+      if (typeof window === "undefined") return false;
+      return window.confirm(
+        `Heads up — this curated showcase URL did not verify:\n\n` +
+          `${r.presentation_url}\n\n` +
+          `Reason: ${v.reason ?? "Unknown error"}\n` +
+          `URL HTTP: ${v.indexStatus ?? "n/a"}  |  manifest HTTP: ${v.manifestStatus ?? "n/a"}\n` +
+          `service ok: ${v.serviceOk}  |  kind ok: ${v.kindOk}\n\n` +
+          `Activate anyway?`,
+      );
+    } catch (err) {
+      if (typeof window === "undefined") return false;
+      return window.confirm(
+        `Couldn't verify the showcase URL (${err instanceof Error ? err.message : "error"}). Activate anyway?`,
+      );
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
