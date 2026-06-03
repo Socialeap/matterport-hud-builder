@@ -3543,3 +3543,88 @@ access required"); create a job with a valid Matterport URL (invalid → clear r
 reaches `ready_for_review` (coords resolved) or `blocked` ("Coordinates needed before map pin"); a
 multi-match shows candidate selection; "Create inactive Atlas entry" yields an `inactive`
 `curated_showcase` row visible under the **Curated** tab in `/admin/atlas` (never active by default).
+
+---
+
+## Curated Presentation Package Generation — 2026-06-02
+
+> **Backend Activation Required: APPLY THE MIGRATION** `20260611000000_frontiers3d_atlas_curation_build.sql`.
+> No new secret, no Edge function, no Netlify, no Stripe/outreach/billing.
+
+Adds an admin-only **"Generate Presentation Package"** action in `/admin/atlas-curation`: from a
+curated job's `extracted_matterport_id` + draft, it builds a **minimal-but-real** Frontiers3D
+package server-side and downloads it. No deploy, no public activation.
+
+**Migration applies:** five build-tracking columns on `atlas_curation_jobs` —
+`build_status` (`none`/`building`/`built`/`failed`, default `none`), `built_at`, `package_filename`,
+`package_size_bytes`, `build_error`. Existing `atlas_curation_jobs` reads use `select('*')` and the
+new type fields are optional, so the frontend is migration-safe; the build feature itself needs the
+migration.
+
+**What it builds:** a flat-root zip — `index.html` (default-branded Frontiers3D page embedding the
+live Matterport tour `https://my.matterport.com/show/?m=<id>`) + `atlas-manifest.json`
+(`{service:'frontiers3d-atlas', version:1, kind:'curated_showcase', curation_job_id, matterport_id,
+issued_at}`). Reuses the existing manifest shape + the `fflate` zip from the builder, run **in Node**
+(server-side). **No browser/Playwright**; the Q&A Web-Worker embedding is intentionally skipped
+(curated = no Q&A). The package is a few KB (tour is embedded, not bundled), returned base64 and
+downloaded by the admin browser — **no Storage blob persisted**, only build state.
+
+**Deliberate scope:** curated manifest is **not** a verify-token (curated entries are admin-activated
+and bypass verify-first; avoids creating throwaway paid `saved_models`). Netlify deploy + attaching
+`presentation_url` remain a **separate later PR**. The generated package does not deploy or activate.
+
+**Security:** admin-only (`has_role` re-checked in the server fn + admin RLS). Build/zip/env logic is
+server-only (`atlas-curation-server`, dynamic-imported; verified absent from the client bundle).
+
+**Verify (after migration applies):** as admin, open a job with a valid Matterport ID + a draft
+title → "Generate Presentation Package" downloads `…-frontiers3d-<date>.zip`; unzip → `index.html`
+opens the embedded tour + `atlas-manifest.json` present; the job shows `build_status='built'` with
+filename/size; a job missing a title or valid Matterport ID can't build (clear hint); a build error
+surfaces `build_status='failed'` + `build_error`. Nothing is deployed or made public.
+
+---
+
+## Curated Showcase Publishing — GitHub repo → Netlify (2026-06-02)
+
+> **Backend Activation Required: APPLY THE MIGRATION** `20260612000000_frontiers3d_atlas_showcase_publish.sql`
+> **+ provision THREE server-only secrets** (below). No Stripe/outreach/billing. No auto-activation.
+
+Publishes a curated presentation to the dedicated **source-of-truth GitHub repo**
+`Socialeap/frontiers3d-atlas-showcases` (default branch `main`), which a **single connected Netlify
+site** deploys (one folder per listing: `https://<site>/<slug>/`). Two admin actions in
+`/admin/atlas-curation`:
+1. **Open showcase PR** (`publishCuratedShowcase`) — commits `<slug>/index.html` +
+   `<slug>/atlas-manifest.json` to a fresh branch and opens a PR (GitHub git-data API).
+2. **Mark deployed & attach URL** (`markShowcaseDeployed`) — after the PR is merged + Netlify
+   deploys, resolves `https://<site>/<slug>/` (Netlify API) **or** accepts a pasted URL, and writes
+   it to **`atlas_entries.presentation_url`**. The listing's **status is left untouched → stays
+   inactive** until an admin activates it in `/admin/atlas`.
+
+**Migration applies:** `atlas_curation_jobs` gains `showcase_slug`, `publish_status`
+(`none`/`pr_open`/`published`/`failed`), `showcase_pr_url`, `deployed_url`, `published_at`,
+`publish_error`. Reads use `select('*')` + optional type fields → migration-safe.
+
+**Secrets (server-only env — NEVER client; verified absent from `dist/client`):**
+- **`ATLAS_SHOWCASES_GITHUB_TOKEN`** — *required, NEW* — a GitHub token with **contents +
+  pull-request write** on `Socialeap/frontiers3d-atlas-showcases`. (A GitHub token is mandatory to
+  commit; the Netlify secrets alone cannot push to GitHub. A fine-grained PAT scoped to just this
+  repo is recommended.)
+- **`NETLIFY_ATLAS_DEPLOY_TOKEN`** — Netlify API token (used to resolve the site's URL).
+- **`NETLIFY_ATLAS_SITE_ID`** — the single connected site's id.
+
+Without a secret, the relevant action returns a clear "not configured" error and changes nothing
+(`markShowcaseDeployed` still works via a **pasted URL** fallback when Netlify isn't configured).
+Only the fixed `api.github.com` / `api.netlify.com` hosts are fetched (no arbitrary URLs → no SSRF).
+All publish/token logic lives in the server-only `atlas-showcase-publish` (dynamic-imported). Each
+server fn re-checks `has_role(admin)`.
+
+**⚠️ Security:** the Netlify token pasted in prior chat is **exposed — revoke/rotate it**. This code
+reads **only** the named env secrets, never a literal token. One Netlify site (not one per listing);
+tokens never client-side.
+
+**Verify (after migration + secrets):** as admin on a job with an Atlas entry + title + valid
+Matterport ID → "Open showcase PR" creates a PR in `frontiers3d-atlas-showcases` under `<slug>/`
+(`publish_status='pr_open'`, PR link shown); merge it so Netlify deploys; "Mark deployed & attach
+URL" (blank → Netlify-resolved, or paste the URL) writes `atlas_entries.presentation_url` and sets
+`publish_status='published'` — the listing is **still inactive**; activating it in `/admin/atlas`
+makes it public on `/atlas`.
