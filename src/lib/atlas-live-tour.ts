@@ -131,7 +131,7 @@ body.anno-rope-active .anno-rope-group .anno-shape-wrap{display:inline-flex}
 
 /* Engage the 16:9 letterbox once a session is live. */
 body.live-tour-active #viewer{display:flex;align-items:center;justify-content:center;background:#000}
-body.live-tour-active #anno-letterbox-wrap{position:relative;inset:auto;aspect-ratio:16/9;width:min(100%,calc((100vh - 52px) * 16 / 9));height:auto;max-height:100%}
+body.live-tour-active #anno-letterbox-wrap{position:relative;inset:auto;aspect-ratio:16/9;width:min(100%,calc((100vh - 100px) * 16 / 9));height:auto;max-height:100%}
 body.live-tour-active.live-tour-host #anno-letterbox-wrap.follow-pulse{box-shadow:0 0 0 3px var(--lt-accent),0 0 0 6px rgba(129,140,248,0.2);transition:box-shadow 1.5s ease-out}
 
 /* ── Explore Together launch button (top bar) ─────────────────────── */
