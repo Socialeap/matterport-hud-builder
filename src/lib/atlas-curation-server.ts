@@ -354,15 +354,19 @@ function renderCuratedHtml(input: CuratedPackageInput): string {
 <meta property="og:description" content="${escapeHtml(desc)}" />
 <style>
   *{box-sizing:border-box}
-  html,body{margin:0;height:100%;background:#0a0e27;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  /* overflow-x:hidden — the page must never scroll horizontally (it is a
+     full-viewport app, often embedded in the Atlas modal iframe). The Live
+     Tour drawer parks off-screen right via translateX(100%), which would
+     otherwise widen the scrollable area and surface a horizontal scrollbar. */
+  html,body{margin:0;height:100%;overflow-x:hidden;background:#0a0e27;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
   body{display:flex;flex-direction:column}
-  .f3d-bar{display:flex;align-items:center;gap:.75rem;padding:.5rem 1rem;background:rgba(10,14,39,.92);border-bottom:1px solid rgba(255,255,255,.08);backdrop-filter:blur(8px);position:relative;z-index:1300}
+  .f3d-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.35rem .75rem;max-width:100%;padding:.5rem 1rem;background:rgba(10,14,39,.92);border-bottom:1px solid rgba(255,255,255,.08);backdrop-filter:blur(8px);position:relative;z-index:1300}
   .f3d-logo{font-weight:800;letter-spacing:.18em;font-size:.8rem;flex-shrink:0}
   .f3d-logo span{background:linear-gradient(90deg,#67e8f9,#818cf8);-webkit-background-clip:text;background-clip:text;color:transparent}
   .f3d-meta{display:flex;flex-direction:column;min-width:0;line-height:1.2}
   .f3d-title{font-weight:700;font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .f3d-loc{font-size:.7rem;color:#94a3b8}
-  .f3d-actions{margin-left:auto;display:flex;align-items:center;gap:.4rem;flex-shrink:0}
+  .f3d-actions{margin-left:auto;display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:.4rem;max-width:100%}
   .f3d-iconbtn{appearance:none;display:inline-flex;align-items:center;gap:.35rem;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.07);color:#fff;border-radius:7px;padding:.4rem .7rem;font:600 12px/1 inherit;font-family:inherit;cursor:pointer;text-decoration:none;transition:background .18s,opacity .18s}
   .f3d-iconbtn:hover{background:rgba(255,255,255,.15)}
   .f3d-iconbtn svg{width:14px;height:14px}
