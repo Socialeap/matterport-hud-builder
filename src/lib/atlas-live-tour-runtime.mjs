@@ -87,6 +87,16 @@
   var syncLabelEl = syncBtn ? syncBtn.querySelector(".loc-sync-label") : null;
   var tipsEl = document.getElementById("loc-sync-tips");
 
+  // Live-session extras: voice status + manual paste-to-sync fallback. Shown
+  // once a tour is connected; the manual field is the safety net for browsers
+  // where clipboard read is blocked or unavailable.
+  var liveExtras = document.getElementById("lt-live-extras");
+  var voiceStatus = document.getElementById("lt-voice-status");
+  var manualSyncInput = document.getElementById("lt-manual-sync-input");
+  var manualSyncBtn = document.getElementById("lt-manual-sync-btn");
+  var manualSyncStatus = document.getElementById("lt-manual-sync-status");
+  var voiceConnected = false;
+
   var session = createLiveSession({});
   var lastTeleportTs = 0;
   var lastShareTs = 0;
@@ -185,6 +195,11 @@
         audioEl.srcObject = null;
       } catch (_e) {}
     }
+    hide(liveExtras);
+    if (manualSyncInput) manualSyncInput.value = "";
+    setManualStatus("");
+    setVoiceStatus("", "off");
+    voiceConnected = false;
   }
 
   // ── Letterbox / body-class engagement ───────────────────────────────
@@ -711,9 +726,9 @@
   var tipsTimer = null;
 
   var LOC_SYNC_LABELS = {
-    idle: "To sync your view…",
-    syncing: "Aligning the other view…",
-    success: "View Synced",
+    idle: "Sync ready",
+    syncing: "Syncing…",
+    success: "Synced",
     waiting: "Connecting…",
   };
 
@@ -832,6 +847,110 @@
     }
     setPulseState("idle");
     return false;
+  }
+
+  // ── Voice status (mic capability + live connection) ──────────────────
+  function setVoiceStatus(label, kind) {
+    if (!voiceStatus) return;
+    voiceStatus.textContent = label;
+    voiceStatus.setAttribute("data-voice", kind || "off");
+  }
+
+  // Report microphone availability WITHOUT prompting: a capability check
+  // plus a (best-effort) Permissions API query. The controller does the
+  // real getUserMedia and falls back to a silent track, so this is purely
+  // to set expectations ("blocked" / "unavailable" / "ready").
+  function reportVoiceCapability() {
+    if (!voiceStatus) return;
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.mediaDevices ||
+      typeof navigator.mediaDevices.getUserMedia !== "function"
+    ) {
+      setVoiceStatus("Microphone unavailable here — you can still tour together silently.", "warn");
+      return;
+    }
+    var queried = false;
+    try {
+      if (navigator.permissions && typeof navigator.permissions.query === "function") {
+        var q = navigator.permissions.query({ name: "microphone" });
+        if (q && typeof q.then === "function") {
+          queried = true;
+          q.then(
+            function (st) {
+              if (st && st.state === "denied") {
+                setVoiceStatus("Microphone blocked — others cannot hear you. Allow mic access to talk.", "warn");
+              } else {
+                setVoiceStatus("Microphone ready — connecting voice…", "ok");
+              }
+            },
+            function () {
+              setVoiceStatus("Microphone ready — connecting voice…", "ok");
+            },
+          );
+        }
+      }
+    } catch (_e) {
+      queried = false;
+    }
+    if (!queried) setVoiceStatus("Microphone ready — connecting voice…", "ok");
+  }
+
+  function clipboardReadAvailable() {
+    return !!(
+      typeof navigator !== "undefined" &&
+      navigator.clipboard &&
+      typeof navigator.clipboard.readText === "function"
+    );
+  }
+
+  // ── Manual paste-to-sync fallback (Host + Guest) ─────────────────────
+  // When clipboard auto-read is blocked/unavailable, the user can paste
+  // Matterport's "Link to location" URL here. We parse it with the exact
+  // same parser the auto-sync poll uses and route it through the same
+  // attemptSendLocation() path, so Host and Guest behave identically.
+  function setManualStatus(msg) {
+    setText(manualSyncStatus, msg);
+  }
+  function handleManualSync() {
+    if (!manualSyncInput) return;
+    var raw = manualSyncInput.value || "";
+    if (!raw.trim()) {
+      setManualStatus("Paste a Matterport link first.");
+      return;
+    }
+    var parsed = parseMatterportLocationUrl(raw);
+    if (!parsed) {
+      setManualStatus("That is not a valid Matterport link to location.");
+      return;
+    }
+    var s = session.getState();
+    if ((s.role !== "visitor" && s.role !== "agent") || !s.isConnected) {
+      setManualStatus("Join or host a tour first, then sync.");
+      return;
+    }
+    setPulseState("syncing");
+    setManualStatus("Syncing…");
+    if (attemptSendLocation(parsed)) {
+      manualSyncInput.value = "";
+      setManualStatus("Synced.");
+      setTimeout(function () {
+        setManualStatus("");
+      }, 2500);
+    } else {
+      setManualStatus("Could not sync that link. Try again.");
+    }
+  }
+  if (manualSyncBtn) {
+    manualSyncBtn.addEventListener("click", handleManualSync);
+  }
+  if (manualSyncInput) {
+    manualSyncInput.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        handleManualSync();
+      }
+    });
   }
 
   function readClipboardAndSend() {
@@ -1168,6 +1287,15 @@
       if (statusChip) statusChip.hidden = false;
       setBodyLetterboxClass(true, isHost);
       resizeAnnoCanvas();
+      // Surface the live extras (voice status + manual sync fallback) and
+      // set initial voice / clipboard expectations.
+      show(liveExtras);
+      reportVoiceCapability();
+      if (!clipboardReadAvailable()) {
+        setManualStatus("Clipboard read is unavailable here — paste the Matterport link below to sync.");
+      } else {
+        setManualStatus("");
+      }
       // Guest: collapse the panel so the tour fills the screen. Host keeps
       // the panel so they can use stops / invite. Both can reopen via the
       // Explore Together button.
@@ -1190,6 +1318,17 @@
           audioEl.srcObject = null;
         }
       } catch (_e) {}
+    }
+
+    // Voice connection reflection: a remoteStream means the peer audio path
+    // is up (the controller falls back to a silent track when the local mic
+    // is blocked, so this fires for both sides regardless of mic state).
+    if (state.remoteStream && !voiceConnected) {
+      voiceConnected = true;
+      setVoiceStatus("Voice connected — you can talk now.", "live");
+    } else if (!state.remoteStream && voiceConnected) {
+      voiceConnected = false;
+      if (state.isConnected) reportVoiceCapability();
     }
 
     // Guest follows host teleports (dedupe by ts; last-sender-wins).

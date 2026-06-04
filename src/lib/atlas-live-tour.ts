@@ -176,6 +176,19 @@ body.live-tour-active.live-tour-host #anno-letterbox-wrap.follow-pulse{box-shado
 .lt-stops-empty{font-size:11px;color:rgba(255,255,255,0.5);font-style:italic;line-height:1.5}
 .lt-back-link{align-self:flex-start;background:transparent;border:none;color:rgba(255,255,255,0.5);font-size:11px;cursor:pointer;padding:4px 0;font-family:inherit}
 .lt-back-link:hover{color:rgba(255,255,255,0.85)}
+
+/* ── Live extras: voice status + manual paste-to-sync fallback ────── */
+#lt-live-extras{display:flex;flex-direction:column;gap:10px;margin-top:6px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08)}
+.lt-voice-status{display:flex;align-items:center;gap:7px;font-size:11.5px;line-height:1.45;color:rgba(255,255,255,0.7);min-height:14px}
+.lt-voice-status::before{content:"";width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,0.3);flex-shrink:0}
+.lt-voice-status[data-voice="ok"]::before{background:#22c55e}
+.lt-voice-status[data-voice="live"]::before{background:#22c55e;animation:lt-pulse 1.6s ease-in-out infinite}
+.lt-voice-status[data-voice="warn"]::before{background:#f59e0b}
+.lt-manual-sync{display:flex;flex-direction:column;gap:6px}
+.lt-manual-input{flex:1;min-width:0;border:1px solid rgba(255,255,255,0.16);border-radius:8px;background:rgba(255,255,255,0.07);color:#fff;padding:9px 10px;font:500 13px/1.2 inherit;font-family:inherit;outline:none}
+.lt-manual-input:focus{border-color:var(--lt-accent)}
+.lt-manual-input::placeholder{color:rgba(255,255,255,0.35)}
+
 @media(max-width:640px){
   #lt-panel{top:auto;bottom:0;right:0;left:0;width:100%;height:auto;max-height:82vh;border-radius:16px 16px 0 0;border-left:none;border-top:1px solid rgba(255,255,255,0.08);transform:translateY(100%)}
   #lt-panel.open{transform:translateY(0)}
@@ -274,6 +287,17 @@ const PANEL_HTML = `<aside id="lt-panel" class="lt-panel" role="dialog" aria-lab
       <div id="lt-guest-status" class="lt-status" aria-live="polite"></div>
       <button type="button" class="lt-back-link">&larr; Back</button>
       <button type="button" class="lt-btn lt-leave-btn" hidden>Leave tour</button>
+    </div>
+    <div id="lt-live-extras" hidden>
+      <div id="lt-voice-status" class="lt-voice-status" data-voice="off" aria-live="polite"></div>
+      <div class="lt-manual-sync">
+        <label class="lt-field-label" for="lt-manual-sync-input">Sync not working? Paste the Matterport &ldquo;Link to location&rdquo;</label>
+        <div class="lt-join-row">
+          <input id="lt-manual-sync-input" class="lt-manual-input" type="text" inputmode="url" placeholder="Paste the Matterport link to location" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Matterport link to location" />
+          <button id="lt-manual-sync-btn" type="button" class="lt-btn primary">Sync</button>
+        </div>
+        <div id="lt-manual-sync-status" class="lt-mini-status" aria-live="polite"></div>
+      </div>
     </div>
   </div>
 </aside>

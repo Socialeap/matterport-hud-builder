@@ -615,7 +615,13 @@ function PresentationModal({ entry, onClose }: { entry: AtlasEntry; onClose: () 
               src={entry.presentation_url}
               title={`${entry.title} — immersive presentation`}
               onLoad={() => setLoaded(true)}
-              allow="accelerometer; autoplay; fullscreen; gyroscope; xr-spatial-tracking"
+              // Explore Together (live voice + synced views) runs inside the
+              // embedded curated showcase, so the modal iframe must delegate
+              // the Permissions-Policy features the showcase (and the nested
+              // Matterport iframe) need: microphone for getUserMedia voice,
+              // clipboard-read/write for Matterport's "Copy to clipboard" →
+              // parent sync flow, plus the existing motion/display features.
+              allow="microphone; clipboard-read; clipboard-write; autoplay; fullscreen; accelerometer; gyroscope; xr-spatial-tracking"
               sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-presentation"
               referrerPolicy="no-referrer-when-downgrade"
             />
