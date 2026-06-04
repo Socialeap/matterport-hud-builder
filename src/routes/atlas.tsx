@@ -563,53 +563,48 @@ function EmptyState() {
 
 function PresentationModal({ entry, onClose }: { entry: AtlasEntry; onClose: () => void }) {
   const [loaded, setLoaded] = useState(false);
-  // We no longer auto-flag the iframe as "failed" after a fixed timeout —
-  // Matterport tours can take 10–30s to first-paint, and the warning was
-  // misleading visitors into clicking "Open in new tab". The fallback link
-  // remains available in the header for any space that truly refuses to embed.
-  const failed = false;
-  const loc = [entry.city, entry.region].filter(Boolean).join(", ") || "Sample location";
 
   return (
-    <div className="atlas-modal-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
+    <div
+      className="atlas-modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${entry.title} — immersive presentation`}
+      onClick={onClose}
+    >
+      {/* The embedded curated showcase brings its own header (.f3d-bar with
+          Explore Together / About / Share), so the outer modal is a clean
+          viewer shell: just a compact floating Open-in-new-tab + Close group
+          above the frame — no duplicated title/category/footer chrome. */}
+      <div className="atlas-modal-controls" onClick={(e) => e.stopPropagation()}>
+        <a
+          href={entry.presentation_url ?? "#"}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="atlas-modal-ctrl"
+          title="Open in new tab"
+          aria-label="Open in new tab"
+        >
+          <ExternalLink className="size-4" />
+        </a>
+        <button
+          type="button"
+          onClick={onClose}
+          className="atlas-modal-ctrl"
+          title="Close"
+          aria-label="Close"
+        >
+          <X className="size-4" />
+        </button>
+      </div>
+
       <div className="atlas-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="atlas-modal-header">
-          <div className="atlas-modal-titlebox">
-            <span className="atlas-modal-dot" />
-            <div className="min-w-0">
-              <h3>{entry.title}</h3>
-              <p>
-                {categoryLabel(entry.category)} · {loc}
-              </p>
-            </div>
-          </div>
-          <div className="atlas-modal-actions">
-            <a
-              href={entry.presentation_url ?? "#"}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="atlas-modal-open"
-            >
-              Open in new tab <ExternalLink className="size-3.5" />
-            </a>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close"
-              className="atlas-modal-close"
-            >
-              <X className="size-5" />
-            </button>
-          </div>
-        </div>
-
-        {failed && !loaded && (
-          <div className="atlas-modal-warn">
-            This space refused to embed. Use <strong>Open in new tab</strong> to view it.
-          </div>
-        )}
-
         <div className="atlas-modal-frame">
+          {!loaded && (
+            <div className="atlas-modal-loading" aria-hidden="true">
+              Loading immersive showcase…
+            </div>
+          )}
           {entry.presentation_url && (
             <iframe
               key={entry.id}
@@ -627,14 +622,6 @@ function PresentationModal({ entry, onClose }: { entry: AtlasEntry; onClose: () 
               referrerPolicy="no-referrer-when-downgrade"
             />
           )}
-        </div>
-
-        <div className="atlas-modal-footer">
-          <span>
-            {entry.kind === "demo"
-              ? "Sample Frontiers|3D Atlas listing — for demonstration."
-              : "Verified Frontiers|3D Atlas listing."}
-          </span>
         </div>
       </div>
     </div>
