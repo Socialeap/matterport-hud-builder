@@ -418,7 +418,7 @@ ${liveTour.toolbarHtml}
 <main class="f3d-stage" id="viewer">
   <div id="anno-letterbox-wrap">
     <iframe id="matterport-frame" class="f3d-frame" src="${embedSrc}" title="${title} — 3D tour"
-      allow="xr-spatial-tracking; gyroscope; accelerometer; fullscreen; autoplay"
+      allow="xr-spatial-tracking; gyroscope; accelerometer; fullscreen; autoplay; clipboard-write"
       allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe>
     ${liveTour.stageOverlayHtml}
   </div>

@@ -250,3 +250,129 @@ test("join rejects a non-4-digit PIN without calling the controller", () => {
   assert.equal(calls.join, null, "short PIN must not reach the controller");
   assert.match(els["lt-guest-status"].textContent, /4-digit PIN/);
 });
+
+// ── 4. Manual paste-to-sync fallback (Host + Guest) ──────────────────────
+// When clipboard auto-read is blocked/unavailable, the user pastes the
+// Matterport "Link to location" URL. It must parse with the same parser the
+// auto-poll uses and route through the same controller send path
+// (shareLocationWithAgent for Guest, teleportVisitor for Host).
+function makeConnectedController(role, spy) {
+  const state = {
+    role,
+    status: "connected",
+    pin: "1234",
+    peerId: "peer",
+    error: null,
+    isConnected: true,
+    remoteStream: null,
+    incomingTeleportEvent: null,
+    incomingPointerEvent: null,
+    incomingStrokeEvent: null,
+    incomingClearEvent: null,
+    incomingNavLockEvent: null,
+    incomingLocationShareEvent: null,
+  };
+  return {
+    getState: () => state,
+    subscribe: () => () => {},
+    initializeAsAgent: () => Promise.resolve({ pin: "1234", peerId: "host" }),
+    joinAsVisitor: (pin) => Promise.resolve({ pin, peerId: "guest" }),
+    teleportVisitor: (ss, sr) => {
+      spy.teleport.push([ss, sr]);
+      return true;
+    },
+    shareLocationWithAgent: (ss, sr) => {
+      spy.share.push([ss, sr]);
+      return true;
+    },
+    sendPointer: () => true,
+    sendStrokeBegin: () => true,
+    sendStrokePatch: () => true,
+    sendStrokeCommit: () => true,
+    sendClear: () => true,
+    sendNavLock: () => true,
+    dispose: () => {},
+  };
+}
+
+function runGlueWith(createLiveSession) {
+  const { els, document } = makeFakeDom();
+  const window = {
+    __ATLAS_LT_CONFIG: {
+      accent: "#818cf8",
+      matterportBaseUrl: "https://my.matterport.com/show/?m=abc&play=1",
+      shareTitle: "Test Space",
+      stops: [],
+    },
+    addEventListener() {},
+    location: { href: "https://example.com/test/" },
+  };
+  const navigator = {};
+  // eslint-disable-next-line no-new-func
+  const fn = new Function(
+    "window",
+    "document",
+    "navigator",
+    "createLiveSession",
+    "ResizeObserver",
+    GLUE,
+  );
+  fn(window, document, navigator, createLiveSession, undefined);
+  return { els, document };
+}
+
+test("manual paste-to-sync routes a valid Matterport URL through the Guest send path", () => {
+  const spy = { teleport: [], share: [] };
+  const { els } = runGlueWith(() => makeConnectedController("visitor", spy));
+  els["lt-manual-sync-input"].value =
+    "https://my.matterport.com/show/?m=abc&ss=42&sr=-1.5,2.25";
+  els["lt-manual-sync-btn"].fire("click");
+  assert.deepEqual(
+    spy.share,
+    [["42", "-1.5,2.25"]],
+    "guest should share the parsed ss/sr with the host",
+  );
+  assert.deepEqual(spy.teleport, [], "guest must not call teleportVisitor");
+  assert.equal(els["lt-manual-sync-input"].value, "", "input clears after a successful sync");
+  assert.match(els["lt-manual-sync-status"].textContent, /Synced/);
+});
+
+test("manual paste-to-sync routes a valid Matterport URL through the Host send path", () => {
+  const spy = { teleport: [], share: [] };
+  const { els } = runGlueWith(() => makeConnectedController("agent", spy));
+  els["lt-manual-sync-input"].value = "https://my.matterport.com/show/?m=abc&ss=7";
+  els["lt-manual-sync-btn"].fire("click");
+  assert.deepEqual(
+    spy.teleport,
+    [["7", ""]],
+    "host should teleport the guest to the parsed location",
+  );
+  assert.deepEqual(spy.share, [], "host must not call shareLocationWithAgent");
+});
+
+test("manual paste-to-sync rejects an invalid URL without touching the controller", () => {
+  const spy = { teleport: [], share: [] };
+  const { els } = runGlueWith(() => makeConnectedController("visitor", spy));
+  els["lt-manual-sync-input"].value = "https://example.com/not-matterport";
+  els["lt-manual-sync-btn"].fire("click");
+  assert.deepEqual(spy.share, [], "invalid URL must not reach the controller");
+  assert.deepEqual(spy.teleport, []);
+  assert.match(els["lt-manual-sync-status"].textContent, /not a valid Matterport/);
+  assert.equal(
+    els["lt-manual-sync-input"].value,
+    "https://example.com/not-matterport",
+    "rejected input is preserved so the user can fix it",
+  );
+});
+
+test("manual paste-to-sync is inert until a tour is connected", () => {
+  const spy = { teleport: [], share: [] };
+  // withController:true uses the idle (disconnected) controller from runGlue.
+  const { els } = runGlue({ withController: true });
+  els["lt-manual-sync-input"].value =
+    "https://my.matterport.com/show/?m=abc&ss=9";
+  els["lt-manual-sync-btn"].fire("click");
+  assert.match(els["lt-manual-sync-status"].textContent, /host a tour first/i);
+  // The idle controller never records a send.
+  assert.ok(!spy.share.length && !spy.teleport.length);
+});
