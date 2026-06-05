@@ -10,33 +10,43 @@
  */
 
 export type AtlasCategory =
-  | "cafe"
-  | "restaurant"
+  | "residential"
+  | "commercial"
+  | "hospitality"
   | "hotel"
-  | "event_space"
+  | "cultural"
   | "gallery"
+  | "restaurant"
+  | "event_space"
   | "wellness"
   | "retail"
   | "other";
 
 export const CATEGORY_LABELS: Record<AtlasCategory, string> = {
-  cafe: "Café & Coffee",
-  restaurant: "Restaurant & Dining",
+  residential: "Residential",
+  commercial: "Commercial & Office",
+  hospitality: "Hospitality",
   hotel: "Boutique Hotel & Stay",
+  cultural: "Cultural & Museum",
+  gallery: "Gallery & Art",
+  restaurant: "Restaurant & Dining",
   event_space: "Event & Private Space",
-  gallery: "Gallery & Culture",
-  wellness: "Wellness & Studio",
+  wellness: "Wellness & Spa",
   retail: "Retail Showroom",
   other: "Space",
 };
 
-/** Ordered options for the admin category <select>. */
+/** Ordered options for the admin category <select>. Mirrors CATEGORY_IMAGES
+ *  in src/routes/atlas.tsx so every selectable category has a fallback hero. */
 export const CATEGORY_OPTIONS: AtlasCategory[] = [
-  "cafe",
-  "restaurant",
+  "residential",
+  "commercial",
+  "hospitality",
   "hotel",
-  "event_space",
+  "cultural",
   "gallery",
+  "restaurant",
+  "event_space",
   "wellness",
   "retail",
   "other",
