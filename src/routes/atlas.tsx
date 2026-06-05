@@ -143,10 +143,11 @@ function cssSafeUrl(url: string): string | null {
  * gradient + background-color shows instead.
  */
 function buildTooltipHtml(entry: AtlasEntry): string {
-  const img = entry.hero_image_url ? cssSafeUrl(entry.hero_image_url) : null;
-  const style = img
-    ? ` style="background-image:linear-gradient(to top, rgba(15,23,42,0.95) 0%, rgba(15,23,42,0.1) 100%),url('${img}')"`
-    : "";
+  const img =
+    (entry.hero_image_url ? cssSafeUrl(entry.hero_image_url) : null) ??
+    encodeURI(getCategoryImageUrl(entry.category));
+  const style =
+    ` style="background-image:linear-gradient(to top, rgba(15,23,42,0.95) 0%, rgba(15,23,42,0.1) 100%),url('${img}')"`;
   const tags = (entry.tags ?? [])
     .slice(0, MAX_MAP_TAGS)
     .map((t) => `<span class="atlas-tip-tag">${escapeHtml(t)}</span>`)
