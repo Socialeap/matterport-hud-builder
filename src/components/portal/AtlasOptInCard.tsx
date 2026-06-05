@@ -9,7 +9,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { Globe2, Loader2, MapPin } from "lucide-react";
+import { Globe2, Image as ImageIcon, Loader2, MapPin } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,8 +23,13 @@ import {
 } from "@/lib/atlas.functions";
 import {
   CATEGORY_LABELS,
+  MAX_MAP_TAGS,
+  PREDEFINED_TAGS,
   type AtlasEntry,
 } from "@/lib/atlas-demo-data";
+
+/** Mirrors the server's https-only URL rule in `atlas.functions.ts`. */
+const HTTPS_IMAGE_URL_RE = /^https:\/\/[^\s<>"']+$/i;
 
 interface AtlasOptInCardProps {
   liveUrl: string;
@@ -44,7 +49,7 @@ type FormState = {
   latitude: string;
   longitude: string;
   heroImageUrl: string;
-  tags: string;
+  tags: string[];
 };
 
 const EMPTY_FORM: FormState = {
@@ -58,7 +63,7 @@ const EMPTY_FORM: FormState = {
   latitude: "",
   longitude: "",
   heroImageUrl: "",
-  tags: "",
+  tags: [],
 };
 
 const CATEGORY_OPTIONS = Object.entries(CATEGORY_LABELS ?? {}).length
@@ -133,7 +138,7 @@ export function AtlasOptInCard({
           latitude: match.latitude != null ? String(match.latitude) : "",
           longitude: match.longitude != null ? String(match.longitude) : "",
           heroImageUrl: match.hero_image_url ?? "",
-          tags: (match.tags ?? []).join(", "),
+          tags: (match.tags ?? []).slice(0, MAX_MAP_TAGS),
         });
       }
     } catch (err) {
@@ -156,6 +161,30 @@ export function AtlasOptInCard({
     [],
   );
 
+  // Toggle a map tag on/off, capped at MAX_MAP_TAGS selections.
+  const toggleTag = useCallback((tag: string) => {
+    setForm((prev) => {
+      if (prev.tags.includes(tag)) {
+        return { ...prev, tags: prev.tags.filter((t) => t !== tag) };
+      }
+      if (prev.tags.length >= MAX_MAP_TAGS) return prev;
+      return { ...prev, tags: [...prev.tags, tag] };
+    });
+  }, []);
+
+  const heroUrlInvalid = useMemo(() => {
+    const v = form.heroImageUrl.trim();
+    return v.length > 0 && !HTTPS_IMAGE_URL_RE.test(v);
+  }, [form.heroImageUrl]);
+
+  // Pill options: shared vocabulary plus any legacy free-text tags already on
+  // this entry (kept visible/selected so they can be deselected, not silently dropped).
+  const tagOptions = useMemo(() => {
+    const known = PREDEFINED_TAGS as readonly string[];
+    const extras = form.tags.filter((t) => !known.includes(t));
+    return [...known, ...extras];
+  }, [form.tags]);
+
   const onSubmit = useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault();
@@ -175,14 +204,15 @@ export function AtlasOptInCard({
         setFormError("Longitude must be between -180 and 180.");
         return;
       }
+      const hero = form.heroImageUrl.trim();
+      if (hero && !HTTPS_IMAGE_URL_RE.test(hero)) {
+        setFormError("Hero image must be a valid https:// URL.");
+        return;
+      }
 
       setSubmitting(true);
       try {
-        const tags = form.tags
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean)
-          .slice(0, 12);
+        const tags = form.tags.slice(0, MAX_MAP_TAGS);
         // Verification-first: the server fetches the manifest at this URL and
         // only activates a listing when the opaque token verifies. We get a
         // structured result (no throw) for verification failures.
@@ -432,7 +462,19 @@ export function AtlasOptInCard({
             />
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          {/* ── Atlas Map Appearance ──────────────────────────────────────
+              Drives the pin's hover card + expanded card on /atlas. */}
+          <div className="space-y-3 rounded-md border border-border/60 bg-muted/20 p-3">
+            <div>
+              <h4 className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                <ImageIcon className="size-3.5" style={{ color: accentColor }} />
+                Atlas Map Appearance
+              </h4>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                Shown when visitors hover or click your pin on the /atlas map.
+              </p>
+            </div>
+
             <div className="space-y-1.5">
               <Label htmlFor="atlas-hero" className="text-xs">
                 Hero image URL <span className="text-muted-foreground">(optional)</span>
@@ -443,19 +485,47 @@ export function AtlasOptInCard({
                 onChange={(e) => handleChange("heroImageUrl", e.target.value)}
                 type="url"
                 inputMode="url"
-                placeholder="https://… (optional)"
+                placeholder="https://… (hosted image, optional)"
+                aria-invalid={heroUrlInvalid}
               />
+              {heroUrlInvalid && (
+                <p className="text-[11px] text-rose-400">
+                  Must be a valid https:// image URL.
+                </p>
+              )}
             </div>
+
             <div className="space-y-1.5">
-              <Label htmlFor="atlas-tags" className="text-xs">
-                Tags <span className="text-muted-foreground">(optional)</span>
+              <Label className="text-xs">
+                Map tags{" "}
+                <span className="text-muted-foreground">
+                  ({form.tags.length}/{MAX_MAP_TAGS} selected)
+                </span>
               </Label>
-              <Input
-                id="atlas-tags"
-                value={form.tags}
-                onChange={(e) => handleChange("tags", e.target.value)}
-                placeholder="comma, separated (max 12)"
-              />
+              <div className="flex flex-wrap gap-1.5" role="group" aria-label="Atlas map tags">
+                {tagOptions.map((tag) => {
+                  const selected = form.tags.includes(tag);
+                  const atLimit = !selected && form.tags.length >= MAX_MAP_TAGS;
+                  return (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => toggleTag(tag)}
+                      disabled={atLimit}
+                      aria-pressed={selected}
+                      className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                        selected
+                          ? "border-primary bg-primary/15 text-primary"
+                          : atLimit
+                            ? "cursor-not-allowed border-border/50 text-muted-foreground/50"
+                            : "border-border text-muted-foreground hover:border-primary/50 hover:text-foreground"
+                      }`}
+                    >
+                      {tag}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
 

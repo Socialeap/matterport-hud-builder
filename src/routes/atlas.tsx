@@ -37,7 +37,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { listActiveAtlasEntries } from "@/lib/atlas.functions";
-import { categoryLabel, type AtlasEntry } from "@/lib/atlas-demo-data";
+import { categoryLabel, MAX_MAP_TAGS, type AtlasEntry } from "@/lib/atlas-demo-data";
 
 /** Lucide icon per known category (text-light scanning). Falls back to a tag. */
 const CATEGORY_ICONS: Record<string, LucideIcon> = {
@@ -82,6 +82,23 @@ export const Route = createFileRoute("/atlas")({
   component: AtlasPage,
 });
 
+type LeafletNs = typeof import("leaflet");
+
+interface MapRefs {
+  L: LeafletNs;
+  map: import("leaflet").Map;
+  layer: import("leaflet").LayerGroup;
+  markers: Map<string, import("leaflet").Marker>;
+}
+
+// ── Rich hover tooltip (raw HTML through Leaflet's native bindTooltip) ──────
+// The card is plain HTML + CSS (see `.atlas-tip*` in styles.css) so mousemove
+// never touches React. All user-supplied strings are escaped before injection.
+
+/** Pins whose screen centers are closer than this overlap — suppress hover card.
+ *  Same 30px threshold as the original text-tooltip overlap formula. */
+const PIN_OVERLAP_PX = 30;
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
@@ -91,13 +108,49 @@ function escapeHtml(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
-type LeafletNs = typeof import("leaflet");
+/** https-only URL made safe inside `url('…')` in an injected style attribute. */
+function cssSafeUrl(url: string): string | null {
+  const trimmed = url.trim();
+  if (!/^https:\/\/[^\s<>"']+$/i.test(trimmed)) return null;
+  return trimmed.replace(/['"()\\]/g, (c) => encodeURIComponent(c));
+}
 
-interface MapRefs {
-  L: LeafletNs;
-  map: import("leaflet").Map;
-  layer: import("leaflet").LayerGroup;
-  markers: Map<string, import("leaflet").Marker>;
+/**
+ * 220×120 image-backed hover card. The hero renders as a CSS background under
+ * a dark overlay gradient; if the image URL is missing/invalid (or fails to
+ * load — CSS multi-backgrounds degrade silently), the dark-slate fallback
+ * gradient + background-color shows instead.
+ */
+function buildTooltipHtml(entry: AtlasEntry): string {
+  const img = entry.hero_image_url ? cssSafeUrl(entry.hero_image_url) : null;
+  const style = img
+    ? ` style="background-image:linear-gradient(to top, rgba(15,23,42,0.95) 0%, rgba(15,23,42,0.1) 100%),url('${img}')"`
+    : "";
+  const tags = (entry.tags ?? [])
+    .slice(0, MAX_MAP_TAGS)
+    .map((t) => `<span class="atlas-tip-tag">${escapeHtml(t)}</span>`)
+    .join("");
+  return (
+    `<div class="atlas-tip${img ? "" : " atlas-tip--noimg"}"${style}>` +
+    (tags ? `<div class="atlas-tip-tags">${tags}</div>` : "") +
+    `<div class="atlas-tip-text">` +
+    `<p class="atlas-tip-cat">${escapeHtml(categoryLabel(entry.category))}</p>` +
+    `<h4 class="atlas-tip-title">${escapeHtml(entry.title)}</h4>` +
+    `</div></div>`
+  );
+}
+
+/** Pixel-distance overlap check: true when another pin sits within PIN_OVERLAP_PX on screen. */
+function isMarkerOverlapped(refs: MapRefs, id: string): boolean {
+  const marker = refs.markers.get(id);
+  if (!marker) return false;
+  const p = refs.map.latLngToContainerPoint(marker.getLatLng());
+  for (const [otherId, other] of refs.markers) {
+    if (otherId === id) continue;
+    const q = refs.map.latLngToContainerPoint(other.getLatLng());
+    if (p.distanceTo(q) < PIN_OVERLAP_PX) return true;
+  }
+  return false;
 }
 
 function AtlasPage() {
@@ -192,10 +245,23 @@ function AtlasPage() {
         iconAnchor: [12, 12],
       });
       const marker = L.marker([entry.latitude as number, entry.longitude as number], { icon });
+      // Hover → rich image-backed card via Leaflet's native tooltip (no React
+      // on mousemove). Gated: when another pin overlaps this one on screen
+      // (pixel-distance check), the tooltip is suppressed to avoid stacking.
+      marker.bindTooltip(buildTooltipHtml(entry), {
+        direction: "top",
+        offset: L.point(0, -16),
+        opacity: 1,
+        className: "atlas-tip-wrap",
+      });
+      marker.on("tooltipopen", () => {
+        if (isMarkerOverlapped(refs, entry.id)) marker.closeTooltip();
+      });
       // Clicking a pin surfaces the full business card (not a mini popup):
       // select it, show the floating card over the map, and bring the matching
       // sidebar card into view.
       marker.on("click", () => {
+        marker.closeTooltip();
         setSelectedId(entry.id);
         setPreview(entry);
         if (typeof document !== "undefined") {
@@ -203,34 +269,6 @@ function AtlasPage() {
             .getElementById(`atlas-card-${entry.id}`)
             ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
         }
-      });
-      // Smart hover tooltip — only when pin is not clustered with neighbors
-      // at the current zoom level. Uses Leaflet's native tooltip API to avoid
-      // React re-renders. Overlap is recomputed at hover time in screen px.
-      marker.on("mouseover", () => {
-        const map = refs.map;
-        const currentPoint = map.latLngToContainerPoint(marker.getLatLng());
-        for (const [id, otherMarker] of refs.markers.entries()) {
-          if (id === entry.id) continue;
-          const otherPoint = map.latLngToContainerPoint(otherMarker.getLatLng());
-          if (currentPoint.distanceTo(otherPoint) < 30) return;
-        }
-        const safeTitle = escapeHtml(entry.title);
-        const safeCategory = escapeHtml(categoryLabel(entry.category));
-        marker
-          .bindTooltip(
-            `<div class="atlas-tooltip-content"><strong class="atlas-tooltip-title">${safeTitle}</strong><span class="atlas-tooltip-cat">${safeCategory}</span></div>`,
-            {
-              className: "atlas-pin-tooltip",
-              direction: "top",
-              offset: [0, -12],
-              opacity: 1,
-            },
-          )
-          .openTooltip();
-      });
-      marker.on("mouseout", () => {
-        marker.unbindTooltip();
       });
       marker.addTo(layer);
       markers.set(entry.id, marker);
@@ -474,7 +512,8 @@ function AtlasPage() {
             Sample discovery map
           </span>
 
-          {/* Pin click → the full business card over the map (with Step Inside). */}
+          {/* Pin click → progressive disclosure: the hover card expands into
+              this image-backed detail card over the map (with Step Inside). */}
           {preview && (
             <div className="atlas-map-preview">
               <button
@@ -486,12 +525,9 @@ function AtlasPage() {
               >
                 <X className="size-4" aria-hidden="true" />
               </button>
-              <ListingCard
+              <ExpandedSpaceCard
                 entry={preview}
-                selected
-                onHover={() => setSelectedId(preview.id)}
-                onFocus={() => focusEntry(preview)}
-                onOpen={() => preview.presentation_url && setActive(preview)}
+                onStepInside={() => preview.presentation_url && setActive(preview)}
               />
             </div>
           )}
@@ -506,6 +542,116 @@ function AtlasPage() {
 }
 
 // ── Subcomponents ──────────────────────────────────────────────────────────
+
+/**
+ * Expanded map card shown when a pin is clicked — the progressive-disclosure
+ * step up from the hover tooltip. Retains the hero header + frosted tags and
+ * adds the full summary plus a prominent Step Inside CTA. A failed hero image
+ * silently falls back to the dark-slate gradient (the gradient underlay is
+ * always painted; `onError` just unmounts the broken <img>).
+ */
+function ExpandedSpaceCard({
+  entry,
+  onStepInside,
+}: {
+  entry: AtlasEntry;
+  onStepInside: () => void;
+}) {
+  const [imgFailed, setImgFailed] = useState(false);
+  // Give the next pin's image a fresh chance after a previous one failed.
+  useEffect(() => setImgFailed(false), [entry.id]);
+
+  const showImg = !!entry.hero_image_url && !imgFailed;
+  const tags = (entry.tags ?? []).slice(0, MAX_MAP_TAGS);
+  const loc = [entry.city, entry.region].filter(Boolean).join(", ");
+
+  return (
+    <article
+      className="overflow-hidden rounded-xl border border-slate-700/60 bg-slate-900 shadow-2xl"
+      aria-label={`${entry.title} details`}
+    >
+      {/* Hero header — image under a dark overlay, gradient fallback beneath. */}
+      <div className="relative h-36 w-full bg-gradient-to-br from-slate-700 via-slate-800 to-slate-950">
+        {showImg && (
+          <img
+            src={entry.hero_image_url as string}
+            alt=""
+            loading="lazy"
+            onError={() => setImgFailed(true)}
+            className="absolute inset-0 size-full object-cover"
+          />
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/95 to-slate-900/10" />
+        {tags.length > 0 && (
+          <div className="absolute left-2.5 top-2.5 flex flex-wrap gap-1">
+            {tags.map((t) => (
+              <span
+                key={t}
+                className="rounded-full border border-white/20 bg-white/15 px-2 py-0.5 text-[10px] font-semibold text-slate-50 backdrop-blur-sm"
+              >
+                {t}
+              </span>
+            ))}
+          </div>
+        )}
+        <span className="absolute right-2.5 top-2.5 inline-flex items-center gap-1 rounded-full border border-white/20 bg-white/15 px-2 py-0.5 text-[10px] font-semibold backdrop-blur-sm">
+          {entry.kind === "demo" ? (
+            <>
+              <Sparkles className="size-3 text-amber-300" aria-hidden="true" />
+              <span className="text-amber-200">Sample</span>
+            </>
+          ) : entry.kind === "curated_showcase" ? (
+            <>
+              <Star className="size-3 text-indigo-300" aria-hidden="true" />
+              <span className="text-indigo-200">Curated</span>
+            </>
+          ) : (
+            <>
+              <ShieldCheck className="size-3 text-emerald-300" aria-hidden="true" />
+              <span className="text-emerald-200">Verified</span>
+            </>
+          )}
+        </span>
+        <div className="absolute inset-x-3 bottom-2.5">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-300">
+            {categoryLabel(entry.category)}
+          </p>
+          <h3 className="text-base font-semibold leading-tight text-white">
+            {entry.title}
+          </h3>
+        </div>
+      </div>
+
+      {/* Body — full summary + prominent CTA. */}
+      <div className="space-y-3 p-3.5">
+        {loc && (
+          <p className="flex items-center gap-1 text-xs text-slate-400">
+            <MapPin className="size-3.5" aria-hidden="true" /> {loc}
+          </p>
+        )}
+        {entry.summary && (
+          <p className="max-h-40 overflow-y-auto text-xs leading-relaxed text-slate-300">
+            {entry.summary}
+          </p>
+        )}
+        {entry.presentation_url ? (
+          <button
+            type="button"
+            onClick={onStepInside}
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-bold text-white transition-colors hover:bg-blue-500"
+            aria-label={`Step inside ${entry.title}`}
+          >
+            <Play className="size-4" aria-hidden="true" /> Step Inside
+          </button>
+        ) : (
+          <p className="text-center text-[11px] text-slate-500">
+            Presentation coming soon
+          </p>
+        )}
+      </div>
+    </article>
+  );
+}
 
 function ListingCard({
   entry,

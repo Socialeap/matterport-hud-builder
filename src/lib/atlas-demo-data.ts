@@ -93,6 +93,33 @@ export interface AtlasEntry {
 /** Back-compat alias — older imports may still reference this name. */
 export type AtlasDemoListing = AtlasEntry;
 
+// ── Atlas map-appearance tags ────────────────────────────────────────────────
+
+/**
+ * Curated tag vocabulary shown on Atlas map cards (hover tooltip + expanded
+ * card). Shared by the publisher UI (pill picker in Publish & Distribute) and
+ * the /atlas map renderer so both sides agree on the exact strings.
+ */
+export const PREDEFINED_TAGS = [
+  "$",
+  "$$",
+  "$$$",
+  "WiFi",
+  "Parking",
+  "Pet Friendly",
+  "Wheelchair Accessible",
+  "Outdoor Seating",
+  "Capacity: 50+",
+  "Capacity: 100+",
+  "Family Friendly",
+  "Open Late",
+] as const;
+
+export type PredefinedTag = (typeof PREDEFINED_TAGS)[number];
+
+/** Max tags a publisher can attach to a listing — keeps map cards legible. */
+export const MAX_MAP_TAGS = 4;
+
 // ── Curated Atlas Listing Assistant ──────────────────────────────────────────
 
 export type AtlasCurationStatus =
