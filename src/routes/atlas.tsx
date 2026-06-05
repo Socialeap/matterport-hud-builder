@@ -54,6 +54,27 @@ const CATEGORY_ICONS: Record<string, LucideIcon> = {
   other: Tag,
 };
 
+/** Default hero image per category — used when an entry has no
+ *  `hero_image_url` (or its URL fails to load). Files live in `/public`;
+ *  filenames preserve exact casing/spaces and are URL-encoded at use sites. */
+const CATEGORY_IMAGES: Record<string, string> = {
+  residential: "/residential.jpg",
+  commercial: "/Office.jpg",
+  hospitality: "/Hotel.jpg",
+  hotel: "/Hotel.jpg",
+  cultural: "/Museum.jpg",
+  gallery: "/Gallery.jpg",
+  restaurant: "/Restaurant.jpg",
+  event_space: "/Event Space.jpg",
+  wellness: "/Spa.jpg",
+  retail: "/Retail.jpg",
+  other: "/Other.jpg",
+};
+
+function getCategoryImageUrl(category: string): string {
+  return CATEGORY_IMAGES[category] ?? CATEGORY_IMAGES.other;
+}
+
 function CategoryIcon({ category, className }: { category: string; className?: string }) {
   const Icon = CATEGORY_ICONS[category] ?? Tag;
   return <Icon className={className} aria-hidden="true" />;
@@ -122,10 +143,11 @@ function cssSafeUrl(url: string): string | null {
  * gradient + background-color shows instead.
  */
 function buildTooltipHtml(entry: AtlasEntry): string {
-  const img = entry.hero_image_url ? cssSafeUrl(entry.hero_image_url) : null;
-  const style = img
-    ? ` style="background-image:linear-gradient(to top, rgba(15,23,42,0.95) 0%, rgba(15,23,42,0.1) 100%),url('${img}')"`
-    : "";
+  const img =
+    (entry.hero_image_url ? cssSafeUrl(entry.hero_image_url) : null) ??
+    encodeURI(getCategoryImageUrl(entry.category));
+  const style =
+    ` style="background-image:linear-gradient(to top, rgba(15,23,42,0.95) 0%, rgba(15,23,42,0.1) 100%),url('${img}')"`;
   const tags = (entry.tags ?? [])
     .slice(0, MAX_MAP_TAGS)
     .map((t) => `<span class="atlas-tip-tag">${escapeHtml(t)}</span>`)
@@ -557,11 +579,17 @@ function ExpandedSpaceCard({
   entry: AtlasEntry;
   onStepInside: () => void;
 }) {
-  const [imgFailed, setImgFailed] = useState(false);
+  const [heroFailed, setHeroFailed] = useState(false);
+  const [catFailed, setCatFailed] = useState(false);
   // Give the next pin's image a fresh chance after a previous one failed.
-  useEffect(() => setImgFailed(false), [entry.id]);
+  useEffect(() => {
+    setHeroFailed(false);
+    setCatFailed(false);
+  }, [entry.id]);
 
-  const showImg = !!entry.hero_image_url && !imgFailed;
+  const heroSrc = entry.hero_image_url && !heroFailed ? entry.hero_image_url : null;
+  const catSrc = !catFailed ? getCategoryImageUrl(entry.category) : null;
+  const src = heroSrc ?? catSrc;
   const tags = (entry.tags ?? []).slice(0, MAX_MAP_TAGS);
   const loc = [entry.city, entry.region].filter(Boolean).join(", ");
 
@@ -572,12 +600,14 @@ function ExpandedSpaceCard({
     >
       {/* Hero header — image under a dark overlay, gradient fallback beneath. */}
       <div className="relative h-36 w-full bg-gradient-to-br from-slate-700 via-slate-800 to-slate-950">
-        {showImg && (
+        {src && (
           <img
-            src={entry.hero_image_url as string}
+            src={src}
             alt=""
             loading="lazy"
-            onError={() => setImgFailed(true)}
+            onError={() =>
+              src === entry.hero_image_url ? setHeroFailed(true) : setCatFailed(true)
+            }
             className="absolute inset-0 size-full object-cover"
           />
         )}
