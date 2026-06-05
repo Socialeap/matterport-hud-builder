@@ -54,6 +54,27 @@ const CATEGORY_ICONS: Record<string, LucideIcon> = {
   other: Tag,
 };
 
+/** Default hero image per category — used when an entry has no
+ *  `hero_image_url` (or its URL fails to load). Files live in `/public`;
+ *  filenames preserve exact casing/spaces and are URL-encoded at use sites. */
+const CATEGORY_IMAGES: Record<string, string> = {
+  residential: "/residential.jpg",
+  commercial: "/Office.jpg",
+  hospitality: "/Hotel.jpg",
+  hotel: "/Hotel.jpg",
+  cultural: "/Museum.jpg",
+  gallery: "/Gallery.jpg",
+  restaurant: "/Restaurant.jpg",
+  event_space: "/Event Space.jpg",
+  wellness: "/Spa.jpg",
+  retail: "/Retail.jpg",
+  other: "/Other.jpg",
+};
+
+function getCategoryImageUrl(category: string): string {
+  return CATEGORY_IMAGES[category] ?? CATEGORY_IMAGES.other;
+}
+
 function CategoryIcon({ category, className }: { category: string; className?: string }) {
   const Icon = CATEGORY_ICONS[category] ?? Tag;
   return <Icon className={className} aria-hidden="true" />;
