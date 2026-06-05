@@ -82,6 +82,15 @@ export const Route = createFileRoute("/atlas")({
   component: AtlasPage,
 });
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 type LeafletNs = typeof import("leaflet");
 
 interface MapRefs {
