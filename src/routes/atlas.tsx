@@ -579,11 +579,17 @@ function ExpandedSpaceCard({
   entry: AtlasEntry;
   onStepInside: () => void;
 }) {
-  const [imgFailed, setImgFailed] = useState(false);
+  const [heroFailed, setHeroFailed] = useState(false);
+  const [catFailed, setCatFailed] = useState(false);
   // Give the next pin's image a fresh chance after a previous one failed.
-  useEffect(() => setImgFailed(false), [entry.id]);
+  useEffect(() => {
+    setHeroFailed(false);
+    setCatFailed(false);
+  }, [entry.id]);
 
-  const showImg = !!entry.hero_image_url && !imgFailed;
+  const heroSrc = entry.hero_image_url && !heroFailed ? entry.hero_image_url : null;
+  const catSrc = !catFailed ? getCategoryImageUrl(entry.category) : null;
+  const src = heroSrc ?? catSrc;
   const tags = (entry.tags ?? []).slice(0, MAX_MAP_TAGS);
   const loc = [entry.city, entry.region].filter(Boolean).join(", ");
 
@@ -594,12 +600,14 @@ function ExpandedSpaceCard({
     >
       {/* Hero header — image under a dark overlay, gradient fallback beneath. */}
       <div className="relative h-36 w-full bg-gradient-to-br from-slate-700 via-slate-800 to-slate-950">
-        {showImg && (
+        {src && (
           <img
-            src={entry.hero_image_url as string}
+            src={src}
             alt=""
             loading="lazy"
-            onError={() => setImgFailed(true)}
+            onError={() =>
+              src === entry.hero_image_url ? setHeroFailed(true) : setCatFailed(true)
+            }
             className="absolute inset-0 size-full object-cover"
           />
         )}
