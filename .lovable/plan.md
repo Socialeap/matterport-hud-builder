@@ -1,51 +1,93 @@
-## Root cause
+# Smart Map Pin Tooltips on /atlas
 
-The "Open Showcase PR" / "Approve & Publish" action in `src/lib/atlas-curation.functions.ts` writes to columns (`merged_at`, `showcase_pr_number`, `showcase_branch`) and uses widened `publish_status` values (`merged`, `pending_deploy`) that only exist in the migration file `supabase/migrations/20260613000000_frontiers3d_atlas_showcase_merge.sql`.
+Add hover tooltips to map pins on `src/routes/atlas.tsx` that show the listing title + category, but only when the pin isn't visually clustered with other pins at the current zoom level. Use Leaflet's native tooltip + event APIs so the map never re-renders through React.
 
-That migration was committed to the repo but **never applied to the live database**. Confirmed via `information_schema.columns` — none of the three columns exist on `public.atlas_curation_jobs` today. PostgREST therefore rejects the update with:
+## Scope
 
-> Could not find the 'merged_at' column of 'atlas_curation_jobs' in the schema cache
+- `src/routes/atlas.tsx` — extend the existing marker creation loop.
+- `src/styles.css` — add `.atlas-pin-tooltip` styles matching the dark theme.
 
-This matches the project's documented gotcha: merging a PR into `main` does not auto-apply Supabase migrations (see `POST_MERGE_CHECKLIST.md`).
+No data, no schema, no routing, no backend changes.
 
-## Fix
+## Implementation
 
-Apply the existing, non-destructive migration as-is. It only:
+### 1. `src/routes/atlas.tsx` — marker mouse handlers
 
-1. Adds three nullable columns to `public.atlas_curation_jobs`:
-   - `showcase_pr_number integer`
-   - `showcase_branch text`
-   - `merged_at timestamptz`
-2. Drops + re-adds the `publish_status` CHECK constraint to allow the new values `merged` and `pending_deploy` (alongside the existing `none`, `pr_open`, `published`, `failed`).
-3. Adds column comments.
+Inside the existing `pinned.forEach(...)` block in the markers `useEffect` (right after `marker.on("click", ...)`), attach two more Leaflet listeners — no React state, no new components:
 
-No table drops, no data deletes, no RLS or GRANT changes (existing policies cover the new columns). Safe to apply.
+```ts
+marker.on("mouseover", () => {
+  const map = refs.map;
+  const currentPoint = map.latLngToContainerPoint(marker.getLatLng());
 
-## Steps
+  let isOverlapped = false;
+  for (const [id, otherMarker] of refs.markers.entries()) {
+    if (id === entry.id) continue;
+    const otherPoint = map.latLngToContainerPoint(otherMarker.getLatLng());
+    if (currentPoint.distanceTo(otherPoint) < 30) {
+      isOverlapped = true;
+      break;
+    }
+  }
+  if (isOverlapped) return;
 
-1. Run the migration `20260613000000_frontiers3d_atlas_showcase_merge.sql` against the database via the migration tool (same SQL as the committed file).
-2. Let Lovable regenerate `src/integrations/supabase/types.ts` so `merged_at` / `showcase_pr_number` / `showcase_branch` are typed.
-3. No app code changes needed — the code already targets the post-migration schema.
+  const safeTitle = escapeHtml(entry.title);
+  const safeCategory = escapeHtml(categoryLabel(entry.category));
+  marker
+    .bindTooltip(
+      `<div class="atlas-tooltip-content">
+         <strong class="atlas-tooltip-title">${safeTitle}</strong>
+         <span class="atlas-tooltip-cat">${safeCategory}</span>
+       </div>`,
+      {
+        className: "atlas-pin-tooltip",
+        direction: "top",
+        offset: [0, -12],
+        opacity: 1,
+      },
+    )
+    .openTooltip();
+});
+
+marker.on("mouseout", () => {
+  marker.unbindTooltip();
+});
+```
+
+A tiny local `escapeHtml` helper (in the same file) will sanitize `title` / category before they go into the tooltip HTML string — listing titles are user/admin-curated text and we're injecting into innerHTML.
+
+### 2. `src/styles.css` — tooltip styling
+
+Add a dark-theme override for the `atlas-pin-tooltip` class so Leaflet's default white box is gone:
+
+- transparent → solid dark surface (e.g. `oklch` token consistent with the rest of the Atlas shell)
+- subtle border, soft shadow, small radius
+- title: white, ~13px, semibold
+- category: muted slate (~`#94a3b8` equivalent token), ~11px, uppercase tracking optional
+- hide `.leaflet-tooltip-tip` arrow color so it matches the dark surface (or recolor it)
+- `pointer-events: none` (Leaflet default, but reaffirm) so it never intercepts pin hover
+
+### 3. Guarantees from the spec
+
+- ✅ No `useState` / no React re-render on hover.
+- ✅ Overlap measured in **screen pixels** at the current zoom (recomputed every mouseover).
+- ✅ 30px threshold for the 24×24 pulse icon.
+- ✅ Cleanup via `unbindTooltip()` on mouseout — no DOM leaks.
+- ✅ Existing click → preview card behavior is untouched.
+
+## Out of scope
+
+- No clustering plugin.
+- No changes to the floating preview card, sidebar, or modal.
+- No changes to `ListingCard` hover/select logic.
 
 ## Verification
 
-```sql
-SELECT column_name, data_type
-FROM information_schema.columns
-WHERE table_schema='public'
-  AND table_name='atlas_curation_jobs'
-  AND column_name IN ('merged_at','showcase_pr_number','showcase_branch');
--- expect 3 rows
+- Hover an isolated pin → tooltip appears above with title + category in dark style.
+- Zoom out until pins visually cluster → hovering a clustered pin shows **no** tooltip.
+- Zoom back in until the same pin is isolated → tooltip reappears on hover.
+- Click behavior (preview card + sidebar scroll) still works unchanged.
+- No console errors; no React re-renders triggered by hover (verifiable via React DevTools profiler if desired).
 
-SELECT conname, pg_get_constraintdef(oid)
-FROM pg_constraint
-WHERE conrelid='public.atlas_curation_jobs'::regclass
-  AND conname='atlas_curation_jobs_publish_status_check';
--- expect CHECK to include 'merged' and 'pending_deploy'
-```
-
-Then in the UI: open a curation job with an open showcase PR → click **Approve & Publish** → action should succeed and the row should move to `publish_status = 'merged'` (or `pending_deploy`) with `merged_at` populated.
-
-## Backend Activation Required: YES
-- **Migration:** `supabase/migrations/20260613000000_frontiers3d_atlas_showcase_merge.sql` (additive, non-destructive)
-- **Expected result:** three new columns present + widened CHECK constraint; "Approve & Publish" stops 400-ing.
+Backend Activation Required: NO
+Reason: Frontend-only UI enhancement on `/atlas`; no Supabase, RLS, functions, or schema changes.
