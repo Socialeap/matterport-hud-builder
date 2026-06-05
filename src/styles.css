@@ -238,6 +238,21 @@
   .atlas-pulse-pin-dot { width:6px; height:6px; background:#fff; border-radius:9999px; }
   .leaflet-marker-icon.is-selected .atlas-pulse-pin { background:#f59e0b; }
 
+  /* Smart hover tooltip on pins — dark theme, overrides Leaflet defaults. */
+  .leaflet-tooltip.atlas-pin-tooltip {
+    background: rgba(15, 23, 42, 0.96);
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 8px;
+    box-shadow: 0 10px 30px -10px rgba(0,0,0,0.6);
+    padding: 8px 10px;
+    color: #fff;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  .leaflet-tooltip.atlas-pin-tooltip::before { display: none; }
+  .atlas-pin-tooltip .atlas-tooltip-title { display:block; font-size:13px; font-weight:600; color:#fff; line-height:1.2; }
+  .atlas-pin-tooltip .atlas-tooltip-cat { display:block; margin-top:2px; font-size:11px; color:#94a3b8; text-transform:uppercase; letter-spacing:0.04em; }
+
   /* Modal — clean immersive viewer shell. The embedded curated showcase
      carries the canonical header (.f3d-bar: Explore Together / About /
      Share), so the outer modal renders no header/footer of its own — only
