@@ -195,6 +195,34 @@ function AtlasPage() {
             ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
         }
       });
+      // Smart hover tooltip — only when pin is not clustered with neighbors
+      // at the current zoom level. Uses Leaflet's native tooltip API to avoid
+      // React re-renders. Overlap is recomputed at hover time in screen px.
+      marker.on("mouseover", () => {
+        const map = refs.map;
+        const currentPoint = map.latLngToContainerPoint(marker.getLatLng());
+        for (const [id, otherMarker] of refs.markers.entries()) {
+          if (id === entry.id) continue;
+          const otherPoint = map.latLngToContainerPoint(otherMarker.getLatLng());
+          if (currentPoint.distanceTo(otherPoint) < 30) return;
+        }
+        const safeTitle = escapeHtml(entry.title);
+        const safeCategory = escapeHtml(categoryLabel(entry.category));
+        marker
+          .bindTooltip(
+            `<div class="atlas-tooltip-content"><strong class="atlas-tooltip-title">${safeTitle}</strong><span class="atlas-tooltip-cat">${safeCategory}</span></div>`,
+            {
+              className: "atlas-pin-tooltip",
+              direction: "top",
+              offset: [0, -12],
+              opacity: 1,
+            },
+          )
+          .openTooltip();
+      });
+      marker.on("mouseout", () => {
+        marker.unbindTooltip();
+      });
       marker.addTo(layer);
       markers.set(entry.id, marker);
     });
