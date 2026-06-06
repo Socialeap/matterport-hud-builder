@@ -144,6 +144,34 @@ function annoClampDpr(raw, max) {
   return Math.min(dpr, cap);
 }
 
+// iOS / iPadOS WebKit detection — every browser on iOS (Safari, Chrome,
+// Edge, Firefox) is WebKit and shares its clipboard behavior: ANY
+// navigator.clipboard.readText() raises the native Paste callout, which
+// interrupts in-flight canvas gestures. Callers use this to disable all
+// ambient clipboard reads on these devices. Covers:
+//   - classic identifiers (platform/userAgent containing iPhone/iPad/iPod,
+//     which iOS Chrome "CriOS" and Firefox "FxiOS" UAs also carry), and
+//   - iPad "desktop mode", which masquerades as macOS:
+//     platform === "MacIntel" with maxTouchPoints > 1.
+// Fails closed to false (not iOS) — callers that need the safe direction
+// for ambient reads must ALSO gate on the module being present at all.
+function annoIsIosWebKit(nav) {
+  try {
+    var n = nav || (typeof navigator !== "undefined" ? navigator : null);
+    if (!n) return false;
+    var p = typeof n.platform === "string" ? n.platform : "";
+    var ua = typeof n.userAgent === "string" ? n.userAgent : "";
+    if (/iPhone|iPad|iPod/i.test(p)) return true;
+    if (/iPhone|iPad|iPod/i.test(ua)) return true;
+    if (p === "MacIntel" && typeof n.maxTouchPoints === "number" && n.maxTouchPoints > 1) {
+      return true;
+    }
+    return false;
+  } catch (_e) {
+    return false;
+  }
+}
+
 // Best-effort coarse-pointer detection (touch-first devices). Used for
 // runtime affordance sizing (e.g. the Focus Rope latch); the CSS side
 // uses the equivalent @media (pointer: coarse) block.
@@ -196,6 +224,7 @@ export {
   createAnnoPointerGuard,
   annoCollectPoints,
   annoClampDpr,
+  annoIsIosWebKit,
   annoIsCoarsePointer,
   annoBindViewportEvents,
 };

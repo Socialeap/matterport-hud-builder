@@ -155,11 +155,20 @@
     typeof createAnnoPointerGuard === "function" &&
     typeof annoCollectPoints === "function" &&
     typeof annoClampDpr === "function" &&
+    typeof annoIsIosWebKit === "function" &&
     typeof annoIsCoarsePointer === "function" &&
     typeof annoBindViewportEvents === "function";
   var annoGuard = ANNO_INPUT_OK
     ? createAnnoPointerGuard({ onTakeover: finalizeActiveGesture })
     : null;
+
+  // iOS/iPadOS WebKit (incl. iPad desktop mode and iOS Chrome): ANY
+  // navigator.clipboard.readText() raises the native Paste callout, so
+  // ambient clipboard sync must never run there — see
+  // ambientClipboardAllowed() in the location-sync section, which also
+  // fails closed when this detector is unavailable (ANNO_INPUT_OK false).
+  var IS_IOS_WEBKIT =
+    typeof annoIsIosWebKit === "function" ? annoIsIosWebKit(navigator) : false;
 
   function collectNormPoints(e) {
     if (typeof annoCollectPoints === "function") return annoCollectPoints(e, clientToNorm);
@@ -694,6 +703,8 @@
         return;
       }
       if (!annoGuard || !annoGuard.owns(e)) return;
+      // Owned gesture: suppress any default WebKit handling for the move.
+      e.preventDefault();
       if (toolMode === "draw" && activeStroke) {
         // Coalesced samples (120Hz Pencil) — oldest first, all appended
         // to the stroke and to the same outbound patch batch.
@@ -735,6 +746,7 @@
     annoCanvas.addEventListener("pointerup", function (e) {
       if (!canAnnotateLocal()) return;
       if (!annoGuard || !annoGuard.owns(e)) return;
+      e.preventDefault();
       if (toolMode === "draw" && activeStroke) {
         finishActiveDraw();
       } else if (toolMode === "rope" && activeRope && (ropeDragging || ropeLatchDragging || ropeMoveDragging)) {
@@ -753,6 +765,9 @@
     // guard has released, so this is a no-op on the happy path.
     function handlePointerAbort(e) {
       if (!annoGuard || !annoGuard.owns(e)) return;
+      try {
+        e.preventDefault();
+      } catch (_e) {}
       finalizeActiveGesture();
       annoGuard.release(e);
       try {
@@ -765,6 +780,42 @@
       if (!canAnnotateLocal()) return;
       if (toolMode === "pointer") session.sendPointer(currentViewKey, null, null);
     });
+
+    // WebKit gesture defenses: while Draw or Focus Rope is active, swallow
+    // the raw touch sequence at the canvas (non-passive on purpose) so
+    // Safari cannot run its long-press / magnifier / text-interaction
+    // recognizers alongside the pointer stream. Pointer events are not
+    // synthesized from touch, so drawing is unaffected. Scoped to the
+    // canvas — never to inputs or the manual paste field.
+    function blockTouchDuringGesture(e) {
+      if (toolMode !== "draw" && toolMode !== "rope") return;
+      try {
+        e.preventDefault();
+      } catch (_e) {}
+    }
+    try {
+      var nonPassive = { passive: false };
+      annoCanvas.addEventListener("touchstart", blockTouchDuringGesture, nonPassive);
+      annoCanvas.addEventListener("touchmove", blockTouchDuringGesture, nonPassive);
+      annoCanvas.addEventListener("touchend", blockTouchDuringGesture, nonPassive);
+      annoCanvas.addEventListener("touchcancel", blockTouchDuringGesture, nonPassive);
+    } catch (_e) {}
+  }
+
+  // Stage-scoped selection/menu defenses: the annotation stage is a
+  // drawing surface, not a document — context menus, text selection, and
+  // drag-start inside it fight the gesture recognizers on WebKit. Scoped
+  // to the letterbox wrap only (the panel and its inputs live outside).
+  if (letterboxWrap) {
+    var killStageEvent = function (e) {
+      try {
+        e.preventDefault();
+      } catch (_e) {}
+      return false;
+    };
+    letterboxWrap.addEventListener("contextmenu", killStageEvent);
+    letterboxWrap.addEventListener("selectstart", killStageEvent);
+    letterboxWrap.addEventListener("dragstart", killStageEvent);
   }
 
   // Toolbar buttons (shown to both roles).
@@ -914,6 +965,62 @@
     success: "Synced",
     waiting: "Connecting…",
   };
+  // Honest copy on iOS: ambient clipboard sync is disabled there (Paste
+  // callout would interrupt annotation gestures), so the pill must not
+  // claim an ambient "Sync ready" that cannot happen. Manual paste is
+  // the supported path and works the same on both roles.
+  if (IS_IOS_WEBKIT) LOC_SYNC_LABELS.idle = "Manual view sync";
+
+  // Whether ANY ambient (non-manual) clipboard read may run right now.
+  // Layered, all fail-closed:
+  //   - missing anno-input module → cannot verify the platform → never;
+  //   - iOS/iPadOS WebKit → never (native Paste callout, the root cause
+  //     of the annotation-interruption bug);
+  //   - any annotation tool active (Draw / Focus Rope / Pointer) → never,
+  //     on EVERY platform — a clipboard prompt mid-gesture is exactly the
+  //     interruption this exists to prevent.
+  // The manual paste field bypasses this on purpose: it reads its own
+  // input value, never the clipboard API.
+  function annotationToolActive() {
+    return toolMode === "draw" || toolMode === "rope" || toolMode === "pointer";
+  }
+  function ambientClipboardAllowed() {
+    if (!ANNO_INPUT_OK) return false;
+    if (IS_IOS_WEBKIT) return false;
+    if (annotationToolActive()) return false;
+    return true;
+  }
+
+  // Desktop clipboard-read permission, tracked WITHOUT calling readText()
+  // — probing via read is exactly what raises the Paste callout / prompt.
+  // "unknown" (Permissions API absent or query unsupported) keeps the
+  // mouse pointerenter fast-path OFF; focus/visibility ambient reads keep
+  // their legacy desktop behavior behind ambientClipboardAllowed().
+  var clipPermissionState = "unknown";
+  (function trackClipboardPermission() {
+    if (IS_IOS_WEBKIT) return;
+    try {
+      if (navigator && navigator.permissions && typeof navigator.permissions.query === "function") {
+        var q = navigator.permissions.query({ name: "clipboard-read" });
+        if (q && typeof q.then === "function") {
+          q.then(
+            function (st) {
+              if (!st || typeof st.state !== "string") return;
+              clipPermissionState = st.state;
+              try {
+                st.onchange = function () {
+                  clipPermissionState = st.state;
+                };
+              } catch (_e) {}
+            },
+            function () {
+              // query rejected (name unsupported) — stay "unknown"
+            },
+          );
+        }
+      }
+    } catch (_e) {}
+  })();
 
   function showTips() {
     if (!tipsEl) return;
@@ -1137,6 +1244,7 @@
   }
 
   function readClipboardAndSend() {
+    if (!ambientClipboardAllowed()) return;
     var s = session.getState();
     if ((s.role !== "visitor" && s.role !== "agent") || !s.isConnected) return;
     if (!navigator || !navigator.clipboard || typeof navigator.clipboard.readText !== "function") return;
@@ -1166,6 +1274,7 @@
   }
 
   function schedulePoll() {
+    if (!ambientClipboardAllowed()) return;
     if (document.hidden) return;
     var s = session.getState();
     if ((s.role !== "visitor" && s.role !== "agent") || !s.isConnected) return;
@@ -1190,7 +1299,15 @@
     if (!document.hidden) schedulePoll();
   });
   if (letterboxWrap) {
-    letterboxWrap.addEventListener("pointerenter", schedulePoll);
+    // Ambient read on stage entry: a REAL mouse only, and only when the
+    // desktop clipboard-read permission is already confirmed granted via
+    // the Permissions API — never as a readText() permission probe, and
+    // never for touch/pen (those are annotation hands, not sync intent).
+    letterboxWrap.addEventListener("pointerenter", function (e) {
+      if (!e || e.pointerType !== "mouse") return;
+      if (clipPermissionState !== "granted") return;
+      schedulePoll();
+    });
     letterboxWrap.addEventListener("pointerenter", function () {
       var st = session.getState();
       if (st.role !== "visitor" && st.role !== "agent") return;
@@ -1214,6 +1331,12 @@
   } catch (_e) {}
 
   function preGrantClipboard() {
+    // NEVER on iOS/iPadOS: this readText() probe IS the native Paste
+    // callout. Also skipped when the platform detector is unavailable
+    // (fail closed). Desktop keeps the session-start prompt (it runs
+    // inside the Host/Join click gesture) so later ambient reads are
+    // silent instead of prompting mid-tour.
+    if (IS_IOS_WEBKIT || !ANNO_INPUT_OK) return;
     try {
       if (navigator && navigator.clipboard && typeof navigator.clipboard.readText === "function") {
         navigator.clipboard.readText().then(
@@ -1476,6 +1599,10 @@
       reportVoiceCapability();
       if (!clipboardReadAvailable()) {
         setManualStatus("Clipboard read is unavailable here — paste the Matterport link below to sync.");
+      } else if (IS_IOS_WEBKIT) {
+        // readText exists on iOS but ambient use is disabled by design;
+        // say so honestly instead of implying automatic sync.
+        setManualStatus("On iPhone or iPad, paste the Matterport link below to sync views.");
       } else {
         setManualStatus("");
       }

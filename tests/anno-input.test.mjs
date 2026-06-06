@@ -19,6 +19,7 @@ import {
   createAnnoPointerGuard,
   annoCollectPoints,
   annoClampDpr,
+  annoIsIosWebKit,
   annoIsCoarsePointer,
   annoBindViewportEvents,
 } from "../src/lib/portal/anno-input.mjs";
@@ -183,6 +184,46 @@ test("annoClampDpr clamps at the cap and sanitizes garbage", () => {
   assert.equal(annoClampDpr(NaN, 2.5), 1);
   assert.equal(annoClampDpr(undefined, 2.5), 1);
   assert.equal(annoClampDpr(3, NaN), 2.5, "garbage cap maps to the 2.5 default");
+});
+
+// ── 4b. iOS / iPadOS WebKit detection ────────────────────────────────────
+test("annoIsIosWebKit detects classic iOS identifiers (platform and UA, incl. iOS Chrome)", () => {
+  assert.equal(annoIsIosWebKit({ platform: "iPhone", maxTouchPoints: 5 }), true);
+  assert.equal(annoIsIosWebKit({ platform: "iPad", maxTouchPoints: 5 }), true);
+  assert.equal(
+    annoIsIosWebKit({
+      platform: "",
+      userAgent:
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 CriOS/120.0",
+      maxTouchPoints: 5,
+    }),
+    true,
+    "iOS Chrome (CriOS) carries iPhone in the UA",
+  );
+});
+
+test("annoIsIosWebKit detects iPad desktop mode (MacIntel + maxTouchPoints > 1)", () => {
+  assert.equal(
+    annoIsIosWebKit({
+      platform: "MacIntel",
+      userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15",
+      maxTouchPoints: 5,
+    }),
+    true,
+  );
+});
+
+test("annoIsIosWebKit stays false for real desktops and bad input", () => {
+  assert.equal(
+    annoIsIosWebKit({ platform: "MacIntel", userAgent: "Mozilla/5.0 (Macintosh…)", maxTouchPoints: 0 }),
+    false,
+    "a real Mac has no touch points",
+  );
+  assert.equal(
+    annoIsIosWebKit({ platform: "Win32", userAgent: "Mozilla/5.0 (Windows NT 10.0)", maxTouchPoints: 0 }),
+    false,
+  );
+  assert.equal(annoIsIosWebKit({}), false, "empty navigator fails closed to false");
 });
 
 // ── 5. Coarse-pointer detection ──────────────────────────────────────────
