@@ -126,7 +126,7 @@ function buildCss(accent: string): string {
 :root{--lt-accent:${accent}}
 
 /* ── Letterbox + annotation overlay ───────────────────────────────── */
-#anno-letterbox-wrap{position:absolute;inset:0}
+#anno-letterbox-wrap{position:absolute;inset:0;touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 #anno-letterbox-wrap iframe{width:100%;height:100%;border:none;display:block}
 #anno-canvas{position:absolute;inset:0;display:block;width:100%;height:100%;pointer-events:none;z-index:5;touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
 #anno-canvas.pointer-mode,#anno-canvas.draw-mode,#anno-canvas.rope-mode{pointer-events:auto;cursor:crosshair}

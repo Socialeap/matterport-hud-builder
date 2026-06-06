@@ -15,7 +15,10 @@
 //     (controller + glue + CSS). Bump on every behavior change; the
 //     Upgrade Center compares this value to decide "outdated".
 const ATLAS_PACKAGE_SCHEMA = 2;
-const ATLAS_RUNTIME_VERSION = "2.0.0";
+// 2.0.1: iOS clipboard isolation — ambient readText() disabled on
+// iOS/iPadOS WebKit (Paste-callout interruption fix) + stage-scoped
+// WebKit gesture defenses.
+const ATLAS_RUNTIME_VERSION = "2.0.1";
 
 // Capability strings are ACCEPTANCE-GATED (decision 2026-06-06): a
 // capability may be listed here only after its phase passes acceptance

@@ -83,6 +83,15 @@ test("glue wires the reused controller API + Atlas config hook", () => {
     "ropeMoveDragging",
     "latchHitRadiusPx",
     "ANNO_INPUT_OK", // fail-closed gate when anno-input is missing
+    // iOS clipboard isolation + WebKit gesture defenses.
+    "annoIsIosWebKit",
+    "ambientClipboardAllowed",
+    "clipboard-read", // Permissions API query — never a readText() probe
+    "Manual view sync",
+    "contextmenu",
+    "selectstart",
+    "dragstart",
+    "touchstart",
   ]) {
     assert.ok(GLUE.includes(needle), `expected glue to reference: ${needle}`);
   }
@@ -673,4 +682,209 @@ test("fail closed without anno-input: location sync stays fully functional", () 
     "https://my.matterport.com/show/?m=abc&ss=42&sr=-1.5,2.25";
   els["lt-manual-sync-btn"].fire("click");
   assert.deepEqual(spy.share, [["42", "-1.5,2.25"]], "manual sync unaffected by the fail-closed state");
+});
+
+// ── 7. iOS clipboard isolation ────────────────────────────────────────────
+// On iOS/iPadOS WebKit, navigator.clipboard.readText() raises the native
+// Paste callout and interrupts annotation gestures. These tests prove the
+// ambient location-sync system performs ZERO automatic readText calls on
+// iOS-like navigators across every historical trigger, while the manual
+// paste fallback (which never touches the clipboard API) keeps working.
+function clipboardReadSpy() {
+  const calls = { readText: 0 };
+  return {
+    calls,
+    clipboard: {
+      readText() {
+        calls.readText += 1;
+        return Promise.resolve("");
+      },
+      writeText() {
+        return Promise.resolve();
+      },
+    },
+  };
+}
+
+function iphoneNav() {
+  const c = clipboardReadSpy();
+  return {
+    calls: c.calls,
+    nav: {
+      platform: "iPhone",
+      userAgent:
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
+      maxTouchPoints: 5,
+      clipboard: c.clipboard,
+    },
+  };
+}
+
+function ipadDesktopNav() {
+  const c = clipboardReadSpy();
+  return {
+    calls: c.calls,
+    nav: {
+      platform: "MacIntel",
+      userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15",
+      maxTouchPoints: 5,
+      clipboard: c.clipboard,
+    },
+  };
+}
+
+function desktopGrantedNav() {
+  const c = clipboardReadSpy();
+  return {
+    calls: c.calls,
+    nav: {
+      platform: "Win32",
+      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+      maxTouchPoints: 0,
+      clipboard: c.clipboard,
+      permissions: {
+        query: () => Promise.resolve({ state: "granted" }),
+      },
+    },
+  };
+}
+
+// Runner with a navigator override, a handler-recording window (so the
+// "focus" ambient trigger can be fired), and a seeded sync pill so the
+// connected-state label copy is assertable.
+function runGlueWithNav(nav, controllerFactory) {
+  const { els, document } = makeFakeDom();
+  const pill = document.getElementById("loc-sync");
+  pill.attrs["data-state"] = "waiting";
+  const pillLabel = new FakeEl("loc-sync-label");
+  pill.querySelector = () => pillLabel;
+  const window = {
+    __ATLAS_LT_CONFIG: {
+      accent: "#818cf8",
+      matterportBaseUrl: "https://my.matterport.com/show/?m=abc&play=1",
+      shareTitle: "Test Space",
+      stops: [],
+    },
+    _h: Object.create(null),
+    addEventListener(ev, fn) {
+      (this._h[ev] || (this._h[ev] = [])).push(fn);
+    },
+    requestAnimationFrame: (cb) => {
+      cb();
+      return 0;
+    },
+    devicePixelRatio: 2,
+    location: { href: "https://example.com/test/" },
+  };
+  // eslint-disable-next-line no-new-func
+  const fn = new Function(
+    "window",
+    "document",
+    "navigator",
+    "createLiveSession",
+    "ResizeObserver",
+    BODY,
+  );
+  fn(window, document, nav, controllerFactory, undefined);
+  const fireWin = (ev) => (window._h[ev] || []).forEach((f) => f({}));
+  const fireDoc = (ev, payload) =>
+    (document._h[ev] || []).forEach((f) =>
+      f(Object.assign({ preventDefault() {}, target: null, key: "" }, payload || {})),
+    );
+  return {
+    els,
+    pillLabel,
+    fireWin,
+    fireDoc,
+    canvas: els["anno-canvas"],
+    letterbox: els["anno-letterbox-wrap"],
+  };
+}
+
+test("iOS (iPhone): zero readText across stage entry, focus, visibility, and drawing", () => {
+  const { calls, nav } = iphoneNav();
+  const spy = { teleport: [], share: [] };
+  const { pillLabel, fireWin, fireDoc, canvas, letterbox } = runGlueWithNav(nav, () => {
+    // Fire the initial state so onState runs its connected branch (the
+    // pill label copy under test is applied there).
+    const c = makeConnectedController("visitor", spy);
+    c.subscribe = (fn) => {
+      fn(c.getState());
+      return () => {};
+    };
+    return c;
+  });
+  // Every historical ambient trigger:
+  letterbox.fire("pointerenter", { pointerType: "mouse" });
+  letterbox.fire("pointerenter", { pointerType: "touch" });
+  fireWin("focus");
+  fireDoc("visibilitychange");
+  // Full drawing gesture (the interruption scenario):
+  fireDoc("keydown", { key: "d" });
+  canvas.fire("pointerdown", touchEv(1, 100, 100));
+  canvas.fire("pointermove", touchEv(1, 200, 200));
+  canvas.fire("pointerup", touchEv(1, 200, 200));
+  assert.equal(calls.readText, 0, "iOS must never auto-read the clipboard");
+  // Honest pill copy: no ambient-sync claim on iOS.
+  assert.equal(pillLabel.textContent, "Manual view sync");
+});
+
+test("iOS (iPad desktop mode): zero readText from starting or joining a session", () => {
+  const { calls, nav } = ipadDesktopNav();
+  const trackedCalls = { subscribe: 0, init: 0, join: null, dispose: 0, lastSubscriber: null };
+  const { els } = runGlueWithNav(nav, () => makeController(trackedCalls));
+  // Host path runs preGrantClipboard() before initializeAsAgent…
+  els["lt-host-start-btn"].fire("click");
+  assert.equal(trackedCalls.init, 1, "host start reached the controller");
+  // …and the guest join path runs it too.
+  els["lt-pin-input"].value = "1234";
+  els["lt-join-btn"].fire("click");
+  assert.equal(trackedCalls.join, "1234", "join reached the controller");
+  assert.equal(calls.readText, 0, "preGrant probe must be disabled on iOS");
+});
+
+test("iOS: manual paste fallback still syncs without touching the clipboard API", () => {
+  const { calls, nav } = iphoneNav();
+  const spy = { teleport: [], share: [] };
+  const { els } = runGlueWithNav(nav, () => makeConnectedController("visitor", spy));
+  els["lt-manual-sync-input"].value =
+    "https://my.matterport.com/show/?m=abc&ss=42&sr=-1.5,2.25";
+  els["lt-manual-sync-btn"].fire("click");
+  assert.deepEqual(spy.share, [["42", "-1.5,2.25"]], "manual sync works on iOS");
+  assert.equal(calls.readText, 0, "manual sync reads the input field, never the clipboard");
+});
+
+test("desktop control: granted real-mouse stage entry reads; touch/pen never does", async () => {
+  const { calls, nav } = desktopGrantedNav();
+  const spy = { teleport: [], share: [] };
+  const { letterbox } = runGlueWithNav(nav, () => makeConnectedController("visitor", spy));
+  // Let the Permissions API query settle (it is the ONLY permission
+  // mechanism — granted state is confirmed without any readText probe).
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(calls.readText, 0, "permission tracking alone must not read");
+  letterbox.fire("pointerenter", { pointerType: "touch" });
+  letterbox.fire("pointerenter", { pointerType: "pen" });
+  assert.equal(calls.readText, 0, "touch/pen stage entry never reads");
+  letterbox.fire("pointerenter", { pointerType: "mouse" });
+  assert.equal(calls.readText, 1, "granted mouse entry performs the ambient read");
+});
+
+test("any active annotation tool suppresses ambient reads on every platform", async () => {
+  const { calls, nav } = desktopGrantedNav();
+  const spy = { teleport: [], share: [] };
+  const { fireWin, fireDoc } = runGlueWithNav(nav, () => makeConnectedController("visitor", spy));
+  await new Promise((r) => setTimeout(r, 0));
+  // Draw active → all ambient triggers inert.
+  fireDoc("keydown", { key: "d" });
+  fireWin("focus");
+  fireDoc("visibilitychange");
+  assert.equal(calls.readText, 0, "no ambient reads while Draw is active");
+  // Pointer tool active → still inert.
+  fireDoc("keydown", { key: "p" });
+  fireWin("focus");
+  assert.equal(calls.readText, 0, "no ambient reads while Pointer is active");
+  // Tool exited → desktop ambient behavior resumes.
+  fireDoc("keydown", { key: "Escape" });
+  fireWin("focus");
+  assert.equal(calls.readText, 1, "ambient read resumes after the tool exits");
 });
