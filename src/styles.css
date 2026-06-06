@@ -271,6 +271,8 @@
   .atlas-modal-controls { width:min(96vw,1500px); display:flex; align-items:center; justify-content:flex-end; gap:0.375rem; flex-shrink:0; }
   .atlas-modal-ctrl { width:2.25rem; height:2.25rem; display:inline-flex; align-items:center; justify-content:center; background:rgba(15,23,42,0.92); border:1px solid #334155; border-radius:0.5rem; color:#cbd5e1; cursor:pointer; transition:all 0.15s; }
   .atlas-modal-ctrl:hover { background:#334155; color:#fff; }
+  .atlas-modal-ctrl--fullscreen { border-color:#3b82f6; color:#f8fafc; }
+  .atlas-modal-ctrl--fullscreen svg { color:#60a5fa; }
   /* Width ~min(96vw,1500px) for immersive viewing; height fills what's left
      of the viewport but is capped near 16:9 (+ showcase bar) so wide screens
      don't stretch the tour into tall black letterbox bars. */
