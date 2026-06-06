@@ -485,16 +485,22 @@ function AtlasPage() {
                 No listings match your filters.
               </div>
             ) : (
-              filtered.map((entry) => (
-                <ListingCard
-                  key={entry.id}
-                  entry={entry}
-                  selected={selectedId === entry.id}
-                  onHover={() => setSelectedId(entry.id)}
-                  onFocus={() => focusEntry(entry)}
-                  onOpen={() => entry.presentation_url && setActive(entry)}
-                />
-              ))
+              <>
+                {filtered.map((entry, i) => (
+                  <ListingCard
+                    key={entry.id}
+                    entry={entry}
+                    selected={selectedId === entry.id}
+                    shouldLoad={i < visibleCount}
+                    onHover={() => setSelectedId(entry.id)}
+                    onFocus={() => focusEntry(entry)}
+                    onOpen={() => entry.presentation_url && setActive(entry)}
+                  />
+                ))}
+                {visibleCount < filtered.length && (
+                  <div ref={sentinelRef} aria-hidden="true" style={{ height: 1 }} />
+                )}
+              </>
             )}
           </div>
 
