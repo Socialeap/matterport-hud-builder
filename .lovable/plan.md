@@ -1,46 +1,105 @@
-# Atlas listing cards: image backgrounds with lazy loading
+# Atlas deep-link sharing
 
-## Goal
-Make each left-column card on `/atlas` visually richer by rendering the entry's hero image (or category fallback) as a tinted background behind existing text, while keeping perf tight: only the first 10 cards request images immediately; the rest load as they scroll into view.
+Make every "share this destination" surface emit the canonical Atlas URL
+`https://www.frontiers3d.com/atlas?spot=<entry-id>` (honoring `getPublicBaseUrl`)
+instead of the standalone netlify presentation URL.
 
-## Scope
-Frontend only. `src/routes/atlas.tsx` + `src/styles.css`. No data, route, or backend changes.
+## 1. Deep-link state on `/atlas` (`src/routes/atlas.tsx`)
 
-## Changes
+- Add a typed search schema to the route:
+  ```ts
+  validateSearch: (s) => ({ spot: typeof s.spot === "string" ? s.spot : undefined })
+  ```
+- In the page component, read `spot` via `Route.useSearch()`.
+- After `listActiveAtlasEntries` resolves, if `spot` matches an entry id and
+  that entry has a `presentation_url`, call `setActive(entry)` and
+  `setSelectedId(entry.id)` once (guard with a ref so re-renders don't re-open
+  after the user closes it).
+- When the modal opens via card click, push `?spot=<id>` using
+  `router.navigate({ search: { spot: id }, replace: false })`.
+- When the modal closes (`setActive(null)`), clear it with
+  `router.navigate({ search: {}, replace: true })`.
+- Entries with no coordinates / no presentation_url are ignored (fallback: no
+  auto-open, page still renders normally).
 
-### 1. `ListingCard` (src/routes/atlas.tsx)
-- Resolve image URL with the same two-step fallback already used in tooltips/expanded cards:
-  `entry.hero_image_url || getCategoryImageUrl(entry.category)`.
-- Add a `shouldLoad: boolean` prop driven by the parent (see #2). When `false`, render the card with the dark fallback background only — no `background-image` set, no network request.
-- When `shouldLoad` is `true`, set `style={{ backgroundImage: \`url("\${url}")\` }}` on a new `.atlas-card-bg` layer inside the card.
-- Use a hidden `<img loading="lazy" decoding="async" onError>` probe to detect broken hero URLs and silently fall through to the category image (mirrors `ExpandedSpaceCard` pattern). Two-state: `heroFailed`, `catFailed`.
-- Preserve all existing markup, classes, click/hover handlers; just wrap inner content in a relative container above the background + tint layers.
+## 2. New helper: Atlas canonical URL
 
-### 2. Lazy load batching (parent list, around the `.atlas-list` render)
-- Track `visibleCount` state, initialized to `10`.
-- Use a single `IntersectionObserver` attached to a sentinel `<div>` rendered at the bottom of the list. When the sentinel intersects the scroll viewport, bump `visibleCount` by `10` (capped at `entries.length`).
-- Pass `shouldLoad={index < visibleCount}` to each `ListingCard`.
-- Reset `visibleCount` to 10 whenever the filtered entry list identity changes (search/category filter), so a new filter doesn't immediately request 100 images.
-- Cleanup observer on unmount.
+Add to `src/lib/public-url.ts`:
+```ts
+export function buildAtlasSpotUrl(entryId: string): string {
+  return `${getPublicBaseUrl({ scope: "platform" })}/atlas?spot=${encodeURIComponent(entryId)}`;
+}
+```
+Platform scope ensures we always use `www.frontiers3d.com` (never the
+netlify showcase domain), even when viewed from a preview build.
 
-Rationale: IntersectionObserver on a sentinel is simpler and more reliable than per-card observers, and naturally limits in-flight image requests to the first batch on initial render.
+## 3. Modal controls (`PresentationModal` in `src/routes/atlas.tsx`)
 
-### 3. CSS (src/styles.css, atlas components layer)
-- Add `.atlas-card` rules: `position:relative; overflow:hidden; isolation:isolate;` keep existing `background:#0f172a` as the fallback color.
-- Add `.atlas-card-bg`: absolutely positioned, `inset:0; z-index:0; background-size:cover; background-position:center; background-repeat:no-repeat;`.
-- Add `.atlas-card-tint`: absolutely positioned, `inset:0; z-index:1; background:linear-gradient(180deg, rgba(15,23,42,0.82) 0%, rgba(15,23,42,0.92) 100%);` — enough opacity to keep current text colors (`#fff` title, `#94a3b8` body) fully legible per WCAG AA on any image.
-- Ensure all existing inner content sits at `z-index:2` via a `.atlas-card-inner` wrapper (or `& > *:not(.atlas-card-bg):not(.atlas-card-tint) { position:relative; z-index:2; }`).
-- On `:hover` and `.is-selected`, slightly drop the tint top-stop opacity (e.g. `0.72 → 0.92`) so the image breathes a little — keeps interactivity feedback without sacrificing contrast.
+- Change the existing `↗` "Open in new tab" anchor's `href` from
+  `entry.presentation_url` to `buildAtlasSpotUrl(entry.id)`. Title/aria
+  updated to "Open Atlas link in new tab".
+- Add a new `Share` control (lucide `Share2` icon) next to it:
+  - Click handler tries `navigator.share({ url, title })` when available
+    (mobile), else falls back to `navigator.clipboard.writeText(url)` and
+    shows a brief "Link copied" toast via the existing `sonner` toast (already
+    used elsewhere in the app — verify import path during implementation).
+  - URL = `buildAtlasSpotUrl(entry.id)`.
 
-### 4. Non-goals
-- No change to map pins, tooltips, expanded card, admin curation form, or `CATEGORY_IMAGES` mapping.
-- No virtualization library — IntersectionObserver batching is sufficient at expected list sizes (<200).
-- No new dependencies.
+## 4. In-iframe Share button bridge
+
+The showcase's `.f3d-bar` Share button lives in the
+`frontiers3d-atlas-showcases` repo, not here. To make it emit the Atlas URL
+without duplicating logic, add a lightweight postMessage protocol:
+
+**Atlas side (parent — this repo, `PresentationModal`):**
+- On mount, register a `message` listener (scoped to the modal lifetime,
+  removed on unmount).
+- Accept only messages where `event.source === iframeRef.current?.contentWindow`
+  AND `event.data?.type === "f3d:request-share-url"`.
+- Reply with `iframe.contentWindow.postMessage({ type: "f3d:share-url", url: buildAtlasSpotUrl(entry.id) }, "*")`.
+  (Target origin `*` is acceptable here: the payload is a public URL, contains
+  no secrets, and the showcase origin is allowed to vary by deployment.)
+- Add an `iframeRef` to the existing `<iframe>`.
+
+**Showcase side (separate repo — documented, NOT implemented here):**
+- Add a `BACKEND_ACTIVATION.md` note? No — this is a sibling-repo code change,
+  not a Supabase activation. Instead, add a short note to the bottom of the
+  plan output for the user explaining the showcase-repo change needed:
+  > In the showcase template, the Share button handler should
+  > `window.parent.postMessage({type:"f3d:request-share-url"}, "*")` and
+  > listen for `f3d:share-url` to receive the canonical URL; if no reply
+  > arrives within ~200ms (standalone open, not embedded), fall back to
+  > `window.location.href` as today.
+
+The Atlas-side bridge is harmless until the showcase ships its half — no
+regression for currently-deployed showcases.
+
+## 5. Out of scope
+
+- No changes to `atlas_entries` schema, RLS, or server functions.
+- No changes to the `ExpandedSpaceCard`, listing cards, map markers, admin UI,
+  or curation flow.
+- No new routes, no slug column, no SSR OG-tag work for `?spot=` (can be a
+  follow-up; current head() copy stays generic).
+
+## Files touched
+
+- `src/routes/atlas.tsx` — search schema, auto-open effect, navigate on
+  open/close, modal `iframeRef`, postMessage listener, updated `↗` href, new
+  Share button.
+- `src/lib/public-url.ts` — `buildAtlasSpotUrl` helper.
 
 ## Verification
-- Load `/atlas`: first 10 cards show category/hero backgrounds with dark tint; Network panel shows ≤10 image requests initially.
-- Scroll the left column: next batches of 10 load progressively; total requests = number of cards seen.
-- Title, category chip, location, summary, footer all remain readable on every image.
-- Apply a category filter or search: visible count resets, images load in batches again for the new list.
-- Card with a broken `hero_image_url` silently falls back to its category image; card with broken category image falls back to the dark gradient — no console errors.
-- Existing hover / selected / click-to-open behavior unchanged.
+
+1. Click any card → URL becomes `/atlas?spot=<id>`; modal opens.
+2. Close modal → `spot` removed from URL.
+3. Paste `/atlas?spot=<id>` into a fresh tab → modal auto-opens for that entry.
+4. Click the modal `↗` → new tab opens `https://www.frontiers3d.com/atlas?spot=<id>` (not netlify).
+5. Click the new Share button → URL copied; toast shows "Link copied".
+6. Unknown / inactive / coords-less spot id → page renders normally, no modal.
+7. Existing card hover, map markers, lazy backgrounds, expanded card, admin
+   flows: unchanged.
+
+Backend Activation Required: NO
+Reason: Frontend-only change. No migrations, edge functions, RLS, secrets,
+or storage involved.
