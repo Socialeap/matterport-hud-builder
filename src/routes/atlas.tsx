@@ -986,6 +986,9 @@ function PresentationModal({ entry, onClose }: { entry: AtlasEntry; onClose: () 
           aria-pressed={isFullscreen}
         >
           {isFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+          <span className="atlas-modal-ctrl-label">
+            {isFullscreen ? "Exit" : "Fullscreen"}
+          </span>
         </button>
         <a
           href={shareUrl}

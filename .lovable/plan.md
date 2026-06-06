@@ -1,11 +1,31 @@
-The current fullscreen control exists on the underlying Atlas map header, but `/atlas?spot=...` immediately opens the immersive showcase modal. That modal covers the map header, so the new button is hidden behind the modal in the exact view shown in your screenshot.
+## Findings
 
-Plan:
-1. Add the fullscreen toggle directly to the visible modal control bar, next to Share / Open / Close.
-2. Wire it to fullscreen the modal viewer shell (`.atlas-modal-backdrop` or `.atlas-modal`) instead of only the underlying map page shell.
-3. Keep the existing fallback behavior so browsers or embedded contexts that reject native fullscreen use CSS pseudo-fullscreen.
-4. Make the button unmistakable with an expand/collapse icon plus an explicit accessible label/title: “Enter fullscreen” / “Exit fullscreen”.
-5. Verify the actual `/atlas?spot=...` view at the screenshot-sized viewport and confirm the fullscreen button is visible in the modal controls.
+- The fullscreen control is now present and working in the Atlas modal toolbar.
+- On mobile and tablet, the embedded showcase content has its own top bar directly under the modal controls. The current fullscreen button is icon-only and competes with Share/Open/Close, so it is easy to miss and can feel like part of a small floating icon cluster rather than a primary viewer action.
+- The safer fix is not to depend on the underlying page header on small screens. The visible modal toolbar should explicitly prioritize fullscreen for touch devices.
 
-Backend Activation Required: NO
-Reason: UI-only change to the Atlas route and existing fullscreen hook; no backend/database/auth changes.
+## Safe fix
+
+1. Update `src/routes/atlas.tsx`
+   - Keep the existing desktop modal fullscreen icon.
+   - Add a mobile/tablet-only, clearly labeled fullscreen button inside the visible modal controls area.
+   - Preserve the existing `useFullscreen(modalRef)` behavior and native/CSS fallback.
+   - Keep Share, Open, and Close available.
+
+2. Update `src/styles.css`
+   - Make `.atlas-modal-controls` responsive:
+     - Desktop: keep the compact right-aligned icon row.
+     - Tablet/mobile: use a two-row/wrapping control layout where the fullscreen action has a text label like `Fullscreen` / `Exit full` and a larger touch target.
+   - Ensure controls stay above the embedded iframe/showcase with explicit sizing and z-index.
+   - Avoid hiding controls at narrow widths and prevent overflow/clipping on 320px-wide phones.
+
+3. Verify
+   - Check `/atlas?spot=b3b73f4d-f042-4b54-b4bb-153073fb90e6` at phone, tablet, and desktop viewport sizes.
+   - Confirm the fullscreen button is visibly present before interaction and still toggles fullscreen/pseudo-fullscreen.
+   - Confirm no backend changes are required.
+
+## Backend Activation Required
+
+NO
+
+Reason: This is a frontend-only responsive layout and UI visibility fix for the Atlas page.
