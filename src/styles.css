@@ -273,6 +273,7 @@
   .atlas-modal-ctrl:hover { background:#334155; color:#fff; }
   .atlas-modal-ctrl--fullscreen { border-color:#3b82f6; color:#f8fafc; }
   .atlas-modal-ctrl--fullscreen svg { color:#60a5fa; }
+  .atlas-modal-ctrl-label { display:none; }
   /* Width ~min(96vw,1500px) for immersive viewing; height fills what's left
      of the viewport but is capped near 16:9 (+ showcase bar) so wide screens
      don't stretch the tour into tall black letterbox bars. */
