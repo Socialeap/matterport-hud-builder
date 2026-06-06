@@ -135,6 +135,13 @@ export interface LiveSessionState {
   error: string | null;
   isConnected: boolean;
   remoteStream: MediaStream | null;
+  /**
+   * True while a media call is wired (placed or answered) and not yet
+   * closed/errored. With `remoteStream === null` it distinguishes "voice
+   * negotiating" from "voice attempt ended without a stream" — the UI
+   * re-offers Enable voice on the falling edge of the latter.
+   */
+  voiceCallActive: boolean;
   incomingTeleportEvent: LiveSessionTeleportEvent | null;
   incomingPointerEvent: LiveSessionPointerEvent | null;
   incomingStrokeEvent: LiveSessionStrokeEvent | null;
