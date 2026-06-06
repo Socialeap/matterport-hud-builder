@@ -101,6 +101,11 @@ export const Route = createFileRoute("/atlas")({
     links: [{ rel: "canonical", href: "https://www.frontiers3d.com/atlas" }],
   }),
 
+  validateSearch: (search: Record<string, unknown>) => ({
+    spot: typeof search.spot === "string" && search.spot.length > 0
+      ? search.spot
+      : undefined,
+  }),
   loader: async () => await listActiveAtlasEntries(),
   component: AtlasPage,
 });
