@@ -51,7 +51,11 @@ export function useFullscreen(targetRef: RefObject<Element | null>) {
   useEffect(() => {
     if (!isPseudoFs) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setIsPseudoFs(false);
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsPseudoFs(false);
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
