@@ -27,6 +27,7 @@ import {
   PartyPopper,
   Image as ImageIcon,
   Tag,
+  Share2,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
