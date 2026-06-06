@@ -84,3 +84,12 @@ export function buildPlatformUrl(path: string): string {
 export function buildInvitationUrl(token: string): string {
   return buildPlatformUrl(`/invite/${token}`);
 }
+
+/**
+ * Build the canonical Atlas deep-link URL for a given entry. Always anchored
+ * to the platform domain so shared links land back on /atlas (which auto-opens
+ * the destination's modal) rather than the standalone showcase URL.
+ */
+export function buildAtlasSpotUrl(entryId: string): string {
+  return buildPlatformUrl(`/atlas?spot=${encodeURIComponent(entryId)}`);
+}
