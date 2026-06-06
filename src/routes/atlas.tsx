@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/tooltip";
 import { listActiveAtlasEntries } from "@/lib/atlas.functions";
 import { categoryLabel, MAX_MAP_TAGS, type AtlasEntry } from "@/lib/atlas-demo-data";
+import { buildAtlasSpotUrl } from "@/lib/public-url";
 
 /** Lucide icon per known category (text-light scanning). Falls back to a tag. */
 const CATEGORY_ICONS: Record<string, LucideIcon> = {
