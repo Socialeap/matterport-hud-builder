@@ -477,22 +477,24 @@ function AtlasPage() {
             </div>
           </div>
           {fsEnabled && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={toggleFullscreen}
-                  className="atlas-fullscreen-btn"
-                  aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-                  aria-pressed={isFullscreen}
-                >
-                  {isFullscreen ? <Minimize2 className="size-[18px]" /> : <Maximize2 className="size-[18px]" />}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                {isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-              </TooltipContent>
-            </Tooltip>
+            <TooltipProvider delayDuration={300}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={toggleFullscreen}
+                    className="atlas-fullscreen-btn"
+                    aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+                    aria-pressed={isFullscreen}
+                  >
+                    {isFullscreen ? <Minimize2 className="size-[18px]" /> : <Maximize2 className="size-[18px]" />}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           )}
         </div>
       </header>
