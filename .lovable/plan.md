@@ -1,74 +1,57 @@
-## Plan: Fullscreen Toggle for /Atlas Page
+# Fix: Atlas fullscreen button not visible
 
-### Overview
-Add a clearly visible fullscreen toggle button to the Atlas page header. Clicking it enters/exits browser fullscreen mode for the entire Atlas page, hiding browser chrome to maximise the map and listing view.
+## Root cause
 
-### Browser & Mobile Compatibility
-The Fullscreen API is supported in:
-- Chrome/Edge (all versions)
-- Firefox (all versions)
-- Safari 16+ (macOS) and iOS 15.4+ (any element)
-- Android Chrome (all versions)
+The button is implemented correctly in `src/routes/atlas.tsx` (header right block), but it is gated on `fsEnabled`, which reads `document.fullscreenEnabled`. That property returns `false` whenever the page is loaded inside an iframe that wasn't granted `allow="fullscreen"`.
 
-The button will be **hidden on browsers that do not expose the API** (graceful degradation). On iPhones running older iOS, the button simply won't appear — no broken UI.
+Lovable's preview embeds the app in such an iframe, so `fsEnabled` is always `false` there and the button never renders. The same can happen in some embedded webviews on mobile. On the bare `frontiers3d.com/atlas` tab it would render, but the user has no way to confirm that from the preview, and we still want a working control in embedded contexts.
 
-### Files to Change
+## Fix
 
-| File | Change |
-|---|---|
-| `src/hooks/use-fullscreen.ts` | **New hook.** Wraps `requestFullscreen` / `exitFullscreen`, listens to `fullscreenchange`, exposes `isFullscreen`, `isEnabled`, `toggle()`. |
-| `src/routes/atlas.tsx` | Import hook + `Maximize2`/`Minimize2` icons. Add toggle button to `<header className="atlas-header">`. |
-| `src/styles.css` | Add `.atlas-fullscreen-btn` styles (dark-themed, bordered, 36×36 px, hover transition, visible on all screen sizes). |
+Make the control always render, and add a CSS-based "pseudo-fullscreen" fallback when the native Fullscreen API is unavailable or rejected. Behavior:
 
-### Button Placement
-Placed as the **last child** of `.atlas-header`, sitting to the right of the existing meta block on desktop and alone on the right on mobile (the meta block is hidden below 768 px, but the button remains visible).
+1. Always show the toggle button in the header (drop the `fsEnabled &&` gate).
+2. `toggle()` first tries the native Fullscreen API on `.atlas-shell`.
+3. If the API is missing OR `requestFullscreen` rejects (typical inside iframes — "Permission denied"), fall back to toggling a `.atlas-shell--pseudo-fs` class on the shell element. That class pins the shell to `position: fixed; inset: 0; z-index: 9999;` to fill the viewport (the iframe's viewport, when embedded).
+4. `Esc` key listener exits pseudo-fullscreen (the native API handles Esc itself).
+5. Icon + tooltip switch between Enter/Exit based on combined state (native fullscreen OR pseudo-fullscreen active).
 
-### Button Behaviour
-- **Icon:** `Maximize2` when not fullscreen, `Minimize2` when fullscreen.
-- **Tooltip:** "Enter fullscreen" / "Exit fullscreen" via existing `<Tooltip>` infrastructure.
-- **Touch target:** 36 × 36 px (above the 44 px recommendation where possible without breaking header height; the header is 64 px tall so 36 px fits comfortably).
-- **Keyboard:** `Esc` already exits fullscreen natively; no extra wiring needed.
+## Files to change
 
-### Technical Details
+**`src/hooks/use-fullscreen.ts`**
+- Remove the `isEnabled` gate from the public API (or keep it but always return `true` for "can attempt").
+- Add `isPseudoFullscreen` state.
+- New `toggle()` logic:
+  - If currently in native fullscreen → `exitFullscreen()`.
+  - Else if `isPseudoFullscreen` → clear it.
+  - Else → `try { await el.requestFullscreen() } catch { setIsPseudoFullscreen(true) }`. Also fall back if `requestFullscreen` is missing.
+- Add `Escape` keydown listener that clears pseudo-fullscreen.
+- Apply/remove `atlas-shell--pseudo-fs` class on the target element when pseudo-fullscreen flips, so styling is purely CSS.
+- Return `{ isFullscreen: nativeOrPseudo, toggle }`.
 
-**Hook signature:**
-```ts
-function useFullscreen(targetRef: RefObject<Element>): {
-  isFullscreen: boolean;
-  isEnabled: boolean;
-  toggle: () => void;
-}
-```
+**`src/routes/atlas.tsx`**
+- Remove the `{fsEnabled && (...)}` wrapper around the Tooltip; render the button unconditionally.
+- Update destructuring: `const { isFullscreen, toggle: toggleFullscreen } = useFullscreen(shellRef);`
 
-**Atlas page wiring:**
-1. Create a `shellRef = useRef<HTMLDivElement>(null)` on `.atlas-shell`.
-2. Pass `shellRef` to `useFullscreen`.
-3. In the header, render:
-   ```tsx
-   {isEnabled && (
-     <Tooltip …>
-       <button
-         onClick={toggle}
-         className="atlas-fullscreen-btn"
-         aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-       >
-         {isFullscreen ? <Minimize2 /> : <Maximize2 />}
-       </button>
-     </Tooltip>
-   )}
-   ```
+**`src/styles.css`** (atlas components layer)
+- Add:
+  ```css
+  .atlas-shell--pseudo-fs { position: fixed; inset: 0; z-index: 9999; height: 100vh; height: 100dvh; width: 100vw; }
+  ```
+  `100dvh` keeps it correct on mobile browsers with dynamic toolbars.
 
-**CSS additions:**
-- `.atlas-fullscreen-btn` — `display:inline-flex`, `align-items:center`, `justify-content:center`, `width:2.25rem`, `height:2.25rem`, `background:#0f172a`, `border:1px solid #1e293b`, `border-radius:0.5rem`, `color:#e2e8f0`, hover → `background:#1e293b`, `border-color:#334155`, `color:#fff`.
-- Same visual language as the existing map zoom controls (`.atlas-map-ctrl`) for consistency.
+## Compatibility notes
 
-### Out of Scope
-- No changes to the embedded showcase iframe (fullscreen inside the modal is handled by the showcase's own player, not this page-level toggle).
-- No backend, database, or auth changes.
+- Desktop Chrome/Edge/Firefox/Safari at the top level → native fullscreen, Esc exits natively.
+- Inside Lovable preview iframe or any embed without `allow="fullscreen"` → automatically falls back to pseudo-fullscreen, Esc still exits.
+- iOS Safari (no element fullscreen on older versions) → pseudo-fullscreen fallback.
+- No changes to the showcase iframe, no backend/database/auth changes.
 
-### Verification Steps
-1. Load `/atlas` on desktop — button visible in header, right side.
-2. Click button — page enters fullscreen, icon flips to `Minimize2`.
-3. Press `Esc` — exits fullscreen, icon flips back.
-4. On mobile (or emulated) — button visible; tap toggles fullscreen where supported.
-5. On browsers without Fullscreen API — button hidden, page renders normally.
+## Verification
+
+- Preview iframe: button visible in header; click expands the Atlas shell to fill the preview frame; click again or press Esc restores.
+- Published `frontiers3d.com/atlas` in a normal tab: button visible; click enters real browser fullscreen; Esc exits.
+- Mobile width: button still visible (it lives in `.atlas-header-right`, outside the `>=768px` `.atlas-header-meta` block).
+
+Backend Activation Required: NO
+Reason: UI-only change in the Atlas page hook, route, and stylesheet.

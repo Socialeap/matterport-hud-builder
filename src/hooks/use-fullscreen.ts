@@ -4,11 +4,12 @@ import { useCallback, useEffect, useState, type RefObject } from "react";
 interface FsDocument extends Document {
   webkitFullscreenElement?: Element | null;
   webkitExitFullscreen?: () => Promise<void> | void;
-  webkitFullscreenEnabled?: boolean;
 }
 interface FsElement extends Element {
   webkitRequestFullscreen?: () => Promise<void> | void;
 }
+
+const PSEUDO_CLASS = "atlas-shell--pseudo-fs";
 
 function getFsElement(): Element | null {
   if (typeof document === "undefined") return null;
@@ -16,24 +17,20 @@ function getFsElement(): Element | null {
   return d.fullscreenElement ?? d.webkitFullscreenElement ?? null;
 }
 
-function isFsEnabled(): boolean {
-  if (typeof document === "undefined") return false;
-  const d = document as FsDocument;
-  return Boolean(d.fullscreenEnabled ?? d.webkitFullscreenEnabled);
-}
-
 /**
- * Toggle browser fullscreen on a target element. Hook gracefully no-ops on
- * environments without the Fullscreen API (older iOS Safari) — consumers
- * should hide their trigger when `isEnabled` is false.
+ * Toggle fullscreen on a target element. Tries the native Fullscreen API
+ * first; if it is unavailable or rejected (typical inside iframes without
+ * `allow="fullscreen"`, e.g. embedded previews), falls back to a CSS
+ * pseudo-fullscreen by adding `.atlas-shell--pseudo-fs` to the target.
+ * `Escape` exits pseudo-fullscreen (native API handles Esc itself).
  */
 export function useFullscreen(targetRef: RefObject<Element | null>) {
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [isEnabled, setIsEnabled] = useState(false);
+  const [isNativeFs, setIsNativeFs] = useState(false);
+  const [isPseudoFs, setIsPseudoFs] = useState(false);
 
+  // Track native fullscreen changes.
   useEffect(() => {
-    setIsEnabled(isFsEnabled());
-    const onChange = () => setIsFullscreen(getFsElement() !== null);
+    const onChange = () => setIsNativeFs(getFsElement() !== null);
     document.addEventListener("fullscreenchange", onChange);
     document.addEventListener("webkitfullscreenchange", onChange);
     onChange();
@@ -43,20 +40,54 @@ export function useFullscreen(targetRef: RefObject<Element | null>) {
     };
   }, []);
 
+  // Sync pseudo-fullscreen class on target + handle Esc.
+  useEffect(() => {
+    const el = targetRef.current;
+    if (!el) return;
+    if (isPseudoFs) el.classList.add(PSEUDO_CLASS);
+    else el.classList.remove(PSEUDO_CLASS);
+  }, [isPseudoFs, targetRef]);
+
+  useEffect(() => {
+    if (!isPseudoFs) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsPseudoFs(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [isPseudoFs]);
+
   const toggle = useCallback(async () => {
     const el = targetRef.current as FsElement | null;
     if (!el) return;
-    try {
-      if (getFsElement()) {
+
+    // Exit paths first.
+    if (getFsElement()) {
+      try {
         const d = document as FsDocument;
         await (d.exitFullscreen?.() ?? d.webkitExitFullscreen?.());
-      } else {
-        await (el.requestFullscreen?.() ?? el.webkitRequestFullscreen?.());
+      } catch {
+        /* ignore */
       }
-    } catch {
-      // User denied / unsupported — silently ignore.
+      return;
     }
-  }, [targetRef]);
+    if (isPseudoFs) {
+      setIsPseudoFs(false);
+      return;
+    }
 
-  return { isFullscreen, isEnabled, toggle };
+    // Enter: try native, fall back to pseudo.
+    const request = el.requestFullscreen ?? el.webkitRequestFullscreen;
+    if (typeof request === "function") {
+      try {
+        await request.call(el);
+        return;
+      } catch {
+        // Permission denied (e.g. iframe without allow="fullscreen") — fall through.
+      }
+    }
+    setIsPseudoFs(true);
+  }, [isPseudoFs, targetRef]);
+
+  return { isFullscreen: isNativeFs || isPseudoFs, toggle };
 }
