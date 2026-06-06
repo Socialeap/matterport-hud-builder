@@ -455,19 +455,39 @@ function AtlasPage() {
           <Link to="/agents" className="text-[13px] text-slate-400 transition-colors hover:text-white">For Agents</Link>
           <Link to="/businesses" className="text-[13px] text-slate-400 transition-colors hover:text-white">For Businesses</Link>
         </nav>
-        <div className="atlas-header-meta">
-          <div>
-            <p className="atlas-header-kicker">Listings</p>
-            <p className="atlas-header-value">
-              <span className="atlas-pulse-dot" />
-              {entries.length} live now
-            </p>
+        <div className="atlas-header-right">
+          <div className="atlas-header-meta">
+            <div>
+              <p className="atlas-header-kicker">Listings</p>
+              <p className="atlas-header-value">
+                <span className="atlas-pulse-dot" />
+                {entries.length} live now
+              </p>
+            </div>
+            <span className="atlas-header-divider" />
+            <div>
+              <p className="atlas-header-kicker">Ecosystem</p>
+              <p className="atlas-header-value-muted">Hosts → Spaces → Guests</p>
+            </div>
           </div>
-          <span className="atlas-header-divider" />
-          <div>
-            <p className="atlas-header-kicker">Ecosystem</p>
-            <p className="atlas-header-value-muted">Hosts → Spaces → Guests</p>
-          </div>
+          {fsEnabled && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={toggleFullscreen}
+                  className="atlas-fullscreen-btn"
+                  aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+                  aria-pressed={isFullscreen}
+                >
+                  {isFullscreen ? <Minimize2 className="size-[18px]" /> : <Maximize2 className="size-[18px]" />}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+              </TooltipContent>
+            </Tooltip>
+          )}
         </div>
       </header>
 
