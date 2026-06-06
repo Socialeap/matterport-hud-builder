@@ -52,6 +52,10 @@ const ATLAS_LIVE_TOUR_SOURCE = path.join(
   ROOT,
   "src/lib/atlas-live-tour-runtime.mjs",
 );
+const ANNO_INPUT_SOURCE = path.join(
+  ROOT,
+  "src/lib/portal/anno-input.mjs",
+);
 
 // Escapes that are legal/intentional in a TS template literal and that we
 // do NOT want to flag:
@@ -313,6 +317,39 @@ function verifyLiveSessionRuntime() {
 }
 
 /**
+ * Same anti-drift gate for the shared mobile-input helpers
+ * (src/lib/portal/anno-input.mjs). Injected via ?raw between the
+ * live-session controller and the Atlas glue by atlas-live-tour.ts under
+ * the same browser-safety rules.
+ */
+function verifyAnnoInputRuntime() {
+  if (!fs.existsSync(ANNO_INPUT_SOURCE)) {
+    console.error(`[verify-html] Anno-input source not found: ${ANNO_INPUT_SOURCE}`);
+    process.exit(2);
+  }
+  const raw = fs.readFileSync(ANNO_INPUT_SOURCE, "utf8");
+  const stripped = stripExports(raw);
+  const offenders = findForbiddenTokens(stripped);
+  if (offenders.length > 0) {
+    console.error(
+      `[verify-html] ❌ anno-input.mjs contains browser-incompatible syntax:`,
+    );
+    for (const o of offenders) console.error(`    ${o}`);
+    process.exit(1);
+  }
+  try {
+    // eslint-disable-next-line no-new-func
+    new Function(stripped);
+    console.log(
+      `[verify-html] ✅ Anno-input runtime is browser-safe and parses cleanly (${stripped.length} chars).`,
+    );
+  } catch (err) {
+    console.error(`[verify-html] ❌ anno-input.mjs failed to parse: ${err.message}`);
+    process.exit(1);
+  }
+}
+
+/**
  * Same anti-drift gate for the Atlas "Explore Together" shared-tour runtime
  * (src/lib/atlas-live-tour-runtime.mjs). It is injected via ?raw into the
  * curated showcase HTML by atlas-live-tour.ts under the same browser-safety
@@ -520,6 +557,7 @@ function main() {
   verifyAskRuntimeModules();
   parseAskRuntime();
   verifyLiveSessionRuntime();
+  verifyAnnoInputRuntime();
   verifyAtlasLiveTourRuntime();
 
   const src = readSource();
