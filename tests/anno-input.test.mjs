@@ -19,6 +19,7 @@ import {
   createAnnoPointerGuard,
   annoCollectPoints,
   annoClampDpr,
+  annoBudgetDpr,
   annoIsIosWebKit,
   annoIsCoarsePointer,
   annoBindViewportEvents,
@@ -184,6 +185,30 @@ test("annoClampDpr clamps at the cap and sanitizes garbage", () => {
   assert.equal(annoClampDpr(NaN, 2.5), 1);
   assert.equal(annoClampDpr(undefined, 2.5), 1);
   assert.equal(annoClampDpr(3, NaN), 2.5, "garbage cap maps to the 2.5 default");
+});
+
+// ── 4a. Backing-store pixel budget ───────────────────────────────────────
+test("annoBudgetDpr passes a DPR through when the buffer fits the budget", () => {
+  // 1280×720 @2 → 3.68MP, well under the 9.4MP desktop budget.
+  assert.equal(annoBudgetDpr(1280, 720, 2, 9437184), 2);
+});
+
+test("annoBudgetDpr scales the DPR down to fit the budget exactly", () => {
+  // 1280×720 = 921600 css px; budget 2× that → dpr √2.
+  const out = annoBudgetDpr(1280, 720, 2, 1843200);
+  assert.ok(Math.abs(out - Math.SQRT2) < 1e-9, `expected √2, got ${out}`);
+  const pixels = 1280 * out * (720 * out);
+  assert.ok(pixels <= 1843200 + 1e-6, "result must respect the budget");
+});
+
+test("annoBudgetDpr floors at 1 and never raises the candidate DPR", () => {
+  assert.equal(annoBudgetDpr(4000, 3000, 2, 1000000), 1, "floor at native scale");
+  assert.equal(annoBudgetDpr(100, 100, 1.5, 1e12), 1.5, "huge budget never raises the dpr");
+});
+
+test("annoBudgetDpr sanitizes garbage input", () => {
+  assert.equal(annoBudgetDpr(0, -5, NaN, -1), 1);
+  assert.equal(annoBudgetDpr(undefined, undefined, undefined, undefined), 1);
 });
 
 // ── 4b. iOS / iPadOS WebKit detection ────────────────────────────────────

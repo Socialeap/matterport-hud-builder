@@ -15,10 +15,16 @@
 //     (controller + glue + CSS). Bump on every behavior change; the
 //     Upgrade Center compares this value to decide "outdated".
 const ATLAS_PACKAGE_SCHEMA = 2;
+// 2.0.2: P0 iPad connect-crash hardening — wrapper gesture CSS made
+// conditional on tool-active (Matterport navigation untouched
+// otherwise); lazy annotation-canvas allocation (nothing allocated at
+// PIN connect); iOS DPR cap 1.5 + backing-pixel budget; deferred voice
+// on iOS (no auto getUserMedia/AudioContext/media call — explicit
+// Enable voice gesture); sessionStorage diagnostic milestones.
 // 2.0.1: iOS clipboard isolation — ambient readText() disabled on
 // iOS/iPadOS WebKit (Paste-callout interruption fix) + stage-scoped
 // WebKit gesture defenses.
-const ATLAS_RUNTIME_VERSION = "2.0.1";
+const ATLAS_RUNTIME_VERSION = "2.0.2";
 
 // Capability strings are ACCEPTANCE-GATED (decision 2026-06-06): a
 // capability may be listed here only after its phase passes acceptance

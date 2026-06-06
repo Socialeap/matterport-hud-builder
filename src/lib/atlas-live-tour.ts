@@ -126,7 +126,11 @@ function buildCss(accent: string): string {
 :root{--lt-accent:${accent}}
 
 /* ── Letterbox + annotation overlay ───────────────────────────────── */
-#anno-letterbox-wrap{position:absolute;inset:0;touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+#anno-letterbox-wrap{position:absolute;inset:0}
+/* 2.0.2 wrapper fix: stage gesture hardening engages ONLY while an
+   annotation tool is active (body.anno-tool-active, toggled by
+   setToolMode) so Matterport navigation is untouched otherwise. */
+body.anno-tool-active #anno-letterbox-wrap{touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 #anno-letterbox-wrap iframe{width:100%;height:100%;border:none;display:block}
 #anno-canvas{position:absolute;inset:0;display:block;width:100%;height:100%;pointer-events:none;z-index:5;touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
 #anno-canvas.pointer-mode,#anno-canvas.draw-mode,#anno-canvas.rope-mode{pointer-events:auto;cursor:crosshair}
@@ -311,6 +315,7 @@ const PANEL_HTML = `<aside id="lt-panel" class="lt-panel" role="dialog" aria-lab
   </div>
   <div class="lt-panel-body">
     <p class="lt-intro">Tour this space together in real time — voice chat, synced views, and pointer / draw / focus-rope annotations.</p>
+    <div id="lt-diag" class="lt-mini-status" hidden></div>
     <div id="lt-role-choose" class="lt-role-choose">
       <button id="lt-host-start-btn" type="button" class="lt-btn primary">Host a tour</button>
       <button id="lt-guest-choose-btn" type="button" class="lt-btn">Join with a PIN</button>
@@ -339,6 +344,7 @@ const PANEL_HTML = `<aside id="lt-panel" class="lt-panel" role="dialog" aria-lab
       <button type="button" class="lt-btn lt-leave-btn" hidden>Leave tour</button>
     </div>
     <div id="lt-live-extras" hidden>
+      <button id="lt-enable-voice-btn" type="button" class="lt-btn primary" hidden>Enable voice</button>
       <div id="lt-voice-status" class="lt-voice-status" data-voice="off" aria-live="polite"></div>
       <div class="lt-manual-sync">
         <label class="lt-field-label" for="lt-manual-sync-input">Sync not working? Paste the Matterport &ldquo;Link to location&rdquo;</label>

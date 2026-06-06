@@ -149,6 +149,12 @@ export interface LiveSessionController {
   subscribe(fn: (state: LiveSessionState) => void): () => void;
   initializeAsAgent(): Promise<{ pin: string; peerId: string }>;
   joinAsVisitor(pin: string): Promise<{ pin: string; peerId: string }>;
+  /**
+   * User-gesture voice startup for deferred-voice (iOS) sessions; safe
+   * as a retry elsewhere. Resolves true when a media call was answered
+   * or placed; never affects the data connection.
+   */
+  startVoice(): Promise<boolean>;
   teleportVisitor(ss: string, sr: string): boolean;
   shareLocationWithAgent(ss: string, sr: string): boolean;
   sendPointer(viewKey: string, x: number | null, y: number | null): boolean;

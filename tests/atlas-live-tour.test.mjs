@@ -60,7 +60,16 @@ test("glue parses cleanly as a function body", () => {
 test("glue wires the reused controller API + Atlas config hook", () => {
   for (const needle of [
     "window.__ATLAS_LT_CONFIG",
-    "createLiveSession({})",
+    "createLiveSession({", // session factory (deferVoice + onDiagnostic opts)
+    "deferVoice: IS_IOS_WEBKIT",
+    "onDiagnostic: markMilestone",
+    "startVoice",
+    "lt-enable-voice-btn",
+    "ensureAnnoCanvasAllocated",
+    "annoBudgetDpr",
+    "anno-tool-active", // 2.0.2 conditional wrapper hardening
+    "markMilestone",
+    "resetMilestoneLog",
     "initializeAsAgent()",
     "joinAsVisitor(pin)",
     "shareLocationWithAgent",
@@ -354,6 +363,10 @@ function makeConnectedController(role, spy) {
     },
     sendClear: () => true,
     sendNavLock: () => true,
+    startVoice: () => {
+      spy.startVoice = (spy.startVoice || 0) + 1;
+      return Promise.resolve(true);
+    },
     dispose: () => {},
   };
 }
@@ -752,30 +765,37 @@ function desktopGrantedNav() {
 // Runner with a navigator override, a handler-recording window (so the
 // "focus" ambient trigger can be fired), and a seeded sync pill so the
 // connected-state label copy is assertable.
-function runGlueWithNav(nav, controllerFactory) {
+function runGlueWithNav(nav, controllerFactory, winExtra) {
   const { els, document } = makeFakeDom();
   const pill = document.getElementById("loc-sync");
   pill.attrs["data-state"] = "waiting";
   const pillLabel = new FakeEl("loc-sync-label");
   pill.querySelector = () => pillLabel;
-  const window = {
-    __ATLAS_LT_CONFIG: {
-      accent: "#818cf8",
-      matterportBaseUrl: "https://my.matterport.com/show/?m=abc&play=1",
-      shareTitle: "Test Space",
-      stops: [],
+  // Mirror the generated HTML's initial state: the Enable voice button
+  // ships with the `hidden` attribute (PANEL_HTML) and is only revealed
+  // by the deferred-voice connect branch.
+  document.getElementById("lt-enable-voice-btn").hidden = true;
+  const window = Object.assign(
+    {
+      __ATLAS_LT_CONFIG: {
+        accent: "#818cf8",
+        matterportBaseUrl: "https://my.matterport.com/show/?m=abc&play=1",
+        shareTitle: "Test Space",
+        stops: [],
+      },
+      _h: Object.create(null),
+      addEventListener(ev, fn) {
+        (this._h[ev] || (this._h[ev] = [])).push(fn);
+      },
+      requestAnimationFrame: (cb) => {
+        cb();
+        return 0;
+      },
+      devicePixelRatio: 2,
+      location: { href: "https://example.com/test/" },
     },
-    _h: Object.create(null),
-    addEventListener(ev, fn) {
-      (this._h[ev] || (this._h[ev] = [])).push(fn);
-    },
-    requestAnimationFrame: (cb) => {
-      cb();
-      return 0;
-    },
-    devicePixelRatio: 2,
-    location: { href: "https://example.com/test/" },
-  };
+    winExtra || {},
+  );
   // eslint-disable-next-line no-new-func
   const fn = new Function(
     "window",
@@ -796,6 +816,7 @@ function runGlueWithNav(nav, controllerFactory) {
     pillLabel,
     fireWin,
     fireDoc,
+    document,
     canvas: els["anno-canvas"],
     letterbox: els["anno-letterbox-wrap"],
   };
@@ -887,4 +908,136 @@ test("any active annotation tool suppresses ambient reads on every platform", as
   fireDoc("keydown", { key: "Escape" });
   fireWin("focus");
   assert.equal(calls.readText, 1, "ambient read resumes after the tool exits");
+});
+
+// ── 8. P0 iPad connect-crash hardening (runtime 2.0.2) ───────────────────
+function fakeStorage(seed) {
+  const m = new Map(Object.entries(seed || {}));
+  return {
+    getItem: (k) => (m.has(k) ? m.get(k) : null),
+    setItem: (k, v) => m.set(k, String(v)),
+    removeItem: (k) => m.delete(k),
+    _dump: () => Object.fromEntries(m),
+  };
+}
+
+function subscribeFiring(controller) {
+  let push = null;
+  controller.subscribe = (fn) => {
+    push = fn;
+    fn(controller.getState());
+    return () => {};
+  };
+  return { controller, emit: (state) => push && push(state) };
+}
+
+test("lazy canvas: NOTHING is allocated at connect; Draw allocates on demand", () => {
+  const { calls, nav } = desktopGrantedNav();
+  void calls;
+  const spy = { teleport: [], share: [] };
+  const storage = fakeStorage();
+  const wired = subscribeFiring(makeConnectedController("visitor", spy));
+  const { fireDoc, canvas } = runGlueWithNav(nav, () => wired.controller, {
+    sessionStorage: storage,
+  });
+  // Connected branch ran (subscribe fired with isConnected) — the canvas
+  // backing store must still be untouched.
+  assert.equal(canvas.width, undefined, "no buffer allocation at PIN connect");
+  assert.match(
+    String(storage.getItem("f3d_lt_last_milestone")),
+    /^layout_started@/,
+    "layout milestone marked without a canvas allocation",
+  );
+  fireDoc("keydown", { key: "d" });
+  assert.equal(canvas.width, 2560, "Draw selection allocates at the clamped desktop DPR (1280×2)");
+  assert.equal(canvas.height, 1440);
+  assert.match(
+    String(storage.getItem("f3d_lt_last_milestone")),
+    /^canvas_allocated@/,
+    "allocation milestone recorded",
+  );
+});
+
+test("lazy canvas: a remote stroke is the other allocation trigger", () => {
+  const { nav } = desktopGrantedNav();
+  const spy = { teleport: [], share: [] };
+  const wired = subscribeFiring(makeConnectedController("visitor", spy));
+  const { canvas } = runGlueWithNav(nav, () => wired.controller);
+  assert.equal(canvas.width, undefined, "still unallocated after connect");
+  wired.emit(
+    Object.assign({}, wired.controller.getState(), {
+      incomingStrokeEvent: { kind: "begin", viewKey: "", seq: 1, strokeId: "r1", points: [[0.1, 0.1]] },
+    }),
+  );
+  assert.equal(canvas.width, 2560, "incoming remote ink allocates the buffer");
+});
+
+test("iOS canvas DPR is capped at 1.5", () => {
+  const { nav } = iphoneNav();
+  const spy = { teleport: [], share: [] };
+  const { fireDoc, canvas } = runGlueWithNav(nav, () => makeConnectedController("visitor", spy));
+  fireDoc("keydown", { key: "d" });
+  // window.devicePixelRatio is 2 in the runner; iOS cap forces 1.5.
+  assert.equal(canvas.width, 1920, "1280 × 1.5 — not 1280 × 2");
+  assert.equal(canvas.height, 1080, "720 × 1.5");
+});
+
+test("crash forensics: the prior session's last milestone is displayed on load", () => {
+  const { nav } = desktopGrantedNav();
+  const spy = { teleport: [], share: [] };
+  const storage = fakeStorage({ f3d_lt_last_milestone: "mic_requested@1717000000000" });
+  const { els } = runGlueWithNav(nav, () => makeConnectedController("visitor", spy), {
+    sessionStorage: storage,
+  });
+  assert.equal(els["lt-diag"].hidden, false, "diagnostic line surfaces after a crash/reload");
+  assert.match(els["lt-diag"].textContent, /mic_requested/);
+  assert.ok(
+    !els["lt-diag"].textContent.includes("@"),
+    "timestamp suffix is stripped from the display",
+  );
+});
+
+test("iOS: Enable voice appears on connect and drives session.startVoice()", () => {
+  const { nav } = iphoneNav();
+  const spy = { teleport: [], share: [] };
+  const wired = subscribeFiring(makeConnectedController("visitor", spy));
+  const { els } = runGlueWithNav(nav, () => wired.controller);
+  assert.equal(els["lt-enable-voice-btn"].hidden, false, "deferred voice offers the explicit action");
+  els["lt-enable-voice-btn"].fire("click");
+  assert.equal(spy.startVoice, 1, "the tap calls the controller startVoice (user gesture)");
+});
+
+test("desktop: Enable voice stays hidden (voice auto-starts there)", () => {
+  const { nav } = desktopGrantedNav();
+  const spy = { teleport: [], share: [] };
+  const wired = subscribeFiring(makeConnectedController("visitor", spy));
+  const { els } = runGlueWithNav(nav, () => wired.controller);
+  assert.equal(els["lt-enable-voice-btn"].hidden, true);
+});
+
+test("the anno-tool-active body class tracks tool engagement (2.0.2 wrapper gate)", () => {
+  const { nav } = desktopGrantedNav();
+  const spy = { teleport: [], share: [] };
+  const { fireDoc, document } = runGlueWithNav(nav, () => makeConnectedController("visitor", spy));
+  assert.equal(document.body.classList.contains("anno-tool-active"), false, "inactive at rest");
+  fireDoc("keydown", { key: "d" });
+  assert.equal(document.body.classList.contains("anno-tool-active"), true, "engages with Draw");
+  fireDoc("keydown", { key: "Escape" });
+  assert.equal(
+    document.body.classList.contains("anno-tool-active"),
+    false,
+    "released on tool exit — Matterport navigation untouched again",
+  );
+});
+
+test("wrapper gesture CSS is conditional in the generated stylesheet (2.0.2)", () => {
+  const src = readFileSync(path.join(__dirname, "..", "src", "lib", "atlas-live-tour.ts"), "utf8");
+  assert.ok(
+    src.includes("body.anno-tool-active #anno-letterbox-wrap{touch-action:none"),
+    "hardening must be scoped to the tool-active state",
+  );
+  assert.ok(
+    !src.includes("#anno-letterbox-wrap{position:absolute;inset:0;touch-action"),
+    "the base wrapper rule must NOT carry permanent touch-action (the 2.0.1 defect)",
+  );
 });
