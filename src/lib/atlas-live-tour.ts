@@ -19,12 +19,14 @@
  */
 import { getLiveSessionRuntimeJS } from "./portal/live-session-source";
 import atlasLiveTourGlueSource from "./atlas-live-tour-runtime.mjs?raw";
+import annoInputSource from "./portal/anno-input.mjs?raw";
 import {
   findForbiddenTokens,
   stripExports,
 } from "./portal/ask-runtime-transformer.mjs";
 
 let _glueCache: string | null = null;
+let _annoInputCache: string | null = null;
 
 /**
  * Validate + return the Atlas Live Tour glue runtime. Same anti-drift gate
@@ -42,6 +44,26 @@ export function getAtlasLiveTourGlueJS(): string {
     );
   }
   _glueCache = stripped;
+  return stripped;
+}
+
+/**
+ * Validate + return the shared mobile-input helpers (portal/anno-input.mjs).
+ * Injected between the live-session controller and the glue so the glue can
+ * call them as plain locals. Same anti-drift gate as the other runtimes —
+ * designed for reuse by the portal export glue when it adopts the v2 input
+ * path, so the pointer state machine never forks between surfaces.
+ */
+export function getAnnoInputJS(): string {
+  if (_annoInputCache !== null) return _annoInputCache;
+  const stripped = stripExports(annoInputSource);
+  const offenders = findForbiddenTokens(stripped);
+  if (offenders.length > 0) {
+    throw new Error(
+      `anno-input.mjs contains browser-unsafe tokens:\n  ${offenders.join("\n  ")}`,
+    );
+  }
+  _annoInputCache = stripped;
   return stripped;
 }
 
@@ -83,8 +105,10 @@ const PEERJS_TAG =
   '<!-- PeerJS UMD bundle (deferred CDN load). Consumed by the Explore\n' +
   "     Together controller below. Failure to load is tolerated: the\n" +
   "     controller surfaces a friendly error state and the static tour\n" +
-  '     keeps working. -->\n' +
-  '<script src="https://unpkg.com/peerjs@1.5/dist/peerjs.min.js" crossorigin="anonymous" defer></script>';
+  "     keeps working. Pinned to an exact version with SRI so the CDN\n" +
+  "     cannot serve different bytes than the ones this package was\n" +
+  '     generated against (floating @1.5 had no integrity check). -->\n' +
+  '<script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js" integrity="sha384-x0YgkOr/3UOZP2CRDxGW9e0Q+2Qjyr3uJrm4xU32Y7ZCNAo7Cc7bjhrZMi/dwczu" crossorigin="anonymous" defer></script>';
 
 /** JSON for safe embedding inside an inline <script> (no </script> / U+2028/9 breakout). */
 function safeJsonForScript(value: unknown): string {
@@ -104,16 +128,16 @@ function buildCss(accent: string): string {
 /* ── Letterbox + annotation overlay ───────────────────────────────── */
 #anno-letterbox-wrap{position:absolute;inset:0}
 #anno-letterbox-wrap iframe{width:100%;height:100%;border:none;display:block}
-#anno-canvas{position:absolute;inset:0;display:block;width:100%;height:100%;pointer-events:none;z-index:5;touch-action:none}
+#anno-canvas{position:absolute;inset:0;display:block;width:100%;height:100%;pointer-events:none;z-index:5;touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
 #anno-canvas.pointer-mode,#anno-canvas.draw-mode,#anno-canvas.rope-mode{pointer-events:auto;cursor:crosshair}
 #remote-pointer{position:absolute;left:0;top:0;width:18px;height:18px;border-radius:50%;background:var(--lt-accent);border:2px solid #fff;box-shadow:0 1px 6px rgba(0,0,0,0.45);pointer-events:none;transform:translate(-50%,-50%);z-index:6;display:none}
-#lt-navlock{position:absolute;inset:0;z-index:4;background:transparent;cursor:not-allowed;display:none;touch-action:none}
+#lt-navlock{position:absolute;inset:0;z-index:4;background:transparent;cursor:not-allowed;display:none;touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 body.live-tour-active #lt-navlock.locked{display:block}
 body.live-tour-active #anno-letterbox-wrap:has(#lt-navlock.locked) #matterport-frame{pointer-events:none}
 
-#anno-toolbar{display:none;justify-content:center;align-items:center;flex-wrap:wrap;gap:6px;padding:8px 12px;background:rgba(10,12,20,0.92);border-bottom:1px solid rgba(255,255,255,0.08);position:relative;z-index:1250}
+#anno-toolbar{display:none;justify-content:center;align-items:center;flex-wrap:wrap;gap:6px;padding:8px 12px;background:rgba(10,12,20,0.92);border-bottom:1px solid rgba(255,255,255,0.08);position:relative;z-index:1250;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 body.live-tour-active #anno-toolbar{display:flex}
-.anno-tool-btn{appearance:none;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.85);border-radius:6px;padding:6px 10px;font:600 12px/1 inherit;cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:background 0.15s,border-color 0.15s,color 0.15s;font-family:inherit}
+.anno-tool-btn{appearance:none;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.85);border-radius:6px;padding:6px 10px;font:600 12px/1 inherit;cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:background 0.15s,border-color 0.15s,color 0.15s;font-family:inherit;-webkit-tap-highlight-color:transparent}
 .anno-tool-btn:hover{background:rgba(255,255,255,0.14);color:#fff}
 .anno-tool-btn.active{background:var(--lt-accent);border-color:var(--lt-accent);color:#fff}
 .anno-color-wrap{display:inline-flex;align-items:center;gap:4px;padding:0 2px 0 6px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);border-radius:6px}
@@ -153,7 +177,7 @@ body.live-tour-active.live-tour-host #anno-letterbox-wrap.follow-pulse{box-shado
 .lt-panel-body{padding:16px;overflow-y:auto;display:flex;flex-direction:column;gap:10px}
 .lt-intro{margin:0 0 4px;font-size:12.5px;line-height:1.55;color:rgba(255,255,255,0.78)}
 .lt-role-choose{display:flex;flex-direction:column;gap:8px}
-.lt-btn{appearance:none;border:1px solid rgba(255,255,255,0.16);background:rgba(255,255,255,0.07);color:#fff;border-radius:8px;padding:10px 12px;font:600 13px/1 inherit;font-family:inherit;cursor:pointer;transition:background 0.2s,opacity 0.2s,transform 0.1s}
+.lt-btn{appearance:none;border:1px solid rgba(255,255,255,0.16);background:rgba(255,255,255,0.07);color:#fff;border-radius:8px;padding:10px 12px;font:600 13px/1 inherit;font-family:inherit;cursor:pointer;transition:background 0.2s,opacity 0.2s,transform 0.1s;-webkit-tap-highlight-color:transparent}
 .lt-btn:hover{background:rgba(255,255,255,0.14)}
 .lt-btn:active{transform:scale(0.99)}
 .lt-btn:disabled{opacity:0.45;cursor:not-allowed}
@@ -192,8 +216,27 @@ body.live-tour-active.live-tour-host #anno-letterbox-wrap.follow-pulse{box-shado
 .lt-manual-input::placeholder{color:rgba(255,255,255,0.35)}
 
 @media(max-width:640px){
-  #lt-panel{top:auto;bottom:0;right:0;left:0;width:100%;height:auto;max-height:82vh;border-radius:16px 16px 0 0;border-left:none;border-top:1px solid rgba(255,255,255,0.08);transform:translateY(100%)}
+  #lt-panel{top:auto;bottom:0;right:0;left:0;width:100%;height:auto;max-height:82vh;border-radius:16px 16px 0 0;border-left:none;border-top:1px solid rgba(255,255,255,0.08);transform:translateY(100%);padding-bottom:env(safe-area-inset-bottom,0px)}
   #lt-panel.open{transform:translateY(0)}
+  @supports(height:100dvh){#lt-panel{max-height:82dvh}}
+}
+
+/* ── Touch ergonomics (coarse pointers): ≥44px targets + safe areas ── */
+@media(pointer: coarse){
+  #anno-toolbar{gap:8px;padding:10px calc(12px + env(safe-area-inset-right,0px)) 10px calc(12px + env(safe-area-inset-left,0px))}
+  .anno-tool-btn{min-height:44px;min-width:44px;padding:10px 14px;font-size:14px}
+  .anno-exit-btn{font-size:20px}
+  .anno-color-wrap,.anno-shape-wrap{min-height:44px}
+  .anno-color-select,.anno-shape-select{min-height:42px;font-size:14px}
+  .lt-btn{min-height:44px}
+  .lt-stop-btn{min-height:44px}
+  .lt-panel-close{width:44px;height:44px;font-size:20px}
+}
+
+/* dvh letterbox: track the iOS visual viewport instead of the largest
+   layout viewport so URL-bar collapse never misaligns the canvas. */
+@supports(height:100dvh){
+  body.live-tour-active #anno-letterbox-wrap{width:min(100%,calc((100dvh - 100px) * 16 / 9))}
 }
 
 /* ── Location-sync pulse pill (both roles) ────────────────────────── */
@@ -216,6 +259,10 @@ body.live-tour-active #loc-sync-tips:not([hidden]){display:flex}
 #loc-sync-tips ol{margin:0;padding-left:20px}
 #loc-sync-tips li{margin-bottom:3px;color:rgba(255,255,255,0.94)}
 #loc-sync-tips kbd{display:inline-block;padding:1px 7px;border-radius:4px;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.26);font:700 11px/1.4 ui-monospace,Menlo,monospace;color:#fff}
+/* Safe-area offsets (notch/Dynamic Island); falls back to the base
+   top/left above where env() is unsupported. */
+#loc-sync{top:calc(60px + env(safe-area-inset-top,0px));left:calc(12px + env(safe-area-inset-left,0px))}
+#loc-sync-tips{top:calc(96px + env(safe-area-inset-top,0px));left:calc(12px + env(safe-area-inset-left,0px))}
 
 #lt-audio{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
 `.trim();
@@ -233,7 +280,7 @@ const STAGE_OVERLAY_HTML = `<div id="lt-navlock" aria-hidden="true"></div>
 
 const TOOLBAR_HTML = `<div id="anno-toolbar" role="toolbar" aria-label="Shared tour annotations">
   <button type="button" class="anno-tool-btn" data-tool="pointer" title="Pointer (P)" aria-keyshortcuts="P">Pointer</button>
-  <button type="button" class="anno-tool-btn" data-tool="draw" title="Draw (D)" aria-keyshortcuts="D">Draw</button>
+  <button type="button" class="anno-tool-btn" data-tool="draw" id="anno-draw-btn" title="Draw (D)" aria-keyshortcuts="D">Draw</button>
   <label class="anno-color-wrap" title="Stroke color">
     <span class="anno-color-swatch" id="anno-color-swatch" aria-hidden="true"></span>
     <select class="anno-color-select" id="anno-color-select" aria-label="Stroke color">
@@ -330,11 +377,13 @@ export function renderAtlasLiveTour(opts: AtlasLiveTourOptions): AtlasLiveTourAs
     stops: Array.isArray(opts.stops) ? opts.stops : [],
   };
   const runtimeJs = getLiveSessionRuntimeJS();
+  const annoInputJs = getAnnoInputJS();
   const glueJs = getAtlasLiveTourGlueJS();
   const scriptHtml = `<script>window.__ATLAS_LT_CONFIG=${safeJsonForScript(config)};</script>
 <script>
 (function(){
 ${runtimeJs}
+${annoInputJs}
 ${glueJs}
 })();
 </script>`;

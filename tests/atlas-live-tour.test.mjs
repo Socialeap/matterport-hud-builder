@@ -22,6 +22,14 @@ const SOURCE = path.join(__dirname, "..", "src", "lib", "atlas-live-tour-runtime
 const RAW = readFileSync(SOURCE, "utf8");
 const GLUE = stripExports(RAW);
 
+// The shared mobile-input helpers are injected just before the glue in the
+// generated HTML (atlas-live-tour.ts), so the fake-DOM runs concatenate the
+// real module the same way — the pointer tests below exercise the genuine
+// guard, not the glue's assembly-regression fallback.
+const ANNO_INPUT_SOURCE = path.join(__dirname, "..", "src", "lib", "portal", "anno-input.mjs");
+const ANNO_INPUT = stripExports(readFileSync(ANNO_INPUT_SOURCE, "utf8"));
+const BODY = ANNO_INPUT + "\n" + GLUE;
+
 // ── 1. Browser-safety gate (same rules as the other runtime .mjs files) ──
 test("glue passes the browser-safety token gate", () => {
   const offenders = findForbiddenTokens(GLUE);
@@ -64,6 +72,17 @@ test("glue wires the reused controller API + Atlas config hook", () => {
     "sendNavLock",
     "parseMatterportLocationUrl",
     "matterport", // location-sync host guard (regex: /(^|\\.)matterport\\.com$/i)
+    // Mobile-input hardening (anno-input.mjs consumers + abort paths).
+    "createAnnoPointerGuard",
+    "annoCollectPoints",
+    "annoClampDpr",
+    "annoIsCoarsePointer",
+    "annoBindViewportEvents",
+    "pointercancel",
+    "lostpointercapture",
+    "ropeMoveDragging",
+    "latchHitRadiusPx",
+    "ANNO_INPUT_OK", // fail-closed gate when anno-input is missing
   ]) {
     assert.ok(GLUE.includes(needle), `expected glue to reference: ${needle}`);
   }
@@ -116,7 +135,28 @@ FakeEl.prototype.appendChild = function (c) {
   return c;
 };
 FakeEl.prototype.getContext = function () {
-  return {};
+  // Method-complete-enough 2D context stub: the glue redraws strokes and
+  // the rope latch on every pointer sample in the behavioral tests below.
+  if (!this._ctx) {
+    const noop = () => {};
+    this._ctx = {
+      clearRect: noop,
+      setTransform: noop,
+      beginPath: noop,
+      moveTo: noop,
+      lineTo: noop,
+      stroke: noop,
+      arc: noop,
+      fill: noop,
+    };
+  }
+  return this._ctx;
+};
+FakeEl.prototype.setPointerCapture = function (id) {
+  this._captured = id;
+};
+FakeEl.prototype.releasePointerCapture = function (id) {
+  if (this._captured === id) this._captured = null;
 };
 FakeEl.prototype.focus = function () {};
 FakeEl.prototype.getBoundingClientRect = function () {
@@ -213,7 +253,7 @@ function runGlue({ withController }) {
     "navigator",
     "createLiveSession",
     "ResizeObserver",
-    GLUE,
+    BODY,
   );
   fn(window, document, navigator, createLiveSession, undefined);
   return { els, document, calls };
@@ -257,6 +297,11 @@ test("join rejects a non-4-digit PIN without calling the controller", () => {
 // auto-poll uses and route through the same controller send path
 // (shareLocationWithAgent for Guest, teleportVisitor for Host).
 function makeConnectedController(role, spy) {
+  // Stroke spies are optional extras (the manual-sync tests pass only
+  // teleport/share); default them so the pointer tests can assert ink.
+  spy.begin = spy.begin || [];
+  spy.patch = spy.patch || [];
+  spy.commit = spy.commit || [];
   const state = {
     role,
     status: "connected",
@@ -286,9 +331,18 @@ function makeConnectedController(role, spy) {
       return true;
     },
     sendPointer: () => true,
-    sendStrokeBegin: () => true,
-    sendStrokePatch: () => true,
-    sendStrokeCommit: () => true,
+    sendStrokeBegin: (vk, sid, color, width, points) => {
+      spy.begin.push({ sid, points: Array.isArray(points) ? points.map((p) => p.slice()) : [] });
+      return true;
+    },
+    sendStrokePatch: (vk, sid, points) => {
+      spy.patch.push({ sid, points: Array.isArray(points) ? points.map((p) => p.slice()) : [] });
+      return true;
+    },
+    sendStrokeCommit: (vk, sid) => {
+      spy.commit.push(sid);
+      return true;
+    },
     sendClear: () => true,
     sendNavLock: () => true,
     dispose: () => {},
@@ -315,7 +369,7 @@ function runGlueWith(createLiveSession) {
     "navigator",
     "createLiveSession",
     "ResizeObserver",
-    GLUE,
+    BODY,
   );
   fn(window, document, navigator, createLiveSession, undefined);
   return { els, document };
@@ -375,4 +429,248 @@ test("manual paste-to-sync is inert until a tour is connected", () => {
   assert.match(els["lt-manual-sync-status"].textContent, /host a tour first/i);
   // The idle controller never records a send.
   assert.ok(!spy.share.length && !spy.teleport.length);
+});
+
+// ── 5. Mobile pointer hardening (anno-input guard wired into the glue) ───
+// Connected controller + synchronous requestAnimationFrame so the rAF
+// coalescers (stroke patch flush, rope flush) run inline; draw mode is
+// entered via the "d" hotkey on the fake document.
+function runGluePointer(role = "visitor") {
+  const spy = { teleport: [], share: [], begin: [], patch: [], commit: [] };
+  const { els, document } = makeFakeDom();
+  const window = {
+    __ATLAS_LT_CONFIG: {
+      accent: "#818cf8",
+      matterportBaseUrl: "https://my.matterport.com/show/?m=abc&play=1",
+      shareTitle: "Test Space",
+      stops: [],
+    },
+    addEventListener() {},
+    requestAnimationFrame: (cb) => {
+      cb();
+      return 0;
+    },
+    devicePixelRatio: 2,
+    location: { href: "https://example.com/test/" },
+  };
+  const navigator = {};
+  // eslint-disable-next-line no-new-func
+  const fn = new Function(
+    "window",
+    "document",
+    "navigator",
+    "createLiveSession",
+    "ResizeObserver",
+    BODY,
+  );
+  fn(window, document, navigator, () => makeConnectedController(role, spy), undefined);
+  const fireDoc = (ev, payload) =>
+    (document._h[ev] || []).forEach((f) =>
+      f(Object.assign({ preventDefault() {}, target: null, key: "" }, payload || {})),
+    );
+  const canvas = els["anno-canvas"];
+  return { els, spy, fireDoc, canvas };
+}
+
+const touchEv = (id, x, y, extra) =>
+  Object.assign(
+    { pointerId: id, pointerType: "touch", isPrimary: true, clientX: x, clientY: y },
+    extra || {},
+  );
+const penEv = (id, x, y) => ({
+  pointerId: id,
+  pointerType: "pen",
+  isPrimary: true,
+  clientX: x,
+  clientY: y,
+});
+
+test("touch draw: down begins, coalesced moves patch, up commits", () => {
+  const { spy, fireDoc, canvas } = runGluePointer();
+  fireDoc("keydown", { key: "d" });
+  canvas.fire("pointerdown", touchEv(1, 128, 72));
+  assert.equal(spy.begin.length, 1, "stroke_begin sent on pointerdown");
+  assert.equal(canvas._captured, 1, "pointer captured for the gesture");
+  canvas.fire(
+    "pointermove",
+    touchEv(1, 256, 144, {
+      getCoalescedEvents: () => [
+        touchEv(1, 192, 108),
+        touchEv(1, 256, 144),
+      ],
+    }),
+  );
+  assert.equal(spy.patch.length, 1, "patch flushed synchronously via rAF");
+  assert.equal(spy.patch[0].points.length, 2, "both coalesced samples ride the patch");
+  canvas.fire("pointerup", touchEv(1, 256, 144));
+  assert.deepEqual(spy.commit, [spy.begin[0].sid], "stroke commits on pointerup");
+  assert.equal(canvas._captured, null, "capture released");
+});
+
+test("a second finger can neither start nor corrupt an active stroke", () => {
+  const { spy, fireDoc, canvas } = runGluePointer();
+  fireDoc("keydown", { key: "d" });
+  canvas.fire("pointerdown", touchEv(1, 100, 100));
+  assert.equal(spy.begin.length, 1);
+  // Second touch is non-primary by definition while the first is down.
+  canvas.fire("pointerdown", touchEv(2, 600, 600, { isPrimary: false }));
+  assert.equal(spy.begin.length, 1, "second finger must not open a stroke");
+  canvas.fire("pointermove", touchEv(2, 640, 640, { isPrimary: false }));
+  assert.equal(spy.patch.length, 0, "second finger must not append points");
+  canvas.fire("pointerup", touchEv(2, 640, 640, { isPrimary: false }));
+  assert.equal(spy.commit.length, 0, "second finger must not commit");
+  canvas.fire("pointerup", touchEv(1, 100, 100));
+  assert.equal(spy.commit.length, 1, "owner commit still clean");
+});
+
+test("pointercancel finalizes the in-flight stroke instead of stranding it", () => {
+  const { spy, fireDoc, canvas } = runGluePointer();
+  fireDoc("keydown", { key: "d" });
+  canvas.fire("pointerdown", touchEv(1, 100, 100));
+  canvas.fire("pointermove", touchEv(1, 150, 150));
+  canvas.fire("pointercancel", { pointerId: 1 });
+  assert.equal(spy.commit.length, 1, "cancel must commit (no orphan stroke remotely)");
+  assert.equal(canvas._captured, null, "capture released on cancel");
+  // The pointer is no longer owned: further moves are ignored…
+  canvas.fire("pointermove", touchEv(1, 400, 400));
+  assert.equal(spy.patch.length, 1, "no ink after cancel");
+  // …and a fresh gesture starts cleanly.
+  canvas.fire("pointerdown", touchEv(1, 200, 200));
+  assert.equal(spy.begin.length, 2, "new stroke opens after a cancel");
+});
+
+test("lostpointercapture after a normal pointerup is a no-op (no double commit)", () => {
+  const { spy, fireDoc, canvas } = runGluePointer();
+  fireDoc("keydown", { key: "d" });
+  canvas.fire("pointerdown", touchEv(1, 100, 100));
+  canvas.fire("pointerup", touchEv(1, 120, 120));
+  canvas.fire("lostpointercapture", { pointerId: 1 });
+  assert.equal(spy.commit.length, 1, "the browser-fired lostpointercapture must not re-commit");
+});
+
+test("lostpointercapture BEFORE pointerup finalizes exactly once; the later pointerup is inert", () => {
+  const { spy, fireDoc, canvas } = runGluePointer();
+  fireDoc("keydown", { key: "d" });
+  canvas.fire("pointerdown", touchEv(1, 100, 100));
+  canvas.fire("pointermove", touchEv(1, 150, 150));
+  // Capture stripped first (e.g. an iOS gesture steals the pointer) —
+  // the abort path finalizes the stroke immediately…
+  canvas.fire("lostpointercapture", { pointerId: 1 });
+  assert.equal(spy.commit.length, 1, "lost capture finalizes the stroke once");
+  const patchesAtAbort = spy.patch.length;
+  // …and the late pointerup for the same pointer must be completely inert.
+  canvas.fire("pointerup", touchEv(1, 160, 160));
+  assert.equal(spy.commit.length, 1, "the trailing pointerup must not double-commit");
+  assert.equal(spy.begin.length, 1, "the trailing pointerup must not open a stroke");
+  assert.equal(spy.patch.length, patchesAtAbort, "the trailing pointerup must not add ink");
+});
+
+test("Pencil takes over from a palm touch: touch commits, pen draws fresh", () => {
+  const { spy, fireDoc, canvas } = runGluePointer();
+  fireDoc("keydown", { key: "d" });
+  canvas.fire("pointerdown", touchEv(1, 100, 100));
+  assert.equal(spy.begin.length, 1);
+  canvas.fire("pointerdown", penEv(2, 300, 300));
+  assert.equal(spy.commit.length, 1, "palm stroke committed before the pen claims");
+  assert.equal(spy.begin.length, 2, "pen opens its own stroke");
+  canvas.fire("pointermove", touchEv(1, 110, 110));
+  assert.equal(spy.patch.length, 0, "displaced palm touch is inert");
+  canvas.fire("pointerup", penEv(2, 320, 320));
+  assert.equal(spy.commit.length, 2, "pen stroke commits");
+});
+
+test("Focus Rope: body drag moves the rope; latch keeps resizing", () => {
+  const { spy, fireDoc, canvas } = runGluePointer();
+  fireDoc("keydown", { key: "r" });
+  // Draw a rope: (100,100) → (400,300) in a 1280×720 letterbox.
+  canvas.fire("pointerdown", touchEv(1, 100, 100));
+  canvas.fire("pointermove", touchEv(1, 400, 300));
+  canvas.fire("pointerup", touchEv(1, 400, 300));
+  const baseline = spy.begin[spy.begin.length - 1];
+  const minX = (entry) => Math.min(...entry.points.map((p) => p[0]));
+  // Grab inside the body (well away from the bottom-right latch) and drag.
+  canvas.fire("pointerdown", touchEv(1, 200, 200));
+  canvas.fire("pointermove", touchEv(1, 250, 200));
+  canvas.fire("pointerup", touchEv(1, 250, 200));
+  const moved = spy.begin[spy.begin.length - 1];
+  assert.equal(moved.sid, baseline.sid, "moving re-flushes the SAME rope stroke");
+  assert.ok(
+    Math.abs(minX(moved) - minX(baseline) - 50 / 1280) < 1e-6,
+    "rope translated by the drag delta (50px → 50/1280 normalized)",
+  );
+  assert.equal(spy.commit.length, 0, "rope stays active (sealed on tool exit, not on drag end)");
+});
+
+// ── 6. Fail-closed when anno-input is missing from assembly ──────────────
+// The glue must NOT fall back to permissive single-pointer behavior: Draw
+// and Focus Rope are disabled outright, while viewing, the data session,
+// the pointer tool, and location sync stay intact.
+function runGlueWithoutAnnoInput(role = "visitor") {
+  const spy = { teleport: [], share: [], begin: [], patch: [], commit: [] };
+  const { els, document } = makeFakeDom();
+  const window = {
+    __ATLAS_LT_CONFIG: {
+      accent: "#818cf8",
+      matterportBaseUrl: "https://my.matterport.com/show/?m=abc&play=1",
+      shareTitle: "Test Space",
+      stops: [],
+    },
+    addEventListener() {},
+    requestAnimationFrame: (cb) => {
+      cb();
+      return 0;
+    },
+    devicePixelRatio: 2,
+    location: { href: "https://example.com/test/" },
+  };
+  // GLUE alone — the anno-input module is deliberately absent.
+  // eslint-disable-next-line no-new-func
+  const fn = new Function(
+    "window",
+    "document",
+    "navigator",
+    "createLiveSession",
+    "ResizeObserver",
+    GLUE,
+  );
+  fn(window, document, {}, () => makeConnectedController(role, spy), undefined);
+  const fireDoc = (ev, payload) =>
+    (document._h[ev] || []).forEach((f) =>
+      f(Object.assign({ preventDefault() {}, target: null, key: "" }, payload || {})),
+    );
+  return { els, spy, fireDoc, canvas: els["anno-canvas"] };
+}
+
+test("fail closed without anno-input: Draw/Rope disabled, no permissive drawing", () => {
+  const { els, spy, fireDoc, canvas } = runGlueWithoutAnnoInput();
+  assert.equal(els["anno-draw-btn"].disabled, true, "Draw visibly disabled");
+  assert.equal(els["anno-rope-btn"].disabled, true, "Focus Rope visibly disabled");
+  assert.match(
+    els["anno-draw-btn"].attrs.title,
+    /unavailable/i,
+    "annotation-unavailable state surfaced",
+  );
+  // Hotkeys cannot re-enter the gated modes…
+  fireDoc("keydown", { key: "d" });
+  canvas.fire("pointerdown", touchEv(1, 100, 100));
+  canvas.fire("pointermove", touchEv(1, 150, 150));
+  canvas.fire("pointerup", touchEv(1, 150, 150));
+  assert.equal(spy.begin.length, 0, "no stroke may open without the pointer guard");
+  assert.equal(spy.patch.length, 0);
+  assert.equal(spy.commit.length, 0);
+  fireDoc("keydown", { key: "r" });
+  canvas.fire("pointerdown", touchEv(1, 100, 100));
+  assert.equal(spy.begin.length, 0, "no rope may open without the pointer guard");
+  // …while the pointer tool and the session itself stay functional.
+  fireDoc("keydown", { key: "p" });
+  assert.equal(canvas.classList.contains("pointer-mode"), true, "pointer tool still available");
+  assert.doesNotThrow(() => canvas.fire("pointermove", touchEv(1, 200, 200)));
+});
+
+test("fail closed without anno-input: location sync stays fully functional", () => {
+  const { els, spy } = runGlueWithoutAnnoInput("visitor");
+  els["lt-manual-sync-input"].value =
+    "https://my.matterport.com/show/?m=abc&ss=42&sr=-1.5,2.25";
+  els["lt-manual-sync-btn"].fire("click");
+  assert.deepEqual(spy.share, [["42", "-1.5,2.25"]], "manual sync unaffected by the fail-closed state");
 });
