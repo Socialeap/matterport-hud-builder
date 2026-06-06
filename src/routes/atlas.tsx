@@ -220,6 +220,29 @@ function AtlasPage() {
     [filtered],
   );
 
+  // Reset lazy batch when the filtered list identity changes (search/category).
+  useEffect(() => {
+    setVisibleCount(LAZY_BATCH);
+  }, [filtered]);
+
+  // Sentinel-based IntersectionObserver: bump visibleCount by LAZY_BATCH when
+  // the sentinel scrolls into view, until we've revealed every filtered card.
+  useEffect(() => {
+    const node = sentinelRef.current;
+    if (!node || typeof IntersectionObserver === "undefined") return;
+    if (visibleCount >= filtered.length) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setVisibleCount((c) => Math.min(filtered.length, c + LAZY_BATCH));
+        }
+      },
+      { root: node.parentElement, rootMargin: "200px" },
+    );
+    io.observe(node);
+    return () => io.disconnect();
+  }, [filtered.length, visibleCount]);
+
   // ── Leaflet (client-only) ───────────────────────────────────────────────
   const mapElRef = useRef<HTMLDivElement | null>(null);
   const refsRef = useRef<MapRefs | null>(null);
