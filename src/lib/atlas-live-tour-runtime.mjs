@@ -53,6 +53,24 @@
   var SHARE_TITLE = typeof CONFIG.shareTitle === "string" ? CONFIG.shareTitle : "Frontiers3D Showcase";
   var STOPS = Array.isArray(CONFIG.stops) ? CONFIG.stops : [];
 
+  // ── Platform + assembly gates (early: the session factory below needs
+  //    them; anno-input.mjs function declarations are hoisted across the
+  //    shared IIFE body, so they are callable here). ───────────────────
+  var ANNO_INPUT_OK =
+    typeof createAnnoPointerGuard === "function" &&
+    typeof annoCollectPoints === "function" &&
+    typeof annoClampDpr === "function" &&
+    typeof annoBudgetDpr === "function" &&
+    typeof annoIsIosWebKit === "function" &&
+    typeof annoIsCoarsePointer === "function" &&
+    typeof annoBindViewportEvents === "function";
+
+  // iOS/iPadOS WebKit (incl. iPad desktop mode and iOS Chrome): drives
+  // the clipboard isolation (ambientClipboardAllowed), the DEFERRED
+  // voice startup, and the tighter canvas DPR + pixel budget.
+  var IS_IOS_WEBKIT =
+    typeof annoIsIosWebKit === "function" ? annoIsIosWebKit(navigator) : false;
+
   // ── DOM refs ────────────────────────────────────────────────────────
   var panel = document.getElementById("lt-panel");
   var panelClose = document.getElementById("lt-panel-close");
@@ -94,12 +112,68 @@
   // where clipboard read is blocked or unavailable.
   var liveExtras = document.getElementById("lt-live-extras");
   var voiceStatus = document.getElementById("lt-voice-status");
+  var enableVoiceBtn = document.getElementById("lt-enable-voice-btn");
+  var diagEl = document.getElementById("lt-diag");
   var manualSyncInput = document.getElementById("lt-manual-sync-input");
   var manualSyncBtn = document.getElementById("lt-manual-sync-btn");
   var manualSyncStatus = document.getElementById("lt-manual-sync-status");
   var voiceConnected = false;
 
-  var session = createLiveSession({});
+  // ── Diagnostic milestones (P0 iPad crash instrumentation) ───────────
+  // Persisted to sessionStorage so a tab crash/reload still reveals the
+  // LAST completed step of the connect transition. Controller milestones
+  // (data_connected, mic_requested/granted/denied, media_call_started,
+  // remote_stream) arrive via the onDiagnostic hook; glue milestones
+  // (layout_started, canvas_allocated, audio_playing) are marked direct.
+  var MILESTONE_LOG_KEY = "f3d_lt_milestone_log";
+  var MILESTONE_LAST_KEY = "f3d_lt_last_milestone";
+  function markMilestone(name) {
+    try {
+      if (!window.sessionStorage) return;
+      window.sessionStorage.setItem(MILESTONE_LAST_KEY, String(name) + "@" + Date.now());
+      var raw = window.sessionStorage.getItem(MILESTONE_LOG_KEY);
+      var arr;
+      try {
+        arr = raw ? JSON.parse(raw) : [];
+      } catch (_e) {
+        arr = [];
+      }
+      if (!Array.isArray(arr)) arr = [];
+      arr.push({ m: String(name), ts: Date.now() });
+      if (arr.length > 40) arr = arr.slice(arr.length - 40);
+      window.sessionStorage.setItem(MILESTONE_LOG_KEY, JSON.stringify(arr));
+    } catch (_e) {}
+  }
+  function resetMilestoneLog() {
+    try {
+      if (!window.sessionStorage) return;
+      window.sessionStorage.removeItem(MILESTONE_LOG_KEY);
+      window.sessionStorage.setItem(MILESTONE_LAST_KEY, "session_starting@" + Date.now());
+    } catch (_e) {}
+  }
+  // Crash forensics: if a previous session in this tab recorded
+  // milestones, surface the last one reached in the panel.
+  (function reportPriorMilestone() {
+    try {
+      if (!window.sessionStorage || !diagEl) return;
+      var last = window.sessionStorage.getItem(MILESTONE_LAST_KEY);
+      if (!last) return;
+      diagEl.textContent = "Previous live-tour session reached: " + String(last).split("@")[0];
+      diagEl.hidden = false;
+    } catch (_e) {}
+  })();
+
+  // Session factory: every (re)creation carries the same policy — voice
+  // is DEFERRED on iOS (no automatic getUserMedia / AudioContext / media
+  // call during the connect transition; see the Enable voice button) and
+  // the controller reports diagnostic milestones via markMilestone.
+  function newSession() {
+    return createLiveSession({
+      deferVoice: IS_IOS_WEBKIT,
+      onDiagnostic: markMilestone,
+    });
+  }
+  var session = newSession();
   var lastTeleportTs = 0;
   var lastShareTs = 0;
   var wasConnected = false;
@@ -113,7 +187,11 @@
   var ANNO_COLOR_WHITELIST = { "#ff3b30": 1, "#1e90ff": 1, "#22c55e": 1, "#ffffff": 1 };
   var ANNO_ROPE_CIRCLE_SAMPLES = 48;
   var ANNO_LATCH_PX = 10;
-  var ANNO_DPR_MAX = 2.5;
+  // iPhone/iPad run under jetsam memory limits next to the Matterport
+  // WebGL context: tighter DPR cap plus an absolute backing-store pixel
+  // budget (RGBA bytes = pixels * 4). Desktop keeps retina sharpness.
+  var ANNO_DPR_MAX = IS_IOS_WEBKIT ? 1.5 : 2.5;
+  var ANNO_PIXEL_BUDGET = IS_IOS_WEBKIT ? 4194304 : 9437184;
 
   // Coarse-pointer (touch-first) detection drives runtime affordance
   // sizing (latch size/hit radius); the CSS @media (pointer: coarse)
@@ -141,6 +219,11 @@
   var ropeMoveDragging = false;
   var ropeMoveLast = null;
   var annoAppliedDpr = 1;
+  var canvasAllocated = false;
+  var lastCanvasW = 0;
+  var lastCanvasH = 0;
+  var lastCanvasDpr = 0;
+  var canvasResizeScheduled = false;
 
   // Single-owner pointer guard (anno-input.mjs, injected just above this
   // glue). FAIL CLOSED if script assembly ever regresses (Codex review
@@ -150,25 +233,12 @@
   // setToolMode + the toolbar disable block below) while Matterport
   // viewing, voice, pointer, clear, and location sync stay fully
   // functional — the same shape as the createLiveSession hard guard.
-  // finalizeActiveGesture is a hoisted declaration (rope helpers below).
-  var ANNO_INPUT_OK =
-    typeof createAnnoPointerGuard === "function" &&
-    typeof annoCollectPoints === "function" &&
-    typeof annoClampDpr === "function" &&
-    typeof annoIsIosWebKit === "function" &&
-    typeof annoIsCoarsePointer === "function" &&
-    typeof annoBindViewportEvents === "function";
+  // finalizeActiveGesture is a hoisted declaration (rope helpers below);
+  // ANNO_INPUT_OK / IS_IOS_WEBKIT are computed early, above the session
+  // factory.
   var annoGuard = ANNO_INPUT_OK
     ? createAnnoPointerGuard({ onTakeover: finalizeActiveGesture })
     : null;
-
-  // iOS/iPadOS WebKit (incl. iPad desktop mode and iOS Chrome): ANY
-  // navigator.clipboard.readText() raises the native Paste callout, so
-  // ambient clipboard sync must never run there — see
-  // ambientClipboardAllowed() in the location-sync section, which also
-  // fails closed when this detector is unavailable (ANNO_INPUT_OK false).
-  var IS_IOS_WEBKIT =
-    typeof annoIsIosWebKit === "function" ? annoIsIosWebKit(navigator) : false;
 
   function collectNormPoints(e) {
     if (typeof annoCollectPoints === "function") return annoCollectPoints(e, clientToNorm);
@@ -252,6 +322,10 @@
     setManualStatus("");
     setVoiceStatus("", "off");
     voiceConnected = false;
+    if (enableVoiceBtn) {
+      enableVoiceBtn.hidden = true;
+      enableVoiceBtn.disabled = false;
+    }
   }
 
   // ── Letterbox / body-class engagement ───────────────────────────────
@@ -294,8 +368,16 @@
         else b.classList.remove("active");
       }
     }
+    if (mode === "draw" || mode === "rope") ensureAnnoCanvasAllocated();
     try {
       document.body.classList.toggle("anno-rope-active", mode === "rope");
+      // Stage gesture hardening (wrapper touch-action/user-select, the
+      // stage-event kills) engages ONLY while a tool is active so
+      // Matterport navigation is untouched otherwise (2.0.2 wrapper fix).
+      document.body.classList.toggle(
+        "anno-tool-active",
+        mode === "pointer" || mode === "draw" || mode === "rope",
+      );
     } catch (_e) {}
     if (prev !== "rope" && mode === "rope") {
       try {
@@ -324,12 +406,33 @@
     } catch (_e) {}
   }
 
+  // LAZY canvas allocation (P0 iPad fix): the backing store is NOT
+  // allocated when the PIN connects — that transition already carries
+  // WebRTC setup and the letterbox layout flip. The buffer is created on
+  // first need (Draw/Focus Rope selected, or a remote stroke arrives)
+  // and reallocated only when geometry/DPR actually changed.
+  function ensureAnnoCanvasAllocated() {
+    if (canvasAllocated) return;
+    canvasAllocated = true;
+    markMilestone("canvas_allocated");
+    resizeAnnoCanvas();
+  }
+
   function resizeAnnoCanvas() {
+    if (!canvasAllocated) return;
     if (!annoCanvas || !letterboxWrap || !annoCtx) return;
     var rect = letterboxWrap.getBoundingClientRect();
     var w = Math.max(1, Math.round(rect.width));
     var h = Math.max(1, Math.round(rect.height));
     var dpr = clampedDpr();
+    if (typeof annoBudgetDpr === "function") dpr = annoBudgetDpr(w, h, dpr, ANNO_PIXEL_BUDGET);
+    // Dedupe: ResizeObserver, visualViewport, and orientation events can
+    // fire together for one geometry change, and assigning canvas.width
+    // reallocates (and clears) the buffer even with an unchanged value.
+    if (w === lastCanvasW && h === lastCanvasH && dpr === lastCanvasDpr) return;
+    lastCanvasW = w;
+    lastCanvasH = h;
+    lastCanvasDpr = dpr;
     annoAppliedDpr = dpr;
     annoCanvas.width = Math.max(1, Math.round(w * dpr));
     annoCanvas.height = Math.max(1, Math.round(h * dpr));
@@ -341,7 +444,43 @@
     redrawAllStrokes();
   }
 
+  // Coalesce the resize triggers through one frame so simultaneous
+  // observer callbacks produce at most one reallocation.
+  function scheduleCanvasResize() {
+    if (!canvasAllocated) return;
+    if (canvasResizeScheduled) return;
+    canvasResizeScheduled = true;
+    var raf =
+      window.requestAnimationFrame ||
+      function (cb) {
+        return setTimeout(cb, 16);
+      };
+    raf(function () {
+      canvasResizeScheduled = false;
+      resizeAnnoCanvas();
+    });
+  }
+
+  // Free the backing store on teardown so an ended tour leaves no
+  // multi-megabyte buffer behind on memory-constrained devices.
+  function releaseAnnoCanvas() {
+    canvasAllocated = false;
+    lastCanvasW = 0;
+    lastCanvasH = 0;
+    lastCanvasDpr = 0;
+    annoAppliedDpr = 1;
+    if (annoCanvas) {
+      try {
+        annoCanvas.width = 1;
+        annoCanvas.height = 1;
+        annoCanvas.style.width = "";
+        annoCanvas.style.height = "";
+      } catch (_e) {}
+    }
+  }
+
   function redrawAllStrokes() {
+    if (!canvasAllocated) return;
     if (!annoCtx || !annoCanvas) return;
     // Back out the SAME (clamped) ratio resizeAnnoCanvas applied — using
     // the raw devicePixelRatio here would misscale on capped displays.
@@ -808,6 +947,9 @@
   // to the letterbox wrap only (the panel and its inputs live outside).
   if (letterboxWrap) {
     var killStageEvent = function (e) {
+      // 2.0.2: only while an annotation tool is active — the stage must
+      // behave like a normal viewer surface the rest of the time.
+      if (!annotationToolActive()) return;
       try {
         e.preventDefault();
       } catch (_e) {}
@@ -930,20 +1072,21 @@
   if (typeof ResizeObserver === "function" && letterboxWrap) {
     try {
       var ro = new ResizeObserver(function () {
-        resizeAnnoCanvas();
+        scheduleCanvasResize();
       });
       ro.observe(letterboxWrap);
     } catch (_e) {
-      window.addEventListener("resize", resizeAnnoCanvas);
+      window.addEventListener("resize", scheduleCanvasResize);
     }
   } else if (letterboxWrap) {
-    window.addEventListener("resize", resizeAnnoCanvas);
+    window.addEventListener("resize", scheduleCanvasResize);
   }
   // visualViewport + orientation: geometry changes the ResizeObserver /
   // window-resize paths can miss on mobile (iOS URL-bar collapse,
-  // rotation, keyboard). Page-lifetime binding, like the listeners above.
+  // rotation, keyboard). All triggers coalesce through one rAF in
+  // scheduleCanvasResize and no-op until the canvas is lazily allocated.
   if (typeof annoBindViewportEvents === "function") {
-    annoBindViewportEvents(window, resizeAnnoCanvas);
+    annoBindViewportEvents(window, scheduleCanvasResize);
   }
 
   // ── Location sync (clipboard auto-share, both roles) ─────────────────
@@ -1152,6 +1295,13 @@
   // to set expectations ("blocked" / "unavailable" / "ready").
   function reportVoiceCapability() {
     if (!voiceStatus) return;
+    if (IS_IOS_WEBKIT) {
+      // Deferred voice: nothing was requested at connect by design — the
+      // microphone activates only from the Enable voice tap (a direct
+      // user gesture, as WebKit prefers).
+      setVoiceStatus("Voice is off — tap Enable voice to talk.", "warn");
+      return;
+    }
     if (
       typeof navigator === "undefined" ||
       !navigator.mediaDevices ||
@@ -1240,6 +1390,35 @@
         e.preventDefault();
         handleManualSync();
       }
+    });
+  }
+
+  // ── Enable voice (deferred-voice sessions; a direct user gesture) ────
+  // The P0 rule: voice startup must never ride the connect transition on
+  // iOS. The tap acquires the mic, answers a held offer (host) or places
+  // the call (guest). Failure leaves the data session fully intact.
+  if (enableVoiceBtn) {
+    enableVoiceBtn.addEventListener("click", function () {
+      if (typeof session.startVoice !== "function") return;
+      enableVoiceBtn.disabled = true;
+      setVoiceStatus("Connecting voice…", "ok");
+      session.startVoice().then(
+        function (ok) {
+          if (!ok) {
+            enableVoiceBtn.disabled = false;
+            setVoiceStatus(
+              "Voice has not started yet — check mic permission, or have the other side tap Enable voice too, then retry.",
+              "warn",
+            );
+          }
+          // Success: the remote_stream state change flips the status to
+          // "Voice connected" and hides this button.
+        },
+        function () {
+          enableVoiceBtn.disabled = false;
+          setVoiceStatus("Could not start voice — you can still tour together silently.", "warn");
+        },
+      );
     });
   }
 
@@ -1463,7 +1642,7 @@
         try {
           session.dispose();
         } catch (_e) {}
-        session = createLiveSession({});
+        session = newSession();
         session.subscribe(onState);
         resetUiToIdle();
       });
@@ -1490,6 +1669,7 @@
       show(hostBlock);
       hostStartBtn.disabled = true;
       setText(hostStatus, "Reserving session…");
+      resetMilestoneLog();
       preGrantClipboard();
       session.initializeAsAgent().catch(function () {
         // surfaced via subscribe()
@@ -1506,6 +1686,7 @@
       }
       joinBtn.disabled = true;
       setText(guestStatus, "Connecting…");
+      resetMilestoneLog();
       preGrantClipboard();
       session.joinAsVisitor(pin).catch(function () {
         // surfaced via subscribe()
@@ -1533,6 +1714,7 @@
     setBodyLetterboxClass(false, false);
     setToolMode("none");
     wipeAnnotations();
+    releaseAnnoCanvas();
     currentViewKey = "";
     lastPointerSeq = 0;
     lastStrokeSeq = 0;
@@ -1543,7 +1725,7 @@
     } catch (_e) {}
     resetLocationSyncUi();
     resetUiToIdle();
-    session = createLiveSession({});
+    session = newSession();
     session.subscribe(onState);
   }
 
@@ -1591,8 +1773,11 @@
         for (var l = 0; l < leaveBtns.length; l++) leaveBtns[l].hidden = false;
       }
       if (statusChip) statusChip.hidden = false;
+      markMilestone("layout_started");
       setBodyLetterboxClass(true, isHost);
-      resizeAnnoCanvas();
+      // No annotation-canvas allocation here (P0 iPad fix): the buffer
+      // is created lazily on first Draw/Rope use or first remote stroke,
+      // never inside the already-heavy connect transition.
       // Surface the live extras (voice status + manual sync fallback) and
       // set initial voice / clipboard expectations.
       show(liveExtras);
@@ -1605,6 +1790,11 @@
         setManualStatus("On iPhone or iPad, paste the Matterport link below to sync views.");
       } else {
         setManualStatus("");
+      }
+      // Deferred voice (iOS): voice did not auto-start; offer the
+      // explicit gesture-driven activation.
+      if (IS_IOS_WEBKIT && enableVoiceBtn && !state.remoteStream) {
+        show(enableVoiceBtn);
       }
       // Guest: collapse the panel so the tour fills the screen. Host keeps
       // the panel so they can use stops / invite. Both can reopen via the
@@ -1623,7 +1813,14 @@
         if (state.remoteStream && audioEl.srcObject !== state.remoteStream) {
           audioEl.srcObject = state.remoteStream;
           var pp = audioEl.play();
-          if (pp && typeof pp.catch === "function") pp.catch(function () {});
+          if (pp && typeof pp.then === "function") {
+            pp.then(
+              function () {
+                markMilestone("audio_playing");
+              },
+              function () {},
+            );
+          }
         } else if (!state.remoteStream && audioEl.srcObject) {
           audioEl.srcObject = null;
         }
@@ -1636,6 +1833,10 @@
     if (state.remoteStream && !voiceConnected) {
       voiceConnected = true;
       setVoiceStatus("Voice connected — you can talk now.", "live");
+      if (enableVoiceBtn) {
+        enableVoiceBtn.hidden = true;
+        enableVoiceBtn.disabled = false;
+      }
     } else if (!state.remoteStream && voiceConnected) {
       voiceConnected = false;
       if (state.isConnected) reportVoiceCapability();
@@ -1714,6 +1915,8 @@
     if (sev && sev.seq !== lastStrokeSeq) {
       lastStrokeSeq = sev.seq;
       if (canReceive) {
+        // A remote annotation is the other lazy-allocation trigger.
+        ensureAnnoCanvasAllocated();
         if (sev.kind === "begin") {
           var existingBegin = findLocalStroke(sev.strokeId);
           if (existingBegin) {

@@ -59,20 +59,27 @@ function _coerceString(v) {
 // Resolves to `null` (never rejects) if the user declines, the API is
 // unavailable, or the page is not in a secure context — callers fall
 // back to a silent track so PeerJS still establishes the audio path.
-function _getMicStream() {
+// `diag` (optional) receives the mic_requested / mic_granted /
+// mic_denied diagnostic milestones (unavailable counts as denied).
+function _getMicStream(diag) {
+  var emit = typeof diag === "function" ? diag : function () {};
   if (
     typeof navigator === "undefined" ||
     !navigator.mediaDevices ||
     !navigator.mediaDevices.getUserMedia
   ) {
+    emit("mic_denied");
     return Promise.resolve(null);
   }
+  emit("mic_requested");
   return navigator.mediaDevices
     .getUserMedia({ audio: true, video: false })
     .then(function (stream) {
+      emit("mic_granted");
       return stream;
     })
     .catch(function () {
+      emit("mic_denied");
       return null;
     });
 }
@@ -136,10 +143,30 @@ var LIVE_SESSION_POINTER_BACKPRESSURE_BYTES = 65536;
 //     coalescer. Defaults to `requestAnimationFrame` in the browser,
 //     `setTimeout(cb, 16)` otherwise. Tests pass a manual scheduler
 //     to drive coalescing deterministically.
+//   deferVoice: boolean — P0 iPad stability policy (the glue passes
+//     true on iOS/iPadOS WebKit): NEVER acquire the microphone, build
+//     the silent AudioContext fallback, or place/answer a media call
+//     automatically during the connect transition. Voice starts only
+//     via startVoice(), i.e. from a direct user gesture. Incoming
+//     calls are held (pendingIncomingCall) until then. The data
+//     channel is fully independent of all of it.
+//   onDiagnostic: function(name) — milestone hook (data_connected,
+//     mic_requested/granted/denied, media_call_started,
+//     remote_stream). Must never throw into the controller; guarded.
 function createLiveSession(options) {
   var opts = options || {};
   var log = _makeLogger(!!opts.debug);
   var pinAttempts = typeof opts.pinAttempts === "number" ? opts.pinAttempts : 5;
+  var deferVoice = opts.deferVoice === true;
+  var _diag = typeof opts.onDiagnostic === "function" ? opts.onDiagnostic : null;
+  function _diagSafe(name) {
+    if (!_diag) return;
+    try {
+      _diag(name);
+    } catch (e) {
+      log("diagnostic hook threw", e);
+    }
+  }
   var PeerCtor =
     typeof opts.PeerCtor === "function"
       ? opts.PeerCtor
@@ -178,6 +205,8 @@ function createLiveSession(options) {
   var dataConn = null;
   var mediaCall = null;
   var localMicStream = null;
+  var pendingIncomingCall = null;
+  var voiceEnabledByUser = false;
   var disposed = false;
 
   // Annotation channel bookkeeping. _sendSeq is the agent's monotonic
@@ -352,6 +381,7 @@ function createLiveSession(options) {
   function _attachDataConnection(conn) {
     dataConn = conn;
     conn.on("open", function () {
+      _diagSafe("data_connected");
       _patch({ status: "connected", isConnected: true });
     });
     conn.on("data", function (data) {
@@ -370,30 +400,52 @@ function createLiveSession(options) {
     });
   }
 
+  // Shared media-call plumbing: stream/close/error handlers. Media
+  // failure only patches state — it must never close or corrupt the
+  // data connection.
+  function _wireMediaCall(call) {
+    mediaCall = call;
+    call.on("stream", function (remoteStream) {
+      _diagSafe("remote_stream");
+      _patch({ remoteStream: remoteStream });
+    });
+    call.on("close", function () {
+      if (mediaCall === call) {
+        mediaCall = null;
+        _patch({ remoteStream: null });
+      }
+    });
+    call.on("error", function (err) {
+      var t = (err && err.type) || (err && err.message) || "call-error";
+      log("call error", t);
+      _patch({ error: t });
+    });
+  }
+
   function _answerIncomingCall(call) {
-    _getMicStream().then(function (stream) {
-      localMicStream = stream || _silentTrackStream();
+    // Deferred-voice sessions hold the offer until the user explicitly
+    // enables voice (startVoice) — unless they already did, in which
+    // case the offer is answered immediately below with the stream the
+    // user already granted.
+    if (deferVoice && !voiceEnabledByUser) {
+      pendingIncomingCall = call;
+      call.on("close", function () {
+        if (pendingIncomingCall === call) pendingIncomingCall = null;
+      });
+      return;
+    }
+    _getMicStream(_diagSafe).then(function (stream) {
+      // deferVoice: NEVER build the silent AudioContext fallback — a
+      // mic-less answer is receive-only instead.
+      localMicStream = stream || (deferVoice ? localMicStream : _silentTrackStream());
       try {
         if (localMicStream) call.answer(localMicStream);
         else call.answer();
       } catch (e) {
         log("call.answer failed", e);
       }
-      mediaCall = call;
-      call.on("stream", function (remoteStream) {
-        _patch({ remoteStream: remoteStream });
-      });
-      call.on("close", function () {
-        if (mediaCall === call) {
-          mediaCall = null;
-          _patch({ remoteStream: null });
-        }
-      });
-      call.on("error", function (err) {
-        var t = (err && err.type) || (err && err.message) || "call-error";
-        log("call error", t);
-        _patch({ error: t });
-      });
+      _diagSafe("media_call_started");
+      _wireMediaCall(call);
     });
   }
 
@@ -435,34 +487,26 @@ function createLiveSession(options) {
       p.on("open", function () {
         var conn = p.connect(agentId, { reliable: true });
         _attachDataConnection(conn);
-        _getMicStream().then(function (stream) {
-          localMicStream = stream || _silentTrackStream();
-          var call = null;
-          try {
-            if (localMicStream) {
-              call = p.call(agentId, localMicStream);
-            }
-          } catch (e) {
-            log("p.call failed", e);
-          }
-          if (call) {
-            mediaCall = call;
-            call.on("stream", function (remoteStream) {
-              _patch({ remoteStream: remoteStream });
-            });
-            call.on("close", function () {
-              if (mediaCall === call) {
-                mediaCall = null;
-                _patch({ remoteStream: null });
+        // Deferred voice (P0 iPad): the connect transition stays
+        // data-only — no getUserMedia, no AudioContext, no media call.
+        // startVoice() (a user gesture) initiates voice later.
+        if (!deferVoice) {
+          _getMicStream(_diagSafe).then(function (stream) {
+            localMicStream = stream || _silentTrackStream();
+            var call = null;
+            try {
+              if (localMicStream) {
+                call = p.call(agentId, localMicStream);
               }
-            });
-            call.on("error", function (err) {
-              var t = (err && err.type) || (err && err.message) || "call-error";
-              log("visitor call error", t);
-              _patch({ error: t });
-            });
-          }
-        });
+            } catch (e) {
+              log("p.call failed", e);
+            }
+            if (call) {
+              _diagSafe("media_call_started");
+              _wireMediaCall(call);
+            }
+          });
+        }
         if (!settled) {
           settled = true;
           resolve({ pin: clean, peerId: visitorId });
@@ -595,6 +639,60 @@ function createLiveSession(options) {
       if (Array.isArray(payload.points)) ev.points = payload.points;
       _patch({ incomingStrokeEvent: ev });
     }
+  }
+
+  // User-gesture voice startup (deferred-voice sessions tap "Enable
+  // voice"; safe as a retry on any session). Resolves true when a media
+  // call is answered or placed, false when voice cannot start yet (no
+  // mic AND nothing to answer, or the other side has not offered). The
+  // data connection is untouched on every path.
+  function startVoice() {
+    if (disposed) return Promise.resolve(false);
+    if (!state.isConnected) return Promise.resolve(false);
+    if (state.remoteStream) return Promise.resolve(true);
+    if (mediaCall && !pendingIncomingCall) return Promise.resolve(true);
+    voiceEnabledByUser = true;
+    return _getMicStream(_diagSafe).then(function (stream) {
+      if (disposed) return false;
+      if (stream) localMicStream = stream;
+      if (state.role === "agent") {
+        var pending = pendingIncomingCall;
+        if (pending) {
+          pendingIncomingCall = null;
+          try {
+            // Receive-only when the mic is unavailable — never the
+            // silent AudioContext fallback on a deferred session.
+            if (localMicStream) pending.answer(localMicStream);
+            else pending.answer();
+          } catch (e) {
+            log("pending answer failed", e);
+            return false;
+          }
+          _diagSafe("media_call_started");
+          _wireMediaCall(pending);
+          return true;
+        }
+        // No offer yet — the visitor has not started voice. The grant is
+        // remembered (voiceEnabledByUser), so the offer is answered the
+        // moment it arrives.
+        return false;
+      }
+      if (state.role === "visitor") {
+        if (!localMicStream || !peer) return false;
+        var call = null;
+        try {
+          call = peer.call(LIVE_SESSION_AGENT_PREFIX + (state.pin || ""), localMicStream);
+        } catch (e) {
+          log("startVoice call failed", e);
+          return false;
+        }
+        if (!call) return false;
+        _diagSafe("media_call_started");
+        _wireMediaCall(call);
+        return true;
+      }
+      return false;
+    });
   }
 
   // Agent-only: send a teleport packet to the connected visitor. Returns
@@ -790,6 +888,15 @@ function createLiveSession(options) {
         // ignore
       }
     }
+    if (pendingIncomingCall) {
+      try {
+        pendingIncomingCall.close();
+      } catch (e) {
+        // ignore
+      }
+      pendingIncomingCall = null;
+    }
+    voiceEnabledByUser = false;
     if (dataConn) {
       try {
         dataConn.close();
@@ -849,6 +956,7 @@ function createLiveSession(options) {
     subscribe: subscribe,
     initializeAsAgent: initializeAsAgent,
     joinAsVisitor: joinAsVisitor,
+    startVoice: startVoice,
     teleportVisitor: teleportVisitor,
     shareLocationWithAgent: shareLocationWithAgent,
     sendPointer: sendPointer,

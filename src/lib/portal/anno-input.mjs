@@ -137,11 +137,29 @@ function annoCollectPoints(e, mapFn) {
 // Clamp the device pixel ratio used for canvas buffer sizing. A 3x phone
 // triples the backing-store pixels per CSS pixel in each axis (9x memory
 // + redraw cost) for no visible gain on annotation strokes; 2.5 keeps
-// retina-class sharpness with a bounded buffer.
+// retina-class sharpness with a bounded buffer. Callers pass a tighter
+// cap (1.5) on iOS, where the WebKit process runs under jetsam limits
+// alongside the Matterport WebGL context.
 function annoClampDpr(raw, max) {
   var dpr = typeof raw === "number" && isFinite(raw) && raw > 0 ? raw : 1;
   var cap = typeof max === "number" && isFinite(max) && max > 0 ? max : 2.5;
   return Math.min(dpr, cap);
+}
+
+// Enforce an absolute backing-store pixel budget on top of the DPR clamp:
+// given the CSS size and a candidate DPR, scale the DPR down so
+// (w*dpr)*(h*dpr) never exceeds maxPixels (RGBA bytes = pixels * 4).
+// Floors at 1 — below-native scaling trades too much stroke quality for
+// memory that the realistic letterbox sizes never need anyway.
+function annoBudgetDpr(cssW, cssH, dpr, maxPixels) {
+  var w = typeof cssW === "number" && isFinite(cssW) && cssW > 0 ? cssW : 1;
+  var h = typeof cssH === "number" && isFinite(cssH) && cssH > 0 ? cssH : 1;
+  var d = typeof dpr === "number" && isFinite(dpr) && dpr > 0 ? dpr : 1;
+  var budget = typeof maxPixels === "number" && isFinite(maxPixels) && maxPixels > 0 ? maxPixels : 4194304;
+  if (w * d * (h * d) <= budget) return d;
+  var scaled = Math.sqrt(budget / (w * h));
+  if (!isFinite(scaled) || scaled <= 0) return 1;
+  return Math.max(1, Math.min(d, scaled));
 }
 
 // iOS / iPadOS WebKit detection — every browser on iOS (Safari, Chrome,
@@ -224,6 +242,7 @@ export {
   createAnnoPointerGuard,
   annoCollectPoints,
   annoClampDpr,
+  annoBudgetDpr,
   annoIsIosWebKit,
   annoIsCoarsePointer,
   annoBindViewportEvents,
