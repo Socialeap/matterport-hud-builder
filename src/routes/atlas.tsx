@@ -1,5 +1,5 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Search,
   MapPin,
@@ -27,6 +27,7 @@ import {
   PartyPopper,
   Image as ImageIcon,
   Tag,
+  Share2,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -38,6 +39,7 @@ import {
 } from "@/components/ui/tooltip";
 import { listActiveAtlasEntries } from "@/lib/atlas.functions";
 import { categoryLabel, MAX_MAP_TAGS, type AtlasEntry } from "@/lib/atlas-demo-data";
+import { buildAtlasSpotUrl } from "@/lib/public-url";
 
 /** Lucide icon per known category (text-light scanning). Falls back to a tag. */
 const CATEGORY_ICONS: Record<string, LucideIcon> = {
@@ -99,6 +101,11 @@ export const Route = createFileRoute("/atlas")({
     links: [{ rel: "canonical", href: "https://www.frontiers3d.com/atlas" }],
   }),
 
+  validateSearch: (search: Record<string, unknown>) => ({
+    spot: typeof search.spot === "string" && search.spot.length > 0
+      ? search.spot
+      : undefined,
+  }),
   loader: async () => await listActiveAtlasEntries(),
   component: AtlasPage,
 });
@@ -180,15 +187,44 @@ function AtlasPage() {
     entries: AtlasEntry[];
     error: string | null;
   };
+  const { spot } = Route.useSearch();
+  const navigate = useNavigate({ from: "/atlas" });
 
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<string>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [active, setActive] = useState<AtlasEntry | null>(null);
+  const [active, setActiveState] = useState<AtlasEntry | null>(null);
   // Business card shown over the map when a pin is clicked (replaces the old
   // Leaflet mini-popup). Cleared by its close button or a background map click.
   const [preview, setPreview] = useState<AtlasEntry | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Open/close the immersive modal AND keep `?spot=<id>` in the URL in sync,
+  // so the modal state is shareable as a deep link.
+  const setActive = useCallback(
+    (entry: AtlasEntry | null) => {
+      setActiveState(entry);
+      if (entry) {
+        navigate({ search: { spot: entry.id }, replace: false });
+      } else {
+        navigate({ search: {}, replace: true });
+      }
+    },
+    [navigate],
+  );
+
+  // Auto-open from a shared /atlas?spot=<id> URL. Guarded by a ref so the
+  // modal isn't re-opened after the user manually closes it.
+  const autoOpenedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!spot || autoOpenedRef.current === spot) return;
+    const match = entries.find((e) => e.id === spot);
+    if (!match || !match.presentation_url) return;
+    autoOpenedRef.current = spot;
+    setActiveState(match);
+    setSelectedId(match.id);
+  }, [spot, entries]);
+
 
   // Lazy-load card backgrounds in batches of 10 as user scrolls the list.
   const LAZY_BATCH = 10;
@@ -845,6 +881,47 @@ function EmptyState() {
 
 function PresentationModal({ entry, onClose }: { entry: AtlasEntry; onClose: () => void }) {
   const [loaded, setLoaded] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const shareUrl = useMemo(() => buildAtlasSpotUrl(entry.id), [entry.id]);
+
+  // Bridge: the embedded showcase's .f3d-bar Share button asks the parent
+  // for the canonical Atlas URL via postMessage so it can share /atlas?spot=…
+  // instead of its own standalone netlify URL. Harmless if the showcase
+  // hasn't shipped its half of the protocol yet.
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      const win = iframeRef.current?.contentWindow;
+      if (!win || event.source !== win) return;
+      const data = event.data as { type?: string } | null;
+      if (!data || data.type !== "f3d:request-share-url") return;
+      win.postMessage(
+        { type: "f3d:share-url", url: shareUrl, title: entry.title },
+        "*",
+      );
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [shareUrl, entry.title]);
+
+  const handleShare = async () => {
+    const shareData = { title: entry.title, url: shareUrl };
+    try {
+      if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+        await navigator.share(shareData);
+        return;
+      }
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+        toast.success("Atlas link copied to clipboard");
+        return;
+      }
+      window.prompt("Copy this Atlas link:", shareUrl);
+    } catch (err) {
+      // AbortError from navigator.share is benign (user dismissed the sheet).
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      toast.error("Couldn't copy link. Please copy from the address bar.");
+    }
+  };
 
   return (
     <div
@@ -856,16 +933,28 @@ function PresentationModal({ entry, onClose }: { entry: AtlasEntry; onClose: () 
     >
       {/* The embedded curated showcase brings its own header (.f3d-bar with
           Explore Together / About / Share), so the outer modal is a clean
-          viewer shell: just a compact floating Open-in-new-tab + Close group
-          above the frame — no duplicated title/category/footer chrome. */}
+          viewer shell: just a compact floating Share + Open-in-new-tab + Close
+          group above the frame — no duplicated title/category/footer chrome.
+          The Open / Share controls emit the canonical Atlas deep-link URL
+          (/atlas?spot=<id>) so recipients land back on Atlas, not the raw
+          standalone showcase. */}
       <div className="atlas-modal-controls" onClick={(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          onClick={handleShare}
+          className="atlas-modal-ctrl"
+          title="Share Atlas link"
+          aria-label="Share Atlas link"
+        >
+          <Share2 className="size-4" />
+        </button>
         <a
-          href={entry.presentation_url ?? "#"}
+          href={shareUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="atlas-modal-ctrl"
-          title="Open in new tab"
-          aria-label="Open in new tab"
+          title="Open Atlas link in new tab"
+          aria-label="Open Atlas link in new tab"
         >
           <ExternalLink className="size-4" />
         </a>
@@ -889,6 +978,7 @@ function PresentationModal({ entry, onClose }: { entry: AtlasEntry; onClose: () 
           )}
           {entry.presentation_url && (
             <iframe
+              ref={iframeRef}
               key={entry.id}
               src={entry.presentation_url}
               title={`${entry.title} — immersive presentation`}
@@ -909,3 +999,4 @@ function PresentationModal({ entry, onClose }: { entry: AtlasEntry; onClose: () 
     </div>
   );
 }
+
