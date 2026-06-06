@@ -881,6 +881,47 @@ function EmptyState() {
 
 function PresentationModal({ entry, onClose }: { entry: AtlasEntry; onClose: () => void }) {
   const [loaded, setLoaded] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const shareUrl = useMemo(() => buildAtlasSpotUrl(entry.id), [entry.id]);
+
+  // Bridge: the embedded showcase's .f3d-bar Share button asks the parent
+  // for the canonical Atlas URL via postMessage so it can share /atlas?spot=…
+  // instead of its own standalone netlify URL. Harmless if the showcase
+  // hasn't shipped its half of the protocol yet.
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      const win = iframeRef.current?.contentWindow;
+      if (!win || event.source !== win) return;
+      const data = event.data as { type?: string } | null;
+      if (!data || data.type !== "f3d:request-share-url") return;
+      win.postMessage(
+        { type: "f3d:share-url", url: shareUrl, title: entry.title },
+        "*",
+      );
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [shareUrl, entry.title]);
+
+  const handleShare = async () => {
+    const shareData = { title: entry.title, url: shareUrl };
+    try {
+      if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+        await navigator.share(shareData);
+        return;
+      }
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+        toast.success("Atlas link copied to clipboard");
+        return;
+      }
+      window.prompt("Copy this Atlas link:", shareUrl);
+    } catch (err) {
+      // AbortError from navigator.share is benign (user dismissed the sheet).
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      toast.error("Couldn't copy link. Please copy from the address bar.");
+    }
+  };
 
   return (
     <div
@@ -892,16 +933,28 @@ function PresentationModal({ entry, onClose }: { entry: AtlasEntry; onClose: () 
     >
       {/* The embedded curated showcase brings its own header (.f3d-bar with
           Explore Together / About / Share), so the outer modal is a clean
-          viewer shell: just a compact floating Open-in-new-tab + Close group
-          above the frame — no duplicated title/category/footer chrome. */}
+          viewer shell: just a compact floating Share + Open-in-new-tab + Close
+          group above the frame — no duplicated title/category/footer chrome.
+          The Open / Share controls emit the canonical Atlas deep-link URL
+          (/atlas?spot=<id>) so recipients land back on Atlas, not the raw
+          standalone showcase. */}
       <div className="atlas-modal-controls" onClick={(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          onClick={handleShare}
+          className="atlas-modal-ctrl"
+          title="Share Atlas link"
+          aria-label="Share Atlas link"
+        >
+          <Share2 className="size-4" />
+        </button>
         <a
-          href={entry.presentation_url ?? "#"}
+          href={shareUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="atlas-modal-ctrl"
-          title="Open in new tab"
-          aria-label="Open in new tab"
+          title="Open Atlas link in new tab"
+          aria-label="Open Atlas link in new tab"
         >
           <ExternalLink className="size-4" />
         </a>
@@ -925,6 +978,7 @@ function PresentationModal({ entry, onClose }: { entry: AtlasEntry; onClose: () 
           )}
           {entry.presentation_url && (
             <iframe
+              ref={iframeRef}
               key={entry.id}
               src={entry.presentation_url}
               title={`${entry.title} — immersive presentation`}
@@ -945,3 +999,4 @@ function PresentationModal({ entry, onClose }: { entry: AtlasEntry; onClose: () 
     </div>
   );
 }
+
