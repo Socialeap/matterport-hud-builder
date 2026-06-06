@@ -296,6 +296,7 @@
     }
     .atlas-modal-ctrl--fullscreen svg { color:#fff; }
     .atlas-modal-ctrl--fullscreen:hover { background:#1d4ed8; }
+    .atlas-modal-ctrl-label { display:inline; }
     /* Phones: drop the cinematic cap — fill the screen for usability. */
     .atlas-modal { width:100%; max-height:none; border-radius:0.5rem; }
   }
