@@ -157,6 +157,11 @@
   .atlas-header-kicker { font-size:9px; font-weight:700; letter-spacing:0.12em; color:#64748b; text-transform:uppercase; margin:0; text-align:right; }
   .atlas-header-value { font-size:0.6875rem; font-weight:600; color:#34d399; margin:0; display:flex; align-items:center; justify-content:flex-end; gap:0.375rem; }
   .atlas-header-value-muted { font-size:0.6875rem; font-weight:600; color:#cbd5e1; margin:0; text-align:right; }
+  .atlas-header-right { display:flex; align-items:center; gap:0.75rem; }
+  .atlas-fullscreen-btn { width:2.25rem; height:2.25rem; display:inline-flex; align-items:center; justify-content:center; background:#0f172a; border:1px solid #1e293b; border-radius:0.5rem; color:#e2e8f0; cursor:pointer; transition:all 0.15s; flex-shrink:0; }
+  .atlas-fullscreen-btn:hover { background:#1e293b; border-color:#334155; color:#fff; }
+  .atlas-fullscreen-btn svg { color:#3b82f6; transition:color 0.15s; }
+  .atlas-fullscreen-btn:hover svg { color:#fff; }
   .atlas-pulse-dot { width:6px; height:6px; border-radius:9999px; background:#34d399; display:inline-block; animation:atlas-pulse 1.6s infinite; }
   @keyframes atlas-pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
 

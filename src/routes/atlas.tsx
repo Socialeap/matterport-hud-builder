@@ -28,6 +28,8 @@ import {
   Image as ImageIcon,
   Tag,
   Share2,
+  Maximize2,
+  Minimize2,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -40,6 +42,7 @@ import {
 import { listActiveAtlasEntries } from "@/lib/atlas.functions";
 import { categoryLabel, MAX_MAP_TAGS, type AtlasEntry } from "@/lib/atlas-demo-data";
 import { buildAtlasSpotUrl } from "@/lib/public-url";
+import { useFullscreen } from "@/hooks/use-fullscreen";
 
 /** Lucide icon per known category (text-light scanning). Falls back to a tag. */
 const CATEGORY_ICONS: Record<string, LucideIcon> = {
@@ -434,8 +437,11 @@ function AtlasPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [active]);
 
+  const shellRef = useRef<HTMLDivElement | null>(null);
+  const { isFullscreen, isEnabled: fsEnabled, toggle: toggleFullscreen } = useFullscreen(shellRef);
+
   return (
-    <div className="atlas-shell">
+    <div className="atlas-shell" ref={shellRef}>
       {/* Header */}
       <header className="atlas-header">
         <Link to="/" className="atlas-brand">
@@ -455,19 +461,39 @@ function AtlasPage() {
           <Link to="/agents" className="text-[13px] text-slate-400 transition-colors hover:text-white">For Agents</Link>
           <Link to="/businesses" className="text-[13px] text-slate-400 transition-colors hover:text-white">For Businesses</Link>
         </nav>
-        <div className="atlas-header-meta">
-          <div>
-            <p className="atlas-header-kicker">Listings</p>
-            <p className="atlas-header-value">
-              <span className="atlas-pulse-dot" />
-              {entries.length} live now
-            </p>
+        <div className="atlas-header-right">
+          <div className="atlas-header-meta">
+            <div>
+              <p className="atlas-header-kicker">Listings</p>
+              <p className="atlas-header-value">
+                <span className="atlas-pulse-dot" />
+                {entries.length} live now
+              </p>
+            </div>
+            <span className="atlas-header-divider" />
+            <div>
+              <p className="atlas-header-kicker">Ecosystem</p>
+              <p className="atlas-header-value-muted">Hosts → Spaces → Guests</p>
+            </div>
           </div>
-          <span className="atlas-header-divider" />
-          <div>
-            <p className="atlas-header-kicker">Ecosystem</p>
-            <p className="atlas-header-value-muted">Hosts → Spaces → Guests</p>
-          </div>
+          {fsEnabled && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={toggleFullscreen}
+                  className="atlas-fullscreen-btn"
+                  aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+                  aria-pressed={isFullscreen}
+                >
+                  {isFullscreen ? <Minimize2 className="size-[18px]" /> : <Maximize2 className="size-[18px]" />}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+              </TooltipContent>
+            </Tooltip>
+          )}
         </div>
       </header>
 

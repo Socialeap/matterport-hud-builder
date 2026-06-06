@@ -1,105 +1,74 @@
-# Atlas deep-link sharing
+## Plan: Fullscreen Toggle for /Atlas Page
 
-Make every "share this destination" surface emit the canonical Atlas URL
-`https://www.frontiers3d.com/atlas?spot=<entry-id>` (honoring `getPublicBaseUrl`)
-instead of the standalone netlify presentation URL.
+### Overview
+Add a clearly visible fullscreen toggle button to the Atlas page header. Clicking it enters/exits browser fullscreen mode for the entire Atlas page, hiding browser chrome to maximise the map and listing view.
 
-## 1. Deep-link state on `/atlas` (`src/routes/atlas.tsx`)
+### Browser & Mobile Compatibility
+The Fullscreen API is supported in:
+- Chrome/Edge (all versions)
+- Firefox (all versions)
+- Safari 16+ (macOS) and iOS 15.4+ (any element)
+- Android Chrome (all versions)
 
-- Add a typed search schema to the route:
-  ```ts
-  validateSearch: (s) => ({ spot: typeof s.spot === "string" ? s.spot : undefined })
-  ```
-- In the page component, read `spot` via `Route.useSearch()`.
-- After `listActiveAtlasEntries` resolves, if `spot` matches an entry id and
-  that entry has a `presentation_url`, call `setActive(entry)` and
-  `setSelectedId(entry.id)` once (guard with a ref so re-renders don't re-open
-  after the user closes it).
-- When the modal opens via card click, push `?spot=<id>` using
-  `router.navigate({ search: { spot: id }, replace: false })`.
-- When the modal closes (`setActive(null)`), clear it with
-  `router.navigate({ search: {}, replace: true })`.
-- Entries with no coordinates / no presentation_url are ignored (fallback: no
-  auto-open, page still renders normally).
+The button will be **hidden on browsers that do not expose the API** (graceful degradation). On iPhones running older iOS, the button simply won't appear — no broken UI.
 
-## 2. New helper: Atlas canonical URL
+### Files to Change
 
-Add to `src/lib/public-url.ts`:
+| File | Change |
+|---|---|
+| `src/hooks/use-fullscreen.ts` | **New hook.** Wraps `requestFullscreen` / `exitFullscreen`, listens to `fullscreenchange`, exposes `isFullscreen`, `isEnabled`, `toggle()`. |
+| `src/routes/atlas.tsx` | Import hook + `Maximize2`/`Minimize2` icons. Add toggle button to `<header className="atlas-header">`. |
+| `src/styles.css` | Add `.atlas-fullscreen-btn` styles (dark-themed, bordered, 36×36 px, hover transition, visible on all screen sizes). |
+
+### Button Placement
+Placed as the **last child** of `.atlas-header`, sitting to the right of the existing meta block on desktop and alone on the right on mobile (the meta block is hidden below 768 px, but the button remains visible).
+
+### Button Behaviour
+- **Icon:** `Maximize2` when not fullscreen, `Minimize2` when fullscreen.
+- **Tooltip:** "Enter fullscreen" / "Exit fullscreen" via existing `<Tooltip>` infrastructure.
+- **Touch target:** 36 × 36 px (above the 44 px recommendation where possible without breaking header height; the header is 64 px tall so 36 px fits comfortably).
+- **Keyboard:** `Esc` already exits fullscreen natively; no extra wiring needed.
+
+### Technical Details
+
+**Hook signature:**
 ```ts
-export function buildAtlasSpotUrl(entryId: string): string {
-  return `${getPublicBaseUrl({ scope: "platform" })}/atlas?spot=${encodeURIComponent(entryId)}`;
+function useFullscreen(targetRef: RefObject<Element>): {
+  isFullscreen: boolean;
+  isEnabled: boolean;
+  toggle: () => void;
 }
 ```
-Platform scope ensures we always use `www.frontiers3d.com` (never the
-netlify showcase domain), even when viewed from a preview build.
 
-## 3. Modal controls (`PresentationModal` in `src/routes/atlas.tsx`)
+**Atlas page wiring:**
+1. Create a `shellRef = useRef<HTMLDivElement>(null)` on `.atlas-shell`.
+2. Pass `shellRef` to `useFullscreen`.
+3. In the header, render:
+   ```tsx
+   {isEnabled && (
+     <Tooltip …>
+       <button
+         onClick={toggle}
+         className="atlas-fullscreen-btn"
+         aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+       >
+         {isFullscreen ? <Minimize2 /> : <Maximize2 />}
+       </button>
+     </Tooltip>
+   )}
+   ```
 
-- Change the existing `↗` "Open in new tab" anchor's `href` from
-  `entry.presentation_url` to `buildAtlasSpotUrl(entry.id)`. Title/aria
-  updated to "Open Atlas link in new tab".
-- Add a new `Share` control (lucide `Share2` icon) next to it:
-  - Click handler tries `navigator.share({ url, title })` when available
-    (mobile), else falls back to `navigator.clipboard.writeText(url)` and
-    shows a brief "Link copied" toast via the existing `sonner` toast (already
-    used elsewhere in the app — verify import path during implementation).
-  - URL = `buildAtlasSpotUrl(entry.id)`.
+**CSS additions:**
+- `.atlas-fullscreen-btn` — `display:inline-flex`, `align-items:center`, `justify-content:center`, `width:2.25rem`, `height:2.25rem`, `background:#0f172a`, `border:1px solid #1e293b`, `border-radius:0.5rem`, `color:#e2e8f0`, hover → `background:#1e293b`, `border-color:#334155`, `color:#fff`.
+- Same visual language as the existing map zoom controls (`.atlas-map-ctrl`) for consistency.
 
-## 4. In-iframe Share button bridge
+### Out of Scope
+- No changes to the embedded showcase iframe (fullscreen inside the modal is handled by the showcase's own player, not this page-level toggle).
+- No backend, database, or auth changes.
 
-The showcase's `.f3d-bar` Share button lives in the
-`frontiers3d-atlas-showcases` repo, not here. To make it emit the Atlas URL
-without duplicating logic, add a lightweight postMessage protocol:
-
-**Atlas side (parent — this repo, `PresentationModal`):**
-- On mount, register a `message` listener (scoped to the modal lifetime,
-  removed on unmount).
-- Accept only messages where `event.source === iframeRef.current?.contentWindow`
-  AND `event.data?.type === "f3d:request-share-url"`.
-- Reply with `iframe.contentWindow.postMessage({ type: "f3d:share-url", url: buildAtlasSpotUrl(entry.id) }, "*")`.
-  (Target origin `*` is acceptable here: the payload is a public URL, contains
-  no secrets, and the showcase origin is allowed to vary by deployment.)
-- Add an `iframeRef` to the existing `<iframe>`.
-
-**Showcase side (separate repo — documented, NOT implemented here):**
-- Add a `BACKEND_ACTIVATION.md` note? No — this is a sibling-repo code change,
-  not a Supabase activation. Instead, add a short note to the bottom of the
-  plan output for the user explaining the showcase-repo change needed:
-  > In the showcase template, the Share button handler should
-  > `window.parent.postMessage({type:"f3d:request-share-url"}, "*")` and
-  > listen for `f3d:share-url` to receive the canonical URL; if no reply
-  > arrives within ~200ms (standalone open, not embedded), fall back to
-  > `window.location.href` as today.
-
-The Atlas-side bridge is harmless until the showcase ships its half — no
-regression for currently-deployed showcases.
-
-## 5. Out of scope
-
-- No changes to `atlas_entries` schema, RLS, or server functions.
-- No changes to the `ExpandedSpaceCard`, listing cards, map markers, admin UI,
-  or curation flow.
-- No new routes, no slug column, no SSR OG-tag work for `?spot=` (can be a
-  follow-up; current head() copy stays generic).
-
-## Files touched
-
-- `src/routes/atlas.tsx` — search schema, auto-open effect, navigate on
-  open/close, modal `iframeRef`, postMessage listener, updated `↗` href, new
-  Share button.
-- `src/lib/public-url.ts` — `buildAtlasSpotUrl` helper.
-
-## Verification
-
-1. Click any card → URL becomes `/atlas?spot=<id>`; modal opens.
-2. Close modal → `spot` removed from URL.
-3. Paste `/atlas?spot=<id>` into a fresh tab → modal auto-opens for that entry.
-4. Click the modal `↗` → new tab opens `https://www.frontiers3d.com/atlas?spot=<id>` (not netlify).
-5. Click the new Share button → URL copied; toast shows "Link copied".
-6. Unknown / inactive / coords-less spot id → page renders normally, no modal.
-7. Existing card hover, map markers, lazy backgrounds, expanded card, admin
-   flows: unchanged.
-
-Backend Activation Required: NO
-Reason: Frontend-only change. No migrations, edge functions, RLS, secrets,
-or storage involved.
+### Verification Steps
+1. Load `/atlas` on desktop — button visible in header, right side.
+2. Click button — page enters fullscreen, icon flips to `Minimize2`.
+3. Press `Esc` — exits fullscreen, icon flips back.
+4. On mobile (or emulated) — button visible; tap toggles fullscreen where supported.
+5. On browsers without Fullscreen API — button hidden, page renders normally.
