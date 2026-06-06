@@ -190,6 +190,11 @@ function AtlasPage() {
   const [preview, setPreview] = useState<AtlasEntry | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  // Lazy-load card backgrounds in batches of 10 as user scrolls the list.
+  const LAZY_BATCH = 10;
+  const [visibleCount, setVisibleCount] = useState(LAZY_BATCH);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
   // Category chips built from the union of active-listing categories.
   const categories = useMemo(() => {
     const set = new Set<string>();
