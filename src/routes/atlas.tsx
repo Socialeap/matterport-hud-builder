@@ -907,8 +907,10 @@ function EmptyState() {
 
 function PresentationModal({ entry, onClose }: { entry: AtlasEntry; onClose: () => void }) {
   const [loaded, setLoaded] = useState(false);
+  const modalRef = useRef<HTMLDivElement | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const shareUrl = useMemo(() => buildAtlasSpotUrl(entry.id), [entry.id]);
+  const { isFullscreen, toggle: toggleFullscreen } = useFullscreen(modalRef);
 
   // Bridge: the embedded showcase's .f3d-bar Share button asks the parent
   // for the canonical Atlas URL via postMessage so it can share /atlas?spot=…
@@ -952,6 +954,7 @@ function PresentationModal({ entry, onClose }: { entry: AtlasEntry; onClose: () 
   return (
     <div
       className="atlas-modal-backdrop"
+        ref={modalRef}
       role="dialog"
       aria-modal="true"
       aria-label={`${entry.title} — immersive presentation`}
@@ -973,6 +976,16 @@ function PresentationModal({ entry, onClose }: { entry: AtlasEntry; onClose: () 
           aria-label="Share Atlas link"
         >
           <Share2 className="size-4" />
+        </button>
+        <button
+          type="button"
+          onClick={toggleFullscreen}
+          className="atlas-modal-ctrl atlas-modal-ctrl--fullscreen"
+          title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+          aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+          aria-pressed={isFullscreen}
+        >
+          {isFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
         </button>
         <a
           href={shareUrl}
