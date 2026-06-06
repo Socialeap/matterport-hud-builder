@@ -1,93 +1,46 @@
-# Smart Map Pin Tooltips on /atlas
+# Atlas listing cards: image backgrounds with lazy loading
 
-Add hover tooltips to map pins on `src/routes/atlas.tsx` that show the listing title + category, but only when the pin isn't visually clustered with other pins at the current zoom level. Use Leaflet's native tooltip + event APIs so the map never re-renders through React.
+## Goal
+Make each left-column card on `/atlas` visually richer by rendering the entry's hero image (or category fallback) as a tinted background behind existing text, while keeping perf tight: only the first 10 cards request images immediately; the rest load as they scroll into view.
 
 ## Scope
+Frontend only. `src/routes/atlas.tsx` + `src/styles.css`. No data, route, or backend changes.
 
-- `src/routes/atlas.tsx` — extend the existing marker creation loop.
-- `src/styles.css` — add `.atlas-pin-tooltip` styles matching the dark theme.
+## Changes
 
-No data, no schema, no routing, no backend changes.
+### 1. `ListingCard` (src/routes/atlas.tsx)
+- Resolve image URL with the same two-step fallback already used in tooltips/expanded cards:
+  `entry.hero_image_url || getCategoryImageUrl(entry.category)`.
+- Add a `shouldLoad: boolean` prop driven by the parent (see #2). When `false`, render the card with the dark fallback background only — no `background-image` set, no network request.
+- When `shouldLoad` is `true`, set `style={{ backgroundImage: \`url("\${url}")\` }}` on a new `.atlas-card-bg` layer inside the card.
+- Use a hidden `<img loading="lazy" decoding="async" onError>` probe to detect broken hero URLs and silently fall through to the category image (mirrors `ExpandedSpaceCard` pattern). Two-state: `heroFailed`, `catFailed`.
+- Preserve all existing markup, classes, click/hover handlers; just wrap inner content in a relative container above the background + tint layers.
 
-## Implementation
+### 2. Lazy load batching (parent list, around the `.atlas-list` render)
+- Track `visibleCount` state, initialized to `10`.
+- Use a single `IntersectionObserver` attached to a sentinel `<div>` rendered at the bottom of the list. When the sentinel intersects the scroll viewport, bump `visibleCount` by `10` (capped at `entries.length`).
+- Pass `shouldLoad={index < visibleCount}` to each `ListingCard`.
+- Reset `visibleCount` to 10 whenever the filtered entry list identity changes (search/category filter), so a new filter doesn't immediately request 100 images.
+- Cleanup observer on unmount.
 
-### 1. `src/routes/atlas.tsx` — marker mouse handlers
+Rationale: IntersectionObserver on a sentinel is simpler and more reliable than per-card observers, and naturally limits in-flight image requests to the first batch on initial render.
 
-Inside the existing `pinned.forEach(...)` block in the markers `useEffect` (right after `marker.on("click", ...)`), attach two more Leaflet listeners — no React state, no new components:
+### 3. CSS (src/styles.css, atlas components layer)
+- Add `.atlas-card` rules: `position:relative; overflow:hidden; isolation:isolate;` keep existing `background:#0f172a` as the fallback color.
+- Add `.atlas-card-bg`: absolutely positioned, `inset:0; z-index:0; background-size:cover; background-position:center; background-repeat:no-repeat;`.
+- Add `.atlas-card-tint`: absolutely positioned, `inset:0; z-index:1; background:linear-gradient(180deg, rgba(15,23,42,0.82) 0%, rgba(15,23,42,0.92) 100%);` — enough opacity to keep current text colors (`#fff` title, `#94a3b8` body) fully legible per WCAG AA on any image.
+- Ensure all existing inner content sits at `z-index:2` via a `.atlas-card-inner` wrapper (or `& > *:not(.atlas-card-bg):not(.atlas-card-tint) { position:relative; z-index:2; }`).
+- On `:hover` and `.is-selected`, slightly drop the tint top-stop opacity (e.g. `0.72 → 0.92`) so the image breathes a little — keeps interactivity feedback without sacrificing contrast.
 
-```ts
-marker.on("mouseover", () => {
-  const map = refs.map;
-  const currentPoint = map.latLngToContainerPoint(marker.getLatLng());
-
-  let isOverlapped = false;
-  for (const [id, otherMarker] of refs.markers.entries()) {
-    if (id === entry.id) continue;
-    const otherPoint = map.latLngToContainerPoint(otherMarker.getLatLng());
-    if (currentPoint.distanceTo(otherPoint) < 30) {
-      isOverlapped = true;
-      break;
-    }
-  }
-  if (isOverlapped) return;
-
-  const safeTitle = escapeHtml(entry.title);
-  const safeCategory = escapeHtml(categoryLabel(entry.category));
-  marker
-    .bindTooltip(
-      `<div class="atlas-tooltip-content">
-         <strong class="atlas-tooltip-title">${safeTitle}</strong>
-         <span class="atlas-tooltip-cat">${safeCategory}</span>
-       </div>`,
-      {
-        className: "atlas-pin-tooltip",
-        direction: "top",
-        offset: [0, -12],
-        opacity: 1,
-      },
-    )
-    .openTooltip();
-});
-
-marker.on("mouseout", () => {
-  marker.unbindTooltip();
-});
-```
-
-A tiny local `escapeHtml` helper (in the same file) will sanitize `title` / category before they go into the tooltip HTML string — listing titles are user/admin-curated text and we're injecting into innerHTML.
-
-### 2. `src/styles.css` — tooltip styling
-
-Add a dark-theme override for the `atlas-pin-tooltip` class so Leaflet's default white box is gone:
-
-- transparent → solid dark surface (e.g. `oklch` token consistent with the rest of the Atlas shell)
-- subtle border, soft shadow, small radius
-- title: white, ~13px, semibold
-- category: muted slate (~`#94a3b8` equivalent token), ~11px, uppercase tracking optional
-- hide `.leaflet-tooltip-tip` arrow color so it matches the dark surface (or recolor it)
-- `pointer-events: none` (Leaflet default, but reaffirm) so it never intercepts pin hover
-
-### 3. Guarantees from the spec
-
-- ✅ No `useState` / no React re-render on hover.
-- ✅ Overlap measured in **screen pixels** at the current zoom (recomputed every mouseover).
-- ✅ 30px threshold for the 24×24 pulse icon.
-- ✅ Cleanup via `unbindTooltip()` on mouseout — no DOM leaks.
-- ✅ Existing click → preview card behavior is untouched.
-
-## Out of scope
-
-- No clustering plugin.
-- No changes to the floating preview card, sidebar, or modal.
-- No changes to `ListingCard` hover/select logic.
+### 4. Non-goals
+- No change to map pins, tooltips, expanded card, admin curation form, or `CATEGORY_IMAGES` mapping.
+- No virtualization library — IntersectionObserver batching is sufficient at expected list sizes (<200).
+- No new dependencies.
 
 ## Verification
-
-- Hover an isolated pin → tooltip appears above with title + category in dark style.
-- Zoom out until pins visually cluster → hovering a clustered pin shows **no** tooltip.
-- Zoom back in until the same pin is isolated → tooltip reappears on hover.
-- Click behavior (preview card + sidebar scroll) still works unchanged.
-- No console errors; no React re-renders triggered by hover (verifiable via React DevTools profiler if desired).
-
-Backend Activation Required: NO
-Reason: Frontend-only UI enhancement on `/atlas`; no Supabase, RLS, functions, or schema changes.
+- Load `/atlas`: first 10 cards show category/hero backgrounds with dark tint; Network panel shows ≤10 image requests initially.
+- Scroll the left column: next batches of 10 load progressively; total requests = number of cards seen.
+- Title, category chip, location, summary, footer all remain readable on every image.
+- Apply a category filter or search: visible count resets, images load in batches again for the new list.
+- Card with a broken `hero_image_url` silently falls back to its category image; card with broken category image falls back to the dark gradient — no console errors.
+- Existing hover / selected / click-to-open behavior unchanged.
