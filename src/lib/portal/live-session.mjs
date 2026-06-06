@@ -192,6 +192,7 @@ function createLiveSession(options) {
     error: null,
     isConnected: false,
     remoteStream: null,
+    voiceCallActive: false,
     incomingTeleportEvent: null,
     incomingPointerEvent: null,
     incomingStrokeEvent: null,
@@ -402,9 +403,14 @@ function createLiveSession(options) {
 
   // Shared media-call plumbing: stream/close/error handlers. Media
   // failure only patches state — it must never close or corrupt the
-  // data connection.
+  // data connection. `voiceCallActive` tracks the attempt lifecycle so
+  // the UI can re-offer "Enable voice" when a call dies BEFORE a remote
+  // stream ever arrived (negotiation failure, peer hung up); the error
+  // path also clears mediaCall, otherwise a dead call would make every
+  // startVoice() retry a no-op.
   function _wireMediaCall(call) {
     mediaCall = call;
+    _patch({ voiceCallActive: true });
     call.on("stream", function (remoteStream) {
       _diagSafe("remote_stream");
       _patch({ remoteStream: remoteStream });
@@ -412,13 +418,18 @@ function createLiveSession(options) {
     call.on("close", function () {
       if (mediaCall === call) {
         mediaCall = null;
-        _patch({ remoteStream: null });
+        _patch({ remoteStream: null, voiceCallActive: false });
       }
     });
     call.on("error", function (err) {
       var t = (err && err.type) || (err && err.message) || "call-error";
       log("call error", t);
-      _patch({ error: t });
+      if (mediaCall === call) {
+        mediaCall = null;
+        _patch({ error: t, remoteStream: null, voiceCallActive: false });
+      } else {
+        _patch({ error: t });
+      }
     });
   }
 
@@ -942,6 +953,7 @@ function createLiveSession(options) {
       error: null,
       isConnected: false,
       remoteStream: null,
+      voiceCallActive: false,
       incomingTeleportEvent: null,
       incomingPointerEvent: null,
       incomingStrokeEvent: null,
