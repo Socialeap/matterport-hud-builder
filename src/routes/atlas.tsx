@@ -187,15 +187,44 @@ function AtlasPage() {
     entries: AtlasEntry[];
     error: string | null;
   };
+  const { spot } = Route.useSearch();
+  const navigate = useNavigate({ from: "/atlas" });
 
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<string>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [active, setActive] = useState<AtlasEntry | null>(null);
+  const [active, setActiveState] = useState<AtlasEntry | null>(null);
   // Business card shown over the map when a pin is clicked (replaces the old
   // Leaflet mini-popup). Cleared by its close button or a background map click.
   const [preview, setPreview] = useState<AtlasEntry | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Open/close the immersive modal AND keep `?spot=<id>` in the URL in sync,
+  // so the modal state is shareable as a deep link.
+  const setActive = useCallback(
+    (entry: AtlasEntry | null) => {
+      setActiveState(entry);
+      if (entry) {
+        navigate({ search: { spot: entry.id }, replace: false });
+      } else {
+        navigate({ search: {}, replace: true });
+      }
+    },
+    [navigate],
+  );
+
+  // Auto-open from a shared /atlas?spot=<id> URL. Guarded by a ref so the
+  // modal isn't re-opened after the user manually closes it.
+  const autoOpenedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!spot || autoOpenedRef.current === spot) return;
+    const match = entries.find((e) => e.id === spot);
+    if (!match || !match.presentation_url) return;
+    autoOpenedRef.current = spot;
+    setActiveState(match);
+    setSelectedId(match.id);
+  }, [spot, entries]);
+
 
   // Lazy-load card backgrounds in batches of 10 as user scrolls the list.
   const LAZY_BATCH = 10;
