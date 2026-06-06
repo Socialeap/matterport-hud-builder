@@ -720,76 +720,111 @@ function ExpandedSpaceCard({
 function ListingCard({
   entry,
   selected,
+  shouldLoad,
   onHover,
   onFocus,
   onOpen,
 }: {
   entry: AtlasEntry;
   selected: boolean;
+  shouldLoad: boolean;
   onHover: () => void;
   onFocus: () => void;
   onOpen: () => void;
 }) {
   const loc = [entry.city, entry.region].filter(Boolean).join(", ");
   const hasCoords = entry.latitude != null && entry.longitude != null;
+  const [heroFailed, setHeroFailed] = useState(false);
+  const [catFailed, setCatFailed] = useState(false);
+
+  const heroSrc =
+    entry.hero_image_url && !heroFailed ? entry.hero_image_url : null;
+  const catSrc = !catFailed ? getCategoryImageUrl(entry.category) : null;
+  const bgUrl = heroSrc ?? (catSrc ? encodeURI(catSrc) : null);
+  const showBg = shouldLoad && !!bgUrl;
+
   return (
     <article
       role="listitem"
       id={`atlas-card-${entry.id}`}
       onMouseEnter={onHover}
       onClick={onFocus}
-      className={`atlas-card ${selected ? "is-selected" : ""}`}
+      className={`atlas-card ${selected ? "is-selected" : ""} ${showBg ? "has-bg" : ""}`}
     >
-      <div className="atlas-card-row">
-        <span className="atlas-card-cat">{categoryLabel(entry.category)}</span>
-        {entry.kind === "demo" ? (
-          <span className="atlas-card-kind atlas-card-kind--sample">
-            <Sparkles className="size-3" /> Sample
-          </span>
-        ) : entry.kind === "curated_showcase" ? (
-          <span className="atlas-card-kind atlas-card-kind--curated">
-            <Star className="size-3" /> Curated
-          </span>
-        ) : (
-          <span className="atlas-card-kind atlas-card-kind--verified">
-            <ShieldCheck className="size-3" /> Verified
-          </span>
-        )}
-      </div>
-      <h3 className="atlas-card-title">{entry.title}</h3>
-      {loc ? (
-        <p className="atlas-card-loc">
-          <MapPin className="size-3.5" aria-hidden="true" /> {loc}
-        </p>
-      ) : (
-        <p className="atlas-card-loc atlas-card-loc--pending">
-          <MapPinOff className="size-3.5" aria-hidden="true" /> Location pending
-        </p>
-      )}
-      {entry.summary && <p className="atlas-card-summary">{entry.summary}</p>}
-      <div className="atlas-card-footer">
-        {hasCoords ? (
-          <span className="atlas-card-meta">On the map</span>
-        ) : (
-          <span className="atlas-card-meta atlas-card-meta--muted">List only</span>
-        )}
-        {entry.presentation_url ? (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpen();
+      {showBg && (
+        <>
+          <div
+            className="atlas-card-bg"
+            style={{ backgroundImage: `url("${bgUrl}")` }}
+            aria-hidden="true"
+          />
+          <div className="atlas-card-tint" aria-hidden="true" />
+          <img
+            src={bgUrl ?? ""}
+            alt=""
+            aria-hidden="true"
+            loading="lazy"
+            decoding="async"
+            onError={() => {
+              if (heroSrc) setHeroFailed(true);
+              else setCatFailed(true);
             }}
-            className="atlas-card-cta"
-            aria-label={`Step inside ${entry.title}`}
-          >
-            <Play className="size-3.5" aria-hidden="true" /> Step Inside
-          </button>
+            style={{ display: "none" }}
+          />
+        </>
+      )}
+      <div className="atlas-card-inner">
+        <div className="atlas-card-row">
+          <span className="atlas-card-cat">{categoryLabel(entry.category)}</span>
+          {entry.kind === "demo" ? (
+            <span className="atlas-card-kind atlas-card-kind--sample">
+              <Sparkles className="size-3" /> Sample
+            </span>
+          ) : entry.kind === "curated_showcase" ? (
+            <span className="atlas-card-kind atlas-card-kind--curated">
+              <Star className="size-3" /> Curated
+            </span>
+          ) : (
+            <span className="atlas-card-kind atlas-card-kind--verified">
+              <ShieldCheck className="size-3" /> Verified
+            </span>
+          )}
+        </div>
+        <h3 className="atlas-card-title">{entry.title}</h3>
+        {loc ? (
+          <p className="atlas-card-loc">
+            <MapPin className="size-3.5" aria-hidden="true" /> {loc}
+          </p>
         ) : (
-          <span className="atlas-card-meta atlas-card-meta--muted">
-            Presentation coming soon
-          </span>
+          <p className="atlas-card-loc atlas-card-loc--pending">
+            <MapPinOff className="size-3.5" aria-hidden="true" /> Location pending
+          </p>
         )}
+        {entry.summary && <p className="atlas-card-summary">{entry.summary}</p>}
+        <div className="atlas-card-footer">
+          {hasCoords ? (
+            <span className="atlas-card-meta">On the map</span>
+          ) : (
+            <span className="atlas-card-meta atlas-card-meta--muted">List only</span>
+          )}
+          {entry.presentation_url ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpen();
+              }}
+              className="atlas-card-cta"
+              aria-label={`Step inside ${entry.title}`}
+            >
+              <Play className="size-3.5" aria-hidden="true" /> Step Inside
+            </button>
+          ) : (
+            <span className="atlas-card-meta atlas-card-meta--muted">
+              Presentation coming soon
+            </span>
+          )}
+        </div>
       </div>
     </article>
   );
