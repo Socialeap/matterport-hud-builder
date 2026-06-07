@@ -137,3 +137,30 @@ test("pseudo-fullscreen CSS is strengthened WITHOUT any touch-action", () => {
   assert.ok(lock[0].includes("overscroll-behavior:none"));
   assert.ok(!lock[0].includes("touch-action"), "NO touch-action on the body lock");
 });
+
+test("modal pseudo-fullscreen keeps safe-area padding despite the later backdrop rules (P2)", () => {
+  const css = read("src", "styles.css");
+  // The modal element carries BOTH classes; .atlas-modal-backdrop is
+  // declared later at equal specificity and sets its own padding (plus a
+  // mobile media variant). The compound selector must exist to win on
+  // specificity in every cascade position.
+  const modalRule = css.match(/\.atlas-modal-backdrop\.atlas-shell--pseudo-fs \{[^}]*\}/);
+  assert.ok(modalRule, "compound .atlas-modal-backdrop.atlas-shell--pseudo-fs rule present");
+  for (const side of ["top", "right", "bottom", "left"]) {
+    assert.ok(
+      modalRule[0].includes(`env(safe-area-inset-${side},0px)`),
+      `compound rule missing safe-area inset: ${side}`,
+    );
+  }
+  assert.ok(
+    modalRule[0].includes("calc(0.625rem + env("),
+    "safe-area combines with the backdrop's normal inner gap",
+  );
+  assert.ok(!modalRule[0].includes("touch-action"), "NO touch-action on the compound rule");
+  // Document the cascade hazard the compound rule defends against: the
+  // plain backdrop rule really is declared AFTER the pseudo-fs rule.
+  assert.ok(
+    css.indexOf(".atlas-modal-backdrop {") > css.indexOf(".atlas-shell--pseudo-fs {"),
+    "backdrop rule follows pseudo-fs rule (the override this test guards)",
+  );
+});
