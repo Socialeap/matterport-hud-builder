@@ -44,6 +44,8 @@ import { listActiveAtlasEntries } from "@/lib/atlas.functions";
 import { categoryLabel, MAX_MAP_TAGS, type AtlasEntry } from "@/lib/atlas-demo-data";
 import { buildAtlasSpotUrl } from "@/lib/public-url";
 import { useFullscreen } from "@/hooks/use-fullscreen";
+import { InstallPrompt } from "@/components/pwa/InstallPrompt";
+import { recordVisit, recordEngagement } from "@/lib/pwa/install-controller.mjs";
 
 /** Lucide icon per known category (text-light scanning). Falls back to a tag. */
 const CATEGORY_ICONS: Record<string, LucideIcon> = {
@@ -202,6 +204,16 @@ function AtlasPage() {
   // Leaflet mini-popup). Cleared by its close button or a background map click.
   const [preview, setPreview] = useState<AtlasEntry | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // PWA install promotion: surfaced only after meaningful Atlas engagement
+  // (a presentation opened) or a return visit — never on cold load.
+  const [installEngaged, setInstallEngaged] = useState(false);
+  useEffect(() => {
+    try {
+      recordVisit(typeof window !== "undefined" ? window.localStorage : null);
+    } catch {
+      /* storage unavailable — install promo is optional */
+    }
+  }, []);
 
   // Open/close the immersive modal AND keep `?spot=<id>` in the URL in sync,
   // so the modal state is shareable as a deep link.
@@ -209,6 +221,14 @@ function AtlasPage() {
     (entry: AtlasEntry | null) => {
       setActiveState(entry);
       if (entry) {
+        // Opening a presentation is the strongest "interested" signal —
+        // unlock the install promotion for this session.
+        setInstallEngaged(true);
+        try {
+          recordEngagement(typeof window !== "undefined" ? window.localStorage : null);
+        } catch {
+          /* optional */
+        }
         navigate({ search: { spot: entry.id }, replace: false });
       } else {
         navigate({ search: {}, replace: true });
@@ -656,6 +676,11 @@ function AtlasPage() {
       {active && active.presentation_url && (
         <PresentationModal entry={active} onClose={() => setActive(null)} />
       )}
+
+      {/* Install promotion — Atlas-only (never in admin/checkout/auth),
+          hidden in standalone, surfaced after engagement or a return
+          visit with a remembered dismiss cooldown. */}
+      <InstallPrompt engaged={installEngaged} />
     </div>
   );
 }

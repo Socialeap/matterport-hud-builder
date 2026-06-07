@@ -14,6 +14,7 @@ import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider } from "@/hooks/use-auth";
 import { Toaster } from "@/components/ui/sonner";
+import { ServiceWorkerManager } from "@/components/pwa/ServiceWorkerManager";
 import appCss from "../styles.css?url";
 
 function NotFoundComponent() {
@@ -54,12 +55,22 @@ export const Route = createRootRoute({
       { property: "og:description", content: "Spatial-agnostic 3D presentation platform — Matterport today; Google Street View and Genie 3 generative worlds next." },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "google-site-verification", content: "jjiVIwqcuUy5j_XMvbPFCMGBaNtSUGGQT5PGrcVZXDo" },
-
+      // ── PWA / installable app (PR-PWA-1) ──────────────────────────────
+      { name: "theme-color", content: "#020617" },
+      { name: "application-name", content: "Frontiers3D" },
+      { name: "mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "black" },
+      { name: "apple-mobile-web-app-title", content: "Frontiers3D" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
       { rel: "icon", type: "image/png", href: "/favicon.png" },
-      { rel: "apple-touch-icon", href: "/favicon.png" },
+      // PWA manifest + real, padded production icons (any/maskable/apple).
+      { rel: "manifest", href: "/manifest.webmanifest" },
+      { rel: "icon", type: "image/png", sizes: "192x192", href: "/icons/icon-192.png" },
+      { rel: "icon", type: "image/png", sizes: "512x512", href: "/icons/icon-512.png" },
+      { rel: "apple-touch-icon", href: "/icons/apple-touch-icon-180.png" },
     ],
     scripts: [
       {
@@ -113,6 +124,7 @@ function RootComponent() {
       <AuthProvider>
         <Outlet />
         <Toaster richColors position="top-center" />
+        <ServiceWorkerManager />
       </AuthProvider>
     </QueryClientProvider>
   );
