@@ -30,7 +30,6 @@ import {
   Share2,
   Maximize2,
   Minimize2,
-  Monitor,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -43,7 +42,7 @@ import {
 import { listActiveAtlasEntries } from "@/lib/atlas.functions";
 import { categoryLabel, MAX_MAP_TAGS, type AtlasEntry } from "@/lib/atlas-demo-data";
 import { buildAtlasSpotUrl } from "@/lib/public-url";
-import { useFullscreen } from "@/hooks/use-fullscreen";
+import { useFullscreen, immersiveButtonLabel } from "@/hooks/use-fullscreen";
 import { InstallPrompt } from "@/components/pwa/InstallPrompt";
 import { recordVisit, recordEngagement } from "@/lib/pwa/install-controller.mjs";
 
@@ -459,7 +458,17 @@ function AtlasPage() {
   }, [active]);
 
   const shellRef = useRef<HTMLDivElement | null>(null);
-  const { isFullscreen, toggle: toggleFullscreen } = useFullscreen(shellRef);
+  const {
+    isFullscreen: shellFullscreen,
+    supportsDeviceFullscreen: shellSupportsDevice,
+    toggleImmersive: toggleShellImmersive,
+  } = useFullscreen(shellRef);
+  // One primary immersive control: Device fullscreen where it works, else
+  // Maximize. Label is honest in standalone/iPhone (never "fullscreen").
+  const shellFsLabel = immersiveButtonLabel({
+    active: shellFullscreen,
+    supportsDevice: shellSupportsDevice,
+  });
 
   return (
     <div className="atlas-shell" ref={shellRef}>
@@ -502,16 +511,16 @@ function AtlasPage() {
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  onClick={toggleFullscreen}
+                  onClick={toggleShellImmersive}
                   className="atlas-fullscreen-btn"
-                  aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-                  aria-pressed={isFullscreen}
+                  aria-label={shellFsLabel.aria}
+                  aria-pressed={shellFullscreen}
                 >
-                  {isFullscreen ? <Minimize2 className="size-[18px]" /> : <Maximize2 className="size-[18px]" />}
+                  {shellFullscreen ? <Minimize2 className="size-[18px]" /> : <Maximize2 className="size-[18px]" />}
                 </button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                {isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+                {shellFsLabel.title}
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -937,17 +946,17 @@ function PresentationModal({ entry, onClose }: { entry: AtlasEntry; onClose: () 
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const shareUrl = useMemo(() => buildAtlasSpotUrl(entry.id), [entry.id]);
   const {
-    isMaximized,
-    isDeviceFullscreen,
     isFullscreen,
-    isIos,
     supportsDeviceFullscreen,
-    maximize,
-    enterDeviceFullscreen,
-    exit: exitFullscreen,
-    toggle: toggleFullscreen,
+    toggleImmersive,
     ensureSafeForInteraction,
   } = useFullscreen(modalRef);
+  // ONE primary immersive control: Device fullscreen first, Maximize
+  // fallback; the icon/label/aria use the combined isFullscreen state.
+  const modalFsLabel = immersiveButtonLabel({
+    active: isFullscreen,
+    supportsDevice: supportsDeviceFullscreen,
+  });
 
   // Bridge: the embedded showcase's .f3d-bar Share button asks the parent
   // for the canonical Atlas URL via postMessage so it can share /atlas?spot=…
@@ -1035,62 +1044,24 @@ function PresentationModal({ entry, onClose }: { entry: AtlasEntry; onClose: () 
         >
           <Share2 className="size-4" />
         </button>
-        {isIos ? (
-          <>
-            {/* PRIMARY on iPad/iPhone: Maximize (CSS pseudo-fullscreen) —
-                the safe mode for Explore Together, Draw, and Focus Rope;
-                immune to the iPadOS swipe-down exit gesture. */}
-            <button
-              type="button"
-              onClick={isMaximized ? exitFullscreen : maximize}
-              className="atlas-modal-ctrl atlas-modal-ctrl--fullscreen"
-              title={isMaximized ? "Exit Maximize" : "Maximize — best for drawing & live tours"}
-              aria-label={isMaximized ? "Exit Maximize" : "Maximize"}
-              aria-pressed={isMaximized}
-            >
-              {isMaximized ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
-              <span className="atlas-modal-ctrl-label">{isMaximized ? "Exit" : "Maximize"}</span>
-            </button>
-            {/* SECONDARY (iPad only; hidden on iPhone w/o element-fullscreen
-                and in standalone app mode): native Device fullscreen for
-                PASSIVE viewing. De-emphasized — it can be exited by OS
-                gestures, so it is not the mode for drawing. */}
-            {supportsDeviceFullscreen && !isMaximized && (
-              <button
-                type="button"
-                onClick={isDeviceFullscreen ? exitFullscreen : enterDeviceFullscreen}
-                className="atlas-modal-ctrl atlas-modal-ctrl--device"
-                title={
-                  isDeviceFullscreen
-                    ? "Exit device fullscreen"
-                    : "Device fullscreen — passive viewing (may exit on swipe)"
-                }
-                aria-label={isDeviceFullscreen ? "Exit device fullscreen" : "Device fullscreen (passive viewing)"}
-                aria-pressed={isDeviceFullscreen}
-              >
-                {isDeviceFullscreen ? <Minimize2 className="size-4" /> : <Monitor className="size-4" />}
-              </button>
-            )}
-          </>
-        ) : (
-          /* Desktop: single native Fullscreen control. Keyed to the
-             COMBINED fullscreen state, not isDeviceFullscreen: toggle()
-             falls back to Maximize when native is rejected/unavailable
-             (iframe without allow=, etc.), leaving the modal expanded
-             with isDeviceFullscreen=false — the label/icon/aria must
-             still read "Exit" so the control matches what a click does. */
-          <button
-            type="button"
-            onClick={toggleFullscreen}
-            className="atlas-modal-ctrl atlas-modal-ctrl--fullscreen"
-            title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-            aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-            aria-pressed={isFullscreen}
-          >
-            {isFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
-            <span className="atlas-modal-ctrl-label">{isFullscreen ? "Exit" : "Fullscreen"}</span>
-          </button>
-        )}
+        {/* ONE primary immersive control. toggleImmersive() enters Device
+            fullscreen where supported, else Maximize (and falls back to
+            Maximize if a native request is rejected). All display props use
+            the COMBINED isFullscreen so the control always matches what a
+            click does. On iPad, starting Draw / Focus Rope / Pointer /
+            Explore Together inside the tour switches Device fullscreen →
+            Maximize via the f3d:interaction-active listener below. */}
+        <button
+          type="button"
+          onClick={toggleImmersive}
+          className="atlas-modal-ctrl atlas-modal-ctrl--fullscreen"
+          title={modalFsLabel.title}
+          aria-label={modalFsLabel.aria}
+          aria-pressed={isFullscreen}
+        >
+          {isFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+          <span className="atlas-modal-ctrl-label">{isFullscreen ? "Exit" : modalFsLabel.label}</span>
+        </button>
         <a
           href={shareUrl}
           target="_blank"
