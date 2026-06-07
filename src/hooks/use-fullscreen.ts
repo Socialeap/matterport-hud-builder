@@ -13,7 +13,6 @@ const PSEUDO_CLASS = "atlas-shell--pseudo-fs";
 const BODY_LOCK_CLASS = "atlas-pseudo-fs-lock";
 
 export type FullscreenMode = "none" | "maximized" | "device";
-export type FullscreenIntent = "maximize" | "device";
 
 function getFsElement(): Element | null {
   if (typeof document === "undefined") return null;
@@ -87,26 +86,47 @@ export function deviceFullscreenApiAvailable(win?: Window | null): boolean {
 }
 
 /**
- * What the PRIMARY/default fullscreen control should do.
- *   iOS/iPadOS WebKit → "maximize" (CSS pseudo-fullscreen): the safe,
- *     recommended mode for Explore Together / Draw / Focus Rope. iPadOS
- *     owns the downward swipe-to-exit gesture for NATIVE fullscreen and
- *     it cannot be scoped to a page region, so native is never the
- *     default for interactive use.
- *   desktop → "device" (native fullscreen).
+ * Decide what the SINGLE primary immersive control should do next. Device
+ * fullscreen is the primary mechanism everywhere it works; Maximize is the
+ * fallback (iPhone with no element-fullscreen API, or installed/standalone
+ * where native fullscreen is unnecessary).
+ *   active (native OR maximized) → "exit"
+ *   supports device fullscreen   → "device"
+ *   otherwise                    → "maximize"
  */
-export function defaultFullscreenIntent(
-  nav?: Pick<Navigator, "platform" | "userAgent" | "maxTouchPoints"> | null,
-): FullscreenIntent {
-  return isIosWebKitDevice(nav) ? "maximize" : "device";
+export function planImmersiveToggle(input: {
+  nativeActive: boolean;
+  maximized: boolean;
+  supportsDevice: boolean;
+}): "exit" | "device" | "maximize" {
+  if (input.nativeActive || input.maximized) return "exit";
+  if (input.supportsDevice) return "device";
+  return "maximize";
+}
+
+/**
+ * Label/title/aria for the single immersive button, derived from the
+ * COMBINED state. When device fullscreen is unavailable (iPhone /
+ * standalone) the control is honestly "Maximize", never "Fullscreen".
+ */
+export function immersiveButtonLabel(input: {
+  active: boolean;
+  supportsDevice: boolean;
+}): { label: string; title: string; aria: string } {
+  if (input.active) {
+    return { label: "Exit", title: "Exit immersive view", aria: "Exit immersive view" };
+  }
+  if (input.supportsDevice) {
+    return { label: "Fullscreen", title: "Enter fullscreen", aria: "Enter fullscreen" };
+  }
+  return { label: "Maximize", title: "Maximize", aria: "Maximize" };
 }
 
 /**
  * Attempt NATIVE fullscreen on `el`. Pure: resolves true on success,
  * false on a missing API or a rejected request (e.g. an iframe without
- * `allow="fullscreen"`). No platform refusal — the iOS default-mode
- * policy lives in defaultFullscreenIntent(); the explicit, secondary
- * "Device fullscreen" action uses this on iPad too (passive viewing).
+ * `allow="fullscreen"`). No platform refusal — the device-vs-maximize
+ * choice lives in planImmersiveToggle() / supportsDeviceFullscreen.
  */
 export async function requestNativeFullscreen(el: FsElement): Promise<boolean> {
   const request = el.requestFullscreen ?? el.webkitRequestFullscreen;
@@ -120,24 +140,24 @@ export async function requestNativeFullscreen(el: FsElement): Promise<boolean> {
 }
 
 /**
- * Two-mode fullscreen for a target element.
+ * Single primary immersive control for a target element.
  *
- * - **Maximize** (`maximize()`): CSS pseudo-fullscreen via
- *   `.atlas-shell--pseudo-fs`. The DEFAULT, safe mode on iOS/iPadOS for
- *   any live interaction (Explore Together, Draw, Focus Rope) — immune
- *   to the iPadOS swipe-down exit gesture. `Escape` exits it;
+ * - `toggleImmersive()` is THE button action used by both the /atlas shell
+ *   and the presentation modal. Device fullscreen is the primary mechanism
+ *   wherever it works; Maximize (CSS pseudo-fullscreen via
+ *   `.atlas-shell--pseudo-fs`) is the fallback when device fullscreen is
+ *   unavailable (iPhone) or unnecessary (installed/standalone) or rejected
+ *   (iframe without allow). The button's icon/label/aria use the COMBINED
+ *   `isFullscreen` state.
+ * - Maximize is NOT a second prominent control. It is the fallback above
+ *   AND the auto-safety mode entered by `ensureSafeForInteraction()` when
+ *   annotation / live interaction begins on iPad (iPadOS can swipe-exit
+ *   native fullscreen mid-draw). `Escape` exits Maximize;
  *   `body.atlas-pseudo-fs-lock` contains background scroll (no
- *   touch-action — embedded gestures stay intact).
- * - **Device fullscreen** (`enterDeviceFullscreen()`): native Fullscreen
- *   API. PRIMARY on desktop; on iPad it is an OPTIONAL, secondary
- *   passive-viewing mode (it can be exited by OS gestures, so it is not
- *   offered as the mode for drawing). Falls back to Maximize when the
- *   request is rejected/unavailable.
- * - `ensureSafeForInteraction()`: if native device fullscreen is active
- *   when an interaction that needs stable touch gestures begins, drop to
- *   Maximize. Returns true if it switched (the caller surfaces copy).
- * - `toggle()`: back-compat single control — routes through
- *   defaultFullscreenIntent() (desktop → device, iOS → maximize).
+ *   touch-action — embedded Matterport/annotation gestures stay intact).
+ * - `maximize` / `enterDeviceFullscreen` remain as internals (used by the
+ *   unified actions + the auto-safety path); the UI exposes only one
+ *   immersive button.
  */
 export function useFullscreen(targetRef: RefObject<Element | null>) {
   const [isNativeFs, setIsNativeFs] = useState(false);
@@ -218,7 +238,7 @@ export function useFullscreen(targetRef: RefObject<Element | null>) {
     if (!ok) setIsMaximized(true);
   }, [isMaximized, targetRef]);
 
-  const exit = useCallback(async () => {
+  const exitImmersive = useCallback(async () => {
     if (getFsElement()) {
       await exitNativeFullscreen();
       return;
@@ -226,25 +246,38 @@ export function useFullscreen(targetRef: RefObject<Element | null>) {
     if (isMaximized) setIsMaximized(false);
   }, [isMaximized]);
 
-  // Back-compat single toggle (the /atlas page-shell button uses this):
-  // primary intent per platform.
-  const toggle = useCallback(async () => {
+  // Enter the primary immersive mode: Device fullscreen where supported,
+  // else Maximize; on a native reject (e.g. iframe without allow) fall
+  // back to Maximize. No-op if already immersive.
+  const enterImmersive = useCallback(async () => {
     const el = targetRef.current as FsElement | null;
     if (!el) return;
-    if (getFsElement()) {
-      await exitNativeFullscreen();
-      return;
-    }
-    if (isMaximized) {
-      setIsMaximized(false);
-      return;
-    }
-    if (defaultFullscreenIntent() === "device") {
+    if (getFsElement() || isMaximized) return;
+    const plan = planImmersiveToggle({
+      nativeActive: false,
+      maximized: false,
+      supportsDevice: supportsDeviceFullscreen,
+    });
+    if (plan === "device") {
       const ok = await requestNativeFullscreen(el);
       if (ok) return;
     }
     setIsMaximized(true);
-  }, [isMaximized, targetRef]);
+  }, [isMaximized, supportsDeviceFullscreen, targetRef]);
+
+  // THE single button action for the shell + the modal.
+  const toggleImmersive = useCallback(async () => {
+    const plan = planImmersiveToggle({
+      nativeActive: getFsElement() !== null,
+      maximized: isMaximized,
+      supportsDevice: supportsDeviceFullscreen,
+    });
+    if (plan === "exit") {
+      await exitImmersive();
+      return;
+    }
+    await enterImmersive();
+  }, [isMaximized, supportsDeviceFullscreen, enterImmersive, exitImmersive]);
 
   // Req 3: an interaction needing stable touch gestures began. iPadOS can
   // swipe-exit native fullscreen mid-draw, so if we are in it, drop to
@@ -270,10 +303,13 @@ export function useFullscreen(targetRef: RefObject<Element | null>) {
     isIos,
     isStandalone,
     supportsDeviceFullscreen,
+    // Single primary immersive control used by the shell + modal.
+    enterImmersive,
+    exitImmersive,
+    toggleImmersive,
+    ensureSafeForInteraction,
+    // Internals (fallback + auto-safety); not a second prominent button.
     maximize,
     enterDeviceFullscreen,
-    exit,
-    toggle,
-    ensureSafeForInteraction,
   };
 }

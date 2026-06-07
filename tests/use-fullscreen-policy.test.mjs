@@ -23,7 +23,8 @@ import {
   isIosWebKitDevice,
   isStandaloneDisplay,
   deviceFullscreenApiAvailable,
-  defaultFullscreenIntent,
+  planImmersiveToggle,
+  immersiveButtonLabel,
   requestNativeFullscreen,
 } from "../src/hooks/use-fullscreen.ts";
 
@@ -49,19 +50,56 @@ test("isIosWebKitDevice stays false for real desktops and bad input", () => {
   assert.equal(isIosWebKitDevice({}), false, "empty navigator fails closed to false");
 });
 
-// ── 2. Default-mode policy (the iOS-safe contract) ───────────────────────
-test("defaultFullscreenIntent: iOS => Maximize, desktop => Device", () => {
-  assert.equal(defaultFullscreenIntent(IOS_NAV), "maximize");
-  assert.equal(defaultFullscreenIntent(IPAD_DESKTOP_NAV), "maximize", "iPad desktop mode");
-  assert.equal(defaultFullscreenIntent(IOS_CHROME_NAV), "maximize", "iOS Chrome");
-  assert.equal(defaultFullscreenIntent(MAC_NAV), "device");
-  assert.equal(defaultFullscreenIntent(WIN_NAV), "device");
+// ── 2. Unified immersive plan: Device-first, Maximize fallback ───────────
+// (Items 3/4: device-success → device; device-reject/unavailable → maximize.)
+test("planImmersiveToggle prefers Device fullscreen, falls back to Maximize, and exits when active", () => {
+  // Nothing active + device supported → enter Device fullscreen.
+  assert.equal(
+    planImmersiveToggle({ nativeActive: false, maximized: false, supportsDevice: true }),
+    "device",
+  );
+  // Nothing active + device unsupported (iPhone / standalone) → Maximize.
+  assert.equal(
+    planImmersiveToggle({ nativeActive: false, maximized: false, supportsDevice: false }),
+    "maximize",
+  );
+  // Already immersive (either mode) → exit, regardless of support.
+  assert.equal(
+    planImmersiveToggle({ nativeActive: true, maximized: false, supportsDevice: true }),
+    "exit",
+  );
+  assert.equal(
+    planImmersiveToggle({ nativeActive: false, maximized: true, supportsDevice: true }),
+    "exit",
+  );
+  assert.equal(
+    planImmersiveToggle({ nativeActive: false, maximized: true, supportsDevice: false }),
+    "exit",
+  );
+});
+
+// (Item 6: standalone/iPhone relabel — never "Fullscreen" when device is
+// unavailable. Item 5: combined-state drives the exit label.)
+test("immersiveButtonLabel relabels to Maximize without device support and Exit when active", () => {
+  // Device available, not active → "Fullscreen".
+  assert.deepEqual(immersiveButtonLabel({ active: false, supportsDevice: true }), {
+    label: "Fullscreen",
+    title: "Enter fullscreen",
+    aria: "Enter fullscreen",
+  });
+  // No device (standalone / iPhone), not active → "Maximize", NOT "Fullscreen".
+  const noDevice = immersiveButtonLabel({ active: false, supportsDevice: false });
+  assert.equal(noDevice.label, "Maximize");
+  assert.ok(!/fullscreen/i.test(noDevice.title), "must not say fullscreen without device support");
+  // Active (combined isFullscreen) → "Exit" in either mode.
+  assert.equal(immersiveButtonLabel({ active: true, supportsDevice: true }).label, "Exit");
+  assert.equal(immersiveButtonLabel({ active: true, supportsDevice: false }).label, "Exit");
 });
 
 // ── 2b. requestNativeFullscreen — pure attempt, no platform refusal ──────
-// (The explicit secondary Device-fullscreen action uses this on iPad too,
-// so it MUST attempt regardless of platform; the iOS default-mode guard
-// lives in defaultFullscreenIntent above.)
+// (The Device-first action uses this everywhere it tries native; the
+// device-vs-maximize choice lives in planImmersiveToggle /
+// supportsDeviceFullscreen, not here.)
 function fsElementSpy({ reject = false } = {}) {
   const calls = { request: 0 };
   return {
@@ -132,20 +170,17 @@ test("deviceFullscreenApiAvailable reflects element-fullscreen support (iPhone h
 });
 
 // ── 3. Hook wiring + CSS guarantees (text-level; no DOM renderer) ────────
-test("the hook wires the two modes, the interaction auto-switch, classes + Escape", () => {
+test("the hook wires the unified immersive action, auto-switch, classes + Escape", () => {
   const src = read("src", "hooks", "use-fullscreen.ts");
-  // toggle() routes the primary control through the per-platform intent.
-  assert.ok(
-    src.includes(`defaultFullscreenIntent() === "device"`),
-    "toggle() must branch on the default intent",
-  );
+  // The single action routes through the shared planner.
+  assert.ok(src.includes("planImmersiveToggle({"), "toggleImmersive uses the planner");
   assert.ok(src.includes("requestNativeFullscreen(el)"), "native attempt wired");
-  assert.ok(src.includes("setIsMaximized(true)"), "maximize fallback/primary present");
-  // Req 3 auto-switch: device fullscreen → Maximize on interaction.
-  assert.ok(
-    src.includes("ensureSafeForInteraction"),
-    "interaction auto-switch exported",
-  );
+  assert.ok(src.includes("setIsMaximized(true)"), "maximize fallback present");
+  assert.ok(src.includes("toggleImmersive"), "unified action exported");
+  // The contradicted per-platform default is gone.
+  assert.ok(!src.includes("defaultFullscreenIntent"), "defaultFullscreenIntent removed");
+  // Item 7 — auto-switch: device fullscreen → Maximize on interaction.
+  assert.ok(src.includes("ensureSafeForInteraction"), "interaction auto-switch exported");
   assert.ok(
     src.includes("void exitNativeFullscreen()") && src.includes("setIsMaximized(true)"),
     "auto-switch exits native then maximizes",
@@ -155,66 +190,51 @@ test("the hook wires the two modes, the interaction auto-switch, classes + Escap
   assert.ok(
     src.includes(`document.body.classList.add(BODY_LOCK_CLASS)`) &&
       src.includes(`document.body.classList.remove(BODY_LOCK_CLASS)`),
-    "body lock is added while active and removed on exit/unmount",
+    "body lock added while active, removed on exit/unmount",
   );
   assert.ok(src.includes(`e.key === "Escape"`), "Escape exits Maximize");
-  // The DOM style property a hook would actually assign is `touchAction`
-  // (the hyphenated form appears only in prose comments).
-  assert.ok(!src.includes("touchAction"), "the hook must not introduce touch-action styling");
+  // Item 8 — the hook must not introduce touch-action styling.
+  assert.ok(!src.includes("touchAction"), "hook introduces no touch-action");
 });
 
-test("the modal renders Maximize primary + de-emphasized Device-fullscreen secondary on iOS", () => {
+// Item 1 + 2: the /atlas shell button AND the modal each render exactly ONE
+// primary immersive control wired to the unified toggleImmersive action,
+// with the de-emphasized secondary device control removed entirely.
+test("shell + modal use the SAME unified immersive action, one button each", () => {
   const src = read("src", "routes", "atlas.tsx");
-  assert.ok(src.includes("isIos ?"), "modal branches on iOS for the control set");
-  assert.ok(src.includes("atlas-modal-ctrl--device"), "secondary device control rendered");
+  // Single shared label helper imported from the hook.
+  assert.ok(src.includes("immersiveButtonLabel"), "uses the shared label helper");
+  // Shell button.
+  assert.ok(src.includes("onClick={toggleShellImmersive}"), "shell button calls toggleImmersive");
+  // Modal button.
+  assert.ok(src.includes("onClick={toggleImmersive}"), "modal button calls toggleImmersive");
+  // The confusing second control and its icon are gone.
+  assert.ok(!src.includes("atlas-modal-ctrl--device"), "secondary device button removed");
+  assert.ok(!src.includes("Monitor"), "Monitor (device) icon import removed");
+  assert.ok(!src.includes("isIos ?"), "no iOS-branched control cluster");
+  // Exactly one primary fullscreen control in the modal controls.
+  const fullscreenButtons = (src.match(/atlas-modal-ctrl--fullscreen/g) || []).length;
+  assert.equal(fullscreenButtons, 1, "modal has exactly one primary immersive button");
+});
+
+// Item 5: both controls present their state via the COMBINED isFullscreen
+// (so a Maximize-fallback still reads "Exit"/pressed, not a stale "Enter").
+test("both immersive controls key icon/aria-pressed on combined isFullscreen", () => {
+  const src = read("src", "routes", "atlas.tsx");
+  // Modal: aria-pressed + icon derive from isFullscreen; label via helper.
+  assert.ok(src.includes("aria-pressed={isFullscreen}"), "modal aria-pressed = isFullscreen");
   assert.ok(
-    src.includes("supportsDeviceFullscreen && !isMaximized"),
-    "device control hidden on iPhone/standalone and while maximized",
+    src.includes("aria-label={modalFsLabel.aria}") && src.includes("title={modalFsLabel.title}"),
+    "modal title/aria via the combined-state label helper",
   );
-  assert.ok(src.includes("onClick={isMaximized ? exitFullscreen : maximize}"), "primary = Maximize");
-  assert.ok(
-    src.includes(`data.type !== "f3d:interaction-active"`),
-    "modal listens for the interaction signal (req 3 parent half)",
-  );
+  // Shell: aria-pressed + icon derive from the shell's combined flag.
+  assert.ok(src.includes("aria-pressed={shellFullscreen}"), "shell aria-pressed = combined state");
+  assert.ok(src.includes("aria-label={shellFsLabel.aria}"), "shell aria via the label helper");
+  // The interaction auto-switch + required toast remain.
+  assert.ok(src.includes(`data.type !== "f3d:interaction-active"`), "interaction listener kept");
   assert.ok(
     src.includes("Switched to Maximize for reliable drawing on iPad."),
-    "auto-switch surfaces the required copy",
-  );
-  const css = read("src", "styles.css");
-  assert.ok(
-    /\.atlas-modal-ctrl--device \{[^}]*color:#94a3b8/.test(css),
-    "device control is visually de-emphasized vs the primary",
-  );
-});
-
-test("desktop fullscreen control keys on the COMBINED state (native-reject → Maximize fallback)", () => {
-  // toggle() falls back to Maximize when native fullscreen is rejected /
-  // unavailable, yielding isDeviceFullscreen=false but isFullscreen=true.
-  // The desktop button must read its title/aria/icon/label from
-  // isFullscreen, or it shows "Enter fullscreen" / aria-pressed=false
-  // while actually expanded (and a click exits) — a real a11y mismatch.
-  const src = read("src", "routes", "atlas.tsx");
-  const start = src.indexOf("Desktop: single native Fullscreen control");
-  assert.ok(start !== -1, "desktop branch marker present");
-  const branch = src.slice(start, start + 1300);
-  const fullscreenRefs = (branch.match(/isFullscreen \?/g) || []).length;
-  assert.ok(
-    fullscreenRefs >= 4,
-    `desktop control must derive title/aria/icon/label from isFullscreen (found ${fullscreenRefs})`,
-  );
-  assert.ok(
-    !branch.includes("isDeviceFullscreen ?"),
-    "desktop control must not key any display prop on isDeviceFullscreen",
-  );
-  const hook = read("src", "hooks", "use-fullscreen.ts");
-  assert.ok(
-    hook.includes("isFullscreen: isNativeFs || isMaximized"),
-    "useFullscreen must expose isFullscreen as the OR of both modes",
-  );
-  assert.ok(
-    hook.includes(`defaultFullscreenIntent() === "device"`) &&
-      hook.includes("setIsMaximized(true)"),
-    "toggle() still falls back to Maximize on native reject (the guarded path)",
+    "auto-switch toast kept",
   );
 });
 
