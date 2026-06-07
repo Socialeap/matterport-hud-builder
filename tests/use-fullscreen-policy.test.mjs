@@ -187,6 +187,37 @@ test("the modal renders Maximize primary + de-emphasized Device-fullscreen secon
   );
 });
 
+test("desktop fullscreen control keys on the COMBINED state (native-reject → Maximize fallback)", () => {
+  // toggle() falls back to Maximize when native fullscreen is rejected /
+  // unavailable, yielding isDeviceFullscreen=false but isFullscreen=true.
+  // The desktop button must read its title/aria/icon/label from
+  // isFullscreen, or it shows "Enter fullscreen" / aria-pressed=false
+  // while actually expanded (and a click exits) — a real a11y mismatch.
+  const src = read("src", "routes", "atlas.tsx");
+  const start = src.indexOf("Desktop: single native Fullscreen control");
+  assert.ok(start !== -1, "desktop branch marker present");
+  const branch = src.slice(start, start + 1300);
+  const fullscreenRefs = (branch.match(/isFullscreen \?/g) || []).length;
+  assert.ok(
+    fullscreenRefs >= 4,
+    `desktop control must derive title/aria/icon/label from isFullscreen (found ${fullscreenRefs})`,
+  );
+  assert.ok(
+    !branch.includes("isDeviceFullscreen ?"),
+    "desktop control must not key any display prop on isDeviceFullscreen",
+  );
+  const hook = read("src", "hooks", "use-fullscreen.ts");
+  assert.ok(
+    hook.includes("isFullscreen: isNativeFs || isMaximized"),
+    "useFullscreen must expose isFullscreen as the OR of both modes",
+  );
+  assert.ok(
+    hook.includes(`defaultFullscreenIntent() === "device"`) &&
+      hook.includes("setIsMaximized(true)"),
+    "toggle() still falls back to Maximize on native reject (the guarded path)",
+  );
+});
+
 test("pseudo-fullscreen CSS is strengthened WITHOUT any touch-action", () => {
   const css = read("src", "styles.css");
   const rule = css.match(/\.atlas-shell--pseudo-fs \{[^}]*\}/);

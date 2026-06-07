@@ -914,6 +914,7 @@ function PresentationModal({ entry, onClose }: { entry: AtlasEntry; onClose: () 
   const {
     isMaximized,
     isDeviceFullscreen,
+    isFullscreen,
     isIos,
     supportsDeviceFullscreen,
     maximize,
@@ -1047,17 +1048,22 @@ function PresentationModal({ entry, onClose }: { entry: AtlasEntry; onClose: () 
             )}
           </>
         ) : (
-          /* Desktop: single native Fullscreen control (unchanged). */
+          /* Desktop: single native Fullscreen control. Keyed to the
+             COMBINED fullscreen state, not isDeviceFullscreen: toggle()
+             falls back to Maximize when native is rejected/unavailable
+             (iframe without allow=, etc.), leaving the modal expanded
+             with isDeviceFullscreen=false — the label/icon/aria must
+             still read "Exit" so the control matches what a click does. */
           <button
             type="button"
             onClick={toggleFullscreen}
             className="atlas-modal-ctrl atlas-modal-ctrl--fullscreen"
-            title={isDeviceFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-            aria-label={isDeviceFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-            aria-pressed={isDeviceFullscreen}
+            title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+            aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+            aria-pressed={isFullscreen}
           >
-            {isDeviceFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
-            <span className="atlas-modal-ctrl-label">{isDeviceFullscreen ? "Exit" : "Fullscreen"}</span>
+            {isFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+            <span className="atlas-modal-ctrl-label">{isFullscreen ? "Exit" : "Fullscreen"}</span>
           </button>
         )}
         <a
