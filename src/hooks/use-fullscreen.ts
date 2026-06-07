@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useState, type RefObject } from "react";
 
 // Vendor-prefixed fullscreen surface (Safari/older WebKit).
 interface FsDocument extends Document {
@@ -12,10 +12,23 @@ interface FsElement extends Element {
 const PSEUDO_CLASS = "atlas-shell--pseudo-fs";
 const BODY_LOCK_CLASS = "atlas-pseudo-fs-lock";
 
+export type FullscreenMode = "none" | "maximized" | "device";
+export type FullscreenIntent = "maximize" | "device";
+
 function getFsElement(): Element | null {
   if (typeof document === "undefined") return null;
   const d = document as FsDocument;
   return d.fullscreenElement ?? d.webkitFullscreenElement ?? null;
+}
+
+async function exitNativeFullscreen(): Promise<void> {
+  if (typeof document === "undefined") return;
+  const d = document as FsDocument;
+  try {
+    await (d.exitFullscreen?.() ?? d.webkitExitFullscreen?.());
+  } catch {
+    /* ignore — already exited / not permitted */
+  }
 }
 
 /**
@@ -41,48 +54,104 @@ export function isIosWebKitDevice(
 }
 
 /**
- * Try to enter NATIVE fullscreen on `el`. Returns false WITHOUT
- * attempting on iOS/iPadOS WebKit: system edge-swipes terminate native
- * element fullscreen there, and iPad users trigger them constantly while
- * drawing annotations — CSS pseudo-fullscreen is immune, so it is the
- * primary path on those devices. Also returns false when the API is
- * missing or the request rejects (typical inside iframes without
- * `allow="fullscreen"`), preserving the existing pseudo fallback.
+ * True when running as an installed/standalone app (PWA, iOS Add-to-Home).
+ * The app window is already an immersive shell there, so native "Device
+ * fullscreen" adds nothing and is suppressed (req 5).
  */
-export async function requestNativeFullscreen(
-  el: FsElement,
+export function isStandaloneDisplay(win?: Window | null): boolean {
+  const w = win ?? (typeof window !== "undefined" ? window : null);
+  if (!w) return false;
+  try {
+    if (typeof w.matchMedia === "function" && w.matchMedia("(display-mode: standalone)").matches) {
+      return true;
+    }
+  } catch {
+    /* ignore */
+  }
+  const nav = w.navigator as (Navigator & { standalone?: boolean }) | undefined;
+  return nav?.standalone === true;
+}
+
+/**
+ * Whether NATIVE element-fullscreen exists on this platform. iPhone Safari
+ * has none for non-video elements; iPad and desktop do. Probed on
+ * Element.prototype so it needs no specific element instance.
+ */
+export function deviceFullscreenApiAvailable(win?: Window | null): boolean {
+  const w = (win ?? (typeof window !== "undefined" ? window : null)) as
+    | { Element?: { prototype?: FsElement } }
+    | null;
+  const proto = w?.Element?.prototype;
+  if (!proto) return false;
+  return typeof (proto.requestFullscreen ?? proto.webkitRequestFullscreen) === "function";
+}
+
+/**
+ * What the PRIMARY/default fullscreen control should do.
+ *   iOS/iPadOS WebKit → "maximize" (CSS pseudo-fullscreen): the safe,
+ *     recommended mode for Explore Together / Draw / Focus Rope. iPadOS
+ *     owns the downward swipe-to-exit gesture for NATIVE fullscreen and
+ *     it cannot be scoped to a page region, so native is never the
+ *     default for interactive use.
+ *   desktop → "device" (native fullscreen).
+ */
+export function defaultFullscreenIntent(
   nav?: Pick<Navigator, "platform" | "userAgent" | "maxTouchPoints"> | null,
-): Promise<boolean> {
-  if (isIosWebKitDevice(nav)) return false;
+): FullscreenIntent {
+  return isIosWebKitDevice(nav) ? "maximize" : "device";
+}
+
+/**
+ * Attempt NATIVE fullscreen on `el`. Pure: resolves true on success,
+ * false on a missing API or a rejected request (e.g. an iframe without
+ * `allow="fullscreen"`). No platform refusal — the iOS default-mode
+ * policy lives in defaultFullscreenIntent(); the explicit, secondary
+ * "Device fullscreen" action uses this on iPad too (passive viewing).
+ */
+export async function requestNativeFullscreen(el: FsElement): Promise<boolean> {
   const request = el.requestFullscreen ?? el.webkitRequestFullscreen;
   if (typeof request !== "function") return false;
   try {
     await request.call(el);
     return true;
   } catch {
-    // Permission denied (e.g. iframe without allow="fullscreen").
     return false;
   }
 }
 
 /**
- * Toggle fullscreen on a target element. On desktop, tries the native
- * Fullscreen API first; if it is unavailable or rejected (typical inside
- * iframes without `allow="fullscreen"`, e.g. embedded previews), falls
- * back to a CSS pseudo-fullscreen by adding `.atlas-shell--pseudo-fs` to
- * the target. On iOS/iPadOS WebKit (incl. iPad desktop mode and iOS
- * Chrome) the pseudo path is PRIMARY — native fullscreen there is
- * terminated by system edge-swipe gestures, which iPad users trigger
- * while drawing annotations in the presentation modal. While pseudo
- * fullscreen is active, `body.atlas-pseudo-fs-lock` contains background
- * scroll (no touch-action — embedded gestures stay intact). `Escape`
- * exits pseudo-fullscreen (native API handles Esc itself).
+ * Two-mode fullscreen for a target element.
+ *
+ * - **Maximize** (`maximize()`): CSS pseudo-fullscreen via
+ *   `.atlas-shell--pseudo-fs`. The DEFAULT, safe mode on iOS/iPadOS for
+ *   any live interaction (Explore Together, Draw, Focus Rope) — immune
+ *   to the iPadOS swipe-down exit gesture. `Escape` exits it;
+ *   `body.atlas-pseudo-fs-lock` contains background scroll (no
+ *   touch-action — embedded gestures stay intact).
+ * - **Device fullscreen** (`enterDeviceFullscreen()`): native Fullscreen
+ *   API. PRIMARY on desktop; on iPad it is an OPTIONAL, secondary
+ *   passive-viewing mode (it can be exited by OS gestures, so it is not
+ *   offered as the mode for drawing). Falls back to Maximize when the
+ *   request is rejected/unavailable.
+ * - `ensureSafeForInteraction()`: if native device fullscreen is active
+ *   when an interaction that needs stable touch gestures begins, drop to
+ *   Maximize. Returns true if it switched (the caller surfaces copy).
+ * - `toggle()`: back-compat single control — routes through
+ *   defaultFullscreenIntent() (desktop → device, iOS → maximize).
  */
 export function useFullscreen(targetRef: RefObject<Element | null>) {
   const [isNativeFs, setIsNativeFs] = useState(false);
-  const [isPseudoFs, setIsPseudoFs] = useState(false);
+  const [isMaximized, setIsMaximized] = useState(false);
 
-  // Track native fullscreen changes.
+  const isIos = useMemo(() => isIosWebKitDevice(), []);
+  const isStandalone = useMemo(() => isStandaloneDisplay(), []);
+  const supportsDeviceFullscreen = useMemo(
+    () => deviceFullscreenApiAvailable() && !isStandalone,
+    [isStandalone],
+  );
+
+  // Track native fullscreen changes (incl. OS-driven exit, e.g. the
+  // iPadOS swipe gesture — keeps our state honest).
   useEffect(() => {
     const onChange = () => setIsNativeFs(getFsElement() !== null);
     document.addEventListener("fullscreenchange", onChange);
@@ -94,63 +163,117 @@ export function useFullscreen(targetRef: RefObject<Element | null>) {
     };
   }, []);
 
-  // Sync pseudo-fullscreen class on target + handle Esc.
+  // Sync the pseudo-fullscreen (Maximize) class on the target.
   useEffect(() => {
     const el = targetRef.current;
     if (!el) return;
-    if (isPseudoFs) el.classList.add(PSEUDO_CLASS);
+    if (isMaximized) el.classList.add(PSEUDO_CLASS);
     else el.classList.remove(PSEUDO_CLASS);
-  }, [isPseudoFs, targetRef]);
+  }, [isMaximized, targetRef]);
 
-  // Lock background page scroll while pseudo-fullscreen is active.
-  // Scroll containment only (overflow/overscroll on <body> via class) —
-  // deliberately NO touch-action anywhere, so gestures inside the
-  // embedded presentation (Matterport navigation, annotations) are
-  // untouched. Cleanup runs on exit and on unmount.
+  // Lock background page scroll while Maximize is active. Scroll
+  // containment only (overflow/overscroll on <body>) — deliberately NO
+  // touch-action, so Matterport navigation + annotation gestures inside
+  // the embedded presentation are untouched. Cleanup on exit/unmount.
   useEffect(() => {
-    if (!isPseudoFs) return;
+    if (!isMaximized) return;
     document.body.classList.add(BODY_LOCK_CLASS);
     return () => document.body.classList.remove(BODY_LOCK_CLASS);
-  }, [isPseudoFs]);
+  }, [isMaximized]);
 
+  // Escape exits Maximize (native fullscreen handles Esc itself).
   useEffect(() => {
-    if (!isPseudoFs) return;
+    if (!isMaximized) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
-        setIsPseudoFs(false);
+        setIsMaximized(false);
       }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [isPseudoFs]);
+  }, [isMaximized]);
 
+  const maximize = useCallback(async () => {
+    if (isMaximized) {
+      setIsMaximized(false);
+      return;
+    }
+    // Maximize and native device fullscreen are mutually exclusive.
+    if (getFsElement()) await exitNativeFullscreen();
+    setIsMaximized(true);
+  }, [isMaximized]);
+
+  const enterDeviceFullscreen = useCallback(async () => {
+    const el = targetRef.current as FsElement | null;
+    if (!el) return;
+    if (isMaximized) setIsMaximized(false);
+    if (getFsElement()) {
+      await exitNativeFullscreen();
+      return;
+    }
+    const ok = await requestNativeFullscreen(el);
+    // Rejected / unavailable (e.g. iframe without allow) → Maximize.
+    if (!ok) setIsMaximized(true);
+  }, [isMaximized, targetRef]);
+
+  const exit = useCallback(async () => {
+    if (getFsElement()) {
+      await exitNativeFullscreen();
+      return;
+    }
+    if (isMaximized) setIsMaximized(false);
+  }, [isMaximized]);
+
+  // Back-compat single toggle (the /atlas page-shell button uses this):
+  // primary intent per platform.
   const toggle = useCallback(async () => {
     const el = targetRef.current as FsElement | null;
     if (!el) return;
-
-    // Exit paths first.
     if (getFsElement()) {
-      try {
-        const d = document as FsDocument;
-        await (d.exitFullscreen?.() ?? d.webkitExitFullscreen?.());
-      } catch {
-        /* ignore */
-      }
+      await exitNativeFullscreen();
       return;
     }
-    if (isPseudoFs) {
-      setIsPseudoFs(false);
+    if (isMaximized) {
+      setIsMaximized(false);
       return;
     }
+    if (defaultFullscreenIntent() === "device") {
+      const ok = await requestNativeFullscreen(el);
+      if (ok) return;
+    }
+    setIsMaximized(true);
+  }, [isMaximized, targetRef]);
 
-    // Enter: native where it is stable; CSS pseudo-fullscreen on
-    // iOS/iPadOS WebKit (edge-swipes kill native fullscreen mid-
-    // annotation there) and as the rejection/missing-API fallback.
-    if (await requestNativeFullscreen(el)) return;
-    setIsPseudoFs(true);
-  }, [isPseudoFs, targetRef]);
+  // Req 3: an interaction needing stable touch gestures began. iPadOS can
+  // swipe-exit native fullscreen mid-draw, so if we are in it, drop to
+  // Maximize. Returns true when it switched (caller shows brief copy).
+  // No-op (returns false) when already in Maximize or windowed — those
+  // are already gesture-stable.
+  const ensureSafeForInteraction = useCallback((): boolean => {
+    if (getFsElement()) {
+      void exitNativeFullscreen();
+      setIsMaximized(true);
+      return true;
+    }
+    return false;
+  }, []);
 
-  return { isFullscreen: isNativeFs || isPseudoFs, toggle };
+  const mode: FullscreenMode = isNativeFs ? "device" : isMaximized ? "maximized" : "none";
+
+  return {
+    mode,
+    isMaximized,
+    isDeviceFullscreen: isNativeFs,
+    isFullscreen: isNativeFs || isMaximized,
+    isIos,
+    isStandalone,
+    supportsDeviceFullscreen,
+    maximize,
+    enterDeviceFullscreen,
+    exit,
+    toggle,
+    ensureSafeForInteraction,
+  };
 }
