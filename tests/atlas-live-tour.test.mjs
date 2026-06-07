@@ -1007,6 +1007,37 @@ test("iOS: Enable voice appears on connect and drives session.startVoice()", () 
   assert.equal(spy.startVoice, 1, "the tap calls the controller startVoice (user gesture)");
 });
 
+test("iOS: Enable voice re-enables when the call dies before streaming (P2)", async () => {
+  const { nav } = iphoneNav();
+  const spy = { teleport: [], share: [] };
+  const wired = subscribeFiring(makeConnectedController("visitor", spy));
+  // startVoice succeeds and wires a call: reflect that in controller state.
+  wired.controller.startVoice = () => {
+    wired.controller.getState().voiceCallActive = true;
+    return Promise.resolve(true);
+  };
+  const { els } = runGlueWithNav(nav, () => wired.controller);
+  const btn = els["lt-enable-voice-btn"];
+  btn.fire("click");
+  await new Promise((r) => setImmediate(r));
+  assert.equal(btn.disabled, true, "negotiating: control held");
+  // The call dies before any remote stream (negotiation failure / peer
+  // disconnect): the controller emits the voiceCallActive falling edge.
+  wired.emit(
+    Object.assign({}, wired.controller.getState(), {
+      voiceCallActive: false,
+      remoteStream: null,
+    }),
+  );
+  assert.equal(btn.disabled, false, "retry control handed back");
+  assert.equal(btn.hidden, false, "and visible again");
+  assert.match(
+    els["lt-voice-status"].textContent,
+    /retry/i,
+    "status explains the retry affordance",
+  );
+});
+
 test("desktop: Enable voice stays hidden (voice auto-starts there)", () => {
   const { nav } = desktopGrantedNav();
   const spy = { teleport: [], share: [] };

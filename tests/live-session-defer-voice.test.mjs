@@ -187,3 +187,43 @@ test("dispose closes a held pending offer", async () => {
   session.dispose();
   assert.equal(call.closed, true, "held offer must not leak past dispose");
 });
+
+// ── voiceCallActive lifecycle (P2: pre-stream call death must be ──────────
+//    observable so the UI can re-offer Enable voice) ──────────────────────
+test("voiceCallActive: rises when the attempt wires, falls when it closes pre-stream", async () => {
+  const { session, peer } = await connectedAgent({ deferVoice: true });
+  const call = new FakeCall("TourGuest-abc");
+  peer.emit("call", call);
+  await tick();
+  assert.equal(session.getState().voiceCallActive, false, "held offer is not yet an attempt");
+  const ok = await session.startVoice();
+  assert.equal(ok, true);
+  assert.equal(session.getState().voiceCallActive, true, "attempt wired");
+  call.emit("close");
+  const st = session.getState();
+  assert.equal(st.voiceCallActive, false, "falling edge on pre-stream close");
+  assert.equal(st.remoteStream, null);
+  assert.equal(st.isConnected, true, "data channel untouched");
+});
+
+test("a pre-stream call ERROR clears the dead call so startVoice can retry", async () => {
+  const { session, peer } = await connectedAgent({ deferVoice: true });
+  const first = new FakeCall("TourGuest-abc");
+  peer.emit("call", first);
+  await tick();
+  await session.startVoice();
+  first.emit("error", { type: "negotiation-failed" });
+  assert.equal(session.getState().voiceCallActive, false, "error is a falling edge too");
+  // A stale mediaCall would make this short-circuit to true; with the
+  // dead call cleared, the agent (no new offer yet) correctly reports
+  // that voice cannot start.
+  const retry = await session.startVoice();
+  assert.equal(retry, false, "no stale-call short-circuit after an error");
+  // A fresh offer after the failure is answered immediately (grant
+  // remembered from the first attempt).
+  const second = new FakeCall("TourGuest-abc");
+  peer.emit("call", second);
+  await tick();
+  assert.equal(second.answered.length, 1, "fresh offer answered without another tap");
+  assert.equal(session.getState().voiceCallActive, true, "retry attempt wired");
+});

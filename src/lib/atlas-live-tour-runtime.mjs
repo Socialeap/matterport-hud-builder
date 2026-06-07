@@ -114,6 +114,9 @@
   var voiceStatus = document.getElementById("lt-voice-status");
   var enableVoiceBtn = document.getElementById("lt-enable-voice-btn");
   var diagEl = document.getElementById("lt-diag");
+  // True between a startVoice() that began a call and either a remote
+  // stream arriving or the attempt dying — drives the retry re-enable.
+  var voiceAttemptPending = false;
   var manualSyncInput = document.getElementById("lt-manual-sync-input");
   var manualSyncBtn = document.getElementById("lt-manual-sync-btn");
   var manualSyncStatus = document.getElementById("lt-manual-sync-status");
@@ -322,6 +325,7 @@
     setManualStatus("");
     setVoiceStatus("", "off");
     voiceConnected = false;
+    voiceAttemptPending = false;
     if (enableVoiceBtn) {
       enableVoiceBtn.hidden = true;
       enableVoiceBtn.disabled = false;
@@ -1410,9 +1414,20 @@
               "Voice has not started yet — check mic permission, or have the other side tap Enable voice too, then retry.",
               "warn",
             );
+            return;
           }
-          // Success: the remote_stream state change flips the status to
-          // "Voice connected" and hides this button.
+          // Success: a call is negotiating. The remote_stream state
+          // change flips the status to "Voice connected" and hides this
+          // button; if the call instead dies BEFORE streaming, the
+          // voiceCallActive falling edge below re-enables the retry.
+          voiceAttemptPending = true;
+          var nowState = session.getState();
+          if (nowState.voiceCallActive === false && !nowState.remoteStream) {
+            // The call already died between resolution and this handler.
+            voiceAttemptPending = false;
+            enableVoiceBtn.disabled = false;
+            setVoiceStatus("Voice did not connect — tap Enable voice to retry.", "warn");
+          }
         },
         function () {
           enableVoiceBtn.disabled = false;
@@ -1832,6 +1847,7 @@
     // is blocked, so this fires for both sides regardless of mic state).
     if (state.remoteStream && !voiceConnected) {
       voiceConnected = true;
+      voiceAttemptPending = false;
       setVoiceStatus("Voice connected — you can talk now.", "live");
       if (enableVoiceBtn) {
         enableVoiceBtn.hidden = true;
@@ -1839,7 +1855,35 @@
       }
     } else if (!state.remoteStream && voiceConnected) {
       voiceConnected = false;
-      if (state.isConnected) reportVoiceCapability();
+      if (state.isConnected) {
+        reportVoiceCapability();
+        // The established voice path dropped: re-offer the explicit
+        // restart on deferred-voice sessions (the button was hidden on
+        // connect, and the status above tells the user to tap it).
+        if (IS_IOS_WEBKIT && enableVoiceBtn) {
+          enableVoiceBtn.hidden = false;
+          enableVoiceBtn.disabled = false;
+        }
+      }
+    }
+
+    // P2 (PR #149 review): a media call that dies BEFORE producing a
+    // remote stream (negotiation failure, peer disconnect) must hand the
+    // Enable voice control back — without this, the only recovery was
+    // leaving and rejoining the data session. Strict `=== false` so
+    // controllers that predate voiceCallActive never trigger it.
+    if (
+      voiceAttemptPending &&
+      !state.remoteStream &&
+      state.voiceCallActive === false &&
+      !voiceConnected
+    ) {
+      voiceAttemptPending = false;
+      if (enableVoiceBtn && state.isConnected) {
+        enableVoiceBtn.hidden = false;
+        enableVoiceBtn.disabled = false;
+        setVoiceStatus("Voice did not connect — tap Enable voice to retry.", "warn");
+      }
     }
 
     // Guest follows host teleports (dedupe by ts; last-sender-wins).
