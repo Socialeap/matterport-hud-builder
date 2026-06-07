@@ -129,3 +129,32 @@ test("standalone detection used by fullscreen still exists (no regression)", () 
   assert.ok(hook.includes("export function isStandaloneDisplay"), "isStandaloneDisplay intact");
   assert.ok(hook.includes("export function isIosWebKitDevice"), "isIosWebKitDevice intact");
 });
+
+test("ServiceWorkerManager reloads ONLY after an accepted update (not on first-claim)", () => {
+  // clients.claim() on first registration fires controllerchange for the
+  // previously-uncontrolled page. The handler must gate on an
+  // acceptance flag so first load is never reloaded out from under an
+  // in-progress Atlas interaction.
+  const src = read("src", "components", "pwa", "ServiceWorkerManager.tsx");
+  // An acceptance ref exists and gates the controllerchange reload.
+  assert.ok(/updateAcceptedRef\s*=\s*useRef\(false\)/.test(src), "acceptance ref present");
+  // The controllerchange handler bails out unless an update was accepted,
+  // BEFORE it ever calls reload().
+  const handler = src.slice(
+    src.indexOf("const onControllerChange"),
+    src.indexOf("navigator.serviceWorker.addEventListener(\"controllerchange\""),
+  );
+  assert.ok(handler.includes("if (!updateAcceptedRef.current) return;"), "guard precedes reload");
+  const guardIdx = handler.indexOf("updateAcceptedRef.current");
+  const reloadIdx = handler.indexOf("window.location.reload()");
+  assert.ok(guardIdx !== -1 && reloadIdx !== -1 && guardIdx < reloadIdx, "guard is checked before reload");
+  // applyUpdate sets the flag before requesting activation.
+  const applyIdx = src.indexOf("const applyUpdate");
+  assert.ok(applyIdx !== -1, "applyUpdate present");
+  const apply = src.slice(applyIdx, applyIdx + 300);
+  assert.ok(apply.includes("updateAcceptedRef.current = true"), "acceptance set on Update click");
+  assert.ok(
+    apply.indexOf("updateAcceptedRef.current = true") < apply.indexOf("SKIP_WAITING"),
+    "acceptance set BEFORE SKIP_WAITING (so the resulting controllerchange counts)",
+  );
+});

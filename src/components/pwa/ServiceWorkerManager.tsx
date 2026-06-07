@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 // Client-only service-worker registration + a restrained "Update available"
 // action. Registers in production builds only (the Vite dev server and a SW
@@ -11,6 +11,13 @@ interface BeforeInstallPromptEvent extends Event {
 
 export function ServiceWorkerManager() {
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
+  // True only once the user has accepted an update (clicked Update). The
+  // FIRST registration also fires `controllerchange` — the new worker
+  // calls clients.claim() to control the previously-uncontrolled page —
+  // and reloading there would discard in-progress Atlas interaction right
+  // after first load. So we reload on controllerchange ONLY when an update
+  // was actually accepted.
+  const updateAcceptedRef = useRef(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -21,6 +28,9 @@ export function ServiceWorkerManager() {
 
     let reloading = false;
     const onControllerChange = () => {
+      // Ignore the first-registration claim; reload only for an accepted
+      // update.
+      if (!updateAcceptedRef.current) return;
       if (reloading) return;
       reloading = true;
       window.location.reload();
@@ -66,8 +76,11 @@ export function ServiceWorkerManager() {
   if (!waitingWorker) return null;
 
   const applyUpdate = () => {
+    // Mark acceptance BEFORE asking the worker to take over, so the
+    // resulting controllerchange is recognized as user-initiated and
+    // performs the single reload.
+    updateAcceptedRef.current = true;
     waitingWorker.postMessage({ type: "SKIP_WAITING" });
-    // controllerchange (above) performs the single reload.
   };
 
   return (
