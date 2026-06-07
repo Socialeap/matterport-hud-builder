@@ -152,10 +152,6 @@ test("modal pseudo-fullscreen keeps safe-area padding despite the later backdrop
       `compound rule missing safe-area inset: ${side}`,
     );
   }
-  assert.ok(
-    modalRule[0].includes("calc(0.625rem + env("),
-    "safe-area combines with the backdrop's normal inner gap",
-  );
   assert.ok(!modalRule[0].includes("touch-action"), "NO touch-action on the compound rule");
   // Document the cascade hazard the compound rule defends against: the
   // plain backdrop rule really is declared AFTER the pseudo-fs rule.
@@ -163,4 +159,29 @@ test("modal pseudo-fullscreen keeps safe-area padding despite the later backdrop
     css.indexOf(".atlas-modal-backdrop {") > css.indexOf(".atlas-shell--pseudo-fs {"),
     "backdrop rule follows pseudo-fs rule (the override this test guards)",
   );
+});
+
+test("pseudo fullscreen VISIBLY maximizes the modal (the iPad toggle-misfire fix)", () => {
+  const css = read("src", "styles.css");
+  // The backdrop is already a fixed inset-0 overlay, so without these
+  // rules the toggle flips state while nothing changes on screen: the
+  // inner .atlas-modal keeps its cinematic width/16:9 caps. Pseudo mode
+  // must lift them.
+  const modal = css.match(
+    /\.atlas-modal-backdrop\.atlas-shell--pseudo-fs \.atlas-modal \{[^}]*\}/,
+  );
+  assert.ok(modal, "maximize rule for the inner .atlas-modal present");
+  for (const needle of ["width:100%", "max-height:none", "border-radius:0"]) {
+    assert.ok(modal[0].includes(needle), `maximize rule missing: ${needle}`);
+  }
+  const controls = css.match(
+    /\.atlas-modal-backdrop\.atlas-shell--pseudo-fs \.atlas-modal-controls \{[^}]*\}/,
+  );
+  assert.ok(controls, "controls row widens with the maximized modal");
+  assert.ok(controls[0].includes("width:100%"));
+  // The plain .atlas-modal rule must still carry the cinematic cap this
+  // fix lifts — if that cap moves/disappears, re-evaluate these rules.
+  // (Anchored to line start so the maximize rule above cannot match.)
+  const plainModal = css.match(/\n {2}\.atlas-modal \{[^}]*\}/);
+  assert.ok(plainModal && plainModal[0].includes("max-height:min(88vh"), "cinematic cap still present in the base rule");
 });

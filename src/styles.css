@@ -154,10 +154,18 @@
   /* Modal path: the element carries BOTH classes, and .atlas-modal-backdrop
      (declared later, same 0,1,0 specificity — incl. its mobile media rule)
      would override the env() padding above with its plain inset. The
-     compound selector (0,2,0) wins in every cascade position, keeping the
-     modal controls/frame clear of the notch/home indicator while
-     preserving the backdrop's normal inner gap. */
-  .atlas-modal-backdrop.atlas-shell--pseudo-fs { padding:calc(0.625rem + env(safe-area-inset-top,0px)) calc(0.625rem + env(safe-area-inset-right,0px)) calc(0.625rem + env(safe-area-inset-bottom,0px)) calc(0.625rem + env(safe-area-inset-left,0px)); }
+     compound selectors (0,2,0) win in every cascade position.
+
+     CRITICAL: the backdrop is ALREADY a fixed inset-0 overlay, so the
+     pseudo class alone changes nothing visible there. What users see as
+     "fullscreen" must come from MAXIMIZING the inner presentation —
+     native fullscreen hid the browser chrome for free; pseudo mode
+     instead lifts the cinematic width/16:9 caps and goes full-bleed
+     (safe-area insets only). Without these rules the toggle flips state
+     while the modal stays visually identical (the iPad misfire). */
+  .atlas-modal-backdrop.atlas-shell--pseudo-fs { padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px); }
+  .atlas-modal-backdrop.atlas-shell--pseudo-fs .atlas-modal { width:100%; max-height:none; border-radius:0; border:none; box-shadow:none; }
+  .atlas-modal-backdrop.atlas-shell--pseudo-fs .atlas-modal-controls { width:100%; }
   body.atlas-pseudo-fs-lock { overflow:hidden; overscroll-behavior:none; }
   .atlas-header { height:64px; flex-shrink:0; display:flex; align-items:center; justify-content:space-between; padding:0 1.25rem; background:#0f172a; border-bottom:1px solid #1e293b; z-index:20; }
   .atlas-brand { display:flex; align-items:center; gap:0.75rem; color:inherit; text-decoration:none; }
