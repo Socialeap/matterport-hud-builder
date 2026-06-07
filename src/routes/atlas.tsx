@@ -30,6 +30,7 @@ import {
   Share2,
   Maximize2,
   Minimize2,
+  Monitor,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -910,7 +911,17 @@ function PresentationModal({ entry, onClose }: { entry: AtlasEntry; onClose: () 
   const modalRef = useRef<HTMLDivElement | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const shareUrl = useMemo(() => buildAtlasSpotUrl(entry.id), [entry.id]);
-  const { isFullscreen, toggle: toggleFullscreen } = useFullscreen(modalRef);
+  const {
+    isMaximized,
+    isDeviceFullscreen,
+    isIos,
+    supportsDeviceFullscreen,
+    maximize,
+    enterDeviceFullscreen,
+    exit: exitFullscreen,
+    toggle: toggleFullscreen,
+    ensureSafeForInteraction,
+  } = useFullscreen(modalRef);
 
   // Bridge: the embedded showcase's .f3d-bar Share button asks the parent
   // for the canonical Atlas URL via postMessage so it can share /atlas?spot=…
@@ -930,6 +941,27 @@ function PresentationModal({ entry, onClose }: { entry: AtlasEntry; onClose: () 
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
   }, [shareUrl, entry.title]);
+
+  // Req 3: when the embedded showcase signals an interaction that needs
+  // stable touch gestures (Draw / Focus Rope / pointer / live tour), drop
+  // out of native Device fullscreen — iPadOS swipe-exit would otherwise
+  // collapse it mid-draw — into Maximize. Forward-compatible: the showcase
+  // emits `f3d:interaction-active` only once its runtime ships that half
+  // (regeneration-gated); harmless until then. Same `f3d:` namespace +
+  // `event.source` origin check as the share bridge.
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      const win = iframeRef.current?.contentWindow;
+      if (!win || event.source !== win) return;
+      const data = event.data as { type?: string } | null;
+      if (!data || data.type !== "f3d:interaction-active") return;
+      if (ensureSafeForInteraction()) {
+        toast.info("Switched to Maximize for reliable drawing on iPad.");
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [ensureSafeForInteraction]);
 
   const handleShare = async () => {
     const shareData = { title: entry.title, url: shareUrl };
@@ -977,19 +1009,57 @@ function PresentationModal({ entry, onClose }: { entry: AtlasEntry; onClose: () 
         >
           <Share2 className="size-4" />
         </button>
-        <button
-          type="button"
-          onClick={toggleFullscreen}
-          className="atlas-modal-ctrl atlas-modal-ctrl--fullscreen"
-          title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-          aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-          aria-pressed={isFullscreen}
-        >
-          {isFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
-          <span className="atlas-modal-ctrl-label">
-            {isFullscreen ? "Exit" : "Fullscreen"}
-          </span>
-        </button>
+        {isIos ? (
+          <>
+            {/* PRIMARY on iPad/iPhone: Maximize (CSS pseudo-fullscreen) —
+                the safe mode for Explore Together, Draw, and Focus Rope;
+                immune to the iPadOS swipe-down exit gesture. */}
+            <button
+              type="button"
+              onClick={isMaximized ? exitFullscreen : maximize}
+              className="atlas-modal-ctrl atlas-modal-ctrl--fullscreen"
+              title={isMaximized ? "Exit Maximize" : "Maximize — best for drawing & live tours"}
+              aria-label={isMaximized ? "Exit Maximize" : "Maximize"}
+              aria-pressed={isMaximized}
+            >
+              {isMaximized ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+              <span className="atlas-modal-ctrl-label">{isMaximized ? "Exit" : "Maximize"}</span>
+            </button>
+            {/* SECONDARY (iPad only; hidden on iPhone w/o element-fullscreen
+                and in standalone app mode): native Device fullscreen for
+                PASSIVE viewing. De-emphasized — it can be exited by OS
+                gestures, so it is not the mode for drawing. */}
+            {supportsDeviceFullscreen && !isMaximized && (
+              <button
+                type="button"
+                onClick={isDeviceFullscreen ? exitFullscreen : enterDeviceFullscreen}
+                className="atlas-modal-ctrl atlas-modal-ctrl--device"
+                title={
+                  isDeviceFullscreen
+                    ? "Exit device fullscreen"
+                    : "Device fullscreen — passive viewing (may exit on swipe)"
+                }
+                aria-label={isDeviceFullscreen ? "Exit device fullscreen" : "Device fullscreen (passive viewing)"}
+                aria-pressed={isDeviceFullscreen}
+              >
+                {isDeviceFullscreen ? <Minimize2 className="size-4" /> : <Monitor className="size-4" />}
+              </button>
+            )}
+          </>
+        ) : (
+          /* Desktop: single native Fullscreen control (unchanged). */
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            className="atlas-modal-ctrl atlas-modal-ctrl--fullscreen"
+            title={isDeviceFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+            aria-label={isDeviceFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+            aria-pressed={isDeviceFullscreen}
+          >
+            {isDeviceFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+            <span className="atlas-modal-ctrl-label">{isDeviceFullscreen ? "Exit" : "Fullscreen"}</span>
+          </button>
+        )}
         <a
           href={shareUrl}
           target="_blank"
