@@ -2093,12 +2093,14 @@ body.live-tour-active.live-tour-visitor #loc-sync,body.live-tour-active.live-tou
 @keyframes loc-sync-spin{to{transform:rotate(360deg)}}
 
 /* State variants — all driven by data-state on #loc-sync. */
-#loc-sync[data-state="syncing"] .loc-sync-dot{background:transparent;border:2px solid rgba(255,255,255,0.35);border-top-color:#fff;animation:loc-sync-spin 0.7s linear infinite;box-shadow:none}
+#loc-sync[data-state="syncing"] .loc-sync-dot,#loc-sync[data-state="reading"] .loc-sync-dot{background:transparent;border:2px solid rgba(255,255,255,0.35);border-top-color:#fff;animation:loc-sync-spin 0.7s linear infinite;box-shadow:none}
 #loc-sync[data-state="success"]{background:rgba(22,163,74,0.85);border-color:rgba(22,163,74,0.95)}
 #loc-sync[data-state="success"] .loc-sync-dot{background:#fff;animation:none;box-shadow:none}
 #loc-sync[data-state="success"] .loc-sync-dot::after{content:"";position:absolute;width:6px;height:3px;border-left:2px solid #16a34a;border-bottom:2px solid #16a34a;transform:rotate(-45deg) translate(0.5px,-1px)}
 #loc-sync[data-state="waiting"]{opacity:0.65}
 #loc-sync[data-state="waiting"] .loc-sync-dot{background:rgba(255,255,255,0.5);animation:loc-sync-breath 3s ease-in-out infinite}
+#loc-sync[data-state="nolink"],#loc-sync[data-state="denied"],#loc-sync[data-state="notconnected"]{background:rgba(180,83,9,0.9);border-color:rgba(217,119,6,0.95)}
+#loc-sync[data-state="nolink"] .loc-sync-dot,#loc-sync[data-state="denied"] .loc-sync-dot,#loc-sync[data-state="notconnected"] .loc-sync-dot{background:#fde68a;animation:none;box-shadow:none}
 @media(max-width:560px){#loc-sync{padding:5px 12px 5px 8px;font-size:11px}}
 
 /* Tips dropdown — appears just below the pulse pill on every click.
@@ -2244,8 +2246,8 @@ ${askAssets.css}
      hidden frame and crossfade opacities — no black WebGL reload. -->
 <div id="viewer">
   <div id="anno-letterbox-wrap">
-    <iframe id="matterport-frame" allowfullscreen allow="xr-spatial-tracking; fullscreen"></iframe>
-    <iframe id="matterport-frame-ghost" allowfullscreen allow="xr-spatial-tracking; fullscreen" aria-hidden="true" tabindex="-1"></iframe>
+    <iframe id="matterport-frame" allowfullscreen allow="xr-spatial-tracking; fullscreen; web-share"></iframe>
+    <iframe id="matterport-frame-ghost" allowfullscreen allow="xr-spatial-tracking; fullscreen; web-share" aria-hidden="true" tabindex="-1"></iframe>
     <!-- f3d:runtime-markup BEGIN v=1 family=builder -->
     <div id="live-tour-navlock" aria-hidden="true"></div>
     <canvas id="anno-canvas"></canvas>
@@ -2302,8 +2304,11 @@ ${askAssets.css}
 
 <!-- ── Location Sync: ambient pulse pill, shown on both visitor + agent -->
 <!-- Single ambient status pill. Read-only / informational — hover or
-     keyboard-focus surfaces the instructions tooltip; there is NO click
-     action and the pill never steals keyboard focus from the iframe.
+     keyboard-focus surfaces the instructions tooltip. On DESKTOP there is
+     NO click action and the pill never steals keyboard focus from the iframe
+     (that would break the visitor pressing U); on iOS the pill is instead an
+     EXPLICIT tap-to-sync button — the only sanctioned, user-gesture clipboard
+     read, with ambient reads kept disabled.
      Auto-sync happens silently via clipboardchange / focus /
      visibilitychange / pointerenter listeners once clipboard permission
      is granted at join / start time. Visitor's send goes through
@@ -2320,9 +2325,9 @@ ${askAssets.css}
      no buttons, no inputs, no controls. Same card serves both roles. -->
 <div id="loc-sync-tips" role="status" aria-live="polite" hidden>
   <ol>
-    <li>Click <strong>Allow</strong> if pop-up asks for permission.</li>
-    <li>Position the view you want to share.</li>
-    <li>Press <kbd>U</kbd> then <strong>“Click to Copy”</strong> to sync.</li>
+    <li>In Matterport, open <strong>Share &rarr; Current Location</strong> and tap <strong>Copy</strong>.</li>
+    <li>On phone or tablet, tap <strong>Sync copied view</strong> (then tap <strong>Paste</strong> if iOS asks).</li>
+    <li>On desktop, press <kbd>U</kbd> then <strong>Copy to clipboard</strong> &mdash; it syncs automatically.</li>
   </ol>
 </div>
 
@@ -2440,6 +2445,14 @@ ${hasAgentContact ? `<div id="agent-drawer">
           <div class="lg-stops-label">Tour Stops</div>
           <div class="lg-stops" id="lg-stops"></div>
         </div>
+      </div>
+      <div id="lg-sync-fallback" hidden>
+        <label class="lg-status" style="margin-top:8px" for="lg-manual-sync-input">Sync not working? Paste the Matterport &ldquo;Link to location&rdquo;.</label>
+        <div class="lg-row">
+          <input id="lg-manual-sync-input" type="text" inputmode="url" placeholder="Paste the link to location" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" class="lg-input" style="letter-spacing:normal;text-align:left" aria-label="Matterport link to location">
+          <button type="button" id="lg-manual-sync-btn" class="lg-btn primary">Sync</button>
+        </div>
+        <div class="lg-status" id="lg-manual-sync-status" aria-live="polite"></div>
       </div>
     </div>
   </div>
@@ -5017,6 +5030,12 @@ if(frame){
     if(agentStatus) agentStatus.textContent="";
     if(stopsContainer) stopsContainer.innerHTML="";
     if(audioEl){ try { audioEl.srcObject=null; } catch(_e){} }
+    var sf=document.getElementById("lg-sync-fallback");
+    if(sf) sf.hidden=true;
+    var mi=document.getElementById("lg-manual-sync-input");
+    if(mi) mi.value="";
+    var ms=document.getElementById("lg-manual-sync-status");
+    if(ms) ms.textContent="";
   }
 
   // ── Annotation helpers ─────────────────────────────────────────────
@@ -5806,6 +5825,8 @@ if(frame){
 
   var LOC_SYNC_POLL_THROTTLE_MS=800;
   var LOC_SYNC_SUCCESS_RESET_MS=1800;
+  var LOC_SYNC_TRANSIENT_RESET_MS=2600;
+  var LOC_SYNC_READING_TIMEOUT_MS=15000;
   var LOC_SYNC_TIPS_HIDE_DELAY_MS=250;
   // locSyncGranted is a hint, not a hard gate — every poll attempts
   // readText() inside try/catch and degrades gracefully on rejection.
@@ -5851,10 +5872,19 @@ if(frame){
 
   var LOC_SYNC_LABELS={
     idle:"To sync your view…",
+    reading:"Reading copied link…",
     syncing:"Aligning agent’s view…",
     success:"View Synced",
+    nolink:"No location link copied",
+    denied:"Clipboard blocked — paste below",
+    notconnected:"Tour not connected yet",
     waiting:"Connecting…"
   };
+  // On iOS, ambient clipboard sync stays disabled (the Paste callout would
+  // interrupt annotation gestures), so the pill is an EXPLICIT tap-to-sync
+  // button — the one sanctioned, user-gesture clipboard read. The idle label
+  // invites that tap rather than implying ambient auto-sync.
+  if(IS_IOS_WEBKIT) LOC_SYNC_LABELS.idle="Sync copied view";
 
   function setPulseState(name){
     if(!syncBtn) return;
@@ -5870,6 +5900,24 @@ if(frame){
       var cur=syncBtn?syncBtn.getAttribute("data-state"):"idle";
       if(cur==="success") setPulseState("idle");
     },LOC_SYNC_SUCCESS_RESET_MS);
+  }
+  // Resting label when nothing is in flight: "idle" inside a live tour,
+  // otherwise the dim "waiting" pill.
+  function restingSyncState(){
+    var s=session.getState();
+    return ((s.role==="visitor"||s.role==="agent")&&s.isConnected)?"idle":"waiting";
+  }
+  // Show a transient info/error state then auto-revert so the pill never
+  // sticks. "reading" gets a longer window because on iOS it spans the native
+  // Paste confirmation; the resolve/reject handlers transition out well before.
+  function setTransientState(name){
+    setPulseState(name);
+    var ms=name==="reading"?LOC_SYNC_READING_TIMEOUT_MS:LOC_SYNC_TRANSIENT_RESET_MS;
+    if(syncResetTimer){ try { clearTimeout(syncResetTimer); } catch(_e){} }
+    syncResetTimer=setTimeout(function(){
+      var cur=syncBtn?syncBtn.getAttribute("data-state"):"idle";
+      if(cur===name) setPulseState(restingSyncState());
+    },ms);
   }
 
   function resetLocationSyncUi(){
@@ -6033,18 +6081,80 @@ if(frame){
     readClipboardAndSend();
   }
 
-  // Pill is informational only — hover or keyboard focus reveals the
-  // tips card; there is NO click action and no Enter/Space handler.
-  // This is critical: ANY focus shift to the pill would steal keyboard
-  // control from the iframe and break the visitor pressing U next.
-  // The visitor's only interactions are inside the Matterport iframe
-  // (press U, click Copy to clipboard) plus the one-time browser
-  // permission "Allow" prompt at Join time.
+  // DESKTOP: the pill is informational only — hover or keyboard focus reveals
+  // the tips card; NO click/Enter/Space action there, because any focus shift
+  // to the pill would steal keyboard control from the iframe and break the
+  // visitor pressing U next. Desktop auto-sync runs via the ambient listeners
+  // below once clipboard permission is granted.
+  //
+  // iOS: ambient reads are disabled (ambientClipboardAllowed === false), so the
+  // pill is instead an EXPLICIT tap-to-sync button — the ONE sanctioned,
+  // user-gesture clipboard read. iOS shows its native Paste confirmation here;
+  // that is expected and surfaced by the "Reading copied link…" state. We never
+  // read silently and never from focus/visibility/pointer/annotation events.
+  function explicitSyncTap(){
+    var s=session.getState();
+    if((s.role!=="visitor"&&s.role!=="agent")||!s.isConnected){ setTransientState("notconnected"); return; }
+    if(!navigator||!navigator.clipboard||typeof navigator.clipboard.readText!=="function"){ setTransientState("denied"); return; }
+    setTransientState("reading");
+    var p;
+    try { p=navigator.clipboard.readText(); } catch(_e){ setTransientState("denied"); return; }
+    if(!p||typeof p.then!=="function"){ setTransientState("denied"); return; }
+    p.then(function(text){
+      if(typeof text!=="string"||!text.trim()){ setTransientState("nolink"); return; }
+      var parsed=parseMatterportLocationUrl(text);
+      if(!parsed){ setTransientState("nolink"); return; }
+      setPulseState("syncing");
+      if(!attemptSendLocation(parsed)) setTransientState("notconnected");
+    },function(){ setTransientState("denied"); });
+  }
+
+  // Manual paste-to-sync fallback (host + guest, every platform): the final
+  // fallback if even the explicit tap's clipboard read is denied/unavailable.
+  // Reads its own input value, NEVER the clipboard API; same parse + send path.
+  var manualSyncInput=document.getElementById("lg-manual-sync-input");
+  var manualSyncBtn=document.getElementById("lg-manual-sync-btn");
+  // Local status writer — self-contained so the live-tour glue never depends on
+  // the top-level setText() (which lives outside the js:glue sentinel range).
+  function setManualSyncStatus(msg){
+    var el=document.getElementById("lg-manual-sync-status");
+    if(el) el.textContent=String(msg||"");
+  }
+  function handleManualSync(){
+    if(!manualSyncInput) return;
+    var raw=manualSyncInput.value||"";
+    if(!raw.trim()){ setManualSyncStatus("Paste a Matterport link first."); return; }
+    var parsed=parseMatterportLocationUrl(raw);
+    if(!parsed){ setManualSyncStatus("That is not a valid Matterport link to location."); return; }
+    var s=session.getState();
+    if((s.role!=="visitor"&&s.role!=="agent")||!s.isConnected){ setManualSyncStatus("Join or host a tour first, then sync."); return; }
+    setPulseState("syncing");
+    setManualSyncStatus("Syncing…");
+    if(attemptSendLocation(parsed)){
+      manualSyncInput.value="";
+      setManualSyncStatus("Synced.");
+      setTimeout(function(){ setManualSyncStatus(""); },2500);
+    } else {
+      setManualSyncStatus("Could not sync that link. Try again.");
+    }
+  }
+  if(manualSyncBtn) manualSyncBtn.addEventListener("click",handleManualSync);
+  if(manualSyncInput) manualSyncInput.addEventListener("keydown",function(e){ if(e.key==="Enter"){ e.preventDefault(); handleManualSync(); } });
+
   if(syncBtn){
     syncBtn.addEventListener("mouseenter",showTips);
     syncBtn.addEventListener("mouseleave",scheduleHideTips);
     syncBtn.addEventListener("focus",showTips);
     syncBtn.addEventListener("blur",scheduleHideTips);
+  }
+  // iOS: turn the pill into an explicit tap-to-sync button (no ambient reads).
+  if(syncBtn&&IS_IOS_WEBKIT){
+    syncBtn.setAttribute("role","button");
+    syncBtn.setAttribute("aria-label","Sync the Matterport view you copied");
+    syncBtn.addEventListener("click",explicitSyncTap);
+    syncBtn.addEventListener("keydown",function(e){
+      if(e.key==="Enter"||e.key===" "||e.key==="Spacebar"){ e.preventDefault(); explicitSyncTap(); }
+    });
   }
   // Keep tips visible while the cursor is hovering the card itself so
   // the visitor can read it without it disappearing mid-glance.
@@ -6321,6 +6431,9 @@ if(frame){
     // the full screen. Latched so we only fire once per session.
     if(!wasConnected && state.isConnected && state.status==="connected"){
       wasConnected=true;
+      // Reveal the manual paste-to-sync fallback for both roles once live.
+      var sf=document.getElementById("lg-sync-fallback");
+      if(sf) sf.hidden=false;
       // A live tour is itself an interaction that needs stable gestures —
       // ask the parent to switch off native Device fullscreen on iPad.
       emitInteractionActive();

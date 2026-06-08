@@ -1110,7 +1110,12 @@ function PresentationModal({ entry, onClose }: { entry: AtlasEntry; onClose: () 
               // Matterport iframe) need: microphone for getUserMedia voice,
               // clipboard-read/write for Matterport's "Copy to clipboard" →
               // parent sync flow, plus the existing motion/display features.
-              allow="microphone; clipboard-read; clipboard-write; autoplay; fullscreen; accelerometer; gyroscope; xr-spatial-tracking"
+              // web-share delegates the Web Share API down to the showcase so
+              // Matterport's Share → Current Location can open the iOS Share
+              // Sheet from inside this modal. The feature's default allowlist
+              // is 'self', so every cross-origin ancestor in the chain must
+              // forward it explicitly; it grants no clipboard/other access.
+              allow="microphone; clipboard-read; clipboard-write; autoplay; fullscreen; accelerometer; gyroscope; xr-spatial-tracking; web-share"
               sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-presentation"
               referrerPolicy="no-referrer-when-downgrade"
             />
