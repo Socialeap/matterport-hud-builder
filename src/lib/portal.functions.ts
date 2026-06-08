@@ -5074,11 +5074,32 @@ if(frame){
     }
   }
 
+  // Notify the embedding Atlas app (parent window) that an interaction needing
+  // stable touch gestures has begun — Pointer / Draw / Focus Rope selection or
+  // a live session connecting. The app-shell parent drops native Device
+  // fullscreen into Maximize on iPad so the swipe-exit gesture can't collapse
+  // fullscreen mid-draw. Same f3d: postMessage namespace as the share bridge
+  // (the parent half origin-checks via event.source). NO-OP when there is no
+  // distinct parent — a presentation opened directly (not embedded in the
+  // Atlas modal) posts nothing, so direct standalone viewing is unaffected.
+  // This is the runtime-2.0.3 interaction behavior, ported to the Builder
+  // adapter so a Builder package never advertises 2.0.3 without carrying it.
+  function emitInteractionActive(){
+    try {
+      if(typeof window==="undefined") return;
+      if(!window.parent||window.parent===window) return;
+      window.parent.postMessage({ type:"f3d:interaction-active" },"*");
+    } catch(_e){}
+  }
+
   function setToolMode(mode){
     // Fail-closed: Draw / Focus Rope require the hardened input kernel.
     if((mode==="draw"||mode==="rope")&&!ANNO_INPUT_OK) return;
     // Allocate the annotation canvas lazily on the first authoring entry.
     if(mode==="draw"||mode==="rope") ensureAnnoCanvasAllocated();
+    // Interaction signal (runtime 2.0.3): Pointer / Draw / Rope all need
+    // stable touch — ask the embedding app to leave native iPad fullscreen.
+    if(mode==="pointer"||mode==="draw"||mode==="rope") emitInteractionActive();
     var prev=toolMode;
     toolMode=mode;
     if(annoCanvas){
@@ -6300,6 +6321,9 @@ if(frame){
     // the full screen. Latched so we only fire once per session.
     if(!wasConnected && state.isConnected && state.status==="connected"){
       wasConnected=true;
+      // A live tour is itself an interaction that needs stable gestures —
+      // ask the parent to switch off native Device fullscreen on iPad.
+      emitInteractionActive();
       if(leaveBtn) leaveBtn.hidden=false;
       // Engage the 16:9 letterbox + agent toolbar (if applicable) once
       // the channel is live. Resize the canvas backing store so

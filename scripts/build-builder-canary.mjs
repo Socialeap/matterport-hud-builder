@@ -26,9 +26,11 @@
  * Out:   dist/builder-canary.html
  */
 import fs from "node:fs";
+import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { stripExports } from "../src/lib/portal/ask-runtime-transformer.mjs";
+import { ATLAS_RUNTIME_VERSION, buildRuntimeMetaTags } from "../src/lib/atlas-runtime-version.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (...p) => fs.readFileSync(path.join(ROOT, ...p), "utf8");
@@ -139,6 +141,7 @@ const HTML = `<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Builder live-tour canary — DEVICE QA ONLY</title>
+${buildRuntimeMetaTags("builder")}
 ${DEP}
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -189,4 +192,9 @@ try {
   console.error("[canary] ❌ assembled runtime <script> failed to parse: " + err.message);
   process.exit(1);
 }
-console.log(`[canary] ✅ wrote ${path.relative(ROOT, outFile)} (${HTML.length} bytes, model ${MODEL_ID}); runtime parses.`);
+const sha256 = crypto.createHash("sha256").update(HTML).digest("hex");
+console.log(`[canary] ✅ wrote ${path.relative(ROOT, outFile)} — runtime <script> parses.`);
+console.log(`[canary]    runtime_version : ${ATLAS_RUNTIME_VERSION}  (advertises this; carries the f3d:interaction-active emit)`);
+console.log(`[canary]    matterport model: ${MODEL_ID}`);
+console.log(`[canary]    bytes           : ${HTML.length}`);
+console.log(`[canary]    sha256          : ${sha256}`);

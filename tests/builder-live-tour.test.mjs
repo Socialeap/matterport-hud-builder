@@ -64,9 +64,15 @@ function deTemplate(src) {
 const GLUE = deTemplate(
   sliceBetween(PORTAL, "// f3d:runtime-js:glue BEGIN", "// f3d:runtime-js:glue END"),
 );
+// The package's OUTER IIFE provides a few locals the live-guide glue closes
+// over: the property list + current index (renderStops / teleport) — stub the
+// data ones so onState runs end-to-end. (`frame` is supplied as a Function
+// param below.)
+const OUTER_STUBS = 'var props=[{ name:"Canary", iframeUrl:"", liveTourStops:[] }]; var current=0;';
 // anno-input kernel defines the guard/coalesce/clamp helpers as locals; the
-// glue (a nested IIFE) closes over them exactly as it does in the package.
-const BODY = ANNO_INPUT + "\n" + GLUE;
+// glue (a nested IIFE) closes over all of these exactly as it does in the
+// package.
+const BODY = OUTER_STUBS + "\n" + ANNO_INPUT + "\n" + GLUE;
 
 test("the extracted Builder glue parses cleanly with the real kernel", () => {
   assert.doesNotThrow(() => {
@@ -168,8 +174,8 @@ function makeConnectedController(role, spy) {
   };
 }
 
-function runGlue(role = "agent") {
-  const spy = { begin: [], patch: [], commit: [] };
+function runGlue(role = "agent", opts = {}) {
+  const spy = { begin: [], patch: [], commit: [], posts: [] };
   const { els, document } = makeFakeDom();
   const window = {
     addEventListener() {},
@@ -177,11 +183,25 @@ function runGlue(role = "agent") {
     devicePixelRatio: 2,
     location: { href: "https://example.com/test/" },
   };
+  // Embedding context: a DISTINCT parent (the Atlas modal) records postMessage;
+  // direct viewing (default) has parent === self, so the interaction emit is a
+  // no-op and direct standalone viewing is unaffected.
+  window.parent = opts.embedded
+    ? { postMessage: (msg, origin) => spy.posts.push({ msg, origin }) }
+    : window;
   const navigator = {}; // no clipboard — exercises the graceful guards
   const frame = new FakeEl("matterport-frame");
+  const controllerFactory = () => {
+    const c = makeConnectedController(role, spy);
+    if (opts.fireConnect) {
+      const sub = c.subscribe;
+      c.subscribe = (fn) => { fn(c.getState()); return sub(fn); };
+    }
+    return c;
+  };
   // eslint-disable-next-line no-new-func
   const fn = new Function("window", "document", "navigator", "createLiveSession", "ResizeObserver", "frame", BODY);
-  fn(window, document, navigator, () => makeConnectedController(role, spy), undefined, frame);
+  fn(window, document, navigator, controllerFactory, undefined, frame);
   const fireDoc = (ev, payload) =>
     (document._h[ev] || []).forEach((f) => f(Object.assign({ preventDefault() {}, target: null, key: "" }, payload || {})));
   return { els, spy, fireDoc, canvas: els["anno-canvas"], letterbox: els["anno-letterbox-wrap"], document };
@@ -354,4 +374,30 @@ test("stage events ARE killed while a tool is active", () => {
   const menu = ev(0, 0, 0, "mouse");
   h.letterbox.fire("contextmenu", menu);
   assert.ok(menu._prevented, "context menu blocked during annotation");
+});
+
+// ── 9. Runtime 2.0.3 interaction signal — parity, parent-only, direct-safe ─
+const hasInteractionPost = (h) =>
+  h.spy.posts.some((p) => p.msg && p.msg.type === "f3d:interaction-active");
+
+test("Pointer / Draw / Focus Rope each post f3d:interaction-active to a distinct parent", () => {
+  for (const key of ["p", "d", "r"]) {
+    const h = runGlue("agent", { embedded: true });
+    h.fireDoc("keydown", { key });
+    assert.ok(hasInteractionPost(h), `tool '${key}' must signal the embedding app`);
+    assert.equal(h.spy.posts[0].origin, "*", "posts on the f3d: namespace with a permissive target (parent origin-checks)");
+  }
+});
+
+test("a first live-session connect posts f3d:interaction-active to the parent", () => {
+  const h = runGlue("agent", { embedded: true, fireConnect: true });
+  assert.ok(hasInteractionPost(h), "connect must signal the embedding app");
+});
+
+test("direct standalone viewing (no distinct parent) posts NOTHING — viewing is unaffected", () => {
+  const h = runGlue("agent", { fireConnect: true }); // parent === self
+  h.fireDoc("keydown", { key: "p" });
+  h.fireDoc("keydown", { key: "d" });
+  h.fireDoc("keydown", { key: "r" });
+  assert.equal(h.spy.posts.length, 0, "a directly-opened presentation must never postMessage to itself");
 });

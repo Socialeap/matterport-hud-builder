@@ -146,3 +146,26 @@ test("Builder preserves the presentation content/config/token plumbing", () => {
     assert.ok(PORTAL.includes(token), `preserved token missing: ${token}`);
   }
 });
+
+// ── 9. Runtime 2.0.3 interaction signal ported to the Builder adapter ─────
+// So a Builder package can never advertise runtime 2.0.3 (the shared
+// ATLAS_RUNTIME_VERSION, bumped by PR #154) without carrying 2.0.3's emit.
+test("Builder carries the f3d:interaction-active emit (parent-only, direct-safe)", () => {
+  assert.ok(PORTAL.includes("function emitInteractionActive()"), "defines the interaction emit");
+  assert.ok(
+    PORTAL.includes("if(!window.parent||window.parent===window) return;"),
+    "no-op when opened directly (no distinct parent) — direct viewing unaffected",
+  );
+  assert.ok(
+    PORTAL.includes(`window.parent.postMessage({ type:"f3d:interaction-active" },"*")`),
+    "posts f3d:interaction-active to the parent",
+  );
+  assert.ok(
+    PORTAL.includes(`if(mode==="pointer"||mode==="draw"||mode==="rope") emitInteractionActive();`),
+    "setToolMode signals on Pointer/Draw/Rope",
+  );
+  assert.ok(
+    (PORTAL.match(/emitInteractionActive\(\)/g) || []).length >= 3,
+    "wired at the definition + tool-select + first-connect",
+  );
+});
