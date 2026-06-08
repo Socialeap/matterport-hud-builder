@@ -1114,6 +1114,8 @@
   // ── Location sync (clipboard auto-share, both roles) ─────────────────
   var LOC_SYNC_POLL_THROTTLE_MS = 800;
   var LOC_SYNC_SUCCESS_RESET_MS = 1800;
+  var LOC_SYNC_TRANSIENT_RESET_MS = 2600;
+  var LOC_SYNC_READING_TIMEOUT_MS = 15000;
   var LOC_SYNC_TIPS_HIDE_DELAY_MS = 250;
   var SYNC_SUPPRESS_MS = 500;
   var locSyncLastPollTs = 0;
@@ -1126,15 +1128,19 @@
 
   var LOC_SYNC_LABELS = {
     idle: "Sync ready",
+    reading: "Reading copied link…",
     syncing: "Syncing…",
     success: "Synced",
+    nolink: "No location link copied",
+    denied: "Clipboard blocked — paste below",
+    notconnected: "Tour not connected yet",
     waiting: "Connecting…",
   };
-  // Honest copy on iOS: ambient clipboard sync is disabled there (Paste
-  // callout would interrupt annotation gestures), so the pill must not
-  // claim an ambient "Sync ready" that cannot happen. Manual paste is
-  // the supported path and works the same on both roles.
-  if (IS_IOS_WEBKIT) LOC_SYNC_LABELS.idle = "Manual view sync";
+  // On iOS, ambient clipboard sync stays disabled (the Paste callout would
+  // interrupt annotation gestures), so the pill is instead an EXPLICIT
+  // tap-to-sync button — the one sanctioned, user-gesture clipboard read.
+  // The idle label invites that tap rather than implying ambient auto-sync.
+  if (IS_IOS_WEBKIT) LOC_SYNC_LABELS.idle = "Sync copied view";
 
   // Whether ANY ambient (non-manual) clipboard read may run right now.
   // Layered, all fail-closed:
@@ -1241,6 +1247,29 @@
       var cur = syncBtn ? syncBtn.getAttribute("data-state") : "idle";
       if (cur === "success") setPulseState("idle");
     }, LOC_SYNC_SUCCESS_RESET_MS);
+  }
+  // Resting label when nothing is in flight: "idle" inside a live tour,
+  // otherwise the dim "waiting" pill.
+  function restingSyncState() {
+    var s = session.getState();
+    return (s.role === "visitor" || s.role === "agent") && s.isConnected ? "idle" : "waiting";
+  }
+  // Show a transient info/error state (reading/nolink/denied/notconnected)
+  // then auto-revert to the resting state so the pill never sticks. "reading"
+  // gets a longer window because on iOS it spans the native Paste confirmation;
+  // the resolve/reject handlers below transition out of it well before then.
+  function setTransientState(name) {
+    setPulseState(name);
+    var ms = name === "reading" ? LOC_SYNC_READING_TIMEOUT_MS : LOC_SYNC_TRANSIENT_RESET_MS;
+    if (syncResetTimer) {
+      try {
+        clearTimeout(syncResetTimer);
+      } catch (_e) {}
+    }
+    syncResetTimer = setTimeout(function () {
+      var cur = syncBtn ? syncBtn.getAttribute("data-state") : "idle";
+      if (cur === name) setPulseState(restingSyncState());
+    }, ms);
   }
   function resetLocationSyncUi() {
     locSyncLastPollTs = 0;
@@ -1496,11 +1525,76 @@
     readClipboardAndSend();
   }
 
+  // ── Explicit "Sync copied view" tap (iOS only) ───────────────────────
+  // The ONE place a clipboard read may run on iOS: a DIRECT user gesture,
+  // never ambient. iOS surfaces its native Paste confirmation here, which is
+  // expected and explained by the "Reading copied link…" state — we never
+  // read silently, and never from focus/visibility/pointer/annotation events
+  // (ambientClipboardAllowed stays false on iOS). Desktop keeps the
+  // informational pill + ambient polling: a click there would steal keyboard
+  // focus from the iframe and break the visitor pressing U.
+  function explicitSyncTap() {
+    var s = session.getState();
+    if ((s.role !== "visitor" && s.role !== "agent") || !s.isConnected) {
+      setTransientState("notconnected");
+      return;
+    }
+    if (!clipboardReadAvailable()) {
+      // No Clipboard API at all — steer the user to the manual paste field.
+      setTransientState("denied");
+      return;
+    }
+    setTransientState("reading");
+    var p;
+    try {
+      p = navigator.clipboard.readText();
+    } catch (_e) {
+      setTransientState("denied");
+      return;
+    }
+    if (!p || typeof p.then !== "function") {
+      setTransientState("denied");
+      return;
+    }
+    p.then(
+      function (text) {
+        if (typeof text !== "string" || !text.trim()) {
+          setTransientState("nolink");
+          return;
+        }
+        var parsed = parseMatterportLocationUrl(text);
+        if (!parsed) {
+          setTransientState("nolink");
+          return;
+        }
+        setPulseState("syncing");
+        if (!attemptSendLocation(parsed)) setTransientState("notconnected");
+      },
+      function () {
+        // Read rejected: permission denied or the Paste prompt was dismissed.
+        setTransientState("denied");
+      },
+    );
+  }
+
   if (syncBtn) {
     syncBtn.addEventListener("mouseenter", showTips);
     syncBtn.addEventListener("mouseleave", scheduleHideTips);
     syncBtn.addEventListener("focus", showTips);
     syncBtn.addEventListener("blur", scheduleHideTips);
+  }
+  // iOS: turn the pill into an explicit tap-to-sync button. No ambient reads
+  // are bound on iOS, so this is the visitor/agent's path to share a view.
+  if (syncBtn && IS_IOS_WEBKIT) {
+    syncBtn.setAttribute("role", "button");
+    syncBtn.setAttribute("aria-label", "Sync the Matterport view you copied");
+    syncBtn.addEventListener("click", explicitSyncTap);
+    syncBtn.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+        e.preventDefault();
+        explicitSyncTap();
+      }
+    });
   }
   if (tipsEl) {
     tipsEl.addEventListener("mouseenter", showTips);

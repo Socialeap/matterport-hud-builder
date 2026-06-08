@@ -627,6 +627,30 @@ function assertBuilderSentinels(src) {
   );
 }
 
+/**
+ * web-share must be delegated to the Builder Matterport iframe(s) so Matterport's
+ * "Share → Current Location" can reach the iOS Share Sheet through the nested
+ * frames. The Permissions-Policy default allowlist is 'self', so every cross-
+ * origin ancestor (here: the generated presentation → its Matterport iframe)
+ * must forward it explicitly. It grants only navigator.share()/canShare(), so it
+ * cannot weaken the iOS ambient-clipboard isolation. Pinned at build time.
+ */
+function assertMatterportWebShare(src) {
+  for (const id of ["matterport-frame", "matterport-frame-ghost"]) {
+    const m = new RegExp('<iframe id="' + id + '"[^>]*?\\sallow="([^"]*)"').exec(src);
+    if (!m) {
+      console.error(`[verify-html] ❌ web-share gate: <iframe id="${id}"> with an allow= attribute not found.`);
+      process.exit(1);
+    }
+    const toks = m[1].split(";").map((t) => t.trim().toLowerCase());
+    if (!toks.includes("web-share")) {
+      console.error(`[verify-html] ❌ web-share gate: <iframe id="${id}"> allow is missing web-share (saw "${m[1]}").`);
+      process.exit(1);
+    }
+  }
+  console.log("[verify-html] ✅ Matterport iframe(s) delegate web-share (Share → Current Location → iOS Share Sheet).");
+}
+
 function main() {
   verifyAskRuntimeModules();
   parseAskRuntime();
@@ -643,6 +667,7 @@ function main() {
   assertRequiredStartupTokens(src);
   assertHudGateStartsClosed(src);
   assertBuilderSentinels(src);
+  assertMatterportWebShare(src);
   parseRuntimeIIFE(src);
 
   if (offenders.length === 0 && commentOffenders.length === 0) {

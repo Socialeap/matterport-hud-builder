@@ -8,11 +8,19 @@
 //
 //   1. The modal iframe (src/routes/atlas.tsx) must grant the embedded
 //      showcase microphone (getUserMedia voice) + clipboard-read/write
-//      (Matterport "Copy to clipboard" → parent sync).
+//      (Matterport "Copy to clipboard" → parent sync) + web-share.
 //   2. The nested Matterport iframe (src/lib/atlas-curation-server.ts) must
-//      grant clipboard-write so its in-tour "Copy to clipboard" works.
+//      grant clipboard-write + web-share so its in-tour Share works.
 //
-// Asserted at source level because both iframes are produced inside React /
+// web-share is a Permissions-Policy feature whose default allowlist is 'self',
+// so EVERY cross-origin ancestor must forward it explicitly for Matterport's
+// "Share → Current Location" to reach the iOS Share Sheet from inside the
+// nested frames. It grants only navigator.share()/canShare() — no clipboard or
+// other access — so adding it cannot weaken the iOS ambient-clipboard isolation.
+// The Builder family (src/lib/portal.functions.ts) and the canary device-test
+// artifact (scripts/build-builder-canary.mjs) carry the same delegation.
+//
+// Asserted at source level because the iframes are produced inside React /
 // template-literal code that the Vite "?raw" + "@/" alias pipeline makes
 // awkward to import directly under node --test.
 
@@ -29,6 +37,8 @@ const CURATION_SERVER = readFileSync(
   path.join(root, "src", "lib", "atlas-curation-server.ts"),
   "utf8",
 );
+const PORTAL = readFileSync(path.join(root, "src", "lib", "portal.functions.ts"), "utf8");
+const CANARY = readFileSync(path.join(root, "scripts", "build-builder-canary.mjs"), "utf8");
 
 // Pull every allow="..." value out of a source file.
 function allowValues(src) {
@@ -43,6 +53,20 @@ function tokens(value) {
     .split(";")
     .map((t) => t.trim().toLowerCase())
     .filter(Boolean);
+}
+// The allow="..." attribute on a specific <iframe id="..."> tag.
+function iframeAllow(src, id) {
+  const re = new RegExp('<iframe id="' + id + '"[^>]*?\\sallow="([^"]*)"');
+  const m = re.exec(src);
+  return m ? m[1] : null;
+}
+// The sandbox="..." on the Atlas modal iframe — anchored on its (unique)
+// microphone+clipboard allow so it stays robust to nearby comment/attr edits.
+function modalSandbox(src) {
+  const i = src.indexOf("microphone; clipboard-read");
+  if (i === -1) return null;
+  const m = /sandbox="([^"]*)"/.exec(src.slice(i, i + 800));
+  return m ? m[1] : null;
 }
 
 test("Atlas modal iframe grants microphone + clipboard read/write for voice & sync", () => {
@@ -70,6 +94,7 @@ test("Atlas modal iframe grants microphone + clipboard read/write for voice & sy
     "accelerometer",
     "gyroscope",
     "xr-spatial-tracking",
+    "web-share",
   ]) {
     assert.ok(t.includes(needed), `Atlas modal iframe allow missing: ${needed}`);
   }
@@ -90,7 +115,60 @@ test("curated Matterport iframe grants clipboard-write (Copy to clipboard sync)"
     "fullscreen",
     "autoplay",
     "clipboard-write",
+    "web-share",
   ]) {
     assert.ok(t.includes(needed), `curated Matterport iframe allow missing: ${needed}`);
   }
+});
+
+test("Builder Matterport iframe(s) grant web-share + preserve every existing permission", () => {
+  for (const id of ["matterport-frame", "matterport-frame-ghost"]) {
+    const allow = iframeAllow(PORTAL, id);
+    assert.ok(allow, `portal.functions.ts must have an <iframe id="${id}"> with an allow=`);
+    const t = tokens(allow);
+    for (const needed of ["xr-spatial-tracking", "fullscreen", "web-share"]) {
+      assert.ok(t.includes(needed), `Builder ${id} allow missing: ${needed} (saw ${JSON.stringify(allow)})`);
+    }
+  }
+});
+
+test("web-share is delegated at EVERY level so it reaches the nested Matterport frame", () => {
+  // L1 page→presentation, L2a Atlas curated, L2b Builder — all must forward it.
+  const modal = allowValues(ATLAS_ROUTE).find((v) => tokens(v).includes("microphone"));
+  assert.ok(modal && tokens(modal).includes("web-share"), "L1 Atlas modal iframe must forward web-share");
+  const curated = allowValues(CURATION_SERVER).find((v) => tokens(v).includes("clipboard-write"));
+  assert.ok(curated && tokens(curated).includes("web-share"), "L2 curated Matterport iframe must forward web-share");
+  assert.ok(
+    tokens(iframeAllow(PORTAL, "matterport-frame")).includes("web-share"),
+    "L2 Builder Matterport iframe must forward web-share",
+  );
+});
+
+test("Builder canary device-test artifact also grants web-share on its Matterport iframe", () => {
+  // The canary HTML is what gets hosted over HTTPS for the iPad device test, so
+  // its hardcoded iframe must carry web-share or the device test cannot exercise
+  // Matterport's Share → Current Location → iOS Share Sheet path.
+  const allow = iframeAllow(CANARY, "matterport-frame");
+  assert.ok(allow, "build-builder-canary.mjs must have a matterport-frame iframe");
+  assert.ok(
+    tokens(allow).includes("web-share"),
+    `canary Matterport iframe allow missing web-share (saw ${JSON.stringify(allow)})`,
+  );
+});
+
+test("the Atlas modal sandbox is NOT loosened by the web-share change", () => {
+  // web-share needs no sandbox token; transient activation comes from the user's
+  // tap on Matterport's own Share button. Pin the sandbox so a future edit that
+  // silently broadens it (e.g. allow-top-navigation, allow-downloads) fails here.
+  const sandbox = modalSandbox(ATLAS_ROUTE);
+  assert.ok(sandbox, "atlas.tsx modal iframe must keep its sandbox attribute");
+  const got = sandbox.split(/\s+/).filter(Boolean).sort();
+  const expected = [
+    "allow-scripts",
+    "allow-same-origin",
+    "allow-popups",
+    "allow-forms",
+    "allow-presentation",
+  ].sort();
+  assert.deepEqual(got, expected, `Atlas modal sandbox changed — review before loosening. saw: ${sandbox}`);
 });

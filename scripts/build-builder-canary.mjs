@@ -159,8 +159,8 @@ ${CSS}
 <body>
 <div id="viewer">
   <div id="anno-letterbox-wrap">
-    <iframe id="matterport-frame" src="${IFRAME_SRC}" allowfullscreen allow="xr-spatial-tracking; fullscreen"></iframe>
-    <iframe id="matterport-frame-ghost" allowfullscreen allow="xr-spatial-tracking; fullscreen" aria-hidden="true" tabindex="-1"></iframe>
+    <iframe id="matterport-frame" src="${IFRAME_SRC}" allowfullscreen allow="xr-spatial-tracking; fullscreen; web-share"></iframe>
+    <iframe id="matterport-frame-ghost" allowfullscreen allow="xr-spatial-tracking; fullscreen; web-share" aria-hidden="true" tabindex="-1"></iframe>
 ${MARKUP}
   </div>
 </div>

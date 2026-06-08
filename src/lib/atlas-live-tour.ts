@@ -252,12 +252,14 @@ body.live-tour-active #loc-sync{display:inline-flex}
 .loc-sync-label{color:rgba(255,255,255,0.94);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @keyframes loc-sync-breath{0%,100%{box-shadow:0 0 0 0 rgba(129,140,248,0.4)}50%{box-shadow:0 0 0 6px rgba(129,140,248,0)}}
 @keyframes loc-sync-spin{to{transform:rotate(360deg)}}
-#loc-sync[data-state="syncing"] .loc-sync-dot{background:transparent;border:2px solid rgba(255,255,255,0.35);border-top-color:#fff;animation:loc-sync-spin 0.7s linear infinite;box-shadow:none}
+#loc-sync[data-state="syncing"] .loc-sync-dot,#loc-sync[data-state="reading"] .loc-sync-dot{background:transparent;border:2px solid rgba(255,255,255,0.35);border-top-color:#fff;animation:loc-sync-spin 0.7s linear infinite;box-shadow:none}
 #loc-sync[data-state="success"]{background:rgba(22,163,74,0.85);border-color:rgba(22,163,74,0.95)}
 #loc-sync[data-state="success"] .loc-sync-dot{background:#fff;animation:none;box-shadow:none}
 #loc-sync[data-state="success"] .loc-sync-dot::after{content:"";position:absolute;width:6px;height:3px;border-left:2px solid #16a34a;border-bottom:2px solid #16a34a;transform:rotate(-45deg) translate(0.5px,-1px)}
 #loc-sync[data-state="waiting"]{opacity:0.65}
 #loc-sync[data-state="waiting"] .loc-sync-dot{background:rgba(255,255,255,0.5)}
+#loc-sync[data-state="nolink"],#loc-sync[data-state="denied"],#loc-sync[data-state="notconnected"]{background:rgba(180,83,9,0.9);border-color:rgba(217,119,6,0.95)}
+#loc-sync[data-state="nolink"] .loc-sync-dot,#loc-sync[data-state="denied"] .loc-sync-dot,#loc-sync[data-state="notconnected"] .loc-sync-dot{background:#fde68a;animation:none;box-shadow:none}
 #loc-sync-tips{position:fixed;top:96px;left:12px;z-index:1245;display:none;flex-direction:column;width:min(264px,calc(100vw - 24px));padding:10px 14px 12px;border-radius:12px;background:rgba(0,0,0,0.82);border:1px solid rgba(255,255,255,0.16);color:#fff;font:500 12px/1.45 system-ui,-apple-system,sans-serif;-webkit-backdrop-filter:blur(16px) saturate(170%);backdrop-filter:blur(16px) saturate(170%);box-shadow:0 12px 28px rgba(0,0,0,0.42);pointer-events:auto}
 body.live-tour-active #loc-sync-tips:not([hidden]){display:flex}
 #loc-sync-tips ol{margin:0;padding-left:20px}
@@ -364,9 +366,9 @@ const PANEL_HTML = `<aside id="lt-panel" class="lt-panel" role="dialog" aria-lab
 </div>
 <div id="loc-sync-tips" role="status" aria-live="polite" hidden>
   <ol>
-    <li>Click <strong>Allow</strong> if a clipboard prompt appears.</li>
-    <li>Position the view you want to share.</li>
-    <li>Press <kbd>U</kbd> then <strong>Copy to clipboard</strong> to sync.</li>
+    <li>In Matterport, open <strong>Share &rarr; Current Location</strong> and tap <strong>Copy</strong>.</li>
+    <li>On phone or tablet, tap <strong>Sync copied view</strong> (then tap <strong>Paste</strong> if iOS asks).</li>
+    <li>On desktop, press <kbd>U</kbd> then <strong>Copy to clipboard</strong> &mdash; it syncs automatically.</li>
   </ol>
 </div>
 <audio id="lt-audio" autoplay playsinline></audio>`;
