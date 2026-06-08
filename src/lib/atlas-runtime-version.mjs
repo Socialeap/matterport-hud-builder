@@ -15,6 +15,11 @@
 //     (controller + glue + CSS). Bump on every behavior change; the
 //     Upgrade Center compares this value to decide "outdated".
 const ATLAS_PACKAGE_SCHEMA = 2;
+// 2.0.3: emit `f3d:interaction-active` to the parent Atlas app on Draw /
+// Focus Rope / pointer selection and on live-session connect, so the
+// embedding modal can drop native Device fullscreen into Maximize on iPad
+// (iPadOS swipe-exit collapses native fullscreen mid-draw). Parent half
+// shipped in the app shell; this emit activates only after regeneration.
 // 2.0.2: P0 iPad connect-crash hardening — wrapper gesture CSS made
 // conditional on tool-active (Matterport navigation untouched
 // otherwise); lazy annotation-canvas allocation (nothing allocated at
@@ -24,7 +29,7 @@ const ATLAS_PACKAGE_SCHEMA = 2;
 // 2.0.1: iOS clipboard isolation — ambient readText() disabled on
 // iOS/iPadOS WebKit (Paste-callout interruption fix) + stage-scoped
 // WebKit gesture defenses.
-const ATLAS_RUNTIME_VERSION = "2.0.2";
+const ATLAS_RUNTIME_VERSION = "2.0.3";
 
 // Capability strings are ACCEPTANCE-GATED (decision 2026-06-06): a
 // capability may be listed here only after its phase passes acceptance

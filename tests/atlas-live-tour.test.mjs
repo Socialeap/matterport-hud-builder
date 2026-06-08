@@ -101,6 +101,9 @@ test("glue wires the reused controller API + Atlas config hook", () => {
     "selectstart",
     "dragstart",
     "touchstart",
+    // Interaction-active emit → parent fullscreen handoff (runtime 2.0.3).
+    "emitInteractionActive",
+    "f3d:interaction-active",
   ]) {
     assert.ok(GLUE.includes(needle), `expected glue to reference: ${needle}`);
   }

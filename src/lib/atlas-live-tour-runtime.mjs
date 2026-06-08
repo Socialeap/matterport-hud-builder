@@ -130,6 +130,23 @@
   // (layout_started, canvas_allocated, audio_playing) are marked direct.
   var MILESTONE_LOG_KEY = "f3d_lt_milestone_log";
   var MILESTONE_LAST_KEY = "f3d_lt_last_milestone";
+
+  // Notify the embedding Atlas app (parent window) that an interaction
+  // needing stable touch gestures has begun — Draw / Focus Rope / pointer
+  // tool selection, or a live session connecting. The parent uses this to
+  // drop out of native Device fullscreen into Maximize on iPad (iPadOS
+  // swipe-exit would otherwise collapse native fullscreen mid-draw). Uses
+  // the same f3d: postMessage namespace as the share-url bridge. No-op
+  // when there is no distinct parent (showcase opened directly, not in the
+  // Atlas modal). The parent half is origin-checked via event.source.
+  function emitInteractionActive() {
+    try {
+      if (typeof window === "undefined") return;
+      if (!window.parent || window.parent === window) return;
+      window.parent.postMessage({ type: "f3d:interaction-active" }, "*");
+    } catch (_e) {}
+  }
+
   function markMilestone(name) {
     try {
       if (!window.sessionStorage) return;
@@ -373,6 +390,7 @@
       }
     }
     if (mode === "draw" || mode === "rope") ensureAnnoCanvasAllocated();
+    if (mode === "pointer" || mode === "draw" || mode === "rope") emitInteractionActive();
     try {
       document.body.classList.toggle("anno-rope-active", mode === "rope");
       // Stage gesture hardening (wrapper touch-action/user-select, the
@@ -1789,6 +1807,9 @@
       }
       if (statusChip) statusChip.hidden = false;
       markMilestone("layout_started");
+      // A live tour is itself an interaction that needs stable gestures —
+      // ask the parent to switch off native Device fullscreen on iPad.
+      emitInteractionActive();
       setBodyLetterboxClass(true, isHost);
       // No annotation-canvas allocation here (P0 iPad fix): the buffer
       // is created lazily on first Draw/Rope use or first remote stroke,
