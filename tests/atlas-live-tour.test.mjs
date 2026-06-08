@@ -1081,7 +1081,12 @@ test("the Atlas runtime spans are wrapped in bounded f3d sentinels", () => {
   const src = readFileSync(path.join(__dirname, "..", "src", "lib", "atlas-live-tour.ts"), "utf8");
   assert.ok(src.includes('f3dWrapHtml("dep:peerjs"'), "PeerJS dependency must be sentinel-wrapped");
   assert.ok(src.includes("f3dWrapCss("), "runtime CSS must be sentinel-wrapped");
-  assert.ok(src.includes('f3dWrapHtml("markup"'), "runtime markup must be sentinel-wrapped");
+  // Each replaceable markup region gets a UNIQUE span so every marker name
+  // identifies exactly one byte range (no three-identical-markup ambiguity).
+  for (const span of ["markup:stage", "markup:toolbar", "markup:panel"]) {
+    assert.ok(src.includes(`f3dWrapHtml("${span}"`), `runtime markup must use unique span ${span}`);
+  }
+  assert.ok(!src.includes('f3dWrapHtml("markup"'), "bare ambiguous markup span must be gone");
   for (const marker of [
     "f3d:runtime-js:kernel BEGIN v=1 family=atlas",
     "f3d:runtime-js:kernel END",

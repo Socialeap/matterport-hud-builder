@@ -17,6 +17,7 @@ import {
   ATLAS_RUNTIME_VERSION,
   ATLAS_RUNTIME_CAPABILITIES,
   ATLAS_KNOWN_CAPABILITIES,
+  GENERATED_FAMILIES,
   PRESENTATION_FAMILIES,
   F3D_PACKAGE_FAMILY_DEFAULT,
   buildRuntimeManifestFields,
@@ -75,15 +76,20 @@ test("buildRuntimeManifestFields returns the four fields with a defensive copy",
 });
 
 // ── 3b. Family registry + normalization ──────────────────────────────────
-test("the family registry is exactly atlas/builder/legacy and the default is a member", () => {
+test("the family registries are correct; legacy is recognized but NOT generated", () => {
+  assert.deepEqual([...GENERATED_FAMILIES].sort(), ["atlas", "builder"]);
   assert.deepEqual([...PRESENTATION_FAMILIES].sort(), ["atlas", "builder", "legacy"]);
-  assert.ok(PRESENTATION_FAMILIES.includes(F3D_PACKAGE_FAMILY_DEFAULT));
+  assert.ok(GENERATED_FAMILIES.includes(F3D_PACKAGE_FAMILY_DEFAULT));
+  assert.ok(!GENERATED_FAMILIES.includes("legacy"), "legacy is a U1 classification, not generated");
 });
 
-test("buildRuntimeManifestFields carries the family and normalizes unknowns/empty", () => {
+test("buildRuntimeManifestFields fails closed on explicit non-generated families", () => {
   assert.equal(buildRuntimeManifestFields("builder").package_family, "builder");
-  assert.equal(buildRuntimeManifestFields("bogus").package_family, F3D_PACKAGE_FAMILY_DEFAULT);
-  assert.equal(buildRuntimeManifestFields().package_family, F3D_PACKAGE_FAMILY_DEFAULT);
+  assert.equal(buildRuntimeManifestFields().package_family, F3D_PACKAGE_FAMILY_DEFAULT); // omitted → atlas
+  assert.throws(() => buildRuntimeManifestFields("legacy"), /must be one of atlas\|builder/);
+  assert.throws(() => buildRuntimeManifestFields("bogus"));
+  assert.throws(() => buildRuntimeManifestFields(""));
+  assert.throws(() => buildRuntimeManifestFields(null));
 });
 
 // ── 4. HTML meta markers ─────────────────────────────────────────────────
@@ -116,17 +122,16 @@ test("the package-family marker reflects the family argument and fails closed", 
     buildRuntimeMetaTags("builder").includes(`<meta name="f3d-package-family" content="builder" />`),
     "builder family must emit family=builder",
   );
-  // Unknown / typo'd family normalizes to the default rather than minting a
-  // bogus family string.
-  assert.ok(
-    buildRuntimeMetaTags("bogus").includes(`<meta name="f3d-package-family" content="${F3D_PACKAGE_FAMILY_DEFAULT}" />`),
-    "unknown family must normalize to the default",
-  );
-  // Zero-arg (legacy Atlas call sites) defaults to atlas.
+  // Omitted family (zero-arg Atlas call sites) defaults to atlas.
   assert.ok(
     buildRuntimeMetaTags().includes(`<meta name="f3d-package-family" content="atlas" />`),
-    "zero-arg must default to family=atlas (back-compat)",
+    "omitted family must default to family=atlas (back-compat)",
   );
+  // Any EXPLICIT non-generated family throws — no silent bogus marker, and
+  // "legacy" is a U1 inspection classification, not a generated family.
+  assert.throws(() => buildRuntimeMetaTags("legacy"), /must be one of atlas\|builder/);
+  assert.throws(() => buildRuntimeMetaTags("bogus"));
+  assert.throws(() => buildRuntimeMetaTags(""));
 });
 
 test("capabilities meta marker and manifest field can never skew", () => {

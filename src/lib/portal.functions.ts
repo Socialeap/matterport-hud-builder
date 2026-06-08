@@ -2005,8 +2005,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
    sit absolutely over the iframe inside the wrap. */
 #anno-letterbox-wrap{position:absolute;inset:0}
 #anno-letterbox-wrap iframe{width:100%;height:100%;border:none;display:block}
-#anno-canvas{position:absolute;inset:0;display:block;width:100%;height:100%;pointer-events:none;z-index:5;touch-action:none}
+#anno-canvas{position:absolute;inset:0;display:block;width:100%;height:100%;pointer-events:none;z-index:5;touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
 #anno-canvas.pointer-mode,#anno-canvas.draw-mode,#anno-canvas.rope-mode{pointer-events:auto;cursor:crosshair}
+/* Stage gesture hardening — engages ONLY while an annotation tool is active
+   (body.anno-tool-active, toggled by setToolMode) so Matterport navigation
+   is completely normal otherwise. Mirrors the accepted Atlas 2.0.2 fix. */
+body.anno-tool-active #anno-letterbox-wrap{touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 #remote-pointer{position:absolute;left:0;top:0;width:18px;height:18px;border-radius:50%;background:${escapeHtml(accentColor)}cc;border:2px solid #fff;box-shadow:0 1px 6px rgba(0,0,0,0.45);pointer-events:none;transform:translate(-50%,-50%);z-index:6;display:none}
 #anno-toolbar{position:absolute;left:50%;top:14px;transform:translateX(-50%);display:none;gap:6px;z-index:10;background:rgba(10,12,20,0.7);backdrop-filter:blur(14px) saturate(160%);-webkit-backdrop-filter:blur(14px) saturate(160%);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:6px;box-shadow:0 6px 24px rgba(0,0,0,0.35)}
 .anno-tool-btn{appearance:none;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.85);border-radius:6px;padding:6px 10px;font:600 12px/1 inherit;cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:background 0.15s,border-color 0.15s,color 0.15s;font-family:inherit}
@@ -2025,7 +2029,7 @@ body.anno-rope-active .anno-rope-group .anno-shape-wrap{display:inline-flex}
 .anno-shape-select option{background:#11141d;color:#fff}
 .anno-exit-btn{font-size:16px;line-height:1;padding:4px 9px 6px}
 .anno-exit-btn:hover{background:rgba(255,107,107,0.18);border-color:rgba(255,107,107,0.45);color:#ff6b6b}
-#live-tour-navlock{position:absolute;inset:0;z-index:4;background:transparent;cursor:not-allowed;display:none;touch-action:none}
+#live-tour-navlock{position:absolute;inset:0;z-index:4;background:transparent;cursor:not-allowed;display:none;touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 body.live-tour-active.live-tour-visitor #live-tour-navlock.locked,body.live-tour-active.live-tour-agent #live-tour-navlock.locked{display:block}
 body.live-tour-active.live-tour-visitor #anno-letterbox-wrap:has(#live-tour-navlock.locked) #matterport-frame,body.live-tour-active.live-tour-agent #anno-letterbox-wrap:has(#live-tour-navlock.locked) #matterport-frame{pointer-events:none}
 /* Engage 16:9 letterboxing once the WebRTC session is live. Black
@@ -4971,9 +4975,14 @@ if(frame){
   var ANNO_ROPE_SHAPE_WHITELIST={circle:1,box:1};
   var ANNO_ROPE_CIRCLE_SAMPLES=48;
   var ANNO_LATCH_PX=10;
+  // Coarse-pointer (touch/pen) gets a larger latch + a 44px-class hit target.
+  var IS_COARSE_POINTER=(typeof annoIsCoarsePointer==="function")?annoIsCoarsePointer(window):false;
+  var ANNO_LATCH_DRAW_PX=IS_COARSE_POINTER?14:ANNO_LATCH_PX;
   var activeRope=null;          // {strokeId,color,width,shape,x0,y0,x1,y1}
   var ropeDragging=false;       // initial draw drag
   var ropeLatchDragging=false;  // resize via latch handle
+  var ropeMoveDragging=false;   // body-drag move of the whole rope
+  var ropeMoveLast=null;        // last normalized point during a move-drag
   var ropeFlushScheduled=false;
 
   // After a visitor connects, auto-close the Live Tour drawer so the
@@ -5090,7 +5099,13 @@ if(frame){
     // while the Focus Rope tool is active. Keeps the toolbar compact
     // for Pointer/Draw and merges the rope button + shape picker into
     // one cohesive control.
-    try { document.body.classList.toggle("anno-rope-active", mode==="rope"); } catch(_e){}
+    try {
+      document.body.classList.toggle("anno-rope-active", mode==="rope");
+      // Stage gesture hardening (wrapper touch-action / WebKit defenses + the
+      // stage-event kills) engages ONLY while a tool is active, so Matterport
+      // navigation is untouched the rest of the time.
+      document.body.classList.toggle("anno-tool-active", mode==="pointer"||mode==="draw"||mode==="rope");
+    } catch(_e){}
     // Auto-open the shape <select> on the click that activates rope
     // mode so the agent immediately sees Circle/Box without a second
     // click. Guarded — showPicker isn't on every browser.
@@ -5279,11 +5294,22 @@ if(frame){
     var b=ropeBBox(rope);
     return {x:b.x1,y:b.y1};
   }
+  function ropePointInBBox(rope,pt){
+    var b=ropeBBox(rope);
+    return pt.x>=b.x0&&pt.x<=b.x1&&pt.y>=b.y0&&pt.y<=b.y1;
+  }
+  // Latch hit radius: 24px (48px target) for touch/pen so the resize handle
+  // meets the 44px minimum; mouse keeps the precise 20px zone.
+  function latchHitRadiusPx(e){
+    var t=e&&typeof e.pointerType==="string"?e.pointerType:"";
+    if(t==="touch"||t==="pen"||IS_COARSE_POINTER) return 24;
+    return ANNO_LATCH_PX*2;
+  }
   function drawRopeLatch(rope,w,h){
     if(!annoCtx) return;
     var lp=ropeLatchPos(rope);
     var px=lp.x*w, py=lp.y*h;
-    var r=Math.max(5,Math.min(ANNO_LATCH_PX,12));
+    var r=Math.max(5,Math.min(ANNO_LATCH_DRAW_PX,16));
     annoCtx.beginPath();
     annoCtx.arc(px,py,r,0,Math.PI*2);
     annoCtx.fillStyle=rope.color||ANNO_STROKE_COLOR;
@@ -5319,6 +5345,8 @@ if(frame){
     activeRope=null;
     ropeDragging=false;
     ropeLatchDragging=false;
+    ropeMoveDragging=false;
+    ropeMoveLast=null;
     redrawAllStrokes();
   }
 
@@ -5330,6 +5358,9 @@ if(frame){
     activeRope=null;
     ropeDragging=false;
     ropeLatchDragging=false;
+    ropeMoveDragging=false;
+    ropeMoveLast=null;
+    if(annoGuard) annoGuard.reset();
     if(remotePointer){
       remotePointer.style.display="none";
     }
@@ -5372,30 +5403,46 @@ if(frame){
     var r=session.getState().role;
     return r==="agent"||r==="visitor";
   }
+  function annotationToolActive(){
+    return toolMode==="draw"||toolMode==="rope"||toolMode==="pointer";
+  }
 
-  // Commit whatever gesture is in flight (draw stroke or rope drag) without
-  // a pointer event. Used by the pen-takeover hook (palm rejection commits
-  // the touch stroke before the pen claims) and by pointercancel.
-  function finalizeActiveGesture(){
-    if(activeStroke){
-      if(pendingStrokePoints&&pendingStrokePoints.length>0){
-        session.sendStrokePatch(currentViewKey,pendingStrokeId,pendingStrokePoints);
-        pendingStrokePoints=null;
-      }
-      session.sendStrokeCommit(currentViewKey,activeStroke.strokeId);
-      localStrokes.push(activeStroke);
-      activeStroke=null;
-      pendingStrokeId=null;
+  // Finish the in-flight freehand stroke: flush queued points, commit on the
+  // wire, promote to localStrokes. Idempotent (no-op when no stroke) so
+  // pointerup / pointercancel / lostpointercapture all route here safely.
+  function finishActiveDraw(){
+    if(!activeStroke) return;
+    if(pendingStrokePoints&&pendingStrokePoints.length>0){
+      session.sendStrokePatch(currentViewKey,pendingStrokeId,pendingStrokePoints);
     }
-    if(activeRope&&(ropeDragging||ropeLatchDragging)){
-      ropeDragging=false;
-      ropeLatchDragging=false;
-      var s=session.getState();
-      if((s.role==="agent"||s.role==="visitor")&&s.isConnected){
-        session.sendStrokeBegin(currentViewKey,activeRope.strokeId,activeRope.color,activeRope.width,activeRope.points);
-      }
+    pendingStrokePoints=null;
+    session.sendStrokeCommit(currentViewKey,activeStroke.strokeId);
+    localStrokes.push(activeStroke);
+    activeStroke=null;
+    pendingStrokeId=null;
+  }
+  // End the in-flight rope drag (initial draw / latch-resize / body-move) and
+  // resend the final shape. The rope stays active so its latch remains
+  // grabbable; commitActiveRope() seals it on tool exit.
+  function finishActiveRopeDrag(){
+    if(!activeRope) return;
+    if(!ropeDragging&&!ropeLatchDragging&&!ropeMoveDragging) return;
+    ropeDragging=false;
+    ropeLatchDragging=false;
+    ropeMoveDragging=false;
+    ropeMoveLast=null;
+    var s=session.getState();
+    if((s.role==="agent"||s.role==="visitor")&&s.isConnected){
+      session.sendStrokeBegin(currentViewKey,activeRope.strokeId,activeRope.color,activeRope.width,activeRope.points);
     }
     redrawAllStrokes();
+  }
+  // Commit-or-abort for pen takeover, pointercancel, and lostpointercapture.
+  // COMMIT the in-flight gesture (the remote side already holds its begin/
+  // patch packets, so committing leaves no orphan stroke on either end).
+  function finalizeActiveGesture(){
+    if(toolMode==="draw") finishActiveDraw();
+    else if(toolMode==="rope") finishActiveRopeDrag();
   }
 
   // Single-owner gesture guard from the shared kernel: one pointer owns a
@@ -5436,14 +5483,23 @@ if(frame){
           var rect=letterboxWrap?letterboxWrap.getBoundingClientRect():{width:1,height:1};
           var dx=(rpt.x-lp.x)*rect.width;
           var dy=(rpt.y-lp.y)*rect.height;
-          if(Math.sqrt(dx*dx+dy*dy)<=ANNO_LATCH_PX*2){
+          if(Math.sqrt(dx*dx+dy*dy)<=latchHitRadiusPx(e)){
             ropeLatchDragging=true;
             try { annoCanvas.setPointerCapture(e.pointerId); } catch(_e){}
             e.preventDefault();
             return;
           }
-          // Tapping outside the latch starts a new rope — commit the
-          // prior one so it bakes into localStrokes.
+          // Inside the rope body (off the latch): drag moves the whole rope
+          // — the touch affordance the resize-only latch lacked.
+          if(ropePointInBBox(activeRope,rpt)){
+            ropeMoveDragging=true;
+            ropeMoveLast=rpt;
+            try { annoCanvas.setPointerCapture(e.pointerId); } catch(_e){}
+            e.preventDefault();
+            return;
+          }
+          // Tapping outside the rope starts a new one — commit the prior
+          // one so it bakes into localStrokes.
           commitActiveRope();
         }
         var rsid=String(Date.now())+"_"+Math.random().toString(36).slice(2,8);
@@ -5477,6 +5533,8 @@ if(frame){
       }
       // Draw / Rope only advance for the pointer that owns the gesture.
       if(annoGuard&&!annoGuard.owns(e)) return;
+      // Owned gesture: suppress any default WebKit handling for the move.
+      e.preventDefault();
       if(toolMode==="draw"&&activeStroke){
         var pts=collectNormTuples(e);
         if(pts.length>0){
@@ -5488,6 +5546,24 @@ if(frame){
           scheduleStrokeFlush();
           redrawAllStrokes();
         }
+      } else if(toolMode==="rope"&&activeRope&&ropeMoveDragging){
+        var mpt=clientToNorm(e);
+        var b=ropeBBox(activeRope);
+        var mdx=mpt.x-ropeMoveLast.x;
+        var mdy=mpt.y-ropeMoveLast.y;
+        // Clamp the translation so the bbox never leaves [0,1] space.
+        if(mdx<-b.x0) mdx=-b.x0;
+        if(mdx>1-b.x1) mdx=1-b.x1;
+        if(mdy<-b.y0) mdy=-b.y0;
+        if(mdy>1-b.y1) mdy=1-b.y1;
+        activeRope.x0+=mdx;
+        activeRope.x1+=mdx;
+        activeRope.y0+=mdy;
+        activeRope.y1+=mdy;
+        ropeMoveLast=mpt;
+        ropeRegenerate(activeRope);
+        scheduleRopeFlush();
+        redrawAllStrokes();
       } else if(toolMode==="rope"&&activeRope&&(ropeDragging||ropeLatchDragging)){
         var rpt=clientToNorm(e);
         activeRope.x1=rpt.x;
@@ -5503,47 +5579,67 @@ if(frame){
         try { annoCanvas.releasePointerCapture(e.pointerId); } catch(_e){}
         return;
       }
+      e.preventDefault();
       if(toolMode==="draw"&&activeStroke){
-        if(pendingStrokePoints&&pendingStrokePoints.length>0){
-          session.sendStrokePatch(currentViewKey,pendingStrokeId,pendingStrokePoints);
-          pendingStrokePoints=null;
-        }
-        session.sendStrokeCommit(currentViewKey,activeStroke.strokeId);
-        localStrokes.push(activeStroke);
-        activeStroke=null;
-        pendingStrokeId=null;
-        try { annoCanvas.releasePointerCapture(e.pointerId); } catch(_e){}
-      } else if(toolMode==="rope"&&activeRope&&(ropeDragging||ropeLatchDragging)){
-        // End the current drag but keep the rope active so the latch
-        // can be grabbed again. Send one more snapshot so the peer
-        // matches the final bbox.
-        ropeDragging=false;
-        ropeLatchDragging=false;
-        var s=session.getState();
-        if((s.role==="agent"||s.role==="visitor")&&s.isConnected){
-          session.sendStrokeBegin(currentViewKey,activeRope.strokeId,activeRope.color,activeRope.width,activeRope.points);
-        }
-        try { annoCanvas.releasePointerCapture(e.pointerId); } catch(_e){}
-        redrawAllStrokes();
+        finishActiveDraw();
+      } else if(toolMode==="rope"&&activeRope&&(ropeDragging||ropeLatchDragging||ropeMoveDragging)){
+        finishActiveRopeDrag();
       }
       if(annoGuard) annoGuard.release(e);
-    });
-    annoCanvas.addEventListener("pointercancel",function(e){
-      if(!_canAnnotateLocal()) return;
-      // iOS/iPadOS can fire pointercancel mid-stroke on a system gesture
-      // (edge swipe, app switch). Commit cleanly and drop ownership so the
-      // next gesture starts fresh instead of leaving a stuck stroke.
-      if(annoGuard&&!annoGuard.owns(e)) return;
-      finalizeActiveGesture();
-      if(annoGuard) annoGuard.reset();
       try { annoCanvas.releasePointerCapture(e.pointerId); } catch(_e){}
     });
+    // iOS system gestures can abort a touch mid-stroke (pointercancel) or
+    // strip capture without a matching up (lostpointercapture). Both
+    // finalize the in-flight gesture so neither side is left with an orphan
+    // stroke, a stuck rope drag, or a permanently-claimed pointer. A normal
+    // pointerup also fires lostpointercapture — by then the guard has
+    // released, so this is a no-op on the happy path (no double commit).
+    function handlePointerAbort(e){
+      if(!annoGuard||!annoGuard.owns(e)) return;
+      try { e.preventDefault(); } catch(_e){}
+      finalizeActiveGesture();
+      annoGuard.release(e);
+      try { annoCanvas.releasePointerCapture(e.pointerId); } catch(_e){}
+    }
+    annoCanvas.addEventListener("pointercancel",handlePointerAbort);
+    annoCanvas.addEventListener("lostpointercapture",handlePointerAbort);
     annoCanvas.addEventListener("pointerleave",function(){
       if(!_canAnnotateLocal()) return;
       if(toolMode==="pointer"){
         session.sendPointer(currentViewKey,null,null);
       }
     });
+    // WebKit gesture defenses: while Draw or Focus Rope is active, swallow
+    // the raw touch sequence at the canvas (non-passive on purpose) so
+    // Safari cannot run its long-press / magnifier / text-interaction
+    // recognizers alongside the pointer stream. Pointer events are not
+    // synthesized from touch, so drawing is unaffected. Canvas-scoped only.
+    function blockTouchDuringGesture(e){
+      if(toolMode!=="draw"&&toolMode!=="rope") return;
+      try { e.preventDefault(); } catch(_e){}
+    }
+    try {
+      var nonPassive={ passive:false };
+      annoCanvas.addEventListener("touchstart",blockTouchDuringGesture,nonPassive);
+      annoCanvas.addEventListener("touchmove",blockTouchDuringGesture,nonPassive);
+      annoCanvas.addEventListener("touchend",blockTouchDuringGesture,nonPassive);
+      annoCanvas.addEventListener("touchcancel",blockTouchDuringGesture,nonPassive);
+    } catch(_e){}
+  }
+
+  // Stage-scoped selection/menu defenses: the annotation stage is a drawing
+  // surface, not a document — context menus, text selection, and drag-start
+  // inside it fight the WebKit gesture recognizers. Scoped to the letterbox
+  // wrap and only while a tool is active (a normal viewer surface otherwise).
+  if(letterboxWrap){
+    var killStageEvent=function(e){
+      if(!annotationToolActive()) return;
+      try { e.preventDefault(); } catch(_e){}
+      return false;
+    };
+    letterboxWrap.addEventListener("contextmenu",killStageEvent);
+    letterboxWrap.addEventListener("selectstart",killStageEvent);
+    letterboxWrap.addEventListener("dragstart",killStageEvent);
   }
 
   // Toolbar buttons — visible to both roles via CSS. Annotations are

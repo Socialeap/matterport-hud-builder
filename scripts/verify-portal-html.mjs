@@ -556,29 +556,75 @@ function parseRuntimeIIFE(src) {
 /**
  * U0: the Builder runtime spans (PeerJS dependency, runtime CSS, runtime
  * markup, runtime JS kernel + glue) are wrapped in matched f3d:runtime
- * BEGIN/END sentinels so a later single-file upgrade can locate and splice
- * them by exact byte range. Assert each expected pair is present and that
- * BEGIN/END counts balance — an unbalanced or missing sentinel would make
- * the splice boundaries ambiguous.
+ * BEGIN/END sentinels so a later single-file upgrade can splice them by exact
+ * byte range. This gate proves the boundaries are unambiguous AND that the
+ * splice can never touch preserved content:
+ *   - every expected span appears exactly once as BEGIN and once as END,
+ *   - BEGIN precedes its END,
+ *   - no unexpected/stray spans,
+ *   - ranges are disjoint or properly nested (never partially overlapping),
+ *   - the load-bearing presentation content/config/token plumbing lives
+ *     entirely OUTSIDE every runtime range.
+ * Malformed, duplicate, reordered, or overlapping markers fail the build.
  */
 function assertBuilderSentinels(src) {
-  const spans = ["dep:peerjs", "css", "markup", "js:kernel", "js:glue"];
-  const missing = [];
-  for (const span of spans) {
-    if (!src.includes(`f3d:runtime-${span} BEGIN v=1 family=builder`)) missing.push(`BEGIN ${span}`);
-    if (!src.includes(`f3d:runtime-${span} END`)) missing.push(`END ${span}`);
-  }
-  const beginCount = (src.match(/f3d:runtime-[\w:.-]+ BEGIN /g) || []).length;
-  const endCount = (src.match(/f3d:runtime-[\w:.-]+ END/g) || []).length;
-  if (missing.length || beginCount !== endCount) {
-    console.error("[verify-html] ❌ Builder runtime sentinels missing or unbalanced:");
-    for (const m of missing) console.error("    missing " + m);
-    if (beginCount !== endCount) {
-      console.error(`    BEGIN count ${beginCount} != END count ${endCount}`);
-    }
+  const EXPECTED = ["dep:peerjs", "css", "markup", "js:kernel", "js:glue"];
+  const fail = (msg) => {
+    console.error("[verify-html] ❌ Builder runtime sentinels: " + msg);
     process.exit(1);
+  };
+  // Collect every f3d:runtime marker in source order.
+  const re = /f3d:runtime-([\w:.-]+?) (BEGIN|END)\b/g;
+  const found = [];
+  let m;
+  while ((m = re.exec(src)) !== null) {
+    found.push({ span: m[1], kind: m[2], offset: m.index });
   }
-  console.log(`[verify-html] ✅ Builder runtime sentinels present and balanced (${beginCount} pairs).`);
+  for (const f of found) {
+    if (EXPECTED.indexOf(f.span) === -1) fail(`unexpected sentinel span "${f.span}"`);
+  }
+  // Exactly one BEGIN + one END per expected span, BEGIN before END.
+  const ranges = {};
+  for (const span of EXPECTED) {
+    const begins = found.filter((f) => f.span === span && f.kind === "BEGIN");
+    const ends = found.filter((f) => f.span === span && f.kind === "END");
+    if (begins.length !== 1) fail(`span "${span}" must have exactly one BEGIN (found ${begins.length})`);
+    if (ends.length !== 1) fail(`span "${span}" must have exactly one END (found ${ends.length})`);
+    if (begins[0].offset >= ends[0].offset) fail(`span "${span}" BEGIN must precede its END`);
+    ranges[span] = { a: begins[0].offset, b: ends[0].offset };
+  }
+  // Ranges must be disjoint or properly nested — never partially overlapping.
+  for (let i = 0; i < EXPECTED.length; i++) {
+    for (let j = i + 1; j < EXPECTED.length; j++) {
+      const x = ranges[EXPECTED[i]];
+      const y = ranges[EXPECTED[j]];
+      const disjoint = x.b < y.a || y.b < x.a;
+      const nested = (x.a < y.a && y.b < x.b) || (y.a < x.a && x.b < y.b);
+      if (!disjoint && !nested) fail(`spans "${EXPECTED[i]}" and "${EXPECTED[j]}" overlap improperly`);
+    }
+  }
+  // Load-bearing presentation content/config/tokens must live OUTSIDE every
+  // runtime range so the splice can never disturb them. (Conditional tokens
+  // may be absent for a given export — skip those.)
+  const SENSITIVE = [
+    'id="matterport-frame"',
+    "window.__PROTECTED_BLOB__",
+    "window.__configReady",
+    "window.__PRESENTATION_TOKEN__",
+    "window.__QA_DATABASE__",
+  ];
+  const insideAnyRange = (off) =>
+    EXPECTED.some((s) => off > ranges[s].a && off < ranges[s].b);
+  for (const tok of SENSITIVE) {
+    let idx = src.indexOf(tok);
+    while (idx !== -1) {
+      if (insideAnyRange(idx)) fail(`preserved content "${tok}" appears INSIDE a runtime range`);
+      idx = src.indexOf(tok, idx + 1);
+    }
+  }
+  console.log(
+    `[verify-html] ✅ Builder runtime sentinels: ${EXPECTED.length} spans — exactly-once, ordered, non-overlapping, content outside ranges.`,
+  );
 }
 
 function main() {

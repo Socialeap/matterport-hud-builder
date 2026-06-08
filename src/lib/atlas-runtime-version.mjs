@@ -71,16 +71,27 @@ const ATLAS_KNOWN_CAPABILITIES = [
 //   "builder" — portal presentation export (portal.functions.ts)
 //   "legacy"  — recognized pre-marker package (assigned by the upgrader on
 //               detection; never emitted by a current generator)
+// Families a CURRENT generator may stamp into a package.
+const GENERATED_FAMILIES = ["atlas", "builder"];
+// Every family the Upgrade Center recognizes. "legacy" is a future U1
+// INSPECTION classification for pre-marker packages — it is NEVER emitted by
+// a generator, so the builders below reject it as an explicit argument.
 const PRESENTATION_FAMILIES = ["atlas", "builder", "legacy"];
-// Back-compat default: existing zero-arg Atlas call sites keep emitting
-// `family=atlas`, so their HTML/manifest stay byte-identical apart from the
-// one additive marker/field. An unknown/typo'd family also normalizes here
-// rather than minting a bogus family string.
 const F3D_PACKAGE_FAMILY_DEFAULT = "atlas";
-function _normalizeFamily(family) {
-  return PRESENTATION_FAMILIES.indexOf(family) !== -1
-    ? family
-    : F3D_PACKAGE_FAMILY_DEFAULT;
+// Fail closed. An OMITTED family defaults to atlas (back-compat with the
+// zero-arg Atlas call sites). Any EXPLICIT value that is not a generated
+// family — "", null, "legacy", or a typo — THROWS, so a generator can never
+// silently stamp a bogus or non-generated family.
+function _resolveGeneratedFamily(family) {
+  if (family === undefined) return F3D_PACKAGE_FAMILY_DEFAULT;
+  if (GENERATED_FAMILIES.indexOf(family) !== -1) return family;
+  throw new Error(
+    "f3d package family must be one of " +
+      GENERATED_FAMILIES.join("|") +
+      " (got " +
+      JSON.stringify(family) +
+      ")",
+  );
 }
 
 // Manifest fields spliced into the package manifest by buildShowcaseFiles()
@@ -90,7 +101,7 @@ function buildRuntimeManifestFields(family) {
     package_schema: ATLAS_PACKAGE_SCHEMA,
     runtime_version: ATLAS_RUNTIME_VERSION,
     capabilities: ATLAS_RUNTIME_CAPABILITIES.slice(),
-    package_family: _normalizeFamily(family),
+    package_family: _resolveGeneratedFamily(family),
   };
 }
 
@@ -108,7 +119,7 @@ function buildRuntimeMetaTags(family) {
     `<meta name="f3d-package-schema" content="${ATLAS_PACKAGE_SCHEMA}" />\n` +
     `<meta name="f3d-runtime" content="${ATLAS_RUNTIME_VERSION}" />\n` +
     `<meta name="f3d-capabilities" content="${ATLAS_RUNTIME_CAPABILITIES.join(",")}" />\n` +
-    `<meta name="f3d-package-family" content="${_normalizeFamily(family)}" />`
+    `<meta name="f3d-package-family" content="${_resolveGeneratedFamily(family)}" />`
   );
 }
 
@@ -117,6 +128,7 @@ export {
   ATLAS_RUNTIME_VERSION,
   ATLAS_RUNTIME_CAPABILITIES,
   ATLAS_KNOWN_CAPABILITIES,
+  GENERATED_FAMILIES,
   PRESENTATION_FAMILIES,
   F3D_PACKAGE_FAMILY_DEFAULT,
   buildRuntimeManifestFields,

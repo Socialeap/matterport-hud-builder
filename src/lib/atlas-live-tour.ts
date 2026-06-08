@@ -415,9 +415,9 @@ ${glueJs}
     headHtml: f3dWrapHtml("dep:peerjs", PEERJS_TAG),
     css: f3dWrapCss(buildCss(opts.accentColor)),
     launchButtonHtml: LAUNCH_BUTTON_HTML,
-    stageOverlayHtml: f3dWrapHtml("markup", STAGE_OVERLAY_HTML),
-    toolbarHtml: f3dWrapHtml("markup", TOOLBAR_HTML),
-    bodyHtml: f3dWrapHtml("markup", PANEL_HTML),
+    stageOverlayHtml: f3dWrapHtml("markup:stage", STAGE_OVERLAY_HTML),
+    toolbarHtml: f3dWrapHtml("markup:toolbar", TOOLBAR_HTML),
+    bodyHtml: f3dWrapHtml("markup:panel", PANEL_HTML),
     scriptHtml,
   };
 }
