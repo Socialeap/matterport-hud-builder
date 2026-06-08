@@ -17,6 +17,8 @@ import {
   ATLAS_RUNTIME_VERSION,
   ATLAS_RUNTIME_CAPABILITIES,
   ATLAS_KNOWN_CAPABILITIES,
+  PRESENTATION_FAMILIES,
+  F3D_PACKAGE_FAMILY_DEFAULT,
   buildRuntimeManifestFields,
   buildRuntimeMetaTags,
 } from "../src/lib/atlas-runtime-version.mjs";
@@ -59,10 +61,11 @@ test("the known-capability registry covers exactly the three planned mobile capa
 });
 
 // ── 3. Manifest fields builder ───────────────────────────────────────────
-test("buildRuntimeManifestFields returns the three fields with a defensive copy", () => {
-  const fields = buildRuntimeManifestFields();
+test("buildRuntimeManifestFields returns the four fields with a defensive copy", () => {
+  const fields = buildRuntimeManifestFields("atlas");
   assert.equal(fields.package_schema, ATLAS_PACKAGE_SCHEMA);
   assert.equal(fields.runtime_version, ATLAS_RUNTIME_VERSION);
+  assert.equal(fields.package_family, "atlas");
   assert.deepEqual(fields.capabilities, ATLAS_RUNTIME_CAPABILITIES);
   fields.capabilities.push("mutated");
   assert.ok(
@@ -71,9 +74,21 @@ test("buildRuntimeManifestFields returns the three fields with a defensive copy"
   );
 });
 
+// ── 3b. Family registry + normalization ──────────────────────────────────
+test("the family registry is exactly atlas/builder/legacy and the default is a member", () => {
+  assert.deepEqual([...PRESENTATION_FAMILIES].sort(), ["atlas", "builder", "legacy"]);
+  assert.ok(PRESENTATION_FAMILIES.includes(F3D_PACKAGE_FAMILY_DEFAULT));
+});
+
+test("buildRuntimeManifestFields carries the family and normalizes unknowns/empty", () => {
+  assert.equal(buildRuntimeManifestFields("builder").package_family, "builder");
+  assert.equal(buildRuntimeManifestFields("bogus").package_family, F3D_PACKAGE_FAMILY_DEFAULT);
+  assert.equal(buildRuntimeManifestFields().package_family, F3D_PACKAGE_FAMILY_DEFAULT);
+});
+
 // ── 4. HTML meta markers ─────────────────────────────────────────────────
-test("buildRuntimeMetaTags emits all three self-identifying meta markers", () => {
-  const tags = buildRuntimeMetaTags();
+test("buildRuntimeMetaTags emits all four self-identifying meta markers", () => {
+  const tags = buildRuntimeMetaTags("atlas");
   assert.ok(
     tags.includes(`<meta name="f3d-package-schema" content="${ATLAS_PACKAGE_SCHEMA}" />`),
     "schema meta marker missing",
@@ -90,14 +105,36 @@ test("buildRuntimeMetaTags emits all three self-identifying meta markers", () =>
     tags.includes(`<meta name="f3d-capabilities" content="${ATLAS_RUNTIME_CAPABILITIES.join(",")}" />`),
     "capabilities meta marker missing (must exist even when empty)",
   );
+  assert.ok(
+    tags.includes(`<meta name="f3d-package-family" content="atlas" />`),
+    "package-family meta marker missing",
+  );
+});
+
+test("the package-family marker reflects the family argument and fails closed", () => {
+  assert.ok(
+    buildRuntimeMetaTags("builder").includes(`<meta name="f3d-package-family" content="builder" />`),
+    "builder family must emit family=builder",
+  );
+  // Unknown / typo'd family normalizes to the default rather than minting a
+  // bogus family string.
+  assert.ok(
+    buildRuntimeMetaTags("bogus").includes(`<meta name="f3d-package-family" content="${F3D_PACKAGE_FAMILY_DEFAULT}" />`),
+    "unknown family must normalize to the default",
+  );
+  // Zero-arg (legacy Atlas call sites) defaults to atlas.
+  assert.ok(
+    buildRuntimeMetaTags().includes(`<meta name="f3d-package-family" content="atlas" />`),
+    "zero-arg must default to family=atlas (back-compat)",
+  );
 });
 
 test("capabilities meta marker and manifest field can never skew", () => {
-  const metaContent = buildRuntimeMetaTags().match(
+  const metaContent = buildRuntimeMetaTags("atlas").match(
     /<meta name="f3d-capabilities" content="([^"]*)" \/>/,
   );
   assert.ok(metaContent, "capabilities marker must parse from the head block");
-  const manifestCaps = buildRuntimeManifestFields().capabilities;
+  const manifestCaps = buildRuntimeManifestFields("atlas").capabilities;
   assert.equal(
     metaContent[1],
     manifestCaps.join(","),
@@ -105,16 +142,30 @@ test("capabilities meta marker and manifest field can never skew", () => {
   );
 });
 
+test("package-family meta marker and manifest field can never skew", () => {
+  for (const fam of ["atlas", "builder"]) {
+    const meta = buildRuntimeMetaTags(fam).match(
+      /<meta name="f3d-package-family" content="([^"]*)" \/>/,
+    );
+    assert.ok(meta, `family marker must parse for ${fam}`);
+    assert.equal(
+      meta[1],
+      buildRuntimeManifestFields(fam).package_family,
+      "HTML family marker and manifest family must derive from the same arg",
+    );
+  }
+});
+
 // ── 5. Splice-point wiring (text-level) ──────────────────────────────────
 test("atlas-curation-server.ts splices the meta markers and manifest fields", () => {
   const src = read("src", "lib", "atlas-curation-server.ts");
   assert.ok(
-    src.includes("buildRuntimeMetaTags()"),
-    "renderCuratedHtml must splice buildRuntimeMetaTags() into <head>",
+    src.includes(`buildRuntimeMetaTags("atlas")`),
+    'renderCuratedHtml must splice buildRuntimeMetaTags("atlas") into <head>',
   );
   assert.ok(
-    src.includes("...buildRuntimeManifestFields()"),
-    "buildShowcaseFiles must spread buildRuntimeManifestFields() into the manifest",
+    src.includes(`...buildRuntimeManifestFields("atlas")`),
+    'buildShowcaseFiles must spread buildRuntimeManifestFields("atlas") into the manifest',
   );
   assert.ok(
     src.includes(`from "./atlas-runtime-version.mjs"`),

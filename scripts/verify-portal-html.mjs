@@ -553,6 +553,34 @@ function parseRuntimeIIFE(src) {
   }
 }
 
+/**
+ * U0: the Builder runtime spans (PeerJS dependency, runtime CSS, runtime
+ * markup, runtime JS kernel + glue) are wrapped in matched f3d:runtime
+ * BEGIN/END sentinels so a later single-file upgrade can locate and splice
+ * them by exact byte range. Assert each expected pair is present and that
+ * BEGIN/END counts balance — an unbalanced or missing sentinel would make
+ * the splice boundaries ambiguous.
+ */
+function assertBuilderSentinels(src) {
+  const spans = ["dep:peerjs", "css", "markup", "js:kernel", "js:glue"];
+  const missing = [];
+  for (const span of spans) {
+    if (!src.includes(`f3d:runtime-${span} BEGIN v=1 family=builder`)) missing.push(`BEGIN ${span}`);
+    if (!src.includes(`f3d:runtime-${span} END`)) missing.push(`END ${span}`);
+  }
+  const beginCount = (src.match(/f3d:runtime-[\w:.-]+ BEGIN /g) || []).length;
+  const endCount = (src.match(/f3d:runtime-[\w:.-]+ END/g) || []).length;
+  if (missing.length || beginCount !== endCount) {
+    console.error("[verify-html] ❌ Builder runtime sentinels missing or unbalanced:");
+    for (const m of missing) console.error("    missing " + m);
+    if (beginCount !== endCount) {
+      console.error(`    BEGIN count ${beginCount} != END count ${endCount}`);
+    }
+    process.exit(1);
+  }
+  console.log(`[verify-html] ✅ Builder runtime sentinels present and balanced (${beginCount} pairs).`);
+}
+
 function main() {
   verifyAskRuntimeModules();
   parseAskRuntime();
@@ -568,6 +596,7 @@ function main() {
   assertNoMarkdownAutoLinks(src);
   assertRequiredStartupTokens(src);
   assertHudGateStartsClosed(src);
+  assertBuilderSentinels(src);
   parseRuntimeIIFE(src);
 
   if (offenders.length === 0 && commentOffenders.length === 0) {

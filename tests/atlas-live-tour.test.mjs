@@ -1075,3 +1075,25 @@ test("wrapper gesture CSS is conditional in the generated stylesheet (2.0.2)", (
     "the base wrapper rule must NOT carry permanent touch-action (the 2.0.1 defect)",
   );
 });
+
+// ── 9. Bounded runtime sentinels (U0 — locate replaceable spans by range) ─
+test("the Atlas runtime spans are wrapped in bounded f3d sentinels", () => {
+  const src = readFileSync(path.join(__dirname, "..", "src", "lib", "atlas-live-tour.ts"), "utf8");
+  assert.ok(src.includes('f3dWrapHtml("dep:peerjs"'), "PeerJS dependency must be sentinel-wrapped");
+  assert.ok(src.includes("f3dWrapCss("), "runtime CSS must be sentinel-wrapped");
+  assert.ok(src.includes('f3dWrapHtml("markup"'), "runtime markup must be sentinel-wrapped");
+  for (const marker of [
+    "f3d:runtime-js:kernel BEGIN v=1 family=atlas",
+    "f3d:runtime-js:kernel END",
+    "f3d:runtime-js:glue BEGIN v=1 family=atlas",
+    "f3d:runtime-js:glue END",
+  ]) {
+    assert.ok(src.includes(marker), `missing JS sentinel: ${marker}`);
+  }
+  // The family marker travels through the generic contract (atlas-curation-
+  // server splices buildRuntimeMetaTags("atlas")); the wrappers here must
+  // never wrap the Matterport config payload (window.__ATLAS_LT_CONFIG).
+  const cfgIdx = src.indexOf("window.__ATLAS_LT_CONFIG=");
+  const kernelIdx = src.indexOf("f3d:runtime-js:kernel BEGIN");
+  assert.ok(cfgIdx !== -1 && kernelIdx !== -1 && cfgIdx < kernelIdx, "config stays outside the JS sentinels");
+});

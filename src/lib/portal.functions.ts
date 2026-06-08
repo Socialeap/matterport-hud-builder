@@ -4,7 +4,12 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { checkRateLimit, ipFromRequest } from "./rate-limit.server";
 import { assembleAskRuntimeJS } from "./portal/ask-runtime-assembler";
 import { getLiveSessionRuntimeJS } from "./portal/live-session-source";
+import { getAnnoInputRuntimeJS } from "./portal/anno-input-source";
 import { assertRuntimeRegexSafety } from "./portal/runtime-lint";
+import {
+  buildRuntimeMetaTags,
+  buildRuntimeManifestFields,
+} from "./atlas-runtime-version.mjs";
 import {
   encryptConfigForExport,
   PROTECTED_MIN_PASSWORD_LEN,
@@ -29,6 +34,15 @@ const ASK_RUNTIME_JS = assembleAskRuntimeJS();
 // browser-unsafe tokens, then interpolate inside the runtime IIFE so
 // `createLiveSession` becomes a local symbol.
 const LIVE_SESSION_RUNTIME_JS = getLiveSessionRuntimeJS();
+
+// Shared mobile-input annotation kernel — same injection pattern: read the
+// vanilla .mjs (?raw), strip the trailing export, scan for browser-unsafe
+// tokens, then interpolate after the controller so the annotation glue can
+// call createAnnoPointerGuard / annoCollectPoints / annoClampDpr /
+// annoBudgetDpr / annoIsIosWebKit / annoBindViewportEvents as locals. The
+// SAME module the Atlas live-tour runtime consumes — the input state
+// machine never forks between families.
+const ANNO_INPUT_RUNTIME_JS = getAnnoInputRuntimeJS();
 
 interface SavePresentationMediaAsset {
   id: string;
@@ -1748,6 +1762,7 @@ export const generatePresentation = createServerFn({ method: "POST" })
 <title>${escapeHtml(model.name || "3D Presentation")}</title>
 ${gaTrackingId ? `<script async src="https://www.googletagmanager.com/gtag/js?id=${escapeHtml(gaTrackingId)}"></script>
 <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${escapeHtml(gaTrackingId)}');</script>` : ""}
+${buildRuntimeMetaTags("builder")}
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:100%;height:100%;overflow:hidden}
@@ -1981,6 +1996,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 
 
 
+/* f3d:runtime-css BEGIN v=1 family=builder */
 /* ── Live Tour annotation overlay ─────────────────────────────────── */
 /* The wrap is a full-size pass-through container in idle mode. When a
    live tour is connected, body.live-tour-active flips the wrap into a
@@ -2097,6 +2113,7 @@ body.live-tour-active.live-tour-visitor #loc-sync-tips:not([hidden]),body.live-t
    wrap when a visitor's location_share arrives. No agent UI; the
    teleport is silent except for this pulse. */
 body.live-tour-active.live-tour-agent #anno-letterbox-wrap.follow-pulse{box-shadow:0 0 0 3px ${escapeHtml(accentColor)},0 0 0 6px ${escapeHtml(accentColor)}33;transition:box-shadow 1.5s ease-out}
+/* f3d:runtime-css END */
 
 /* ── Shared modal backdrop ────────────────────────────────────────── */
 .modal-backdrop{position:fixed;inset:0;z-index:2500;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.65);backdrop-filter:blur(14px) brightness(0.55);-webkit-backdrop-filter:blur(14px) brightness(0.55);padding:16px}
@@ -2179,7 +2196,14 @@ ${askAssets.css}
      Failure to load (network, blocked CDN) is tolerated:
      createLiveSession returns a friendly error state instead of
      throwing, and the rest of the tour still works. -->
-<script src="https://unpkg.com/peerjs@1.5/dist/peerjs.min.js" crossorigin="anonymous" defer></script>
+<!-- f3d:runtime-dep:peerjs BEGIN v=1 family=builder -->
+<!-- PeerJS UMD bundle (deferred CDN load). Pinned to an exact version
+     with SRI so the CDN cannot serve different bytes than the ones this
+     package was generated against (floating @1.5 had no integrity check).
+     Load failure is tolerated: the Live Guided Tour shows a friendly error
+     and the static tour keeps working. -->
+<script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js" integrity="sha384-x0YgkOr/3UOZP2CRDxGW9e0Q+2Qjyr3uJrm4xU32Y7ZCNAo7Cc7bjhrZMi/dwczu" crossorigin="anonymous" defer></script>
+<!-- f3d:runtime-dep:peerjs END -->
 </head>
 <body>
 
@@ -2218,6 +2242,7 @@ ${askAssets.css}
   <div id="anno-letterbox-wrap">
     <iframe id="matterport-frame" allowfullscreen allow="xr-spatial-tracking; fullscreen"></iframe>
     <iframe id="matterport-frame-ghost" allowfullscreen allow="xr-spatial-tracking; fullscreen" aria-hidden="true" tabindex="-1"></iframe>
+    <!-- f3d:runtime-markup BEGIN v=1 family=builder -->
     <div id="live-tour-navlock" aria-hidden="true"></div>
     <canvas id="anno-canvas"></canvas>
     <div id="remote-pointer" aria-hidden="true"></div>
@@ -2245,6 +2270,7 @@ ${askAssets.css}
       <button type="button" class="anno-tool-btn" id="anno-clear-btn" title="Clear annotations (C)" aria-keyshortcuts="C">Clear</button>
       <button type="button" class="anno-tool-btn anno-exit-btn" id="anno-exit-btn" title="Exit annotation mode (clears drawings &amp; unfreezes visitor)" aria-label="Exit annotation mode">&times;</button>
     </div>
+    <!-- f3d:runtime-markup END -->
   </div>
 </div>
 
@@ -4014,6 +4040,7 @@ function renderPropertyDocs(_i){
 //    assembler. All exports become locals in this IIFE scope.
 ${ASK_RUNTIME_JS}
 
+// f3d:runtime-js:kernel BEGIN v=1 family=builder
 // ── Live Guided Tour PeerJS controller. Inlined verbatim from
 //    src/lib/portal/live-session.mjs — after this point
 //    createLiveSession is a local symbol. (Same caveat as above:
@@ -4022,6 +4049,15 @@ ${ASK_RUNTIME_JS}
 //    end on backticks even inside // comments, which would inline
 //    the whole module a second time and corrupt the script.)
 ${LIVE_SESSION_RUNTIME_JS}
+
+// ── Shared mobile-input annotation kernel. Inlined verbatim from
+//    src/lib/portal/anno-input.mjs — createAnnoPointerGuard,
+//    annoCollectPoints, annoClampDpr, annoBudgetDpr, annoIsIosWebKit,
+//    annoIsCoarsePointer, annoBindViewportEvents become locals here.
+//    (Same caveat: never write the interpolation token or backticks in
+//    a comment — the outer template literal would re-inline the module.)
+${ANNO_INPUT_RUNTIME_JS}
+// f3d:runtime-js:kernel END
 
 // ── Unified Ask pipeline: fans out across the host-curated qaDatabase
 //    AND per-property doc extractions. Single panel, single button.
@@ -4851,6 +4887,7 @@ if(frame){
 //   renders the same Live-Guide drawer section for both, but the
 //   roles are mutually exclusive at runtime — whichever button is
 //   clicked first locks the role for that device.
+// f3d:runtime-js:glue BEGIN v=1 family=builder
 (function initLiveGuide(){
   var section=document.getElementById("drawer-live-guide");
   if(!section) return;
@@ -4891,7 +4928,19 @@ if(frame){
   // visible Matterport sweep on either end).
   var letterboxWrap=document.getElementById("anno-letterbox-wrap");
   var annoCanvas=document.getElementById("anno-canvas");
-  var annoCtx=annoCanvas?annoCanvas.getContext("2d"):null;
+  // Annotation-input kernel availability (anno-input.mjs injected as locals
+  // above). Fail-closed: when any helper is missing keep Matterport
+  // viewing / pointer / clear / location-sync live but refuse Draw and
+  // Focus Rope rather than run them unhardened.
+  var ANNO_INPUT_OK=(typeof createAnnoPointerGuard==="function"&&typeof annoCollectPoints==="function"&&typeof annoClampDpr==="function"&&typeof annoBudgetDpr==="function"&&typeof annoIsIosWebKit==="function"&&typeof annoIsCoarsePointer==="function"&&typeof annoBindViewportEvents==="function");
+  var IS_IOS_WEBKIT=(typeof annoIsIosWebKit==="function")?annoIsIosWebKit(typeof navigator!=="undefined"?navigator:null):false;
+  // Lazy annotation canvas: nothing is allocated at page load or at PIN
+  // connect (a full-viewport high-DPI 2D buffer beside the Matterport WebGL
+  // context is a real iPad memory risk). The context + a DPR-budgeted
+  // buffer allocate on first Draw/Rope or first inbound remote stroke.
+  var annoCtx=null;
+  var annoCanvasAllocated=false;
+  var annoAppliedDpr=1;
   var annoToolbar=document.getElementById("anno-toolbar");
   var remotePointer=document.getElementById("remote-pointer");
   var clearBtn=document.getElementById("anno-clear-btn");
@@ -5017,6 +5066,10 @@ if(frame){
   }
 
   function setToolMode(mode){
+    // Fail-closed: Draw / Focus Rope require the hardened input kernel.
+    if((mode==="draw"||mode==="rope")&&!ANNO_INPUT_OK) return;
+    // Allocate the annotation canvas lazily on the first authoring entry.
+    if(mode==="draw"||mode==="rope") ensureAnnoCanvasAllocated();
     var prev=toolMode;
     toolMode=mode;
     if(annoCanvas){
@@ -5078,12 +5131,31 @@ if(frame){
     } catch(_e){}
   }
 
+  // Lazy allocation: create the 2D context + size a DPR-budgeted buffer on
+  // first real need. Idempotent; safe to call from any authoring/remote
+  // entry point. Returns false if the canvas element is missing.
+  function ensureAnnoCanvasAllocated(){
+    if(annoCanvasAllocated) return true;
+    if(!annoCanvas) return false;
+    try { annoCtx=annoCanvas.getContext("2d"); } catch(_e){ annoCtx=null; }
+    if(!annoCtx) return false;
+    annoCanvasAllocated=true;
+    resizeAnnoCanvas();
+    return true;
+  }
+
   function resizeAnnoCanvas(){
     if(!annoCanvas||!letterboxWrap||!annoCtx) return;
     var rect=letterboxWrap.getBoundingClientRect();
     var w=Math.max(1,Math.round(rect.width));
     var h=Math.max(1,Math.round(rect.height));
-    var dpr=window.devicePixelRatio||1;
+    // DPR clamp + absolute backing-store budget. A 3x phone at full
+    // viewport would otherwise allocate a ~100MB RGBA buffer next to the
+    // Matterport WebGL context; iOS gets the tighter cap (1.5 / 4.19MP).
+    var rawDpr=window.devicePixelRatio||1;
+    var dpr=ANNO_INPUT_OK?annoClampDpr(rawDpr,IS_IOS_WEBKIT?1.5:2.5):rawDpr;
+    if(ANNO_INPUT_OK) dpr=annoBudgetDpr(w,h,dpr,IS_IOS_WEBKIT?4194304:9437184);
+    annoAppliedDpr=dpr;
     annoCanvas.width=Math.max(1,Math.round(w*dpr));
     annoCanvas.height=Math.max(1,Math.round(h*dpr));
     annoCanvas.style.width=w+"px";
@@ -5094,7 +5166,7 @@ if(frame){
 
   function redrawAllStrokes(){
     if(!annoCtx||!annoCanvas) return;
-    var dpr=window.devicePixelRatio||1;
+    var dpr=annoAppliedDpr||window.devicePixelRatio||1;
     var w=annoCanvas.width/dpr;
     var h=annoCanvas.height/dpr;
     annoCtx.clearRect(0,0,w,h);
@@ -5142,6 +5214,19 @@ if(frame){
     if(x<0) x=0; else if(x>1) x=1;
     if(y<0) y=0; else if(y>1) y=1;
     return {x:x,y:y};
+  }
+
+  // Normalized [x,y] tuples for the active draw stroke, expanding the
+  // browser's coalesced pointer history when present. A 120Hz Pencil
+  // delivers several raw samples per rendered frame; using only the
+  // dispatched event drops them and segments the ink. Falls back to the
+  // single event (and to a bare clientToNorm if the kernel is absent).
+  function collectNormTuples(e){
+    if(ANNO_INPUT_OK&&typeof annoCollectPoints==="function"){
+      return annoCollectPoints(e,function(ev){ var p=clientToNorm(ev); return [p.x,p.y]; });
+    }
+    var p0=clientToNorm(e);
+    return [[p0.x,p0.y]];
   }
 
   function scheduleStrokeFlush(){
@@ -5287,9 +5372,44 @@ if(frame){
     var r=session.getState().role;
     return r==="agent"||r==="visitor";
   }
+
+  // Commit whatever gesture is in flight (draw stroke or rope drag) without
+  // a pointer event. Used by the pen-takeover hook (palm rejection commits
+  // the touch stroke before the pen claims) and by pointercancel.
+  function finalizeActiveGesture(){
+    if(activeStroke){
+      if(pendingStrokePoints&&pendingStrokePoints.length>0){
+        session.sendStrokePatch(currentViewKey,pendingStrokeId,pendingStrokePoints);
+        pendingStrokePoints=null;
+      }
+      session.sendStrokeCommit(currentViewKey,activeStroke.strokeId);
+      localStrokes.push(activeStroke);
+      activeStroke=null;
+      pendingStrokeId=null;
+    }
+    if(activeRope&&(ropeDragging||ropeLatchDragging)){
+      ropeDragging=false;
+      ropeLatchDragging=false;
+      var s=session.getState();
+      if((s.role==="agent"||s.role==="visitor")&&s.isConnected){
+        session.sendStrokeBegin(currentViewKey,activeRope.strokeId,activeRope.color,activeRope.width,activeRope.points);
+      }
+    }
+    redrawAllStrokes();
+  }
+
+  // Single-owner gesture guard from the shared kernel: one pointer owns a
+  // gesture at a time, a second finger can't start one, and a pen takes
+  // over from a touch (palm rejection) after committing the touch stroke.
+  var annoGuard=ANNO_INPUT_OK?createAnnoPointerGuard({onTakeover:finalizeActiveGesture}):null;
+
   if(annoCanvas){
     annoCanvas.addEventListener("pointerdown",function(e){
       if(!_canAnnotateLocal()) return;
+      // Claim single-owner ownership for the authoring tools so a second
+      // finger / palm can't corrupt the in-flight stroke. (A pen arriving
+      // mid-touch fires onTakeover → finalizeActiveGesture, then claims.)
+      if((toolMode==="draw"||toolMode==="rope")&&annoGuard&&!annoGuard.claim(e)) return;
       if(toolMode==="draw"){
         var pt=clientToNorm(e);
         var sid=String(Date.now())+"_"+Math.random().toString(36).slice(2,8);
@@ -5348,18 +5468,30 @@ if(frame){
     });
     annoCanvas.addEventListener("pointermove",function(e){
       if(!_canAnnotateLocal()) return;
-      var pt=clientToNorm(e);
       if(toolMode==="pointer"){
-        session.sendPointer(currentViewKey,pt.x,pt.y);
-      } else if(toolMode==="draw"&&activeStroke){
-        activeStroke.points.push([pt.x,pt.y]);
-        if(!pendingStrokePoints) pendingStrokePoints=[];
-        pendingStrokePoints.push([pt.x,pt.y]);
-        scheduleStrokeFlush();
-        redrawAllStrokes();
+        // Only the primary pointer drives the shared remote dot.
+        if(e.isPrimary===false) return;
+        var ppt=clientToNorm(e);
+        session.sendPointer(currentViewKey,ppt.x,ppt.y);
+        return;
+      }
+      // Draw / Rope only advance for the pointer that owns the gesture.
+      if(annoGuard&&!annoGuard.owns(e)) return;
+      if(toolMode==="draw"&&activeStroke){
+        var pts=collectNormTuples(e);
+        if(pts.length>0){
+          for(var ci=0;ci<pts.length;ci++){
+            activeStroke.points.push(pts[ci]);
+            if(!pendingStrokePoints) pendingStrokePoints=[];
+            pendingStrokePoints.push(pts[ci]);
+          }
+          scheduleStrokeFlush();
+          redrawAllStrokes();
+        }
       } else if(toolMode==="rope"&&activeRope&&(ropeDragging||ropeLatchDragging)){
-        activeRope.x1=pt.x;
-        activeRope.y1=pt.y;
+        var rpt=clientToNorm(e);
+        activeRope.x1=rpt.x;
+        activeRope.y1=rpt.y;
         ropeRegenerate(activeRope);
         scheduleRopeFlush();
         redrawAllStrokes();
@@ -5367,6 +5499,10 @@ if(frame){
     });
     annoCanvas.addEventListener("pointerup",function(e){
       if(!_canAnnotateLocal()) return;
+      if(annoGuard&&!annoGuard.owns(e)){
+        try { annoCanvas.releasePointerCapture(e.pointerId); } catch(_e){}
+        return;
+      }
       if(toolMode==="draw"&&activeStroke){
         if(pendingStrokePoints&&pendingStrokePoints.length>0){
           session.sendStrokePatch(currentViewKey,pendingStrokeId,pendingStrokePoints);
@@ -5390,6 +5526,17 @@ if(frame){
         try { annoCanvas.releasePointerCapture(e.pointerId); } catch(_e){}
         redrawAllStrokes();
       }
+      if(annoGuard) annoGuard.release(e);
+    });
+    annoCanvas.addEventListener("pointercancel",function(e){
+      if(!_canAnnotateLocal()) return;
+      // iOS/iPadOS can fire pointercancel mid-stroke on a system gesture
+      // (edge swipe, app switch). Commit cleanly and drop ownership so the
+      // next gesture starts fresh instead of leaving a stuck stroke.
+      if(annoGuard&&!annoGuard.owns(e)) return;
+      finalizeActiveGesture();
+      if(annoGuard) annoGuard.reset();
+      try { annoCanvas.releasePointerCapture(e.pointerId); } catch(_e){}
     });
     annoCanvas.addEventListener("pointerleave",function(){
       if(!_canAnnotateLocal()) return;
@@ -5506,6 +5653,10 @@ if(frame){
   } else if(letterboxWrap){
     window.addEventListener("resize",resizeAnnoCanvas);
   }
+  // visualViewport resize (iOS URL-bar collapse / keyboard / pinch) and
+  // orientationchange — geometry events a plain window 'resize' misses on
+  // mobile, so the canvas stays aligned to the letterbox after rotation.
+  if(ANNO_INPUT_OK&&letterboxWrap) annoBindViewportEvents(window,resizeAnnoCanvas);
 
   // ── Location Sync (visitor → agent, clipboard auto-share) ────────
   // True one-action sync: the visitor positions their view, presses U
@@ -5695,7 +5846,18 @@ if(frame){
   // it returned stale "denied" on file:// while the live popup was
   // pending. readText() raises the popup itself; the Promise outcome
   // is the source of truth.
+  // Ambient clipboard reads are allowed only when they cannot raise the
+  // iOS Paste callout mid-gesture: never on iOS/iPadOS WebKit, never while
+  // an annotation tool is active (any platform), and only when the input
+  // kernel is present to make that determination. Fail-closed.
+  function ambientClipboardAllowed(){
+    if(!ANNO_INPUT_OK) return false;
+    if(IS_IOS_WEBKIT) return false;
+    if(toolMode==="draw"||toolMode==="rope"||toolMode==="pointer") return false;
+    return true;
+  }
   function readClipboardAndSend(){
+    if(!ambientClipboardAllowed()) return;
     var s=session.getState();
     if((s.role!=="visitor"&&s.role!=="agent")||!s.isConnected) return;
     if(!navigator||!navigator.clipboard||typeof navigator.clipboard.readText!=="function") return;
@@ -5744,6 +5906,7 @@ if(frame){
   // persistent grant it works regardless of focus, which is the user's
   // production scenario.
   function schedulePoll(){
+    if(!ambientClipboardAllowed()) return;
     if(document.hidden) return;
     var s=session.getState();
     if((s.role!=="visitor"&&s.role!=="agent")||!s.isConnected) return;
@@ -5957,7 +6120,7 @@ if(frame){
             locSyncGranted=!!(r&&r.state==="granted");
           },function(){});
         }
-        if(navigator&&navigator.clipboard&&typeof navigator.clipboard.readText==="function"){
+        if(!IS_IOS_WEBKIT&&navigator&&navigator.clipboard&&typeof navigator.clipboard.readText==="function"){
           navigator.clipboard.readText().then(function(){ locSyncGranted=true; },
                                               function(){ locSyncGranted=false; });
         }
@@ -5989,7 +6152,7 @@ if(frame){
             locSyncGranted=!!(r&&r.state==="granted");
           },function(){});
         }
-        if(navigator&&navigator.clipboard&&typeof navigator.clipboard.readText==="function"){
+        if(!IS_IOS_WEBKIT&&navigator&&navigator.clipboard&&typeof navigator.clipboard.readText==="function"){
           navigator.clipboard.readText().then(function(){ locSyncGranted=true; },
                                               function(){ locSyncGranted=false; });
         }
@@ -6172,6 +6335,9 @@ if(frame){
     if(sev&&sev.seq!==lastStrokeSeq){
       lastStrokeSeq=sev.seq;
       if(_canReceive){
+        // A remote stroke means the canvas must exist even if this side
+        // never picked up a tool (e.g. a visitor watching the agent draw).
+        ensureAnnoCanvasAllocated();
         if(sev.kind==="begin"){
           // Focus Rope reuses stroke_begin to push atomic shape
           // snapshots under a stable strokeId. If the id is already
@@ -6226,6 +6392,7 @@ if(frame){
 
   session.subscribe(onState);
 })();
+// f3d:runtime-js:glue END
 }).catch(function(err){
   // __configReady rejected — protected mode with Subtle unavailable, or
   // a bug in the unlock pipeline. The unsupported-browser banner is
@@ -6255,6 +6422,10 @@ if(frame){
         version: 1 as const,
         token: atlasManifestToken,
         issued_at: atlasManifestIssuedAt,
+        // Runtime/package versioning — same constants as the HTML f3d-*
+        // markers (single source: atlas-runtime-version.mjs) so the package
+        // manifest and the document can never disagree.
+        ...buildRuntimeManifestFields("builder"),
       };
       bundledAttachments.push({
         path: "atlas-manifest.json",

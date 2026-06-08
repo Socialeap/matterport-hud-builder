@@ -1,6 +1,13 @@
-// Atlas package/runtime versioning — the single source of truth for
-// generated showcase packages, their manifests, and (later) the Upgrade
-// Center's outdated-package detection.
+// Presentation package/runtime versioning — the single source of truth for
+// ALL generated Frontiers3D packages (Atlas curated showcases AND Builder
+// portal exports), their manifests, and the Upgrade Center's
+// outdated-package detection + family routing.
+//
+// Kept on the historical `atlas-runtime-version.mjs` filename: the values
+// are shared across families, not Atlas-specific, and the public builders
+// below take a `family` argument. A rename to presentation-runtime-version
+// .mjs would be a separate no-behavior-change commit (it churns the sibling
+// .d.mts, the import-string test, and node:test imports for zero benefit).
 //
 // Plain .mjs on the same dual-import pattern as ask-runtime-transformer:
 // imported as TS by the server-side generators via the sibling .d.mts,
@@ -56,27 +63,52 @@ const ATLAS_KNOWN_CAPABILITIES = [
   "mobile_view_sync_v2",
 ];
 
-// Manifest fields spliced into atlas-manifest.json by buildShowcaseFiles().
-function buildRuntimeManifestFields() {
+// Which generator/adapter produced a package. Travels as the
+// `f3d-package-family` <meta> marker and the `package_family` manifest
+// field so the Upgrade Center can route a package to the correct migration
+// adapter from the HTML alone:
+//   "atlas"   — curated showcase (atlas-curation-server + atlas-live-tour)
+//   "builder" — portal presentation export (portal.functions.ts)
+//   "legacy"  — recognized pre-marker package (assigned by the upgrader on
+//               detection; never emitted by a current generator)
+const PRESENTATION_FAMILIES = ["atlas", "builder", "legacy"];
+// Back-compat default: existing zero-arg Atlas call sites keep emitting
+// `family=atlas`, so their HTML/manifest stay byte-identical apart from the
+// one additive marker/field. An unknown/typo'd family also normalizes here
+// rather than minting a bogus family string.
+const F3D_PACKAGE_FAMILY_DEFAULT = "atlas";
+function _normalizeFamily(family) {
+  return PRESENTATION_FAMILIES.indexOf(family) !== -1
+    ? family
+    : F3D_PACKAGE_FAMILY_DEFAULT;
+}
+
+// Manifest fields spliced into the package manifest by buildShowcaseFiles()
+// (Atlas) and the Builder manifest object (portal.functions.ts).
+function buildRuntimeManifestFields(family) {
   return {
     package_schema: ATLAS_PACKAGE_SCHEMA,
     runtime_version: ATLAS_RUNTIME_VERSION,
     capabilities: ATLAS_RUNTIME_CAPABILITIES.slice(),
+    package_family: _normalizeFamily(family),
   };
 }
 
 // Self-identifying <meta> markers for the generated index.html <head>.
-// Lets a package be classified (schema + runtime version + delivered
-// capabilities) from the HTML alone, without its manifest — the
-// single-file upgrader's primary detection input. The capabilities
-// marker is emitted even while empty so its ABSENCE distinguishes
-// pre-v2 packages from a v2 package with no capabilities yet; marker
-// and manifest derive from the same constant, so they can never skew.
-function buildRuntimeMetaTags() {
+// Lets a package be classified (family + schema + runtime version +
+// delivered capabilities) from the HTML alone, without its manifest — the
+// single-file upgrader's primary detection input. The capabilities marker
+// is emitted even while empty so its ABSENCE distinguishes pre-v2 packages
+// from a v2 package with no capabilities yet; the family marker is appended
+// last (additive — existing packages without it read as pre-family). All
+// markers and the manifest derive from the same constants, so they can
+// never skew.
+function buildRuntimeMetaTags(family) {
   return (
     `<meta name="f3d-package-schema" content="${ATLAS_PACKAGE_SCHEMA}" />\n` +
     `<meta name="f3d-runtime" content="${ATLAS_RUNTIME_VERSION}" />\n` +
-    `<meta name="f3d-capabilities" content="${ATLAS_RUNTIME_CAPABILITIES.join(",")}" />`
+    `<meta name="f3d-capabilities" content="${ATLAS_RUNTIME_CAPABILITIES.join(",")}" />\n` +
+    `<meta name="f3d-package-family" content="${_normalizeFamily(family)}" />`
   );
 }
 
@@ -85,6 +117,8 @@ export {
   ATLAS_RUNTIME_VERSION,
   ATLAS_RUNTIME_CAPABILITIES,
   ATLAS_KNOWN_CAPABILITIES,
+  PRESENTATION_FAMILIES,
+  F3D_PACKAGE_FAMILY_DEFAULT,
   buildRuntimeManifestFields,
   buildRuntimeMetaTags,
 };

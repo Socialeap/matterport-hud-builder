@@ -371,6 +371,19 @@ const PANEL_HTML = `<aside id="lt-panel" class="lt-panel" role="dialog" aria-lab
 </div>
 <audio id="lt-audio" autoplay playsinline></audio>`;
 
+// Bounded sentinels around the replaceable runtime spans so a future
+// upgrade can locate them by exact byte range. Inert comments that wrap
+// ONLY runtime spans, never presentation content. (Atlas packages are
+// normally regenerated from curation source rather than byte-patched, but
+// the markers keep the package self-describing and consistent with the
+// Builder family. Comment syntax matches each host context.)
+function f3dWrapHtml(span: string, inner: string): string {
+  return `<!-- f3d:runtime-${span} BEGIN v=1 family=atlas -->\n${inner}\n<!-- f3d:runtime-${span} END -->`;
+}
+function f3dWrapCss(inner: string): string {
+  return `/* f3d:runtime-css BEGIN v=1 family=atlas */\n${inner}\n/* f3d:runtime-css END */`;
+}
+
 /**
  * Assemble all Live Tour shell pieces for a curated showcase page. The caller
  * splices each field into its static index.html template.
@@ -388,19 +401,23 @@ export function renderAtlasLiveTour(opts: AtlasLiveTourOptions): AtlasLiveTourAs
   const scriptHtml = `<script>window.__ATLAS_LT_CONFIG=${safeJsonForScript(config)};</script>
 <script>
 (function(){
+// f3d:runtime-js:kernel BEGIN v=1 family=atlas
 ${runtimeJs}
 ${annoInputJs}
+// f3d:runtime-js:kernel END
+// f3d:runtime-js:glue BEGIN v=1 family=atlas
 ${glueJs}
+// f3d:runtime-js:glue END
 })();
 </script>`;
 
   return {
-    headHtml: PEERJS_TAG,
-    css: buildCss(opts.accentColor),
+    headHtml: f3dWrapHtml("dep:peerjs", PEERJS_TAG),
+    css: f3dWrapCss(buildCss(opts.accentColor)),
     launchButtonHtml: LAUNCH_BUTTON_HTML,
-    stageOverlayHtml: STAGE_OVERLAY_HTML,
-    toolbarHtml: TOOLBAR_HTML,
-    bodyHtml: PANEL_HTML,
+    stageOverlayHtml: f3dWrapHtml("markup", STAGE_OVERLAY_HTML),
+    toolbarHtml: f3dWrapHtml("markup", TOOLBAR_HTML),
+    bodyHtml: f3dWrapHtml("markup", PANEL_HTML),
     scriptHtml,
   };
 }
