@@ -107,11 +107,18 @@ export const Route = createFileRoute("/atlas")({
     links: [{ rel: "canonical", href: "https://www.frontiers3d.com/atlas" }],
   }),
 
-  validateSearch: (search: Record<string, unknown>) => ({
-    spot: typeof search.spot === "string" && search.spot.length > 0
-      ? search.spot
-      : undefined,
-  }),
+  // `spot` is optional — OMIT the key entirely when absent. A key that is
+  // always present with value `string | undefined` still types as REQUIRED,
+  // which forces a `search` prop on every `<Link to="/atlas">` and breaks
+  // `navigate({ search: {} })`. Returning `{}` when there's no spot makes the
+  // search params genuinely optional.
+  validateSearch: (search: Record<string, unknown>): { spot?: string } => {
+    const spot =
+      typeof search.spot === "string" && search.spot.length > 0
+        ? search.spot
+        : undefined;
+    return spot ? { spot } : {};
+  },
   loader: async () => await listActiveAtlasEntries(),
   component: AtlasPage,
 });
