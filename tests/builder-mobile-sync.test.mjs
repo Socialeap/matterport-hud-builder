@@ -133,8 +133,10 @@ function makeFakeDom() {
   return { els, document };
 }
 
-// iOS WebKit navigator (annoIsIosWebKit → true) with a controllable clipboard.
-function makeIosNavigator(opts) {
+// Navigator for a target platform with a controllable clipboard.
+// platform: "ios" (default) | "android" | "desktop". annoIsIosWebKit → true
+// only for "ios"; "android"/"desktop" are non-iOS (coarse vs fine via matchMedia).
+function makeNavigator(opts) {
   const clip = {
     reads: 0,
     _text: opts.clipText !== undefined ? opts.clipText : "",
@@ -146,11 +148,17 @@ function makeIosNavigator(opts) {
     },
     addEventListener(ev, fn) { (this._h[ev] || (this._h[ev] = [])).push(fn); },
   };
+  const UA = {
+    ios: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1",
+    android: "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
+    desktop: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  };
+  const PLAT = { ios: "iPhone", android: "Linux armv8l", desktop: "Win32" };
+  const platform = opts.platform || "ios";
   return {
-    userAgent:
-      "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1",
-    platform: "iPhone",
-    maxTouchPoints: 5,
+    userAgent: UA[platform],
+    platform: PLAT[platform],
+    maxTouchPoints: platform === "desktop" ? 0 : 5,
     clipboard: opts.noClipboard ? undefined : clip,
     _clip: clip,
   };
@@ -203,14 +211,15 @@ FakeRO.prototype.disconnect = function () {};
 function runSync(opts = {}) {
   const { els, document } = makeFakeDom();
   const controller = makeController(opts);
-  const navigator = makeIosNavigator(opts);
+  const navigator = makeNavigator(opts);
   const window = {
     _h: Object.create(null),
     addEventListener(ev, fn) { (this._h[ev] || (this._h[ev] = [])).push(fn); },
     removeEventListener() {},
     requestAnimationFrame: (cb) => { cb(); return 0; },
     devicePixelRatio: 2,
-    matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
+    // Coarse-pointer is what annoIsCoarsePointer() keys on; opts.coarse drives it.
+    matchMedia: (q) => ({ matches: !!opts.coarse && String(q).indexOf("coarse") !== -1, addEventListener() {}, removeEventListener() {} }),
     location: { href: "https://example.com/test/" },
   };
   window.parent = window; // direct viewing — interaction emit is a no-op
@@ -358,4 +367,19 @@ test("manual paste fallback rejects an invalid link with a status message, no tr
   await tick();
   assert.equal(h.controller.sends.length, 0);
   assert.equal(h.els["lg-manual-sync-status"].textContent.length > 0, true, "an honest status is shown");
+});
+
+// ── 6. Codex P2: the advertised tap works on coarse-pointer (Android) too ──
+test("Android (coarse pointer, non-iOS): the pill IS a tap-to-sync button and transmits", async () => {
+  const h = runSync({ platform: "android", coarse: true, role: "visitor", clipText: VALID });
+  assert.ok((pill(h)._h["click"] || []).length > 0, "explicit tap handler is wired on Android / coarse-pointer");
+  pill(h).fire("click");
+  await tick();
+  assert.equal(h.clip.reads, 1, "the tap reads the clipboard from the user gesture");
+  assert.deepEqual(h.controller.sends, [{ fn: "shareLocationWithAgent", ss: "42", sr: "-1.23,0.45" }]);
+});
+
+test("desktop (fine pointer, non-iOS): NO tap handler — ambient-only, no focus-steal (press-U intact)", () => {
+  const h = runSync({ platform: "desktop", coarse: false, role: "visitor", clipText: VALID });
+  assert.equal((pill(h)._h["click"] || []).length, 0, "desktop must NOT install a click handler (would steal the iframe's keyboard focus)");
 });

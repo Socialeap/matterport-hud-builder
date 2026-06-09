@@ -218,6 +218,13 @@
   // block handles the toolbar/panel controls.
   var IS_COARSE_POINTER =
     typeof annoIsCoarsePointer === "function" ? annoIsCoarsePointer(window) : false;
+  // Touch-first devices — iOS WebKit OR any coarse-pointer phone/tablet
+  // (incl. Android) — get the EXPLICIT tap-to-sync pill: clipboard reads there
+  // require a user gesture, so the ambient lifecycle path can't be relied on.
+  // Desktop (fine pointer) keeps the informational pill + ambient auto-sync,
+  // and never installs a click handler that could steal the iframe's keyboard
+  // focus and break the visitor pressing U.
+  var SYNC_TAP_ENABLED = IS_IOS_WEBKIT || IS_COARSE_POINTER;
   var ANNO_LATCH_DRAW_PX = IS_COARSE_POINTER ? 14 : ANNO_LATCH_PX;
 
   var toolMode = "none";
@@ -1136,11 +1143,12 @@
     notconnected: "Tour not connected yet",
     waiting: "Connecting…",
   };
-  // On iOS, ambient clipboard sync stays disabled (the Paste callout would
-  // interrupt annotation gestures), so the pill is instead an EXPLICIT
-  // tap-to-sync button — the one sanctioned, user-gesture clipboard read.
-  // The idle label invites that tap rather than implying ambient auto-sync.
-  if (IS_IOS_WEBKIT) LOC_SYNC_LABELS.idle = "Sync copied view";
+  // On touch devices (iOS, or any coarse-pointer phone/tablet) the pill is an
+  // EXPLICIT tap-to-sync button — the sanctioned, user-gesture clipboard read
+  // (iOS disables ambient reads entirely; other touch platforms can't rely on
+  // a gesture-free lifecycle read). The idle label invites that tap rather than
+  // implying ambient auto-sync.
+  if (SYNC_TAP_ENABLED) LOC_SYNC_LABELS.idle = "Sync copied view";
 
   // Whether ANY ambient (non-manual) clipboard read may run right now.
   // Layered, all fail-closed:
@@ -1525,14 +1533,14 @@
     readClipboardAndSend();
   }
 
-  // ── Explicit "Sync copied view" tap (iOS only) ───────────────────────
-  // The ONE place a clipboard read may run on iOS: a DIRECT user gesture,
-  // never ambient. iOS surfaces its native Paste confirmation here, which is
-  // expected and explained by the "Reading copied link…" state — we never
-  // read silently, and never from focus/visibility/pointer/annotation events
-  // (ambientClipboardAllowed stays false on iOS). Desktop keeps the
-  // informational pill + ambient polling: a click there would steal keyboard
-  // focus from the iframe and break the visitor pressing U.
+  // ── Explicit "Sync copied view" tap (touch devices) ──────────────────
+  // On touch platforms a clipboard read may run ONLY here: a DIRECT user
+  // gesture, never ambient. iOS/Android surface a native Paste/permission
+  // confirmation here, which is expected and explained by the "Reading copied
+  // link…" state — we never read silently, and never from focus/visibility/
+  // pointer/annotation events (ambientClipboardAllowed stays false on iOS).
+  // Desktop (fine pointer) keeps the informational pill + ambient polling: a
+  // click there would steal keyboard focus from the iframe and break pressing U.
   function explicitSyncTap() {
     var s = session.getState();
     if ((s.role !== "visitor" && s.role !== "agent") || !s.isConnected) {
@@ -1583,9 +1591,10 @@
     syncBtn.addEventListener("focus", showTips);
     syncBtn.addEventListener("blur", scheduleHideTips);
   }
-  // iOS: turn the pill into an explicit tap-to-sync button. No ambient reads
-  // are bound on iOS, so this is the visitor/agent's path to share a view.
-  if (syncBtn && IS_IOS_WEBKIT) {
+  // Touch devices: turn the pill into an explicit tap-to-sync button — the
+  // reliable gesture-based path when ambient lifecycle reads are unavailable
+  // (always on iOS; commonly on Android / coarse-pointer tablets too).
+  if (syncBtn && SYNC_TAP_ENABLED) {
     syncBtn.setAttribute("role", "button");
     syncBtn.setAttribute("aria-label", "Sync the Matterport view you copied");
     syncBtn.addEventListener("click", explicitSyncTap);

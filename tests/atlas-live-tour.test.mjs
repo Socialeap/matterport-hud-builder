@@ -1148,11 +1148,16 @@ function runAtlasSync(opts = {}) {
   const spy = { teleport: [], share: [] };
   const { els, document } = makeFakeDom();
   const clip = makeIosClipboard(opts);
+  const UA = {
+    ios: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1",
+    android: "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
+    desktop: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  };
+  const platform = opts.platform || "ios";
   const navigator = {
-    userAgent:
-      "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1",
-    platform: "iPhone",
-    maxTouchPoints: 5,
+    userAgent: UA[platform],
+    platform: platform === "ios" ? "iPhone" : platform === "android" ? "Linux armv8l" : "Win32",
+    maxTouchPoints: platform === "desktop" ? 0 : 5,
     clipboard: opts.noClipboard ? undefined : clip,
   };
   const window = {
@@ -1167,7 +1172,7 @@ function runAtlasSync(opts = {}) {
     removeEventListener() {},
     requestAnimationFrame: (cb) => { cb(); return 0; },
     devicePixelRatio: 2,
-    matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
+    matchMedia: (q) => ({ matches: !!opts.coarse && String(q).indexOf("coarse") !== -1, addEventListener() {}, removeEventListener() {} }),
     location: { href: "https://example.com/test/" },
   };
   const controller = opts.connected === false ? makeIdleController(spy) : makeConnectedController(role, spy);
@@ -1234,4 +1239,20 @@ test("Atlas iOS: not-connected and read-denied surface honest states, never tran
   await syncTick();
   assert.equal(denied.spy.share.length, 0);
   assert.equal(atlasPillState(denied), "denied");
+});
+
+test("Atlas Android (coarse pointer, non-iOS): the pill is a tap-to-sync button and transmits", async () => {
+  const h = runAtlasSync({ platform: "android", coarse: true, role: "visitor", clipText: ATLAS_VALID });
+  h.els["loc-sync"].fire("click", { preventDefault() {} });
+  await syncTick();
+  assert.equal(h.clip.reads, 1, "Android / coarse-pointer tap reads the clipboard from the gesture");
+  assert.deepEqual(h.spy.share, [["42", "-1.23,0.45"]]);
+});
+
+test("Atlas desktop (fine pointer, non-iOS): tapping the pill does nothing (ambient-only, press-U intact)", async () => {
+  const h = runAtlasSync({ platform: "desktop", coarse: false, role: "visitor", clipText: ATLAS_VALID });
+  h.els["loc-sync"].fire("click", { preventDefault() {} });
+  await syncTick();
+  assert.equal(h.clip.reads, 0, "desktop pill installs no tap handler — a click reads nothing");
+  assert.equal(h.spy.share.length + h.spy.teleport.length, 0, "and transmits nothing");
 });

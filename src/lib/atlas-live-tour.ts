@@ -367,7 +367,7 @@ const PANEL_HTML = `<aside id="lt-panel" class="lt-panel" role="dialog" aria-lab
 <div id="loc-sync-tips" role="status" aria-live="polite" hidden>
   <ol>
     <li>In Matterport, open <strong>Share &rarr; Current Location</strong> and tap <strong>Copy</strong>.</li>
-    <li>On phone or tablet, tap <strong>Sync copied view</strong> (then tap <strong>Paste</strong> if iOS asks).</li>
+    <li>On phone or tablet, tap <strong>Sync copied view</strong> (then tap <strong>Paste</strong> or <strong>Allow</strong> if asked).</li>
     <li>On desktop, press <kbd>U</kbd> then <strong>Copy to clipboard</strong> &mdash; it syncs automatically.</li>
   </ol>
 </div>

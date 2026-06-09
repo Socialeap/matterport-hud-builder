@@ -2326,7 +2326,7 @@ ${askAssets.css}
 <div id="loc-sync-tips" role="status" aria-live="polite" hidden>
   <ol>
     <li>In Matterport, open <strong>Share &rarr; Current Location</strong> and tap <strong>Copy</strong>.</li>
-    <li>On phone or tablet, tap <strong>Sync copied view</strong> (then tap <strong>Paste</strong> if iOS asks).</li>
+    <li>On phone or tablet, tap <strong>Sync copied view</strong> (then tap <strong>Paste</strong> or <strong>Allow</strong> if asked).</li>
     <li>On desktop, press <kbd>U</kbd> then <strong>Copy to clipboard</strong> &mdash; it syncs automatically.</li>
   </ol>
 </div>
@@ -4990,6 +4990,10 @@ if(frame){
   var ANNO_LATCH_PX=10;
   // Coarse-pointer (touch/pen) gets a larger latch + a 44px-class hit target.
   var IS_COARSE_POINTER=(typeof annoIsCoarsePointer==="function")?annoIsCoarsePointer(window):false;
+  // Touch-first devices (iOS WebKit OR any coarse-pointer phone/tablet, incl.
+  // Android) get the EXPLICIT tap-to-sync pill — clipboard reads there need a
+  // user gesture. Desktop (fine pointer) keeps the ambient/informational pill.
+  var SYNC_TAP_ENABLED=IS_IOS_WEBKIT||IS_COARSE_POINTER;
   var ANNO_LATCH_DRAW_PX=IS_COARSE_POINTER?14:ANNO_LATCH_PX;
   var activeRope=null;          // {strokeId,color,width,shape,x0,y0,x1,y1}
   var ropeDragging=false;       // initial draw drag
@@ -5880,11 +5884,11 @@ if(frame){
     notconnected:"Tour not connected yet",
     waiting:"Connecting…"
   };
-  // On iOS, ambient clipboard sync stays disabled (the Paste callout would
-  // interrupt annotation gestures), so the pill is an EXPLICIT tap-to-sync
-  // button — the one sanctioned, user-gesture clipboard read. The idle label
-  // invites that tap rather than implying ambient auto-sync.
-  if(IS_IOS_WEBKIT) LOC_SYNC_LABELS.idle="Sync copied view";
+  // On touch devices (iOS, or any coarse-pointer phone/tablet) the pill is an
+  // EXPLICIT tap-to-sync button — the sanctioned, user-gesture clipboard read
+  // (iOS disables ambient reads; other touch platforms can't rely on a
+  // gesture-free lifecycle read). The idle label invites that tap.
+  if(SYNC_TAP_ENABLED) LOC_SYNC_LABELS.idle="Sync copied view";
 
   function setPulseState(name){
     if(!syncBtn) return;
@@ -6081,15 +6085,16 @@ if(frame){
     readClipboardAndSend();
   }
 
-  // DESKTOP: the pill is informational only — hover or keyboard focus reveals
-  // the tips card; NO click/Enter/Space action there, because any focus shift
-  // to the pill would steal keyboard control from the iframe and break the
-  // visitor pressing U next. Desktop auto-sync runs via the ambient listeners
-  // below once clipboard permission is granted.
+  // DESKTOP (fine pointer): the pill is informational only — hover or keyboard
+  // focus reveals the tips card; NO click/Enter/Space action there, because any
+  // focus shift to the pill would steal keyboard control from the iframe and
+  // break the visitor pressing U next. Desktop auto-sync runs via the ambient
+  // listeners below once clipboard permission is granted.
   //
-  // iOS: ambient reads are disabled (ambientClipboardAllowed === false), so the
-  // pill is instead an EXPLICIT tap-to-sync button — the ONE sanctioned,
-  // user-gesture clipboard read. iOS shows its native Paste confirmation here;
+  // TOUCH (iOS / Android / coarse-pointer tablets): ambient reads can't be
+  // relied on (always disabled on iOS; gesture-required elsewhere), so the pill
+  // is an EXPLICIT tap-to-sync button — the ONE sanctioned, user-gesture
+  // clipboard read. The platform shows a native Paste/permission confirmation;
   // that is expected and surfaced by the "Reading copied link…" state. We never
   // read silently and never from focus/visibility/pointer/annotation events.
   function explicitSyncTap(){
@@ -6147,8 +6152,9 @@ if(frame){
     syncBtn.addEventListener("focus",showTips);
     syncBtn.addEventListener("blur",scheduleHideTips);
   }
-  // iOS: turn the pill into an explicit tap-to-sync button (no ambient reads).
-  if(syncBtn&&IS_IOS_WEBKIT){
+  // Touch devices: turn the pill into an explicit tap-to-sync button — the
+  // reliable gesture path when ambient lifecycle reads are unavailable.
+  if(syncBtn&&SYNC_TAP_ENABLED){
     syncBtn.setAttribute("role","button");
     syncBtn.setAttribute("aria-label","Sync the Matterport view you copied");
     syncBtn.addEventListener("click",explicitSyncTap);
