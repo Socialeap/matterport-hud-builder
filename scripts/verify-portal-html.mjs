@@ -628,27 +628,39 @@ function assertBuilderSentinels(src) {
 }
 
 /**
- * web-share must be delegated to the Builder Matterport iframe(s) so Matterport's
- * "Share → Current Location" can reach the iOS Share Sheet through the nested
- * frames. The Permissions-Policy default allowlist is 'self', so every cross-
- * origin ancestor (here: the generated presentation → its Matterport iframe)
- * must forward it explicitly. It grants only navigator.share()/canShare(), so it
- * cannot weaken the iOS ambient-clipboard isolation. Pinned at build time.
+ * The Builder Matterport iframe(s) must carry the COMPLETE permission set — the
+ * same one the curated Atlas iframe uses: motion (gyroscope/accelerometer),
+ * autoplay, clipboard-write (Matterport's own in-tour Copy), and web-share.
+ * web-share's Permissions-Policy default allowlist is 'self', so every cross-
+ * origin ancestor (the generated presentation → its Matterport iframe) must
+ * forward it for "Share → Current Location" to reach the iOS Share Sheet; it
+ * grants only navigator.share()/canShare() and cannot weaken the iOS ambient-
+ * clipboard isolation. Applies to the primary AND the ghost frame. Pinned here.
  */
-function assertMatterportWebShare(src) {
+function assertMatterportPermissions(src) {
+  const REQUIRED = [
+    "xr-spatial-tracking",
+    "gyroscope",
+    "accelerometer",
+    "fullscreen",
+    "autoplay",
+    "clipboard-write",
+    "web-share",
+  ];
   for (const id of ["matterport-frame", "matterport-frame-ghost"]) {
     const m = new RegExp('<iframe id="' + id + '"[^>]*?\\sallow="([^"]*)"').exec(src);
     if (!m) {
-      console.error(`[verify-html] ❌ web-share gate: <iframe id="${id}"> with an allow= attribute not found.`);
+      console.error(`[verify-html] ❌ Matterport iframe gate: <iframe id="${id}"> with an allow= attribute not found.`);
       process.exit(1);
     }
     const toks = m[1].split(";").map((t) => t.trim().toLowerCase());
-    if (!toks.includes("web-share")) {
-      console.error(`[verify-html] ❌ web-share gate: <iframe id="${id}"> allow is missing web-share (saw "${m[1]}").`);
+    const missing = REQUIRED.filter((r) => !toks.includes(r));
+    if (missing.length) {
+      console.error(`[verify-html] ❌ Matterport iframe gate: <iframe id="${id}"> allow is missing [${missing.join(", ")}] (saw "${m[1]}").`);
       process.exit(1);
     }
   }
-  console.log("[verify-html] ✅ Matterport iframe(s) delegate web-share (Share → Current Location → iOS Share Sheet).");
+  console.log("[verify-html] ✅ Matterport iframe(s) carry the full permission set incl. web-share (Share → Current Location → iOS Share Sheet).");
 }
 
 function main() {
@@ -667,7 +679,7 @@ function main() {
   assertRequiredStartupTokens(src);
   assertHudGateStartsClosed(src);
   assertBuilderSentinels(src);
-  assertMatterportWebShare(src);
+  assertMatterportPermissions(src);
   parseRuntimeIIFE(src);
 
   if (offenders.length === 0 && commentOffenders.length === 0) {

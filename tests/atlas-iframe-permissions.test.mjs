@@ -121,12 +121,26 @@ test("curated Matterport iframe grants clipboard-write (Copy to clipboard sync)"
   }
 });
 
-test("Builder Matterport iframe(s) grant web-share + preserve every existing permission", () => {
+// The Builder Matterport iframes must carry the SAME complete permission set as
+// the curated Atlas iframe — motion (gyroscope/accelerometer) + autoplay +
+// clipboard-write (Matterport's own in-tour Copy) + web-share (Share → Current
+// Location → iOS Share Sheet). Applies to the primary AND the ghost frame.
+const BUILDER_MP_ALLOW = [
+  "xr-spatial-tracking",
+  "gyroscope",
+  "accelerometer",
+  "fullscreen",
+  "autoplay",
+  "clipboard-write",
+  "web-share",
+];
+
+test("Builder Matterport iframe(s) carry the complete permission set incl. web-share", () => {
   for (const id of ["matterport-frame", "matterport-frame-ghost"]) {
     const allow = iframeAllow(PORTAL, id);
     assert.ok(allow, `portal.functions.ts must have an <iframe id="${id}"> with an allow=`);
     const t = tokens(allow);
-    for (const needed of ["xr-spatial-tracking", "fullscreen", "web-share"]) {
+    for (const needed of BUILDER_MP_ALLOW) {
       assert.ok(t.includes(needed), `Builder ${id} allow missing: ${needed} (saw ${JSON.stringify(allow)})`);
     }
   }
@@ -144,16 +158,18 @@ test("web-share is delegated at EVERY level so it reaches the nested Matterport 
   );
 });
 
-test("Builder canary device-test artifact also grants web-share on its Matterport iframe", () => {
+test("Builder canary device-test artifact carries the complete permission set (both iframes)", () => {
   // The canary HTML is what gets hosted over HTTPS for the iPad device test, so
-  // its hardcoded iframe must carry web-share or the device test cannot exercise
-  // Matterport's Share → Current Location → iOS Share Sheet path.
-  const allow = iframeAllow(CANARY, "matterport-frame");
-  assert.ok(allow, "build-builder-canary.mjs must have a matterport-frame iframe");
-  assert.ok(
-    tokens(allow).includes("web-share"),
-    `canary Matterport iframe allow missing web-share (saw ${JSON.stringify(allow)})`,
-  );
+  // its hardcoded iframes must match the generated Builder set — otherwise the
+  // device test cannot faithfully exercise Share → Current Location → Share Sheet.
+  for (const id of ["matterport-frame", "matterport-frame-ghost"]) {
+    const allow = iframeAllow(CANARY, id);
+    assert.ok(allow, `build-builder-canary.mjs must have an <iframe id="${id}">`);
+    const t = tokens(allow);
+    for (const needed of BUILDER_MP_ALLOW) {
+      assert.ok(t.includes(needed), `canary ${id} allow missing: ${needed} (saw ${JSON.stringify(allow)})`);
+    }
+  }
 });
 
 test("the Atlas modal sandbox is NOT loosened by the web-share change", () => {
