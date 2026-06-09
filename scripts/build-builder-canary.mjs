@@ -12,11 +12,15 @@
  *     live-guide glue (so the genuine pointer guard / WebKit defenses run).
  *
  * What you CAN test on iPhone/iPad with the output:
- *   - Tap "Host a tour" (role=agent, no peer needed), pick Draw / Focus Rope,
- *     and annotate the Matterport sample: multi-touch rejection, Pencil
- *     takeover, NO Apple Paste interruption, rope body-drag + 44px latch.
+ *   - SOLO (one device): tap "Solo: show tools" to force the live-tour UI on
+ *     (the REAL runtime only reveals the toolbar + sync pill on a peer connect),
+ *     then pick Draw / Focus Rope and annotate the sample: multi-touch
+ *     rejection, Pencil takeover, NO Apple Paste interruption, rope body-drag.
+ *   - Matterport "Share -> Current Location" should open the iOS Share Sheet
+ *     (web-share) — testable directly in the iframe, no live-tour UI needed.
  *   - With no tool selected, Matterport navigation must be completely normal.
- *   - Two tabs / two devices can PIN-connect to test the bidirectional flow.
+ *   - TWO tabs / devices PIN-connect (Host here, Join the PIN there) to test the
+ *     bidirectional voice + the actual "Sync copied view" view alignment.
  *
  * What it is NOT: a full branded presentation (no config / QA / analytics /
  * protected gate). For a production-fidelity canary, export a presentation
@@ -114,6 +118,7 @@ const PANEL = `
 <div id="live-tour-control-drawer"><div id="ltcd-inner"><div id="ltcd-live-guide-slot"></div></div></div>
 <div id="live-tour-inner"></div>
 <div id="drawer-live-guide" class="canary-panel">
+  <button id="canary-solo-tools" type="button" style="background:#0ea5e9">Solo: show tools (no peer)</button>
   <div id="lg-visitor">
     <div id="lg-agent-prejoin"></div>
     <input id="lg-pin-input" inputmode="numeric" maxlength="4" placeholder="PIN" />
@@ -134,6 +139,24 @@ const PANEL = `
 </div>
 <div id="loc-sync" data-state="waiting"><span class="loc-sync-dot"></span><span class="loc-sync-label"></span></div>
 <div id="loc-sync-tips" hidden></div>`;
+
+// Canary-only solo-tools shim (NOT part of the generated page). The real runtime
+// reveals the annotation toolbar + sync pill only on a live peer connection
+// (setBodyLetterboxClass fires in onState when connected), so a single device
+// shows nothing. This button force-engages the live-tour body classes so Draw /
+// Focus Rope + the toolbar/pill are testable on ONE device. Tapping "Sync copied
+// view" while solo correctly reports "not connected" — actual view alignment
+// still needs a 2nd device joining the PIN. Toggles cleanly (no glue internals).
+const SOLO_SHIM = `
+  var __soloBtn=document.getElementById("canary-solo-tools");
+  if(__soloBtn){
+    __soloBtn.addEventListener("click",function(){
+      var b=document.body, on=b.classList.toggle("live-tour-active");
+      b.classList.toggle("live-tour-agent",on);
+      b.classList.remove("live-tour-visitor");
+      __soloBtn.textContent=on?"Solo tools ON — tap to hide":"Solo: show tools (no peer)";
+    });
+  }`;
 
 const HTML = `<!DOCTYPE html>
 <html lang="en">
@@ -165,7 +188,7 @@ ${MARKUP}
   </div>
 </div>
 ${PANEL}
-<div class="canary-banner">CANARY — device QA only. Tap "Host a tour", then Draw / Focus Rope to test mobile annotation. With no tool selected, Matterport navigation must be normal.</div>
+<div class="canary-banner">CANARY — device QA only. SOLO (1 device): tap "Solo: show tools", then test Draw / Focus Rope. Test "Share -&gt; Current Location" in the Matterport view (iOS Share Sheet). Idle (no tool) = normal nav. ACTUAL view sync needs a 2nd device: Host here, Join the PIN there.</div>
 <script>
 (function(){
   // The generated page declares frame in its outer IIFE; mirror that here so
@@ -173,6 +196,7 @@ ${PANEL}
   var frame=document.getElementById("matterport-frame");
 ${KERNEL}
 ${GLUE}
+${SOLO_SHIM}
 })();
 </script>
 </body>
@@ -185,7 +209,7 @@ fs.writeFileSync(outFile, HTML, "utf8");
 
 // Sanity: the inlined runtime <script> must parse as JS (catches a bad splice
 // before you waste a device session on a blank page).
-const scriptBody = "var frame=null;\n" + KERNEL + "\n" + GLUE;
+const scriptBody = "var frame=null;\n" + KERNEL + "\n" + GLUE + "\n" + SOLO_SHIM;
 try {
   new Function("window", "document", "navigator", "createLiveSession", "ResizeObserver", scriptBody);
 } catch (err) {
