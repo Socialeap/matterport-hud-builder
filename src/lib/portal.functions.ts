@@ -2245,8 +2245,8 @@ ${askAssets.css}
      hidden frame and crossfade opacities — no black WebGL reload. -->
 <div id="viewer">
   <div id="anno-letterbox-wrap">
-    <iframe id="matterport-frame" allowfullscreen allow="xr-spatial-tracking; fullscreen; web-share"></iframe>
-    <iframe id="matterport-frame-ghost" allowfullscreen allow="xr-spatial-tracking; fullscreen; web-share" aria-hidden="true" tabindex="-1"></iframe>
+    <iframe id="matterport-frame" allowfullscreen allow="xr-spatial-tracking; gyroscope; accelerometer; fullscreen; autoplay; clipboard-write; web-share"></iframe>
+    <iframe id="matterport-frame-ghost" allowfullscreen allow="xr-spatial-tracking; gyroscope; accelerometer; fullscreen; autoplay; clipboard-write; web-share" aria-hidden="true" tabindex="-1"></iframe>
     <!-- f3d:runtime-markup BEGIN v=1 family=builder -->
     <div id="live-tour-navlock" aria-hidden="true"></div>
     <canvas id="anno-canvas"></canvas>
