@@ -182,6 +182,11 @@ function runGlue(role = "agent", opts = {}) {
     requestAnimationFrame: (cb) => { cb(); return 0; },
     devicePixelRatio: 2,
     location: { href: "https://example.com/test/" },
+    // Default harness environment: an ELIGIBLE desktop (fine primary
+    // pointer + hover, no mobile identity) so the collaboration glue
+    // wires up. Gate tests below override window/navigator to simulate
+    // ineligible devices.
+    matchMedia: (q) => ({ matches: q === "(pointer: fine)" || q === "(hover: hover)" }),
   };
   // Embedding context: a DISTINCT parent (the Atlas modal) records postMessage;
   // direct viewing (default) has parent === self, so the interaction emit is a
@@ -189,9 +194,17 @@ function runGlue(role = "agent", opts = {}) {
   window.parent = opts.embedded
     ? { postMessage: (msg, origin) => spy.posts.push({ msg, origin }) }
     : window;
-  const navigator = {}; // no clipboard — exercises the graceful guards
+  if (opts.window) Object.assign(window, opts.window);
+  const navigator = opts.navigator || {
+    // Desktop identity; deliberately no clipboard — exercises the graceful guards.
+    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0 Safari/537.36",
+    platform: "Win32",
+    maxTouchPoints: 0,
+  };
   const frame = new FakeEl("matterport-frame");
+  spy.factoryCalls = 0;
   const controllerFactory = () => {
+    spy.factoryCalls += 1;
     const c = makeConnectedController(role, spy);
     if (opts.fireConnect) {
       const sub = c.subscribe;
@@ -400,4 +413,118 @@ test("direct standalone viewing (no distinct parent) posts NOTHING — viewing i
   h.fireDoc("keydown", { key: "d" });
   h.fireDoc("keydown", { key: "r" });
   assert.equal(h.spy.posts.length, 0, "a directly-opened presentation must never postMessage to itself");
+});
+
+// ── 10. Desktop-only Live Tour gate (annoCollabEligible) ─────────────────
+// Ineligible devices must end up with NO collaboration affordance, NO
+// session controller, NO PeerJS work and NO wired collaboration handlers.
+// (In a real DOM the nodes are removed entirely; the fake DOM has no
+// parentNode, so the glue's fallback hides them instead.)
+const COLLAB_AFFORDANCE_IDS = [
+  "hud-live-tour-btn",
+  "live-tour-drawer",
+  "live-tour-control-drawer",
+  "drawer-live-guide",
+  "loc-sync",
+  "loc-sync-tips",
+  "live-tour-navlock",
+  "anno-toolbar",
+  "anno-canvas",
+  "remote-pointer",
+  "lg-audio",
+];
+
+const IPAD_TRACKPAD_ENV = {
+  navigator: {
+    userAgent:
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/17.4 Safari/605.1.15",
+    platform: "MacIntel",
+    maxTouchPoints: 5,
+  },
+  // The paired trackpad reports a fine pointer — the gate must still refuse.
+  window: { matchMedia: (q) => ({ matches: q === "(pointer: fine)" || q === "(hover: hover)" }) },
+};
+const IPHONE_ENV = {
+  navigator: {
+    userAgent:
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1",
+    platform: "iPhone",
+    maxTouchPoints: 5,
+  },
+  window: { matchMedia: (q) => ({ matches: q === "(pointer: coarse)" }) },
+};
+const ANDROID_ENV = {
+  navigator: {
+    userAgent:
+      "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/126.0 Mobile Safari/537.36",
+    platform: "Linux armv81",
+    maxTouchPoints: 5,
+    userAgentData: { mobile: true },
+  },
+  window: { matchMedia: (q) => ({ matches: q === "(pointer: coarse)" }) },
+};
+
+for (const [label, env] of [
+  ["iPhone", IPHONE_ENV],
+  ["Android", ANDROID_ENV],
+  ["iPad with trackpad (fine pointer)", IPAD_TRACKPAD_ENV],
+]) {
+  test(`ineligible (${label}): every collaboration affordance is neutralized, nothing initializes`, () => {
+    const h = runGlue("agent", env);
+    for (const id of COLLAB_AFFORDANCE_IDS) {
+      assert.equal(h.els[id].hidden, true, `#${id} must be neutralized`);
+    }
+    assert.equal(h.spy.factoryCalls, 0, "createLiveSession must never be constructed");
+    // No collaboration handlers were wired anywhere.
+    assert.equal((h.document.getElementById("lg-join-btn")._h.click || []).length, 0, "Join is not wired");
+    assert.equal((h.document.getElementById("lg-start-btn")._h.click || []).length, 0, "Start is not wired");
+    assert.equal((h.canvas._h.pointerdown || []).length, 0, "annotation canvas is not wired");
+    // Tool hotkeys do nothing (no document-level collab listeners ran).
+    h.fireDoc("keydown", { key: "d" });
+    assert.equal(h.spy.begin.length, 0, "Draw cannot engage");
+  });
+}
+
+test("eligible desktop: the gated launch affordances are revealed and wired", () => {
+  const h = runGlue("agent");
+  assert.equal(h.document.getElementById("drawer-live-guide").hidden, false, "live-guide section revealed");
+  assert.equal(h.document.getElementById("hud-live-tour-btn").hidden, false, "HUD Live Tour button revealed");
+  assert.equal(h.spy.factoryCalls, 1, "session controller constructed once");
+  assert.ok((h.document.getElementById("lg-join-btn")._h.click || []).length > 0, "Join wired");
+  assert.ok((h.document.getElementById("lg-start-btn")._h.click || []).length > 0, "Start wired");
+});
+
+// ── 11. Lazy PeerJS loader (pinned + SRI, intent-gated, deduped) ─────────
+test("no PeerJS work happens at page load; Start triggers exactly one SRI-pinned injection (deduped)", () => {
+  const injected = [];
+  const h = runGlue("agent");
+  h.document.head = { appendChild: (n) => { injected.push(n); return n; } };
+  // Seed the inert loader config exactly as the generated head carries it.
+  const cfg = h.document.getElementById("f3d-peerjs-loader");
+  cfg.attrs["data-src"] = "https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js";
+  cfg.attrs["data-integrity"] = "sha384-TESTSRI";
+  cfg.attrs["data-crossorigin"] = "anonymous";
+  assert.equal(injected.length, 0, "nothing injected at page load");
+  h.document.getElementById("lg-start-btn").fire("click", { preventDefault() {} });
+  h.document.getElementById("lg-start-btn").fire("click", { preventDefault() {} });
+  assert.equal(injected.length, 1, "concurrent Start clicks share ONE in-flight load");
+  assert.equal(injected[0].src, "https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js");
+  assert.equal(injected[0].integrity, "sha384-TESTSRI", "SRI pin travels onto the injected tag");
+  assert.equal(injected[0].crossOrigin, "anonymous");
+});
+
+test("PeerJS load failure surfaces a visible retry state and resets the dedupe", async () => {
+  const injected = [];
+  const h = runGlue("agent");
+  h.document.head = { appendChild: (n) => { injected.push(n); return n; } };
+  const cfg = h.document.getElementById("f3d-peerjs-loader");
+  cfg.attrs["data-src"] = "https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js";
+  h.document.getElementById("lg-start-btn").fire("click", { preventDefault() {} });
+  assert.equal(injected.length, 1);
+  injected[0].onerror(new Error("network"));
+  await new Promise((r) => setTimeout(r, 0));
+  assert.match(h.document.getElementById("lg-agent-status").textContent, /couldn't load/i, "failure is visible");
+  assert.equal(h.document.getElementById("lg-start-btn").disabled, false, "Start re-enables for a retry");
+  h.document.getElementById("lg-start-btn").fire("click", { preventDefault() {} });
+  assert.equal(injected.length, 2, "the next click retries with a fresh load");
 });

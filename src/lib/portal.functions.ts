@@ -2193,20 +2193,21 @@ body.live-tour-active.live-tour-agent #anno-letterbox-wrap.follow-pulse{box-shad
 
 ${askAssets.css}
 </style>
-<!-- PeerJS UMD bundle (loaded via CDN). Loaded with the defer
-     attribute so it is available before the main IIFE runs but does
-     not block initial HTML parsing. The exposed Peer global is
-     consumed by the Live Guided Tour controller interpolated below.
-     Failure to load (network, blocked CDN) is tolerated:
-     createLiveSession returns a friendly error state instead of
-     throwing, and the rest of the tour still works. -->
+<!-- PeerJS dependency — declared INERT below and lazy-loaded by the
+     Live Guided Tour glue only after an ELIGIBLE desktop user starts
+     or joins a tour (Live Tour is a desktop-only product; see
+     annoCollabEligible). Phones and tablets never download or execute
+     PeerJS. The exposed Peer global is consumed by the controller
+     interpolated below. -->
 <!-- f3d:runtime-dep:peerjs BEGIN v=1 family=builder -->
-<!-- PeerJS UMD bundle (deferred CDN load). Pinned to an exact version
+<!-- PeerJS UMD bundle config (lazy CDN load). Pinned to an exact version
      with SRI so the CDN cannot serve different bytes than the ones this
-     package was generated against (floating @1.5 had no integrity check).
-     Load failure is tolerated: the Live Guided Tour shows a friendly error
-     and the static tour keeps working. -->
-<script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js" integrity="sha384-x0YgkOr/3UOZP2CRDxGW9e0Q+2Qjyr3uJrm4xU32Y7ZCNAo7Cc7bjhrZMi/dwczu" crossorigin="anonymous" defer></script>
+     package was generated against. type="text/plain" keeps it inert: the
+     glue reads data-src/data-integrity and injects a real script tag on
+     first Start/Join intent, desktop only. Load failure is tolerated: the
+     Live Guided Tour shows a friendly error and the static tour keeps
+     working. -->
+<script type="text/plain" id="f3d-peerjs-loader" data-src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js" data-integrity="sha384-x0YgkOr/3UOZP2CRDxGW9e0Q+2Qjyr3uJrm4xU32Y7ZCNAo7Cc7bjhrZMi/dwczu" data-crossorigin="anonymous"></script>
 <!-- f3d:runtime-dep:peerjs END -->
 </head>
 <body>
@@ -2370,7 +2371,7 @@ ${askAssets.css}
       </button>
       ${askAssets.toggleBtn}
       
-      ${hasAgentContact ? `<button id="hud-live-tour-btn" class="hud-live-tour-btn" type="button" aria-label="Live Tour" title="Live Tour" aria-expanded="false" onclick="window.__openLiveTour&&window.__openLiveTour()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4"/><path d="M5 7l3 3"/><path d="M19 7l-3 3"/><circle cx="12" cy="14" r="4"/><path d="M8 22h8"/><path d="M12 18v4"/></svg><span class="hud-live-tour-label">Live Tour</span><span class="lt-dot" aria-hidden="true"></span></button>` : ""}
+      ${hasAgentContact ? `<button id="hud-live-tour-btn" class="hud-live-tour-btn" type="button" hidden aria-label="Live Tour" title="Live Tour" aria-expanded="false" onclick="window.__openLiveTour&&window.__openLiveTour()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4"/><path d="M5 7l3 3"/><path d="M19 7l-3 3"/><circle cx="12" cy="14" r="4"/><path d="M8 22h8"/><path d="M12 18v4"/></svg><span class="hud-live-tour-label">Live Tour</span><span class="lt-dot" aria-hidden="true"></span></button>` : ""}
       ${hasAgentContact ? `<button class="hud-contact-btn" onclick="window.__openContact&&window.__openContact()">Contact</button>` : ""}
     </div>
   </div>
@@ -2417,7 +2418,7 @@ ${hasAgentContact ? `<div id="agent-drawer">
   <div id="live-tour-inner">
     <button id="live-tour-close" type="button" onclick="window.__closeLiveTour&&window.__closeLiveTour()" aria-label="Close">&times;</button>
     <h2 id="live-tour-title">Live Tour</h2>
-    <div class="drawer-live-guide" id="drawer-live-guide">
+    <div class="drawer-live-guide" id="drawer-live-guide" hidden>
       <div id="lg-visitor">
         <div class="lg-status" style="margin-top:0">Enter the PIN from your agent to join a guided walkthrough.</div>
         <div class="lg-row">
@@ -4895,9 +4896,33 @@ if(frame){
 //   clicked first locks the role for that device.
 // f3d:runtime-js:glue BEGIN v=1 family=builder
 (function initLiveGuide(){
+  // Desktop-only Live Tour: collaboration is gated by the shared fail-closed
+  // predicate from the anno-input kernel. Ineligible devices (phones,
+  // tablets, iPad even with a keyboard/trackpad, ambiguous touch-first
+  // environments) get EVERY collaboration affordance removed before any
+  // wiring: no PeerJS download, no session controller, no mic, no clipboard
+  // sync, no annotation surfaces, nothing focusable. Solo viewing, sharing,
+  // fullscreen and PWA behavior are untouched. Fails closed if the kernel
+  // is missing.
+  var COLLAB_ELIGIBLE=(typeof annoCollabEligible==="function")&&annoCollabEligible(typeof window!=="undefined"?window:null,typeof navigator!=="undefined"?navigator:null);
+  if(!COLLAB_ELIGIBLE){
+    var collabIds=["hud-live-tour-btn","live-tour-drawer","live-tour-control-drawer","drawer-live-guide","loc-sync","loc-sync-tips","live-tour-navlock","anno-toolbar","anno-canvas","remote-pointer","lg-audio"];
+    for(var ci=0;ci<collabIds.length;ci++){
+      var cn=document.getElementById(collabIds[ci]);
+      if(!cn) continue;
+      if(cn.parentNode&&typeof cn.parentNode.removeChild==="function"){ cn.parentNode.removeChild(cn); }
+      else { cn.hidden=true; }
+    }
+    return;
+  }
   var section=document.getElementById("drawer-live-guide");
   if(!section) return;
   if(typeof createLiveSession!=="function") return;
+  // Eligible desktop: reveal the launch affordances that ship hidden so
+  // ineligible devices never flash them before this glue runs.
+  section.hidden=false;
+  var hudLiveTourBtn=document.getElementById("hud-live-tour-btn");
+  if(hudLiveTourBtn) hudLiveTourBtn.hidden=false;
 
   var visitorPane=document.getElementById("lg-visitor");
   var agentPane=document.getElementById("lg-agent");
@@ -4921,8 +4946,51 @@ if(frame){
   // break the U key — is no longer required for the main flow.
   function closeLtSyncPanel(){ /* retained as no-op for legacy callers */ }
 
+  // Lazy PeerJS (pinned + SRI, declared inert in the head dep span):
+  // downloaded ONLY when this eligible desktop user actually starts or
+  // joins a Live Tour. Concurrent Start/Join clicks share one promise;
+  // a failure or 12s timeout resets it so the next click retries, with
+  // the error surfaced on the role status line. The controller receives
+  // a forwarding constructor so it can be built now (network-inert) and
+  // still pick up the lazily-loaded Peer global at connect time.
+  var peerJsPromise=null;
+  function ensurePeerJs(){
+    if(typeof Peer==="function") return Promise.resolve(true);
+    if(peerJsPromise) return peerJsPromise;
+    peerJsPromise=new Promise(function(resolve,reject){
+      var cfg=document.getElementById("f3d-peerjs-loader");
+      var src=cfg&&typeof cfg.getAttribute==="function"?cfg.getAttribute("data-src"):null;
+      if(!src){ reject(new Error("PeerJS loader config missing")); return; }
+      var s=document.createElement("script");
+      s.src=src;
+      var integ=cfg.getAttribute("data-integrity");
+      if(integ) s.integrity=integ;
+      var cross=cfg.getAttribute("data-crossorigin");
+      if(cross) s.crossOrigin=cross;
+      var done=false;
+      var timer=setTimeout(function(){
+        if(done) return; done=true;
+        reject(new Error("PeerJS load timed out"));
+      },12000);
+      s.onload=function(){
+        if(done) return; done=true;
+        try { clearTimeout(timer); } catch(_e){}
+        if(typeof Peer==="function") resolve(true);
+        else reject(new Error("PeerJS loaded without a Peer global"));
+      };
+      s.onerror=function(){
+        if(done) return; done=true;
+        try { clearTimeout(timer); } catch(_e){}
+        reject(new Error("PeerJS failed to load"));
+      };
+      (document.head||document.documentElement).appendChild(s);
+    });
+    peerJsPromise.then(null,function(){ peerJsPromise=null; });
+    return peerJsPromise;
+  }
+  function lazyPeerCtor(id){ return new Peer(id); }
 
-  var session=createLiveSession({});
+  var session=createLiveSession({PeerCtor:lazyPeerCtor});
   var lastTeleportTs=0;
   var wasConnected=false;
 
@@ -6115,7 +6183,7 @@ if(frame){
     resetUiToIdle();
     // Re-create the controller so a fresh session can be started
     // without reloading the page. Re-attach the same subscriber.
-    session=createLiveSession({});
+    session=createLiveSession({PeerCtor:lazyPeerCtor});
     session.subscribe(onState);
   }
 
@@ -6226,10 +6294,11 @@ if(frame){
         return;
       }
       joinBtn.disabled=true;
-      if(visitorStatus) visitorStatus.textContent="Connecting…";
+      if(visitorStatus) visitorStatus.textContent="Preparing Live Tour…";
       // Pre-grant clipboard permission in the same user gesture as the
       // Join click — browser prompts once now, then silent reads power
-      // the ambient pulse pill for the rest of the session.
+      // the ambient pulse pill for the rest of the session. Must stay
+      // synchronous inside the click (a then-callback is not a gesture).
       try {
         if(navigator&&navigator.permissions&&typeof navigator.permissions.query==="function"){
           navigator.permissions.query({ name: "clipboard-read" }).then(function(r){
@@ -6241,8 +6310,14 @@ if(frame){
                                               function(){ locSyncGranted=false; });
         }
       } catch(_e){}
-      session.joinAsVisitor(pin).catch(function(){
-        // error state surfaced via subscribe()
+      ensurePeerJs().then(function(){
+        if(visitorStatus) visitorStatus.textContent="Connecting…";
+        session.joinAsVisitor(pin).catch(function(){
+          // error state surfaced via subscribe()
+        });
+      },function(){
+        joinBtn.disabled=false;
+        if(visitorStatus) visitorStatus.textContent="Live Tour couldn't load (network issue). Click Join to retry.";
       });
     });
     pinInput.addEventListener("keydown",function(e){
@@ -6257,7 +6332,7 @@ if(frame){
   if(startBtn){
     startBtn.addEventListener("click",function(){
       startBtn.disabled=true;
-      if(agentStatus) agentStatus.textContent="Reserving session…";
+      if(agentStatus) agentStatus.textContent="Preparing Live Tour…";
       // Pre-grant clipboard permission in the same user gesture as the
       // Start click — the agent presses U + Copy in their own iframe to
       // sync the visitor's view, just like the visitor's flow. Prompt
@@ -6273,8 +6348,14 @@ if(frame){
                                               function(){ locSyncGranted=false; });
         }
       } catch(_e){}
-      session.initializeAsAgent().catch(function(){
-        // error surfaced via subscribe()
+      ensurePeerJs().then(function(){
+        if(agentStatus) agentStatus.textContent="Reserving session…";
+        session.initializeAsAgent().catch(function(){
+          // error surfaced via subscribe()
+        });
+      },function(){
+        startBtn.disabled=false;
+        if(agentStatus) agentStatus.textContent="Live Tour couldn't load (network issue). Click Start to retry.";
       });
     });
   }
