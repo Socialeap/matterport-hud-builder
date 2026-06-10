@@ -96,10 +96,6 @@ test("glue wires the reused controller API + Atlas config hook", () => {
     "annoIsIosWebKit",
     "ambientClipboardAllowed",
     "clipboard-read", // Permissions API query — never a readText() probe
-    "Sync copied view", // iOS idle label: the explicit tap-to-sync CTA
-    "explicitSyncTap", // iOS explicit tap handler (the only user-gesture read)
-    "setTransientState", // reading/nolink/denied/notconnected state machine
-    "Reading copied link", // the explicit-read in-flight state label
     "contextmenu",
     "selectstart",
     "dragstart",
@@ -315,14 +311,10 @@ test("join rejects a non-4-digit PIN without calling the controller", () => {
   assert.match(els["lt-guest-status"].textContent, /4-digit PIN/);
 });
 
-// ── 4. Manual paste-to-sync fallback (Host + Guest) ──────────────────────
-// When clipboard auto-read is blocked/unavailable, the user pastes the
-// Matterport "Link to location" URL. It must parse with the same parser the
-// auto-poll uses and route through the same controller send path
-// (shareLocationWithAgent for Guest, teleportVisitor for Host).
+// ── 4. Connected-controller harness (Host + Guest) ───────────────────────
 function makeConnectedController(role, spy) {
-  // Stroke spies are optional extras (the manual-sync tests pass only
-  // teleport/share); default them so the pointer tests can assert ink.
+  // Stroke spies are optional extras (some tests pass only teleport/share);
+  // default them so the pointer tests can assert ink.
   spy.begin = spy.begin || [];
   spy.patch = spy.patch || [];
   spy.commit = spy.commit || [];
@@ -403,61 +395,6 @@ function runGlueWith(createLiveSession) {
   return { els, document };
 }
 
-test("manual paste-to-sync routes a valid Matterport URL through the Guest send path", () => {
-  const spy = { teleport: [], share: [] };
-  const { els } = runGlueWith(() => makeConnectedController("visitor", spy));
-  els["lt-manual-sync-input"].value =
-    "https://my.matterport.com/show/?m=abc&ss=42&sr=-1.5,2.25";
-  els["lt-manual-sync-btn"].fire("click");
-  assert.deepEqual(
-    spy.share,
-    [["42", "-1.5,2.25"]],
-    "guest should share the parsed ss/sr with the host",
-  );
-  assert.deepEqual(spy.teleport, [], "guest must not call teleportVisitor");
-  assert.equal(els["lt-manual-sync-input"].value, "", "input clears after a successful sync");
-  assert.match(els["lt-manual-sync-status"].textContent, /Synced/);
-});
-
-test("manual paste-to-sync routes a valid Matterport URL through the Host send path", () => {
-  const spy = { teleport: [], share: [] };
-  const { els } = runGlueWith(() => makeConnectedController("agent", spy));
-  els["lt-manual-sync-input"].value = "https://my.matterport.com/show/?m=abc&ss=7";
-  els["lt-manual-sync-btn"].fire("click");
-  assert.deepEqual(
-    spy.teleport,
-    [["7", ""]],
-    "host should teleport the guest to the parsed location",
-  );
-  assert.deepEqual(spy.share, [], "host must not call shareLocationWithAgent");
-});
-
-test("manual paste-to-sync rejects an invalid URL without touching the controller", () => {
-  const spy = { teleport: [], share: [] };
-  const { els } = runGlueWith(() => makeConnectedController("visitor", spy));
-  els["lt-manual-sync-input"].value = "https://example.com/not-matterport";
-  els["lt-manual-sync-btn"].fire("click");
-  assert.deepEqual(spy.share, [], "invalid URL must not reach the controller");
-  assert.deepEqual(spy.teleport, []);
-  assert.match(els["lt-manual-sync-status"].textContent, /not a valid Matterport/);
-  assert.equal(
-    els["lt-manual-sync-input"].value,
-    "https://example.com/not-matterport",
-    "rejected input is preserved so the user can fix it",
-  );
-});
-
-test("manual paste-to-sync is inert until a tour is connected", () => {
-  const spy = { teleport: [], share: [] };
-  // withController:true uses the idle (disconnected) controller from runGlue.
-  const { els } = runGlue({ withController: true });
-  els["lt-manual-sync-input"].value =
-    "https://my.matterport.com/show/?m=abc&ss=9";
-  els["lt-manual-sync-btn"].fire("click");
-  assert.match(els["lt-manual-sync-status"].textContent, /host a tour first/i);
-  // The idle controller never records a send.
-  assert.ok(!spy.share.length && !spy.teleport.length);
-});
 
 // ── 5. Mobile pointer hardening (anno-input guard wired into the glue) ───
 // Connected controller + synchronous requestAnimationFrame so the rAF
@@ -695,20 +632,11 @@ test("fail closed without anno-input: Draw/Rope disabled, no permissive drawing"
   assert.doesNotThrow(() => canvas.fire("pointermove", touchEv(1, 200, 200)));
 });
 
-test("fail closed without anno-input: location sync stays fully functional", () => {
-  const { els, spy } = runGlueWithoutAnnoInput("visitor");
-  els["lt-manual-sync-input"].value =
-    "https://my.matterport.com/show/?m=abc&ss=42&sr=-1.5,2.25";
-  els["lt-manual-sync-btn"].fire("click");
-  assert.deepEqual(spy.share, [["42", "-1.5,2.25"]], "manual sync unaffected by the fail-closed state");
-});
-
 // ── 7. iOS clipboard isolation ────────────────────────────────────────────
 // On iOS/iPadOS WebKit, navigator.clipboard.readText() raises the native
 // Paste callout and interrupts annotation gestures. These tests prove the
 // ambient location-sync system performs ZERO automatic readText calls on
-// iOS-like navigators across every historical trigger, while the manual
-// paste fallback (which never touches the clipboard API) keeps working.
+// iOS-like navigators across every historical trigger.
 function clipboardReadSpy() {
   const calls = { readText: 0 };
   return {
@@ -852,9 +780,6 @@ test("iOS (iPhone): zero readText across stage entry, focus, visibility, and dra
   canvas.fire("pointermove", touchEv(1, 200, 200));
   canvas.fire("pointerup", touchEv(1, 200, 200));
   assert.equal(calls.readText, 0, "iOS must never auto-read the clipboard");
-  // Honest pill copy on iOS: the pill invites the explicit tap (the only
-  // sanctioned, user-gesture clipboard read) — never an ambient-sync claim.
-  assert.equal(pillLabel.textContent, "Sync copied view");
 });
 
 test("iOS (iPad desktop mode): zero readText from starting or joining a session", () => {
@@ -869,17 +794,6 @@ test("iOS (iPad desktop mode): zero readText from starting or joining a session"
   els["lt-join-btn"].fire("click");
   assert.equal(trackedCalls.join, "1234", "join reached the controller");
   assert.equal(calls.readText, 0, "preGrant probe must be disabled on iOS");
-});
-
-test("iOS: manual paste fallback still syncs without touching the clipboard API", () => {
-  const { calls, nav } = iphoneNav();
-  const spy = { teleport: [], share: [] };
-  const { els } = runGlueWithNav(nav, () => makeConnectedController("visitor", spy));
-  els["lt-manual-sync-input"].value =
-    "https://my.matterport.com/show/?m=abc&ss=42&sr=-1.5,2.25";
-  els["lt-manual-sync-btn"].fire("click");
-  assert.deepEqual(spy.share, [["42", "-1.5,2.25"]], "manual sync works on iOS");
-  assert.equal(calls.readText, 0, "manual sync reads the input field, never the clipboard");
 });
 
 test("desktop control: granted real-mouse stage entry reads; touch/pen never does", async () => {
@@ -1105,133 +1019,4 @@ test("the Atlas runtime spans are wrapped in bounded f3d sentinels", () => {
   const cfgIdx = src.indexOf("window.__ATLAS_LT_CONFIG=");
   const kernelIdx = src.indexOf("f3d:runtime-js:kernel BEGIN");
   assert.ok(cfgIdx !== -1 && kernelIdx !== -1 && cfgIdx < kernelIdx, "config stays outside the JS sentinels");
-});
-
-// ── 7. Mobile Sync View: explicit "Sync copied view" tap (iOS) ───────────
-// On iOS the loc-sync pill is an explicit tap-to-sync button. A clipboard read
-// happens ONLY from that click (a user gesture) — never from focus /
-// visibilitychange / pointerenter (ambientClipboardAllowed() === false on iOS).
-// Parity with the Builder family (tests/builder-mobile-sync.test.mjs).
-function makeIosClipboard(opts) {
-  return {
-    reads: 0,
-    _text: opts.clipText !== undefined ? opts.clipText : "",
-    _reject: !!opts.clipReject,
-    _h: Object.create(null),
-    readText() {
-      this.reads += 1;
-      return this._reject ? Promise.reject(new Error("NotAllowedError")) : Promise.resolve(this._text);
-    },
-    addEventListener(ev, fn) { (this._h[ev] || (this._h[ev] = [])).push(fn); },
-  };
-}
-function makeIdleController(spy) {
-  spy.teleport = spy.teleport || [];
-  spy.share = spy.share || [];
-  const state = {
-    role: "none", status: "idle", pin: null, peerId: null, error: null, isConnected: false,
-    remoteStream: null, incomingTeleportEvent: null, incomingPointerEvent: null,
-    incomingStrokeEvent: null, incomingClearEvent: null, incomingNavLockEvent: null,
-    incomingLocationShareEvent: null,
-  };
-  return {
-    getState: () => state, subscribe: () => () => {},
-    initializeAsAgent: () => Promise.resolve({ pin: "1234", peerId: "host" }),
-    joinAsVisitor: (pin) => Promise.resolve({ pin, peerId: "guest" }),
-    teleportVisitor: () => true, shareLocationWithAgent: () => true,
-    sendPointer: () => true, sendStrokeBegin: () => true, sendStrokePatch: () => true,
-    sendStrokeCommit: () => true, sendClear: () => true, sendNavLock: () => true, dispose: () => {},
-  };
-}
-function runAtlasSync(opts = {}) {
-  const role = opts.role || "visitor";
-  const spy = { teleport: [], share: [] };
-  const { els, document } = makeFakeDom();
-  const clip = makeIosClipboard(opts);
-  const navigator = {
-    userAgent:
-      "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1",
-    platform: "iPhone",
-    maxTouchPoints: 5,
-    clipboard: opts.noClipboard ? undefined : clip,
-  };
-  const window = {
-    __ATLAS_LT_CONFIG: {
-      accent: "#818cf8",
-      matterportBaseUrl: "https://my.matterport.com/show/?m=abc&play=1",
-      shareTitle: "Test Space",
-      stops: [],
-    },
-    _h: Object.create(null),
-    addEventListener(ev, fn) { (this._h[ev] || (this._h[ev] = [])).push(fn); },
-    removeEventListener() {},
-    requestAnimationFrame: (cb) => { cb(); return 0; },
-    devicePixelRatio: 2,
-    matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
-    location: { href: "https://example.com/test/" },
-  };
-  const controller = opts.connected === false ? makeIdleController(spy) : makeConnectedController(role, spy);
-  // eslint-disable-next-line no-new-func
-  const fn = new Function("window", "document", "navigator", "createLiveSession", "ResizeObserver", BODY);
-  fn(window, document, navigator, () => controller, undefined);
-  const fireWin = (ev) => (window._h[ev] || []).forEach((f) => f({}));
-  const fireDoc = (ev, payload) =>
-    (document._h[ev] || []).forEach((f) => f(Object.assign({ preventDefault() {} }, payload || {})));
-  return { els, spy, clip, fireWin, fireDoc };
-}
-const syncTick = () => new Promise((r) => setTimeout(r, 0));
-const ATLAS_VALID = "https://my.matterport.com/show/?m=ABCdef12345&ss=42&sr=-1.23,0.45";
-const atlasPillState = (h) => h.els["loc-sync"].getAttribute("data-state");
-
-test("Atlas iOS: explicit tap reads the clipboard ONCE and sends (visitor → shareLocationWithAgent)", async () => {
-  const h = runAtlasSync({ role: "visitor", clipText: ATLAS_VALID });
-  h.els["loc-sync"].fire("click", { preventDefault() {} });
-  assert.equal(atlasPillState(h), "reading", "tap shows the reading state immediately");
-  await syncTick();
-  assert.equal(h.clip.reads, 1, "exactly one clipboard read, from the click");
-  assert.deepEqual(h.spy.share, [["42", "-1.23,0.45"]]);
-  assert.equal(atlasPillState(h), "success");
-});
-
-test("Atlas iOS: explicit tap sends via teleportVisitor (agent)", async () => {
-  const h = runAtlasSync({ role: "agent", clipText: ATLAS_VALID });
-  h.els["loc-sync"].fire("click", { preventDefault() {} });
-  await syncTick();
-  assert.deepEqual(h.spy.teleport, [["42", "-1.23,0.45"]]);
-});
-
-test("Atlas iOS: ambient lifecycle events NEVER read the clipboard", () => {
-  const h = runAtlasSync({ role: "visitor", clipText: ATLAS_VALID });
-  h.fireWin("focus");
-  h.fireDoc("visibilitychange");
-  const lb = h.els["anno-letterbox-wrap"];
-  lb.fire("pointerenter", { pointerType: "mouse", preventDefault() {} });
-  lb.fire("pointerenter", { pointerType: "touch", preventDefault() {} });
-  assert.equal(h.clip.reads, 0, "ambient triggers must not read the clipboard on iOS");
-  assert.equal(h.spy.share.length + h.spy.teleport.length, 0);
-});
-
-test("Atlas iOS: non-Matterport / oversized clipboards are rejected (no transmit)", async () => {
-  const bad = runAtlasSync({ role: "visitor", clipText: "https://example.com/?ss=42&sr=1,2" });
-  bad.els["loc-sync"].fire("click", { preventDefault() {} });
-  await syncTick();
-  assert.equal(bad.spy.share.length, 0, "non-Matterport host is never transmitted");
-  assert.equal(atlasPillState(bad), "nolink");
-  const huge = runAtlasSync({ role: "visitor", clipText: "https://my.matterport.com/show/?m=a&ss=1&x=" + "9".repeat(2100) });
-  huge.els["loc-sync"].fire("click", { preventDefault() {} });
-  await syncTick();
-  assert.equal(huge.spy.share.length, 0, "a 2KB+ clipboard is rejected");
-});
-
-test("Atlas iOS: not-connected and read-denied surface honest states, never transmit", async () => {
-  const off = runAtlasSync({ role: "visitor", connected: false, clipText: ATLAS_VALID });
-  off.els["loc-sync"].fire("click", { preventDefault() {} });
-  await syncTick();
-  assert.equal(off.clip.reads, 0, "the connection guard precedes any clipboard read");
-  assert.equal(atlasPillState(off), "notconnected");
-  const denied = runAtlasSync({ role: "visitor", clipReject: true });
-  denied.els["loc-sync"].fire("click", { preventDefault() {} });
-  await syncTick();
-  assert.equal(denied.spy.share.length, 0);
-  assert.equal(atlasPillState(denied), "denied");
 });

@@ -117,9 +117,6 @@
   // True between a startVoice() that began a call and either a remote
   // stream arriving or the attempt dying — drives the retry re-enable.
   var voiceAttemptPending = false;
-  var manualSyncInput = document.getElementById("lt-manual-sync-input");
-  var manualSyncBtn = document.getElementById("lt-manual-sync-btn");
-  var manualSyncStatus = document.getElementById("lt-manual-sync-status");
   var voiceConnected = false;
 
   // ── Diagnostic milestones (P0 iPad crash instrumentation) ───────────
@@ -338,8 +335,6 @@
       } catch (_e) {}
     }
     hide(liveExtras);
-    if (manualSyncInput) manualSyncInput.value = "";
-    setManualStatus("");
     setVoiceStatus("", "off");
     voiceConnected = false;
     voiceAttemptPending = false;
@@ -1114,8 +1109,6 @@
   // ── Location sync (clipboard auto-share, both roles) ─────────────────
   var LOC_SYNC_POLL_THROTTLE_MS = 800;
   var LOC_SYNC_SUCCESS_RESET_MS = 1800;
-  var LOC_SYNC_TRANSIENT_RESET_MS = 2600;
-  var LOC_SYNC_READING_TIMEOUT_MS = 15000;
   var LOC_SYNC_TIPS_HIDE_DELAY_MS = 250;
   var SYNC_SUPPRESS_MS = 500;
   var locSyncLastPollTs = 0;
@@ -1128,19 +1121,10 @@
 
   var LOC_SYNC_LABELS = {
     idle: "Sync ready",
-    reading: "Reading copied link…",
     syncing: "Syncing…",
     success: "Synced",
-    nolink: "No location link copied",
-    denied: "Clipboard blocked — paste below",
-    notconnected: "Tour not connected yet",
     waiting: "Connecting…",
   };
-  // On iOS, ambient clipboard sync stays disabled (the Paste callout would
-  // interrupt annotation gestures), so the pill is instead an EXPLICIT
-  // tap-to-sync button — the one sanctioned, user-gesture clipboard read.
-  // The idle label invites that tap rather than implying ambient auto-sync.
-  if (IS_IOS_WEBKIT) LOC_SYNC_LABELS.idle = "Sync copied view";
 
   // Whether ANY ambient (non-manual) clipboard read may run right now.
   // Layered, all fail-closed:
@@ -1247,29 +1231,6 @@
       var cur = syncBtn ? syncBtn.getAttribute("data-state") : "idle";
       if (cur === "success") setPulseState("idle");
     }, LOC_SYNC_SUCCESS_RESET_MS);
-  }
-  // Resting label when nothing is in flight: "idle" inside a live tour,
-  // otherwise the dim "waiting" pill.
-  function restingSyncState() {
-    var s = session.getState();
-    return (s.role === "visitor" || s.role === "agent") && s.isConnected ? "idle" : "waiting";
-  }
-  // Show a transient info/error state (reading/nolink/denied/notconnected)
-  // then auto-revert to the resting state so the pill never sticks. "reading"
-  // gets a longer window because on iOS it spans the native Paste confirmation;
-  // the resolve/reject handlers below transition out of it well before then.
-  function setTransientState(name) {
-    setPulseState(name);
-    var ms = name === "reading" ? LOC_SYNC_READING_TIMEOUT_MS : LOC_SYNC_TRANSIENT_RESET_MS;
-    if (syncResetTimer) {
-      try {
-        clearTimeout(syncResetTimer);
-      } catch (_e) {}
-    }
-    syncResetTimer = setTimeout(function () {
-      var cur = syncBtn ? syncBtn.getAttribute("data-state") : "idle";
-      if (cur === name) setPulseState(restingSyncState());
-    }, ms);
   }
   function resetLocationSyncUi() {
     locSyncLastPollTs = 0;
@@ -1387,63 +1348,6 @@
     if (!queried) setVoiceStatus("Microphone ready — connecting voice…", "ok");
   }
 
-  function clipboardReadAvailable() {
-    return !!(
-      typeof navigator !== "undefined" &&
-      navigator.clipboard &&
-      typeof navigator.clipboard.readText === "function"
-    );
-  }
-
-  // ── Manual paste-to-sync fallback (Host + Guest) ─────────────────────
-  // When clipboard auto-read is blocked/unavailable, the user can paste
-  // Matterport's "Link to location" URL here. We parse it with the exact
-  // same parser the auto-sync poll uses and route it through the same
-  // attemptSendLocation() path, so Host and Guest behave identically.
-  function setManualStatus(msg) {
-    setText(manualSyncStatus, msg);
-  }
-  function handleManualSync() {
-    if (!manualSyncInput) return;
-    var raw = manualSyncInput.value || "";
-    if (!raw.trim()) {
-      setManualStatus("Paste a Matterport link first.");
-      return;
-    }
-    var parsed = parseMatterportLocationUrl(raw);
-    if (!parsed) {
-      setManualStatus("That is not a valid Matterport link to location.");
-      return;
-    }
-    var s = session.getState();
-    if ((s.role !== "visitor" && s.role !== "agent") || !s.isConnected) {
-      setManualStatus("Join or host a tour first, then sync.");
-      return;
-    }
-    setPulseState("syncing");
-    setManualStatus("Syncing…");
-    if (attemptSendLocation(parsed)) {
-      manualSyncInput.value = "";
-      setManualStatus("Synced.");
-      setTimeout(function () {
-        setManualStatus("");
-      }, 2500);
-    } else {
-      setManualStatus("Could not sync that link. Try again.");
-    }
-  }
-  if (manualSyncBtn) {
-    manualSyncBtn.addEventListener("click", handleManualSync);
-  }
-  if (manualSyncInput) {
-    manualSyncInput.addEventListener("keydown", function (e) {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        handleManualSync();
-      }
-    });
-  }
-
   // ── Enable voice (deferred-voice sessions; a direct user gesture) ────
   // The P0 rule: voice startup must never ride the connect transition on
   // iOS. The tap acquires the mic, answers a held offer (host) or places
@@ -1525,76 +1429,11 @@
     readClipboardAndSend();
   }
 
-  // ── Explicit "Sync copied view" tap (iOS only) ───────────────────────
-  // The ONE place a clipboard read may run on iOS: a DIRECT user gesture,
-  // never ambient. iOS surfaces its native Paste confirmation here, which is
-  // expected and explained by the "Reading copied link…" state — we never
-  // read silently, and never from focus/visibility/pointer/annotation events
-  // (ambientClipboardAllowed stays false on iOS). Desktop keeps the
-  // informational pill + ambient polling: a click there would steal keyboard
-  // focus from the iframe and break the visitor pressing U.
-  function explicitSyncTap() {
-    var s = session.getState();
-    if ((s.role !== "visitor" && s.role !== "agent") || !s.isConnected) {
-      setTransientState("notconnected");
-      return;
-    }
-    if (!clipboardReadAvailable()) {
-      // No Clipboard API at all — steer the user to the manual paste field.
-      setTransientState("denied");
-      return;
-    }
-    setTransientState("reading");
-    var p;
-    try {
-      p = navigator.clipboard.readText();
-    } catch (_e) {
-      setTransientState("denied");
-      return;
-    }
-    if (!p || typeof p.then !== "function") {
-      setTransientState("denied");
-      return;
-    }
-    p.then(
-      function (text) {
-        if (typeof text !== "string" || !text.trim()) {
-          setTransientState("nolink");
-          return;
-        }
-        var parsed = parseMatterportLocationUrl(text);
-        if (!parsed) {
-          setTransientState("nolink");
-          return;
-        }
-        setPulseState("syncing");
-        if (!attemptSendLocation(parsed)) setTransientState("notconnected");
-      },
-      function () {
-        // Read rejected: permission denied or the Paste prompt was dismissed.
-        setTransientState("denied");
-      },
-    );
-  }
-
   if (syncBtn) {
     syncBtn.addEventListener("mouseenter", showTips);
     syncBtn.addEventListener("mouseleave", scheduleHideTips);
     syncBtn.addEventListener("focus", showTips);
     syncBtn.addEventListener("blur", scheduleHideTips);
-  }
-  // iOS: turn the pill into an explicit tap-to-sync button. No ambient reads
-  // are bound on iOS, so this is the visitor/agent's path to share a view.
-  if (syncBtn && IS_IOS_WEBKIT) {
-    syncBtn.setAttribute("role", "button");
-    syncBtn.setAttribute("aria-label", "Sync the Matterport view you copied");
-    syncBtn.addEventListener("click", explicitSyncTap);
-    syncBtn.addEventListener("keydown", function (e) {
-      if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
-        e.preventDefault();
-        explicitSyncTap();
-      }
-    });
   }
   if (tipsEl) {
     tipsEl.addEventListener("mouseenter", showTips);
@@ -1908,19 +1747,10 @@
       // No annotation-canvas allocation here (P0 iPad fix): the buffer
       // is created lazily on first Draw/Rope use or first remote stroke,
       // never inside the already-heavy connect transition.
-      // Surface the live extras (voice status + manual sync fallback) and
-      // set initial voice / clipboard expectations.
+      // Surface the live extras (voice status) and set initial voice
+      // expectations.
       show(liveExtras);
       reportVoiceCapability();
-      if (!clipboardReadAvailable()) {
-        setManualStatus("Clipboard read is unavailable here — paste the Matterport link below to sync.");
-      } else if (IS_IOS_WEBKIT) {
-        // readText exists on iOS but ambient use is disabled by design;
-        // say so honestly instead of implying automatic sync.
-        setManualStatus("On iPhone or iPad, paste the Matterport link below to sync views.");
-      } else {
-        setManualStatus("");
-      }
       // Deferred voice (iOS): voice did not auto-start; offer the
       // explicit gesture-driven activation.
       if (IS_IOS_WEBKIT && enableVoiceBtn && !state.remoteStream) {
