@@ -54,10 +54,26 @@ test("published capabilities are a subset of the known registry (no typo-minting
   );
 });
 
-test("the known-capability registry covers exactly the three planned mobile capabilities", () => {
+test("the recognized-historical registry keeps the retired mobile capability identifiers", () => {
+  // Desktop-only decision (2026-06-09): these are never advertised again,
+  // but the Upgrade Center inspector must still parse them out of older /
+  // experimental packages, so they stay REGISTERED.
   assert.deepEqual(
     [...ATLAS_KNOWN_CAPABILITIES].sort(),
     ["mobile_annotations_v2", "mobile_view_sync_v2", "mobile_voice_v2"],
+  );
+});
+
+test("desktop-only policy: runtime is >= 2.1.0 and no mobile capability is advertised", () => {
+  const [maj, min] = ATLAS_RUNTIME_VERSION.split(".").map(Number);
+  assert.ok(
+    maj > 2 || (maj === 2 && min >= 1),
+    "the desktop-only gate + lazy PeerJS shipped in 2.1.0 — the version must never regress below it",
+  );
+  assert.deepEqual(
+    ATLAS_RUNTIME_CAPABILITIES,
+    [],
+    "current generators advertise no mobile collaboration capability",
   );
 });
 
@@ -198,4 +214,26 @@ test("the PeerJS tag is pinned to an exact version with an SRI integrity hash", 
     src.includes('crossorigin="anonymous"'),
     "SRI requires crossorigin=anonymous on a CDN script",
   );
+});
+
+test("both families ship the PeerJS dependency INERT (lazy desktop-only load)", () => {
+  for (const file of [
+    ["src", "lib", "atlas-live-tour.ts"],
+    ["src", "lib", "portal.functions.ts"],
+  ]) {
+    const src = read(...file);
+    const name = file[file.length - 1];
+    assert.ok(
+      src.includes('id="f3d-peerjs-loader"'),
+      `${name}: dep span must carry the f3d-peerjs-loader config`,
+    );
+    assert.ok(
+      src.includes('type="text/plain"'),
+      `${name}: the loader config must be inert (type=text/plain)`,
+    );
+    assert.ok(
+      !/<script[^>]*\ssrc="[^"]*peerjs/i.test(src),
+      `${name}: no executable peerjs <script src> may exist (lazy-load only)`,
+    );
+  }
 });

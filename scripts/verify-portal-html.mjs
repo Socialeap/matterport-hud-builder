@@ -628,6 +628,43 @@ function assertBuilderSentinels(src) {
 }
 
 /**
+ * Desktop-only Live Tour (runtime 2.1.0): the PeerJS dependency must ship
+ * INERT — a type="text/plain" loader config carrying the pinned URL + SRI
+ * inside the dep:peerjs sentinels — and the glue must carry the
+ * fail-closed collaboration gate (annoCollabEligible) plus the lazy
+ * intent-gated loader (ensurePeerJs). An executable peerjs <script src>
+ * anywhere in the template would re-introduce the mobile download.
+ */
+function assertDesktopOnlyCollabGate(src) {
+  const fail = (msg) => {
+    console.error("[verify-html] ❌ Desktop-only collab gate: " + msg);
+    process.exit(1);
+  };
+  const depBegin = src.indexOf("f3d:runtime-dep:peerjs BEGIN");
+  const depEnd = src.indexOf("f3d:runtime-dep:peerjs END");
+  if (depBegin === -1 || depEnd === -1) fail("dep:peerjs sentinels missing");
+  const depSpan = src.slice(depBegin, depEnd);
+  for (const needle of [
+    'id="f3d-peerjs-loader"',
+    'type="text/plain"',
+    'data-src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"',
+    'data-integrity="sha384-',
+    'data-crossorigin="anonymous"',
+  ]) {
+    if (!depSpan.includes(needle)) fail(`dep span must carry the inert loader config (${needle})`);
+  }
+  if (/<script[^>]*\ssrc="[^"]*peerjs/i.test(src)) {
+    fail("an executable peerjs <script src> must not exist anywhere (lazy-load only)");
+  }
+  for (const needle of ["annoCollabEligible", "ensurePeerJs(", "lazyPeerCtor"]) {
+    if (!src.includes(needle)) fail(`glue must reference ${needle}`);
+  }
+  console.log(
+    "[verify-html] ✅ Desktop-only collab gate: inert SRI-pinned PeerJS config + annoCollabEligible/ensurePeerJs present.",
+  );
+}
+
+/**
  * web-share must be delegated to the Builder Matterport iframe(s) so Matterport's
  * "Share → Current Location" can reach the iOS Share Sheet through the nested
  * frames. The Permissions-Policy default allowlist is 'self', so every cross-
@@ -667,6 +704,7 @@ function main() {
   assertRequiredStartupTokens(src);
   assertHudGateStartsClosed(src);
   assertBuilderSentinels(src);
+  assertDesktopOnlyCollabGate(src);
   assertMatterportWebShare(src);
   parseRuntimeIIFE(src);
 
