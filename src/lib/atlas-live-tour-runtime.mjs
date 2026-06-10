@@ -247,26 +247,45 @@
       var cross = cfg.getAttribute("data-crossorigin");
       if (cross) s.crossOrigin = cross;
       var done = false;
+      // Failure cleanup: clear the watchdog, detach handlers (so a late
+      // load/error from this dead element is doubly inert on top of the done
+      // guard), and remove the failed <script> from the DOM so a retry never
+      // stacks tags.
+      function cleanup() {
+        try {
+          clearTimeout(timer);
+        } catch (_e) {}
+        s.onload = null;
+        s.onerror = null;
+        try {
+          if (s.parentNode && typeof s.parentNode.removeChild === "function") {
+            s.parentNode.removeChild(s);
+          }
+        } catch (_e) {}
+      }
       var timer = setTimeout(function () {
         if (done) return;
         done = true;
+        cleanup();
         reject(new Error("PeerJS load timed out"));
       }, 12000);
       s.onload = function () {
         if (done) return;
         done = true;
-        try {
-          clearTimeout(timer);
-        } catch (_e) {}
-        if (typeof Peer === "function") resolve(true);
-        else reject(new Error("PeerJS loaded without a Peer global"));
+        if (typeof Peer === "function") {
+          try {
+            clearTimeout(timer);
+          } catch (_e) {}
+          resolve(true);
+        } else {
+          cleanup();
+          reject(new Error("PeerJS loaded without a Peer global"));
+        }
       };
       s.onerror = function () {
         if (done) return;
         done = true;
-        try {
-          clearTimeout(timer);
-        } catch (_e) {}
+        cleanup();
         reject(new Error("PeerJS failed to load"));
       };
       (document.head || document.documentElement).appendChild(s);

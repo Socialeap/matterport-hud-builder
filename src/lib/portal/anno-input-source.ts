@@ -9,8 +9,8 @@
 //
 // The injected helpers (createAnnoPointerGuard, annoCollectPoints,
 // annoClampDpr, annoBudgetDpr, annoIsIosWebKit, annoIsCoarsePointer,
-// annoBindViewportEvents) become plain locals inside that IIFE so the
-// Builder annotation glue can call them directly. This is the SAME module
+// annoCollabEligible, annoBindViewportEvents) become plain locals inside
+// that IIFE so the Builder annotation glue can call them directly. This is the SAME module
 // the Atlas live-tour runtime consumes, so the input state machine never
 // forks between the two presentation families.
 

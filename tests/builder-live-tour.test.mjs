@@ -528,3 +528,72 @@ test("PeerJS load failure surfaces a visible retry state and resets the dedupe",
   h.document.getElementById("lg-start-btn").fire("click", { preventDefault() {} });
   assert.equal(injected.length, 2, "the next click retries with a fresh load");
 });
+
+// A head that records parentNode + supports removeChild, so the failed-script
+// removal is observable (the injected[]-only heads above don't model detach).
+function trackingHead() {
+  const children = [];
+  const head = {
+    children,
+    appendChild(n) { n.parentNode = head; children.push(n); return n; },
+    removeChild(n) {
+      const i = children.indexOf(n);
+      if (i >= 0) children.splice(i, 1);
+      if (n.parentNode === head) n.parentNode = null;
+      return n;
+    },
+  };
+  return head;
+}
+
+test("a failed PeerJS load is removed from the DOM with handlers detached; retry injects exactly one fresh script", async () => {
+  const h = runGlue("agent");
+  const head = trackingHead();
+  h.document.head = head;
+  const cfg = h.document.getElementById("f3d-peerjs-loader");
+  cfg.attrs["data-src"] = "https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js";
+
+  h.document.getElementById("lg-start-btn").fire("click", { preventDefault() {} });
+  assert.equal(head.children.length, 1, "one script injected on Host intent");
+  const first = head.children[0];
+
+  first.onerror(new Error("network"));
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(head.children.length, 0, "the failed script is removed from the DOM");
+  assert.equal(first.parentNode, null, "the failed script is detached from its parent");
+  assert.equal(first.onload, null, "onload handler detached");
+  assert.equal(first.onerror, null, "onerror handler detached");
+
+  h.document.getElementById("lg-start-btn").fire("click", { preventDefault() {} });
+  assert.equal(head.children.length, 1, "retry injects exactly one fresh script (no stacking)");
+  assert.notStrictEqual(head.children[0], first, "retry uses a brand-new <script> element");
+});
+
+test("a timed-out PeerJS load is removed and ignores a late load; retry injects exactly one fresh script", async () => {
+  const h = runGlue("agent");
+  const head = trackingHead();
+  h.document.head = head;
+  const cfg = h.document.getElementById("f3d-peerjs-loader");
+  cfg.attrs["data-src"] = "https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js";
+
+  // Capture the loader's 12s watchdog without waiting on the wall clock.
+  const realSetTimeout = globalThis.setTimeout;
+  let watchdog = null;
+  globalThis.setTimeout = (cb, ms) => { if (ms === 12000) { watchdog = cb; return 4242; } return realSetTimeout(cb, ms); };
+  let first;
+  try {
+    h.document.getElementById("lg-start-btn").fire("click", { preventDefault() {} });
+    assert.equal(head.children.length, 1, "one script injected on Host intent");
+    assert.equal(typeof watchdog, "function", "the loader armed a 12s watchdog");
+    first = head.children[0];
+    watchdog(); // simulate the timeout firing
+    assert.equal(head.children.length, 0, "the timed-out script is removed from the DOM");
+    assert.equal(first.onload, null, "late load is inert: onload handler detached");
+  } finally {
+    globalThis.setTimeout = realSetTimeout;
+  }
+  await new Promise((r) => realSetTimeout(r, 0));
+  h.document.getElementById("lg-start-btn").fire("click", { preventDefault() {} });
+  assert.equal(head.children.length, 1, "retry injects exactly one fresh script (no stacking)");
+  assert.notStrictEqual(head.children[0], first, "retry uses a brand-new <script> element");
+});
