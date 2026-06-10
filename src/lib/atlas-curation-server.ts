@@ -356,7 +356,7 @@ function renderCuratedHtml(input: CuratedPackageInput): string {
 <meta name="description" content="${escapeHtml(desc)}" />
 <meta property="og:title" content="${title} — Frontiers3D" />
 <meta property="og:description" content="${escapeHtml(desc)}" />
-${buildRuntimeMetaTags()}
+${buildRuntimeMetaTags("atlas")}
 <style>
   *{box-sizing:border-box}
   /* overflow-x:hidden — the page must never scroll horizontally (it is a
@@ -427,7 +427,7 @@ ${liveTour.toolbarHtml}
 <main class="f3d-stage" id="viewer">
   <div id="anno-letterbox-wrap">
     <iframe id="matterport-frame" class="f3d-frame" src="${embedSrc}" title="${title} — 3D tour"
-      allow="xr-spatial-tracking; gyroscope; accelerometer; fullscreen; autoplay; clipboard-write"
+      allow="xr-spatial-tracking; gyroscope; accelerometer; fullscreen; autoplay; clipboard-write; web-share"
       allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe>
     ${liveTour.stageOverlayHtml}
   </div>
@@ -511,7 +511,7 @@ export function buildShowcaseFiles(input: CuratedPackageInput): Record<string, s
     // Upgrade Center compares runtime_version to detect outdated
     // packages; capabilities are acceptance-gated and may lag the
     // runtime version.
-    ...buildRuntimeManifestFields(),
+    ...buildRuntimeManifestFields("atlas"),
     curation_job_id: input.curationJobId,
     matterport_id: input.matterportId,
     issued_at: new Date().toISOString(),

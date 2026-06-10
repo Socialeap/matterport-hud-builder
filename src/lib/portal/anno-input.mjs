@@ -204,6 +204,49 @@ function annoIsCoarsePointer(win) {
   }
 }
 
+// Collaboration eligibility — the desktop-only Live Tour policy gate.
+// Live Tour / Explore Together (PeerJS, voice, view sync, collaborative
+// Draw / Focus Rope, session PIN) is a DESKTOP-ONLY product. Both family
+// glues call this ONCE at startup; ineligible pages remove every
+// collaboration affordance and never load PeerJS, construct a session,
+// or touch the mic/clipboard.
+//
+// Conservative, fail-closed (any error / missing API => ineligible):
+//   1. UA-Client-Hints says mobile                          -> ineligible
+//   2. Phone/tablet UA or platform markers                  -> ineligible
+//   3. iPadOS desktop mode (MacIntel + maxTouchPoints > 1,
+//      which also covers iPad with a keyboard/trackpad)     -> ineligible
+//   4. Primary pointer not fine, or no hover capability     -> ineligible
+//   5. Primary pointer coarse (belt-and-braces with 4)      -> ineligible
+// A Windows touchscreen laptop stays ELIGIBLE: its primary pointer is
+// fine + hover-capable and it carries no mobile identity, regardless of
+// maxTouchPoints. Viewport width is deliberately not an input.
+function annoCollabEligible(win, nav) {
+  try {
+    var w = win || (typeof window !== "undefined" ? window : null);
+    var n = nav || (typeof navigator !== "undefined" ? navigator : null);
+    if (!w || !n) return false;
+    if (n.userAgentData && n.userAgentData.mobile === true) return false;
+    var ua = typeof n.userAgent === "string" ? n.userAgent : "";
+    if (/Android|iPhone|iPod|iPad|Mobile|Silk|Kindle|Tablet/i.test(ua)) return false;
+    var p = typeof n.platform === "string" ? n.platform : "";
+    if (/iPhone|iPad|iPod/i.test(p)) return false;
+    if (p === "MacIntel" && typeof n.maxTouchPoints === "number" && n.maxTouchPoints > 1) {
+      return false;
+    }
+    if (typeof w.matchMedia !== "function") return false;
+    var fine = w.matchMedia("(pointer: fine)");
+    if (!fine || !fine.matches) return false;
+    var hover = w.matchMedia("(hover: hover)");
+    if (!hover || !hover.matches) return false;
+    var coarse = w.matchMedia("(pointer: coarse)");
+    if (coarse && coarse.matches) return false;
+    return true;
+  } catch (_e) {
+    return false;
+  }
+}
+
 // Bind the viewport-geometry events that a plain window `resize` listener
 // (and an element ResizeObserver) can miss on mobile: visualViewport
 // resize (iOS URL-bar collapse, keyboard, pinch-zoom UI) and
@@ -245,5 +288,6 @@ export {
   annoBudgetDpr,
   annoIsIosWebKit,
   annoIsCoarsePointer,
+  annoCollabEligible,
   annoBindViewportEvents,
 };

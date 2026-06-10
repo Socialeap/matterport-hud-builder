@@ -33,16 +33,58 @@
 
   var launchBtn = document.getElementById("lt-launch-btn");
 
+  // Desktop-only Live Tour: collaboration is gated by the shared fail-closed
+  // predicate from the anno-input kernel. Ineligible devices (phones,
+  // tablets, iPad even with a keyboard/trackpad, ambiguous touch-first
+  // environments) get EVERY collaboration affordance removed before any
+  // wiring: no PeerJS download, no session controller, no mic, no clipboard
+  // sync, no annotation surfaces, nothing focusable. Solo viewing, sharing,
+  // fullscreen and PWA behavior are untouched. Fails closed if the kernel
+  // is missing.
+  var COLLAB_ELIGIBLE =
+    typeof annoCollabEligible === "function" &&
+    annoCollabEligible(
+      typeof window !== "undefined" ? window : null,
+      typeof navigator !== "undefined" ? navigator : null,
+    );
+  if (!COLLAB_ELIGIBLE) {
+    var collabIds = [
+      "lt-launch-btn",
+      "lt-panel",
+      "anno-toolbar",
+      "anno-canvas",
+      "remote-pointer",
+      "lt-navlock",
+      "loc-sync",
+      "loc-sync-tips",
+      "lt-audio",
+    ];
+    for (var ci = 0; ci < collabIds.length; ci++) {
+      var cn = document.getElementById(collabIds[ci]);
+      if (!cn) continue;
+      if (cn.parentNode && typeof cn.parentNode.removeChild === "function") {
+        cn.parentNode.removeChild(cn);
+      } else {
+        cn.hidden = true;
+      }
+    }
+    return;
+  }
+
   // Hard guard: the controller factory is injected just above. If it is
   // missing (script assembly bug) the page must still work as a plain
   // tour — disable only the live-tour affordance.
   if (typeof createLiveSession !== "function") {
     if (launchBtn) {
       launchBtn.disabled = true;
+      launchBtn.hidden = false;
       launchBtn.setAttribute("title", "Live tour unavailable in this browser");
     }
     return;
   }
+  // Eligible desktop: reveal the launch button (ships hidden so ineligible
+  // devices never flash it before this glue runs).
+  if (launchBtn) launchBtn.hidden = false;
 
   var CONFIG =
     window.__ATLAS_LT_CONFIG && typeof window.__ATLAS_LT_CONFIG === "object"
@@ -117,9 +159,6 @@
   // True between a startVoice() that began a call and either a remote
   // stream arriving or the attempt dying — drives the retry re-enable.
   var voiceAttemptPending = false;
-  var manualSyncInput = document.getElementById("lt-manual-sync-input");
-  var manualSyncBtn = document.getElementById("lt-manual-sync-btn");
-  var manualSyncStatus = document.getElementById("lt-manual-sync-status");
   var voiceConnected = false;
 
   // ── Diagnostic milestones (P0 iPad crash instrumentation) ───────────
@@ -183,6 +222,83 @@
     } catch (_e) {}
   })();
 
+  // Lazy PeerJS (pinned + SRI, declared inert in the head dep span):
+  // downloaded ONLY when this eligible desktop user actually hosts or
+  // joins a tour. Concurrent Host/Join clicks share one promise; a
+  // failure or 12s timeout resets it so the next click retries, with the
+  // error surfaced on the role status line. The controller receives a
+  // forwarding constructor so it can be built now (network-inert) and
+  // still pick up the lazily-loaded Peer global at connect time.
+  var peerJsPromise = null;
+  function ensurePeerJs() {
+    if (typeof Peer === "function") return Promise.resolve(true);
+    if (peerJsPromise) return peerJsPromise;
+    peerJsPromise = new Promise(function (resolve, reject) {
+      var cfg = document.getElementById("f3d-peerjs-loader");
+      var src = cfg && typeof cfg.getAttribute === "function" ? cfg.getAttribute("data-src") : null;
+      if (!src) {
+        reject(new Error("PeerJS loader config missing"));
+        return;
+      }
+      var s = document.createElement("script");
+      s.src = src;
+      var integ = cfg.getAttribute("data-integrity");
+      if (integ) s.integrity = integ;
+      var cross = cfg.getAttribute("data-crossorigin");
+      if (cross) s.crossOrigin = cross;
+      var done = false;
+      // Failure cleanup: clear the watchdog, detach handlers (so a late
+      // load/error from this dead element is doubly inert on top of the done
+      // guard), and remove the failed <script> from the DOM so a retry never
+      // stacks tags.
+      function cleanup() {
+        try {
+          clearTimeout(timer);
+        } catch (_e) {}
+        s.onload = null;
+        s.onerror = null;
+        try {
+          if (s.parentNode && typeof s.parentNode.removeChild === "function") {
+            s.parentNode.removeChild(s);
+          }
+        } catch (_e) {}
+      }
+      var timer = setTimeout(function () {
+        if (done) return;
+        done = true;
+        cleanup();
+        reject(new Error("PeerJS load timed out"));
+      }, 12000);
+      s.onload = function () {
+        if (done) return;
+        done = true;
+        if (typeof Peer === "function") {
+          try {
+            clearTimeout(timer);
+          } catch (_e) {}
+          resolve(true);
+        } else {
+          cleanup();
+          reject(new Error("PeerJS loaded without a Peer global"));
+        }
+      };
+      s.onerror = function () {
+        if (done) return;
+        done = true;
+        cleanup();
+        reject(new Error("PeerJS failed to load"));
+      };
+      (document.head || document.documentElement).appendChild(s);
+    });
+    peerJsPromise.then(null, function () {
+      peerJsPromise = null;
+    });
+    return peerJsPromise;
+  }
+  function lazyPeerCtor(id) {
+    return new Peer(id);
+  }
+
   // Session factory: every (re)creation carries the same policy — voice
   // is DEFERRED on iOS (no automatic getUserMedia / AudioContext / media
   // call during the connect transition; see the Enable voice button) and
@@ -191,6 +307,7 @@
     return createLiveSession({
       deferVoice: IS_IOS_WEBKIT,
       onDiagnostic: markMilestone,
+      PeerCtor: lazyPeerCtor,
     });
   }
   var session = newSession();
@@ -338,8 +455,6 @@
       } catch (_e) {}
     }
     hide(liveExtras);
-    if (manualSyncInput) manualSyncInput.value = "";
-    setManualStatus("");
     setVoiceStatus("", "off");
     voiceConnected = false;
     voiceAttemptPending = false;
@@ -1130,11 +1245,6 @@
     success: "Synced",
     waiting: "Connecting…",
   };
-  // Honest copy on iOS: ambient clipboard sync is disabled there (Paste
-  // callout would interrupt annotation gestures), so the pill must not
-  // claim an ambient "Sync ready" that cannot happen. Manual paste is
-  // the supported path and works the same on both roles.
-  if (IS_IOS_WEBKIT) LOC_SYNC_LABELS.idle = "Manual view sync";
 
   // Whether ANY ambient (non-manual) clipboard read may run right now.
   // Layered, all fail-closed:
@@ -1356,63 +1466,6 @@
       queried = false;
     }
     if (!queried) setVoiceStatus("Microphone ready — connecting voice…", "ok");
-  }
-
-  function clipboardReadAvailable() {
-    return !!(
-      typeof navigator !== "undefined" &&
-      navigator.clipboard &&
-      typeof navigator.clipboard.readText === "function"
-    );
-  }
-
-  // ── Manual paste-to-sync fallback (Host + Guest) ─────────────────────
-  // When clipboard auto-read is blocked/unavailable, the user can paste
-  // Matterport's "Link to location" URL here. We parse it with the exact
-  // same parser the auto-sync poll uses and route it through the same
-  // attemptSendLocation() path, so Host and Guest behave identically.
-  function setManualStatus(msg) {
-    setText(manualSyncStatus, msg);
-  }
-  function handleManualSync() {
-    if (!manualSyncInput) return;
-    var raw = manualSyncInput.value || "";
-    if (!raw.trim()) {
-      setManualStatus("Paste a Matterport link first.");
-      return;
-    }
-    var parsed = parseMatterportLocationUrl(raw);
-    if (!parsed) {
-      setManualStatus("That is not a valid Matterport link to location.");
-      return;
-    }
-    var s = session.getState();
-    if ((s.role !== "visitor" && s.role !== "agent") || !s.isConnected) {
-      setManualStatus("Join or host a tour first, then sync.");
-      return;
-    }
-    setPulseState("syncing");
-    setManualStatus("Syncing…");
-    if (attemptSendLocation(parsed)) {
-      manualSyncInput.value = "";
-      setManualStatus("Synced.");
-      setTimeout(function () {
-        setManualStatus("");
-      }, 2500);
-    } else {
-      setManualStatus("Could not sync that link. Try again.");
-    }
-  }
-  if (manualSyncBtn) {
-    manualSyncBtn.addEventListener("click", handleManualSync);
-  }
-  if (manualSyncInput) {
-    manualSyncInput.addEventListener("keydown", function (e) {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        handleManualSync();
-      }
-    });
   }
 
   // ── Enable voice (deferred-voice sessions; a direct user gesture) ────
@@ -1701,12 +1754,23 @@
       hide(guestBlock);
       show(hostBlock);
       hostStartBtn.disabled = true;
-      setText(hostStatus, "Reserving session…");
+      setText(hostStatus, "Preparing Live Tour…");
       resetMilestoneLog();
+      // Pre-grant must stay synchronous inside the click — a
+      // then-callback is not a user gesture.
       preGrantClipboard();
-      session.initializeAsAgent().catch(function () {
-        // surfaced via subscribe()
-      });
+      ensurePeerJs().then(
+        function () {
+          setText(hostStatus, "Reserving session…");
+          session.initializeAsAgent().catch(function () {
+            // surfaced via subscribe()
+          });
+        },
+        function () {
+          hostStartBtn.disabled = false;
+          setText(hostStatus, "Live Tour could not load (network issue). Click Host to retry.");
+        },
+      );
     });
   }
 
@@ -1718,12 +1782,21 @@
         return;
       }
       joinBtn.disabled = true;
-      setText(guestStatus, "Connecting…");
+      setText(guestStatus, "Preparing Live Tour…");
       resetMilestoneLog();
       preGrantClipboard();
-      session.joinAsVisitor(pin).catch(function () {
-        // surfaced via subscribe()
-      });
+      ensurePeerJs().then(
+        function () {
+          setText(guestStatus, "Connecting…");
+          session.joinAsVisitor(pin).catch(function () {
+            // surfaced via subscribe()
+          });
+        },
+        function () {
+          joinBtn.disabled = false;
+          setText(guestStatus, "Live Tour could not load (network issue). Click Join to retry.");
+        },
+      );
     });
     pinInput.addEventListener("keydown", function (e) {
       if (e.key === "Enter") {
@@ -1814,19 +1887,10 @@
       // No annotation-canvas allocation here (P0 iPad fix): the buffer
       // is created lazily on first Draw/Rope use or first remote stroke,
       // never inside the already-heavy connect transition.
-      // Surface the live extras (voice status + manual sync fallback) and
-      // set initial voice / clipboard expectations.
+      // Surface the live extras (voice status) and set initial voice
+      // expectations.
       show(liveExtras);
       reportVoiceCapability();
-      if (!clipboardReadAvailable()) {
-        setManualStatus("Clipboard read is unavailable here — paste the Matterport link below to sync.");
-      } else if (IS_IOS_WEBKIT) {
-        // readText exists on iOS but ambient use is disabled by design;
-        // say so honestly instead of implying automatic sync.
-        setManualStatus("On iPhone or iPad, paste the Matterport link below to sync views.");
-      } else {
-        setManualStatus("");
-      }
       // Deferred voice (iOS): voice did not auto-start; offer the
       // explicit gesture-driven activation.
       if (IS_IOS_WEBKIT && enableVoiceBtn && !state.remoteStream) {

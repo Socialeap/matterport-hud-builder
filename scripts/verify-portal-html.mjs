@@ -553,6 +553,153 @@ function parseRuntimeIIFE(src) {
   }
 }
 
+/**
+ * U0: the Builder runtime spans (PeerJS dependency, runtime CSS, runtime
+ * markup, runtime JS kernel + glue) are wrapped in matched f3d:runtime
+ * BEGIN/END sentinels so a later single-file upgrade can splice them by exact
+ * byte range. This gate proves the boundaries are unambiguous AND that the
+ * splice can never touch preserved content:
+ *   - every expected span appears exactly once as BEGIN and once as END,
+ *   - BEGIN precedes its END,
+ *   - no unexpected/stray spans,
+ *   - ranges are disjoint or properly nested (never partially overlapping),
+ *   - the load-bearing presentation content/config/token plumbing lives
+ *     entirely OUTSIDE every runtime range.
+ * Malformed, duplicate, reordered, or overlapping markers fail the build.
+ */
+function assertBuilderSentinels(src) {
+  const EXPECTED = ["dep:peerjs", "css", "markup", "js:kernel", "js:glue"];
+  const fail = (msg) => {
+    console.error("[verify-html] ❌ Builder runtime sentinels: " + msg);
+    process.exit(1);
+  };
+  // Collect every f3d:runtime marker in source order.
+  const re = /f3d:runtime-([\w:.-]+?) (BEGIN|END)\b/g;
+  const found = [];
+  let m;
+  while ((m = re.exec(src)) !== null) {
+    found.push({ span: m[1], kind: m[2], offset: m.index });
+  }
+  for (const f of found) {
+    if (EXPECTED.indexOf(f.span) === -1) fail(`unexpected sentinel span "${f.span}"`);
+  }
+  // Exactly one BEGIN + one END per expected span, BEGIN before END.
+  const ranges = {};
+  for (const span of EXPECTED) {
+    const begins = found.filter((f) => f.span === span && f.kind === "BEGIN");
+    const ends = found.filter((f) => f.span === span && f.kind === "END");
+    if (begins.length !== 1) fail(`span "${span}" must have exactly one BEGIN (found ${begins.length})`);
+    if (ends.length !== 1) fail(`span "${span}" must have exactly one END (found ${ends.length})`);
+    if (begins[0].offset >= ends[0].offset) fail(`span "${span}" BEGIN must precede its END`);
+    ranges[span] = { a: begins[0].offset, b: ends[0].offset };
+  }
+  // Ranges must be disjoint or properly nested — never partially overlapping.
+  for (let i = 0; i < EXPECTED.length; i++) {
+    for (let j = i + 1; j < EXPECTED.length; j++) {
+      const x = ranges[EXPECTED[i]];
+      const y = ranges[EXPECTED[j]];
+      const disjoint = x.b < y.a || y.b < x.a;
+      const nested = (x.a < y.a && y.b < x.b) || (y.a < x.a && x.b < y.b);
+      if (!disjoint && !nested) fail(`spans "${EXPECTED[i]}" and "${EXPECTED[j]}" overlap improperly`);
+    }
+  }
+  // Load-bearing presentation content/config/tokens must live OUTSIDE every
+  // runtime range so the splice can never disturb them. (Conditional tokens
+  // may be absent for a given export — skip those.)
+  const SENSITIVE = [
+    'id="matterport-frame"',
+    "window.__PROTECTED_BLOB__",
+    "window.__configReady",
+    "window.__PRESENTATION_TOKEN__",
+    "window.__QA_DATABASE__",
+  ];
+  const insideAnyRange = (off) =>
+    EXPECTED.some((s) => off > ranges[s].a && off < ranges[s].b);
+  for (const tok of SENSITIVE) {
+    let idx = src.indexOf(tok);
+    while (idx !== -1) {
+      if (insideAnyRange(idx)) fail(`preserved content "${tok}" appears INSIDE a runtime range`);
+      idx = src.indexOf(tok, idx + 1);
+    }
+  }
+  console.log(
+    `[verify-html] ✅ Builder runtime sentinels: ${EXPECTED.length} spans — exactly-once, ordered, non-overlapping, content outside ranges.`,
+  );
+}
+
+/**
+ * Desktop-only Live Tour (runtime 2.1.0): the PeerJS dependency must ship
+ * INERT — a type="text/plain" loader config carrying the pinned URL + SRI
+ * inside the dep:peerjs sentinels — and the glue must carry the
+ * fail-closed collaboration gate (annoCollabEligible) plus the lazy
+ * intent-gated loader (ensurePeerJs). An executable peerjs <script src>
+ * anywhere in the template would re-introduce the mobile download.
+ */
+function assertDesktopOnlyCollabGate(src) {
+  const fail = (msg) => {
+    console.error("[verify-html] ❌ Desktop-only collab gate: " + msg);
+    process.exit(1);
+  };
+  const depBegin = src.indexOf("f3d:runtime-dep:peerjs BEGIN");
+  const depEnd = src.indexOf("f3d:runtime-dep:peerjs END");
+  if (depBegin === -1 || depEnd === -1) fail("dep:peerjs sentinels missing");
+  const depSpan = src.slice(depBegin, depEnd);
+  for (const needle of [
+    'id="f3d-peerjs-loader"',
+    'type="text/plain"',
+    'data-src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"',
+    'data-integrity="sha384-',
+    'data-crossorigin="anonymous"',
+  ]) {
+    if (!depSpan.includes(needle)) fail(`dep span must carry the inert loader config (${needle})`);
+  }
+  if (/<script[^>]*\ssrc="[^"]*peerjs/i.test(src)) {
+    fail("an executable peerjs <script src> must not exist anywhere (lazy-load only)");
+  }
+  for (const needle of ["annoCollabEligible", "ensurePeerJs(", "lazyPeerCtor"]) {
+    if (!src.includes(needle)) fail(`glue must reference ${needle}`);
+  }
+  console.log(
+    "[verify-html] ✅ Desktop-only collab gate: inert SRI-pinned PeerJS config + annoCollabEligible/ensurePeerJs present.",
+  );
+}
+
+/**
+ * The Builder Matterport iframe(s) must carry the COMPLETE permission set — the
+ * same one the curated Atlas iframe uses: motion (gyroscope/accelerometer),
+ * autoplay, clipboard-write (Matterport's own in-tour Copy), and web-share.
+ * web-share's Permissions-Policy default allowlist is 'self', so every cross-
+ * origin ancestor (the generated presentation → its Matterport iframe) must
+ * forward it for "Share → Current Location" to reach the iOS Share Sheet; it
+ * grants only navigator.share()/canShare() and cannot weaken the iOS ambient-
+ * clipboard isolation. Applies to the primary AND the ghost frame. Pinned here.
+ */
+function assertMatterportPermissions(src) {
+  const REQUIRED = [
+    "xr-spatial-tracking",
+    "gyroscope",
+    "accelerometer",
+    "fullscreen",
+    "autoplay",
+    "clipboard-write",
+    "web-share",
+  ];
+  for (const id of ["matterport-frame", "matterport-frame-ghost"]) {
+    const m = new RegExp('<iframe id="' + id + '"[^>]*?\\sallow="([^"]*)"').exec(src);
+    if (!m) {
+      console.error(`[verify-html] ❌ Matterport iframe gate: <iframe id="${id}"> with an allow= attribute not found.`);
+      process.exit(1);
+    }
+    const toks = m[1].split(";").map((t) => t.trim().toLowerCase());
+    const missing = REQUIRED.filter((r) => !toks.includes(r));
+    if (missing.length) {
+      console.error(`[verify-html] ❌ Matterport iframe gate: <iframe id="${id}"> allow is missing [${missing.join(", ")}] (saw "${m[1]}").`);
+      process.exit(1);
+    }
+  }
+  console.log("[verify-html] ✅ Matterport iframe(s) carry the full permission set incl. web-share (Share → Current Location → iOS Share Sheet).");
+}
+
 function main() {
   verifyAskRuntimeModules();
   parseAskRuntime();
@@ -568,6 +715,9 @@ function main() {
   assertNoMarkdownAutoLinks(src);
   assertRequiredStartupTokens(src);
   assertHudGateStartsClosed(src);
+  assertBuilderSentinels(src);
+  assertDesktopOnlyCollabGate(src);
+  assertMatterportPermissions(src);
   parseRuntimeIIFE(src);
 
   if (offenders.length === 0 && commentOffenders.length === 0) {

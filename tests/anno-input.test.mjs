@@ -22,6 +22,7 @@ import {
   annoBudgetDpr,
   annoIsIosWebKit,
   annoIsCoarsePointer,
+  annoCollabEligible,
   annoBindViewportEvents,
 } from "../src/lib/portal/anno-input.mjs";
 
@@ -265,6 +266,143 @@ test("annoIsCoarsePointer reflects the media query and fails closed", () => {
         throw new Error("blocked");
       },
     }),
+    false,
+  );
+});
+
+// ── 5b. Collaboration eligibility (desktop-only Live Tour policy) ─────────
+// One shared predicate, fail-closed. Known phones/tablets and iPadOS desktop
+// mode (incl. iPad + keyboard/trackpad) are ineligible; a Windows touchscreen
+// laptop with a fine primary pointer stays eligible; ambiguous touch-primary
+// environments fail closed.
+function mmWin(queries) {
+  return {
+    matchMedia: (q) => ({ matches: !!queries[q] }),
+  };
+}
+const DESKTOP_MM = { "(pointer: fine)": true, "(hover: hover)": true, "(pointer: coarse)": false };
+const TOUCH_PRIMARY_MM = { "(pointer: fine)": false, "(hover: hover)": false, "(pointer: coarse)": true };
+
+test("collab eligibility: ordinary desktops are eligible (Windows, macOS)", () => {
+  assert.equal(
+    annoCollabEligible(mmWin(DESKTOP_MM), {
+      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0 Safari/537.36",
+      platform: "Win32",
+      maxTouchPoints: 0,
+      userAgentData: { mobile: false },
+    }),
+    true,
+  );
+  assert.equal(
+    annoCollabEligible(mmWin(DESKTOP_MM), {
+      userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/17.4 Safari/605.1.15",
+      platform: "MacIntel",
+      maxTouchPoints: 0,
+    }),
+    true,
+    "a real Mac (no touch points) is eligible",
+  );
+});
+
+test("collab eligibility: a Windows touchscreen laptop stays eligible (fine primary pointer + hover)", () => {
+  assert.equal(
+    annoCollabEligible(mmWin(DESKTOP_MM), {
+      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0 Safari/537.36",
+      platform: "Win32",
+      maxTouchPoints: 10,
+      userAgentData: { mobile: false },
+    }),
+    true,
+    "maxTouchPoints alone must not disqualify a desktop",
+  );
+});
+
+test("collab eligibility: Android phones and tablets are ineligible", () => {
+  assert.equal(
+    annoCollabEligible(mmWin(TOUCH_PRIMARY_MM), {
+      userAgent: "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/126.0 Mobile Safari/537.36",
+      platform: "Linux armv81",
+      maxTouchPoints: 5,
+      userAgentData: { mobile: true },
+    }),
+    false,
+  );
+  // Android tablet UAs drop the Mobile token — the Android marker still catches it.
+  assert.equal(
+    annoCollabEligible(mmWin(TOUCH_PRIMARY_MM), {
+      userAgent: "Mozilla/5.0 (Linux; Android 14; SM-X910) AppleWebKit/537.36 Chrome/126.0 Safari/537.36",
+      platform: "Linux armv81",
+      maxTouchPoints: 10,
+    }),
+    false,
+  );
+});
+
+test("collab eligibility: iPhone and standard iPad are ineligible", () => {
+  assert.equal(
+    annoCollabEligible(mmWin(TOUCH_PRIMARY_MM), {
+      userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1",
+      platform: "iPhone",
+      maxTouchPoints: 5,
+    }),
+    false,
+  );
+  assert.equal(
+    annoCollabEligible(mmWin(TOUCH_PRIMARY_MM), {
+      userAgent: "Mozilla/5.0 (iPad; CPU OS 17_4 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1",
+      platform: "iPad",
+      maxTouchPoints: 5,
+    }),
+    false,
+  );
+});
+
+test("collab eligibility: iPad desktop mode (incl. keyboard/trackpad) fails closed even with a fine pointer", () => {
+  // iPadOS desktop mode masquerades as macOS, and a paired trackpad can
+  // report (pointer: fine) — the MacIntel + maxTouchPoints rule must win.
+  assert.equal(
+    annoCollabEligible(mmWin(DESKTOP_MM), {
+      userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/17.4 Safari/605.1.15",
+      platform: "MacIntel",
+      maxTouchPoints: 5,
+    }),
+    false,
+  );
+});
+
+test("collab eligibility: ambiguous touch-primary environments fail closed", () => {
+  // A 2-in-1 in tablet mode: no mobile identity, but the primary pointer
+  // is coarse / hover is unavailable.
+  assert.equal(
+    annoCollabEligible(mmWin(TOUCH_PRIMARY_MM), {
+      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0 Safari/537.36",
+      platform: "Win32",
+      maxTouchPoints: 10,
+    }),
+    false,
+  );
+  // Fine pointer but no hover (e.g. some kiosk/stylus panels) → ineligible.
+  assert.equal(
+    annoCollabEligible(
+      mmWin({ "(pointer: fine)": true, "(hover: hover)": false, "(pointer: coarse)": false }),
+      { userAgent: "Mozilla/5.0 (X11; Linux x86_64)", platform: "Linux x86_64", maxTouchPoints: 1 },
+    ),
+    false,
+  );
+});
+
+test("collab eligibility: missing or throwing APIs fail closed", () => {
+  assert.equal(annoCollabEligible(null, null), false);
+  assert.equal(annoCollabEligible({}, { userAgent: "", platform: "Win32" }), false, "no matchMedia → ineligible");
+  assert.equal(
+    annoCollabEligible(
+      {
+        matchMedia: () => {
+          throw new Error("blocked");
+        },
+      },
+      { userAgent: "Mozilla/5.0 (Windows NT 10.0)", platform: "Win32", maxTouchPoints: 0 },
+    ),
     false,
   );
 });

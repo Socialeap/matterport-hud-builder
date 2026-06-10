@@ -102,13 +102,16 @@ export interface AtlasLiveTourAssets {
 }
 
 const PEERJS_TAG =
-  '<!-- PeerJS UMD bundle (deferred CDN load). Consumed by the Explore\n' +
-  "     Together controller below. Failure to load is tolerated: the\n" +
-  "     controller surfaces a friendly error state and the static tour\n" +
-  "     keeps working. Pinned to an exact version with SRI so the CDN\n" +
-  "     cannot serve different bytes than the ones this package was\n" +
-  '     generated against (floating @1.5 had no integrity check). -->\n' +
-  '<script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js" integrity="sha384-x0YgkOr/3UOZP2CRDxGW9e0Q+2Qjyr3uJrm4xU32Y7ZCNAo7Cc7bjhrZMi/dwczu" crossorigin="anonymous" defer></script>';
+  "<!-- PeerJS UMD bundle config (lazy CDN load). Pinned to an exact\n" +
+  "     version with SRI so the CDN cannot serve different bytes than the\n" +
+  '     ones this package was generated against. type="text/plain" keeps\n' +
+  "     it inert: the Explore Together glue reads data-src/data-integrity\n" +
+  "     and injects a real script tag on first Host/Join intent, desktop\n" +
+  "     only (Live Tour is a desktop-only product; see annoCollabEligible).\n" +
+  "     Phones and tablets never download or execute PeerJS. Load failure\n" +
+  "     is tolerated: the controller surfaces a friendly error state and\n" +
+  "     the static tour keeps working. -->\n" +
+  '<script type="text/plain" id="f3d-peerjs-loader" data-src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js" data-integrity="sha384-x0YgkOr/3UOZP2CRDxGW9e0Q+2Qjyr3uJrm4xU32Y7ZCNAo7Cc7bjhrZMi/dwczu" data-crossorigin="anonymous"></script>';
 
 /** JSON for safe embedding inside an inline <script> (no </script> / U+2028/9 breakout). */
 function safeJsonForScript(value: unknown): string {
@@ -214,10 +217,6 @@ body.live-tour-active.live-tour-host #anno-letterbox-wrap.follow-pulse{box-shado
 .lt-voice-status[data-voice="ok"]::before{background:#22c55e}
 .lt-voice-status[data-voice="live"]::before{background:#22c55e;animation:lt-pulse 1.6s ease-in-out infinite}
 .lt-voice-status[data-voice="warn"]::before{background:#f59e0b}
-.lt-manual-sync{display:flex;flex-direction:column;gap:6px}
-.lt-manual-input{flex:1;min-width:0;border:1px solid rgba(255,255,255,0.16);border-radius:8px;background:rgba(255,255,255,0.07);color:#fff;padding:9px 10px;font:500 13px/1.2 inherit;font-family:inherit;outline:none}
-.lt-manual-input:focus{border-color:var(--lt-accent)}
-.lt-manual-input::placeholder{color:rgba(255,255,255,0.35)}
 
 @media(max-width:640px){
   #lt-panel{top:auto;bottom:0;right:0;left:0;width:100%;height:auto;max-height:82vh;border-radius:16px 16px 0 0;border-left:none;border-top:1px solid rgba(255,255,255,0.08);transform:translateY(100%);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -272,7 +271,7 @@ body.live-tour-active #loc-sync-tips:not([hidden]){display:flex}
 `.trim();
 }
 
-const LAUNCH_BUTTON_HTML = `<button id="lt-launch-btn" type="button" class="f3d-iconbtn lt-launch" aria-expanded="false" aria-controls="lt-panel" title="Explore Together — live shared tour with voice, synced views & annotations">
+const LAUNCH_BUTTON_HTML = `<button id="lt-launch-btn" type="button" class="f3d-iconbtn lt-launch" hidden aria-expanded="false" aria-controls="lt-panel" title="Explore Together — live shared tour with voice, synced views & annotations">
   <span class="lt-dot" aria-hidden="true"></span>
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
   <span class="lt-launch-label">Explore Together</span>
@@ -346,14 +345,6 @@ const PANEL_HTML = `<aside id="lt-panel" class="lt-panel" role="dialog" aria-lab
     <div id="lt-live-extras" hidden>
       <button id="lt-enable-voice-btn" type="button" class="lt-btn primary" hidden>Enable voice</button>
       <div id="lt-voice-status" class="lt-voice-status" data-voice="off" aria-live="polite"></div>
-      <div class="lt-manual-sync">
-        <label class="lt-field-label" for="lt-manual-sync-input">Sync not working? Paste the Matterport &ldquo;Link to location&rdquo;</label>
-        <div class="lt-join-row">
-          <input id="lt-manual-sync-input" class="lt-manual-input" type="text" inputmode="url" placeholder="Paste the Matterport link to location" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Matterport link to location" />
-          <button id="lt-manual-sync-btn" type="button" class="lt-btn primary">Sync</button>
-        </div>
-        <div id="lt-manual-sync-status" class="lt-mini-status" aria-live="polite"></div>
-      </div>
     </div>
   </div>
 </aside>
@@ -364,12 +355,24 @@ const PANEL_HTML = `<aside id="lt-panel" class="lt-panel" role="dialog" aria-lab
 </div>
 <div id="loc-sync-tips" role="status" aria-live="polite" hidden>
   <ol>
-    <li>Click <strong>Allow</strong> if a clipboard prompt appears.</li>
-    <li>Position the view you want to share.</li>
-    <li>Press <kbd>U</kbd> then <strong>Copy to clipboard</strong> to sync.</li>
+    <li>In Matterport, open <strong>Share &rarr; Current Location</strong> and tap <strong>Copy</strong>.</li>
+    <li>Press <kbd>U</kbd> then <strong>Copy to clipboard</strong> &mdash; it syncs automatically.</li>
   </ol>
 </div>
 <audio id="lt-audio" autoplay playsinline></audio>`;
+
+// Bounded sentinels around the replaceable runtime spans so a future
+// upgrade can locate them by exact byte range. Inert comments that wrap
+// ONLY runtime spans, never presentation content. (Atlas packages are
+// normally regenerated from curation source rather than byte-patched, but
+// the markers keep the package self-describing and consistent with the
+// Builder family. Comment syntax matches each host context.)
+function f3dWrapHtml(span: string, inner: string): string {
+  return `<!-- f3d:runtime-${span} BEGIN v=1 family=atlas -->\n${inner}\n<!-- f3d:runtime-${span} END -->`;
+}
+function f3dWrapCss(inner: string): string {
+  return `/* f3d:runtime-css BEGIN v=1 family=atlas */\n${inner}\n/* f3d:runtime-css END */`;
+}
 
 /**
  * Assemble all Live Tour shell pieces for a curated showcase page. The caller
@@ -388,19 +391,23 @@ export function renderAtlasLiveTour(opts: AtlasLiveTourOptions): AtlasLiveTourAs
   const scriptHtml = `<script>window.__ATLAS_LT_CONFIG=${safeJsonForScript(config)};</script>
 <script>
 (function(){
+// f3d:runtime-js:kernel BEGIN v=1 family=atlas
 ${runtimeJs}
 ${annoInputJs}
+// f3d:runtime-js:kernel END
+// f3d:runtime-js:glue BEGIN v=1 family=atlas
 ${glueJs}
+// f3d:runtime-js:glue END
 })();
 </script>`;
 
   return {
-    headHtml: PEERJS_TAG,
-    css: buildCss(opts.accentColor),
+    headHtml: f3dWrapHtml("dep:peerjs", PEERJS_TAG),
+    css: f3dWrapCss(buildCss(opts.accentColor)),
     launchButtonHtml: LAUNCH_BUTTON_HTML,
-    stageOverlayHtml: STAGE_OVERLAY_HTML,
-    toolbarHtml: TOOLBAR_HTML,
-    bodyHtml: PANEL_HTML,
+    stageOverlayHtml: f3dWrapHtml("markup:stage", STAGE_OVERLAY_HTML),
+    toolbarHtml: f3dWrapHtml("markup:toolbar", TOOLBAR_HTML),
+    bodyHtml: f3dWrapHtml("markup:panel", PANEL_HTML),
     scriptHtml,
   };
 }
