@@ -33,16 +33,58 @@
 
   var launchBtn = document.getElementById("lt-launch-btn");
 
+  // Desktop-only Live Tour: collaboration is gated by the shared fail-closed
+  // predicate from the anno-input kernel. Ineligible devices (phones,
+  // tablets, iPad even with a keyboard/trackpad, ambiguous touch-first
+  // environments) get EVERY collaboration affordance removed before any
+  // wiring: no PeerJS download, no session controller, no mic, no clipboard
+  // sync, no annotation surfaces, nothing focusable. Solo viewing, sharing,
+  // fullscreen and PWA behavior are untouched. Fails closed if the kernel
+  // is missing.
+  var COLLAB_ELIGIBLE =
+    typeof annoCollabEligible === "function" &&
+    annoCollabEligible(
+      typeof window !== "undefined" ? window : null,
+      typeof navigator !== "undefined" ? navigator : null,
+    );
+  if (!COLLAB_ELIGIBLE) {
+    var collabIds = [
+      "lt-launch-btn",
+      "lt-panel",
+      "anno-toolbar",
+      "anno-canvas",
+      "remote-pointer",
+      "lt-navlock",
+      "loc-sync",
+      "loc-sync-tips",
+      "lt-audio",
+    ];
+    for (var ci = 0; ci < collabIds.length; ci++) {
+      var cn = document.getElementById(collabIds[ci]);
+      if (!cn) continue;
+      if (cn.parentNode && typeof cn.parentNode.removeChild === "function") {
+        cn.parentNode.removeChild(cn);
+      } else {
+        cn.hidden = true;
+      }
+    }
+    return;
+  }
+
   // Hard guard: the controller factory is injected just above. If it is
   // missing (script assembly bug) the page must still work as a plain
   // tour — disable only the live-tour affordance.
   if (typeof createLiveSession !== "function") {
     if (launchBtn) {
       launchBtn.disabled = true;
+      launchBtn.hidden = false;
       launchBtn.setAttribute("title", "Live tour unavailable in this browser");
     }
     return;
   }
+  // Eligible desktop: reveal the launch button (ships hidden so ineligible
+  // devices never flash it before this glue runs).
+  if (launchBtn) launchBtn.hidden = false;
 
   var CONFIG =
     window.__ATLAS_LT_CONFIG && typeof window.__ATLAS_LT_CONFIG === "object"
@@ -180,6 +222,64 @@
     } catch (_e) {}
   })();
 
+  // Lazy PeerJS (pinned + SRI, declared inert in the head dep span):
+  // downloaded ONLY when this eligible desktop user actually hosts or
+  // joins a tour. Concurrent Host/Join clicks share one promise; a
+  // failure or 12s timeout resets it so the next click retries, with the
+  // error surfaced on the role status line. The controller receives a
+  // forwarding constructor so it can be built now (network-inert) and
+  // still pick up the lazily-loaded Peer global at connect time.
+  var peerJsPromise = null;
+  function ensurePeerJs() {
+    if (typeof Peer === "function") return Promise.resolve(true);
+    if (peerJsPromise) return peerJsPromise;
+    peerJsPromise = new Promise(function (resolve, reject) {
+      var cfg = document.getElementById("f3d-peerjs-loader");
+      var src = cfg && typeof cfg.getAttribute === "function" ? cfg.getAttribute("data-src") : null;
+      if (!src) {
+        reject(new Error("PeerJS loader config missing"));
+        return;
+      }
+      var s = document.createElement("script");
+      s.src = src;
+      var integ = cfg.getAttribute("data-integrity");
+      if (integ) s.integrity = integ;
+      var cross = cfg.getAttribute("data-crossorigin");
+      if (cross) s.crossOrigin = cross;
+      var done = false;
+      var timer = setTimeout(function () {
+        if (done) return;
+        done = true;
+        reject(new Error("PeerJS load timed out"));
+      }, 12000);
+      s.onload = function () {
+        if (done) return;
+        done = true;
+        try {
+          clearTimeout(timer);
+        } catch (_e) {}
+        if (typeof Peer === "function") resolve(true);
+        else reject(new Error("PeerJS loaded without a Peer global"));
+      };
+      s.onerror = function () {
+        if (done) return;
+        done = true;
+        try {
+          clearTimeout(timer);
+        } catch (_e) {}
+        reject(new Error("PeerJS failed to load"));
+      };
+      (document.head || document.documentElement).appendChild(s);
+    });
+    peerJsPromise.then(null, function () {
+      peerJsPromise = null;
+    });
+    return peerJsPromise;
+  }
+  function lazyPeerCtor(id) {
+    return new Peer(id);
+  }
+
   // Session factory: every (re)creation carries the same policy — voice
   // is DEFERRED on iOS (no automatic getUserMedia / AudioContext / media
   // call during the connect transition; see the Enable voice button) and
@@ -188,6 +288,7 @@
     return createLiveSession({
       deferVoice: IS_IOS_WEBKIT,
       onDiagnostic: markMilestone,
+      PeerCtor: lazyPeerCtor,
     });
   }
   var session = newSession();
@@ -1634,12 +1735,23 @@
       hide(guestBlock);
       show(hostBlock);
       hostStartBtn.disabled = true;
-      setText(hostStatus, "Reserving session…");
+      setText(hostStatus, "Preparing Live Tour…");
       resetMilestoneLog();
+      // Pre-grant must stay synchronous inside the click — a
+      // then-callback is not a user gesture.
       preGrantClipboard();
-      session.initializeAsAgent().catch(function () {
-        // surfaced via subscribe()
-      });
+      ensurePeerJs().then(
+        function () {
+          setText(hostStatus, "Reserving session…");
+          session.initializeAsAgent().catch(function () {
+            // surfaced via subscribe()
+          });
+        },
+        function () {
+          hostStartBtn.disabled = false;
+          setText(hostStatus, "Live Tour could not load (network issue). Click Host to retry.");
+        },
+      );
     });
   }
 
@@ -1651,12 +1763,21 @@
         return;
       }
       joinBtn.disabled = true;
-      setText(guestStatus, "Connecting…");
+      setText(guestStatus, "Preparing Live Tour…");
       resetMilestoneLog();
       preGrantClipboard();
-      session.joinAsVisitor(pin).catch(function () {
-        // surfaced via subscribe()
-      });
+      ensurePeerJs().then(
+        function () {
+          setText(guestStatus, "Connecting…");
+          session.joinAsVisitor(pin).catch(function () {
+            // surfaced via subscribe()
+          });
+        },
+        function () {
+          joinBtn.disabled = false;
+          setText(guestStatus, "Live Tour could not load (network issue). Click Join to retry.");
+        },
+      );
     });
     pinInput.addEventListener("keydown", function (e) {
       if (e.key === "Enter") {

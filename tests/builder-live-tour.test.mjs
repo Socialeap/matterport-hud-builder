@@ -523,7 +523,7 @@ test("PeerJS load failure surfaces a visible retry state and resets the dedupe",
   assert.equal(injected.length, 1);
   injected[0].onerror(new Error("network"));
   await new Promise((r) => setTimeout(r, 0));
-  assert.match(h.document.getElementById("lg-agent-status").textContent, /couldn't load/i, "failure is visible");
+  assert.match(h.document.getElementById("lg-agent-status").textContent, /could not load/i, "failure is visible");
   assert.equal(h.document.getElementById("lg-start-btn").disabled, false, "Start re-enables for a retry");
   h.document.getElementById("lg-start-btn").fire("click", { preventDefault() {} });
   assert.equal(injected.length, 2, "the next click retries with a fresh load");

@@ -6317,7 +6317,7 @@ if(frame){
         });
       },function(){
         joinBtn.disabled=false;
-        if(visitorStatus) visitorStatus.textContent="Live Tour couldn't load (network issue). Click Join to retry.";
+        if(visitorStatus) visitorStatus.textContent="Live Tour could not load (network issue). Click Join to retry.";
       });
     });
     pinInput.addEventListener("keydown",function(e){
@@ -6355,7 +6355,7 @@ if(frame){
         });
       },function(){
         startBtn.disabled=false;
-        if(agentStatus) agentStatus.textContent="Live Tour couldn't load (network issue). Click Start to retry.";
+        if(agentStatus) agentStatus.textContent="Live Tour could not load (network issue). Click Start to retry.";
       });
     });
   }

@@ -102,13 +102,16 @@ export interface AtlasLiveTourAssets {
 }
 
 const PEERJS_TAG =
-  '<!-- PeerJS UMD bundle (deferred CDN load). Consumed by the Explore\n' +
-  "     Together controller below. Failure to load is tolerated: the\n" +
-  "     controller surfaces a friendly error state and the static tour\n" +
-  "     keeps working. Pinned to an exact version with SRI so the CDN\n" +
-  "     cannot serve different bytes than the ones this package was\n" +
-  '     generated against (floating @1.5 had no integrity check). -->\n' +
-  '<script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js" integrity="sha384-x0YgkOr/3UOZP2CRDxGW9e0Q+2Qjyr3uJrm4xU32Y7ZCNAo7Cc7bjhrZMi/dwczu" crossorigin="anonymous" defer></script>';
+  "<!-- PeerJS UMD bundle config (lazy CDN load). Pinned to an exact\n" +
+  "     version with SRI so the CDN cannot serve different bytes than the\n" +
+  '     ones this package was generated against. type="text/plain" keeps\n' +
+  "     it inert: the Explore Together glue reads data-src/data-integrity\n" +
+  "     and injects a real script tag on first Host/Join intent, desktop\n" +
+  "     only (Live Tour is a desktop-only product; see annoCollabEligible).\n" +
+  "     Phones and tablets never download or execute PeerJS. Load failure\n" +
+  "     is tolerated: the controller surfaces a friendly error state and\n" +
+  "     the static tour keeps working. -->\n" +
+  '<script type="text/plain" id="f3d-peerjs-loader" data-src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js" data-integrity="sha384-x0YgkOr/3UOZP2CRDxGW9e0Q+2Qjyr3uJrm4xU32Y7ZCNAo7Cc7bjhrZMi/dwczu" data-crossorigin="anonymous"></script>';
 
 /** JSON for safe embedding inside an inline <script> (no </script> / U+2028/9 breakout). */
 function safeJsonForScript(value: unknown): string {
@@ -268,7 +271,7 @@ body.live-tour-active #loc-sync-tips:not([hidden]){display:flex}
 `.trim();
 }
 
-const LAUNCH_BUTTON_HTML = `<button id="lt-launch-btn" type="button" class="f3d-iconbtn lt-launch" aria-expanded="false" aria-controls="lt-panel" title="Explore Together — live shared tour with voice, synced views & annotations">
+const LAUNCH_BUTTON_HTML = `<button id="lt-launch-btn" type="button" class="f3d-iconbtn lt-launch" hidden aria-expanded="false" aria-controls="lt-panel" title="Explore Together — live shared tour with voice, synced views & annotations">
   <span class="lt-dot" aria-hidden="true"></span>
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
   <span class="lt-launch-label">Explore Together</span>

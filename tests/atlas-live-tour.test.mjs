@@ -95,6 +95,9 @@ test("glue wires the reused controller API + Atlas config hook", () => {
     // iOS clipboard isolation + WebKit gesture defenses.
     "annoIsIosWebKit",
     "ambientClipboardAllowed",
+    "annoCollabEligible", // desktop-only collaboration gate (fail-closed)
+    "ensurePeerJs", // lazy SRI-pinned PeerJS loader (intent-gated)
+    "f3d-peerjs-loader", // inert dep-span config the loader reads
     "clipboard-read", // Permissions API query — never a readText() probe
     "contextmenu",
     "selectstart",
@@ -256,15 +259,16 @@ function makeController(calls) {
   };
 }
 
-function runGlue({ withController }) {
+function runGlue({ withController, peer }) {
   const { els, document } = makeFakeDom();
   const calls = { subscribe: 0, init: 0, join: null, dispose: 0, lastSubscriber: null };
   const window = {
     __ATLAS_LT_CONFIG: { accent: "#818cf8", matterportBaseUrl: "https://my.matterport.com/show/?m=abc&play=1", shareTitle: "Test Space", stops: [] },
     addEventListener() {},
     location: { href: "https://example.com/test/" },
+    matchMedia: DESKTOP_MM,
   };
-  const navigator = {}; // no clipboard / share — exercises the graceful guards
+  const navigator = desktopNav(); // no clipboard / share — exercises the graceful guards
   const createLiveSession = withController ? () => makeController(calls) : undefined;
   // eslint-disable-next-line no-new-func
   const fn = new Function(
@@ -273,9 +277,10 @@ function runGlue({ withController }) {
     "navigator",
     "createLiveSession",
     "ResizeObserver",
+    "Peer",
     BODY,
   );
-  fn(window, document, navigator, createLiveSession, undefined);
+  fn(window, document, navigator, createLiveSession, undefined, peer);
   return { els, document, calls };
 }
 
@@ -288,18 +293,22 @@ test("init is a no-op-safe when the controller is absent (PeerJS missing)", () =
   assert.equal(result.els["lt-launch-btn"].disabled, true);
 });
 
-test("init subscribes to the controller and drives Host/Guest handlers", () => {
-  const { els, calls } = runGlue({ withController: true });
+test("init subscribes to the controller and drives Host/Guest handlers", async () => {
+  // Peer is provided, so ensurePeerJs() short-circuits; the handlers are
+  // still a microtask away (intent → ensure → controller).
+  const { els, calls } = runGlue({ withController: true, peer: function FakePeer() {} });
   assert.equal(calls.subscribe, 1, "should subscribe to controller state");
 
   // Host a tour → controller.initializeAsAgent()
   els["lt-host-start-btn"].fire("click");
+  await new Promise((r) => setTimeout(r, 0));
   assert.equal(calls.init, 1, "Host a tour should initialize as Host");
   assert.equal(els["lt-host-block"].hidden, false, "host block becomes visible");
 
   // Join with a 4-digit PIN → controller.joinAsVisitor("1234")
   els["lt-pin-input"].value = "1234";
   els["lt-join-btn"].fire("click");
+  await new Promise((r) => setTimeout(r, 0));
   assert.equal(calls.join, "1234", "Join should pass the sanitized 4-digit PIN");
 });
 
@@ -310,6 +319,22 @@ test("join rejects a non-4-digit PIN without calling the controller", () => {
   assert.equal(calls.join, null, "short PIN must not reach the controller");
   assert.match(els["lt-guest-status"].textContent, /4-digit PIN/);
 });
+
+// Eligible-desktop environment defaults: the desktop-only collaboration
+// gate (annoCollabEligible) must pass for the behavioral harnesses, so
+// every default window carries fine-pointer + hover media queries and a
+// desktop navigator identity. Gate tests override these.
+const DESKTOP_MM = (q) => ({ matches: q === "(pointer: fine)" || q === "(hover: hover)" });
+const desktopNav = (extra) =>
+  Object.assign(
+    {
+      userAgent:
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0 Safari/537.36",
+      platform: "Win32",
+      maxTouchPoints: 0,
+    },
+    extra || {},
+  );
 
 // ── 4. Connected-controller harness (Host + Guest) ───────────────────────
 function makeConnectedController(role, spy) {
@@ -380,8 +405,9 @@ function runGlueWith(createLiveSession) {
     },
     addEventListener() {},
     location: { href: "https://example.com/test/" },
+    matchMedia: DESKTOP_MM,
   };
-  const navigator = {};
+  const navigator = desktopNav();
   // eslint-disable-next-line no-new-func
   const fn = new Function(
     "window",
@@ -417,8 +443,9 @@ function runGluePointer(role = "visitor") {
     },
     devicePixelRatio: 2,
     location: { href: "https://example.com/test/" },
+    matchMedia: DESKTOP_MM,
   };
-  const navigator = {};
+  const navigator = desktopNav();
   // eslint-disable-next-line no-new-func
   const fn = new Function(
     "window",
@@ -587,6 +614,7 @@ function runGlueWithoutAnnoInput(role = "visitor") {
     },
     devicePixelRatio: 2,
     location: { href: "https://example.com/test/" },
+    matchMedia: DESKTOP_MM,
   };
   // GLUE alone — the anno-input module is deliberately absent.
   // eslint-disable-next-line no-new-func
@@ -598,7 +626,7 @@ function runGlueWithoutAnnoInput(role = "visitor") {
     "ResizeObserver",
     GLUE,
   );
-  fn(window, document, {}, () => makeConnectedController(role, spy), undefined);
+  fn(window, document, desktopNav(), () => makeConnectedController(role, spy), undefined);
   const fireDoc = (ev, payload) =>
     (document._h[ev] || []).forEach((f) =>
       f(Object.assign({ preventDefault() {}, target: null, key: "" }, payload || {})),
@@ -606,30 +634,21 @@ function runGlueWithoutAnnoInput(role = "visitor") {
   return { els, spy, fireDoc, canvas: els["anno-canvas"] };
 }
 
-test("fail closed without anno-input: Draw/Rope disabled, no permissive drawing", () => {
+test("fail closed without anno-input: the gate cannot verify, collaboration is fully disabled", () => {
   const { els, spy, fireDoc, canvas } = runGlueWithoutAnnoInput();
-  assert.equal(els["anno-draw-btn"].disabled, true, "Draw visibly disabled");
-  assert.equal(els["anno-rope-btn"].disabled, true, "Focus Rope visibly disabled");
-  assert.match(
-    els["anno-draw-btn"].attrs.title,
-    /unavailable/i,
-    "annotation-unavailable state surfaced",
-  );
-  // Hotkeys cannot re-enter the gated modes…
+  // annoCollabEligible lives in the kernel; with the kernel absent the
+  // desktop-only gate fails closed and neutralizes every affordance.
+  assert.equal(els["lt-launch-btn"].hidden, true, "launch button neutralized");
+  assert.equal(els["lt-panel"].hidden, true, "panel neutralized");
+  assert.equal(els["anno-toolbar"].hidden, true, "toolbar neutralized");
+  // No tool can engage and nothing reaches the controller.
   fireDoc("keydown", { key: "d" });
   canvas.fire("pointerdown", touchEv(1, 100, 100));
   canvas.fire("pointermove", touchEv(1, 150, 150));
   canvas.fire("pointerup", touchEv(1, 150, 150));
-  assert.equal(spy.begin.length, 0, "no stroke may open without the pointer guard");
-  assert.equal(spy.patch.length, 0);
-  assert.equal(spy.commit.length, 0);
-  fireDoc("keydown", { key: "r" });
-  canvas.fire("pointerdown", touchEv(1, 100, 100));
-  assert.equal(spy.begin.length, 0, "no rope may open without the pointer guard");
-  // …while the pointer tool and the session itself stay functional.
+  assert.equal(spy.begin.length, 0, "no stroke without the kernel");
   fireDoc("keydown", { key: "p" });
-  assert.equal(canvas.classList.contains("pointer-mode"), true, "pointer tool still available");
-  assert.doesNotThrow(() => canvas.fire("pointermove", touchEv(1, 200, 200)));
+  assert.equal(canvas.classList.contains("pointer-mode"), false, "no tool wiring at all");
 });
 
 // ── 7. iOS clipboard isolation ────────────────────────────────────────────
@@ -727,6 +746,7 @@ function runGlueWithNav(nav, controllerFactory, winExtra) {
       },
       devicePixelRatio: 2,
       location: { href: "https://example.com/test/" },
+      matchMedia: DESKTOP_MM,
     },
     winExtra || {},
   );
@@ -737,9 +757,10 @@ function runGlueWithNav(nav, controllerFactory, winExtra) {
     "navigator",
     "createLiveSession",
     "ResizeObserver",
+    "Peer",
     BODY,
   );
-  fn(window, document, nav, controllerFactory, undefined);
+  fn(window, document, nav, controllerFactory, undefined, undefined);
   const fireWin = (ev) => (window._h[ev] || []).forEach((f) => f({}));
   const fireDoc = (ev, payload) =>
     (document._h[ev] || []).forEach((f) =>
@@ -756,44 +777,46 @@ function runGlueWithNav(nav, controllerFactory, winExtra) {
   };
 }
 
-test("iOS (iPhone): zero readText across stage entry, focus, visibility, and drawing", () => {
+test("iOS (iPhone): ineligible — zero readText, no controller, every affordance neutralized", () => {
   const { calls, nav } = iphoneNav();
   const spy = { teleport: [], share: [] };
-  const { pillLabel, fireWin, fireDoc, canvas, letterbox } = runGlueWithNav(nav, () => {
-    // Fire the initial state so onState runs its connected branch (the
-    // pill label copy under test is applied there).
-    const c = makeConnectedController("visitor", spy);
-    c.subscribe = (fn) => {
-      fn(c.getState());
-      return () => {};
-    };
-    return c;
+  let factoryCalls = 0;
+  const h = runGlueWithNav(nav, () => {
+    factoryCalls += 1;
+    return makeConnectedController("visitor", spy);
   });
-  // Every historical ambient trigger:
-  letterbox.fire("pointerenter", { pointerType: "mouse" });
-  letterbox.fire("pointerenter", { pointerType: "touch" });
-  fireWin("focus");
-  fireDoc("visibilitychange");
-  // Full drawing gesture (the interruption scenario):
-  fireDoc("keydown", { key: "d" });
-  canvas.fire("pointerdown", touchEv(1, 100, 100));
-  canvas.fire("pointermove", touchEv(1, 200, 200));
-  canvas.fire("pointerup", touchEv(1, 200, 200));
+  // Every historical ambient trigger fires into a page with no collab wiring:
+  const lb = h.document.getElementById("anno-letterbox-wrap");
+  lb.fire("pointerenter", { pointerType: "mouse" });
+  lb.fire("pointerenter", { pointerType: "touch" });
+  h.fireWin("focus");
+  h.fireDoc("visibilitychange");
+  h.fireDoc("keydown", { key: "d" });
+  const cv = h.document.getElementById("anno-canvas");
+  cv.fire("pointerdown", touchEv(1, 100, 100));
+  cv.fire("pointermove", touchEv(1, 200, 200));
+  cv.fire("pointerup", touchEv(1, 200, 200));
   assert.equal(calls.readText, 0, "iOS must never auto-read the clipboard");
+  assert.equal(factoryCalls, 0, "the session controller is never constructed");
+  for (const id of ["lt-launch-btn", "lt-panel", "anno-toolbar", "anno-canvas", "loc-sync", "lt-audio"]) {
+    assert.equal(h.document.getElementById(id).hidden, true, `#${id} neutralized`);
+  }
 });
 
-test("iOS (iPad desktop mode): zero readText from starting or joining a session", () => {
+test("iOS (iPad desktop mode, incl. trackpad): host/join are unreachable — desktop-only gate", () => {
   const { calls, nav } = ipadDesktopNav();
-  const trackedCalls = { subscribe: 0, init: 0, join: null, dispose: 0, lastSubscriber: null };
-  const { els } = runGlueWithNav(nav, () => makeController(trackedCalls));
-  // Host path runs preGrantClipboard() before initializeAsAgent…
-  els["lt-host-start-btn"].fire("click");
-  assert.equal(trackedCalls.init, 1, "host start reached the controller");
-  // …and the guest join path runs it too.
-  els["lt-pin-input"].value = "1234";
-  els["lt-join-btn"].fire("click");
-  assert.equal(trackedCalls.join, "1234", "join reached the controller");
-  assert.equal(calls.readText, 0, "preGrant probe must be disabled on iOS");
+  let factoryCalls = 0;
+  const h = runGlueWithNav(nav, () => {
+    factoryCalls += 1;
+    return makeController({ subscribe: 0, init: 0, join: null, dispose: 0, lastSubscriber: null });
+  });
+  // The buttons were neutralized and never wired — clicks are inert.
+  h.document.getElementById("lt-host-start-btn").fire("click");
+  h.document.getElementById("lt-pin-input").value = "1234";
+  h.document.getElementById("lt-join-btn").fire("click");
+  assert.equal(factoryCalls, 0, "the session controller is never constructed");
+  assert.equal(calls.readText, 0, "no clipboard probe of any kind");
+  assert.equal(h.document.getElementById("lt-launch-btn").hidden, true, "launch button neutralized");
 });
 
 test("desktop control: granted real-mouse stage entry reads; touch/pen never does", async () => {
@@ -893,16 +916,6 @@ test("lazy canvas: a remote stroke is the other allocation trigger", () => {
   assert.equal(canvas.width, 2560, "incoming remote ink allocates the buffer");
 });
 
-test("iOS canvas DPR is capped at 1.5", () => {
-  const { nav } = iphoneNav();
-  const spy = { teleport: [], share: [] };
-  const { fireDoc, canvas } = runGlueWithNav(nav, () => makeConnectedController("visitor", spy));
-  fireDoc("keydown", { key: "d" });
-  // window.devicePixelRatio is 2 in the runner; iOS cap forces 1.5.
-  assert.equal(canvas.width, 1920, "1280 × 1.5 — not 1280 × 2");
-  assert.equal(canvas.height, 1080, "720 × 1.5");
-});
-
 test("crash forensics: the prior session's last milestone is displayed on load", () => {
   const { nav } = desktopGrantedNav();
   const spy = { teleport: [], share: [] };
@@ -915,47 +928,6 @@ test("crash forensics: the prior session's last milestone is displayed on load",
   assert.ok(
     !els["lt-diag"].textContent.includes("@"),
     "timestamp suffix is stripped from the display",
-  );
-});
-
-test("iOS: Enable voice appears on connect and drives session.startVoice()", () => {
-  const { nav } = iphoneNav();
-  const spy = { teleport: [], share: [] };
-  const wired = subscribeFiring(makeConnectedController("visitor", spy));
-  const { els } = runGlueWithNav(nav, () => wired.controller);
-  assert.equal(els["lt-enable-voice-btn"].hidden, false, "deferred voice offers the explicit action");
-  els["lt-enable-voice-btn"].fire("click");
-  assert.equal(spy.startVoice, 1, "the tap calls the controller startVoice (user gesture)");
-});
-
-test("iOS: Enable voice re-enables when the call dies before streaming (P2)", async () => {
-  const { nav } = iphoneNav();
-  const spy = { teleport: [], share: [] };
-  const wired = subscribeFiring(makeConnectedController("visitor", spy));
-  // startVoice succeeds and wires a call: reflect that in controller state.
-  wired.controller.startVoice = () => {
-    wired.controller.getState().voiceCallActive = true;
-    return Promise.resolve(true);
-  };
-  const { els } = runGlueWithNav(nav, () => wired.controller);
-  const btn = els["lt-enable-voice-btn"];
-  btn.fire("click");
-  await new Promise((r) => setImmediate(r));
-  assert.equal(btn.disabled, true, "negotiating: control held");
-  // The call dies before any remote stream (negotiation failure / peer
-  // disconnect): the controller emits the voiceCallActive falling edge.
-  wired.emit(
-    Object.assign({}, wired.controller.getState(), {
-      voiceCallActive: false,
-      remoteStream: null,
-    }),
-  );
-  assert.equal(btn.disabled, false, "retry control handed back");
-  assert.equal(btn.hidden, false, "and visible again");
-  assert.match(
-    els["lt-voice-status"].textContent,
-    /retry/i,
-    "status explains the retry affordance",
   );
 });
 
@@ -1019,4 +991,83 @@ test("the Atlas runtime spans are wrapped in bounded f3d sentinels", () => {
   const cfgIdx = src.indexOf("window.__ATLAS_LT_CONFIG=");
   const kernelIdx = src.indexOf("f3d:runtime-js:kernel BEGIN");
   assert.ok(cfgIdx !== -1 && kernelIdx !== -1 && cfgIdx < kernelIdx, "config stays outside the JS sentinels");
+});
+
+// ── 8. Desktop-only gate parity + lazy PeerJS loader ─────────────────────
+test("Android (ineligible): every affordance neutralized, no controller, no wiring", () => {
+  const c = clipboardReadSpy();
+  const nav = {
+    platform: "Linux armv81",
+    userAgent:
+      "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/126.0 Mobile Safari/537.36",
+    maxTouchPoints: 5,
+    userAgentData: { mobile: true },
+    clipboard: c.clipboard,
+  };
+  let factoryCalls = 0;
+  const h = runGlueWithNav(
+    nav,
+    () => {
+      factoryCalls += 1;
+      return makeConnectedController("visitor", { teleport: [], share: [] });
+    },
+    { matchMedia: (q) => ({ matches: q === "(pointer: coarse)" }) },
+  );
+  assert.equal(factoryCalls, 0, "no session controller on Android");
+  assert.equal(c.calls.readText, 0, "no clipboard work on Android");
+  for (const id of ["lt-launch-btn", "lt-panel", "anno-toolbar", "anno-canvas", "loc-sync", "loc-sync-tips", "lt-audio", "remote-pointer", "lt-navlock"]) {
+    assert.equal(h.document.getElementById(id).hidden, true, `#${id} neutralized`);
+  }
+});
+
+test("eligible desktop: the launch button is revealed; no PeerJS work until Host intent", () => {
+  const { nav } = desktopGrantedNav();
+  const spy = { teleport: [], share: [] };
+  const h = runGlueWithNav(nav, () => makeConnectedController("agent", spy));
+  assert.equal(h.document.getElementById("lt-launch-btn").hidden, false, "launch button revealed");
+  const injected = [];
+  h.document.head = { appendChild: (n) => { injected.push(n); return n; } };
+  assert.equal(injected.length, 0, "nothing injected at page load");
+});
+
+test("Host intent lazily injects ONE SRI-pinned PeerJS script (deduped across clicks)", () => {
+  const { nav } = desktopGrantedNav();
+  const spy = { teleport: [], share: [] };
+  const h = runGlueWithNav(nav, () => makeConnectedController("agent", spy));
+  const injected = [];
+  h.document.head = { appendChild: (n) => { injected.push(n); return n; } };
+  const cfg = h.document.getElementById("f3d-peerjs-loader");
+  cfg.attrs["data-src"] = "https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js";
+  cfg.attrs["data-integrity"] = "sha384-TESTSRI";
+  cfg.attrs["data-crossorigin"] = "anonymous";
+  const host = h.document.getElementById("lt-host-start-btn");
+  host.fire("click", { preventDefault() {} });
+  host.fire("click", { preventDefault() {} });
+  assert.equal(injected.length, 1, "concurrent Host clicks share ONE in-flight load");
+  assert.equal(injected[0].src, "https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js");
+  assert.equal(injected[0].integrity, "sha384-TESTSRI", "SRI pin travels onto the injected tag");
+  assert.equal(injected[0].crossOrigin, "anonymous");
+});
+
+test("PeerJS load failure surfaces a visible retry state and resets the dedupe", async () => {
+  const { nav } = desktopGrantedNav();
+  const spy = { teleport: [], share: [] };
+  const h = runGlueWithNav(nav, () => makeConnectedController("agent", spy));
+  const injected = [];
+  h.document.head = { appendChild: (n) => { injected.push(n); return n; } };
+  const cfg = h.document.getElementById("f3d-peerjs-loader");
+  cfg.attrs["data-src"] = "https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js";
+  const host = h.document.getElementById("lt-host-start-btn");
+  host.fire("click", { preventDefault() {} });
+  assert.equal(injected.length, 1);
+  injected[0].onerror(new Error("network"));
+  await new Promise((r) => setTimeout(r, 0));
+  assert.match(
+    h.document.getElementById("lt-host-status").textContent,
+    /could not load/i,
+    "failure is visible on the host status line",
+  );
+  assert.equal(host.disabled, false, "Host re-enables for a retry");
+  host.fire("click", { preventDefault() {} });
+  assert.equal(injected.length, 2, "the next click retries with a fresh load");
 });
