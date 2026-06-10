@@ -10,7 +10,9 @@
 //   { type: "stroke_begin", viewKey, seq, strokeId, color, width, points, ts }
 //   { type: "stroke_patch", viewKey, seq, strokeId, points, ts }
 //   { type: "stroke_commit", viewKey, seq, strokeId, ts }
+//   { type: "stroke_delete", viewKey, seq, strokeIds, ts }
 //   { type: "clear", viewKey, seq, ts }
+//   { type: "nav_lock", viewKey, seq, locked, ts }
 //
 // `viewKey` is derived from the most recent teleport (ss + "|" + sr)
 // on both ends; receivers drop annotation packets whose viewKey
@@ -198,6 +200,7 @@ function createLiveSession(options) {
     incomingStrokeEvent: null,
     incomingClearEvent: null,
     incomingNavLockEvent: null,
+    incomingStrokeDeleteEvent: null,
     incomingLocationShareEvent: null,
   };
 
@@ -592,6 +595,7 @@ function createLiveSession(options) {
       type === "stroke_begin" ||
       type === "stroke_patch" ||
       type === "stroke_commit" ||
+      type === "stroke_delete" ||
       type === "clear" ||
       type === "nav_lock"
     ) {
@@ -626,6 +630,26 @@ function createLiveSession(options) {
           incomingNavLockEvent: {
             viewKey: vk,
             locked: payload.locked === true,
+            seq: seq,
+            ts: ts,
+          },
+        });
+        return;
+      }
+      if (type === "stroke_delete") {
+        // Idempotent erase of one or more committed strokes. Unknown /
+        // already-removed ids are a harmless no-op on the consumer side.
+        var delIds = [];
+        if (Array.isArray(payload.strokeIds)) {
+          for (var di = 0; di < payload.strokeIds.length; di++) {
+            var sid = _coerceString(payload.strokeIds[di]);
+            if (sid) delIds.push(sid);
+          }
+        }
+        _patch({
+          incomingStrokeDeleteEvent: {
+            viewKey: vk,
+            strokeIds: delIds,
             seq: seq,
             ts: ts,
           },
@@ -888,6 +912,35 @@ function createLiveSession(options) {
     }
   }
 
+  // Idempotent erase of one or more committed strokes in a view. The peer
+  // removes any matching ids (no-op for unknown / already-removed ones).
+  function sendStrokeDelete(viewKey, strokeIds) {
+    if (!_canSendAnnotation()) return false;
+    var ids = [];
+    if (Array.isArray(strokeIds)) {
+      for (var i = 0; i < strokeIds.length; i++) {
+        var sid = _coerceString(strokeIds[i]);
+        if (sid) ids.push(sid);
+      }
+    }
+    if (ids.length === 0) return false;
+    var seq = ++_sendSeq;
+    var packet = {
+      type: "stroke_delete",
+      viewKey: _coerceString(viewKey),
+      strokeIds: ids,
+      seq: seq,
+      ts: Date.now(),
+    };
+    try {
+      dataConn.send(packet);
+      return true;
+    } catch (e) {
+      log("stroke_delete send failed", e);
+      return false;
+    }
+  }
+
   function dispose() {
     if (disposed) return;
     disposed = true;
@@ -959,6 +1012,7 @@ function createLiveSession(options) {
       incomingStrokeEvent: null,
       incomingClearEvent: null,
       incomingNavLockEvent: null,
+      incomingStrokeDeleteEvent: null,
       incomingLocationShareEvent: null,
     };
   }
@@ -977,6 +1031,7 @@ function createLiveSession(options) {
     sendStrokeCommit: sendStrokeCommit,
     sendClear: sendClear,
     sendNavLock: sendNavLock,
+    sendStrokeDelete: sendStrokeDelete,
     dispose: dispose,
   };
 }

@@ -105,6 +105,19 @@ export interface LiveSessionNavLockEvent {
 }
 
 /**
+ * Erase one or more committed strokes in a view. Idempotent: the consumer
+ * removes any matching ids and ignores unknown / already-removed ones, so
+ * duplicate or stale `stroke_delete` packets are harmless no-ops. Either
+ * peer may delete any committed stroke regardless of who authored it.
+ */
+export interface LiveSessionStrokeDeleteEvent {
+  viewKey: string;
+  strokeIds: string[];
+  seq: number;
+  ts: number;
+}
+
+/**
  * Visitor → Agent location offer. The visitor parses the Matterport
  * "Link to location" URL out of their clipboard (after pressing `U`
  * inside the iframe and clicking "Copy to clipboard") and offers the
@@ -147,6 +160,7 @@ export interface LiveSessionState {
   incomingStrokeEvent: LiveSessionStrokeEvent | null;
   incomingClearEvent: LiveSessionClearEvent | null;
   incomingNavLockEvent: LiveSessionNavLockEvent | null;
+  incomingStrokeDeleteEvent: LiveSessionStrokeDeleteEvent | null;
   incomingLocationShareEvent: LiveSessionLocationShareEvent | null;
 }
 
@@ -180,6 +194,7 @@ export interface LiveSessionController {
   sendStrokeCommit(viewKey: string, strokeId: string): boolean;
   sendClear(viewKey: string): boolean;
   sendNavLock(viewKey: string, locked: boolean): boolean;
+  sendStrokeDelete(viewKey: string, strokeIds: string[]): boolean;
   dispose(): void;
 }
 

@@ -136,7 +136,8 @@ function buildCss(accent: string): string {
 body.anno-tool-active #anno-letterbox-wrap{touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 #anno-letterbox-wrap iframe{width:100%;height:100%;border:none;display:block}
 #anno-canvas{position:absolute;inset:0;display:block;width:100%;height:100%;pointer-events:none;z-index:5;touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
-#anno-canvas.pointer-mode,#anno-canvas.draw-mode,#anno-canvas.rope-mode{pointer-events:auto;cursor:crosshair}
+#anno-canvas.pointer-mode,#anno-canvas.draw-mode,#anno-canvas.rope-mode,#anno-canvas.eraser-mode{pointer-events:auto;cursor:crosshair}
+#anno-canvas.eraser-mode{cursor:cell}
 #remote-pointer{position:absolute;left:0;top:0;width:18px;height:18px;border-radius:50%;background:var(--lt-accent);border:2px solid #fff;box-shadow:0 1px 6px rgba(0,0,0,0.45);pointer-events:none;transform:translate(-50%,-50%);z-index:6;display:none}
 #lt-navlock{position:absolute;inset:0;z-index:4;background:transparent;cursor:not-allowed;display:none;touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 body.live-tour-active #lt-navlock.locked{display:block}
@@ -302,6 +303,7 @@ const TOOLBAR_HTML = `<div id="anno-toolbar" role="toolbar" aria-label="Shared t
       </select>
     </label>
   </span>
+  <button type="button" class="anno-tool-btn" data-tool="eraser" id="anno-eraser-btn" title="Eraser (E)" aria-keyshortcuts="E">Eraser</button>
   <button type="button" class="anno-tool-btn" id="anno-clear-btn" title="Clear annotations (C)" aria-keyshortcuts="C">Clear</button>
   <button type="button" class="anno-tool-btn anno-exit-btn" id="anno-exit-btn" title="Exit annotation mode" aria-label="Exit annotation mode">&times;</button>
 </div>`;
