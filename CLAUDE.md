@@ -41,6 +41,37 @@ This project is Lovable-managed with Supabase. PR merges into `main` only sync c
 
 11. **Never claim a feature is fully activated until the backend change has been applied and verified.**
 
+## CODEX_REVIEW_QUEUE.md Update Rule
+
+After completing or materially revising **every PR**, update `CODEX_REVIEW_QUEUE.md` before reporting the PR ready for review or merge. This is mandatory even when no backend activation is required.
+
+### Required checklist fields
+
+- Current date/time (ISO 8601)
+- Repository path and active branch
+- PR number and URL
+- Base commit and head commit
+- Current status: `planning` | `implementing` | `blocked` | `ready for review` | `ready to merge`
+- Concise summary of what changed (what the PR does, not a step list)
+- Exact files changed
+- Verification commands and results (`test:intelligence N/M`, `verify:html`, `tsc`, `build`)
+- Known failures, risks, or untested behavior
+- Backend activation requirements (YES/NO per the policy below)
+- Decisions or approvals still needed
+- Recommended next action
+- Superseded PRs, plans, and prior recommendations explicitly identified
+
+### Format rules
+
+- **Replace** the existing "Current Review Request" section — never append another transcript entry.
+- Keep the entire file under 250 lines.
+- Keep it current: verify the file reflects the actual Git branch, PR, commit history, and test status before ending any implementation session.
+- Never leave an older PR as the current request after a newer PR revision has been completed.
+
+### Session milestone log
+
+After updating the queue, **append** a brief timestamped milestone entry to `.codex-review/claude-session.md` (curated rolling log — newest last, compact, no large code blocks, no secrets).
+
 ### Required Completion Behavior
 
 At the end of every task, include one of these two sections:
