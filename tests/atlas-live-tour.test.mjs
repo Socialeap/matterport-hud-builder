@@ -1311,3 +1311,107 @@ test("atlas long ACTIVE gesture keeps the floor: owned moves refresh the watchdo
     globalThis.clearTimeout = realClearTimeout;
   }
 });
+
+// ── Floor heartbeat — Builder parity (keep the peer's remote watchdog alive) ──
+test("atlas: a >8s eraser drag over BLANK space keeps the peer locked via throttled heartbeats", () => {
+  const realNow = Date.now;
+  let clock = 5_000_000;
+  Date.now = () => clock;
+  try {
+    const { h, spy, canvas } = wiredAtlasGlue("agent");
+    h.fireDoc("keydown", { key: "e" });
+    canvas.fire("pointerdown", aev(1, 100, 100));
+    let moves = 0;
+    for (let t = 200; t <= 9000; t += 200) { clock = 5_000_000 + t; canvas.fire("pointermove", aev(1, 100 + (t % 7), 100)); moves += 1; }
+    const trues = (spy.navlock || []).filter((n) => n.locked).length;
+    assert.equal((spy.deletes || []).length, 0, "blank-space drag deletes nothing — heartbeat not delete-driven");
+    assert.ok(trues >= 4, `heartbeats keep the peer locked across a 9s drag (got ${trues})`);
+    assert.ok(trues < moves, `throttled, not one-per-move (${trues} << ${moves})`);
+    assert.equal((spy.navlock || []).filter((n) => !n.locked).length, 0, "no release mid-drag");
+    clock = 5_000_000 + 9200;
+    canvas.fire("pointerup", aev(1, 150, 100));
+    const truesAtUp = (spy.navlock || []).filter((n) => n.locked).length;
+    assert.equal((spy.navlock || []).filter((n) => !n.locked).length, 1, "exactly one release on pointerup");
+    clock = 5_000_000 + 30000;
+    canvas.fire("pointermove", aev(1, 300, 300));
+    assert.equal((spy.navlock || []).filter((n) => n.locked).length, truesAtUp, "no heartbeats after release");
+  } finally { Date.now = realNow; }
+});
+
+test("atlas: a >8s eraser drag that DELETES strokes also stays locked", () => {
+  const realNow = Date.now;
+  let clock = 6_000_000;
+  Date.now = () => clock;
+  try {
+    const { h, spy, canvas } = wiredAtlasGlue("agent");
+    h.fireDoc("keydown", { key: "d" });
+    for (let i = 0; i < 3; i++) {
+      const x = 200 + i * 200;
+      canvas.fire("pointerdown", aev(10 + i, x, 100));
+      canvas.fire("pointermove", aev(10 + i, x + 20, 100));
+      canvas.fire("pointerup", aev(10 + i, x + 20, 100));
+    }
+    spy.navlock = [];
+    h.fireDoc("keydown", { key: "e" });
+    canvas.fire("pointerdown", aev(1, 200, 100));
+    for (let t = 200; t <= 9000; t += 200) { clock = 6_000_000 + t; canvas.fire("pointermove", aev(1, 200 + t / 12, 100)); }
+    const trues = (spy.navlock || []).filter((n) => n.locked).length;
+    assert.ok((spy.deletes || []).length >= 1, "the drag erased at least one stroke");
+    assert.ok(trues >= 4, "heartbeats still keep the peer locked on a delete-heavy drag");
+    assert.equal((spy.navlock || []).filter((n) => !n.locked).length, 0, "no release mid-drag");
+  } finally { Date.now = realNow; }
+});
+
+test("atlas: heartbeats stop immediately on pointercancel and on tool change", () => {
+  const realNow = Date.now;
+  let clock = 7_000_000;
+  Date.now = () => clock;
+  try {
+    const a = wiredAtlasGlue("agent");
+    a.h.fireDoc("keydown", { key: "e" });
+    a.canvas.fire("pointerdown", aev(1, 100, 100));
+    clock += 3000; a.canvas.fire("pointermove", aev(1, 120, 100));
+    a.canvas.fire("pointercancel", aev(1, 120, 100));
+    assert.equal((a.spy.navlock || []).filter((n) => !n.locked).length, 1, "cancel releases the floor");
+    const truesAfterCancel = (a.spy.navlock || []).filter((n) => n.locked).length;
+    clock += 30000; a.canvas.fire("pointermove", aev(1, 140, 100));
+    assert.equal((a.spy.navlock || []).filter((n) => n.locked).length, truesAfterCancel, "no heartbeats after cancel");
+    const b = wiredAtlasGlue("agent");
+    b.h.fireDoc("keydown", { key: "e" });
+    b.canvas.fire("pointerdown", aev(1, 100, 100));
+    b.h.fireDoc("keydown", { key: "p" });
+    assert.equal((b.spy.navlock || []).filter((n) => !n.locked).length, 1, "tool change releases the floor");
+  } finally { Date.now = realNow; }
+});
+
+test("atlas: inbound nav_lock(true) heartbeats re-arm the remote watchdog; peer stays locked", () => {
+  const realSetTimeout = globalThis.setTimeout;
+  const realClearTimeout = globalThis.clearTimeout;
+  let armed = 0;
+  globalThis.setTimeout = (cb, ms) => { if (ms === 8000) { armed += 1; return 2000 + armed; } return realSetTimeout(cb, ms); };
+  globalThis.clearTimeout = (id) => { if (typeof id === "number" && id >= 2000) return; return realClearTimeout(id); };
+  try {
+    const { h, spy, emit, canvas } = wiredAtlasGlue("agent");
+    emit({ incomingNavLockEvent: { viewKey: "", locked: true, seq: 1, ts: 1 } });
+    emit({ incomingNavLockEvent: { viewKey: "", locked: true, seq: 2, ts: 2 } });
+    emit({ incomingNavLockEvent: { viewKey: "", locked: true, seq: 3, ts: 3 } });
+    assert.ok(armed >= 3, "each inbound heartbeat re-arms the remote watchdog");
+    h.fireDoc("keydown", { key: "d" });
+    canvas.fire("pointerdown", aev(1, 128, 72));
+    assert.equal(spy.begin.length, 0, "peer stays locked across heartbeats");
+  } finally { globalThis.setTimeout = realSetTimeout; globalThis.clearTimeout = realClearTimeout; }
+});
+
+test("atlas: an inbound stroke_delete also re-arms the remote watchdog (defense in depth)", () => {
+  const realSetTimeout = globalThis.setTimeout;
+  const realClearTimeout = globalThis.clearTimeout;
+  let armed = 0;
+  globalThis.setTimeout = (cb, ms) => { if (ms === 8000) { armed += 1; return 2000 + armed; } return realSetTimeout(cb, ms); };
+  globalThis.clearTimeout = (id) => { if (typeof id === "number" && id >= 2000) return; return realClearTimeout(id); };
+  try {
+    const { emit } = wiredAtlasGlue("agent");
+    emit({ incomingNavLockEvent: { viewKey: "", locked: true, seq: 1, ts: 1 } });
+    emit({ incomingStrokeDeleteEvent: { viewKey: "", seq: 1, strokeIds: ["x"], ts: 2 } });
+    assert.ok(armed >= 2, "a delete re-arms the remote watchdog");
+  } finally { globalThis.setTimeout = realSetTimeout; globalThis.clearTimeout = realClearTimeout; }
+});

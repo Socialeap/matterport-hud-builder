@@ -904,6 +904,24 @@ test("inbound nav_lock packet surfaces as incomingNavLockEvent and obeys stale v
   });
 });
 
+test("a stale/delayed nav_lock(true) heartbeat after the release CANNOT relock (seq monotonicity)", () => {
+  return makeConnectedAgent().then(({ session, fireData }) => {
+    fireData({ type: "teleport", ss: "42", sr: "0,0" });
+    // Several heartbeats while the peer's gesture is live.
+    fireData({ type: "nav_lock", viewKey: "42|0,0", locked: true, seq: 20, ts: 1 });
+    fireData({ type: "nav_lock", viewKey: "42|0,0", locked: true, seq: 21, ts: 2 });
+    // Final release on pointerup.
+    fireData({ type: "nav_lock", viewKey: "42|0,0", locked: false, seq: 22, ts: 3 });
+    assert.equal(session.getState().incomingNavLockEvent.locked, false, "released");
+    // A delayed heartbeat from before the release (seq <= last seen) is dropped
+    // by the transport's monotonic seq filter → it can never relock the peer.
+    fireData({ type: "nav_lock", viewKey: "42|0,0", locked: true, seq: 21, ts: 4 });
+    assert.equal(session.getState().incomingNavLockEvent.locked, false, "stale heartbeat dropped — no relock");
+    assert.equal(session.getState().incomingNavLockEvent.seq, 22, "watermark unchanged by the stale packet");
+    session.dispose();
+  });
+});
+
 test("pointer coalescer flushes at most one packet per scheduler tick under flood", () => {
   return makeConnectedAgent().then(
     ({ session, sentPackets, runScheduled, pendingScheduled }) => {
