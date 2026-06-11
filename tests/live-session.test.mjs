@@ -708,6 +708,64 @@ test("incoming annotation packets with stale viewKey are dropped after teleport"
   });
 });
 
+// ── stroke_delete (eraser) wire protocol ──────────────────────────────
+test("sendStrokeDelete sends the documented JSON shape; blank/empty id lists are rejected", () => {
+  return makeConnectedAgent().then(({ session, sentPackets }) => {
+    assert.equal(session.sendStrokeDelete("42|0,0", ["a", "b"]), true);
+    assert.equal(sentPackets.length, 1);
+    const p = sentPackets[0];
+    assert.equal(p.type, "stroke_delete");
+    assert.equal(p.viewKey, "42|0,0");
+    assert.deepEqual(p.strokeIds, ["a", "b"]);
+    assert.equal(typeof p.seq, "number");
+    assert.equal(typeof p.ts, "number");
+    // Empty / all-blank id lists never touch the channel.
+    assert.equal(session.sendStrokeDelete("42|0,0", []), false);
+    assert.equal(session.sendStrokeDelete("42|0,0", ["", null, undefined]), false);
+    assert.equal(session.sendStrokeDelete("42|0,0", "not-an-array"), false);
+    assert.equal(sentPackets.length, 1, "no extra packets after rejects");
+    session.dispose();
+  });
+});
+
+test("sendStrokeDelete returns false when not connected", () => {
+  const session = createLiveSession({ PeerCtor: makeFakePeerCtor() });
+  assert.equal(session.sendStrokeDelete("v|", ["a"]), false);
+  return session.initializeAsAgent().then(() => {
+    assert.equal(session.getState().isConnected, false);
+    assert.equal(session.sendStrokeDelete("v|", ["a"]), false);
+    session.dispose();
+  });
+});
+
+test("inbound stroke_delete patches incomingStrokeDeleteEvent; duplicate/unknown/stale are harmless", () => {
+  return makeConnectedAgent().then(({ session, fireData }) => {
+    fireData({ type: "teleport", ss: "42", sr: "0,0" });
+    // Valid delete on the current view.
+    fireData({ type: "stroke_delete", viewKey: "42|0,0", seq: 1, strokeIds: ["s1", "s2"], ts: 1 });
+    let ev = session.getState().incomingStrokeDeleteEvent;
+    assert.ok(ev, "delete patches state");
+    assert.deepEqual(ev.strokeIds, ["s1", "s2"]);
+    assert.equal(ev.seq, 1);
+    // Duplicate/stale seq is dropped by the monotonic guard (no state churn).
+    fireData({ type: "stroke_delete", viewKey: "42|0,0", seq: 1, strokeIds: ["zzz"], ts: 2 });
+    assert.deepEqual(session.getState().incomingStrokeDeleteEvent.strokeIds, ["s1", "s2"]);
+    // Stale viewKey (old sweep) is dropped.
+    fireData({ type: "stroke_delete", viewKey: "17|0,0", seq: 2, strokeIds: ["s9"], ts: 3 });
+    assert.deepEqual(session.getState().incomingStrokeDeleteEvent.strokeIds, ["s1", "s2"]);
+    // Unknown ids still surface (the consumer makes it a no-op) — never throws.
+    fireData({ type: "stroke_delete", viewKey: "42|0,0", seq: 3, strokeIds: ["ghost"], ts: 4 });
+    assert.deepEqual(session.getState().incomingStrokeDeleteEvent.strokeIds, ["ghost"]);
+    session.dispose();
+  });
+});
+
+test("createLiveSession exposes sendStrokeDelete on the public API", () => {
+  const session = createLiveSession({ PeerCtor: makeFakePeerCtor() });
+  assert.equal(typeof session.sendStrokeDelete, "function");
+  session.dispose();
+});
+
 test("incoming annotation packets with non-monotonic seq are dropped", () => {
   return makeConnectedAgent().then(({ session, fireData }) => {
     // First pointer at seq=5 — accepted.

@@ -161,8 +161,8 @@ test("Builder carries the f3d:interaction-active emit (parent-only, direct-safe)
     "posts f3d:interaction-active to the parent",
   );
   assert.ok(
-    PORTAL.includes(`if(mode==="pointer"||mode==="draw"||mode==="rope") emitInteractionActive();`),
-    "setToolMode signals on Pointer/Draw/Rope",
+    PORTAL.includes(`if(mode==="pointer"||mode==="draw"||mode==="rope"||mode==="eraser") emitInteractionActive();`),
+    "setToolMode signals on Pointer/Draw/Rope/Eraser",
   );
   assert.ok(
     (PORTAL.match(/emitInteractionActive\(\)/g) || []).length >= 3,

@@ -168,8 +168,9 @@ function makeConnectedController(role, spy) {
       return true;
     },
     sendStrokeCommit: (vk, sid) => { spy.commit.push(sid); return true; },
-    sendClear: () => true,
-    sendNavLock: () => true,
+    sendClear: () => { (spy.clear || (spy.clear = [])).push(true); return true; },
+    sendNavLock: (vk, locked) => { (spy.navlock || (spy.navlock = [])).push({ vk, locked }); return true; },
+    sendStrokeDelete: (vk, ids) => { (spy.deletes || (spy.deletes = [])).push({ vk, ids: ids.slice() }); return true; },
     dispose: () => {},
   };
 }
@@ -203,12 +204,17 @@ function runGlue(role = "agent", opts = {}) {
   };
   const frame = new FakeEl("matterport-frame");
   spy.factoryCalls = 0;
+  let _controller = null;
+  let _push = null;
   const controllerFactory = () => {
     spy.factoryCalls += 1;
     const c = makeConnectedController(role, spy);
-    if (opts.fireConnect) {
+    _controller = c;
+    // Capture the glue's onState subscriber so tests can push inbound
+    // (remote-peer) state — strokes, nav_lock floor, stroke_delete.
+    if (opts.fireConnect || opts.wireRemote) {
       const sub = c.subscribe;
-      c.subscribe = (fn) => { fn(c.getState()); return sub(fn); };
+      c.subscribe = (fn) => { _push = fn; fn(c.getState()); return sub(fn); };
     }
     return c;
   };
@@ -217,7 +223,10 @@ function runGlue(role = "agent", opts = {}) {
   fn(window, document, navigator, controllerFactory, undefined, frame);
   const fireDoc = (ev, payload) =>
     (document._h[ev] || []).forEach((f) => f(Object.assign({ preventDefault() {}, target: null, key: "" }, payload || {})));
-  return { els, spy, fireDoc, canvas: els["anno-canvas"], letterbox: els["anno-letterbox-wrap"], document };
+  // emit(patch): push a new controller state (base merged with patch) through
+  // the captured onState subscriber. Requires opts.wireRemote.
+  const emit = (patch) => { if (_push && _controller) _push(Object.assign({}, _controller.getState(), patch || {})); };
+  return { els, spy, fireDoc, emit, canvas: els["anno-canvas"], letterbox: els["anno-letterbox-wrap"], document };
 }
 
 // Event factory with a preventDefault spy.
@@ -596,4 +605,155 @@ test("a timed-out PeerJS load is removed and ignores a late load; retry injects 
   h.document.getElementById("lg-start-btn").fire("click", { preventDefault() {} });
   assert.equal(head.children.length, 1, "retry injects exactly one fresh script (no stacking)");
   assert.notStrictEqual(head.children[0], first, "retry uses a brand-new <script> element");
+});
+
+// ── 12. Shared sequential annotation + Eraser (gesture floor) ────────────
+const enterEraser = (h) => h.fireDoc("keydown", { key: "e" });
+const m = (id, x, y) => ev(id, x, y, "mouse"); // letterbox is 1280×720 → norm = x/1280, y/720
+
+test("shared scene: a local stroke and a remote stroke coexist; either peer can erase either", () => {
+  const h = runGlue("agent", { wireRemote: true });
+  enterDraw(h);
+  h.canvas.fire("pointerdown", m(1, 128, 72));   // (0.1,0.1)
+  h.canvas.fire("pointermove", m(1, 256, 144));  // (0.2,0.2)
+  h.canvas.fire("pointerup", m(1, 256, 144));
+  assert.equal(h.spy.commit.length, 1, "local stroke committed");
+  const localId = h.spy.begin[0].sid;
+  // Peer stroke arrives + commits in the same view.
+  h.emit({ incomingStrokeEvent: { kind: "begin", viewKey: "", seq: 1, strokeId: "remote1", points: [[0.6, 0.6], [0.7, 0.7]] } });
+  h.emit({ incomingStrokeEvent: { kind: "commit", viewKey: "", seq: 2, strokeId: "remote1" } });
+  enterEraser(h);
+  h.canvas.fire("pointerdown", m(2, 832, 468)); // (0.65,0.65) on remote1
+  h.canvas.fire("pointerup", m(2, 832, 468));
+  h.canvas.fire("pointerdown", m(3, 192, 108)); // (0.15,0.15) on local
+  h.canvas.fire("pointerup", m(3, 192, 108));
+  const deleted = (h.spy.deletes || []).map((d) => d.ids).flat();
+  assert.ok(deleted.includes("remote1"), "a peer-authored committed stroke is erasable");
+  assert.ok(deleted.includes(localId), "a locally-authored committed stroke is erasable");
+});
+
+test("shared scene (reverse order): a remote stroke then a local stroke coexist and both erase", () => {
+  const h = runGlue("agent", { wireRemote: true });
+  h.emit({ incomingStrokeEvent: { kind: "begin", viewKey: "", seq: 1, strokeId: "r2", points: [[0.6, 0.6], [0.7, 0.7]] } });
+  h.emit({ incomingStrokeEvent: { kind: "commit", viewKey: "", seq: 2, strokeId: "r2" } });
+  enterDraw(h);
+  h.canvas.fire("pointerdown", m(1, 128, 72));
+  h.canvas.fire("pointermove", m(1, 256, 144));
+  h.canvas.fire("pointerup", m(1, 256, 144));
+  const localId = h.spy.begin[0].sid;
+  enterEraser(h);
+  h.canvas.fire("pointerdown", m(2, 192, 108)); h.canvas.fire("pointerup", m(2, 192, 108));
+  h.canvas.fire("pointerdown", m(3, 832, 468)); h.canvas.fire("pointerup", m(3, 832, 468));
+  const deleted = (h.spy.deletes || []).map((d) => d.ids).flat();
+  assert.ok(deleted.includes(localId) && deleted.includes("r2"), "both strokes present + erasable regardless of order");
+});
+
+test("sequential annotation: a peer gesture (nav_lock) blocks a new local stroke until it ends", () => {
+  const h = runGlue("agent", { wireRemote: true });
+  h.emit({ incomingNavLockEvent: { viewKey: "", locked: true, seq: 1, ts: 1 } });
+  enterDraw(h);
+  h.canvas.fire("pointerdown", m(1, 128, 72));
+  assert.equal(h.spy.begin.length, 0, "no local stroke starts while the peer holds the floor");
+  h.emit({ incomingNavLockEvent: { viewKey: "", locked: false, seq: 2, ts: 2 } });
+  h.canvas.fire("pointerdown", m(2, 128, 72));
+  h.canvas.fire("pointermove", m(2, 256, 144));
+  h.canvas.fire("pointerup", m(2, 256, 144));
+  assert.equal(h.spy.begin.length, 1, "the local stroke starts the instant the peer's gesture ends");
+});
+
+test("the local floor releases on pointerup, pointercancel, and tool change (nav_lock false each path)", () => {
+  const h = runGlue("agent", { wireRemote: true });
+  const locks = () => (h.spy.navlock || []).map((n) => n.locked);
+  enterDraw(h);
+  h.canvas.fire("pointerdown", m(1, 128, 72));
+  assert.deepEqual(locks(), [true], "gesture start takes the floor");
+  h.canvas.fire("pointerup", m(1, 128, 72));
+  assert.deepEqual(locks(), [true, false], "pointerup releases the floor");
+  h.canvas.fire("pointerdown", m(2, 128, 72));
+  h.canvas.fire("pointercancel", m(2, 128, 72));
+  assert.deepEqual(locks(), [true, false, true, false], "pointercancel releases the floor");
+  // A new gesture takes it again; switching tool releases it.
+  h.canvas.fire("pointerdown", m(3, 128, 72));
+  assert.deepEqual(locks(), [true, false, true, false, true], "next gesture re-takes the floor");
+  h.fireDoc("keydown", { key: "p" }); // tool change → release
+  assert.deepEqual(locks(), [true, false, true, false, true, false], "tool change releases the floor");
+});
+
+test("near-simultaneous starts resolve safely: the in-flight local stroke completes, then it is sequential", () => {
+  const h = runGlue("agent", { wireRemote: true });
+  enterDraw(h);
+  h.canvas.fire("pointerdown", m(1, 128, 72));
+  assert.equal(h.spy.begin.length, 1, "local first gesture begins");
+  // A near-simultaneous remote gesture arrives mid-stroke.
+  h.emit({ incomingNavLockEvent: { viewKey: "", locked: true, seq: 1, ts: 1 } });
+  h.canvas.fire("pointermove", m(1, 256, 144));
+  h.canvas.fire("pointerup", m(1, 256, 144));
+  assert.equal(h.spy.commit.length, 1, "the in-flight local stroke completes — no corruption, no abort");
+  // While the peer still holds the floor, a NEW local stroke is blocked.
+  h.canvas.fire("pointerdown", m(2, 128, 72));
+  assert.equal(h.spy.begin.length, 1, "no new local stroke while the peer still holds the floor");
+  h.emit({ incomingNavLockEvent: { viewKey: "", locked: false, seq: 2, ts: 2 } }); // cleanup
+});
+
+test("eraser drag removes each intersected committed stroke exactly once", () => {
+  const h = runGlue("agent", { wireRemote: true });
+  enterDraw(h);
+  h.canvas.fire("pointerdown", m(1, 128, 72)); h.canvas.fire("pointermove", m(1, 160, 72)); h.canvas.fire("pointerup", m(1, 160, 72));
+  const a = h.spy.begin[0].sid;
+  h.canvas.fire("pointerdown", m(2, 640, 72)); h.canvas.fire("pointermove", m(2, 672, 72)); h.canvas.fire("pointerup", m(2, 672, 72));
+  const b = h.spy.begin[1].sid;
+  enterEraser(h);
+  h.canvas.fire("pointerdown", m(3, 128, 72)); // over A
+  h.canvas.fire("pointermove", m(3, 144, 72)); // still over A (already deleted → no re-delete)
+  h.canvas.fire("pointermove", m(3, 640, 72)); // over B
+  h.canvas.fire("pointerup", m(3, 640, 72));
+  const deleted = (h.spy.deletes || []).map((d) => d.ids).flat();
+  assert.deepEqual(deleted.slice().sort(), [a, b].sort(), "each intersected stroke deleted exactly once");
+});
+
+test("the eraser skips an in-flight (uncommitted) remote stroke, then erases it once committed", () => {
+  const h = runGlue("agent", { wireRemote: true });
+  h.emit({ incomingStrokeEvent: { kind: "begin", viewKey: "", seq: 1, strokeId: "r1", points: [[0.3, 0.3], [0.4, 0.4]] } });
+  enterEraser(h);
+  h.canvas.fire("pointerdown", m(1, 448, 252)); // (0.35,0.35) on r1
+  h.canvas.fire("pointerup", m(1, 448, 252));
+  assert.equal((h.spy.deletes || []).length, 0, "an uncommitted remote stroke is not erasable");
+  h.emit({ incomingStrokeEvent: { kind: "commit", viewKey: "", seq: 2, strokeId: "r1" } });
+  h.canvas.fire("pointerdown", m(2, 448, 252));
+  h.canvas.fire("pointerup", m(2, 448, 252));
+  assert.deepEqual((h.spy.deletes || []).map((d) => d.ids).flat(), ["r1"], "erasable once committed");
+});
+
+test("an inbound stroke_delete removes the matching local stroke; unknown ids are a harmless no-op", () => {
+  const h = runGlue("agent", { wireRemote: true });
+  enterDraw(h);
+  h.canvas.fire("pointerdown", m(1, 128, 72)); h.canvas.fire("pointermove", m(1, 256, 144)); h.canvas.fire("pointerup", m(1, 256, 144));
+  const a = h.spy.begin[0].sid;
+  h.emit({ incomingStrokeDeleteEvent: { viewKey: "", seq: 1, strokeIds: [a], ts: 1 } });
+  h.emit({ incomingStrokeDeleteEvent: { viewKey: "", seq: 2, strokeIds: ["ghost"], ts: 2 } }); // no throw
+  enterEraser(h);
+  h.canvas.fire("pointerdown", m(2, 192, 108)); // where A was
+  h.canvas.fire("pointerup", m(2, 192, 108));
+  assert.equal((h.spy.deletes || []).length, 0, "no outbound delete — A was already removed by the inbound stroke_delete");
+});
+
+test("the remote floor auto-clears on the bounded safety timeout (peer crash mid-gesture)", () => {
+  const realSetTimeout = globalThis.setTimeout;
+  let floorTimer = null;
+  globalThis.setTimeout = (cb, ms) => { if (ms === 8000) { floorTimer = cb; return 7777; } return realSetTimeout(cb, ms); };
+  try {
+    const h = runGlue("agent", { wireRemote: true });
+    h.emit({ incomingNavLockEvent: { viewKey: "", locked: true, seq: 1, ts: 1 } });
+    enterDraw(h);
+    h.canvas.fire("pointerdown", m(1, 128, 72));
+    assert.equal(h.spy.begin.length, 0, "blocked while the peer holds the floor");
+    assert.equal(typeof floorTimer, "function", "a bounded safety timeout was armed");
+    floorTimer(); // peer crashed → watchdog fires
+    h.canvas.fire("pointerdown", m(2, 128, 72));
+    h.canvas.fire("pointermove", m(2, 256, 144));
+    h.canvas.fire("pointerup", m(2, 256, 144));
+    assert.equal(h.spy.begin.length, 1, "the safety timeout frees this side");
+  } finally {
+    globalThis.setTimeout = realSetTimeout;
+  }
 });

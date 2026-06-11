@@ -348,7 +348,25 @@
   var lastStrokeSeq = 0;
   var lastClearSeq = 0;
   var lastNavLockSeq = 0;
+  var lastStrokeDeleteSeq = 0;
   var remotePointerHideTimer = null;
+  // Shared annotation "floor": a gesture-scoped, invisible turn lock carried
+  // on the existing nav_lock message. While the PEER holds it
+  // (remoteGestureActive) this side won't START a new Draw/Rope/Eraser gesture
+  // and its Matterport is frozen; the instant the peer's gesture ends
+  // (nav_lock:false or the bounded safety timeout) annotation + navigation
+  // free up again. Engaged per-gesture (pointerdown), released on every
+  // gesture-end path. No visible turn UI.
+  var FLOOR_SAFETY_MS = 8000;
+  var remoteGestureActive = false;
+  var remoteFloorTimer = null;
+  var localFloorHeld = false;
+  var localFloorTimer = null;
+  // Eraser tool: tap- or drag-delete of committed strokes (geometric hit
+  // test). eraserDeletedIds dedupes a drag so each stroke is removed once.
+  var ANNO_ERASER_TOLERANCE_PX = 12;
+  var eraserActive = false;
+  var eraserDeletedIds = null;
   var activeRope = null;
   var ropeDragging = false;
   var ropeLatchDragging = false;
@@ -491,10 +509,11 @@
     var prev = toolMode;
     toolMode = mode;
     if (annoCanvas) {
-      annoCanvas.classList.remove("pointer-mode", "draw-mode", "rope-mode");
+      annoCanvas.classList.remove("pointer-mode", "draw-mode", "rope-mode", "eraser-mode");
       if (mode === "pointer") annoCanvas.classList.add("pointer-mode");
       else if (mode === "draw") annoCanvas.classList.add("draw-mode");
       else if (mode === "rope") annoCanvas.classList.add("rope-mode");
+      else if (mode === "eraser") annoCanvas.classList.add("eraser-mode");
     }
     if (annoToolbar) {
       var btns = annoToolbar.querySelectorAll(".anno-tool-btn[data-tool]");
@@ -505,7 +524,7 @@
       }
     }
     if (mode === "draw" || mode === "rope") ensureAnnoCanvasAllocated();
-    if (mode === "pointer" || mode === "draw" || mode === "rope") emitInteractionActive();
+    if (mode === "pointer" || mode === "draw" || mode === "rope" || mode === "eraser") emitInteractionActive();
     try {
       document.body.classList.toggle("anno-rope-active", mode === "rope");
       // Stage gesture hardening (wrapper touch-action/user-select, the
@@ -513,7 +532,7 @@
       // Matterport navigation is untouched otherwise (2.0.2 wrapper fix).
       document.body.classList.toggle(
         "anno-tool-active",
-        mode === "pointer" || mode === "draw" || mode === "rope",
+        mode === "pointer" || mode === "draw" || mode === "rope" || mode === "eraser",
       );
     } catch (_e) {}
     if (prev !== "rope" && mode === "rope") {
@@ -534,12 +553,12 @@
     if (prev === "rope" && mode !== "rope") {
       commitActiveRope();
     }
+    // The peer-freeze is now GESTURE-scoped (the shared annotation floor),
+    // engaged on pointerdown and released on gesture end — not tied to which
+    // tool is selected. A tool change just ends any floor this side holds;
+    // navigation stays normal between gestures (both peers free).
     try {
-      var sess = session.getState();
-      if ((sess.role === "agent" || sess.role === "visitor") && sess.isConnected) {
-        var locked = mode === "pointer" || mode === "draw" || mode === "rope";
-        session.sendNavLock(currentViewKey, locked);
-      }
+      releaseLocalFloor();
     } catch (_e) {}
   }
 
@@ -794,6 +813,7 @@
       );
       session.sendStrokeCommit(currentViewKey, activeRope.strokeId);
     }
+    activeRope.committed = true; // sealed rope is now erasable (same obj in localStrokes)
     activeRope = null;
     ropeDragging = false;
     ropeLatchDragging = false;
@@ -813,6 +833,7 @@
     }
     pendingStrokePoints = null;
     session.sendStrokeCommit(currentViewKey, activeStroke.strokeId);
+    activeStroke.committed = true; // eligible for the eraser only once sealed
     localStrokes.push(activeStroke);
     activeStroke = null;
     pendingStrokeId = null;
@@ -860,6 +881,8 @@
     ropeLatchDragging = false;
     ropeMoveDragging = false;
     ropeMoveLast = null;
+    eraserActive = false;
+    eraserDeletedIds = null;
     if (annoGuard) annoGuard.reset();
     if (remotePointer) remotePointer.style.display = "none";
     if (remotePointerHideTimer) {
@@ -879,6 +902,150 @@
     } catch (_e) {}
   }
 
+  // ── Shared annotation floor (gesture-scoped, invisible) ─────────────
+  // acquireLocalFloor: call at the START of a Draw/Rope/Eraser gesture.
+  // Returns false (caller bails) when the peer holds the floor — the
+  // invisible sequential-annotation rule. On success it broadcasts
+  // nav_lock(true) so the peer freezes its Matterport and won't begin a
+  // competing gesture, and arms a bounded local safety timeout.
+  function acquireLocalFloor() {
+    if (remoteGestureActive) return false;
+    if (!localFloorHeld) {
+      localFloorHeld = true;
+      var s = session.getState();
+      if ((s.role === "agent" || s.role === "visitor") && s.isConnected) {
+        session.sendNavLock(currentViewKey, true);
+      }
+    }
+    if (localFloorTimer) {
+      try {
+        clearTimeout(localFloorTimer);
+      } catch (_e) {}
+    }
+    localFloorTimer = setTimeout(function () {
+      releaseLocalFloor();
+    }, FLOOR_SAFETY_MS);
+    return true;
+  }
+  // releaseLocalFloor: idempotent; call on EVERY gesture-end path (pointerup,
+  // pointercancel, lostpointercapture, tool change, disconnect) and from the
+  // safety timeout. Broadcasts nav_lock(false) so the peer frees immediately.
+  function releaseLocalFloor() {
+    if (localFloorTimer) {
+      try {
+        clearTimeout(localFloorTimer);
+      } catch (_e) {}
+      localFloorTimer = null;
+    }
+    if (!localFloorHeld) return;
+    localFloorHeld = false;
+    var s = session.getState();
+    if ((s.role === "agent" || s.role === "visitor") && s.isConnected) {
+      session.sendNavLock(currentViewKey, false);
+    }
+  }
+  // setRemoteFloor: react to an inbound nav_lock. Freezes/unfreezes this
+  // side's Matterport AND gates new local gesture starts. A bounded timeout
+  // auto-clears so a peer that crashes mid-gesture can never lock this side
+  // out; ongoing remote stroke activity refreshes it.
+  function setRemoteFloor(active) {
+    remoteGestureActive = active === true;
+    applyNavLock(remoteGestureActive);
+    if (remoteFloorTimer) {
+      try {
+        clearTimeout(remoteFloorTimer);
+      } catch (_e) {}
+      remoteFloorTimer = null;
+    }
+    if (remoteGestureActive) {
+      remoteFloorTimer = setTimeout(function () {
+        remoteGestureActive = false;
+        applyNavLock(false);
+        remoteFloorTimer = null;
+      }, FLOOR_SAFETY_MS);
+    }
+  }
+  function refreshRemoteFloor() {
+    if (remoteGestureActive) setRemoteFloor(true);
+  }
+
+  // ── Eraser hit-testing (point-to-polyline distance, touch-tolerant) ──
+  function pointSegDistPx(px, py, ax, ay, bx, by) {
+    var vx = bx - ax,
+      vy = by - ay,
+      wx = px - ax,
+      wy = py - ay;
+    var c1 = vx * wx + vy * wy;
+    if (c1 <= 0) return Math.sqrt(wx * wx + wy * wy);
+    var c2 = vx * vx + vy * vy;
+    if (c2 <= c1) {
+      var ex = px - bx,
+        ey = py - by;
+      return Math.sqrt(ex * ex + ey * ey);
+    }
+    var t = c1 / c2,
+      projx = ax + t * vx,
+      projy = ay + t * vy,
+      dxp = px - projx,
+      dyp = py - projy;
+    return Math.sqrt(dxp * dxp + dyp * dyp);
+  }
+  function strokeHitTest(stroke, pt, rect, tolPx) {
+    var pts = stroke && stroke.points;
+    if (!pts || pts.length === 0) return false;
+    var w = rect.width || 1,
+      h = rect.height || 1;
+    var px = pt.x * w,
+      py = pt.y * h;
+    var halfWidthPx =
+      ((typeof stroke.width === "number" ? stroke.width : ANNO_STROKE_WIDTH) * w) / 2;
+    var tol = Math.max(tolPx, halfWidthPx + tolPx * 0.5);
+    if (pts.length === 1) {
+      var dx0 = pts[0][0] * w - px,
+        dy0 = pts[0][1] * h - py;
+      return Math.sqrt(dx0 * dx0 + dy0 * dy0) <= tol;
+    }
+    for (var i = 1; i < pts.length; i++) {
+      if (
+        pointSegDistPx(px, py, pts[i - 1][0] * w, pts[i - 1][1] * h, pts[i][0] * w, pts[i][1] * h) <=
+        tol
+      )
+        return true;
+    }
+    return false;
+  }
+  // Erase every COMMITTED stroke within tolerance of pt. In-flight
+  // (uncommitted) local OR remote strokes are skipped. Each stroke is removed
+  // at most once per eraser gesture; deletions sync via stroke_delete.
+  function eraseAtPoint(pt, e) {
+    if (!localStrokes.length) return;
+    var rect = letterboxWrap
+      ? letterboxWrap.getBoundingClientRect()
+      : { width: 1, height: 1 };
+    var tolPx = ANNO_ERASER_TOLERANCE_PX;
+    var ptype = e && typeof e.pointerType === "string" ? e.pointerType : "";
+    if (ptype === "touch" || ptype === "pen" || IS_COARSE_POINTER) tolPx = 24;
+    var hitIds = [];
+    for (var i = localStrokes.length - 1; i >= 0; i--) {
+      var st = localStrokes[i];
+      if (!st || st.committed !== true) continue;
+      if (eraserDeletedIds && eraserDeletedIds[st.strokeId]) continue;
+      if (strokeHitTest(st, pt, rect, tolPx)) {
+        hitIds.push(st.strokeId);
+        if (eraserDeletedIds) eraserDeletedIds[st.strokeId] = 1;
+      }
+    }
+    if (hitIds.length === 0) return;
+    localStrokes = localStrokes.filter(function (s) {
+      return hitIds.indexOf(s.strokeId) < 0;
+    });
+    redrawAllStrokes();
+    var s = session.getState();
+    if ((s.role === "agent" || s.role === "visitor") && s.isConnected) {
+      session.sendStrokeDelete(currentViewKey, hitIds);
+    }
+  }
+
   function handleClearLocallyAndBroadcast() {
     wipeAnnotations();
     var s = session.getState();
@@ -896,13 +1063,18 @@
   if (annoCanvas) {
     annoCanvas.addEventListener("pointerdown", function (e) {
       if (!canAnnotateLocal()) return;
-      if (toolMode !== "draw" && toolMode !== "rope") return;
+      if (toolMode !== "draw" && toolMode !== "rope" && toolMode !== "eraser") return;
+      // Sequential annotation: bail if the PEER currently holds the shared
+      // floor; the instant their gesture ends we're free to start.
+      if (remoteGestureActive) return;
       // Single-owner guard: rejects secondary touches outright; a Pencil
       // arriving mid-touch fires finalizeActiveGesture() first (clean
       // commit of the in-flight stroke) and then claims the gesture.
       // No guard (failed assembly) means no gesture, ever — setToolMode
       // already refuses draw/rope, this is the belt to that suspender.
       if (!annoGuard || !annoGuard.claim(e)) return;
+      // Take the floor: broadcast nav_lock(true) so the peer pauses + freezes.
+      acquireLocalFloor();
       if (toolMode === "draw") {
         var pt = clientToNorm(e);
         var sid = String(Date.now()) + "_" + Math.random().toString(36).slice(2, 8);
@@ -968,6 +1140,16 @@
         e.preventDefault();
         return;
       }
+      if (toolMode === "eraser") {
+        eraserActive = true;
+        eraserDeletedIds = {};
+        try {
+          annoCanvas.setPointerCapture(e.pointerId);
+        } catch (_e) {}
+        e.preventDefault();
+        eraseAtPoint(clientToNorm(e), e); // tap-to-delete
+        return;
+      }
     });
     annoCanvas.addEventListener("pointermove", function (e) {
       if (!canAnnotateLocal()) return;
@@ -1017,6 +1199,11 @@
         ropeRegenerate(activeRope);
         scheduleRopeFlush();
         redrawAllStrokes();
+      } else if (toolMode === "eraser" && eraserActive) {
+        // Drag-erase: hit-test every coalesced sample so a fast sweep never
+        // skips a stroke; eraserDeletedIds keeps each removal to one.
+        var epts = collectNormPoints(e);
+        for (var ei = 0; ei < epts.length; ei++) eraseAtPoint(epts[ei], e);
       }
     });
     annoCanvas.addEventListener("pointerup", function (e) {
@@ -1027,11 +1214,15 @@
         finishActiveDraw();
       } else if (toolMode === "rope" && activeRope && (ropeDragging || ropeLatchDragging || ropeMoveDragging)) {
         finishActiveRopeDrag();
+      } else if (toolMode === "eraser") {
+        eraserActive = false;
+        eraserDeletedIds = null;
       }
       annoGuard.release(e);
       try {
         annoCanvas.releasePointerCapture(e.pointerId);
       } catch (_e) {}
+      releaseLocalFloor(); // gesture ended → free the peer immediately
     });
     // iOS system gestures can abort a touch mid-stroke (pointercancel) or
     // strip capture without a matching up (lostpointercapture). Both
@@ -1045,10 +1236,15 @@
         e.preventDefault();
       } catch (_e) {}
       finalizeActiveGesture();
+      if (toolMode === "eraser") {
+        eraserActive = false;
+        eraserDeletedIds = null;
+      }
       annoGuard.release(e);
       try {
         annoCanvas.releasePointerCapture(e.pointerId);
       } catch (_e) {}
+      releaseLocalFloor(); // abort is a gesture-end path → free the peer
     }
     annoCanvas.addEventListener("pointercancel", handlePointerAbort);
     annoCanvas.addEventListener("lostpointercapture", handlePointerAbort);
@@ -1064,7 +1260,7 @@
     // synthesized from touch, so drawing is unaffected. Scoped to the
     // canvas — never to inputs or the manual paste field.
     function blockTouchDuringGesture(e) {
-      if (toolMode !== "draw" && toolMode !== "rope") return;
+      if (toolMode !== "draw" && toolMode !== "rope" && toolMode !== "eraser") return;
       try {
         e.preventDefault();
       } catch (_e) {}
@@ -1103,7 +1299,7 @@
       var btn = e.target && e.target.closest ? e.target.closest(".anno-tool-btn") : null;
       if (!btn) return;
       var t = btn.getAttribute("data-tool");
-      if (t === "pointer" || t === "draw" || t === "rope") {
+      if (t === "pointer" || t === "draw" || t === "rope" || t === "eraser") {
         setToolMode(t);
         return;
       }
@@ -1196,6 +1392,9 @@
       e.preventDefault();
     } else if (k === "r") {
       setToolMode("rope");
+      e.preventDefault();
+    } else if (k === "e") {
+      setToolMode("eraser");
       e.preventDefault();
     } else if (k === "c") {
       handleClearLocallyAndBroadcast();
@@ -1826,9 +2025,17 @@
     lastStrokeSeq = 0;
     lastClearSeq = 0;
     lastNavLockSeq = 0;
+    lastStrokeDeleteSeq = 0;
+    // Disconnect is a gesture-end path: release any floor this side holds and
+    // clear any the peer held so neither side is left frozen/locked out.
     try {
-      applyNavLock(false);
+      releaseLocalFloor();
     } catch (_e) {}
+    try {
+      setRemoteFloor(false);
+    } catch (_e) {}
+    eraserActive = false;
+    eraserDeletedIds = null;
     resetLocationSyncUi();
     resetUiToIdle();
     session = newSession();
@@ -2067,7 +2274,15 @@
             for (var pi = 0; pi < sev.points.length; pi++) existing.points.push(sev.points[pi]);
             redrawAllStrokes();
           }
+        } else if (sev.kind === "commit") {
+          // Commit seals the stroke: mark it erasable. Until now it was an
+          // in-flight remote stroke and the eraser deliberately skipped it.
+          var committedRemote = findLocalStroke(sev.strokeId);
+          if (committedRemote) committedRemote.committed = true;
         }
+        // Ongoing remote stroke activity refreshes the floor safety timer so
+        // a long remote gesture keeps this side paused until it actually ends.
+        if (sev.kind === "begin" || sev.kind === "patch") refreshRemoteFloor();
       }
     }
 
@@ -2076,14 +2291,31 @@
       lastClearSeq = cev.seq;
       if (canReceive) {
         wipeAnnotations();
-        applyNavLock(false);
+        setRemoteFloor(false);
       }
     }
 
     var nlev = state.incomingNavLockEvent;
     if (nlev && nlev.seq !== lastNavLockSeq) {
       lastNavLockSeq = nlev.seq;
-      if (canReceive) applyNavLock(nlev.locked === true);
+      // nav_lock IS the shared annotation floor: freeze this side's Matterport
+      // AND block new local gesture starts for its duration. setRemoteFloor
+      // arms a bounded safety timeout so a crashed peer can't lock us out.
+      if (canReceive) setRemoteFloor(nlev.locked === true);
+    }
+
+    var dev = state.incomingStrokeDeleteEvent;
+    if (dev && dev.seq !== lastStrokeDeleteSeq) {
+      lastStrokeDeleteSeq = dev.seq;
+      // Idempotent erase: drop any matching ids; unknown / already-removed
+      // ids change nothing (no redraw), so duplicate/stale deletes are safe.
+      if (canReceive && dev.strokeIds && dev.strokeIds.length) {
+        var beforeLen = localStrokes.length;
+        localStrokes = localStrokes.filter(function (s) {
+          return dev.strokeIds.indexOf(s.strokeId) < 0;
+        });
+        if (localStrokes.length !== beforeLen) redrawAllStrokes();
+      }
     }
   }
 
