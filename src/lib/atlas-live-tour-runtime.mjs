@@ -358,10 +358,14 @@
   // free up again. Engaged per-gesture (pointerdown), released on every
   // gesture-end path. No visible turn UI.
   var FLOOR_SAFETY_MS = 8000;
+  // Keepalive cadence — comfortably below FLOOR_SAFETY_MS so the peer's remote
+  // watchdog is always re-armed well before it can expire mid-gesture.
+  var FLOOR_HEARTBEAT_MS = Math.floor(FLOOR_SAFETY_MS / 3);
   var remoteGestureActive = false;
   var remoteFloorTimer = null;
   var localFloorHeld = false;
   var localFloorTimer = null;
+  var lastFloorHeartbeatTs = 0;
   // Eraser tool: tap- or drag-delete of committed strokes (geometric hit
   // test). eraserDeletedIds dedupes a drag so each stroke is removed once.
   var ANNO_ERASER_TOLERANCE_PX = 12;
@@ -912,6 +916,7 @@
     if (remoteGestureActive) return false;
     if (!localFloorHeld) {
       localFloorHeld = true;
+      lastFloorHeartbeatTs = Date.now(); // the initial lock is the first beat
       var s = session.getState();
       if ((s.role === "agent" || s.role === "visitor") && s.isConnected) {
         session.sendNavLock(currentViewKey, true);
@@ -937,6 +942,7 @@
       } catch (_e) {}
       localFloorTimer = null;
     }
+    lastFloorHeartbeatTs = 0; // stop heartbeats; next gesture starts a fresh cadence
     if (!localFloorHeld) return;
     localFloorHeld = false;
     var s = session.getState();
@@ -958,6 +964,25 @@
     localFloorTimer = setTimeout(function () {
       releaseLocalFloor();
     }, FLOOR_SAFETY_MS);
+  }
+  // Throttled keepalive for the PEER's remote watchdog. The local watchdog is
+  // refreshed in-process (refreshLocalFloor), but the peer only re-arms its own
+  // when it hears from us — and an Eraser drag emits stroke_delete ONLY when it
+  // hits a stroke (nothing over blank space), so stroke traffic is not a
+  // reliable keepalive. While we hold the floor on an active gesture and are
+  // connected, re-broadcast nav_lock(true) at most once per FLOOR_HEARTBEAT_MS.
+  // Movement-driven: a stationary/abandoned gesture stops beating and both
+  // sides release via the safety timeout. nav_lock is ordered + seq-deduped on
+  // the wire, so duplicate beats are harmless and a stale beat can never relock
+  // after the final nav_lock(false).
+  function floorHeartbeat() {
+    if (!localFloorHeld) return;
+    var s = session.getState();
+    if ((s.role !== "agent" && s.role !== "visitor") || !s.isConnected) return;
+    var now = Date.now();
+    if (now - lastFloorHeartbeatTs < FLOOR_HEARTBEAT_MS) return;
+    lastFloorHeartbeatTs = now;
+    session.sendNavLock(currentViewKey, true);
   }
   // setRemoteFloor: react to an inbound nav_lock. Freezes/unfreezes this
   // side's Matterport AND gates new local gesture starts. A bounded timeout
@@ -1178,7 +1203,8 @@
       if (!annoGuard || !annoGuard.owns(e)) return;
       // Owned gesture: suppress any default WebKit handling for the move.
       e.preventDefault();
-      refreshLocalFloor(); // keep the floor alive while this gesture is active
+      refreshLocalFloor(); // keep OUR watchdog alive while this gesture is active
+      floorHeartbeat(); // throttled nav_lock(true) keepalive for the remote watchdog
       if (toolMode === "draw" && activeStroke) {
         // Coalesced samples (120Hz Pencil) — oldest first, all appended
         // to the stroke and to the same outbound patch batch.
@@ -2323,6 +2349,10 @@
     var dev = state.incomingStrokeDeleteEvent;
     if (dev && dev.seq !== lastStrokeDeleteSeq) {
       lastStrokeDeleteSeq = dev.seq;
+      // Defense in depth: a delete proves the peer's eraser is mid-gesture, so
+      // re-arm the remote watchdog too (the nav_lock heartbeat is the primary
+      // keepalive; this just hardens the delete-heavy path).
+      if (canReceive) refreshRemoteFloor();
       // Idempotent erase: drop any matching ids; unknown / already-removed
       // ids change nothing (no redraw), so duplicate/stale deletes are safe.
       if (canReceive && dev.strokeIds && dev.strokeIds.length) {
