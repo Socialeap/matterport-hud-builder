@@ -944,6 +944,21 @@
       session.sendNavLock(currentViewKey, false);
     }
   }
+  // Push the safety watchdog out on owned-gesture activity so a long but
+  // healthy stroke/rope/erase keeps the floor for its whole duration. The
+  // timeout only fires ~FLOOR_SAFETY_MS after activity actually STOPS — the
+  // genuine "pointerup/cancel never arrived" crash case — not mid-gesture.
+  function refreshLocalFloor() {
+    if (!localFloorHeld) return;
+    if (localFloorTimer) {
+      try {
+        clearTimeout(localFloorTimer);
+      } catch (_e) {}
+    }
+    localFloorTimer = setTimeout(function () {
+      releaseLocalFloor();
+    }, FLOOR_SAFETY_MS);
+  }
   // setRemoteFloor: react to an inbound nav_lock. Freezes/unfreezes this
   // side's Matterport AND gates new local gesture starts. A bounded timeout
   // auto-clears so a peer that crashes mid-gesture can never lock this side
@@ -1163,6 +1178,7 @@
       if (!annoGuard || !annoGuard.owns(e)) return;
       // Owned gesture: suppress any default WebKit handling for the move.
       e.preventDefault();
+      refreshLocalFloor(); // keep the floor alive while this gesture is active
       if (toolMode === "draw" && activeStroke) {
         // Coalesced samples (120Hz Pencil) — oldest first, all appended
         // to the stroke and to the same outbound patch batch.
