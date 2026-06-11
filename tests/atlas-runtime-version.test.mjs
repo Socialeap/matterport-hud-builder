@@ -77,6 +77,38 @@ test("desktop-only policy: runtime is >= 2.1.0 and no mobile capability is adver
   );
 });
 
+// ── 2b. The 2.2.0 floor is tied to the shared-annotation feature set ──────
+// The Upgrade Center compares runtime_version to decide "outdated"; the
+// version is only meaningful if a behavior change is matched by a bump.
+// 2.2.0 shipped shared sequential annotation + Eraser/stroke_delete +
+// floor-watchdog refresh + peer heartbeat (PRs #160–#162). These two
+// tests fail if the runtime is bumped without the features, or the
+// features land without a bump — keeping the marker honest.
+test("desktop-only policy: runtime is >= 2.2.0 (Eraser + shared-annotation floor heartbeat)", () => {
+  const [maj, min] = ATLAS_RUNTIME_VERSION.split(".").map(Number);
+  assert.ok(
+    maj > 2 || (maj === 2 && min >= 2),
+    "shared sequential annotation + Eraser/stroke_delete + floor watchdog/heartbeat shipped in 2.2.0",
+  );
+});
+
+test("runtime_version reflects behavior: both families emit the 2.2.0 feature set", () => {
+  const builder = read("src", "lib", "portal.functions.ts");
+  const atlasGlue = read("src", "lib", "atlas-live-tour-runtime.mjs");
+  for (const [family, src] of [["builder", builder], ["atlas", atlasGlue]]) {
+    assert.ok(src.includes("floorHeartbeat"), `${family}: floor heartbeat keepalive must be present at 2.2.0`);
+    assert.ok(src.includes("FLOOR_HEARTBEAT_MS"), `${family}: heartbeat throttle constant must be present at 2.2.0`);
+    assert.ok(/\beraser\b/i.test(src), `${family}: Eraser tool must be present at 2.2.0`);
+  }
+  // The Eraser is backed by the idempotent stroke_delete message in the
+  // single shared transport consumed by both families.
+  const transport = read("src", "lib", "portal", "live-session.mjs");
+  assert.ok(
+    transport.includes("stroke_delete"),
+    "shared live-session transport must define the stroke_delete message",
+  );
+});
+
 // ── 3. Manifest fields builder ───────────────────────────────────────────
 test("buildRuntimeManifestFields returns the four fields with a defensive copy", () => {
   const fields = buildRuntimeManifestFields("atlas");

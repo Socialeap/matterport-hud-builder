@@ -4469,7 +4469,6 @@ async function __dqaInit(){
       // Step 0 — classify intent (rule-based, deterministic).
       var classification=classifyIntent(q);
       var intent=classification.intent;
-      try{console.log("[ask] intent="+intent+" q="+q);}catch(_){}
 
       // Step 1 — compose Property Brain for the current property tab.
       //          Read-only projection over injected globals; rebuilt per
@@ -4569,7 +4568,6 @@ async function __dqaInit(){
         chunkHits:chunkHits,
         canSynthesize:!!window.__SYNTHESIS_URL__
       });
-      try{console.log("[ask] path="+decision.path+" intent="+decision.intent);}catch(_){}
 
       // Step 5 — render.
       if(decision.path==="synthesis"&&decision.needsSynthesis){

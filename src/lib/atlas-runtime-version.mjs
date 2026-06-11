@@ -22,6 +22,22 @@
 //     (controller + glue + CSS). Bump on every behavior change; the
 //     Upgrade Center compares this value to decide "outdated".
 const ATLAS_PACKAGE_SCHEMA = 2;
+// 2.2.0: Shared sequential annotation + Eraser for desktop Live Tour
+// (PRs #160–#162). Both families now draw on the SAME synced scene in
+// turn — a gesture-scoped "annotation floor" (reusing nav_lock) grants
+// one participant the pen at a time, so two people can co-annotate
+// without a restart or a clear. New idempotent `stroke_delete` transport
+// message backs an Eraser tool (point-to-polyline hit test, committed
+// strokes only; either peer erases either's stroke). The floor is held
+// for the whole of a long gesture by a watchdog that re-arms on owned
+// pointer movement, and the peer's REMOTE watchdog is kept alive by a
+// throttled nav_lock(true) heartbeat (FLOOR_HEARTBEAT_MS ≈ FLOOR_SAFETY_MS
+// /3) so a >8s Eraser drag — even over blank space, which emits no
+// stroke_delete — never lets the other side start a competing gesture;
+// a stationary/abandoned gesture stops beating and both sides release via
+// the safety timeout. Desktop-only; no mobile capability added. Packages
+// at <= 2.1.0 lack the Eraser + shared-floor heartbeat — that is what
+// makes them "outdated" to the Upgrade Center.
 // 2.1.0: Live Tour / Explore Together is DESKTOP-ONLY (product decision,
 // 2026-06-09). Both families gate collaboration behind the shared
 // fail-closed annoCollabEligible() predicate: ineligible devices (phones,
@@ -48,7 +64,7 @@ const ATLAS_PACKAGE_SCHEMA = 2;
 // 2.0.1: iOS clipboard isolation — ambient readText() disabled on
 // iOS/iPadOS WebKit (Paste-callout interruption fix) + stage-scoped
 // WebKit gesture defenses.
-const ATLAS_RUNTIME_VERSION = "2.1.0";
+const ATLAS_RUNTIME_VERSION = "2.2.0";
 
 // SUPPORTED-CURRENT capabilities — what freshly generated packages
 // advertise. Live Tour / Explore Together is desktop-only (2026-06-09), so
