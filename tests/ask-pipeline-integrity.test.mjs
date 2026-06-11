@@ -14,8 +14,117 @@ import {
   classifyIntent,
   intentAllows,
 } from "../src/lib/portal/ask-intents.mjs";
-import { tier1Rank, decideAnswer } from "../src/lib/portal/ask-runtime-logic.mjs";
+import {
+  tier1Rank,
+  rescoreChunksByIntent,
+  decideAnswer,
+  TIER1_FIELD_BOOST,
+} from "../src/lib/portal/ask-runtime-logic.mjs";
 import { buildPropertyQAEntries } from "../src/lib/rag/property-qa-builder.ts";
+
+// ────────────────────────────────────────────────────────────────────
+// Defect 5 — the two query tokenizers must stay separate data shapes.
+//
+// `_queryTokens` was declared twice in ask-runtime-logic.mjs: once
+// returning a token SET (object map, underscore-preserving) for the
+// field-match / Tier-1 lexical paths, and once returning an ordered
+// ARRAY (underscore-splitting) for chunk rescoring. As an ES module the
+// redeclaration is a hard SyntaxError (the whole file fails to load —
+// this very test file could not import it). In the generated runtime's
+// sloppy-mode IIFE the array definition silently won "last wins", so the
+// map-consumers received an array: `tokens[word]` membership lookups
+// returned undefined and `for…in` iterated array indices. The functions
+// were renamed `_queryTokenMap` / `_queryTokenList`. Each test below
+// fails if a consumer receives the wrong shape — under the old collapse
+// the scored item never clears the floor / never pins, so the result is
+// empty or unboosted.
+// ────────────────────────────────────────────────────────────────────
+
+test("tier1 lexical overlap consumes the query token MAP (membership scoring)", () => {
+  // No embedding → tier1Rank falls back to lexical overlap:
+  //   score = 0.40 + 0.30 * (overlap / total).
+  // The query shares 4 of its 5 tokens with the question, so the QA must
+  // clear TIER1_FLOOR (0.45) at ~0.64. If the consumer received an array
+  // instead of a set, overlap counts to 0 → score 0.40 < floor → the
+  // result would be empty.
+  const qas = [
+    {
+      id: "field:z_nomatch:0",
+      field: "z_nomatch", // chosen so the field-name boost can NOT fire
+      question: "alpha bravo charlie delta",
+      answer: "irrelevant",
+      source_anchor_id: "field:z_nomatch",
+      embedding: null,
+      intents: [],
+    },
+  ];
+  const ranked = tier1Rank(
+    null,
+    "alpha bravo charlie delta echo",
+    qas,
+    "unknown", // skip the intent filter; isolate lexical scoring
+    intentAllows,
+  );
+  assert.strictEqual(ranked.length, 1, "token-overlapping QA must clear the floor via overlap");
+  assert.ok(
+    Math.abs(ranked[0].score - (0.4 + 0.3 * (4 / 5))) < 1e-9,
+    `overlap score should be 0.64, got ${ranked[0].score}`,
+  );
+});
+
+test("tier1 field-name boost consumes the query token MAP (key lookup)", () => {
+  // Question shares no tokens with the query → overlap base is exactly
+  // 0.40. The ONLY thing that lifts this QA over TIER1_FLOOR (0.45) is
+  // the field-name boost, which does `tokens["parking"]`. An array there
+  // returns undefined → no boost → score 0.40 < floor → empty result.
+  const qas = [
+    {
+      id: "field:parking_spaces:0",
+      field: "parking_spaces",
+      question: "zzz qqq",
+      answer: "Ample free public parking.",
+      source_anchor_id: "field:parking_spaces",
+      embedding: null,
+      intents: [],
+    },
+  ];
+  const ranked = tier1Rank(
+    null,
+    "is there visitor parking available",
+    qas,
+    "unknown",
+    intentAllows,
+  );
+  assert.strictEqual(ranked.length, 1, "field-name match must lift the QA over the floor");
+  assert.strictEqual(ranked[0].qa.field, "parking_spaces");
+  assert.ok(
+    Math.abs(ranked[0].score - (0.4 + TIER1_FIELD_BOOST)) < 1e-9,
+    `field-boosted score should be ${0.4 + TIER1_FIELD_BOOST}, got ${ranked[0].score}`,
+  );
+});
+
+test("chunk rescoring consumes the query token LIST (length + index seeding)", () => {
+  // The keyword-pin path seeds its set from `qTokens[index]` and gates on
+  // `qTokens.length > 0`. A map there has no numeric length → the set is
+  // empty and no field_chunk is ever keyword-pinned. fc1's section token
+  // ("hoa") is in the query; fc2's is not. Only fc1 may be pinned, and the
+  // pin is worth exactly FIELD_CHUNK_KEYWORD_BOOST (0.35) over fc2.
+  const chunks = [
+    { id: "fc1", parentId: "fc1", source: "hoa_fee", section: "hoa_fee", content: "HOA dues.", kind: "field_chunk", score: 0.5 },
+    { id: "fc2", parentId: "fc2", source: "zzz_qqq", section: "zzz_qqq", content: "Unrelated.", kind: "field_chunk", score: 0.5 },
+  ];
+  const out = rescoreChunksByIntent(chunks, "unknown", intentAllows, "what is the hoa fee");
+  const fc1 = out.find((c) => c.id === "fc1");
+  const fc2 = out.find((c) => c.id === "fc2");
+  assert.ok(fc1 && fc2, "both chunks must survive rescoring");
+  assert.strictEqual(fc1._keywordPinned, true, "matching field_chunk must be keyword-pinned");
+  assert.strictEqual(fc2._keywordPinned, false, "non-matching field_chunk must not be pinned");
+  assert.ok(
+    Math.abs((fc1.score - fc2.score) - 0.35) < 1e-9,
+    `keyword pin should add 0.35, got delta ${fc1.score - fc2.score}`,
+  );
+  assert.strictEqual(out[0].id, "fc1", "pinned chunk must sort to the top");
+});
 
 // ────────────────────────────────────────────────────────────────────
 // Defect 3 — generic-token field-name boost no longer fires

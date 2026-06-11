@@ -95,7 +95,13 @@ function _dot(a, b) {
   return s;
 }
 
-function _queryTokens(q) {
+// Tokenize a query into a SET (object map of token -> true) for O(1)
+// membership lookups. Keeps underscores inside tokens (splits on
+// whitespace only) so multi-word field names survive as a unit. Used by
+// the field-match / evidence / Tier-1 lexical paths that test membership.
+// NOTE: distinct from _queryTokenList below (ordered array, underscore-
+// splitting) — they were one overloaded name and must stay separate.
+function _queryTokenMap(q) {
   var t = String(q || "")
     .toLowerCase()
     .replace(/[^a-z0-9_\s]/g, " ")
@@ -183,7 +189,7 @@ var _INTENT_EVIDENCE_TERMS = {
 };
 
 function _expandedEvidenceTokens(query, intent) {
-  var raw = _queryTokens(query);
+  var raw = _queryTokenMap(query);
   var out = {};
   for (var t in raw) {
     if (!Object.prototype.hasOwnProperty.call(raw, t)) continue;
@@ -380,7 +386,7 @@ function resolveAction(brain, intent) {
 // Returns sorted array of {qa, score} above the hard floor.
 function tier1Rank(queryVec, query, canonicalQAs, intent, intentAllowsFn) {
   if (!canonicalQAs || !canonicalQAs.length) return [];
-  var tokens = _queryTokens(query);
+  var tokens = _queryTokenMap(query);
   var scored = [];
   for (var i = 0; i < canonicalQAs.length; i++) {
     var qa = canonicalQAs[i];
@@ -398,7 +404,7 @@ function tier1Rank(queryVec, query, canonicalQAs, intent, intentAllowsFn) {
     } else {
       s = 0;
       // Lexical floor: match query tokens against the question text.
-      var qwords = _queryTokens(qa.question || "");
+      var qwords = _queryTokenMap(qa.question || "");
       var overlap = 0, total = 0;
       for (var t in tokens) {
         if (Object.prototype.hasOwnProperty.call(tokens, t)) {
@@ -464,7 +470,12 @@ function _normalizeEvidenceSection(section) {
 var FIELD_CHUNK_BASE_BOOST = 0.08;
 var FIELD_CHUNK_KEYWORD_BOOST = 0.35;
 
-function _queryTokens(q) {
+// Tokenize a query into an ordered ARRAY, splitting on every non-
+// alphanumeric run (so "hoa_fee" -> ["hoa", "fee"]). Used by chunk
+// rescoring, which needs .length and index iteration to seed its own set.
+// NOTE: distinct from _queryTokenMap above (object set, underscore-
+// preserving) — they were one overloaded name and must stay separate.
+function _queryTokenList(q) {
   var s = String(q || "").toLowerCase();
   var raw = s.split(/[^a-z0-9]+/);
   var out = [];
@@ -489,7 +500,7 @@ function rescoreChunksByIntent(chunks, intent, intentAllowsFn, queryText) {
   if (!chunks || !chunks.length) return [];
   var hasIntentArg = intent && intent !== "unknown" && intentAllowsFn;
   var evidenceTerms = hasIntentArg ? (_INTENT_EVIDENCE_TERMS[intent] || []) : [];
-  var qTokens = _queryTokens(queryText);
+  var qTokens = _queryTokenList(queryText);
   var qSet = {};
   for (var qi = 0; qi < qTokens.length; qi++) qSet[qTokens[qi]] = true;
   var hasQueryTokens = qTokens.length > 0;
