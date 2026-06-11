@@ -628,7 +628,7 @@ function assertBuilderSentinels(src) {
 }
 
 /**
- * Desktop-only Live Tour (runtime 2.1.0): the PeerJS dependency must ship
+ * Desktop-only Live Tour (runtime 2.2.0): the PeerJS dependency must ship
  * INERT — a type="text/plain" loader config carrying the pinned URL + SRI
  * inside the dep:peerjs sentinels — and the glue must carry the
  * fail-closed collaboration gate (annoCollabEligible) plus the lazy
