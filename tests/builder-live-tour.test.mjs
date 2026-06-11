@@ -757,3 +757,26 @@ test("the remote floor auto-clears on the bounded safety timeout (peer crash mid
     globalThis.setTimeout = realSetTimeout;
   }
 });
+
+test("a long ACTIVE gesture keeps the floor: owned moves refresh the watchdog (no mid-gesture release)", () => {
+  const realSetTimeout = globalThis.setTimeout;
+  const realClearTimeout = globalThis.clearTimeout;
+  let armed = 0;
+  globalThis.setTimeout = (cb, ms) => { if (ms === 8000) { armed += 1; return 1000 + armed; } return realSetTimeout(cb, ms); };
+  globalThis.clearTimeout = (id) => { if (typeof id === "number" && id >= 1000) return; return realClearTimeout(id); };
+  try {
+    const h = runGlue("agent", { wireRemote: true });
+    enterDraw(h);
+    h.canvas.fire("pointerdown", m(1, 128, 72));        // acquire → arm #1
+    assert.equal(armed, 1, "watchdog armed on gesture start");
+    h.canvas.fire("pointermove", m(1, 160, 100));       // activity → re-arm
+    h.canvas.fire("pointermove", m(1, 200, 140));       // activity → re-arm
+    assert.ok(armed >= 3, "owned moves refresh (re-arm) the safety watchdog");
+    assert.deepEqual((h.spy.navlock || []).map((n) => n.locked), [true], "floor still held — no spurious release mid-gesture");
+    h.canvas.fire("pointerup", m(1, 200, 140));
+    assert.deepEqual((h.spy.navlock || []).map((n) => n.locked), [true, false], "released only on pointerup");
+  } finally {
+    globalThis.setTimeout = realSetTimeout;
+    globalThis.clearTimeout = realClearTimeout;
+  }
+});
