@@ -21,6 +21,7 @@
 import {
   ATLAS_PACKAGE_SCHEMA,
   ATLAS_RUNTIME_VERSION,
+  ATLAS_RUNTIME_CAPABILITIES,
   ATLAS_KNOWN_CAPABILITIES,
 } from "./atlas-runtime-version.mjs";
 
@@ -305,31 +306,17 @@ function inspectPresentationHtml(html) {
     return fail(`partial f3d marker set (missing: ${missing.join(", ")}) — ambiguous package`);
   }
 
-  // 4. Family routing (fail closed on anything a generator never stamps).
+  // 4. Generated-family value + strict schema/runtime FORMAT validation,
+  //    for BOTH families, before anything else is decided. A package whose
+  //    family/schema/runtime markers do not even parse is malformed —
+  //    including for Atlas, which must never reach atlas_managed on
+  //    malformed metadata.
   const family = meta["f3d-package-family"];
-  const builderSentinelHits = countOccurrences(html, "BEGIN v=1 family=builder");
-  const atlasSentinelHits = countOccurrences(html, "BEGIN v=1 family=atlas");
-  if (family === "atlas") {
-    if (builderSentinelHits > 0) {
-      return fail("family marker says atlas but builder-family sentinels are present (conflicting markers)");
-    }
-    report.family = "atlas";
-    report.runtimeVersion = isStrictSemver(meta["f3d-runtime"]) ? meta["f3d-runtime"] : null;
-    report.outcome = "atlas_managed";
-    report.reasons.push(
-      "Atlas curated showcase: upgraded through its GitHub source repository and Netlify redeploy, never by single-file patch",
-    );
-    return report;
-  }
-  if (family !== "builder") {
+  if (family !== "builder" && family !== "atlas") {
     return fail(`f3d-package-family "${family}" is not a generated family (expected builder or atlas)`);
   }
-  if (atlasSentinelHits > 0) {
-    return fail("family marker says builder but atlas-family sentinels are present (conflicting markers)");
-  }
-  report.family = "builder";
+  report.family = family;
 
-  // 5. Schema + version + capabilities (strict).
   const schemaRaw = meta["f3d-package-schema"];
   if (!/^\d+$/.test(schemaRaw)) return fail(`f3d-package-schema "${schemaRaw}" is not an integer`);
   const schema = Number(schemaRaw);
@@ -341,21 +328,15 @@ function inspectPresentationHtml(html) {
   }
   report.runtimeVersion = version;
 
-  const capsRaw = meta["f3d-capabilities"];
-  const caps = capsRaw === "" ? [] : capsRaw.split(",");
-  for (const cap of caps) {
-    if (!ATLAS_KNOWN_CAPABILITIES.includes(cap)) {
-      return fail(`unknown capability "${cap}" in f3d-capabilities (not in the recognized registry)`);
-    }
-  }
-  report.capabilities = caps;
-
-  // 6. Future generations: newer schema or newer runtime than this build —
-  //    sentinel layout unknown, never downgrade, never guess.
+  // 5. Future generations (either family): newer schema or newer runtime
+  //    than this build. Decided BEFORE capability and sentinel validation —
+  //    a legitimate future package may advertise capabilities this version
+  //    does not recognize and carry sentinel layouts it cannot know.
+  //    Never downgrade, never guess.
   if (schema > ATLAS_PACKAGE_SCHEMA || semverCompare(version, ATLAS_RUNTIME_VERSION) > 0) {
     report.outcome = "future_version";
     report.reasons.push(
-      `package advertises schema ${schema} / runtime ${version}, newer than this build (schema ${ATLAS_PACKAGE_SCHEMA} / runtime ${ATLAS_RUNTIME_VERSION}) — upgrade the tool, never downgrade the package`,
+      `${family} package advertises schema ${schema} / runtime ${version}, newer than this build (schema ${ATLAS_PACKAGE_SCHEMA} / runtime ${ATLAS_RUNTIME_VERSION}) — upgrade the tool, never downgrade the package`,
     );
     return report;
   }
@@ -363,7 +344,50 @@ function inspectPresentationHtml(html) {
     return fail(`f3d-package-schema ${schema} predates the versioned contract (expected ${ATLAS_PACKAGE_SCHEMA})`);
   }
 
-  // 7. Older-than-v1-source runtimes: real generations, but v1 only patches
+  // 6. Capabilities (non-future packages only — the registry is the full
+  //    capability universe for every version up to the current one):
+  //    every advertised capability must be registered, and a package
+  //    claiming the CURRENT runtime must advertise EXACTLY the current
+  //    capability set — a 2.2.0 marker with a retired mobile_* capability
+  //    is internally inconsistent, not already_current.
+  const capsRaw = meta["f3d-capabilities"];
+  const caps = capsRaw === "" ? [] : capsRaw.split(",");
+  for (const cap of caps) {
+    if (!ATLAS_KNOWN_CAPABILITIES.includes(cap)) {
+      return fail(`unknown capability "${cap}" in f3d-capabilities (not in the recognized registry)`);
+    }
+  }
+  if (
+    semverCompare(version, ATLAS_RUNTIME_VERSION) === 0 &&
+    caps.join(",") !== ATLAS_RUNTIME_CAPABILITIES.join(",")
+  ) {
+    return fail(
+      `runtime ${ATLAS_RUNTIME_VERSION} must advertise exactly the current capability set "${ATLAS_RUNTIME_CAPABILITIES.join(",")}" (found "${capsRaw}") — inconsistent contract`,
+    );
+  }
+  report.capabilities = caps;
+
+  // 7. Family↔sentinel conflict checks (current-format sentinel literals;
+  //    future packages never reach this point), then Atlas routing: a
+  //    valid, understood Atlas package is managed through its GitHub
+  //    source repository, never by single-file patch.
+  const builderSentinelHits = countOccurrences(html, "BEGIN v=1 family=builder");
+  const atlasSentinelHits = countOccurrences(html, "BEGIN v=1 family=atlas");
+  if (family === "atlas") {
+    if (builderSentinelHits > 0) {
+      return fail("family marker says atlas but builder-family sentinels are present (conflicting markers)");
+    }
+    report.outcome = "atlas_managed";
+    report.reasons.push(
+      "Atlas curated showcase: upgraded through its GitHub source repository and Netlify redeploy, never by single-file patch",
+    );
+    return report;
+  }
+  if (atlasSentinelHits > 0) {
+    return fail("family marker says builder but atlas-family sentinels are present (conflicting markers)");
+  }
+
+  // 8. Older-than-v1-source runtimes: real generations, but v1 only patches
   //    V1_PATCH_SOURCE_VERSION exactly.
   if (
     semverCompare(version, ATLAS_RUNTIME_VERSION) < 0 &&
@@ -376,7 +400,7 @@ function inspectPresentationHtml(html) {
     return report;
   }
 
-  // 8. v1 patch source must carry the EXACT empty capability set 2.1.0
+  // 9. v1 patch source must carry the EXACT empty capability set 2.1.0
   //    shipped with — anything else is internally inconsistent.
   if (version === V1_PATCH_SOURCE_VERSION && caps.length > 0) {
     return fail(
@@ -384,7 +408,7 @@ function inspectPresentationHtml(html) {
     );
   }
 
-  // 9. Sentinel integrity — required for BOTH remaining outcomes: a current
+  // 10. Sentinel integrity — required for BOTH remaining outcomes: a current
   //    package with broken sentinels is corrupt, and a 2.1.0 package is only
   //    patchable when every mutation boundary is intact.
   const sentinels = validateBuilderSentinels(html);

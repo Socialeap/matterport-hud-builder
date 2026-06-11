@@ -89,7 +89,7 @@ ${BUILDER_SENTINEL_LITERALS["js:glue"].end}
 function makeAtlasHtml(opts = {}) {
   return `<!doctype html>
 <html><head>
-${metaBlock({ family: "atlas", version: opts.version || "2.1.0" })}
+${metaBlock({ ...opts, family: "atlas", version: opts.version || "2.1.0" })}
 </head><body>
 <!-- f3d:runtime-markup:stage BEGIN v=1 family=atlas -->
 <canvas id="anno-canvas"></canvas>
@@ -199,6 +199,37 @@ test("future_version wins even when the (unknown future) sentinel layout looks b
     }),
   );
   assert.equal(r.outcome, "future_version");
+});
+
+test("future Builder version with an unknown future capability → future_version, not invalid", () => {
+  // A legitimate future package may advertise capabilities this build does
+  // not recognize — future detection must precede capability validation.
+  const r = inspectPresentationHtml(makeBuilderHtml({ version: "2.5.0", caps: "desktop_holo_v1" }));
+  assert.equal(r.outcome, "future_version");
+});
+
+test("future Atlas version with an unknown future capability → future_version, not invalid", () => {
+  const r = inspectPresentationHtml(makeAtlasHtml({ version: "3.0.0", caps: "holo_stage_v1" }));
+  assert.equal(r.outcome, "future_version");
+  assert.equal(r.family, "atlas");
+});
+
+test("current Builder runtime advertising a retired known capability → invalid, not already_current", () => {
+  const r = inspectPresentationHtml(
+    makeBuilderHtml({ version: ATLAS_RUNTIME_VERSION, caps: "mobile_voice_v2" }),
+  );
+  assert.equal(r.outcome, "invalid");
+  assert.match(r.reasons.join(" "), /exactly the current capability set|inconsistent/);
+});
+
+test("Atlas package with malformed runtime/schema → invalid, never atlas_managed", () => {
+  const badRuntime = inspectPresentationHtml(makeAtlasHtml({ version: "2.1" }));
+  assert.equal(badRuntime.outcome, "invalid");
+  assert.match(badRuntime.reasons.join(" "), /strict x\.y\.z semver/);
+
+  const badSchema = inspectPresentationHtml(makeAtlasHtml({ schema: "two" }));
+  assert.equal(badSchema.outcome, "invalid");
+  assert.match(badSchema.reasons.join(" "), /not an integer/);
 });
 
 // ── Sentinel integrity failures → invalid ────────────────────────────────
