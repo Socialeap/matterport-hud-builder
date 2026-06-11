@@ -1288,3 +1288,26 @@ test("atlas remote floor auto-clears on the bounded safety timeout", () => {
     globalThis.setTimeout = realSetTimeout;
   }
 });
+
+test("atlas long ACTIVE gesture keeps the floor: owned moves refresh the watchdog (no mid-gesture release)", () => {
+  const realSetTimeout = globalThis.setTimeout;
+  const realClearTimeout = globalThis.clearTimeout;
+  let armed = 0;
+  globalThis.setTimeout = (cb, ms) => { if (ms === 8000) { armed += 1; return 1000 + armed; } return realSetTimeout(cb, ms); };
+  globalThis.clearTimeout = (id) => { if (typeof id === "number" && id >= 1000) return; return realClearTimeout(id); };
+  try {
+    const { h, spy, canvas } = wiredAtlasGlue("agent");
+    h.fireDoc("keydown", { key: "d" });
+    canvas.fire("pointerdown", aev(1, 128, 72));        // acquire → arm #1
+    assert.equal(armed, 1, "watchdog armed on gesture start");
+    canvas.fire("pointermove", aev(1, 160, 100));       // activity → re-arm
+    canvas.fire("pointermove", aev(1, 200, 140));       // activity → re-arm
+    assert.ok(armed >= 3, "owned moves refresh (re-arm) the safety watchdog");
+    assert.deepEqual((spy.navlock || []).map((n) => n.locked), [true], "floor still held — no spurious release mid-gesture");
+    canvas.fire("pointerup", aev(1, 200, 140));
+    assert.deepEqual((spy.navlock || []).map((n) => n.locked), [true, false], "released only on pointerup");
+  } finally {
+    globalThis.setTimeout = realSetTimeout;
+    globalThis.clearTimeout = realClearTimeout;
+  }
+});
