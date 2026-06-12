@@ -93,7 +93,11 @@ test("desktop-only policy: runtime is >= 2.2.0 (Eraser + shared-annotation floor
 });
 
 test("runtime_version reflects behavior: both families emit the 2.2.0 feature set", () => {
-  const builder = read("src", "lib", "portal.functions.ts");
+  // P2: the Builder glue lives in the canonical span module and
+  // portal.functions.ts interpolates it — scan both as one corpus.
+  const builder =
+    read("src", "lib", "portal.functions.ts") +
+    read("src", "lib", "portal", "builder-runtime-spans.mjs");
   const atlasGlue = read("src", "lib", "atlas-live-tour-runtime.mjs");
   for (const [family, src] of [["builder", builder], ["atlas", atlasGlue]]) {
     assert.ok(src.includes("floorHeartbeat"), `${family}: floor heartbeat keepalive must be present at 2.2.0`);
@@ -249,12 +253,17 @@ test("the PeerJS tag is pinned to an exact version with an SRI integrity hash", 
 });
 
 test("both families ship the PeerJS dependency INERT (lazy desktop-only load)", () => {
-  for (const file of [
-    ["src", "lib", "atlas-live-tour.ts"],
-    ["src", "lib", "portal.functions.ts"],
-  ]) {
-    const src = read(...file);
-    const name = file[file.length - 1];
+  // P2: the Builder dep:peerjs span lives in the canonical span module —
+  // scan generator + module as one corpus for the builder family.
+  const FAMILY_SOURCES = [
+    ["atlas-live-tour.ts", read("src", "lib", "atlas-live-tour.ts")],
+    [
+      "portal.functions.ts (+ builder-runtime-spans.mjs)",
+      read("src", "lib", "portal.functions.ts") +
+        read("src", "lib", "portal", "builder-runtime-spans.mjs"),
+    ],
+  ];
+  for (const [name, src] of FAMILY_SOURCES) {
     assert.ok(
       src.includes('id="f3d-peerjs-loader"'),
       `${name}: dep span must carry the f3d-peerjs-loader config`,

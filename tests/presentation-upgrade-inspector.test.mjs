@@ -455,14 +455,18 @@ test("mutation allowlist contract: exactly the five spans + four meta names, fro
 
 // ── Parity with the real generator (inspector ↔ generator can't skew) ────
 
-test("portal.functions.ts carries each pinned sentinel literal exactly once (10 markers total)", () => {
-  const src = readFileSync(repoPath("src", "lib", "portal.functions.ts"), "utf8");
-  const count = (needle) => src.split(needle).length - 1;
+test("the canonical span module carries each pinned sentinel literal exactly once (10 markers total)", () => {
+  // P2: sentinel emission moved from portal.functions.ts to the canonical
+  // span module; the generator interpolates the builders and emits none.
+  const mod = readFileSync(repoPath("src", "lib", "portal", "builder-runtime-spans.mjs"), "utf8");
+  const portal = readFileSync(repoPath("src", "lib", "portal.functions.ts"), "utf8");
+  const count = (hay, needle) => hay.split(needle).length - 1;
   for (const name of BUILDER_RUNTIME_SPANS) {
-    assert.equal(count(BUILDER_SENTINEL_LITERALS[name].begin), 1, `BEGIN ${name}`);
-    assert.equal(count(BUILDER_SENTINEL_LITERALS[name].end), 1, `END ${name}`);
+    assert.equal(count(mod, BUILDER_SENTINEL_LITERALS[name].begin), 1, `BEGIN ${name}`);
+    assert.equal(count(mod, BUILDER_SENTINEL_LITERALS[name].end), 1, `END ${name}`);
   }
-  assert.equal(count("f3d:runtime-"), 10, "exactly 10 sentinel marker occurrences in the generator");
+  assert.equal(count(mod, "f3d:runtime-"), 10, "exactly 10 sentinel marker occurrences in the module");
+  assert.equal(count(portal, "f3d:runtime-"), 0, "the generator emits sentinels only via the module");
 });
 
 test("buildRuntimeMetaTags('builder') output parses through the inspector's strict meta format", () => {

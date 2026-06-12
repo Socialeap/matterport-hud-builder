@@ -6,10 +6,12 @@
  * presentation, but the real generator (generatePresentation, a TanStack
  * server-fn) can't run headless. This script reconstructs a self-contained,
  * device-testable page from the SAME corrected sources the generator inlines:
- *   - the pinned PeerJS dependency, runtime CSS, and annotation overlay markup
- *     extracted from portal.functions.ts via the f3d:runtime sentinels, and
- *   - the real live-session.mjs controller + anno-input.mjs kernel + the
- *     live-guide glue (so the genuine pointer guard / WebKit defenses run).
+ *   - the pinned PeerJS dependency, runtime CSS, annotation overlay markup,
+ *     and live-guide glue imported from the canonical span builders in
+ *     src/lib/portal/builder-runtime-spans.mjs (the SAME builders
+ *     generatePresentation interpolates — P2), and
+ *   - the real live-session.mjs controller + anno-input.mjs kernel
+ *     (so the genuine pointer guard / WebKit defenses run).
  *
  * What you CAN test on iPhone/iPad with the output:
  *   - Tap "Host a tour" (role=agent, no peer needed), pick Draw / Focus Rope,
@@ -31,79 +33,49 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { stripExports } from "../src/lib/portal/ask-runtime-transformer.mjs";
 import { ATLAS_RUNTIME_VERSION, buildRuntimeMetaTags } from "../src/lib/atlas-runtime-version.mjs";
+import {
+  buildBuilderCssSpan,
+  buildBuilderJsKernelSpan,
+  BUILDER_DEP_PEERJS_SPAN,
+  BUILDER_MARKUP_SPAN,
+  BUILDER_JS_GLUE_SPAN,
+} from "../src/lib/portal/builder-runtime-spans.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (...p) => fs.readFileSync(path.join(ROOT, ...p), "utf8");
-const PORTAL = read("src", "lib", "portal.functions.ts");
 // A public Matterport sample (override via argv[2] with your own model id).
 const MODEL_ID = process.argv[2] || "SxQL3iGyoDo";
 
-// ── Extract a sentinel-bounded span and turn template-literal text into the
-//    real bytes the generator would emit (un-escape \\ \` \${; substitute the
-//    handful of known config interpolations with canary defaults; blank the
-//    rest). ───────────────────────────────────────────────────────────────
-function span(beginNeedle, endNeedle, { inner = false } = {}) {
-  const a = PORTAL.indexOf(beginNeedle);
-  const b = PORTAL.indexOf(endNeedle, a);
-  if (a === -1 || b === -1) throw new Error(`canary: span ${beginNeedle} not found`);
-  // inner=true → between the BEGIN/END lines (drop the sentinel comments);
-  // inner=false → include them (handy for the dep tag, which is a comment+tag).
-  const from = inner ? PORTAL.indexOf("\n", a) + 1 : a;
-  const to = inner ? b : PORTAL.indexOf("\n", b) + 1;
-  return PORTAL.slice(from, to);
-}
-// Turn template-literal text into the real bytes the generator emits.
-// `interp` maps a ${EXPR} token to its replacement; a MATCHED token's value is
-// emitted verbatim (so an inlined .mjs keeps its OWN ${} template literals),
-// while unmatched ${...} become "null" (valid in any JS/CSS position). Known
-// config interpolations are pre-substituted with canary-safe literals.
-function deTemplate(src, interp) {
-  interp = interp || {};
-  let s = src
-    .replace(/\$\{escapeHtml\(accentColor\)\}/g, "#6c5ce7")
-    .replace(/\$\{escapeHtml\(hudBgColor\)\}/g, "#0a0e27");
-  let out = "";
-  let i = 0;
-  while (i < s.length) {
-    if (s[i] === "$" && s[i + 1] === "{") {
-      let depth = 1;
-      let j = i + 2;
-      while (j < s.length && depth > 0) {
-        if (s[j] === "{") depth += 1;
-        else if (s[j] === "}") depth -= 1;
-        if (depth === 0) break;
-        j += 1;
-      }
-      const expr = s.slice(i + 2, j).trim();
-      i = j + 1;
-      out += Object.prototype.hasOwnProperty.call(interp, expr) ? interp[expr] : "null";
-      continue;
-    }
-    if (s[i] === "\\" && (s[i + 1] === "$" || s[i + 1] === "`" || s[i + 1] === "\\")) {
-      out += s[i + 1];
-      i += 2;
-      continue;
-    }
-    out += s[i];
-    i += 1;
-  }
-  return out;
+// The canonical builders return SENTINEL-INCLUSIVE blocks (the patcher's
+// replacement unit) already in real emitted bytes. The canary template wants
+// the INNER content for css/markup/kernel/glue (it slots them between its own
+// surrounding lines): bytes after the BEGIN line up to the start of the END
+// sentinel literal — exactly what the old source extraction produced (the
+// markup END line keeps its leading indentation).
+function innerOf(block, endLiteral) {
+  const from = block.indexOf("\n") + 1;
+  const to = block.indexOf(endLiteral);
+  if (from === 0 || to === -1) throw new Error(`canary: malformed span block (${endLiteral})`);
+  return block.slice(from, to);
 }
 
-const DEP = deTemplate(span("<!-- f3d:runtime-dep:peerjs BEGIN", "<!-- f3d:runtime-dep:peerjs END -->", { inner: false }));
-const CSS = deTemplate(span("/* f3d:runtime-css BEGIN", "/* f3d:runtime-css END */", { inner: true }));
-const MARKUP = deTemplate(span("<!-- f3d:runtime-markup BEGIN", "<!-- f3d:runtime-markup END -->", { inner: true }));
-// The kernel span interpolates the two runtime modules — inline the real
-// (stripped) sources as-is so createLiveSession + the anno-input helpers are
-// locals AND their own template literals are not corrupted.
-const KERNEL = deTemplate(
-  span("// f3d:runtime-js:kernel BEGIN", "// f3d:runtime-js:kernel END", { inner: true }),
-  {
-    LIVE_SESSION_RUNTIME_JS: stripExports(read("src", "lib", "portal", "live-session.mjs")),
-    ANNO_INPUT_RUNTIME_JS: stripExports(read("src", "lib", "portal", "anno-input.mjs")),
-  },
+const DEP = BUILDER_DEP_PEERJS_SPAN + "\n";
+const CSS = innerOf(
+  buildBuilderCssSpan({ accentColor: "#6c5ce7", hudBgColor: "#0a0e27" }),
+  "/* f3d:runtime-css END */",
 );
-const GLUE = deTemplate(span("// f3d:runtime-js:glue BEGIN", "// f3d:runtime-js:glue END", { inner: true }));
+const MARKUP = innerOf(BUILDER_MARKUP_SPAN, "<!-- f3d:runtime-markup END -->");
+// The kernel builder interpolates the two runtime modules — pass the real
+// (stripped) sources so createLiveSession + the anno-input helpers are
+// locals AND their own template literals are not corrupted.
+const KERNEL = innerOf(
+  buildBuilderJsKernelSpan({
+    liveSessionJs: stripExports(read("src", "lib", "portal", "live-session.mjs")),
+    annoInputJs: stripExports(read("src", "lib", "portal", "anno-input.mjs")),
+  }),
+  "// f3d:runtime-js:kernel END",
+);
+const GLUE = innerOf(BUILDER_JS_GLUE_SPAN, "// f3d:runtime-js:glue END");
 
 const IFRAME_SRC = `https://my.matterport.com/show/?m=${MODEL_ID}&play=1&qs=1`;
 
