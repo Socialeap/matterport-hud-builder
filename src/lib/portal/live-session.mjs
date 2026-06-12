@@ -383,8 +383,27 @@ function createLiveSession(options) {
   }
 
   function _attachDataConnection(conn) {
-    dataConn = conn;
+    // Candidate adoption: a newly offered connection must NOT displace a
+    // live dataConn until it actually emits "open". PeerJS can hand the
+    // agent a duplicate inbound connection (visitor tab refresh, network
+    // flap, ICE restart) that never opens; assigning it eagerly left
+    // isConnected=true with a dead OUTBOUND channel while the old
+    // connection's handlers kept delivering INBOUND data — the exact
+    // one-way host→guest failure this guards against. Until the
+    // candidate opens, the existing connection stays authoritative; on
+    // open the candidate is adopted and the previous channel is closed.
+    // A candidate that errors/closes before opening leaves the existing
+    // connection and the connected state untouched.
     conn.on("open", function () {
+      var previous = dataConn !== conn ? dataConn : null;
+      dataConn = conn;
+      if (previous) {
+        try {
+          previous.close();
+        } catch (e) {
+          log("stale conn close failed", e);
+        }
+      }
       _diagSafe("data_connected");
       _patch({ status: "connected", isConnected: true });
     });
@@ -400,8 +419,15 @@ function createLiveSession(options) {
     conn.on("error", function (err) {
       var t = (err && err.type) || (err && err.message) || "data-error";
       log("data conn error", t);
-      _patch({ error: t });
+      // A failing CANDIDATE must not surface an error over a healthy
+      // active channel; only the authoritative conn (or the very first,
+      // below) reports.
+      if (dataConn === conn) _patch({ error: t });
     });
+    // First connection (nothing live yet): make it the provisional
+    // channel immediately — preserves the visitor-side join behavior
+    // where the outbound conn is tracked from creation, before "open".
+    if (!dataConn) dataConn = conn;
   }
 
   // Shared media-call plumbing: stream/close/error handlers. Media
@@ -766,11 +792,32 @@ function createLiveSession(options) {
     var packet = { type: "location_share", ss: ssClean, sr: srClean, ts: Date.now() };
     try {
       dataConn.send(packet);
+      // Send methods own the sender-side view key (same contract as
+      // teleportVisitor): the visitor shares the view they are standing
+      // in, so their annotation packets must be stamped with it from
+      // this moment — otherwise the agent's filter drops them once the
+      // agent follows.
+      _currentViewKey = ssClean + "|" + srClean;
       return true;
     } catch (e) {
       log("location_share send failed", e);
       return false;
     }
+  }
+
+  // Explicit view-key synchronization from the embedding runtime (glue).
+  // The send methods above stamp _currentViewKey on their own successful
+  // outbound sends; this API covers the view changes the controller
+  // cannot see — the glue applying a view locally (applyTeleport for an
+  // inbound teleport/share-follow or a local tour stop). Keeping the key
+  // current on BOTH ends is what lets the annotation receive filter drop
+  // genuinely stale frames without dropping live ones.
+  function noteCurrentView(ss, sr) {
+    var ssClean = _coerceString(ss).trim();
+    var srClean = _coerceString(sr).trim();
+    if (!ssClean) return false;
+    _currentViewKey = ssClean + "|" + srClean;
+    return true;
   }
 
   function _canSendAnnotation() {
@@ -1025,6 +1072,7 @@ function createLiveSession(options) {
     startVoice: startVoice,
     teleportVisitor: teleportVisitor,
     shareLocationWithAgent: shareLocationWithAgent,
+    noteCurrentView: noteCurrentView,
     sendPointer: sendPointer,
     sendStrokeBegin: sendStrokeBegin,
     sendStrokePatch: sendStrokePatch,

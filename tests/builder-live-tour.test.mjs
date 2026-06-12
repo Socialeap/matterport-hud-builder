@@ -68,7 +68,9 @@ const GLUE = deTemplate(
 // over: the property list + current index (renderStops / teleport) — stub the
 // data ones so onState runs end-to-end. (`frame` is supplied as a Function
 // param below.)
-const OUTER_STUBS = 'var props=[{ name:"Canary", iframeUrl:"", liveTourStops:[] }]; var current=0;';
+// iframeUrl is truthy so applyTeleport runs end-to-end (teleport/share
+// follow tests assert noteCurrentView + the rolled stroke viewKey).
+const OUTER_STUBS = 'var props=[{ name:"Canary", iframeUrl:"https://my.matterport.com/show/?m=abc&play=1", liveTourStops:[] }]; var current=0;';
 // anno-input kernel defines the guard/coalesce/clamp helpers as locals; the
 // glue (a nested IIFE) closes over all of these exactly as it does in the
 // package.
@@ -158,9 +160,13 @@ function makeConnectedController(role, spy) {
     joinAsVisitor: (pin) => Promise.resolve({ pin, peerId: "guest" }),
     teleportVisitor: () => true,
     shareLocationWithAgent: () => true,
+    noteCurrentView: (ss, sr) => {
+      (spy.note || (spy.note = [])).push([ss, sr]);
+      return true;
+    },
     sendPointer: () => true,
     sendStrokeBegin: (vk, sid, color, width, points) => {
-      spy.begin.push({ sid, points: Array.isArray(points) ? points.map((p) => p.slice()) : [] });
+      spy.begin.push({ vk, sid, points: Array.isArray(points) ? points.map((p) => p.slice()) : [] });
       return true;
     },
     sendStrokePatch: (vk, sid, points) => {
@@ -226,7 +232,7 @@ function runGlue(role = "agent", opts = {}) {
   // emit(patch): push a new controller state (base merged with patch) through
   // the captured onState subscriber. Requires opts.wireRemote.
   const emit = (patch) => { if (_push && _controller) _push(Object.assign({}, _controller.getState(), patch || {})); };
-  return { els, spy, fireDoc, emit, canvas: els["anno-canvas"], letterbox: els["anno-letterbox-wrap"], document };
+  return { els, spy, fireDoc, emit, frame, canvas: els["anno-canvas"], letterbox: els["anno-letterbox-wrap"], document };
 }
 
 // Event factory with a preventDefault spy.
@@ -890,4 +896,59 @@ test("an inbound stroke_delete also re-arms the remote watchdog (defense in dept
     h.emit({ incomingStrokeDeleteEvent: { viewKey: "", seq: 1, strokeIds: ["x"], ts: 2 } }); // refreshRemoteFloor → re-arm #2
     assert.ok(armed >= 2, "a delete re-arms the remote watchdog");
   } finally { globalThis.setTimeout = realSetTimeout; globalThis.clearTimeout = realClearTimeout; }
+});
+
+// ── P0 regression: host→guest direction (viewKey provenance, PR fix) ─────
+// The glue and the controller each kept a current-view key with no way to
+// converge after the host followed a guest's location share: every host
+// annotation packet was stamped with a key the guest's stale-view filter
+// rejected, and a blanket clipboard==currentViewKey guard silently
+// swallowed the host's intentional re-sync. These tests pin the glue half
+// of the fix; tests/live-session-paired.test.mjs pins the controller half.
+
+test("host follow (inbound location_share) reports noteCurrentView and rolls the stroke viewKey", () => {
+  const h = runGlue("agent", { wireRemote: true });
+  h.emit({ incomingLocationShareEvent: { ss: "77", sr: "1,2", ts: 111 } });
+  assert.deepEqual((h.spy.note || []).at(-1), ["77", "1,2"],
+    "applyTeleport must tell the controller about the locally applied view");
+  assert.match(h.frame.src || "", /ss=77/, "host iframe followed the share");
+  enterDraw(h);
+  h.canvas.fire("pointerdown", ev(1, 128, 72, "mouse"));
+  assert.equal(h.spy.begin.length, 1, "host can draw after following");
+  assert.equal(h.spy.begin[0].vk, "77|1,2",
+    "host strokes are stamped with the FOLLOWED view key — the exact P0 host→guest annotation failure");
+});
+
+test("guest follow (inbound teleport) reports noteCurrentView to the controller", () => {
+  const h = runGlue("visitor", { wireRemote: true });
+  h.emit({ incomingTeleportEvent: { ss: "9", sr: "3,4", ts: 222 } });
+  assert.deepEqual((h.spy.note || []).at(-1), ["9", "3,4"],
+    "visitor applyTeleport must report the applied view to the controller");
+  assert.match(h.frame.src || "", /ss=9/, "guest iframe teleported");
+  // (Stroke stamping after a follow is pinned on the agent side above —
+  // the draw hotkey path in this harness is agent-scoped.)
+});
+
+test("location-sync dedup is provenance-aware in the glue source (no blanket suppression)", () => {
+  // The blanket guard swallowed intentional re-syncs forever (with a
+  // success pulse); only the short-lived echo of a REMOTELY APPLIED view
+  // may be suppressed, and a remote apply must never poison the outbound
+  // sent-dedupe.
+  assert.ok(!GLUE.includes("if(currentViewKey&&key===currentViewKey)"),
+    "blanket currentViewKey equality suppression must be gone");
+  assert.ok(GLUE.includes("key===lastAppliedRemoteKey&&(now-lastAppliedRemoteTs)<SYNC_SUPPRESS_MS"),
+    "echo suppression keys off the remotely applied view within the suppress window");
+  assert.ok(GLUE.includes("lastAppliedRemoteKey=state.incomingTeleportEvent.ss"),
+    "visitor receive path records remote provenance");
+  assert.ok(GLUE.includes("lastAppliedRemoteKey=state.incomingLocationShareEvent.ss"),
+    "agent receive path records remote provenance");
+  assert.ok(!GLUE.includes("lastSentLocationKey=state.incomingTeleportEvent.ss"),
+    "visitor receive path must NOT write the sent-dedupe key");
+  assert.ok(!GLUE.includes("lastSentLocationKey=state.incomingLocationShareEvent.ss"),
+    "agent receive path must NOT write the sent-dedupe key");
+  // Successful sends converge the glue key (the controller send method
+  // already stamped its own — no duplicate noteCurrentView call there).
+  const sendBlock = GLUE.slice(GLUE.indexOf("function attemptSendLocation"), GLUE.indexOf("function attemptSendLocation") + 3200);
+  assert.ok(sendBlock.includes("currentViewKey=key;"), "successful send rolls the glue view key");
+  assert.ok(!sendBlock.includes("session.noteCurrentView"), "no duplicated noteCurrentView CALL after sends — the controller owns it");
 });

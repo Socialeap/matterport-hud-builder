@@ -5,9 +5,10 @@
 //   - Input is ONE file: the presentation's index.html, handled strictly as
 //     INERT TEXT. This module never renders, executes, DOM-parses, iframes,
 //     srcdoc-loads, or imports anything from the upload — string scans only.
-//   - The only packages the future patcher may upgrade are EXACT Builder
-//     2.1.0 packages carrying all five `v=1 family=builder` runtime
-//     sentinels. Everything else fails safely into a non-patchable outcome.
+//   - The only packages the future patcher may upgrade are Builder
+//     packages at EXACTLY one of V1_PATCH_SOURCE_VERSIONS, carrying all
+//     five `v=1 family=builder` runtime sentinels. Everything else fails
+//     safely into a non-patchable outcome.
 //   - A sibling `atlas-manifest.json` (when the package was downloaded as a
 //     .zip) is OUTSIDE this single-file workflow: it is not required, not
 //     parsed, and never claimed to be updated. Every report carries
@@ -26,7 +27,7 @@ import {
 } from "./atlas-runtime-version.mjs";
 
 // ── Outcomes ──────────────────────────────────────────────────────────────
-// patchable          — exact Builder V1_PATCH_SOURCE_VERSION package, all
+// patchable          — exact Builder V1_PATCH_SOURCE_VERSIONS package, all
 //                      five sentinels valid → eligible for the P3 patcher.
 // already_current    — valid Builder package already at the current runtime.
 // future_version     — advertises a runtime/schema NEWER than this build
@@ -35,8 +36,9 @@ import {
 //                      source repo + Netlify redeploy, never file-patched.
 // legacy_unsupported — recognizably a 3DPS presentation, but from a
 //                      generation v1 cannot deterministically patch
-//                      (pre-marker, pre-family, or a non-2.1.0 older
-//                      runtime) → regenerate from the Builder instead.
+//                      (pre-marker, pre-family, or an older runtime
+//                      outside the supported patch-source set) →
+//                      regenerate from the Builder instead.
 // invalid            — malformed, ambiguous, conflicting, tampered, or not
 //                      a 3DPS presentation at all. Never patched.
 const INSPECTION_OUTCOMES = [
@@ -48,8 +50,13 @@ const INSPECTION_OUTCOMES = [
   "invalid",
 ];
 
-// The ONLY runtime version v1 accepts as a patch SOURCE.
-const V1_PATCH_SOURCE_VERSION = "2.1.0";
+// The ONLY runtime versions v1 accepts as a patch SOURCE. 2.1.0 and
+// 2.2.0 share the identical five-span v=1 family=builder sentinel layout
+// (and both shipped an empty capability set), so the same deterministic
+// span replacement upgrades either to the current runtime. Anything
+// older is legacy_unsupported (regenerate); anything newer than the
+// current build is future_version.
+const V1_PATCH_SOURCE_VERSIONS = Object.freeze(["2.1.0", "2.2.0"]);
 
 // ── Mutation allowlist (contract for the future P3 patcher) ─────────────
 // A patch may rewrite ONLY: the content between each of these five sentinel
@@ -233,7 +240,7 @@ function inspectPresentationHtml(html) {
     packageSchema: null,
     runtimeVersion: null,
     currentRuntimeVersion: ATLAS_RUNTIME_VERSION,
-    v1PatchSourceVersion: V1_PATCH_SOURCE_VERSION,
+    v1PatchSourceVersions: V1_PATCH_SOURCE_VERSIONS.slice(),
     capabilities: null,
     protected: false,
     assets: [],
@@ -387,24 +394,24 @@ function inspectPresentationHtml(html) {
     return fail("family marker says builder but atlas-family sentinels are present (conflicting markers)");
   }
 
-  // 8. Older-than-v1-source runtimes: real generations, but v1 only patches
-  //    V1_PATCH_SOURCE_VERSION exactly.
+  // 8. Older runtimes outside the supported patch-source set: real
+  //    generations, but v1 only patches V1_PATCH_SOURCE_VERSIONS exactly.
   if (
     semverCompare(version, ATLAS_RUNTIME_VERSION) < 0 &&
-    version !== V1_PATCH_SOURCE_VERSION
+    V1_PATCH_SOURCE_VERSIONS.indexOf(version) === -1
   ) {
     report.outcome = "legacy_unsupported";
     report.reasons.push(
-      `runtime ${version} is older than ${V1_PATCH_SOURCE_VERSION}, the only version v1 upgrades (${V1_PATCH_SOURCE_VERSION} → ${ATLAS_RUNTIME_VERSION}) — regenerate from the Builder`,
+      `runtime ${version} is not a supported v1 patch source (${V1_PATCH_SOURCE_VERSIONS.join(", ")} → ${ATLAS_RUNTIME_VERSION}) — regenerate from the Builder`,
     );
     return report;
   }
 
-  // 9. v1 patch source must carry the EXACT empty capability set 2.1.0
-  //    shipped with — anything else is internally inconsistent.
-  if (version === V1_PATCH_SOURCE_VERSION && caps.length > 0) {
+  // 9. Every v1 patch source shipped with the EXACT empty capability set —
+  //    anything else is internally inconsistent.
+  if (V1_PATCH_SOURCE_VERSIONS.indexOf(version) !== -1 && caps.length > 0) {
     return fail(
-      `runtime ${V1_PATCH_SOURCE_VERSION} cannot advertise capabilities (found "${capsRaw}") — inconsistent contract`,
+      `runtime ${version} cannot advertise capabilities (found "${capsRaw}") — inconsistent contract`,
     );
   }
 
@@ -426,14 +433,14 @@ function inspectPresentationHtml(html) {
 
   report.outcome = "patchable";
   report.reasons.push(
-    `Builder ${V1_PATCH_SOURCE_VERSION} package with all ${BUILDER_RUNTIME_SPANS.length} sentinels intact — eligible for the ${V1_PATCH_SOURCE_VERSION} → ${ATLAS_RUNTIME_VERSION} single-file upgrade`,
+    `Builder ${version} package with all ${BUILDER_RUNTIME_SPANS.length} sentinels intact — eligible for the ${version} → ${ATLAS_RUNTIME_VERSION} single-file upgrade`,
   );
   return report;
 }
 
 export {
   INSPECTION_OUTCOMES,
-  V1_PATCH_SOURCE_VERSION,
+  V1_PATCH_SOURCE_VERSIONS,
   BUILDER_RUNTIME_SPANS,
   F3D_META_NAMES,
   PATCH_MUTATION_ALLOWLIST,

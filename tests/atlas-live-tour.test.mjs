@@ -74,6 +74,7 @@ test("glue wires the reused controller API + Atlas config hook", () => {
     "joinAsVisitor(pin)",
     "shareLocationWithAgent",
     "teleportVisitor",
+    "noteCurrentView", // P0 fix: glue reports locally applied views to the controller
     "sendPointer",
     "sendStrokeBegin",
     "sendStrokeCommit",
@@ -371,9 +372,13 @@ function makeConnectedController(role, spy) {
       spy.share.push([ss, sr]);
       return true;
     },
+    noteCurrentView: (ss, sr) => {
+      (spy.note || (spy.note = [])).push([ss, sr]);
+      return true;
+    },
     sendPointer: () => true,
     sendStrokeBegin: (vk, sid, color, width, points) => {
-      spy.begin.push({ sid, points: Array.isArray(points) ? points.map((p) => p.slice()) : [] });
+      spy.begin.push({ vk, sid, points: Array.isArray(points) ? points.map((p) => p.slice()) : [] });
       return true;
     },
     sendStrokePatch: (vk, sid, points) => {
@@ -1414,4 +1419,48 @@ test("atlas: an inbound stroke_delete also re-arms the remote watchdog (defense 
     emit({ incomingStrokeDeleteEvent: { viewKey: "", seq: 1, strokeIds: ["x"], ts: 2 } });
     assert.ok(armed >= 2, "a delete re-arms the remote watchdog");
   } finally { globalThis.setTimeout = realSetTimeout; globalThis.clearTimeout = realClearTimeout; }
+});
+
+// ── P0 regression: host→guest direction (viewKey provenance) — Atlas ─────
+// Mirrors the Builder suite: the glue must report locally applied views to
+// the controller (noteCurrentView) and stamp subsequent strokes with the
+// followed key, and the location-sync dedup must be provenance-aware.
+
+test("atlas host follow (inbound location_share) reports noteCurrentView and rolls the stroke viewKey", () => {
+  const { h, spy, emit, canvas } = wiredAtlasGlue("agent");
+  emit({ incomingLocationShareEvent: { ss: "77", sr: "1,2", ts: 111 } });
+  assert.deepEqual((spy.note || []).at(-1), ["77", "1,2"],
+    "applyTeleport must tell the controller about the locally applied view");
+  assert.match(h.els["matterport-frame"].src || "", /ss=77/, "host iframe followed the share");
+  h.fireDoc("keydown", { key: "d" });
+  canvas.fire("pointerdown", aev(1, 128, 72));
+  assert.equal(spy.begin.length, 1, "host can draw after following");
+  assert.equal(spy.begin[0].vk, "77|1,2",
+    "host strokes are stamped with the FOLLOWED view key — the exact P0 host→guest annotation failure");
+});
+
+test("atlas guest follow (inbound teleport) reports noteCurrentView to the controller", () => {
+  const { h, spy, emit } = wiredAtlasGlue("visitor");
+  emit({ incomingTeleportEvent: { ss: "9", sr: "3,4", ts: 222 } });
+  assert.deepEqual((spy.note || []).at(-1), ["9", "3,4"],
+    "visitor applyTeleport must report the applied view to the controller");
+  assert.match(h.els["matterport-frame"].src || "", /ss=9/, "guest iframe teleported");
+});
+
+test("atlas location-sync dedup is provenance-aware in the source (no blanket suppression)", () => {
+  assert.ok(!GLUE.includes("if (currentViewKey && key === currentViewKey)"),
+    "blanket currentViewKey equality suppression must be gone");
+  assert.ok(GLUE.includes("key === lastAppliedRemoteKey && now - lastAppliedRemoteTs < SYNC_SUPPRESS_MS"),
+    "echo suppression keys off the remotely applied view within the suppress window");
+  assert.ok(GLUE.includes("lastAppliedRemoteKey = state.incomingTeleportEvent.ss"),
+    "visitor receive path records remote provenance");
+  assert.ok(GLUE.includes("lastAppliedRemoteKey = state.incomingLocationShareEvent.ss"),
+    "agent receive path records remote provenance");
+  assert.ok(!GLUE.includes("lastSentLocationKey = state.incomingTeleportEvent.ss"),
+    "visitor receive path must NOT write the sent-dedupe key");
+  assert.ok(!GLUE.includes("lastSentLocationKey = state.incomingLocationShareEvent.ss"),
+    "agent receive path must NOT write the sent-dedupe key");
+  const sendBlock = GLUE.slice(GLUE.indexOf("function attemptSendLocation"), GLUE.indexOf("function attemptSendLocation") + 3600);
+  assert.ok(sendBlock.includes("currentViewKey = key;"), "successful send rolls the glue view key");
+  assert.ok(!sendBlock.includes("session.noteCurrentView"), "no duplicated noteCurrentView CALL after sends — the controller owns it");
 });
