@@ -80,6 +80,61 @@ function readSource() {
   return fs.readFileSync(TARGET, "utf8");
 }
 
+// P2: the five f3d:runtime spans live in builder-runtime-spans.mjs as
+// template-literal text and portal.functions.ts interpolates the builders.
+// Re-compose the pre-P2 source shape — each builder call-site token replaced
+// by its span's template-literal source — so every gate in this script keeps
+// validating the exact text the generator emits (sentinel balance, content
+// outside ranges, escape/comment scans, IIFE parse). Reported line/column
+// numbers are relative to the COMPOSED text, which matches the original
+// inline layout for everything at or after the first span.
+const SPAN_MODULE = path.join(ROOT, "src/lib/portal/builder-runtime-spans.mjs");
+const SPAN_CALL_SITES = [
+  ["${buildBuilderCssSpan({ accentColor, hudBgColor })}", "/* f3d:runtime-css BEGIN", "/* f3d:runtime-css END */"],
+  ["${BUILDER_DEP_PEERJS_SPAN}", "<!-- f3d:runtime-dep:peerjs BEGIN", "<!-- f3d:runtime-dep:peerjs END -->"],
+  ["${BUILDER_MARKUP_SPAN}", "<!-- f3d:runtime-markup BEGIN", "<!-- f3d:runtime-markup END -->"],
+  ["${buildBuilderJsKernelSpan({ liveSessionJs: LIVE_SESSION_RUNTIME_JS, annoInputJs: ANNO_INPUT_RUNTIME_JS })}", "// f3d:runtime-js:kernel BEGIN", "// f3d:runtime-js:kernel END"],
+  ["${BUILDER_JS_GLUE_SPAN}", "// f3d:runtime-js:glue BEGIN", "// f3d:runtime-js:glue END"],
+];
+
+function composeRuntimeSource(portalSrc) {
+  if (!fs.existsSync(SPAN_MODULE)) {
+    console.error(`[verify-html] Span module not found: ${SPAN_MODULE}`);
+    process.exit(2);
+  }
+  const moduleSrc = fs.readFileSync(SPAN_MODULE, "utf8");
+  const fail = (msg) => {
+    console.error("[verify-html] ❌ Runtime span composition: " + msg);
+    process.exit(1);
+  };
+  // Sentinel-inclusive span source = the full body of the span's template
+  // literal in the module: from just after the opening backtick (the nearest
+  // backtick BEFORE the BEGIN needle — span text itself can contain no raw
+  // backtick, or the literal would have ended there) to just before the
+  // closing backtick after the END needle. This preserves first-line
+  // indentation (the markup span) and excludes the `return`/`export` wrappers.
+  const spanSource = (beginNeedle, endNeedle) => {
+    const a = moduleSrc.indexOf(beginNeedle);
+    const b = moduleSrc.indexOf(endNeedle, a);
+    if (a === -1 || b === -1) fail(`span not found in builder-runtime-spans.mjs: ${beginNeedle}`);
+    if (moduleSrc.indexOf(beginNeedle, a + 1) !== -1) fail(`duplicate span in module: ${beginNeedle}`);
+    const open = moduleSrc.lastIndexOf("`", a);
+    const close = moduleSrc.indexOf("`", b);
+    if (open === -1 || close === -1) fail(`template literal boundaries not found for: ${beginNeedle}`);
+    return moduleSrc.slice(open + 1, close);
+  };
+  let composed = portalSrc;
+  for (const [token, beginNeedle, endNeedle] of SPAN_CALL_SITES) {
+    const hits = composed.split(token).length - 1;
+    if (hits !== 1) fail(`generator call site must appear exactly once (found ${hits}): ${token}`);
+    // Function replacement: span text contains "$" sequences that string
+    // replacement patterns would mangle.
+    composed = composed.replace(token, () => spanSource(beginNeedle, endNeedle));
+  }
+  console.log("[verify-html] ✅ Runtime spans composed from builder-runtime-spans.mjs (5 call sites, exactly once each).");
+  return composed;
+}
+
 function findTemplateLiteral(src) {
   // Anchor on the literal start that introduces the HTML body.
   const marker = "const html = `<!DOCTYPE html";
@@ -707,7 +762,7 @@ function main() {
   verifyAnnoInputRuntime();
   verifyAtlasLiveTourRuntime();
 
-  const src = readSource();
+  const src = composeRuntimeSource(readSource());
   const { start, end } = findTemplateLiteral(src);
   const offenders = scanLiteral(src, start, end);
   const commentOffenders = scanCommentInterpolations(src, start, end);

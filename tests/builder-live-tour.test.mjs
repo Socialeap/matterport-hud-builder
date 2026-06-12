@@ -2,12 +2,13 @@
 
 // U0 — BEHAVIORAL coverage for the Builder/portal live-tour glue.
 //
-// The Builder glue lives inside the giant template literal in
-// portal.functions.ts (it has natural access to `frame`/config there), so we
-// EXTRACT it for testing using the f3d:runtime-js:glue sentinels, un-escape
-// the template-literal escapes, inject the REAL anno-input.mjs kernel + a fake
-// createLiveSession, and run it against a hand-rolled fake DOM — the same
-// technique tests/atlas-live-tour.test.mjs uses against its standalone .mjs.
+// P2: the Builder glue is the canonical BUILDER_JS_GLUE_SPAN constant in
+// src/lib/portal/builder-runtime-spans.mjs — already real emitted bytes,
+// no template un-escape needed (byte identity to the pre-P2 inline span is
+// pinned by tests/builder-runtime-spans.test.mjs). We slice off the sentinel
+// lines, inject the REAL anno-input.mjs kernel + a fake createLiveSession,
+// and run it against a hand-rolled fake DOM — the same technique
+// tests/atlas-live-tour.test.mjs uses against its standalone .mjs.
 // This exercises the genuine pointer guard + WebKit defenses, not a stub.
 
 import { test } from "node:test";
@@ -16,54 +17,19 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { stripExports } from "../src/lib/portal/ask-runtime-transformer.mjs";
+import { BUILDER_JS_GLUE_SPAN } from "../src/lib/portal/builder-runtime-spans.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const read = (...p) => readFileSync(path.join(__dirname, "..", ...p), "utf8");
-const PORTAL = read("src", "lib", "portal.functions.ts");
 const ANNO_INPUT = stripExports(read("src", "lib", "portal", "anno-input.mjs"));
 
-// ── Extract the glue between its sentinels and make it runnable ───────────
-function sliceBetween(src, beginNeedle, endNeedle) {
-  const a = src.indexOf(beginNeedle);
-  const b = src.indexOf(endNeedle, a);
-  assert.ok(a !== -1 && b !== -1, `sentinels ${beginNeedle} / ${endNeedle} must exist`);
-  // From the end of the BEGIN line to the start of the END line.
-  const from = src.indexOf("\n", a) + 1;
-  return src.slice(from, b);
-}
-// Un-escape the template-literal escapes (\\ → \, \` → `, \${ → ${) and
-// neutralize any leftover ${...} interpolation, mirroring verify-portal-html's
-// parseRuntimeIIFE so the extracted JS parses and runs as real code.
-function deTemplate(src) {
-  let out = "";
-  let i = 0;
-  while (i < src.length) {
-    if (src[i] === "$" && src[i + 1] === "{") {
-      let depth = 1;
-      i += 2;
-      while (i < src.length && depth > 0) {
-        if (src[i] === "{") depth += 1;
-        else if (src[i] === "}") depth -= 1;
-        if (depth === 0) break;
-        i += 1;
-      }
-      i += 1;
-      out += "null";
-      continue;
-    }
-    if (src[i] === "\\" && (src[i + 1] === "$" || src[i + 1] === "`" || src[i + 1] === "\\")) {
-      out += src[i + 1];
-      i += 2;
-      continue;
-    }
-    out += src[i];
-    i += 1;
-  }
-  return out;
-}
-const GLUE = deTemplate(
-  sliceBetween(PORTAL, "// f3d:runtime-js:glue BEGIN", "// f3d:runtime-js:glue END"),
-);
+// ── Inner glue: between the BEGIN line and the start of the END sentinel ──
+const GLUE = (() => {
+  const from = BUILDER_JS_GLUE_SPAN.indexOf("\n") + 1;
+  const to = BUILDER_JS_GLUE_SPAN.indexOf("// f3d:runtime-js:glue END");
+  assert.ok(from > 0 && to !== -1, "glue span must be sentinel-inclusive");
+  return BUILDER_JS_GLUE_SPAN.slice(from, to);
+})();
 // The package's OUTER IIFE provides a few locals the live-guide glue closes
 // over: the property list + current index (renderStops / teleport) — stub the
 // data ones so onState runs end-to-end. (`frame` is supplied as a Function

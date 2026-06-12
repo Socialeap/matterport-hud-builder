@@ -123,6 +123,21 @@ if (htmlStart > 0) {
     "html template: deliberately embeds __PRESENTATION_TOKEN__ + __SAVED_MODEL_ID__",
     expectsToken,
   );
+
+  // -- 2b. P2: the five f3d:runtime spans live in builder-runtime-spans.mjs
+  //        and are interpolated back into the html template. Scan the module
+  //        with the same patterns so span bytes keep the no-secrets
+  //        guarantee they had when they were inline.
+  const SPANS_MODULE = path.join(ROOT, "src/lib/portal/builder-runtime-spans.mjs");
+  const spansSrc = fs.readFileSync(SPANS_MODULE, "utf8");
+  for (const { name, re } of SECRET_PATTERNS) {
+    const match = spansSrc.match(re);
+    check(
+      `builder-runtime-spans.mjs: no ${name} reference`,
+      !match,
+      match ? `match: ${match[0].slice(0, 40)}…` : "",
+    );
+  }
 }
 
 if (failed > 0) {
