@@ -1476,6 +1476,14 @@
   var lastReadClipText = "";
   var lastSentLocationKey = "";
   var lastSentLocationTs = 0;
+  // Provenance tracking for echo suppression: the view we most recently
+  // APPLIED FROM A REMOTE sync (teleport received / share followed), kept
+  // separate from the sent-dedupe vars above so a remote apply can never
+  // poison the outbound dedupe. Only the short-lived automatic echo of
+  // this remotely applied location is swallowed — an INTENTIONAL U + Copy
+  // of the very view we're displaying still sends.
+  var lastAppliedRemoteKey = "";
+  var lastAppliedRemoteTs = 0;
   var lastOwnSendTs = 0;
   var syncResetTimer = null;
   var tipsTimer = null;
@@ -1598,6 +1606,8 @@
     lastReadClipText = "";
     lastSentLocationKey = "";
     lastSentLocationTs = 0;
+    lastAppliedRemoteKey = "";
+    lastAppliedRemoteTs = 0;
     lastOwnSendTs = 0;
     hideTips();
     setPulseState("waiting");
@@ -1625,11 +1635,24 @@
     if (!parsed) return false;
     var key = parsed.ss + "|" + parsed.sr;
     var now = Date.now();
-    if (currentViewKey && key === currentViewKey) {
+    // Echo suppression — provenance-aware. Only the short-lived automatic
+    // echo of a REMOTELY APPLIED location is swallowed: right after
+    // applyTeleport ran for an inbound sync, a racing ambient trigger
+    // re-reading the same coords must not rebroadcast and ping-pong the
+    // sender's iframe. An INTENTIONAL U + Copy of the view we're standing
+    // in (e.g. the host pulling the guest back after following the
+    // guest's share) is a legitimate send and goes through once this
+    // window passes. A blanket currentViewKey equality check here
+    // previously swallowed those intentional syncs forever — with a
+    // success pulse.
+    if (key === lastAppliedRemoteKey && now - lastAppliedRemoteTs < SYNC_SUPPRESS_MS) {
       setPulseState("success");
       scheduleSyncIdleReset();
       return true;
     }
+    // Content-level dedupe on GENUINE own sends only (remote applies
+    // track lastAppliedRemoteKey above, so this can no longer eat an
+    // intentional re-share of a just-followed view).
     if (key === lastSentLocationKey && now - lastSentLocationTs < 5000) {
       setPulseState("success");
       scheduleSyncIdleReset();
@@ -1644,6 +1667,15 @@
       ok = false;
     }
     if (ok) {
+      // The controller send method just stamped ITS view key (see
+      // live-session.mjs teleportVisitor/shareLocationWithAgent — the
+      // sender owns that update, so no noteCurrentView call here);
+      // converge the glue too, under the same contract as applyTeleport:
+      // every accepted sync rolls the key and wipes the canvas, on both
+      // ends, so strokes never straddle a sync boundary (the receiving
+      // side wipes inside its applyTeleport).
+      currentViewKey = key;
+      wipeAnnotations();
       lastSentLocationKey = key;
       lastSentLocationTs = now;
       lastOwnSendTs = now;
@@ -1870,6 +1902,12 @@
   function applyTeleport(ss, sr) {
     if (!frame || !MP_BASE) return;
     currentViewKey = (ss || "") + "|" + (sr || "");
+    // Tell the controller the view it cannot see changed: its receive
+    // filter and outbound annotation stamping both key off
+    // _currentViewKey, and a locally applied view (inbound sync follow
+    // or tour-stop click) is invisible to it otherwise. Idempotent for
+    // the tour-stop path, where teleportVisitor already set it.
+    try { session.noteCurrentView(ss, sr); } catch (_e) {}
     wipeAnnotations();
     try {
       frame.src = rewriteIframeForTeleport(MP_BASE, ss, sr);
@@ -2225,8 +2263,11 @@
       lastTeleportTs = state.incomingTeleportEvent.ts;
       if (lastOwnSendTs === 0 || Date.now() - lastOwnSendTs >= SYNC_SUPPRESS_MS) {
         applyTeleport(state.incomingTeleportEvent.ss, state.incomingTeleportEvent.sr);
-        lastSentLocationKey = state.incomingTeleportEvent.ss + "|" + state.incomingTeleportEvent.sr;
-        lastSentLocationTs = Date.now();
+        // Remote-provenance record: stops an immediate ambient echo of
+        // the just-applied coords without poisoning the outbound dedupe
+        // (an intentional re-share of this view must still send).
+        lastAppliedRemoteKey = state.incomingTeleportEvent.ss + "|" + state.incomingTeleportEvent.sr;
+        lastAppliedRemoteTs = Date.now();
       }
     }
 
@@ -2235,8 +2276,11 @@
       lastShareTs = state.incomingLocationShareEvent.ts;
       if (lastOwnSendTs === 0 || Date.now() - lastOwnSendTs >= SYNC_SUPPRESS_MS) {
         applyTeleport(state.incomingLocationShareEvent.ss, state.incomingLocationShareEvent.sr);
-        lastSentLocationKey = state.incomingLocationShareEvent.ss + "|" + state.incomingLocationShareEvent.sr;
-        lastSentLocationTs = Date.now();
+        // Remote-provenance record (see visitor branch above): the
+        // host's INTENTIONAL "come here" re-share of this same view a
+        // moment later must still transmit.
+        lastAppliedRemoteKey = state.incomingLocationShareEvent.ss + "|" + state.incomingLocationShareEvent.sr;
+        lastAppliedRemoteTs = Date.now();
         if (letterboxWrap) {
           try {
             letterboxWrap.classList.add("follow-pulse");

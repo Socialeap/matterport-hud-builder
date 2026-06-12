@@ -6077,6 +6077,14 @@ if(frame){
   var lastSentLocationKey="";
   var lastSentLocationTs=0;
   var lastShareTs=0;
+  // Provenance tracking for echo suppression: the view we most recently
+  // APPLIED FROM A REMOTE sync (teleport received / share followed),
+  // kept separate from the sent-dedupe vars above so a remote apply can
+  // never poison the outbound dedupe. Only the short-lived automatic
+  // echo of this remotely applied location is swallowed — an
+  // INTENTIONAL U + Copy of the very view we're displaying still sends.
+  var lastAppliedRemoteKey="";
+  var lastAppliedRemoteTs=0;
   // Last-Sender-Wins suppression: any outbound sync (ambient or Tour
   // Stop) stamps lastOwnSendTs. Incoming syncs received within the
   // SYNC_SUPPRESS_MS window are dropped (watermark still advances) so
@@ -6140,6 +6148,8 @@ if(frame){
     lastSentLocationKey="";
     lastSentLocationTs=0;
     lastShareTs=0;
+    lastAppliedRemoteKey="";
+    lastAppliedRemoteTs=0;
     lastOwnSendTs=0;
     hideTips();
     setPulseState("waiting");
@@ -6168,13 +6178,17 @@ if(frame){
     if(!parsed) return false;
     var key=parsed.ss+"|"+parsed.sr;
     var now=Date.now();
-    // Echo suppression: if the clipboard coords already match the view
-    // we're currently displaying (whether we navigated there ourselves
-    // or were teleported there by the other side via applyTeleport),
-    // this is a no-op — never rebroadcast, which would ping-pong the
-    // other side's iframe. Flash success silently so the pill behaves
-    // the same as the existing 5s recent-send dedupe path.
-    if(currentViewKey&&key===currentViewKey){
+    // Echo suppression — provenance-aware. Only the short-lived
+    // automatic echo of a REMOTELY APPLIED location is swallowed:
+    // right after applyTeleport ran for an inbound sync, a racing
+    // ambient trigger re-reading the same coords must not rebroadcast
+    // and ping-pong the sender's iframe. An INTENTIONAL U + Copy of
+    // the view we're standing in (e.g. the host pulling the guest back
+    // after following the guest's share) is a legitimate send and goes
+    // through once this window passes. A blanket currentViewKey
+    // equality check here previously swallowed those intentional syncs
+    // forever — with a success pulse.
+    if(key===lastAppliedRemoteKey&&(now-lastAppliedRemoteTs)<SYNC_SUPPRESS_MS){
       setPulseState("success");
       scheduleSyncIdleReset();
       return true;
@@ -6182,7 +6196,10 @@ if(frame){
     // Content-level dedupe: if the same parsed coords were sent within
     // the last 5s, flash success without re-sending. Saves an iframe
     // reload on the agent side and absorbs any redundant ambient
-    // triggers that re-read the same clipboard URL.
+    // triggers that re-read the same clipboard URL. Only GENUINE own
+    // sends write lastSentLocationKey now (remote applies track
+    // lastAppliedRemoteKey above), so this can no longer eat an
+    // intentional re-share of a just-followed view.
     if(key===lastSentLocationKey&&(now-lastSentLocationTs)<5000){
       setPulseState("success");
       scheduleSyncIdleReset();
@@ -6195,6 +6212,15 @@ if(frame){
       else if(role==="agent") ok=session.teleportVisitor(parsed.ss,parsed.sr);
     } catch(_e){ ok=false; }
     if(ok){
+      // The controller send method just stamped ITS view key (see
+      // live-session.mjs teleportVisitor/shareLocationWithAgent — the
+      // sender owns that update, so no noteCurrentView call here);
+      // converge the glue too, under the same contract as
+      // applyTeleport: every accepted sync rolls the key and wipes the
+      // canvas, on both ends, so strokes never straddle a sync
+      // boundary (the receiving side wipes inside its applyTeleport).
+      currentViewKey=key;
+      wipeAnnotations();
       lastSentLocationKey=key;
       lastSentLocationTs=now;
       lastOwnSendTs=now;
@@ -6423,6 +6449,12 @@ if(frame){
     // packets from the previous sweep get dropped by the receiver's
     // viewKey filter in live-session.mjs.
     currentViewKey=(ss||"")+"|"+(sr||"");
+    // Tell the controller the view it cannot see changed: its receive
+    // filter and outbound annotation stamping both key off
+    // _currentViewKey, and a locally applied view (inbound sync follow
+    // or tour-stop click) is invisible to it otherwise. Idempotent for
+    // the tour-stop path, where teleportVisitor already set it.
+    try { session.noteCurrentView(ss,sr); } catch(_e){}
     wipeAnnotations();
     // Live tour teleports always target the primary iframe (closure-
     // captured frame === Iframe A). Snap state back so the user sees
@@ -6645,13 +6677,14 @@ if(frame){
       // Watermark still advanced above so the same packet isn't replayed.
       if(lastOwnSendTs===0||(Date.now()-lastOwnSendTs)>=SYNC_SUPPRESS_MS){
         applyTeleport(state.incomingTeleportEvent.ss,state.incomingTeleportEvent.sr);
-        // Lock the receiver-side dedupe so even a delayed clipboard read
-        // of the same URL (Matterport rewrites, pointerenter polls,
-        // focus re-entry) cannot rebroadcast and ping-pong the
-        // sender's iframe. Belt-and-suspenders alongside the
-        // currentViewKey echo guard in attemptSendLocation.
-        lastSentLocationKey=state.incomingTeleportEvent.ss+"|"+state.incomingTeleportEvent.sr;
-        lastSentLocationTs=Date.now();
+        // Record the REMOTE provenance so a racing ambient clipboard
+        // read of the same coords cannot rebroadcast and ping-pong the
+        // sender's iframe (echo guard in attemptSendLocation). Kept
+        // separate from lastSentLocationKey: a remote apply must never
+        // poison the outbound dedupe, or an intentional re-share of
+        // this view gets silently eaten.
+        lastAppliedRemoteKey=state.incomingTeleportEvent.ss+"|"+state.incomingTeleportEvent.sr;
+        lastAppliedRemoteTs=Date.now();
       }
     }
 
@@ -6666,11 +6699,12 @@ if(frame){
       // above so the same packet won't replay once the window expires.
       if(lastOwnSendTs===0||(Date.now()-lastOwnSendTs)>=SYNC_SUPPRESS_MS){
         applyTeleport(state.incomingLocationShareEvent.ss,state.incomingLocationShareEvent.sr);
-        // Receiver-side dedupe lock (see visitor branch above for
-        // rationale). Prevents the agent from re-sharing the just-
-        // applied coords back to the visitor on the next ambient poll.
-        lastSentLocationKey=state.incomingLocationShareEvent.ss+"|"+state.incomingLocationShareEvent.sr;
-        lastSentLocationTs=Date.now();
+        // Remote-provenance record (see visitor branch above). Stops an
+        // immediate ambient echo of the just-followed coords without
+        // blocking the agent's INTENTIONAL "come here" re-share of this
+        // same view a moment later.
+        lastAppliedRemoteKey=state.incomingLocationShareEvent.ss+"|"+state.incomingLocationShareEvent.sr;
+        lastAppliedRemoteTs=Date.now();
         if(letterboxWrap){
           try {
             letterboxWrap.classList.add("follow-pulse");

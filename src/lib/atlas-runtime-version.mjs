@@ -22,6 +22,28 @@
 //     (controller + glue + CSS). Bump on every behavior change; the
 //     Upgrade Center compares this value to decide "outdated".
 const ATLAS_PACKAGE_SCHEMA = 2;
+// 2.2.1: P0 fix — Explore Together host→guest direction. Three latent
+// defects made the host→guest half of a session fail while guest→host
+// kept working: (1) the glue and the transport controller each kept
+// their own current-view key with no way to converge after the host
+// followed a guest's location share, so every host annotation packet
+// (strokes, Eraser deletes, clear, nav_lock floor heartbeats) was
+// stamped with a key the guest's stale-view filter rejected; (2) a
+// blanket clipboard==currentViewKey echo guard silently swallowed the
+// host's INTENTIONAL U + Copy re-sync of the view it was standing in —
+// flashing success while sending nothing — and the receive path wrote
+// the sent-dedupe vars, eating re-shares for 5s more; (3) a duplicate
+// inbound PeerJS connection replaced the host's data channel before
+// ever opening, leaving isConnected=true with dead outbound sends while
+// the old handlers kept delivering inbound traffic. Fix: the controller
+// send methods own the sender-side view key (shareLocationWithAgent now
+// stamps it like teleportVisitor); a new noteCurrentView(ss, sr)
+// controller API lets the glue report locally applied views
+// (applyTeleport); echo suppression is provenance-aware (only the
+// short-lived automatic echo of a remotely applied location is
+// swallowed; last-sender-wins and the stale-view filter are unchanged);
+// candidate inbound connections are adopted only on "open", closing the
+// previous channel on adoption. Desktop-only; no mobile change.
 // 2.2.0: Shared sequential annotation + Eraser for desktop Live Tour
 // (PRs #160–#162). Both families now draw on the SAME synced scene in
 // turn — a gesture-scoped "annotation floor" (reusing nav_lock) grants
@@ -64,7 +86,7 @@ const ATLAS_PACKAGE_SCHEMA = 2;
 // 2.0.1: iOS clipboard isolation — ambient readText() disabled on
 // iOS/iPadOS WebKit (Paste-callout interruption fix) + stage-scoped
 // WebKit gesture defenses.
-const ATLAS_RUNTIME_VERSION = "2.2.0";
+const ATLAS_RUNTIME_VERSION = "2.2.1";
 
 // SUPPORTED-CURRENT capabilities — what freshly generated packages
 // advertise. Live Tour / Explore Together is desktop-only (2026-06-09), so

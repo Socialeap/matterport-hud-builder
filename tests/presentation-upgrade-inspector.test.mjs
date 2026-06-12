@@ -21,7 +21,7 @@ import {
 } from "../src/lib/atlas-runtime-version.mjs";
 import {
   INSPECTION_OUTCOMES,
-  V1_PATCH_SOURCE_VERSION,
+  V1_PATCH_SOURCE_VERSIONS,
   BUILDER_RUNTIME_SPANS,
   F3D_META_NAMES,
   PATCH_MUTATION_ALLOWLIST,
@@ -123,6 +123,21 @@ test("valid Builder 2.1.0 with all five sentinels → patchable", () => {
   assert.ok(r.assets.includes("assets/branding/placeholder-logo.png"));
 });
 
+test("every supported v1 patch source classifies patchable (2.1.0 AND 2.2.0)", () => {
+  for (const version of V1_PATCH_SOURCE_VERSIONS) {
+    const r = inspectPresentationHtml(makeBuilderHtml({ version }));
+    assert.equal(r.outcome, "patchable", `source ${version}`);
+    assert.equal(r.runtimeVersion, version);
+  }
+});
+
+test("a v1 patch source advertising capabilities is inconsistent → invalid (both sources)", () => {
+  for (const version of V1_PATCH_SOURCE_VERSIONS) {
+    const r = inspectPresentationHtml(makeBuilderHtml({ version, caps: "mobile_voice_v2" }));
+    assert.equal(r.outcome, "invalid", `source ${version}`);
+  }
+});
+
 test("sentinel spans are reported with monotonic character offsets in canonical order", () => {
   const r = inspectPresentationHtml(makeBuilderHtml());
   assert.deepEqual(r.sentinels.spans.map((s) => s.name), [...BUILDER_RUNTIME_SPANS]);
@@ -173,7 +188,7 @@ test("pre-family generation (three metas, family missing) → legacy_unsupported
 test("fully marked Builder 2.0.3 (registered historical capability) → legacy_unsupported, not invalid", () => {
   const r = inspectPresentationHtml(makeBuilderHtml({ version: "2.0.3", caps: "mobile_voice_v2" }));
   assert.equal(r.outcome, "legacy_unsupported");
-  assert.match(r.reasons.join(" "), new RegExp(V1_PATCH_SOURCE_VERSION.replace(/\./g, "\\.")));
+  assert.match(r.reasons.join(" "), /not a supported v1 patch source/);
 });
 
 // ── Future versions: never downgrade, never guess ────────────────────────
@@ -466,8 +481,11 @@ test("buildRuntimeMetaTags('builder') output parses through the inspector's stri
 });
 
 test("v1 source/current versions stay coherent with the version registry", () => {
-  assert.equal(V1_PATCH_SOURCE_VERSION, "2.1.0");
-  assert.notEqual(ATLAS_RUNTIME_VERSION, V1_PATCH_SOURCE_VERSION, "current must be ahead of the v1 source");
+  assert.deepEqual([...V1_PATCH_SOURCE_VERSIONS], ["2.1.0", "2.2.0"]);
+  assert.ok(Object.isFrozen(V1_PATCH_SOURCE_VERSIONS));
+  for (const source of V1_PATCH_SOURCE_VERSIONS) {
+    assert.notEqual(ATLAS_RUNTIME_VERSION, source, "current must be ahead of every v1 source");
+  }
 });
 
 // Real-world legacy sample already tracked at the repo root (not copied into
