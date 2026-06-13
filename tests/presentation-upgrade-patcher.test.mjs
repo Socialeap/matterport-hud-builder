@@ -437,6 +437,69 @@ test("normalizeHexColor accepts #RGB/#RRGGBB only", () => {
   assert.equal(normalizeHexColor(""), null);
 });
 
+// ── J. Trusted runtime-source validation (fail-closed) ──────────────────
+
+// Intentionally-malformed runtimeSources for a PATCHABLE package: every one
+// must be a structured runtime_sources_invalid rejection with html:null and
+// NO throw. (Cast to any-ish via a local so the .mjs stays honest about the
+// declared required shape while still exercising the runtime guard.)
+const BAD_SOURCES = [
+  ["omitted", undefined],
+  ["null", null],
+  ["empty object", {}],
+  ["empty strings", { liveSessionJs: "", annoInputJs: "" }],
+  ["whitespace-only liveSessionJs", { liveSessionJs: "  \n\t", annoInputJs: "ok" }],
+  ["numeric", 5],
+  ["array", ["a", "b"]],
+  ["missing annoInputJs", { liveSessionJs: "ok" }],
+  ["null annoInputJs", { liveSessionJs: "ok", annoInputJs: null }],
+];
+
+for (const [label, sources] of BAD_SOURCES) {
+  test(`patchable + ${label} runtime sources → rejected runtime_sources_invalid, no html, no throw`, () => {
+    let r;
+    assert.doesNotThrow(() => {
+      r = patchPresentationHtml(FIX_210, sources);
+    });
+    assert.equal(r.outcome, PATCH_OUTCOMES.REJECTED);
+    assert.equal(r.code, REJECTION_CODES.RUNTIME_SOURCES_INVALID);
+    assert.equal(r.html, null);
+    assert.equal(r.branding, null);
+    assert.ok(r.reasons.length > 0);
+  });
+}
+
+test("runtime-source rejection names the offending field without echoing contents", () => {
+  const r = patchPresentationHtml(FIX_210, { liveSessionJs: "ok" });
+  assert.equal(r.code, REJECTION_CODES.RUNTIME_SOURCES_INVALID);
+  assert.ok(r.reasons.some((x) => x.includes("annoInputJs")), "names the missing field");
+});
+
+test("runtime-source validation runs ONLY after inspector eligibility (order preserved)", () => {
+  // A non-patchable package with bad sources must keep its inspector code,
+  // never runtime_sources_invalid.
+  const future = FIX_210.replace(
+    '<meta name="f3d-runtime" content="2.1.0" />',
+    '<meta name="f3d-runtime" content="9.9.9" />',
+  );
+  assert.equal(patchPresentationHtml(future, undefined).code, REJECTION_CODES.FUTURE_VERSION);
+  assert.equal(patchPresentationHtml("<h1>x</h1>", {}).code, REJECTION_CODES.INVALID);
+  assert.equal(patchPresentationHtml(null, {}).code, REJECTION_CODES.NOT_A_STRING);
+});
+
+test("already-current noop does not require runtime sources (noop precedes source validation)", () => {
+  const current = patchPresentationHtml(FIX_210, RUNTIME_SOURCES).html;
+  const r = patchPresentationHtml(current, undefined);
+  assert.equal(r.outcome, PATCH_OUTCOMES.NOOP_ALREADY_CURRENT);
+  assert.equal(r.html, current);
+});
+
+test("runtime_sources_invalid is a registered code with a message", () => {
+  assert.equal(REJECTION_CODES.RUNTIME_SOURCES_INVALID, "runtime_sources_invalid");
+  assert.equal(typeof REJECTION_MESSAGES[REJECTION_CODES.RUNTIME_SOURCES_INVALID], "string");
+  assert.ok(REJECTION_MESSAGES[REJECTION_CODES.RUNTIME_SOURCES_INVALID].length > 0);
+});
+
 // ── I. Generator parity — anchors stay locked to portal.functions.ts ─────
 
 test("every branding anchor matches the generator source exactly once", () => {

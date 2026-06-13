@@ -9,6 +9,7 @@ export type RejectionCode =
   | "legacy_unsupported"
   | "invalid"
   | "not_a_string"
+  | "runtime_sources_invalid"
   | "branding_not_recoverable"
   | "mutation_region_conflict"
   | "post_validation_failed"
@@ -74,7 +75,11 @@ export declare const ANCHOR_CHANNEL_TOKEN: {
 
 export declare function normalizeHexColor(raw: string): string | null;
 
+// A successful patch requires the current Frontiers3D runtime sources, supplied
+// by the trusted application bundle. Omitting them (or passing empty values) is
+// a fail-closed `runtime_sources_invalid` rejection at runtime; the type makes
+// the requirement explicit for callers.
 export declare function patchPresentationHtml(
   html: string,
-  runtimeSources?: { liveSessionJs?: string; annoInputJs?: string },
+  runtimeSources: { liveSessionJs: string; annoInputJs: string },
 ): PatchResult;

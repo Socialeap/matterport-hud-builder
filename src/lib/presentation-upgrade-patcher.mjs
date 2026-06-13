@@ -64,6 +64,7 @@ const REJECTION_CODES = Object.freeze({
   LEGACY_UNSUPPORTED: "legacy_unsupported",
   INVALID: "invalid",
   NOT_A_STRING: "not_a_string",
+  RUNTIME_SOURCES_INVALID: "runtime_sources_invalid",
   BRANDING_NOT_RECOVERABLE: "branding_not_recoverable",
   MUTATION_REGION_CONFLICT: "mutation_region_conflict",
   POST_VALIDATION_FAILED: "post_validation_failed",
@@ -80,6 +81,8 @@ const REJECTION_MESSAGES = Object.freeze({
   [REJECTION_CODES.INVALID]:
     "This file is not a valid, unambiguous Builder presentation and cannot be patched.",
   [REJECTION_CODES.NOT_A_STRING]: "Input is not an HTML string.",
+  [REJECTION_CODES.RUNTIME_SOURCES_INVALID]:
+    "The current Frontiers3D runtime components were unavailable, so no upgraded file was produced. This is an internal configuration problem, not a problem with the uploaded presentation.",
   [REJECTION_CODES.BRANDING_NOT_RECOVERABLE]:
     "Could not confidently recover the presentation's brand colors from its preserved styling. Regenerate from the Builder.",
   [REJECTION_CODES.MUTATION_REGION_CONFLICT]:
@@ -183,6 +186,34 @@ function normalizeHexColor(raw) {
   let hex = m[1].toLowerCase();
   if (hex.length === 3) hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
   return "#" + hex;
+}
+
+// ── Trusted runtime sources (fail-closed) ──────────────────────────────────
+// liveSessionJs / annoInputJs are the CURRENT Frontiers3D runtime module
+// sources, supplied by the trusted application bundle (never from the upload
+// or user input). The inspector and byte-preservation guards prove package
+// structure and preserved bytes, NOT that the kernel JS is complete — so the
+// patcher must refuse to build a kernel from missing/empty sources rather than
+// emit a structurally-valid package with a broken (or literal "undefined")
+// runtime. Reasons name the offending field WITHOUT echoing its contents.
+function validateRuntimeSources(runtimeSources) {
+  if (runtimeSources === null || typeof runtimeSources !== "object" || Array.isArray(runtimeSources)) {
+    return {
+      ok: false,
+      reasons: ["runtime sources must be a non-null object carrying liveSessionJs and annoInputJs"],
+    };
+  }
+  const reasons = [];
+  for (const field of ["liveSessionJs", "annoInputJs"]) {
+    const value = runtimeSources[field];
+    if (typeof value !== "string") {
+      const kind = value === null ? "null" : Array.isArray(value) ? "array" : typeof value;
+      reasons.push(`runtime source "${field}" is missing or not a string (got ${kind})`);
+    } else if (value.trim().length === 0) {
+      reasons.push(`runtime source "${field}" is empty or whitespace-only`);
+    }
+  }
+  return { ok: reasons.length === 0, reasons };
 }
 
 // ── Span-removed representation (for branding recovery only) ────────────────
@@ -355,7 +386,7 @@ function applyReplacements(html, regions) {
 }
 
 // ── Patcher ────────────────────────────────────────────────────────────────
-function patchPresentationHtml(html, runtimeSources = {}) {
+function patchPresentationHtml(html, runtimeSources) {
   const reject = (code, extraReasons = [], inspection = null) => ({
     outcome: PATCH_OUTCOMES.REJECTED,
     code,
@@ -393,14 +424,22 @@ function patchPresentationHtml(html, runtimeSources = {}) {
     return reject(code, inspection.reasons.slice(), inspection);
   }
 
-  // 2. Eligible. Recover branding from the span-removed representation ONLY.
+  // 2. Eligible. Validate the trusted runtime sources fail-closed BEFORE any
+  //    branding recovery or span construction — a future/atlas/legacy/invalid
+  //    package is never reached here, so it can never be mislabeled.
+  const sources = validateRuntimeSources(runtimeSources);
+  if (!sources.ok) {
+    return reject(REJECTION_CODES.RUNTIME_SOURCES_INVALID, sources.reasons, inspection);
+  }
+
+  // 3. Recover branding from the span-removed representation ONLY.
   const spanRemoved = buildSpanRemovedRepresentation(html, inspection.sentinels.spans);
   const branding = recoverBranding(spanRemoved);
   if (!branding.ok) {
     return reject(REJECTION_CODES.BRANDING_NOT_RECOVERABLE, branding.reasons, inspection);
   }
 
-  // 3. Build the nine mutation regions (5 spans + 4 metas). Span replacements
+  // 4. Build the nine mutation regions (5 spans + 4 metas). Span replacements
   //    come from the P2 canonical builders; meta replacements are the current
   //    contract values.
   const spanReplacements = {
@@ -445,10 +484,10 @@ function patchPresentationHtml(html, runtimeSources = {}) {
     return reject(REJECTION_CODES.MUTATION_REGION_CONFLICT, [inputOrder.reason], inspection);
   }
 
-  // 4. Splice descending so offsets stay valid.
+  // 5. Splice descending so offsets stay valid.
   const output = applyReplacements(html, inputRegions);
 
-  // 5. Re-inspect the output: it must validate as the current package.
+  // 6. Re-inspect the output: it must validate as the current package.
   const postInspection = inspectPresentationHtml(output);
   if (postInspection.outcome !== "already_current" || !postInspection.sentinels.valid) {
     return reject(
@@ -461,7 +500,7 @@ function patchPresentationHtml(html, runtimeSources = {}) {
     );
   }
 
-  // 6. Prove byte preservation from FRESH output offsets — never from masks
+  // 7. Prove byte preservation from FRESH output offsets — never from masks
   //    or the original (now-stale) offsets. Build the output's nine regions
   //    independently, then compare the ordered untouched segments.
   const outputSpanRegions = [];
@@ -516,7 +555,7 @@ function patchPresentationHtml(html, runtimeSources = {}) {
     }
   }
 
-  // 7. Success.
+  // 8. Success.
   return {
     outcome: PATCH_OUTCOMES.PATCHED,
     code: null,
