@@ -176,9 +176,17 @@ test("patched and noop results carry sourceHtml === the exact input; rejected is
   assert.equal(noop.sourceHtml, patched.html, "noop.sourceHtml must be the exact input");
   assert.equal(noop.html, patched.html, "noop echoes its input");
 
+  // A string-input rejection carries sourceHtml === the input (so its outcome
+  // can never be reported against a different file's bytes).
   const rejected = patchPresentationHtml("<h1>nope</h1>", RUNTIME_SOURCES);
   assert.equal(rejected.outcome, PATCH_OUTCOMES.REJECTED);
-  assert.equal(rejected.sourceHtml, null, "rejected.sourceHtml is null");
+  assert.equal(rejected.sourceHtml, "<h1>nope</h1>", "string rejection binds sourceHtml to the input");
+
+  // Only a NON-string input yields sourceHtml === null.
+  const notString = patchPresentationHtml(null, RUNTIME_SOURCES);
+  assert.equal(notString.outcome, PATCH_OUTCOMES.REJECTED);
+  assert.equal(notString.code, REJECTION_CODES.NOT_A_STRING);
+  assert.equal(notString.sourceHtml, null, "non-string input → sourceHtml null");
 });
 
 // ── B. Exactly nine mutation regions ────────────────────────────────────

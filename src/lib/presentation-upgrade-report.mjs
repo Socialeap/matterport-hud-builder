@@ -274,6 +274,35 @@ function looksLikeInspection(i) {
   return isObject(i) && isObject(i.sentinels) && Array.isArray(i.sentinels.spans);
 }
 
+// The single source of truth for the PATCHED-result contract, shared by
+// buildUpgradeReport (throws on issues) and prepareUpgradeDownload (rejects on
+// issues) so the two can never drift. Validates only the patchResult itself
+// (not hashes, the report, or the source binding — those are checked by the
+// callers). Returns a list of human-readable issues; empty = valid. Any valid
+// P3 patched output satisfies this by construction.
+function patchedContractIssues(patchResult) {
+  const issues = [];
+  if (!isObject(patchResult)) return ["patch result is not an object"];
+  if (typeof patchResult.sourceHtml !== "string") issues.push("missing sourceHtml");
+  if (typeof patchResult.html !== "string") issues.push("missing html");
+  if (!isObject(patchResult.branding)) issues.push("missing branding");
+
+  const ins = patchResult.inspection;
+  if (!looksLikeInspection(ins)) issues.push("inspection missing or malformed");
+  else if (ins.outcome !== "patchable") issues.push(`inspection.outcome "${ins.outcome}" (expected patchable)`);
+
+  const post = patchResult.postInspection;
+  if (!looksLikeInspection(post)) issues.push("postInspection missing or malformed");
+  else {
+    if (post.outcome !== "already_current") issues.push(`postInspection.outcome "${post.outcome}" (expected already_current)`);
+    if (!isObject(post.sentinels) || post.sentinels.valid !== true) issues.push("postInspection sentinels not valid");
+    if (post.runtimeVersion !== ATLAS_RUNTIME_VERSION) issues.push(`target runtime "${post.runtimeVersion}" (expected ${ATLAS_RUNTIME_VERSION})`);
+    if (post.packageSchema !== ATLAS_PACKAGE_SCHEMA) issues.push(`target schema "${post.packageSchema}" (expected ${ATLAS_PACKAGE_SCHEMA})`);
+    if (post.family !== "builder") issues.push(`target family "${post.family}" (expected builder)`);
+  }
+  return issues;
+}
+
 // ── buildUpgradeReport ──────────────────────────────────────────────────────
 async function buildUpgradeReport({ originalFilename, originalHtml, patchResult } = {}) {
   if (typeof originalHtml !== "string") {
@@ -326,6 +355,13 @@ async function buildUpgradeReport({ originalFilename, originalHtml, patchResult 
 
   // ── Rejected ──────────────────────────────────────────────────────────
   if (patchResult.outcome === PATCH_OUTCOMES.REJECTED) {
+    // Bind the rejection to its source: a string-input rejection must be
+    // reported against its own bytes, never another file's (its SHA-256 before
+    // is sha256(originalHtml)). A non-string-input rejection (sourceHtml null)
+    // has no string source and cannot be faithfully reported here.
+    if (patchResult.sourceHtml !== originalHtml) {
+      throw new UpgradeReportError("rejected result is not bound to this original (sourceHtml !== originalHtml)");
+    }
     base.rejection = {
       code: patchResult.code ?? null,
       message: typeof patchResult.message === "string" ? patchResult.message : null,
@@ -355,15 +391,13 @@ async function buildUpgradeReport({ originalFilename, originalHtml, patchResult 
   }
 
   // ── Patched ─────────────────────────────────────────────────────────────
-  const postInspection = patchResult.postInspection ?? null;
-  if (
-    typeof patchResult.html !== "string" ||
-    typeof patchResult.sourceHtml !== "string" ||
-    !looksLikeInspection(inspection) ||
-    !looksLikeInspection(postInspection) ||
-    !isObject(patchResult.branding)
-  ) {
-    throw new UpgradeReportError("patched result is malformed (missing sourceHtml, html, inspection, postInspection, or branding)");
+  const postInspection = patchResult.postInspection;
+  // Validate the FULL patched-result contract via the shared helper, so this
+  // can never accept a result prepareUpgradeDownload would later reject. Valid
+  // P3 output always satisfies it → a failure is a controlled error.
+  const contractIssues = patchedContractIssues(patchResult);
+  if (contractIssues.length > 0) {
+    throw new UpgradeReportError(`patched result violates the upgrade contract: ${contractIssues.join("; ")}`);
   }
   // Bind the result to THIS original: the patcher must have consumed exactly the
   // bytes we were handed. This closes the in-region tampering gap — an edit
@@ -424,16 +458,12 @@ async function prepareUpgradeDownload(patchResult, report) {
     if (report.outcome !== PATCH_OUTCOMES.PATCHED) return null;
     if (report.download?.available !== true) return null;
 
-    // Bound source + output must both be present strings.
-    if (typeof patchResult.sourceHtml !== "string") return null;
-    if (typeof patchResult.html !== "string") return null;
-
-    // Inspector / post-inspector contract.
+    // The SAME patched-result contract buildUpgradeReport enforces (shared
+    // helper → no drift): shape, inspection patchable, postInspection
+    // already_current + valid sentinels + current runtime/schema/family.
+    if (patchedContractIssues(patchResult).length > 0) return null;
     const inspection = patchResult.inspection;
     const postInspection = patchResult.postInspection;
-    if (!isObject(inspection) || inspection.outcome !== "patchable") return null;
-    if (!isObject(postInspection) || postInspection.outcome !== "already_current") return null;
-    if (!isObject(postInspection.sentinels) || postInspection.sentinels.valid !== true) return null;
 
     // Source/target metadata must agree with the report AND the current contract.
     if (!isObject(report.runtime) || !isObject(report.schema) || !isObject(report.family)) return null;

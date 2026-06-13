@@ -362,6 +362,64 @@ test("a fully valid report/download still succeeds and returns the exact patched
   assert.equal(dl.mimeType, DOWNLOAD_MIME_TYPE);
 });
 
+// ── L. Contract-drift elimination (Codex final corrections) ──────────────
+
+test("a rejected result is rejected when paired with a DIFFERENT original", async () => {
+  const future = FIX_210.replace(
+    '<meta name="f3d-runtime" content="2.1.0" />',
+    '<meta name="f3d-runtime" content="9.9.9" />',
+  );
+  const prRej = patchPresentationHtml(future, RUNTIME_SOURCES); // rejected, sourceHtml === future
+  assert.equal(prRej.sourceHtml, future);
+  await assert.rejects(
+    () => buildUpgradeReport({ originalFilename: "A.html", originalHtml: FIX_210, patchResult: prRej }),
+    UpgradeReportError,
+  );
+  // …but reporting it against its OWN original still works.
+  const rep = await buildUpgradeReport({ originalFilename: "B.html", originalHtml: future, patchResult: prRej });
+  assert.equal(rep.outcome, PATCH_OUTCOMES.REJECTED);
+  assert.equal(rep.rejection.code, "future_version");
+});
+
+test("buildUpgradeReport throws on a non-patchable inspection.outcome", async () => {
+  const pr = patch210();
+  const bad = { ...pr, inspection: { ...pr.inspection, outcome: "future_version" } };
+  await assert.rejects(
+    () => buildUpgradeReport({ originalFilename: "a.html", originalHtml: FIX_210, patchResult: bad }),
+    UpgradeReportError,
+  );
+});
+
+test("buildUpgradeReport throws on tampered postInspection (outcome/sentinels/schema/family/runtime)", async () => {
+  const pr = patch210();
+  const variants = [
+    { outcome: "patchable" },
+    { sentinels: { ...pr.postInspection.sentinels, valid: false } },
+    { packageSchema: 3 },
+    { family: "atlas" },
+    { runtimeVersion: "9.9.9" },
+  ];
+  for (const patch of variants) {
+    const bad = { ...pr, postInspection: { ...pr.postInspection, ...patch } };
+    await assert.rejects(
+      () => buildUpgradeReport({ originalFilename: "a.html", originalHtml: FIX_210, patchResult: bad }),
+      UpgradeReportError,
+      `expected throw for postInspection ${JSON.stringify(patch)}`,
+    );
+  }
+});
+
+test("download.available === true always yields a valid download for the untouched result/report", async () => {
+  for (const [version, fx] of [["2.1.0", FIX_210], ["2.2.0", FIX_220]]) {
+    const pr = patchPresentationHtml(fx, RUNTIME_SOURCES);
+    const rep = await buildUpgradeReport({ originalFilename: "x.html", originalHtml: fx, patchResult: pr });
+    assert.equal(rep.download.available, true, `${version}: a valid patch must offer a download`);
+    const dl = await prepareUpgradeDownload(pr, rep);
+    assert.ok(dl, `${version}: download.available=true must authorize a download (no drift)`);
+    assert.equal(dl.html, pr.html, `${version}: exact patched html`);
+  }
+});
+
 // ── J. Determinism ───────────────────────────────────────────────────────
 
 test("report generation is deterministic for identical inputs", async () => {
