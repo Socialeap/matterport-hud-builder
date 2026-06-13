@@ -40,6 +40,7 @@ export interface UpgradeReport {
   inspectionOutcome: string | null;
   runtime: { from: string | null; to: string | null };
   schema: { from: number | null; to: number | null };
+  family: { from: string | null; to: string | null };
   sha256: { before: string; after: string | null };
   branding: { accentColor: string | null; hudBgColor: string | null } | null;
   mutations: { spans: SpanMutation[]; metas: MetaMutation[] };

@@ -47,6 +47,13 @@ export interface PatchResult {
   reasons: string[];
   inspection: InspectionReport | null;
   branding: { accentColor: string; hudBgColor: string } | null;
+  /**
+   * The exact immutable input this result was produced from. A string on
+   * patched and noop results; null on rejection. Binds a result to its source
+   * so the report layer can refuse to authorize a download whose original
+   * differs (even inside an allowed mutation region).
+   */
+  sourceHtml: string | null;
   html: string | null;
   postInspection: InspectionReport | null;
 }

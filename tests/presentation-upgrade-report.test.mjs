@@ -279,6 +279,89 @@ test("already-current noop → echo hash, no mutations, no download", async () =
   assert.equal(await prepareUpgradeDownload(pr, rep), null);
 });
 
+// ── K. Source-binding integrity (Codex re-review corrections) ────────────
+
+test("in-region tampering of the original is rejected (sourceHtml binding)", async () => {
+  // P3 consumed FIX_210. Tamper the original with a SAME-LENGTH edit INSIDE the
+  // js:glue span — the untouched segments stay identical, but sourceHtml differs.
+  const pr = patch210();
+  const tampered = FIX_210.replace("Desktop-only Live Tour glue", "Desktop-ONLY Live Tour glue");
+  assert.notEqual(tampered, FIX_210);
+  assert.equal(tampered.length, FIX_210.length, "tamper must be same-length (in-region)");
+  await assert.rejects(
+    () => buildUpgradeReport({ originalFilename: "evil.html", originalHtml: tampered, patchResult: pr }),
+    UpgradeReportError,
+  );
+});
+
+test("a report built from a different original never authorizes a download", async () => {
+  const pr210 = patch210();
+  const rep210 = await buildUpgradeReport({ originalFilename: "a.html", originalHtml: FIX_210, patchResult: pr210 });
+  const pr220 = patch220();
+  assert.equal(await prepareUpgradeDownload(pr220, rep210), null);
+});
+
+test("noop whose html differs from the original is rejected", async () => {
+  const current = patch210().html;
+  const noop = patchPresentationHtml(current, RUNTIME_SOURCES);
+  assert.equal(noop.outcome, PATCH_OUTCOMES.NOOP_ALREADY_CURRENT);
+  await assert.rejects(
+    () => buildUpgradeReport({ originalFilename: "x.html", originalHtml: current + " ", patchResult: noop }),
+    UpgradeReportError,
+  );
+});
+
+test("tampered replacementFilename is rejected (recomputed safe name must match)", async () => {
+  const pr = patch210();
+  const rep = await buildUpgradeReport({ originalFilename: "a.html", originalHtml: FIX_210, patchResult: pr });
+  const tampered = { ...rep, replacementFilename: "../../evil.html" };
+  assert.equal(await prepareUpgradeDownload(pr, tampered), null);
+});
+
+test("tampered postInspection (outcome/runtime/schema/family/sentinels) is rejected", async () => {
+  const pr = patch210();
+  const rep = await buildUpgradeReport({ originalFilename: "a.html", originalHtml: FIX_210, patchResult: pr });
+  const mutate = (patch) => ({ ...pr, postInspection: { ...pr.postInspection, ...patch } });
+  assert.equal(await prepareUpgradeDownload(mutate({ outcome: "patchable" }), rep), null, "outcome");
+  assert.equal(await prepareUpgradeDownload(mutate({ runtimeVersion: "9.9.9" }), rep), null, "runtime");
+  assert.equal(await prepareUpgradeDownload(mutate({ packageSchema: 3 }), rep), null, "schema");
+  assert.equal(await prepareUpgradeDownload(mutate({ family: "atlas" }), rep), null, "family");
+  assert.equal(
+    await prepareUpgradeDownload(
+      { ...pr, postInspection: { ...pr.postInspection, sentinels: { ...pr.postInspection.sentinels, valid: false } } },
+      rep,
+    ),
+    null,
+    "sentinel validity",
+  );
+});
+
+test("tampered report hashes (before/after) are rejected", async () => {
+  const pr = patch210();
+  const rep = await buildUpgradeReport({ originalFilename: "a.html", originalHtml: FIX_210, patchResult: pr });
+  const badBefore = { ...rep, sha256: { ...rep.sha256, before: "f".repeat(64) } };
+  const badAfter = { ...rep, sha256: { ...rep.sha256, after: "0".repeat(64) } };
+  assert.equal(await prepareUpgradeDownload(pr, badBefore), null);
+  assert.equal(await prepareUpgradeDownload(pr, badAfter), null);
+});
+
+test("a modified output (source intact) is rejected by the after-hash", async () => {
+  const pr = patch210();
+  const rep = await buildUpgradeReport({ originalFilename: "a.html", originalHtml: FIX_210, patchResult: pr });
+  const modifiedOutput = { ...pr, html: pr.html + "\n<!-- tamper -->" };
+  assert.equal(await prepareUpgradeDownload(modifiedOutput, rep), null);
+});
+
+test("a fully valid report/download still succeeds and returns the exact patched HTML", async () => {
+  const pr = patch210();
+  const rep = await buildUpgradeReport({ originalFilename: "Maple Grove.html", originalHtml: FIX_210, patchResult: pr });
+  const dl = await prepareUpgradeDownload(pr, rep);
+  assert.ok(dl, "valid download must be authorized");
+  assert.equal(dl.html, pr.html, "returns the exact validated patched HTML");
+  assert.equal(dl.filename, `Maple_Grove.upgraded-${ATLAS_RUNTIME_VERSION}.html`);
+  assert.equal(dl.mimeType, DOWNLOAD_MIME_TYPE);
+});
+
 // ── J. Determinism ───────────────────────────────────────────────────────
 
 test("report generation is deterministic for identical inputs", async () => {

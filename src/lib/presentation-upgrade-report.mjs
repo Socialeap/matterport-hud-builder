@@ -308,6 +308,10 @@ async function buildUpgradeReport({ originalFilename, originalHtml, patchResult 
       from: isObject(inspection) ? inspection.packageSchema ?? null : null,
       to: null,
     },
+    family: {
+      from: isObject(inspection) ? inspection.family ?? null : null,
+      to: null,
+    },
     sha256: { before: beforeHash, after: null },
     branding: null,
     mutations: { spans: [], metas: [] },
@@ -335,9 +339,15 @@ async function buildUpgradeReport({ originalFilename, originalHtml, patchResult 
     if (typeof patchResult.html !== "string") {
       throw new UpgradeReportError("noop result is malformed (missing echoed html)");
     }
+    // A noop is valid only when BOTH the bound source and the echoed output are
+    // byte-identical to the original we were handed.
+    if (patchResult.sourceHtml !== originalHtml || patchResult.html !== originalHtml) {
+      throw new UpgradeReportError("noop result is not bound to this original (sourceHtml/html mismatch)");
+    }
     base.sha256.after = await sha256HexUtf8(patchResult.html);
     base.runtime.to = base.runtime.from;
     base.schema.to = base.schema.from;
+    base.family.to = base.family.from;
     base.notes = Array.isArray(patchResult.reasons) && patchResult.reasons.length
       ? patchResult.reasons.slice()
       : ["package already advertises the current runtime; no changes needed"];
@@ -348,16 +358,26 @@ async function buildUpgradeReport({ originalFilename, originalHtml, patchResult 
   const postInspection = patchResult.postInspection ?? null;
   if (
     typeof patchResult.html !== "string" ||
+    typeof patchResult.sourceHtml !== "string" ||
     !looksLikeInspection(inspection) ||
     !looksLikeInspection(postInspection) ||
     !isObject(patchResult.branding)
   ) {
-    throw new UpgradeReportError("patched result is malformed (missing html, inspection, postInspection, or branding)");
+    throw new UpgradeReportError("patched result is malformed (missing sourceHtml, html, inspection, postInspection, or branding)");
+  }
+  // Bind the result to THIS original: the patcher must have consumed exactly the
+  // bytes we were handed. This closes the in-region tampering gap — an edit
+  // inside an allowed mutation region leaves the untouched segments identical,
+  // but changes sourceHtml.
+  if (patchResult.sourceHtml !== originalHtml) {
+    throw new UpgradeReportError("patched result is not bound to this original (sourceHtml !== originalHtml)");
   }
 
+  // before is the hash of the VERIFIED source (== originalHtml == sourceHtml).
   base.sha256.after = await sha256HexUtf8(patchResult.html);
   base.runtime.to = postInspection.runtimeVersion ?? null;
   base.schema.to = postInspection.packageSchema ?? null;
+  base.family.to = postInspection.family ?? null;
   base.branding = {
     accentColor: patchResult.branding.accentColor ?? null,
     hudBgColor: patchResult.branding.hudBgColor ?? null,
@@ -389,28 +409,62 @@ async function buildUpgradeReport({ originalFilename, originalHtml, patchResult 
 }
 
 // ── prepareUpgradeDownload ──────────────────────────────────────────────────
-// Bind the report to THIS patch's html: re-hash patchResult.html and require it
-// to equal report.sha256.after, plus full outcome/runtime/preservation/
-// availability consistency. Returns the exact validated html or null. Never
-// throws (any error → null, i.e. no download).
+// Authorize a download ONLY for a verified patch whose report is bound to it.
+// Re-hashes BOTH patchResult.sourceHtml and patchResult.html and requires them
+// to equal report.sha256.before / .after; re-verifies the full inspector /
+// post-inspector / runtime / schema / family / preservation contract; and
+// recomputes the safe filename rather than trusting report.replacementFilename.
+// Any mismatch → null. Never throws.
 async function prepareUpgradeDownload(patchResult, report) {
   try {
     if (!isObject(patchResult) || !isObject(report)) return null;
+
+    // Outcomes.
     if (patchResult.outcome !== PATCH_OUTCOMES.PATCHED) return null;
     if (report.outcome !== PATCH_OUTCOMES.PATCHED) return null;
-    if (!isObject(report.download) || report.download.available !== true) return null;
+    if (report.download?.available !== true) return null;
+
+    // Bound source + output must both be present strings.
+    if (typeof patchResult.sourceHtml !== "string") return null;
     if (typeof patchResult.html !== "string") return null;
-    if (typeof report.replacementFilename !== "string" || report.replacementFilename.length === 0) return null;
-    if (!isObject(report.runtime) || report.runtime.to !== ATLAS_RUNTIME_VERSION) return null;
+
+    // Inspector / post-inspector contract.
+    const inspection = patchResult.inspection;
+    const postInspection = patchResult.postInspection;
+    if (!isObject(inspection) || inspection.outcome !== "patchable") return null;
+    if (!isObject(postInspection) || postInspection.outcome !== "already_current") return null;
+    if (!isObject(postInspection.sentinels) || postInspection.sentinels.valid !== true) return null;
+
+    // Source/target metadata must agree with the report AND the current contract.
+    if (!isObject(report.runtime) || !isObject(report.schema) || !isObject(report.family)) return null;
+    if (report.runtime.from !== inspection.runtimeVersion) return null;
+    if (report.runtime.to !== postInspection.runtimeVersion || report.runtime.to !== ATLAS_RUNTIME_VERSION) return null;
+    if (report.schema.from !== inspection.packageSchema) return null;
+    if (report.schema.to !== postInspection.packageSchema || report.schema.to !== ATLAS_PACKAGE_SCHEMA) return null;
+    if (report.family.from !== inspection.family) return null;
+    if (report.family.to !== postInspection.family || report.family.to !== "builder") return null;
+
+    // Preservation must have independently verified.
     if (!isObject(report.preservation) || report.preservation.verified !== true) return null;
-    if (!isObject(report.sha256) || typeof report.sha256.after !== "string" || !HEX64.test(report.sha256.after)) {
-      return null;
-    }
-    // The binding check: this report must describe THIS html.
-    const rehash = await sha256HexUtf8(patchResult.html);
-    if (rehash !== report.sha256.after) return null;
+
+    // Both hashes must be well-formed and match a fresh re-hash of the bound
+    // source AND output — a report built from a different original cannot match.
+    if (!isObject(report.sha256)) return null;
+    if (typeof report.sha256.before !== "string" || !HEX64.test(report.sha256.before)) return null;
+    if (typeof report.sha256.after !== "string" || !HEX64.test(report.sha256.after)) return null;
+    const beforeHash = await sha256HexUtf8(patchResult.sourceHtml);
+    const afterHash = await sha256HexUtf8(patchResult.html);
+    if (beforeHash !== report.sha256.before) return null;
+    if (afterHash !== report.sha256.after) return null;
+
+    // Never trust report.replacementFilename — recompute the safe name and
+    // require the report's to match it exactly (rejects tampered names like
+    // "../../evil.html"); return the freshly-computed safe name regardless.
+    const safeFilename = replacementFilenameFor(report.originalFilename);
+    if (report.replacementFilename !== safeFilename) return null;
+
     return {
-      filename: report.replacementFilename,
+      filename: safeFilename,
       html: patchResult.html,
       mimeType: DOWNLOAD_MIME_TYPE,
     };

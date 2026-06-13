@@ -394,6 +394,10 @@ function patchPresentationHtml(html, runtimeSources) {
     reasons: extraReasons,
     inspection,
     branding: null,
+    // sourceHtml binds a result to the EXACT input it was produced from (the
+    // report layer requires sourceHtml === originalHtml before authorizing a
+    // download). Null on rejection — no download is ever offered there.
+    sourceHtml: null,
     html: null,
     postInspection: null,
   });
@@ -414,6 +418,7 @@ function patchPresentationHtml(html, runtimeSources) {
       reasons: inspection.reasons.slice(),
       inspection,
       branding: null,
+      sourceHtml: html, // the exact immutable input
       html, // byte-identical echo — no building, no mutation
       postInspection: null,
     };
@@ -566,6 +571,7 @@ function patchPresentationHtml(html, runtimeSources) {
     ],
     inspection,
     branding: { accentColor: branding.accentColor, hudBgColor: branding.hudBgColor },
+    sourceHtml: html, // the exact immutable input this output was produced from
     html: output,
     postInspection,
   };

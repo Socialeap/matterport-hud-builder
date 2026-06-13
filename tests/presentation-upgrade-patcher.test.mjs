@@ -164,6 +164,23 @@ for (const [version, fixture] of [["2.1.0", FIX_210], ["2.2.0", FIX_220]]) {
   });
 }
 
+// ── A2. sourceHtml binds a result to its exact input ────────────────────
+
+test("patched and noop results carry sourceHtml === the exact input; rejected is null", () => {
+  const patched = patchPresentationHtml(FIX_210, RUNTIME_SOURCES);
+  assert.equal(patched.outcome, PATCH_OUTCOMES.PATCHED);
+  assert.equal(patched.sourceHtml, FIX_210, "patched.sourceHtml must be the exact input");
+
+  const noop = patchPresentationHtml(patched.html, RUNTIME_SOURCES);
+  assert.equal(noop.outcome, PATCH_OUTCOMES.NOOP_ALREADY_CURRENT);
+  assert.equal(noop.sourceHtml, patched.html, "noop.sourceHtml must be the exact input");
+  assert.equal(noop.html, patched.html, "noop echoes its input");
+
+  const rejected = patchPresentationHtml("<h1>nope</h1>", RUNTIME_SOURCES);
+  assert.equal(rejected.outcome, PATCH_OUTCOMES.REJECTED);
+  assert.equal(rejected.sourceHtml, null, "rejected.sourceHtml is null");
+});
+
 // ── B. Exactly nine mutation regions ────────────────────────────────────
 
 test("exactly nine recognized mutation regions (5 spans + 4 metas)", () => {
