@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<!-- SANITIZED TEST FIXTURE — realistic Builder presentation at runtime 2.2.0.
+     Synthetic brand colors (accent #2563eb, hud #0f172a), placeholder config
+     and tokens, representative runtime spans with valid sentinels. NOT a real
+     export; contains no secrets. Used by tests/presentation-upgrade-patcher.test.mjs. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="f3d-package-schema" content="2" />
+<meta name="f3d-runtime" content="2.2.0" />
+<meta name="f3d-capabilities" content="" />
+<meta name="f3d-package-family" content="builder" />
+<title>Sanitized Fixture — Maple Grove Residence</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;font-family:-apple-system,system-ui,sans-serif;background:#000;color:#fff}
+#gate{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:3000;background:#0f172a40;backdrop-filter:blur(8px) saturate(140%);-webkit-backdrop-filter:blur(8px) saturate(140%);transition:opacity 0.5s ease}
+.gate-card{max-width:420px;padding:32px;border-radius:16px;background:rgba(255,255,255,0.06)}
+.gate-btn-primary{padding:13px 28px;font-size:15px;font-weight:600;border:none;border-radius:10px;cursor:pointer;background:#2563eb;color:#fff;transition:opacity 0.2s,transform 0.15s;display:flex;align-items:center;justify-content:center;gap:8px}
+#gate-password-input{width:100%;padding:12px;border-radius:8px;border:1px solid #333;background:rgba(255,255,255,0.05);color:#fff}
+#gate-password-input:focus{border-color:#2563eb}
+#hud-inner{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;padding:10px 16px 10px 16px;padding-right:48px;background:#0f172a99;backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid rgba(255,255,255,0.08);box-shadow:0 4px 24px rgba(0,0,0,0.15),inset 0 1px 0 rgba(255,255,255,0.06)}
+.hud-contact-btn{padding:5px 12px;border-radius:6px;font-size:12px;font-weight:600;border:none;color:#fff;cursor:pointer;background:#2563eb;transition:opacity 0.2s}
+#agent-drawer{position:fixed;top:0;right:0;width:min(300px,88vw);height:100%;z-index:2000;overflow-y:auto;transform:translateX(100%);transition:transform 0.3s ease;background:#0f172acc;backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);border-left:1px solid rgba(255,255,255,0.08);box-shadow:-8px 0 32px rgba(0,0,0,0.25)}
+.agent-avatar-init{width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#fff;flex-shrink:0;background:#2563eb;border:1px solid rgba(255,255,255,0.18)}
+#powered-by{position:fixed;bottom:0;left:0;right:0;height:34px;display:flex;align-items:center;justify-content:center;font-size:11px;color:rgba(255,255,255,0.4);background:#0f172acc}
+/* f3d:runtime-css BEGIN v=1 family=builder */
+/* Live Tour overlay — representative body, runtime 2.2.0 */
+#anno-canvas{position:absolute;inset:0;z-index:5;pointer-events:none;touch-action:none}
+#anno-canvas.draw-mode{pointer-events:auto;cursor:crosshair}
+body.live-tour-active.live-tour-agent #anno-letterbox-wrap.follow-pulse{box-shadow:0 0 0 3px #2563eb,0 0 0 6px #2563eb33}
+#remote-pointer{position:absolute;width:14px;height:14px;border-radius:50%;background:#2563eb}
+#live-tour-navlock{position:absolute;inset:0;background:#0f172a00}
+/* f3d:runtime-css END */
+</style>
+<!-- f3d:runtime-dep:peerjs BEGIN v=1 family=builder -->
+<script type="text/plain" id="f3d-peerjs-loader" data-src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js" data-integrity="sha384-x0YgkOr/3UOZP2CRDxGW9e0Q+2Qjyr3uJrm4xU32Y7ZCNAo7Cc7bjhrZMi/dwczu" data-crossorigin="anonymous"></script>
+<!-- f3d:runtime-dep:peerjs END -->
+</head>
+<body>
+<div id="gate"><div class="gate-card"><input id="gate-password-input" type="password" /><button class="gate-btn-primary">Enter</button></div></div>
+<div id="hud"><div id="hud-inner"><span class="hud-brand">Maple Grove</span><button class="hud-contact-btn">Contact</button></div></div>
+<div id="anno-letterbox-wrap">
+    <iframe id="matterport-frame" allowfullscreen allow="xr-spatial-tracking; gyroscope; accelerometer; fullscreen; autoplay; clipboard-write; web-share"></iframe>
+    <iframe id="matterport-frame-ghost" allowfullscreen allow="xr-spatial-tracking; gyroscope; accelerometer; fullscreen; autoplay; clipboard-write; web-share" aria-hidden="true" tabindex="-1"></iframe>
+    <!-- f3d:runtime-markup BEGIN v=1 family=builder -->
+    <div id="live-tour-navlock" aria-hidden="true"></div>
+    <canvas id="anno-canvas"></canvas>
+    <div id="remote-pointer" aria-hidden="true"></div>
+    <div id="anno-toolbar" role="toolbar" aria-label="Live tour annotations"></div>
+    <!-- f3d:runtime-markup END -->
+</div>
+<aside id="agent-drawer"><div class="agent-avatar-init">MG</div></aside>
+<div id="powered-by">Powered by 3D Presentation Studio</div>
+<script>
+window.__PREAMBLE__="eyJzYW5pdGl6ZWQiOiJwcmVhbWJsZSJ9";
+window.__CONFIG__="eyJzYW5pdGl6ZWQiOiJjb25maWcifQ==";
+window.__PROPERTY_EXTRACTIONS__="eyJzYW5pdGl6ZWQiOiJleHRyYWN0aW9ucyJ9";
+window.__QA_DATABASE__="eyJzYW5pdGl6ZWQiOiJxYSJ9";
+window.__PRESENTATION_TOKEN__="sanitized.presentation.token.placeholder";
+window.__SAVED_MODEL_ID__="00000000-0000-4000-8000-000000000000";
+// f3d:runtime-js:kernel BEGIN v=1 family=builder
+// Live Guided Tour controller — representative body, runtime 2.2.0.
+function createLiveSession(){ return { subscribe: function(){}, noteCurrentView: function(){} }; }
+function createAnnoPointerGuard(){ return {}; }
+// f3d:runtime-js:kernel END
+// f3d:runtime-js:glue BEGIN v=1 family=builder
+(function initLiveGuide(){
+  // Desktop-only Live Tour glue — representative body, runtime 2.2.0.
+  var session = createLiveSession();
+})();
+// f3d:runtime-js:glue END
+</script>
+</body>
+</html>
