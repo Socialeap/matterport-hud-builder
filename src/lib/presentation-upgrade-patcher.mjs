@@ -394,6 +394,12 @@ function patchPresentationHtml(html, runtimeSources) {
     reasons: extraReasons,
     inspection,
     branding: null,
+    // sourceHtml binds a result to the EXACT input it was produced from, so the
+    // report layer can refuse to report one file's outcome against another
+    // file's bytes. A string whenever the input was a string (including string
+    // rejections like future/atlas/legacy/invalid); null only for non-string
+    // input (the not_a_string rejection).
+    sourceHtml: typeof html === "string" ? html : null,
     html: null,
     postInspection: null,
   });
@@ -414,6 +420,7 @@ function patchPresentationHtml(html, runtimeSources) {
       reasons: inspection.reasons.slice(),
       inspection,
       branding: null,
+      sourceHtml: html, // the exact immutable input
       html, // byte-identical echo — no building, no mutation
       postInspection: null,
     };
@@ -566,6 +573,7 @@ function patchPresentationHtml(html, runtimeSources) {
     ],
     inspection,
     branding: { accentColor: branding.accentColor, hudBgColor: branding.hudBgColor },
+    sourceHtml: html, // the exact immutable input this output was produced from
     html: output,
     postInspection,
   };

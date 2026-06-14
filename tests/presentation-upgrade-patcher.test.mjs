@@ -164,6 +164,31 @@ for (const [version, fixture] of [["2.1.0", FIX_210], ["2.2.0", FIX_220]]) {
   });
 }
 
+// ── A2. sourceHtml binds a result to its exact input ────────────────────
+
+test("patched and noop results carry sourceHtml === the exact input; rejected is null", () => {
+  const patched = patchPresentationHtml(FIX_210, RUNTIME_SOURCES);
+  assert.equal(patched.outcome, PATCH_OUTCOMES.PATCHED);
+  assert.equal(patched.sourceHtml, FIX_210, "patched.sourceHtml must be the exact input");
+
+  const noop = patchPresentationHtml(patched.html, RUNTIME_SOURCES);
+  assert.equal(noop.outcome, PATCH_OUTCOMES.NOOP_ALREADY_CURRENT);
+  assert.equal(noop.sourceHtml, patched.html, "noop.sourceHtml must be the exact input");
+  assert.equal(noop.html, patched.html, "noop echoes its input");
+
+  // A string-input rejection carries sourceHtml === the input (so its outcome
+  // can never be reported against a different file's bytes).
+  const rejected = patchPresentationHtml("<h1>nope</h1>", RUNTIME_SOURCES);
+  assert.equal(rejected.outcome, PATCH_OUTCOMES.REJECTED);
+  assert.equal(rejected.sourceHtml, "<h1>nope</h1>", "string rejection binds sourceHtml to the input");
+
+  // Only a NON-string input yields sourceHtml === null.
+  const notString = patchPresentationHtml(null, RUNTIME_SOURCES);
+  assert.equal(notString.outcome, PATCH_OUTCOMES.REJECTED);
+  assert.equal(notString.code, REJECTION_CODES.NOT_A_STRING);
+  assert.equal(notString.sourceHtml, null, "non-string input → sourceHtml null");
+});
+
 // ── B. Exactly nine mutation regions ────────────────────────────────────
 
 test("exactly nine recognized mutation regions (5 spans + 4 metas)", () => {

@@ -47,6 +47,14 @@ export interface PatchResult {
   reasons: string[];
   inspection: InspectionReport | null;
   branding: { accentColor: string; hudBgColor: string } | null;
+  /**
+   * The exact immutable input this result was produced from. A string whenever
+   * the input was a string (patched, noop, and string rejections); null only
+   * for non-string input (the not_a_string rejection). Binds a result to its
+   * source so the report layer can refuse to report one file's outcome against
+   * another file's bytes (even when a difference falls inside a mutation region).
+   */
+  sourceHtml: string | null;
   html: string | null;
   postInspection: InspectionReport | null;
 }
