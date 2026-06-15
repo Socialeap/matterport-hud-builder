@@ -88,5 +88,5 @@ End-State Alignment
 - **2026-06-14 / Governance:** This file is the global product-direction baseline; tactical status remains in `CODEX_REVIEW_QUEUE.md`.
 - **2026-06-14 / Rendering tracks:** Matterport overlays remain current; TrueSpace and synthetic/CGI commerce showrooms are approved planned tracks, not yet operational.
 
-## 8. Current Priority Vector
-PR #170 P5 review/acceptance -> runtime 2.2.1 regenerated-artifact acceptance -> Atlas showcase-merge activation -> launch-critical reconciliation -> P6 self-service -> TrueSpace sample-E57 spike; synthetic/CGI implementation remains planned pending its scoped specification.
+## 8. Current Priorities
+Current execution priorities, PR status, activation work, and task sequencing are maintained in `CODEX_REVIEW_QUEUE.md`. They must remain consistent with the end-states and boundaries defined here.
