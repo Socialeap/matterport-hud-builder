@@ -17,4 +17,3 @@ Public-source business discovery and enrichment feed a truthful, compliant, audi
 
 ## Current Gap
 One-at-a-time operation has verified sends. Any automated volume requires an approved targeting, throttle, monitoring, and compliance plan.
-

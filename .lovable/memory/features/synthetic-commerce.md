@@ -20,4 +20,3 @@ Create location-independent interactive commerce showrooms from approved 2D floo
 
 ## Open Specification Needs
 - Input schema, generation provider/model, moderation, asset rights, quality acceptance, commerce integrations, pricing, and geo-fence semantics require a dedicated approved spec before implementation.
-

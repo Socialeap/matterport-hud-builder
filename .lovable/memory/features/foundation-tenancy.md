@@ -15,4 +15,3 @@
 ## Current Gaps
 - Complete launch acceptance across onboarding, invitation, client service, agent work orders, and role boundaries.
 - Finish deferred validation, error handling, and secret-rotation work recorded in `AUDIT_REMEDIATION.md`.
-

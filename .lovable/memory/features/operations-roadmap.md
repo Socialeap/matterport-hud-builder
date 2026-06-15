@@ -18,4 +18,3 @@
 - Supabase Edge Functions orchestrate but do not perform heavy compute.
 - A personal Mac Mini may support a spike, not production-scale dependence.
 - First milestone: measured Matterport sample-E57 conversion quality, duration, storage, GPU cost, and web delivery.
-

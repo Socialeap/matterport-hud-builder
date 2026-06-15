@@ -21,4 +21,3 @@ Atlas is the public discovery layer for verified immersive physical and virtual 
 - Apply/verify `20260613000000_frontiers3d_atlas_showcase_merge.sql`.
 - Republish representative showcases with the current runtime.
 - Complete launch-scale clustering and claim/operations acceptance.
-

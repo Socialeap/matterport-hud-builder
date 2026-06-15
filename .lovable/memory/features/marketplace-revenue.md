@@ -17,4 +17,3 @@ Demand reaches qualified local providers quickly; the requester chooses the prov
 
 ## Current Gap
 Complete launch acceptance across matching, notifications, work orders, ratings, payments, payouts, and refunds; keep public handbook rules synchronized with implementation.
-

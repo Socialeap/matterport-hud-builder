@@ -24,4 +24,3 @@
 - Preserve untouched bytes; verify source/output SHA-256 and current-version reinspection.
 - Never execute, retain, downgrade, or authorize a failed output.
 - P1-P4 merged; P5 is PR #170; P6 self-service remains held until P5 acceptance.
-
