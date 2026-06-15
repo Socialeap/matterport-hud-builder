@@ -50,18 +50,20 @@ export const MAX_PROPERTIES_PER_PRESENTATION = 5;
  * image/PDF/audio policy does not apply to it.
  *
  * Rationale for the value:
- * - A generated Builder package references its media/assets by relative URL
- *   (no `data:` URIs are inlined), so an `index.html` is essentially the
- *   inlined runtime (~150 KB, fixed) plus per-property config / AI-training /
- *   Q&A payloads for up to MAX_PROPERTIES_PER_PRESENTATION properties.
+ * - A generated Builder package references most media/assets by relative URL,
+ *   with only limited inline raster/fallback `data:` paths, so an `index.html`
+ *   is dominated by the inlined runtime (~150 KB, fixed) plus per-property
+ *   config / AI-training / Q&A payloads for up to
+ *   MAX_PROPERTIES_PER_PRESENTATION properties, with a modest amount of inline
+ *   data on top.
  * - Measured: the current single-property canary is ~153 KB; a rich
  *   five-property showcase realistically lands in the hundreds-of-KB to
  *   low-single-digit-MB range.
  * - 10 MB leaves generous headroom over the heaviest realistic presentation
- *   (and future runtime growth) so a legitimate package is never falsely
- *   rejected, while still bounding the in-browser read + linear scans to a
- *   size every browser handles instantly and firmly rejecting an accidental
- *   wrong-file selection (a video, archive, or database dump).
+ *   (and future runtime / inline-asset growth) so a legitimate package is
+ *   never falsely rejected, while still bounding the in-browser read + linear
+ *   scans to a size every browser handles instantly and firmly rejecting an
+ *   accidental wrong-file selection (a video, archive, or database dump).
  */
 export const MAX_PRESENTATION_HTML_BYTES = 10 * MB;
 

@@ -28,25 +28,47 @@ import {
 import { ATLAS_RUNTIME_VERSION } from "./atlas-runtime-version.mjs";
 
 // ── Upload classification (pure; no File/DOM access) ────────────────────────
-// Accept a single presentation index.html by extension or text/html MIME type.
-// ZIP packages are explicitly out of scope for P5 and get a specific message.
-const ACCEPTED_HTML_EXTENSIONS = [".html", ".htm"];
+// Accept a single presentation index.html. The file EXTENSION is authoritative:
+// a known non-HTML extension (.zip, .pdf, or anything that isn't .html/.htm) is
+// rejected even when the browser reports a misleading `text/html` MIME type — a
+// renamed archive must never slip through on its content-type. An EXTENSIONLESS
+// file is accepted only when the browser genuinely reports `text/html`
+// (intentionally supported for "Save As" / drag-drop flows that drop the
+// extension); a `.zip` gets specific unzip guidance.
+const ACCEPTED_HTML_EXTENSIONS = ["html", "htm"];
+
+// Lowercased extension of a filename (after the last dot of the basename), or ""
+// when there is no usable extension (no dot, or a leading-dot dotfile).
+function fileExtension(name) {
+  const safe = typeof name === "string" ? name : "";
+  const base = safe.split(/[/\\]/).pop() || "";
+  const dot = base.lastIndexOf(".");
+  if (dot <= 0) return "";
+  return base.slice(dot + 1).toLowerCase();
+}
 
 function classifyUpload({ name, type } = {}) {
-  const safeName = typeof name === "string" ? name : "";
-  const lower = safeName.toLowerCase();
-  const isHtmlExt = ACCEPTED_HTML_EXTENSIONS.some((ext) => lower.endsWith(ext));
+  const ext = fileExtension(name);
   const isHtmlType = typeof type === "string" && type.toLowerCase() === "text/html";
-  if (isHtmlExt || isHtmlType) {
+
+  // 1. An accepted HTML extension wins regardless of MIME type.
+  if (ACCEPTED_HTML_EXTENSIONS.includes(ext)) {
     return { accepted: true, message: "" };
   }
-  if (lower.endsWith(".zip")) {
+  // 2. A .zip is rejected (regardless of MIME) with unzip guidance.
+  if (ext === "zip") {
     return {
       accepted: false,
       message:
         "ZIP packages aren't supported here — unzip it and select the presentation's index.html file.",
     };
   }
+  // 3. An extensionless file is allowed ONLY with a genuine text/html MIME type.
+  if (ext === "" && isHtmlType) {
+    return { accepted: true, message: "" };
+  }
+  // 4. Any other extension (known or unknown) is rejected even if the MIME type
+  //    claims text/html — a misleading content-type can never override it.
   return {
     accepted: false,
     message: "Select the presentation's index.html file (a single .html file).",

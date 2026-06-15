@@ -142,6 +142,28 @@ test("B4 — other types are rejected", () => {
   assert.equal(classifyUpload({}).accepted, false);
 });
 
+test("B5 — a .zip is rejected with ZIP guidance even if MIME claims text/html", () => {
+  const r = classifyUpload({ name: "package.zip", type: "text/html" });
+  assert.equal(r.accepted, false);
+  assert.match(r.message, /zip/i);
+  assert.match(r.message, /index\.html/i);
+});
+
+test("B6 — a .pdf is rejected even if MIME claims text/html", () => {
+  assert.equal(classifyUpload({ name: "document.pdf", type: "text/html" }).accepted, false);
+});
+
+test("B7 — known HTML extensions stay accepted regardless of MIME", () => {
+  assert.equal(classifyUpload({ name: "index.html", type: "" }).accepted, true);
+  assert.equal(classifyUpload({ name: "index.htm", type: "application/octet-stream" }).accepted, true);
+});
+
+test("B8 — an extensionless file is accepted ONLY with a genuine text/html MIME", () => {
+  assert.equal(classifyUpload({ name: "index", type: "text/html" }).accepted, true);
+  assert.equal(classifyUpload({ name: "index", type: "" }).accepted, false);
+  assert.equal(classifyUpload({ name: "index", type: "application/octet-stream" }).accepted, false);
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // C. Disposition mapping — every inspector outcome → correct state + actions
 // ─────────────────────────────────────────────────────────────────────────────
@@ -354,6 +376,13 @@ test("F3 — the route does NOT create parallel auth logic (relies on the layout
   assert.doesNotMatch(ROUTE_SRC, /roles\.includes/);
 });
 
+test("F4 — the route delegates async ops to the guarded controller", () => {
+  assert.match(ROUTE_SRC, /createUpgradeController/);
+  assert.match(ROUTE_SRC, /controller\.select\(/);
+  assert.match(ROUTE_SRC, /controller\.upgrade\(/);
+  assert.match(ROUTE_SRC, /controller\.clear\(\)/);
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // G. Safety: uploaded HTML is never rendered/executed; no server import
 // ─────────────────────────────────────────────────────────────────────────────
@@ -392,16 +421,14 @@ test("G3 — the adapter reuses the pure ?raw loaders and avoids server code", (
 // H. Reset / re-selection behaviors are wired (static)
 // ─────────────────────────────────────────────────────────────────────────────
 
-test("H1 — the route enforces the size limit before reading the file", () => {
-  assert.match(ROUTE_SRC, /checkPresentationHtmlSize/);
-  // file.text() must appear AFTER the size check in source order.
-  const idxCheck = ROUTE_SRC.indexOf("checkPresentationHtmlSize");
-  const idxRead = ROUTE_SRC.indexOf(".text()");
-  assert.ok(idxCheck !== -1 && idxRead !== -1 && idxCheck < idxRead, "size guard must precede file.text()");
+test("H1 — the route wires the dedicated size check into the controller", () => {
+  assert.match(ROUTE_SRC, /checkSize:\s*checkPresentationHtmlSize/);
+  // The size-guard-BEFORE-read ordering is proven behaviorally in the
+  // controller suite (I7: an oversize file never reaches readFile).
 });
 
-test("H2 — reset clears state and allows re-selecting the same file", () => {
-  assert.match(ROUTE_SRC, /clearAll/);
+test("H2 — reset clears the session and allows re-selecting the same file", () => {
+  assert.match(ROUTE_SRC, /controller\.clear\(\)/);
   assert.match(ROUTE_SRC, /e\.target\.value = ""/, "input value reset enables same-file reselection");
 });
 

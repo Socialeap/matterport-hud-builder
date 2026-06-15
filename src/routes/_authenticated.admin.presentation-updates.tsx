@@ -19,15 +19,18 @@ import {
   FileCode2,
 } from "lucide-react";
 import {
-  classifyUpload,
   describeDisposition,
   runUpgradeSession,
-  inspectPresentationHtml,
   type InspectionReport,
   type DispositionDescriptor,
   type UpgradeReport,
   type DownloadPayload,
 } from "@/lib/presentation-upgrade-session.mjs";
+import { createUpgradeController } from "@/lib/presentation-upgrade-controller.mjs";
+import type {
+  UpgradeController,
+  UpgradeControllerState,
+} from "@/lib/presentation-upgrade-controller.mjs";
 import { getBundledRuntimeSources } from "@/lib/portal/upgrade-runtime-sources";
 import {
   checkPresentationHtmlSize,
@@ -103,56 +106,47 @@ function AdminPresentationUpdates() {
     ? describeDisposition(inspection)
     : null;
 
-  const clearAll = () => {
-    htmlRef.current = null;
-    setFileName(null);
-    setFileSize(null);
-    setInspection(null);
-    setReport(null);
-    setDownload(null);
-    setError(null);
-    setReading(false);
-    setUpgrading(false);
-    if (inputRef.current) inputRef.current.value = "";
+  // Apply a controller state patch: the large HTML goes to a ref (never
+  // rendered); everything else maps to React state. ONLY the controller's
+  // session guard calls this, so a stale read/upgrade can never reach it.
+  const applyState = (p: UpgradeControllerState) => {
+    if ("html" in p) htmlRef.current = p.html ?? null;
+    if ("fileName" in p) setFileName(p.fileName ?? null);
+    if ("fileSize" in p) setFileSize(p.fileSize ?? null);
+    if ("inspection" in p) setInspection(p.inspection ?? null);
+    if ("report" in p) setReport(p.report ?? null);
+    if ("download" in p) setDownload(p.download ?? null);
+    if ("error" in p) setError(p.error ?? null);
+    if ("reading" in p) setReading(!!p.reading);
+    if ("upgrading" in p) setUpgrading(!!p.upgrading);
   };
 
-  const handleFile = async (file: File) => {
-    // A new selection always clears all prior inspection/report/error/download.
-    clearAll();
-    setFileName(file.name);
-    setFileSize(file.size);
+  // One controller for the component's lifetime. React state setters are
+  // stable, so the sink captured at first render stays valid across renders.
+  const controllerRef = useRef<UpgradeController | null>(null);
+  if (controllerRef.current === null) {
+    controllerRef.current = createUpgradeController({
+      checkSize: checkPresentationHtmlSize,
+      readFile: (file) => (file as File).text(),
+      runUpgrade: (args) => runUpgradeSession(args),
+      sink: {
+        setState: applyState,
+        toastSuccess: (m) => toast.success(m),
+        toastError: (m) => toast.error(m),
+      },
+    });
+  }
+  const controller = controllerRef.current;
 
-    const cls = classifyUpload({ name: file.name, type: file.type });
-    if (!cls.accepted) {
-      setError(cls.message);
-      return;
-    }
-
-    // Enforce the dedicated HTML byte ceiling BEFORE reading the file.
-    const sized = checkPresentationHtmlSize(file.size);
-    if (!sized.ok) {
-      setError(sized.message);
-      return;
-    }
-
-    setReading(true);
-    try {
-      const text = await file.text(); // read only after passing the size guard
-      htmlRef.current = text;
-      // Inspect as inert text — pure string scans, never rendered or executed.
-      setInspection(inspectPresentationHtml(text));
-    } catch {
-      htmlRef.current = null;
-      setError("Could not read this file as text.");
-    } finally {
-      setReading(false);
-    }
+  const handleClear = () => {
+    controller.clear();
+    if (inputRef.current) inputRef.current.value = "";
   };
 
   const onInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     e.target.value = ""; // allow re-selecting the same file later
-    if (f) void handleFile(f);
+    if (f) void controller.select(f);
   };
 
   const onDrop = (e: React.DragEvent) => {
@@ -160,37 +154,19 @@ function AdminPresentationUpdates() {
     e.stopPropagation();
     setDragActive(false);
     const f = e.dataTransfer.files?.[0];
-    if (f) void handleFile(f);
+    if (f) void controller.select(f);
   };
 
-  const handleUpgrade = async () => {
-    if (!inspection || inspection.outcome !== "patchable" || htmlRef.current === null) return;
-    setUpgrading(true);
-    setReport(null);
-    setDownload(null);
-    setError(null);
-    try {
-      // Trusted runtime sources from the application bundle ONLY.
-      const runtimeSources = getBundledRuntimeSources();
-      const result = await runUpgradeSession({
-        filename: fileName,
-        html: htmlRef.current,
-        runtimeSources,
-      });
-      setReport(result.report);
-      setDownload(result.download);
-      if (result.downloadable) {
-        toast.success("Upgrade validated — ready to download.");
-      } else {
-        setError(result.error);
-        toast.error(result.error ?? "Upgrade could not be completed.");
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Upgrade failed unexpectedly.");
-      toast.error("Upgrade failed unexpectedly.");
-    } finally {
-      setUpgrading(false);
-    }
+  const handleUpgrade = () => {
+    const html = htmlRef.current;
+    if (!inspection || inspection.outcome !== "patchable" || html === null) return;
+    // Trusted runtime sources from the application bundle ONLY (resolved inside
+    // the controller's guarded try); the controller binds this to its session.
+    void controller.upgrade({
+      html,
+      filename: fileName,
+      getRuntimeSources: getBundledRuntimeSources,
+    });
   };
 
   const handleDownload = () => {
@@ -302,7 +278,7 @@ function AdminPresentationUpdates() {
                   </span>
                 )}
               </div>
-              <Button variant="outline" size="sm" className="gap-1.5" onClick={clearAll}>
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={handleClear}>
                 <RotateCcw className="size-3.5" />
                 Clear
               </Button>
@@ -484,15 +460,17 @@ function ReportCard({
               </Field>
             </div>
 
-            {/* Mutations summary */}
+            {/* Mutations summary — operation count vs. how many actually
+                changed are kept distinct (all spans are replaced and all metas
+                rewritten by definition; only some change value). */}
             <div className="grid grid-cols-2 gap-4">
               <Field label="Runtime spans">
-                {report.mutations.spans.filter((s) => s.changed).length} of{" "}
-                {report.mutations.spans.length} changed
+                {report.mutations.spans.length} replaced;{" "}
+                {report.mutations.spans.filter((s) => s.changed).length} changed
               </Field>
               <Field label="Metadata values">
-                {report.mutations.metas.filter((m) => m.changed).length} of{" "}
-                {report.mutations.metas.length} rewritten
+                {report.mutations.metas.length} rewritten;{" "}
+                {report.mutations.metas.filter((m) => m.changed).length} changed
               </Field>
             </div>
           </>
