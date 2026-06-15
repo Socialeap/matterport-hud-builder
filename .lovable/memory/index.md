@@ -3,9 +3,9 @@
 ## Core
 Matterport HUD Builder — multi-tenant SaaS for MSPs. TanStack Start + Lovable Cloud.
 Two products: Platform (builder UI) + End Product (standalone .html file).
-Tiers: Starter ($100 setup + $49/yr) and Pro ($250 setup + $49/yr) — subscriptions with 365-day free trial.
+Tiers: Starter and Pro (setup fee + annual subscription). Commercial terms (prices, trial length) are mutable — verify them from the current pricing implementation/configuration before using them in plans or copy. Current trial strategy: 30-day self-service trial.
 Auth: Google OAuth + email sign-in. Invite-only for clients (invite token consumed on signup).
-Generated .html must be fully self-contained — no "phone home" to backend.
+Generated packages must remain owner-hostable and must not depend on Frontiers3D/Supabase at runtime unless explicitly approved. Approved renderer, CDN, and relative-asset dependencies may remain.
 Never store roles on profiles table. Use separate user_roles table.
 Clients see limited sidebar (Overview, Orders). Providers see all nav items.
 Export lock checks provider's license for client users via client_providers lookup.
