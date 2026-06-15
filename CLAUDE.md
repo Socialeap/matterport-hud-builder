@@ -13,6 +13,42 @@ This is the **3D Presentation Studio (3DPS)** — a white-label Matterport tour 
 - **Deployment:** Lovable (frontend) + Supabase (backend)
 - **Repo owner:** Socialeap (GitHub)
 
+## Product End-State Alignment Rule
+
+`PRODUCT_END_STATES.md` (repo root) is the compressed product-direction baseline. Detailed per-component workflows live in scoped memory under `.lovable/memory/features/` (indexed in `.lovable/memory/index.md`). Consult them so work advances the approved end-states without re-deriving direction or drifting from it — and without paying token cost on trivial work.
+
+**Read once per development session:** read `PRODUCT_END_STATES.md` at the start of any session that will plan, implement, debug, or ship.
+
+**Re-read only the relevant component baseline + its linked scoped memory before:**
+
+- creating or materially revising a plan;
+- implementing a feature or architectural change;
+- debugging a behavioral regression;
+- changing public copy or user-facing workflows;
+- declaring a PR ready for review or merge.
+
+**While doing the above:**
+
+- Identify conflicts with the approved end-state **before** editing, and report them first.
+- **Never modify an approved product end-state without explicit user (Shakoure) approval.**
+- Keep detailed discoveries in scoped memory or tactical docs — not in the global baseline.
+- Treat implementation anchors as current references, not permanent architecture.
+
+**Skip the End-State read entirely** for trivial status checks, simple Git operations, formatting-only changes, and unrelated mechanical tasks — do not spend tokens re-reading the baseline for work that cannot affect product direction.
+
+**Required completion block** — include for every qualifying task (planning, implementation, debugging, copy/workflow changes, or PR readiness):
+
+```text
+End-State Alignment
+- Component:
+- Approved outcome advanced:
+- Boundaries preserved:
+- Cross-component effects:
+- Acceptance evidence:
+- Remaining gap:
+- PRODUCT_END_STATES.md revision required: YES/NO
+```
+
 ## Backend Activation Policy for Lovable + Supabase
 
 This project is Lovable-managed with Supabase. PR merges into `main` only sync code into the repo/Lovable workspace. They do **not** automatically activate backend changes. Supabase migrations, Edge Functions, Storage policies, RLS policies, triggers/functions, and secrets require a separate backend activation step through Lovable agent tooling, Supabase Dashboard, or Supabase CLI.
@@ -57,6 +93,7 @@ After completing or materially revising **every PR**, update `CODEX_REVIEW_QUEUE
 - Verification commands and results (`test:intelligence N/M`, `verify:html`, `tsc`, `build`)
 - Known failures, risks, or untested behavior
 - Backend activation requirements (YES/NO per the policy below)
+- End-State Alignment block (per the Product End-State Alignment Rule) for the affected component
 - Decisions or approvals still needed
 - Recommended next action
 - Superseded PRs, plans, and prior recommendations explicitly identified
