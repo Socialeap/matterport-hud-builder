@@ -18,6 +18,7 @@
 import {
   classifyUpload,
   inspectPresentationHtml,
+  inspectLegacyProfile,
 } from "./presentation-upgrade-session.mjs";
 
 // Cleared/initial state for a brand-new (or cleared) session.
@@ -26,6 +27,7 @@ function blankState() {
     fileName: null,
     fileSize: null,
     inspection: null,
+    legacyProfile: null,
     report: null,
     download: null,
     error: null,
@@ -82,7 +84,11 @@ function createUpgradeController({ checkSize, readFile, runUpgrade, sink }) {
     try {
       const text = await readFile(file);
       if (!isCurrent(token)) return; // stale read — a newer file/clear won
-      sink.setState({ html: text, inspection: inspectPresentationHtml(text) });
+      const inspection = inspectPresentationHtml(text);
+      // A legacy_unsupported file may still match an exact bootstrap profile.
+      const legacyProfile =
+        inspection.outcome === "legacy_unsupported" ? inspectLegacyProfile(text) : null;
+      sink.setState({ html: text, inspection, legacyProfile });
     } catch {
       if (!isCurrent(token)) return;
       sink.setState({ html: null, error: "Could not read this file as text." });
