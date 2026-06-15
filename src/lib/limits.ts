@@ -39,6 +39,74 @@ export type UploadKind = keyof typeof UPLOAD_LIMITS;
  */
 export const MAX_PROPERTIES_PER_PRESENTATION = 5;
 
+/**
+ * Dedicated client-side ceiling for an uploaded presentation `index.html`
+ * in the admin Presentation Upgrade Center (P5).
+ *
+ * This is INTENTIONALLY separate from `UPLOAD_LIMITS` above and is NOT
+ * mirrored in the Deno edge-function limits: the presentation HTML is read
+ * and patched entirely in the browser (`file.text()` + pure string scans)
+ * and never reaches a server, so there is nothing to mirror and the
+ * image/PDF/audio policy does not apply to it.
+ *
+ * Rationale for the value:
+ * - A generated Builder package references its media/assets by relative URL
+ *   (no `data:` URIs are inlined), so an `index.html` is essentially the
+ *   inlined runtime (~150 KB, fixed) plus per-property config / AI-training /
+ *   Q&A payloads for up to MAX_PROPERTIES_PER_PRESENTATION properties.
+ * - Measured: the current single-property canary is ~153 KB; a rich
+ *   five-property showcase realistically lands in the hundreds-of-KB to
+ *   low-single-digit-MB range.
+ * - 10 MB leaves generous headroom over the heaviest realistic presentation
+ *   (and future runtime growth) so a legitimate package is never falsely
+ *   rejected, while still bounding the in-browser read + linear scans to a
+ *   size every browser handles instantly and firmly rejecting an accidental
+ *   wrong-file selection (a video, archive, or database dump).
+ */
+export const MAX_PRESENTATION_HTML_BYTES = 10 * MB;
+
+export interface PresentationHtmlSizeCheck {
+  ok: boolean;
+  /** Bytes received. */
+  size: number;
+  /** Limit applied (in bytes). */
+  limit: number;
+  /** Why it was rejected, or null when ok. */
+  reason: "empty" | "too_large" | null;
+  /** Human-readable message safe for an inline error / toast. */
+  message: string;
+}
+
+/**
+ * Validate an uploaded presentation HTML file's byte length BEFORE reading
+ * it into memory. Rejects an empty file and anything over
+ * MAX_PRESENTATION_HTML_BYTES; otherwise ok. Pure and deterministic so the
+ * admin route and its tests apply the identical gate.
+ */
+export function checkPresentationHtmlSize(size: number): PresentationHtmlSizeCheck {
+  const limit = MAX_PRESENTATION_HTML_BYTES;
+  const safeSize = Number.isFinite(size) && size >= 0 ? size : 0;
+  if (safeSize === 0) {
+    return {
+      ok: false,
+      size: safeSize,
+      limit,
+      reason: "empty",
+      message: "This file is empty — select the presentation's index.html.",
+    };
+  }
+  if (safeSize > limit) {
+    return {
+      ok: false,
+      size: safeSize,
+      limit,
+      reason: "too_large",
+      message: `File too large: ${HUMAN(safeSize)} (max ${HUMAN(limit)} for a presentation index.html).`,
+    };
+  }
+  return { ok: true, size: safeSize, limit, reason: null, message: "" };
+}
+
 export interface UploadLimitCheckResult {
   ok: boolean;
   /** Bytes received. */

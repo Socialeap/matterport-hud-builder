@@ -2,7 +2,7 @@ import { createFileRoute, Outlet, useNavigate, Link } from "@tanstack/react-rout
 import { useAuth } from "@/hooks/use-auth";
 import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, RefreshCw } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/admin")({
   component: AdminLayout,
@@ -75,6 +75,13 @@ function AdminLayout() {
             className="text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
             Atlas
+          </Link>
+          <Link
+            to="/admin/presentation-updates"
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <RefreshCw className="size-3.5" />
+            Presentation Updates
           </Link>
           <Link
             to="/admin/settings"
