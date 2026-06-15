@@ -19,10 +19,22 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { inspectLegacyProfile } from "../src/lib/presentation-legacy-profile.mjs";
 import { bootstrapLegacyPresentation } from "../src/lib/presentation-legacy-bootstrap.mjs";
 import { stripExports } from "../src/lib/portal/ask-runtime-transformer.mjs";
+import { findPhones, redactPhones, PHONE_SENTINEL } from "./lib/redact-phones.mjs";
+import { assertDistinctOutputPath } from "./lib/safe-output-path.mjs";
 
 const [inPath, outPath, ...literals] = process.argv.slice(2);
 if (!inPath || !outPath) {
   console.error("usage: node scripts/sanitize-legacy-fixture.mjs <input.html> <output.html> [literal ...]");
+  process.exit(2);
+}
+
+// Source protection: never let the output alias the real input (same/normalized/
+// resolved path, symlink, hardlink, symlinked parent) — validate before reading.
+let safeOut;
+try {
+  safeOut = assertDistinctOutputPath(inPath, outPath);
+} catch (err) {
+  console.error(`SANITIZE FAILED: refusing output path (${err.code}): ${err.message}`);
   process.exit(2);
 }
 
@@ -47,9 +59,9 @@ const redactions = [
   [/window\.__CUSTOM_QAS__=\{[\s\S]*?\};/g, "window.__CUSTOM_QAS__={};"],
   // Analytics id.
   [/UA-\d{4,}-\d+/g, "UA-000000000-0"],
-  // Emails + telephone links.
+  // Emails. (Telephone numbers — visible text, JS/config values, attributes, and
+  // tel: URLs — are handled structurally by redactPhones below.)
   [/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "demo@example.com"],
-  [/tel:[+0-9()‹› .-]{3,}/g, "tel:+10000000000"],
   // External identifying hrefs in the social pills → example.com (relative asset refs kept).
   [/href="https?:\/\/[^"]*"([^>]*class="social-pill")/g, 'href="https://example.com/"$1'],
   // Free-text element PII (brand / agent / welcome / title).
@@ -64,6 +76,8 @@ const redactions = [
   [/(<div class="gate-subtitle">)[^<]*(<\/div>)/g, "$1Demo Property$2"],
 ];
 for (const [re, rep] of redactions) h = h.replace(re, rep);
+// Phone numbers everywhere (visible text, JS/config, attributes, tel: URLs).
+h = redactPhones(h);
 // Call-time literal redactions (PII strings passed by the operator; not committed).
 for (const lit of literals) {
   if (lit && lit.length > 0) h = h.split(lit).join("REDACTED");
@@ -103,7 +117,10 @@ for (const lit of literals) {
 // 5. Emails reduced to the placeholder only.
 const emails = (h.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g) || []).filter((e) => e !== "demo@example.com");
 if (emails.length) fail(`residual emails: ${emails.slice(0, 3).join(", ")}`);
+// 6. No residual phone numbers anywhere (report counts only, never the values).
+const phones = findPhones(h);
+if (phones.length) fail(`residual phone-shaped runs: ${phones.length} (values withheld)`);
 
-writeFileSync(outPath, h);
+writeFileSync(safeOut, h);
 console.log(`sanitized ${before} → ${h.length} bytes → ${outPath}`);
 console.log(`profile: ${prof.profileId} | bootstrap: ${boot.outcome} → ${boot.postInspection.outcome} | caps: ${boot.capabilities.join(",")}`);

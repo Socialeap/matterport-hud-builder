@@ -18,7 +18,9 @@ import {
   PEERJS_TAG,
   REGION_ANCHORS,
   META_INSERT_ANCHOR,
+  REQUIRED_WINDOW_HELPERS,
 } from "../src/lib/presentation-legacy-profile.mjs";
+import { findPhones } from "../scripts/lib/redact-phones.mjs";
 import {
   bootstrapLegacyPresentation,
   CURRENT_IFRAME_MP,
@@ -238,4 +240,46 @@ test("K2 — inserted metas are exactly buildRuntimeMetaTags('builder')", () => 
   const block = "\n" + buildRuntimeMetaTags("builder");
   const anchorAt = out.indexOf(META_INSERT_ANCHOR);
   assert.ok(out.startsWith(block, anchorAt + META_INSERT_ANCHOR.length), "metas inserted verbatim at the head anchor");
+});
+
+// ── L. Dependency closure verifies DEFINITIONS in preserved regions ───────────
+// (PR #172 review finding 3: must verify exact helper definitions in preserved
+//  regions, not helper-name occurrences globally.)
+test("L1 — a required helper present only as call sites (no preserved definition) rejects", () => {
+  // Neutralize the single preserved-chrome assignment, leaving only call sites
+  // (`window.__closeLiveTour(...)`). A global name count would still pass; the
+  // definition check must reject.
+  const broken = FIX.replace("window.__closeLiveTour=", "window.__closeLiveTour /*def removed*/ ");
+  assert.notEqual(broken, FIX, "fixture must contain the preserved assignment");
+  const p = inspectLegacyProfile(broken);
+  assert.equal(p.supported, false);
+  assert.ok(
+    p.reasons.some((r) => r.includes("window.__closeLiveTour") && /DEFINED in preserved/.test(r)),
+    "rejects with a preserved-definition reason",
+  );
+});
+
+test("L2 — a definition that lives INSIDE a mutation region does not satisfy closure", () => {
+  // Remove the preserved definition, then plant a fake one inside the js:kernel
+  // region (which the bootstrap replaces). Global occurrence > 0, but no preserved
+  // definition exists → must reject.
+  let t = FIX.replace("window.__setHudVisible=", "window.__setHudVisible /*moved*/ ");
+  t = t.replace(REGION_ANCHORS.kernel.start, REGION_ANCHORS.kernel.start + "\nwindow.__setHudVisible=function(){};");
+  const p = inspectLegacyProfile(t);
+  assert.equal(p.supported, false);
+  assert.ok(p.reasons.some((r) => r.includes("window.__setHudVisible") && /DEFINED in preserved/.test(r)));
+});
+
+test("L3 — __lgOnPropertyChange is supplied by the replacement glue, not required of preserved chrome", () => {
+  // The legacy file defines it INSIDE the js:glue region we replace; the new glue
+  // defines it. It must NOT be a preserved-chrome requirement, and the output must
+  // still define it (from the trusted runtime glue).
+  assert.ok(!REQUIRED_WINDOW_HELPERS.includes("window.__lgOnPropertyChange"));
+  assert.ok(/window\.__lgOnPropertyChange\s*=/.test(boot(FIX).html), "replacement glue defines it");
+});
+
+// ── P. Fixture privacy (no committed PII) ────────────────────────────────────
+test("P1 — committed fixture carries no phone-shaped numbers on any surface", () => {
+  // Structural assertion — never compares against a real value.
+  assert.deepEqual(findPhones(FIX), []);
 });

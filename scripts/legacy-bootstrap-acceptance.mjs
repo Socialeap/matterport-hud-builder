@@ -18,11 +18,23 @@ import { createHash } from "node:crypto";
 import { bootstrapLegacyPresentation } from "../src/lib/presentation-legacy-bootstrap.mjs";
 import { inspectPresentationHtml } from "../src/lib/presentation-upgrade-inspector.mjs";
 import { stripExports } from "../src/lib/portal/ask-runtime-transformer.mjs";
+import { assertDistinctOutputPath } from "./lib/safe-output-path.mjs";
 
 const inPath = process.argv[2];
 const outPath = process.argv[3] || path.join(tmpdir(), "legacy-bootstrap-acceptance.html");
 if (!inPath) {
   console.error("usage: node scripts/legacy-bootstrap-acceptance.mjs <input.html> [tempOut.html]");
+  process.exit(2);
+}
+
+// Source protection: refuse any destination that could alias the input
+// (same/normalized/resolved path, symlink, hardlink, or symlinked parent) BEFORE
+// reading or writing — the real input is never overwritten.
+let safeOut;
+try {
+  safeOut = assertDistinctOutputPath(inPath, outPath);
+} catch (err) {
+  console.error(`ACCEPTANCE: refusing output path (${err.code}): ${err.message}`);
   process.exit(2);
 }
 
@@ -49,9 +61,9 @@ console.log("capabilities:", result.capabilities.join(", "));
 console.log("SHA-256 before:", before);
 console.log("SHA-256 after :", after);
 
-writeFileSync(outPath, result.html); // TEMP output only — input untouched
-const re = inspectPresentationHtml(readFileSync(outPath, "utf8"));
-const afterOnDisk = sha(readFileSync(outPath, "utf8"));
+writeFileSync(safeOut, result.html); // TEMP output only — input untouched
+const re = inspectPresentationHtml(readFileSync(safeOut, "utf8"));
+const afterOnDisk = sha(readFileSync(safeOut, "utf8"));
 
 const ok =
   re.outcome === "already_current" &&
@@ -60,7 +72,7 @@ const ok =
   afterOnDisk === after &&
   sha(readFileSync(inPath, "utf8")) === before; // input still identical
 
-console.log("temp output:", outPath);
+console.log("temp output:", safeOut);
 console.log("re-inspect:", re.outcome, "| sentinels.valid:", re.sentinels.valid, "| runtime:", re.runtimeVersion);
 console.log("temp-file sha matches in-memory after:", afterOnDisk === after);
 console.log("input unchanged:", sha(readFileSync(inPath, "utf8")) === before);

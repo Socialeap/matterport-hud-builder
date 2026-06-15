@@ -90,10 +90,17 @@ const REQUIRED_CHROME_IDS = Object.freeze([
   "ltcd-live-guide-slot",
 ]);
 
-// Window helpers the current glue calls that the preserved chrome must define.
+// External window helpers the CURRENT runtime glue CALLS — the preserved chrome
+// must DEFINE each (an actual `window.__x =` assignment) OUTSIDE every mutation
+// region, or the upgraded runtime's calls would dangle. The check below verifies
+// a real definition in a preserved region — NOT a global name occurrence, which
+// also matches call sites and definitions inside regions we are about to replace.
+// NOTE: __lgOnPropertyChange is intentionally absent. The replacement glue
+// DEFINES it itself (in the legacy file it is defined INSIDE the js:glue region
+// we replace, at builder-runtime-spans `window.__lgOnPropertyChange=`), and the
+// preserved chrome only CALLS it — so it is not a preserved-chrome dependency.
 const REQUIRED_WINDOW_HELPERS = Object.freeze([
   "window.__closeLiveTour",
-  "window.__lgOnPropertyChange",
   "window.__setHudVisible",
   "window.__snapPrimaryActive",
 ]);
@@ -143,6 +150,23 @@ function countOccurrences(haystack, needle) {
 function lineStartOf(html, index) {
   const nl = html.lastIndexOf("\n", index - 1);
   return nl + 1;
+}
+
+function escapeRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// A required external helper must be DEFINED (an actual `window.__x =` assignment,
+// not `==`/`===`/`=>`) located OUTSIDE every mutation region (in preserved chrome).
+// A definition inside a region we replace, or a bare call site, does NOT satisfy it.
+function definedInPreserved(html, regions, helper) {
+  const re = new RegExp(escapeRegExp(helper) + "\\s*=(?![=>])", "g");
+  for (let m = re.exec(html); m !== null; m = re.exec(html)) {
+    const idx = m.index;
+    const insideRegion = regions.some((r) => idx >= r.start && idx < r.end);
+    if (!insideRegion) return true;
+  }
+  return false;
 }
 
 function recoverColor(html, anchor) {
@@ -262,7 +286,9 @@ function inspectLegacyProfile(html) {
     if (n !== 1) return reject(`required runtime dependency id="${id}" must exist exactly once (found ${n})`);
   }
   for (const helper of REQUIRED_WINDOW_HELPERS) {
-    if (countOccurrences(html, helper) < 1) return reject(`required window helper ${helper} is missing`);
+    if (!definedInPreserved(html, regions, helper)) {
+      return reject(`required window helper ${helper} must be DEFINED in preserved chrome (an assignment outside every mutation region)`);
+    }
   }
 
   // 5. Protected/structure fingerprints.
