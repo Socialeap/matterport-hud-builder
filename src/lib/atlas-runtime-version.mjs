@@ -22,6 +22,21 @@
 //     (controller + glue + CSS). Bump on every behavior change; the
 //     Upgrade Center compares this value to decide "outdated".
 const ATLAS_PACKAGE_SCHEMA = 2;
+// 2.2.3: View Sync clipboard permission — explicit hybrid model (Builder
+// runtime). 2.2.2 gated ambient reads on a "granted" state but still treated a
+// stale JS "granted" flag as authoritative, so on browsers that do not PERSIST
+// clipboard-read a lapsed grant re-prompted on every Matterport "Copy". 2.2.3
+// makes enabling explicit and self-healing: a single clear "Enable View Sync"
+// gesture (fired from Start/Join and, as a retry, from a click/Enter on the
+// loc-sync pill) is the ONLY path that calls readText() while permission is
+// prompt/unknown; once granted, ambient reads (focus / visibilitychange /
+// pointerenter / clipboardchange) run silently so U + Copy auto-syncs the peer;
+// if an ambient read is rejected (the grant lapsed) the state flips back and the
+// pill returns to an actionable "Enable View Sync" instead of re-prompting.
+// Saved/bookmark stop clicks send known coordinates directly (never read the
+// clipboard). Desktop-only; no Matterport SDK; no mobile collaboration; no
+// backend. Packages at <= 2.2.2 carry the over-eager/re-prompting clipboard
+// path — that is what makes them "outdated" to the Upgrade Center.
 // 2.2.2: Builder runtime clipboard-permission isolation — brought to parity
 // with the Atlas runtime. The Builder live-tour glue previously called
 // navigator.clipboard.readText() on EVERY ambient trigger (focus /
@@ -101,7 +116,7 @@ const ATLAS_PACKAGE_SCHEMA = 2;
 // 2.0.1: iOS clipboard isolation — ambient readText() disabled on
 // iOS/iPadOS WebKit (Paste-callout interruption fix) + stage-scoped
 // WebKit gesture defenses.
-const ATLAS_RUNTIME_VERSION = "2.2.2";
+const ATLAS_RUNTIME_VERSION = "2.2.3";
 
 // SUPPORTED-CURRENT capabilities — what freshly generated packages
 // advertise. Live Tour / Explore Together is desktop-only (2026-06-09), so

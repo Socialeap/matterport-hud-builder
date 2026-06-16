@@ -1396,13 +1396,15 @@ export const BUILDER_JS_GLUE_SPAN = `// f3d:runtime-js:glue BEGIN v=1 family=bui
   // the data channel. No drawer click, no paste, no focus juggling —
   // so the U key never breaks because we never overlay the iframe.
   //
-  // Permission strategy: we pre-fire navigator.clipboard.readText()
-  // inside both Join (visitor) and Start (agent) click handlers so the
-  // browser permission prompt appears once, at the natural opt-in
-  // moment. Chrome/Edge remember the grant for the rest of the page
-  // session, after which readText() runs silently forever. Safari/
-  // Firefox don't expose clipboard-read at all; they degrade to a
-  // single-tap pill, then to a paste field as a deep fallback.
+  // Permission strategy (2.2.3 — explicit, hybrid): clipboard-read is enabled
+  // by ONE clear user gesture — "Enable View Sync" — fired from the Start/Join
+  // click and, as a retry, from a click on the pill. That is the ONLY place a
+  // readText() permission prompt is raised. Once granted, ambient reads (focus /
+  // visibilitychange / pointerenter / clipboardchange) run SILENTLY so a U +
+  // Copy in Matterport syncs the other viewer automatically. If a grant lapses
+  // (a browser that won't persist clipboard-read), the pill returns to an
+  // actionable "Enable View Sync" rather than re-prompting on every Copy.
+  // Safari/Firefox don't expose clipboard-read; they stay on the manual path.
   // Ambient pulse pill — shown on BOTH visitor and agent sides.
   // Read-only / informational — hover or keyboard focus reveals the
   // tips dropdown; there is NO click action and the pill never steals
@@ -1468,10 +1470,12 @@ export const BUILDER_JS_GLUE_SPAN = `// f3d:runtime-js:glue BEGIN v=1 family=bui
   }
 
   var LOC_SYNC_LABELS={
-    idle:"To sync your view…",
+    idle:"View Sync ready",
     syncing:"Aligning agent’s view…",
     success:"View Synced",
-    waiting:"Connecting…"
+    waiting:"Connecting…",
+    enable:"Enable View Sync",
+    needed:"Clipboard access needed — click to enable"
   };
 
   function setPulseState(name){
@@ -1489,6 +1493,51 @@ export const BUILDER_JS_GLUE_SPAN = `// f3d:runtime-js:glue BEGIN v=1 family=bui
       if(cur==="success") setPulseState("idle");
     },LOC_SYNC_SUCCESS_RESET_MS);
   }
+  // Reflect View Sync readiness on the pill (both roles, direction-agnostic):
+  //   granted          → "View Sync ready" (informational; no pointer cursor)
+  //   connected, not granted → "Enable View Sync" (actionable button)
+  //   denied/dismissed → "Clipboard access needed — click to enable" (actionable)
+  //   not connected    → "Connecting…"
+  // Never clobbers a transient syncing/success pulse. Declared as a function so
+  // it is hoisted above the permission tracker that calls it during init.
+  function refreshSyncPill(){
+    if(!syncBtn) return;
+    var st=session.getState();
+    var connected=(st.role==="visitor"||st.role==="agent")&&st.isConnected;
+    var cur=syncBtn.getAttribute("data-state");
+    if(cur==="syncing"||cur==="success") return;
+    if(!connected){ setPulseState("waiting"); syncBtn.style.cursor=""; syncBtn.removeAttribute("role"); return; }
+    if(clipPermissionState==="granted"){ setPulseState("idle"); syncBtn.style.cursor=""; syncBtn.removeAttribute("role"); }
+    else if(clipPermissionState==="denied"){ setPulseState("needed"); syncBtn.style.cursor="pointer"; syncBtn.setAttribute("role","button"); }
+    else { setPulseState("enable"); syncBtn.style.cursor="pointer"; syncBtn.setAttribute("role","button"); }
+  }
+
+  // The explicit one-time "Enable View Sync" gesture (desktop only). MUST run
+  // from a user gesture (Start/Join click, or a click/Enter on the pill): that
+  // is the ONLY place a clipboard-read prompt is expected. On grant, ambient
+  // View Sync turns on; on denial/dismissal the pill flips to an actionable
+  // not-ready state and we STOP — never a silent re-prompt. iOS/iPadOS WebKit
+  // never probes (native Paste callout); it relies on the manual fallback.
+  function enableViewSync(){
+    if(IS_IOS_WEBKIT) return;
+    if(!navigator||!navigator.clipboard||typeof navigator.clipboard.readText!=="function") return;
+    var p;
+    try { p=navigator.clipboard.readText(); } catch(_e){ return; }
+    if(!p||typeof p.then!=="function") return;
+    p.then(function(text){
+      clipPermissionState="granted";
+      refreshSyncPill();
+      // If the clipboard ALREADY holds a Matterport location (the user pressed U
+      // + Copy before clicking Enable), sync it now from this same gesture — via
+      // the SHARED dedupe/echo path so a later clipboardchange for the same URL
+      // does NOT double-send. A non-Matterport clipboard leaves the pill at
+      // "View Sync ready" with no false success pulse.
+      processClipboardText(text);
+    },function(){
+      if(clipPermissionState!=="granted"){ clipPermissionState="denied"; refreshSyncPill(); }
+    });
+  }
+
   function resetLocationSyncUi(){
     // clipPermissionState is a BROWSER fact (tracked via the Permissions API),
     // not session state — it persists across teardown and is intentionally NOT
@@ -1618,7 +1667,8 @@ export const BUILDER_JS_GLUE_SPAN = `// f3d:runtime-js:glue BEGIN v=1 family=bui
           q.then(function(st){
             if(!st||typeof st.state!=="string") return;
             clipPermissionState=st.state;
-            try { st.onchange=function(){ clipPermissionState=st.state; }; } catch(_e){}
+            refreshSyncPill();
+            try { st.onchange=function(){ clipPermissionState=st.state; refreshSyncPill(); }; } catch(_e){}
           },function(){});
         }
       }
@@ -1648,38 +1698,43 @@ export const BUILDER_JS_GLUE_SPAN = `// f3d:runtime-js:glue BEGIN v=1 family=bui
     var p;
     try { p=navigator.clipboard.readText(); } catch(_e){ return; }
     if(!p||typeof p.then!=="function") return;
-    p.then(function(text){
-      if(typeof text!=="string") return;
-      // Content dedupe: silent skip when the clipboard hasn't changed
-      // since our last processed read. Prevents repeated pulse flashes
-      // on ambient triggers (mouse re-entering iframe area, tab focus
-      // toggles, etc.) when no new view has been copied.
-      if(text===lastReadClipText) return;
-      var parsed=parseMatterportLocationUrl(text);
-      if(!parsed){
-        // Not a tour link — silent, no pulse change. Update the dedupe
-        // marker so we don't re-parse the same non-Matterport text on
-        // every ambient trigger.
-        lastReadClipText=text;
-        return;
-      }
-      // Only NOW do we know there's something real to do. Flip the
-      // pulse to "syncing" and dispatch the share.
-      setPulseState("syncing");
-      if(attemptSendLocation(parsed)){
-        // Send succeeded (or was a recent-dedupe hit). Lock the dedupe
-        // so subsequent identical reads stay silent.
-        lastReadClipText=text;
-      }
-      // If attemptSendLocation returned false (channel not ready), it
-      // has already reverted the pulse to idle. Leave lastReadClipText
-      // unchanged so the next ambient trigger retries.
-    },function(){
-      // Read rejected (denied / SecurityError / no focus). Stay silent;
-      // the next ambient trigger will retry. No state flip — the pill
-      // keeps its current label (typically "To sync your view…") so the
-      // visitor isn't alarmed by a transient permission error.
+    p.then(processClipboardText,function(){
+      // A rejected read while we believed permission was granted means the
+      // grant LAPSED (a browser that won't persist clipboard-read). Stop ambient
+      // reads and flip the pill back to an actionable "Enable View Sync" rather
+      // than re-prompting on every Matterport Copy — the repeated-prompt defect.
+      if(clipPermissionState==="granted"){ clipPermissionState="prompt"; refreshSyncPill(); }
     });
+  }
+
+  // Process a successfully-read clipboard string (from the ambient path OR the
+  // explicit Enable View Sync gesture). Shared so both routes carry identical
+  // dedupe/echo semantics: a Matterport location is parsed + sent once and the
+  // dedupe marker locked so a later clipboardchange for the same URL is a no-op;
+  // a non-Matterport clipboard is recorded silently with NO success pulse.
+  function processClipboardText(text){
+    if(typeof text!=="string") return;
+    // Content dedupe: silent skip when the clipboard hasn't changed since our
+    // last processed read (mouse re-entering the iframe, tab focus toggles, a
+    // clipboardchange echoing a URL we already synced from the enable gesture).
+    if(text===lastReadClipText) return;
+    var parsed=parseMatterportLocationUrl(text);
+    if(!parsed){
+      // Not a tour link — silent, no pulse change. Record so we don't re-parse
+      // the same non-Matterport text on every trigger.
+      lastReadClipText=text;
+      return;
+    }
+    // Something real to do — flip to "syncing" and dispatch the share.
+    setPulseState("syncing");
+    if(attemptSendLocation(parsed)){
+      // Send succeeded (or was a recent-dedupe hit). Lock the dedupe so
+      // subsequent identical reads stay silent (no double-send).
+      lastReadClipText=text;
+    }
+    // If attemptSendLocation returned false (channel not ready) it already
+    // reverted the pulse; leave lastReadClipText unchanged so a later trigger
+    // retries.
   }
 
   // schedulePoll: ambient throttled entrypoint for focus / visibility
@@ -1713,6 +1768,20 @@ export const BUILDER_JS_GLUE_SPAN = `// f3d:runtime-js:glue BEGIN v=1 family=bui
     syncBtn.addEventListener("mouseleave",scheduleHideTips);
     syncBtn.addEventListener("focus",showTips);
     syncBtn.addEventListener("blur",scheduleHideTips);
+    // Actionable ONLY while View Sync is not yet enabled: the click/Enter IS the
+    // explicit "Enable View Sync" gesture (a one-time readText prompt is expected
+    // exactly here). Once granted the pill is informational and the gesture is a
+    // no-op so it never steals the iframe's keyboard focus mid-tour; after a
+    // retry we hand focus straight back to the iframe so U works immediately.
+    function handleEnableGesture(){
+      if(clipPermissionState==="granted") return;
+      enableViewSync();
+      if(frame){ try { frame.focus({ preventScroll: true }); } catch(_e){ try { frame.focus(); } catch(_e2){} } }
+    }
+    syncBtn.addEventListener("click",handleEnableGesture);
+    syncBtn.addEventListener("keydown",function(e){
+      if(e&&(e.key==="Enter"||e.key===" "||e.key==="Spacebar")){ if(typeof e.preventDefault==="function") e.preventDefault(); handleEnableGesture(); }
+    });
   }
   // Keep tips visible while the cursor is hovering the card itself so
   // the visitor can read it without it disappearing mid-glance.
@@ -1906,24 +1975,11 @@ export const BUILDER_JS_GLUE_SPAN = `// f3d:runtime-js:glue BEGIN v=1 family=bui
       }
       joinBtn.disabled=true;
       if(visitorStatus) visitorStatus.textContent="Preparing Live Tour…";
-      // Pre-grant clipboard permission in the same user gesture as the
-      // Join click — browser prompts once now, then silent reads power
-      // the ambient pulse pill for the rest of the session. Must stay
-      // synchronous inside the click (a then-callback is not a gesture).
-      try {
-        if(navigator&&navigator.permissions&&typeof navigator.permissions.query==="function"){
-          navigator.permissions.query({ name: "clipboard-read" }).then(function(r){
-            if(r&&typeof r.state==="string") clipPermissionState=r.state;
-          },function(){});
-        }
-        if(!IS_IOS_WEBKIT&&navigator&&navigator.clipboard&&typeof navigator.clipboard.readText==="function"){
-          // The one-time probe inside the user gesture. On grant, flip the
-          // state so ambient reads turn on immediately; on rejection leave the
-          // state as-is (ambient stays off — no further prompts).
-          navigator.clipboard.readText().then(function(){ clipPermissionState="granted"; },
-                                              function(){});
-        }
-      } catch(_e){}
+      // Enable View Sync as part of this gesture: the one clear clipboard-read
+      // permission step. The pill reflects the outcome (ready / needs-enable);
+      // a later click on the pill retries — never a silent re-prompt. Must run
+      // synchronously inside the click (a then-callback is not a user gesture).
+      enableViewSync();
       ensurePeerJs().then(function(){
         if(visitorStatus) visitorStatus.textContent="Connecting…";
         session.joinAsVisitor(pin).catch(function(){
@@ -1947,24 +2003,11 @@ export const BUILDER_JS_GLUE_SPAN = `// f3d:runtime-js:glue BEGIN v=1 family=bui
     startBtn.addEventListener("click",function(){
       startBtn.disabled=true;
       if(agentStatus) agentStatus.textContent="Preparing Live Tour…";
-      // Pre-grant clipboard permission in the same user gesture as the
-      // Start click — the agent presses U + Copy in their own iframe to
-      // sync the visitor's view, just like the visitor's flow. Prompt
-      // once now; subsequent ambient reads stay silent on Chromium.
-      try {
-        if(navigator&&navigator.permissions&&typeof navigator.permissions.query==="function"){
-          navigator.permissions.query({ name: "clipboard-read" }).then(function(r){
-            if(r&&typeof r.state==="string") clipPermissionState=r.state;
-          },function(){});
-        }
-        if(!IS_IOS_WEBKIT&&navigator&&navigator.clipboard&&typeof navigator.clipboard.readText==="function"){
-          // The one-time probe inside the user gesture. On grant, flip the
-          // state so ambient reads turn on immediately; on rejection leave the
-          // state as-is (ambient stays off — no further prompts).
-          navigator.clipboard.readText().then(function(){ clipPermissionState="granted"; },
-                                              function(){});
-        }
-      } catch(_e){}
+      // Enable View Sync as part of this gesture — the agent presses U + Copy in
+      // their own iframe to sync the visitor, the same flow as the visitor. One
+      // clear clipboard-read step; the pill reflects the outcome and a later pill
+      // click retries. No silent re-prompting.
+      enableViewSync();
       ensurePeerJs().then(function(){
         if(agentStatus) agentStatus.textContent="Reserving session…";
         session.initializeAsAgent().catch(function(){
@@ -2103,18 +2146,13 @@ export const BUILDER_JS_GLUE_SPAN = `// f3d:runtime-js:glue BEGIN v=1 family=bui
       }
     }
 
-    // Pulse pill: reflects connection state. When connected, settle
-    // into idle (breathing pulse). When disconnected, dim to waiting.
-    // Don't clobber a transient syncing/success state. Both roles use
-    // the same pill — visitor sends location_share, agent sends
-    // teleportVisitor; the pulse states are direction-agnostic.
+    // Pulse pill: reflects connection + View Sync permission state. When
+    // connected and granted it settles into "View Sync ready"; connected but
+    // not granted it shows the actionable "Enable View Sync"; disconnected it
+    // dims to "Connecting…". Never clobbers a transient syncing/success pulse.
+    // Both roles use the same pill (direction-agnostic).
     if((state.role==="visitor"||state.role==="agent")&&syncBtn){
-      var curState=syncBtn.getAttribute("data-state");
-      if(!state.isConnected){
-        if(curState!=="syncing") setPulseState("waiting");
-      } else if(curState==="waiting"){
-        setPulseState("idle");
-      }
+      refreshSyncPill();
     }
 
     // ── Annotation receive paths ─────────────────────────────────
