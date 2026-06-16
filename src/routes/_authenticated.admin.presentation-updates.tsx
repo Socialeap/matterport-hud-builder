@@ -184,57 +184,34 @@ function Swatch({ color }: { color: string | null }) {
 
 function AdminPresentationUpdates() {
   const inputRef = useRef<HTMLInputElement | null>(null);
-  // The raw uploaded HTML is held in a ref — never in React state, never
-  // rendered — so it is treated strictly as inert text from intake to patch.
-  const htmlRef = useRef<string | null>(null);
 
-  const [fileName, setFileName] = useState<string | null>(null);
-  const [fileSize, setFileSize] = useState<number | null>(null);
-  const [inspection, setInspection] = useState<InspectionReport | null>(null);
-  const [legacyProfile, setLegacyProfile] = useState<LegacyProfileReport | null>(null);
-  const [report, setReport] = useState<UpgradeReport | LegacyBootstrapReport | null>(null);
-  const [download, setDownload] = useState<DownloadPayload | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [reading, setReading] = useState(false);
-  const [upgrading, setUpgrading] = useState(false);
+  // Subscribe to the module-scoped session store so the UI rehydrates the
+  // user's selection + summary on remount (e.g. after navigating between
+  // admin tabs).
+  const snapshot = useSyncExternalStore(
+    subscribeSession,
+    getSessionSnapshot,
+    getSessionSnapshot,
+  );
+  const {
+    fileName,
+    fileSize,
+    inspection,
+    legacyProfile,
+    report,
+    download,
+    error,
+    reading,
+    upgrading,
+  } = snapshot;
+
   const [dragActive, setDragActive] = useState(false);
 
   const disposition: DispositionDescriptor | null = inspection
     ? describeDisposition(inspection, legacyProfile)
     : null;
 
-  // Apply a controller state patch: the large HTML goes to a ref (never
-  // rendered); everything else maps to React state. ONLY the controller's
-  // session guard calls this, so a stale read/upgrade can never reach it.
-  const applyState = (p: UpgradeControllerState) => {
-    if ("html" in p) htmlRef.current = p.html ?? null;
-    if ("fileName" in p) setFileName(p.fileName ?? null);
-    if ("fileSize" in p) setFileSize(p.fileSize ?? null);
-    if ("inspection" in p) setInspection(p.inspection ?? null);
-    if ("legacyProfile" in p) setLegacyProfile(p.legacyProfile ?? null);
-    if ("report" in p) setReport(p.report ?? null);
-    if ("download" in p) setDownload(p.download ?? null);
-    if ("error" in p) setError(p.error ?? null);
-    if ("reading" in p) setReading(!!p.reading);
-    if ("upgrading" in p) setUpgrading(!!p.upgrading);
-  };
-
-  // One controller for the component's lifetime. React state setters are
-  // stable, so the sink captured at first render stays valid across renders.
-  const controllerRef = useRef<UpgradeController | null>(null);
-  if (controllerRef.current === null) {
-    controllerRef.current = createUpgradeController({
-      checkSize: checkPresentationHtmlSize,
-      readFile: (file) => (file as File).text(),
-      runUpgrade: (args) => runUpgradeSession(args),
-      sink: {
-        setState: applyState,
-        toastSuccess: (m) => toast.success(m),
-        toastError: (m) => toast.error(m),
-      },
-    });
-  }
-  const controller = controllerRef.current;
+  const controller = getController();
 
   const handleClear = () => {
     controller.clear();
@@ -256,7 +233,7 @@ function AdminPresentationUpdates() {
   };
 
   const handleUpgrade = () => {
-    const html = htmlRef.current;
+    const html = moduleHtml;
     // Upgrade is allowed only when the disposition exposes it (patchable, or a
     // recognized legacy bootstrap profile). The session routes to the patcher
     // or the legacy adapter accordingly.
