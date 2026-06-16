@@ -92,13 +92,13 @@ const BASELINES = [
   },
   {
     // Re-pinned for runtime 2.2.3 (explicit "Enable View Sync" hybrid clipboard
-    // model): the glue adds refreshSyncPill/enableViewSync, an actionable pill,
-    // and an ambient-reject self-heal. A byte change to the glue IS a runtime
-    // change — re-pinned deliberately.
+    // model + the enable gesture syncs an already-present URL via the shared
+    // processClipboardText path). A byte change to the glue IS a runtime change
+    // — re-pinned deliberately.
     name: "js:glue",
     build: () => BUILDER_JS_GLUE_SPAN,
-    sha256: "4374fed3b7f7315ac44fb1759877c1f15e0d6001215bf7c652c6f3f9bdbb0ef2",
-    bytes: 92327,
+    sha256: "d9666e3f9b6479f943cdf3a1aaaa4936195c0c70e700fe4d048b87b5c94d2dd8",
+    bytes: 93024,
   },
 ];
 

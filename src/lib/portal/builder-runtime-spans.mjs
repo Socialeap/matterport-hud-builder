@@ -1524,9 +1524,15 @@ export const BUILDER_JS_GLUE_SPAN = `// f3d:runtime-js:glue BEGIN v=1 family=bui
     var p;
     try { p=navigator.clipboard.readText(); } catch(_e){ return; }
     if(!p||typeof p.then!=="function") return;
-    p.then(function(){
+    p.then(function(text){
       clipPermissionState="granted";
       refreshSyncPill();
+      // If the clipboard ALREADY holds a Matterport location (the user pressed U
+      // + Copy before clicking Enable), sync it now from this same gesture — via
+      // the SHARED dedupe/echo path so a later clipboardchange for the same URL
+      // does NOT double-send. A non-Matterport clipboard leaves the pill at
+      // "View Sync ready" with no false success pulse.
+      processClipboardText(text);
     },function(){
       if(clipPermissionState!=="granted"){ clipPermissionState="denied"; refreshSyncPill(); }
     });
@@ -1692,39 +1698,43 @@ export const BUILDER_JS_GLUE_SPAN = `// f3d:runtime-js:glue BEGIN v=1 family=bui
     var p;
     try { p=navigator.clipboard.readText(); } catch(_e){ return; }
     if(!p||typeof p.then!=="function") return;
-    p.then(function(text){
-      if(typeof text!=="string") return;
-      // Content dedupe: silent skip when the clipboard hasn't changed
-      // since our last processed read. Prevents repeated pulse flashes
-      // on ambient triggers (mouse re-entering iframe area, tab focus
-      // toggles, etc.) when no new view has been copied.
-      if(text===lastReadClipText) return;
-      var parsed=parseMatterportLocationUrl(text);
-      if(!parsed){
-        // Not a tour link — silent, no pulse change. Update the dedupe
-        // marker so we don't re-parse the same non-Matterport text on
-        // every ambient trigger.
-        lastReadClipText=text;
-        return;
-      }
-      // Only NOW do we know there's something real to do. Flip the
-      // pulse to "syncing" and dispatch the share.
-      setPulseState("syncing");
-      if(attemptSendLocation(parsed)){
-        // Send succeeded (or was a recent-dedupe hit). Lock the dedupe
-        // so subsequent identical reads stay silent.
-        lastReadClipText=text;
-      }
-      // If attemptSendLocation returned false (channel not ready), it
-      // has already reverted the pulse to idle. Leave lastReadClipText
-      // unchanged so the next ambient trigger retries.
-    },function(){
+    p.then(processClipboardText,function(){
       // A rejected read while we believed permission was granted means the
       // grant LAPSED (a browser that won't persist clipboard-read). Stop ambient
       // reads and flip the pill back to an actionable "Enable View Sync" rather
       // than re-prompting on every Matterport Copy — the repeated-prompt defect.
       if(clipPermissionState==="granted"){ clipPermissionState="prompt"; refreshSyncPill(); }
     });
+  }
+
+  // Process a successfully-read clipboard string (from the ambient path OR the
+  // explicit Enable View Sync gesture). Shared so both routes carry identical
+  // dedupe/echo semantics: a Matterport location is parsed + sent once and the
+  // dedupe marker locked so a later clipboardchange for the same URL is a no-op;
+  // a non-Matterport clipboard is recorded silently with NO success pulse.
+  function processClipboardText(text){
+    if(typeof text!=="string") return;
+    // Content dedupe: silent skip when the clipboard hasn't changed since our
+    // last processed read (mouse re-entering the iframe, tab focus toggles, a
+    // clipboardchange echoing a URL we already synced from the enable gesture).
+    if(text===lastReadClipText) return;
+    var parsed=parseMatterportLocationUrl(text);
+    if(!parsed){
+      // Not a tour link — silent, no pulse change. Record so we don't re-parse
+      // the same non-Matterport text on every trigger.
+      lastReadClipText=text;
+      return;
+    }
+    // Something real to do — flip to "syncing" and dispatch the share.
+    setPulseState("syncing");
+    if(attemptSendLocation(parsed)){
+      // Send succeeded (or was a recent-dedupe hit). Lock the dedupe so
+      // subsequent identical reads stay silent (no double-send).
+      lastReadClipText=text;
+    }
+    // If attemptSendLocation returned false (channel not ready) it already
+    // reverted the pulse; leave lastReadClipText unchanged so a later trigger
+    // retries.
   }
 
   // schedulePoll: ambient throttled entrypoint for focus / visibility

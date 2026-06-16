@@ -125,8 +125,8 @@ function makeConnectedController(role, spy) {
     subscribe: () => () => {},
     initializeAsAgent: () => Promise.resolve({ pin: "1234", peerId: "host" }),
     joinAsVisitor: (pin) => Promise.resolve({ pin, peerId: "guest" }),
-    teleportVisitor: () => true,
-    shareLocationWithAgent: () => true,
+    teleportVisitor: (ss, sr) => { (spy.sends || (spy.sends = [])).push({ kind: "teleport", ss, sr }); return true; },
+    shareLocationWithAgent: (ss, sr) => { (spy.sends || (spy.sends = [])).push({ kind: "share", ss, sr }); return true; },
     noteCurrentView: (ss, sr) => {
       (spy.note || (spy.note = [])).push([ss, sr]);
       return true;
@@ -933,7 +933,8 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
 // Desktop-eligible navigator with a recording clipboard + a permissions.query
 // resolving to `permState`. readText/query are counted. opts.read controls the
 // readText result: undefined → resolves ""; "reject" → rejects (deny/dismiss/
-// lapse); any other string → resolves that string (e.g. a Matterport URL).
+// lapse); any other string → resolves that string (e.g. a Matterport URL); a
+// FUNCTION (callIndex) → per-call behavior ("reject" | string) for lapse+retry.
 // fireClip(ev) invokes captured clipboard listeners (e.g. "clipboardchange").
 function clipNav(permState, opts) {
   opts = opts || {};
@@ -951,9 +952,11 @@ function clipNav(permState, opts) {
   if (opts.withClipboard !== false) {
     navigator.clipboard = {
       readText: () => {
+        const i = calls.readText;
         calls.readText += 1;
-        if (read === "reject") return Promise.reject(new Error("denied"));
-        return Promise.resolve(typeof read === "string" ? read : "");
+        const behavior = typeof read === "function" ? read(i) : read;
+        if (behavior === "reject") return Promise.reject(new Error("denied"));
+        return Promise.resolve(typeof behavior === "string" ? behavior : "");
       },
       addEventListener: (ev, fn) => { (clipListeners[ev] || (clipListeners[ev] = [])).push(fn); },
     };
@@ -961,6 +964,7 @@ function clipNav(permState, opts) {
   const fireClip = (ev, e) => (clipListeners[ev] || []).forEach((f) => f(e || {}));
   return { navigator, calls, fireClip };
 }
+const MP_URL = "https://my.matterport.com/show/?m=abc&ss=12&sr=1.5,2.5";
 
 test("V1 — ambient poll does NOT call readText when permission is 'prompt'/'unknown'", async () => {
   for (const permState of ["prompt", "denied"]) {
@@ -1086,4 +1090,58 @@ test("V9 — a lapsed grant self-heals: one rejected ambient read, then no more 
   h.fireDoc("visibilitychange");
   await tick();
   assert.equal(calls.readText, 1, "no repeated prompts after the grant lapsed");
+});
+
+test("V10 — Enable View Sync with a Matterport URL already on the clipboard syncs immediately", async () => {
+  const { navigator, calls } = clipNav("prompt", { read: MP_URL });
+  const h = runGlue("visitor", { navigator });
+  await tick();
+  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "enable");
+  h.els["loc-sync"].fire("click", { preventDefault() {} });
+  assert.equal(calls.readText, 1, "one read from the enable gesture");
+  await tick();
+  assert.equal((h.spy.sends || []).length, 1, "the already-present URL is sent from the enable gesture");
+  assert.deepEqual(h.spy.sends[0], { kind: "share", ss: "12", sr: "1.5,2.5" });
+  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "success", "syncs immediately");
+});
+
+test("V11 — Enable View Sync with a non-Matterport clipboard marks ready but does NOT send", async () => {
+  const { navigator, calls } = clipNav("prompt", { read: "just some copied text" });
+  const h = runGlue("visitor", { navigator });
+  await tick();
+  h.els["loc-sync"].fire("click", { preventDefault() {} });
+  assert.equal(calls.readText, 1);
+  await tick();
+  assert.equal((h.spy.sends || []).length, 0, "no send for a non-Matterport clipboard");
+  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "idle", "View Sync ready, no false success pulse");
+});
+
+test("V12 — a clipboardchange echoing the just-enabled URL does NOT double-send", async () => {
+  const { navigator, fireClip } = clipNav("prompt", { read: MP_URL });
+  const h = runGlue("visitor", { navigator });
+  await tick();
+  h.els["loc-sync"].fire("click", { preventDefault() {} }); // enable → sends once
+  await tick();
+  assert.equal((h.spy.sends || []).length, 1, "sent once from the enable gesture");
+  // Matterport "Copy" fires clipboardchange with the SAME URL — must be a no-op.
+  fireClip("clipboardchange", {});
+  await tick();
+  assert.equal((h.spy.sends || []).length, 1, "dedupe prevents a double-send");
+});
+
+test("V13 — a lapsed grant retried via the pill syncs on the retry gesture itself", async () => {
+  // Start granted; the FIRST read (ambient) rejects (grant lapsed); the SECOND
+  // read (pill retry) resolves the Matterport URL still on the clipboard.
+  const { navigator, calls, fireClip } = clipNav("granted", { read: (i) => (i === 0 ? "reject" : MP_URL) });
+  const h = runGlue("visitor", { navigator });
+  await tick();
+  fireClip("clipboardchange", {}); // ambient read → rejects → flips to actionable
+  await tick();
+  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "enable", "lapsed grant → actionable");
+  assert.equal((h.spy.sends || []).length, 0, "nothing sent yet");
+  h.els["loc-sync"].fire("click", { preventDefault() {} }); // retry gesture
+  await tick();
+  assert.equal(calls.readText, 2, "one ambient + one retry read");
+  assert.equal((h.spy.sends || []).length, 1, "the retry gesture itself syncs");
+  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "success");
 });
