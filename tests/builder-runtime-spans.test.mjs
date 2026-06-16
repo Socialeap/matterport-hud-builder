@@ -91,14 +91,14 @@ const BASELINES = [
     bytes: 1001,
   },
   {
-    // Re-pinned for runtime 2.2.3 (explicit "Enable View Sync" hybrid clipboard
-    // model + the enable gesture syncs an already-present URL via the shared
-    // processClipboardText path). A byte change to the glue IS a runtime change
-    // — re-pinned deliberately.
+    // Re-pinned for runtime 2.2.5 (shared-annotation persistence across View
+    // Sync: attemptSendLocation/applyTeleport converge the view key but no longer
+    // wipe committed strokes). A byte change to the glue IS a runtime change —
+    // re-pinned deliberately.
     name: "js:glue",
     build: () => BUILDER_JS_GLUE_SPAN,
-    sha256: "d9666e3f9b6479f943cdf3a1aaaa4936195c0c70e700fe4d048b87b5c94d2dd8",
-    bytes: 93024,
+    sha256: "33fcc00815619278be4a7fe858919a1893132d70145299b5d2aecd722668ceaf",
+    bytes: 89134,
   },
 ];
 

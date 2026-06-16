@@ -1668,14 +1668,15 @@
     }
     if (ok) {
       // The controller send method just stamped ITS view key (see
-      // live-session.mjs teleportVisitor/shareLocationWithAgent — the
-      // sender owns that update, so no noteCurrentView call here);
-      // converge the glue too, under the same contract as applyTeleport:
-      // every accepted sync rolls the key and wipes the canvas, on both
-      // ends, so strokes never straddle a sync boundary (the receiving
-      // side wipes inside its applyTeleport).
+      // live-session.mjs teleportVisitor/shareLocationWithAgent — the sender
+      // owns that update, so no noteCurrentView call here); converge the glue
+      // key so OUTBOUND annotation packets are stamped with the live view and
+      // the receive filter keeps dropping genuinely stale frames.
+      // 2.2.5: a View Sync is NOT an annotation reset — Host and Guest share one
+      // scene and annotate sequentially, so committed strokes MUST persist
+      // across a sync. We do NOT wipe here; Clear and the Eraser are the only
+      // ways to remove marks in a shared scene.
       currentViewKey = key;
-      wipeAnnotations();
       lastSentLocationKey = key;
       lastSentLocationTs = now;
       lastOwnSendTs = now;
@@ -1901,14 +1902,15 @@
 
   function applyTeleport(ss, sr) {
     if (!frame || !MP_BASE) return;
+    // Converge the view key (so outbound annotation packets are stamped with the
+    // live view and the receive filter keeps dropping genuinely stale frames),
+    // but do NOT wipe — 2.2.5: a View Sync / follow keeps Host and Guest in one
+    // shared scene where committed annotations persist. Clear and the Eraser are
+    // the only ways to remove marks. Empty-key strokes drawn before the first
+    // sync stay accepted on both ends (the filter only drops when BOTH keys are
+    // non-empty and differ), so establishing the first key never orphans them.
     currentViewKey = (ss || "") + "|" + (sr || "");
-    // Tell the controller the view it cannot see changed: its receive
-    // filter and outbound annotation stamping both key off
-    // _currentViewKey, and a locally applied view (inbound sync follow
-    // or tour-stop click) is invisible to it otherwise. Idempotent for
-    // the tour-stop path, where teleportVisitor already set it.
     try { session.noteCurrentView(ss, sr); } catch (_e) {}
-    wipeAnnotations();
     try {
       frame.src = rewriteIframeForTeleport(MP_BASE, ss, sr);
     } catch (_e) {}

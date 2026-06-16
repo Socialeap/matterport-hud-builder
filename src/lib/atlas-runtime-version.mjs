@@ -22,6 +22,39 @@
 //     (controller + glue + CSS). Bump on every behavior change; the
 //     Upgrade Center compares this value to decide "outdated".
 const ATLAS_PACKAGE_SCHEMA = 2;
+// 2.2.5: Shared-annotation persistence across View Sync. Both runtimes
+// (Builder + Atlas) previously called wipeAnnotations() on EVERY sync — in
+// attemptSendLocation() on a successful send and in applyTeleport() on an
+// inbound sync/follow — treating a View Sync as an annotation-scene reset. In a
+// shared session that erased the peer's committed marks the moment anyone
+// re-synced, so alternating Host/Guest annotation appeared to "disappear". Fix:
+// a View Sync is NOT a wipe. attemptSendLocation/applyTeleport now only CONVERGE
+// currentViewKey (so outbound packets are stamped with the live view and the
+// receive filter still drops genuinely stale frames) and PRESERVE committed
+// strokes. Clear (broadcast) and the Eraser remain the only ways to remove
+// marks in a shared scene; session teardown still wipes. Tool changes never
+// wiped (unchanged). Empty-key strokes drawn before the first sync stay accepted
+// on both ends (the viewKey filter only drops when both keys are non-empty and
+// differ), so establishing the first key never orphans earlier marks. Desktop-
+// only; no Matterport SDK; no mobile collaboration; no backend. Packages at
+// <= 2.2.4 wipe annotations on sync — that is what makes them "outdated".
+// 2.2.4: View Sync clipboard — LEGACY readText-is-source-of-truth mechanism
+// restored (Builder runtime). The 2.2.2/2.2.3 Permissions-API approach (gate
+// ambient reads on a cached clipboard-read state) re-prompted on every
+// Matterport "Copy" whenever a browser did not persist the grant, and failed
+// product acceptance. 2.2.4 matches the pre-marker May-2026 behavior: a one-time
+// readText() pre-fire inside the Start/Join click raises the browser's own
+// permission prompt at the natural opt-in moment (Chromium then persists it so
+// later ambient reads are silent); ambient triggers (focus / visibilitychange /
+// pointerenter / clipboardchange) call readText() directly with NO
+// permissions.query() and NO cached-permission gate — readText success/failure
+// is the source of truth and a rejected read stays quiet and retries on the next
+// trigger. Dedupe is unchanged (lastReadClipText text dedupe + ss|sr key dedupe).
+// Saved/bookmark stop clicks send known coordinates directly (no clipboard read).
+// The pill is informational only (no clickable enable). An acceptance-only debug
+// log sits behind window.__F3D_VIEW_SYNC_DEBUG__ (off by default). Desktop-only;
+// no Matterport SDK; no mobile collaboration; no backend. Packages at <= 2.2.3
+// carry the rejected permission-gated path — that is what makes them "outdated".
 // 2.2.3: View Sync clipboard permission — explicit hybrid model (Builder
 // runtime). 2.2.2 gated ambient reads on a "granted" state but still treated a
 // stale JS "granted" flag as authoritative, so on browsers that do not PERSIST
@@ -116,7 +149,7 @@ const ATLAS_PACKAGE_SCHEMA = 2;
 // 2.0.1: iOS clipboard isolation — ambient readText() disabled on
 // iOS/iPadOS WebKit (Paste-callout interruption fix) + stage-scoped
 // WebKit gesture defenses.
-const ATLAS_RUNTIME_VERSION = "2.2.3";
+const ATLAS_RUNTIME_VERSION = "2.2.5";
 
 // SUPPORTED-CURRENT capabilities — what freshly generated packages
 // advertise. Live Tour / Explore Together is desktop-only (2026-06-09), so

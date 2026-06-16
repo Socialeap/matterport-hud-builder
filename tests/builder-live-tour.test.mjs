@@ -83,7 +83,13 @@ FakeEl.prototype.querySelectorAll = function () { return []; };
 FakeEl.prototype.getContext = function () {
   if (!this._ctx) {
     const noop = () => {};
-    this._ctx = { clearRect: noop, setTransform: noop, beginPath: noop, moveTo: noop, lineTo: noop, stroke: noop, arc: noop, fill: noop };
+    // Count strokes drawn per redraw: redrawAllStrokes() clearRect()s once then
+    // beginPath()s once per drawn stroke, so `_drawn` after a redraw == the
+    // number of strokes currently rendered (committed localStrokes + active).
+    const ctx = { _drawn: 0, setTransform: noop, moveTo: noop, lineTo: noop, stroke: noop, arc: noop, fill: noop };
+    ctx.clearRect = () => { ctx._drawn = 0; };
+    ctx.beginPath = () => { ctx._drawn += 1; };
+    this._ctx = ctx;
   }
   return this._ctx;
 };
@@ -113,7 +119,10 @@ function makeFakeDom() {
 }
 
 // Connected controller with stroke spies (agent role → keyboard hotkeys work).
-function makeConnectedController(role, spy) {
+// `onSend` (optional) receives a normalized record for every OUTBOUND wire
+// message so a paired test can relay it to the peer instance.
+function makeConnectedController(role, spy, onSend) {
+  const emitSend = (rec) => { if (typeof onSend === "function") onSend(rec); };
   const state = {
     role, status: "connected", pin: "1234", peerId: "peer", error: null,
     isConnected: true, remoteStream: null, voiceCallActive: false,
@@ -125,25 +134,29 @@ function makeConnectedController(role, spy) {
     subscribe: () => () => {},
     initializeAsAgent: () => Promise.resolve({ pin: "1234", peerId: "host" }),
     joinAsVisitor: (pin) => Promise.resolve({ pin, peerId: "guest" }),
-    teleportVisitor: (ss, sr) => { (spy.sends || (spy.sends = [])).push({ kind: "teleport", ss, sr }); return true; },
-    shareLocationWithAgent: (ss, sr) => { (spy.sends || (spy.sends = [])).push({ kind: "share", ss, sr }); return true; },
+    teleportVisitor: (ss, sr) => { (spy.sends || (spy.sends = [])).push({ kind: "teleport", ss, sr }); emitSend({ m: "teleport", ss, sr }); return true; },
+    shareLocationWithAgent: (ss, sr) => { (spy.sends || (spy.sends = [])).push({ kind: "share", ss, sr }); emitSend({ m: "share", ss, sr }); return true; },
     noteCurrentView: (ss, sr) => {
       (spy.note || (spy.note = [])).push([ss, sr]);
       return true;
     },
     sendPointer: () => true,
     sendStrokeBegin: (vk, sid, color, width, points) => {
-      spy.begin.push({ vk, sid, points: Array.isArray(points) ? points.map((p) => p.slice()) : [] });
+      const pts = Array.isArray(points) ? points.map((p) => p.slice()) : [];
+      spy.begin.push({ vk, sid, points: pts });
+      emitSend({ m: "begin", vk, sid, color, width, points: pts });
       return true;
     },
     sendStrokePatch: (vk, sid, points) => {
-      spy.patch.push({ sid, points: Array.isArray(points) ? points.map((p) => p.slice()) : [] });
+      const pts = Array.isArray(points) ? points.map((p) => p.slice()) : [];
+      spy.patch.push({ sid, points: pts });
+      emitSend({ m: "patch", vk, sid, points: pts });
       return true;
     },
-    sendStrokeCommit: (vk, sid) => { spy.commit.push(sid); return true; },
-    sendClear: () => { (spy.clear || (spy.clear = [])).push(true); return true; },
-    sendNavLock: (vk, locked) => { (spy.navlock || (spy.navlock = [])).push({ vk, locked }); return true; },
-    sendStrokeDelete: (vk, ids) => { (spy.deletes || (spy.deletes = [])).push({ vk, ids: ids.slice() }); return true; },
+    sendStrokeCommit: (vk, sid) => { spy.commit.push(sid); emitSend({ m: "commit", vk, sid }); return true; },
+    sendClear: (vk) => { (spy.clear || (spy.clear = [])).push(true); emitSend({ m: "clear", vk }); return true; },
+    sendNavLock: (vk, locked) => { (spy.navlock || (spy.navlock = [])).push({ vk, locked }); emitSend({ m: "navlock", vk, locked }); return true; },
+    sendStrokeDelete: (vk, ids) => { (spy.deletes || (spy.deletes = [])).push({ vk, ids: ids.slice() }); emitSend({ m: "delete", vk, ids: ids.slice() }); return true; },
     dispose: () => {},
   };
 }
@@ -181,7 +194,7 @@ function runGlue(role = "agent", opts = {}) {
   let _push = null;
   const controllerFactory = () => {
     spy.factoryCalls += 1;
-    const c = makeConnectedController(role, spy);
+    const c = makeConnectedController(role, spy, opts.onSend);
     _controller = c;
     // Capture the glue's onState subscriber so tests can push inbound
     // (remote-peer) state — strokes, nav_lock floor, stroke_delete.
@@ -923,31 +936,26 @@ test("location-sync dedup is provenance-aware in the glue source (no blanket sup
   assert.ok(!sendBlock.includes("session.noteCurrentView"), "no duplicated noteCurrentView CALL after sends — the controller owns it");
 });
 
-// ── V. Clipboard-read permission isolation (runtime 2.2.2) ───────────────────
-// Behavioral proof that ambient location-sync reads NEVER act as permission
-// probes: readText() runs only when clipboard-read is already granted, or once
-// inside the Start/Join pre-grant gesture. Drives the REAL glue against a
-// controllable navigator. (PR #172 manual-acceptance defect.)
+// ── V. View Sync clipboard (runtime 2.2.4 — LEGACY readText-is-source-of-truth)
+// readText() success/failure is the source of truth: ambient triggers call it
+// directly with NO Permissions API and NO cached-permission gate. Dedupe is
+// preserved. Drives the REAL glue against a controllable navigator.
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
-// Desktop-eligible navigator with a recording clipboard + a permissions.query
-// resolving to `permState`. readText/query are counted. opts.read controls the
-// readText result: undefined → resolves ""; "reject" → rejects (deny/dismiss/
-// lapse); any other string → resolves that string (e.g. a Matterport URL); a
-// FUNCTION (callIndex) → per-call behavior ("reject" | string) for lapse+retry.
-// fireClip(ev) invokes captured clipboard listeners (e.g. "clipboardchange").
-function clipNav(permState, opts) {
+// Desktop-eligible navigator with a recording clipboard. opts.read controls the
+// readText result: undefined → resolves ""; "reject" → rejects; any other string
+// → resolves it; a FUNCTION (callIndex) → per-call behavior. NOTE: the 2.2.4
+// runtime does NOT call navigator.permissions — it is intentionally absent here
+// to prove ambient reads never depend on a Permissions API "granted" state.
+function clipNav(opts) {
   opts = opts || {};
-  const calls = { readText: 0, query: 0 };
+  const calls = { readText: 0 };
   const clipListeners = {};
   const read = opts.read;
   const navigator = {
     userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0 Safari/537.36",
     platform: "Win32",
     maxTouchPoints: 0,
-    permissions: {
-      query: () => { calls.query += 1; return Promise.resolve({ state: permState, onchange: null }); },
-    },
   };
   if (opts.withClipboard !== false) {
     navigator.clipboard = {
@@ -966,59 +974,81 @@ function clipNav(permState, opts) {
 }
 const MP_URL = "https://my.matterport.com/show/?m=abc&ss=12&sr=1.5,2.5";
 
-test("V1 — ambient poll does NOT call readText when permission is 'prompt'/'unknown'", async () => {
-  for (const permState of ["prompt", "denied"]) {
-    const { navigator, calls } = clipNav(permState);
-    const h = runGlue("visitor", { navigator });
-    await tick(); // let trackClipboardPermission resolve
-    h.letterbox.fire("pointerenter", { pointerType: "mouse" });
-    h.fireDoc("visibilitychange");
-    await tick();
-    assert.equal(calls.readText, 0, `${permState}: ambient reads must not probe`);
-  }
-});
-
-test("V2 — ambient poll CAN read silently after permission is 'granted'", async () => {
-  const { navigator, calls } = clipNav("granted");
-  const h = runGlue("visitor", { navigator });
-  await tick(); // clipPermissionState becomes "granted"
-  h.letterbox.fire("pointerenter", { pointerType: "mouse" });
-  await tick();
-  assert.ok(calls.readText >= 1, "granted state lets ambient sync read silently");
-});
-
-test("V3 — Start/Join (Enable View Sync) is the ONLY probing read path while prompt/unknown", async () => {
-  const { navigator, calls } = clipNav("prompt");
+test("V1 — legacy-style ambient triggers call readText WITHOUT any Permissions API", async () => {
+  const { navigator, calls } = clipNav({});
+  assert.equal(navigator.permissions, undefined, "no Permissions API in this environment");
   const h = runGlue("visitor", { navigator });
   await tick();
-  // No ambient probe has fired yet (state is 'prompt').
   h.letterbox.fire("pointerenter", { pointerType: "mouse" });
   await tick();
-  assert.equal(calls.readText, 0, "no ambient probe before the gesture");
-  // The Join gesture runs Enable View Sync exactly once, inside the click.
-  h.els["lg-pin-input"].value = "1234";
-  h.els["lg-join-btn"].fire("click", { preventDefault() {} });
-  assert.equal(calls.readText, 1, "Enable View Sync probes exactly once in the user gesture");
+  assert.ok(calls.readText >= 1, "ambient read happens with no permissions.query gate");
 });
 
-test("V4 — a saved/bookmark stop click does NOT read the clipboard", async () => {
+test("V2 — a copied Matterport URL on an ambient trigger syncs immediately", async () => {
+  const { navigator, calls } = clipNav({ read: MP_URL });
+  const h = runGlue("visitor", { navigator });
+  await tick();
+  h.letterbox.fire("pointerenter", { pointerType: "mouse" });
+  await tick();
+  assert.equal(calls.readText, 1, "one read");
+  assert.equal((h.spy.sends || []).length, 1, "the URL is sent immediately");
+  assert.deepEqual(h.spy.sends[0], { kind: "share", ss: "12", sr: "1.5,2.5" });
+  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "success");
+});
+
+// Past the LOC_SYNC_POLL_THROTTLE_MS (800ms) ambient throttle, so the SECOND
+// trigger actually reads and we isolate the dedupe/retry behavior (not throttle).
+const PAST_THROTTLE = () => new Promise((r) => setTimeout(r, 850));
+
+test("V3 — repeated identical clipboard text does NOT double-send (text dedupe)", async () => {
+  const { navigator, calls, fireClip } = clipNav({ read: MP_URL });
+  const h = runGlue("visitor", { navigator });
+  await tick();
+  fireClip("clipboardchange", {}); // first copy → read #0 → sends
+  await tick();
+  assert.equal((h.spy.sends || []).length, 1, "sent once");
+  await PAST_THROTTLE();
+  h.fireDoc("visibilitychange"); // read #1 of the SAME URL → dedup, no resend
+  await tick();
+  assert.equal(calls.readText, 2, "the second trigger DID read (throttle cleared)");
+  assert.equal((h.spy.sends || []).length, 1, "identical text never double-sends (dedupe, not throttle)");
+});
+
+test("V4 — a rejected read stays quiet and does NOT break the session; a later read still syncs", async () => {
+  // First read rejects (denied/no focus); the next trigger reads the URL and syncs.
+  const { navigator, calls, fireClip } = clipNav({ read: (i) => (i === 0 ? "reject" : MP_URL) });
+  const h = runGlue("visitor", { navigator });
+  await tick();
+  fireClip("clipboardchange", {}); // read #0 → reject (quiet)
+  await tick();
+  assert.equal((h.spy.sends || []).length, 0, "nothing sent on a rejected read");
+  await PAST_THROTTLE();
+  h.letterbox.fire("pointerenter", { pointerType: "mouse" }); // read #1 → URL
+  await tick();
+  assert.equal(calls.readText, 2, "session still reads after a rejection");
+  assert.equal((h.spy.sends || []).length, 1, "a later good read syncs");
+});
+
+test("V5 — a saved/bookmark stop click sends coords directly without a clipboard read", async () => {
   const outer =
     'var props=[{ name:"P", iframeUrl:"https://my.matterport.com/show/?m=abc&play=1", ' +
     'liveTourStops:[{ name:"Kitchen", ss:"5", sr:"1,2" }] }]; var current=0;';
-  const { navigator, calls } = clipNav("prompt");
+  const { navigator, calls } = clipNav({});
   const h = runGlue("agent", { navigator, outerStubs: outer, wireRemote: true });
   await tick();
   const stopsEl = h.els["lg-stops"];
   assert.ok(stopsEl.children && stopsEl.children.length >= 1, "a saved stop button rendered");
-  calls.readText = 0; // ignore anything before the click
+  calls.readText = 0;
+  h.spy.sends = [];
   stopsEl.children[0].fire("click", { preventDefault() {} });
   await tick();
-  assert.equal(calls.readText, 0, "teleporting to a saved stop never touches the clipboard");
+  assert.equal(calls.readText, 0, "stop click never reads the clipboard");
+  assert.equal((h.spy.sends || []).length, 1, "stop click sends the known coordinates directly");
+  assert.deepEqual(h.spy.sends[0], { kind: "teleport", ss: "5", sr: "1,2" });
 });
 
-test("V5 — ineligible (mobile) device wires no clipboard path at all", async () => {
-  const { navigator, calls } = clipNav("granted");
-  // Make it mobile/ineligible.
+test("V6 — ineligible (mobile) device wires no clipboard path at all", async () => {
+  const { navigator, calls } = clipNav({ read: MP_URL });
   navigator.userAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Safari/604.1";
   navigator.maxTouchPoints = 5;
   const h = runGlue("visitor", {
@@ -1026,122 +1056,169 @@ test("V5 — ineligible (mobile) device wires no clipboard path at all", async (
     window: { matchMedia: (q) => ({ matches: q === "(pointer: coarse)" }) },
   });
   await tick();
-  // The collaboration glue returns at the eligibility gate: the loc-sync pill is
-  // neutralized and NO ambient clipboard listeners are wired, so document-level
-  // triggers read nothing.
   assert.equal(h.els["loc-sync"].hidden, true, "collaboration pill neutralized on ineligible devices");
   h.fireDoc("visibilitychange");
   await tick();
-  assert.equal(calls.readText, 0, "no collaboration/clipboard path on ineligible devices");
+  assert.equal(calls.readText, 0, "no clipboard path on ineligible devices");
 });
 
-test("V6 — clicking the pill is the explicit Enable View Sync gesture (prompt → granted)", async () => {
-  const { navigator, calls } = clipNav("prompt");
+test("V7 — the pill is informational only (no click/keydown clipboard read)", async () => {
+  const { navigator, calls } = clipNav({ read: MP_URL });
   const h = runGlue("visitor", { navigator });
   await tick();
-  // Connected but not granted → the pill is actionable "Enable View Sync".
-  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "enable");
-  h.els["loc-sync"].fire("click", { preventDefault() {} });
-  assert.equal(calls.readText, 1, "the pill click probes exactly once");
+  const pill = h.els["loc-sync"];
+  assert.equal((pill._h.click || []).length, 0, "no click handler on the pill");
+  assert.equal((pill._h.keydown || []).length, 0, "no keydown handler on the pill");
+  pill.fire("click", { preventDefault() {} }); // no-op
   await tick();
-  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "idle", "granted → View Sync ready");
+  assert.equal(calls.readText, 0, "clicking the pill never reads the clipboard");
 });
 
-test("V7 — after granted, a Matterport Copy (clipboardchange) reads once and syncs", async () => {
-  const url = "https://my.matterport.com/show/?m=abc&ss=12&sr=1.5,2.5";
-  const { navigator, calls, fireClip } = clipNav("granted", { read: url });
-  const h = runGlue("visitor", { navigator });
+// ── W. Shared-annotation persistence across View Sync (PAIRED, runtime 2.2.5)
+// Two REAL glue instances (Host=agent, Guest=visitor) wired peer-to-peer via the
+// controller onSend relay. The fake 2D ctx counts strokes drawn per redraw
+// (clearRect resets, beginPath increments), so `canvas.getContext()._drawn`
+// after a redraw == the number of strokes currently rendered. A wipe would
+// redraw to 0; persistence keeps the count.
+function strokes(h) { return h.canvas.getContext()._drawn; }
+
+// Pair two instances; relay each side's outbound wire messages to the other's
+// inbound onState. Monotonic seq/ts so the glue's per-type dedupe accepts each.
+function pairedSession() {
+  let SEQ = 1;
+  const peers = {};
+  function deliver(targetName, rec) {
+    const target = peers[targetName];
+    if (!target) return;
+    const seq = SEQ++, ts = SEQ++;
+    let patch = null;
+    if (rec.m === "begin") patch = { incomingStrokeEvent: { viewKey: rec.vk, seq, kind: "begin", strokeId: rec.sid, color: rec.color, width: rec.width, points: rec.points, ts } };
+    else if (rec.m === "patch") patch = { incomingStrokeEvent: { viewKey: rec.vk, seq, kind: "patch", strokeId: rec.sid, points: rec.points, ts } };
+    else if (rec.m === "commit") patch = { incomingStrokeEvent: { viewKey: rec.vk, seq, kind: "commit", strokeId: rec.sid, ts } };
+    else if (rec.m === "delete") patch = { incomingStrokeDeleteEvent: { viewKey: rec.vk, seq, strokeIds: rec.ids, ts } };
+    else if (rec.m === "clear") patch = { incomingClearEvent: { viewKey: rec.vk, seq, ts } };
+    else if (rec.m === "navlock") patch = { incomingNavLockEvent: { viewKey: rec.vk, seq, locked: rec.locked, ts } };
+    else if (rec.m === "teleport") patch = { incomingTeleportEvent: { ss: rec.ss, sr: rec.sr, seq, ts } };
+    else if (rec.m === "share") patch = { incomingLocationShareEvent: { ss: rec.ss, sr: rec.sr, seq, ts } };
+    if (patch) target.emit(patch);
+  }
+  const hostNav = clipNav({ read: MP_URL });
+  const guestNav = clipNav({ read: MP_URL });
+  const host = runGlue("agent", { navigator: hostNav.navigator, wireRemote: true, onSend: (r) => deliver("guest", r) });
+  const guest = runGlue("visitor", { navigator: guestNav.navigator, wireRemote: true, onSend: (r) => deliver("host", r) });
+  peers.host = host; peers.guest = guest;
+  return { host, guest, hostFireClip: hostNav.fireClip, guestFireClip: guestNav.fireClip };
+}
+
+// Tool selection via the TOOLBAR — works for BOTH roles (keyboard hotkeys are
+// agent-only). Synthesizes the click target the handler reads (closest(.anno-
+// tool-btn) → getAttribute("data-tool")).
+function selectTool(h, tool) {
+  const btn = { getAttribute: (k) => (k === "data-tool" ? tool : null) };
+  h.els["anno-toolbar"].fire("click", { target: { closest: () => btn }, preventDefault() {} });
+}
+function drawOn(h, id, x, y) {
+  selectTool(h, "draw");
+  h.canvas.fire("pointerdown", ev(id, x, y, "mouse"));
+  h.canvas.fire("pointerup", ev(id, x, y, "mouse"));
+}
+function eraseOn(h, id, x, y) {
+  selectTool(h, "eraser");
+  h.canvas.fire("pointerdown", ev(id, x, y, "mouse"));
+  h.canvas.fire("pointerup", ev(id, x, y, "mouse"));
+}
+// Host (agent) does U + Copy: clear the tool first (ambient reads are blocked
+// while an annotation tool is active), then a clipboardchange drives
+// attemptSendLocation, which relays a teleport to the Guest (applyTeleport) —
+// exercising BOTH former wipe sites.
+async function hostSync(p) {
+  p.host.fireDoc("keydown", { key: "Escape" }); // agent: leave the tool
+  p.hostFireClip("clipboardchange", {});
   await tick();
-  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "idle", "granted → ready");
-  fireClip("clipboardchange", {});
-  await tick();
-  assert.equal(calls.readText, 1, "exactly one read on the copy event");
-  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "success", "a parsed location syncs");
+}
+
+test("W1 — Host draws → Guest sees it; Guest draws → Host retains BOTH (paired)", () => {
+  const p = pairedSession();
+  drawOn(p.host, 1, 200, 200);          // Host S1
+  assert.equal(strokes(p.host), 1, "host shows its own stroke");
+  assert.equal(strokes(p.guest), 1, "guest received host's stroke");
+  drawOn(p.guest, 2, 600, 400);         // Guest S2
+  assert.equal(strokes(p.guest), 2, "guest shows host + guest");
+  assert.equal(strokes(p.host), 2, "host RETAINS both after guest draws");
+  drawOn(p.host, 3, 300, 300);          // Host again
+  assert.equal(strokes(p.host), 3, "all three on host");
+  assert.equal(strokes(p.guest), 3, "all three on guest");
 });
 
-test("V8 — a dismissed Enable gesture shows not-ready and does NOT keep prompting", async () => {
-  const { navigator, calls, fireClip } = clipNav("prompt", { read: "reject" });
-  const h = runGlue("visitor", { navigator });
-  await tick();
-  h.els["loc-sync"].fire("click", { preventDefault() {} }); // explicit attempt → rejected
-  assert.equal(calls.readText, 1, "one explicit attempt");
-  await tick();
-  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "needed", "denied → actionable not-ready");
-  // Subsequent ambient triggers must NOT re-prompt.
-  fireClip("clipboardchange", {});
-  h.letterbox.fire("pointerenter", { pointerType: "mouse" });
-  h.fireDoc("visibilitychange");
-  await tick();
-  assert.equal(calls.readText, 1, "no repeated clipboard prompts after a denial");
+test("W2 — reverse order: Guest draws first → Host sees → Host draws → Guest retains both", () => {
+  const p = pairedSession();
+  drawOn(p.guest, 1, 200, 200);
+  assert.equal(strokes(p.host), 1, "host received guest's stroke");
+  drawOn(p.host, 2, 600, 400);
+  assert.equal(strokes(p.host), 2);
+  assert.equal(strokes(p.guest), 2, "guest RETAINS both after host draws");
 });
 
-test("V9 — a lapsed grant self-heals: one rejected ambient read, then no more prompts", async () => {
-  const { navigator, calls, fireClip } = clipNav("granted", { read: "reject" });
-  const h = runGlue("visitor", { navigator });
-  await tick();
-  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "idle", "granted → ready");
-  // First copy after the browser silently lapsed the grant → read rejects.
-  fireClip("clipboardchange", {});
-  await tick();
-  assert.equal(calls.readText, 1, "one ambient read attempt");
-  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "enable", "lapsed grant flips back to actionable");
-  // Further copies / ambient triggers do NOT keep reading (no repeated prompts).
-  fireClip("clipboardchange", {});
-  h.fireDoc("visibilitychange");
-  await tick();
-  assert.equal(calls.readText, 1, "no repeated prompts after the grant lapsed");
+test("W3 — a View Sync does NOT wipe; annotation continues to accumulate after sync", async () => {
+  const p = pairedSession();
+  drawOn(p.host, 1, 200, 200);
+  drawOn(p.guest, 2, 600, 400);
+  assert.equal(strokes(p.host), 2);
+  assert.equal(strokes(p.guest), 2);
+  await hostSync(p);                     // U + Copy on host → teleport to guest
+  assert.equal(strokes(p.host), 2, "host marks survive its own send (no wipe)");
+  assert.equal(strokes(p.guest), 2, "guest marks survive the inbound sync (no wipe)");
+  drawOn(p.guest, 3, 300, 300);          // annotate after sync
+  assert.equal(strokes(p.guest), 3);
+  assert.equal(strokes(p.host), 3, "post-sync annotation accumulates on both");
 });
 
-test("V10 — Enable View Sync with a Matterport URL already on the clipboard syncs immediately", async () => {
-  const { navigator, calls } = clipNav("prompt", { read: MP_URL });
-  const h = runGlue("visitor", { navigator });
-  await tick();
-  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "enable");
-  h.els["loc-sync"].fire("click", { preventDefault() {} });
-  assert.equal(calls.readText, 1, "one read from the enable gesture");
-  await tick();
-  assert.equal((h.spy.sends || []).length, 1, "the already-present URL is sent from the enable gesture");
-  assert.deepEqual(h.spy.sends[0], { kind: "share", ss: "12", sr: "1.5,2.5" });
-  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "success", "syncs immediately");
+test("W4 — strokes drawn under the empty key survive the FIRST sync (key migration)", async () => {
+  const p = pairedSession();
+  // No sync yet → currentViewKey is "" on both; strokes go out with empty key.
+  drawOn(p.host, 1, 220, 220);
+  drawOn(p.guest, 2, 640, 360);
+  assert.equal(strokes(p.host), 2);
+  assert.equal(strokes(p.guest), 2);
+  await hostSync(p);                     // first sync establishes ss|sr on both
+  assert.equal(strokes(p.host), 2, "empty-key marks not orphaned/erased on host");
+  assert.equal(strokes(p.guest), 2, "empty-key marks not orphaned/erased on guest");
 });
 
-test("V11 — Enable View Sync with a non-Matterport clipboard marks ready but does NOT send", async () => {
-  const { navigator, calls } = clipNav("prompt", { read: "just some copied text" });
-  const h = runGlue("visitor", { navigator });
-  await tick();
-  h.els["loc-sync"].fire("click", { preventDefault() {} });
-  assert.equal(calls.readText, 1);
-  await tick();
-  assert.equal((h.spy.sends || []).length, 0, "no send for a non-Matterport clipboard");
-  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "idle", "View Sync ready, no false success pulse");
+test("W5 — Eraser removes a selected Host OR Guest stroke without clearing the others", () => {
+  const p = pairedSession();
+  drawOn(p.host, 1, 200, 200);           // S1 authored by host
+  drawOn(p.guest, 2, 600, 400);          // S2 authored by guest
+  assert.equal(strokes(p.guest), 2);
+  // Guest erases the HOST-authored stroke (committed on guest via begin+commit).
+  eraseOn(p.guest, 9, 200, 200);
+  assert.equal(strokes(p.guest), 1, "guest removed only the selected (host) stroke");
+  assert.equal(strokes(p.host), 1, "the erase synced; host dropped that stroke too");
+  // The survivor is S2 — erasing at S2's spot clears it; an unrelated spot does not.
+  eraseOn(p.guest, 10, 50, 50);
+  assert.equal(strokes(p.guest), 1, "erasing empty space removes nothing");
+  eraseOn(p.guest, 11, 600, 400);
+  assert.equal(strokes(p.guest), 0, "erasing the survivor's spot clears it");
+  assert.equal(strokes(p.host), 0, "host converged to empty too");
 });
 
-test("V12 — a clipboardchange echoing the just-enabled URL does NOT double-send", async () => {
-  const { navigator, fireClip } = clipNav("prompt", { read: MP_URL });
-  const h = runGlue("visitor", { navigator });
-  await tick();
-  h.els["loc-sync"].fire("click", { preventDefault() {} }); // enable → sends once
-  await tick();
-  assert.equal((h.spy.sends || []).length, 1, "sent once from the enable gesture");
-  // Matterport "Copy" fires clipboardchange with the SAME URL — must be a no-op.
-  fireClip("clipboardchange", {});
-  await tick();
-  assert.equal((h.spy.sends || []).length, 1, "dedupe prevents a double-send");
+test("W6 — Clear is the only broad wipe: it clears BOTH sides", () => {
+  const p = pairedSession();
+  drawOn(p.host, 1, 200, 200);
+  drawOn(p.guest, 2, 600, 400);
+  assert.equal(strokes(p.host), 2);
+  p.host.fireDoc("keydown", { key: "c" }); // explicit Clear
+  assert.equal(strokes(p.host), 0, "Clear wipes the initiator");
+  assert.equal(strokes(p.guest), 0, "Clear wipes the peer");
 });
 
-test("V13 — a lapsed grant retried via the pill syncs on the retry gesture itself", async () => {
-  // Start granted; the FIRST read (ambient) rejects (grant lapsed); the SECOND
-  // read (pill retry) resolves the Matterport URL still on the clipboard.
-  const { navigator, calls, fireClip } = clipNav("granted", { read: (i) => (i === 0 ? "reject" : MP_URL) });
-  const h = runGlue("visitor", { navigator });
-  await tick();
-  fireClip("clipboardchange", {}); // ambient read → rejects → flips to actionable
-  await tick();
-  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "enable", "lapsed grant → actionable");
-  assert.equal((h.spy.sends || []).length, 0, "nothing sent yet");
-  h.els["loc-sync"].fire("click", { preventDefault() {} }); // retry gesture
-  await tick();
-  assert.equal(calls.readText, 2, "one ambient + one retry read");
-  assert.equal((h.spy.sends || []).length, 1, "the retry gesture itself syncs");
-  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "success");
+test("W7 — switching tools never clears committed annotations", () => {
+  const p = pairedSession();
+  drawOn(p.host, 1, 200, 200);
+  drawOn(p.guest, 2, 600, 400);
+  assert.equal(strokes(p.host), 2);
+  // Cycle every tool on the host — none may wipe.
+  for (const k of ["p", "d", "r", "e", "Escape"]) p.host.fireDoc("keydown", { key: k });
+  drawOn(p.host, 3, 300, 300); // force a redraw to re-measure
+  assert.equal(strokes(p.host), 3, "all committed marks survived the tool changes");
 });
