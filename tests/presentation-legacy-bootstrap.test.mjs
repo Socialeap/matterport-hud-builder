@@ -284,14 +284,16 @@ test("P1 — committed fixture carries no phone-shaped numbers on any surface", 
   assert.deepEqual(findPhones(FIX), []);
 });
 
-// ── R. Bootstrapped output carries the corrected 2.2.2 runtime ───────────────
-test("R1 — bootstrap output carries the corrected clipboard-permission glue (2.2.2)", () => {
+// ── R. Bootstrapped output carries the corrected clipboard runtime ───────────
+test("R1 — bootstrap output carries the explicit Enable View Sync glue (2.2.3)", () => {
   const out = boot(FIX).html;
-  // The corrected runtime tracks permission state and gates ambient reads on it.
+  // The corrected runtime tracks permission state, gates ambient reads on it,
+  // and exposes the explicit one-time enable gesture.
   assert.ok(out.includes("clipPermissionState"), "permission-state tracker present");
   assert.ok(out.includes('navigator.permissions.query({ name: "clipboard-read" })'), "Permissions API tracking present");
   assert.ok(out.includes('if(clipPermissionState!=="granted") return;'), "ambient reads gated on granted");
+  assert.ok(out.includes("function enableViewSync"), "explicit Enable View Sync gesture present");
   // And reinspects at the bumped runtime version.
   assert.equal(boot(FIX).postInspection.runtimeVersion, ATLAS_RUNTIME_VERSION);
-  assert.equal(ATLAS_RUNTIME_VERSION, "2.2.2");
+  assert.equal(ATLAS_RUNTIME_VERSION, "2.2.3");
 });

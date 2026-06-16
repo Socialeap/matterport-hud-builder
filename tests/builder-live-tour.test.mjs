@@ -77,6 +77,7 @@ FakeEl.prototype.addEventListener = function (ev, fn) {
 FakeEl.prototype.removeEventListener = function () {};
 FakeEl.prototype.setAttribute = function (k, v) { this.attrs[k] = v; };
 FakeEl.prototype.getAttribute = function (k) { return this.attrs[k] === undefined ? null : this.attrs[k]; };
+FakeEl.prototype.removeAttribute = function (k) { delete this.attrs[k]; };
 FakeEl.prototype.querySelector = function () { return null; };
 FakeEl.prototype.querySelectorAll = function () { return []; };
 FakeEl.prototype.getContext = function () {
@@ -930,10 +931,15 @@ test("location-sync dedup is provenance-aware in the glue source (no blanket sup
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 // Desktop-eligible navigator with a recording clipboard + a permissions.query
-// resolving to `permState`. readText/query are counted; no real clipboard.
+// resolving to `permState`. readText/query are counted. opts.read controls the
+// readText result: undefined → resolves ""; "reject" → rejects (deny/dismiss/
+// lapse); any other string → resolves that string (e.g. a Matterport URL).
+// fireClip(ev) invokes captured clipboard listeners (e.g. "clipboardchange").
 function clipNav(permState, opts) {
   opts = opts || {};
   const calls = { readText: 0, query: 0 };
+  const clipListeners = {};
+  const read = opts.read;
   const navigator = {
     userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0 Safari/537.36",
     platform: "Win32",
@@ -944,11 +950,16 @@ function clipNav(permState, opts) {
   };
   if (opts.withClipboard !== false) {
     navigator.clipboard = {
-      readText: () => { calls.readText += 1; return Promise.resolve(""); },
-      addEventListener: () => {},
+      readText: () => {
+        calls.readText += 1;
+        if (read === "reject") return Promise.reject(new Error("denied"));
+        return Promise.resolve(typeof read === "string" ? read : "");
+      },
+      addEventListener: (ev, fn) => { (clipListeners[ev] || (clipListeners[ev] = [])).push(fn); },
     };
   }
-  return { navigator, calls };
+  const fireClip = (ev, e) => (clipListeners[ev] || []).forEach((f) => f(e || {}));
+  return { navigator, calls, fireClip };
 }
 
 test("V1 — ambient poll does NOT call readText when permission is 'prompt'/'unknown'", async () => {
@@ -972,7 +983,7 @@ test("V2 — ambient poll CAN read silently after permission is 'granted'", asyn
   assert.ok(calls.readText >= 1, "granted state lets ambient sync read silently");
 });
 
-test("V3 — Start/Join pre-grant is the ONLY permission-probing read path", async () => {
+test("V3 — Start/Join (Enable View Sync) is the ONLY probing read path while prompt/unknown", async () => {
   const { navigator, calls } = clipNav("prompt");
   const h = runGlue("visitor", { navigator });
   await tick();
@@ -980,10 +991,10 @@ test("V3 — Start/Join pre-grant is the ONLY permission-probing read path", asy
   h.letterbox.fire("pointerenter", { pointerType: "mouse" });
   await tick();
   assert.equal(calls.readText, 0, "no ambient probe before the gesture");
-  // The Join gesture pre-grants exactly once, inside the click.
+  // The Join gesture runs Enable View Sync exactly once, inside the click.
   h.els["lg-pin-input"].value = "1234";
   h.els["lg-join-btn"].fire("click", { preventDefault() {} });
-  assert.equal(calls.readText, 1, "pre-grant probes exactly once in the user gesture");
+  assert.equal(calls.readText, 1, "Enable View Sync probes exactly once in the user gesture");
 });
 
 test("V4 — a saved/bookmark stop click does NOT read the clipboard", async () => {
@@ -1018,4 +1029,61 @@ test("V5 — ineligible (mobile) device wires no clipboard path at all", async (
   h.fireDoc("visibilitychange");
   await tick();
   assert.equal(calls.readText, 0, "no collaboration/clipboard path on ineligible devices");
+});
+
+test("V6 — clicking the pill is the explicit Enable View Sync gesture (prompt → granted)", async () => {
+  const { navigator, calls } = clipNav("prompt");
+  const h = runGlue("visitor", { navigator });
+  await tick();
+  // Connected but not granted → the pill is actionable "Enable View Sync".
+  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "enable");
+  h.els["loc-sync"].fire("click", { preventDefault() {} });
+  assert.equal(calls.readText, 1, "the pill click probes exactly once");
+  await tick();
+  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "idle", "granted → View Sync ready");
+});
+
+test("V7 — after granted, a Matterport Copy (clipboardchange) reads once and syncs", async () => {
+  const url = "https://my.matterport.com/show/?m=abc&ss=12&sr=1.5,2.5";
+  const { navigator, calls, fireClip } = clipNav("granted", { read: url });
+  const h = runGlue("visitor", { navigator });
+  await tick();
+  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "idle", "granted → ready");
+  fireClip("clipboardchange", {});
+  await tick();
+  assert.equal(calls.readText, 1, "exactly one read on the copy event");
+  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "success", "a parsed location syncs");
+});
+
+test("V8 — a dismissed Enable gesture shows not-ready and does NOT keep prompting", async () => {
+  const { navigator, calls, fireClip } = clipNav("prompt", { read: "reject" });
+  const h = runGlue("visitor", { navigator });
+  await tick();
+  h.els["loc-sync"].fire("click", { preventDefault() {} }); // explicit attempt → rejected
+  assert.equal(calls.readText, 1, "one explicit attempt");
+  await tick();
+  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "needed", "denied → actionable not-ready");
+  // Subsequent ambient triggers must NOT re-prompt.
+  fireClip("clipboardchange", {});
+  h.letterbox.fire("pointerenter", { pointerType: "mouse" });
+  h.fireDoc("visibilitychange");
+  await tick();
+  assert.equal(calls.readText, 1, "no repeated clipboard prompts after a denial");
+});
+
+test("V9 — a lapsed grant self-heals: one rejected ambient read, then no more prompts", async () => {
+  const { navigator, calls, fireClip } = clipNav("granted", { read: "reject" });
+  const h = runGlue("visitor", { navigator });
+  await tick();
+  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "idle", "granted → ready");
+  // First copy after the browser silently lapsed the grant → read rejects.
+  fireClip("clipboardchange", {});
+  await tick();
+  assert.equal(calls.readText, 1, "one ambient read attempt");
+  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "enable", "lapsed grant flips back to actionable");
+  // Further copies / ambient triggers do NOT keep reading (no repeated prompts).
+  fireClip("clipboardchange", {});
+  h.fireDoc("visibilitychange");
+  await tick();
+  assert.equal(calls.readText, 1, "no repeated prompts after the grant lapsed");
 });

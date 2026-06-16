@@ -83,13 +83,20 @@ test("Builder fails closed: Draw/Rope refuse without the input kernel", () => {
 });
 
 // ── 3. iOS clipboard isolation (the Apple Paste fix) ─────────────────────
-test("Builder gates ambient clipboard reads off iOS WebKit and active tools", () => {
+test("Builder gates ambient clipboard reads off iOS WebKit, active tools, and ungranted permission", () => {
   assert.ok(RUNTIME.includes("function ambientClipboardAllowed()"), "defines the ambient-read gate");
   assert.ok(RUNTIME.includes("if(IS_IOS_WEBKIT) return false;"), "iOS never reads ambiently");
+  // 2.2.3: ambient reads NEVER probe — they run only when permission is granted.
   assert.ok(
-    RUNTIME.includes("if(!IS_IOS_WEBKIT&&navigator&&navigator.clipboard&&typeof navigator.clipboard.readText"),
-    "Join/Start pre-fire readText must be disabled on iOS",
+    RUNTIME.includes('if(clipPermissionState!=="granted") return;'),
+    "ambient reads are gated on a granted clipboard-read permission",
   );
+  // The lone not-yet-granted readText() probe lives in the explicit, iOS-gated
+  // Enable View Sync gesture (fired from Start/Join + a pill click), not inline.
+  assert.ok(RUNTIME.includes("function enableViewSync()"), "defines the explicit Enable View Sync gesture");
+  const ev = RUNTIME.slice(RUNTIME.indexOf("function enableViewSync()"), RUNTIME.indexOf("function enableViewSync()") + 400);
+  assert.ok(ev.includes("if(IS_IOS_WEBKIT) return;"), "Enable View Sync is disabled on iOS WebKit");
+  assert.ok(ev.includes("navigator.clipboard.readText"), "Enable View Sync is the readText probe path");
 });
 
 // ── 4. Memory hardening: lazy canvas + DPR budget ────────────────────────

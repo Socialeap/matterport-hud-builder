@@ -91,13 +91,14 @@ const BASELINES = [
     bytes: 1001,
   },
   {
-    // Re-pinned for runtime 2.2.2 (clipboard-permission isolation): the glue
-    // now tracks clipPermissionState and gates ambient reads on "granted".
-    // A byte change to the glue IS a runtime change — re-pinned deliberately.
+    // Re-pinned for runtime 2.2.3 (explicit "Enable View Sync" hybrid clipboard
+    // model): the glue adds refreshSyncPill/enableViewSync, an actionable pill,
+    // and an ambient-reject self-heal. A byte change to the glue IS a runtime
+    // change — re-pinned deliberately.
     name: "js:glue",
     build: () => BUILDER_JS_GLUE_SPAN,
-    sha256: "75c802be55041f303af3d92ede59242271c113e042d6c8e7062481ff73a5d75e",
-    bytes: 90416,
+    sha256: "4374fed3b7f7315ac44fb1759877c1f15e0d6001215bf7c652c6f3f9bdbb0ef2",
+    bytes: 92327,
   },
 ];
 
