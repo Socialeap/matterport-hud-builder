@@ -10,6 +10,12 @@
 //   node scripts/legacy-bootstrap-acceptance.mjs <input.html> [tempOut.html]
 //
 // The real input path is never committed.
+//
+// ACCEPTANCE ENVIRONMENT (clipboard / view-sync): behavioral acceptance of Live
+// Tour view sync MUST be done from a SECURE ORIGIN — hosted HTTPS, or
+// http://localhost / http://127.0.0.1. The clipboard-read Permissions API and a
+// persistent grant do not behave reliably under file://, so file:// is fine for
+// STRUCTURAL render checks only, never for final clipboard/view-sync behavior.
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

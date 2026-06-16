@@ -283,3 +283,15 @@ test("P1 — committed fixture carries no phone-shaped numbers on any surface", 
   // Structural assertion — never compares against a real value.
   assert.deepEqual(findPhones(FIX), []);
 });
+
+// ── R. Bootstrapped output carries the corrected 2.2.2 runtime ───────────────
+test("R1 — bootstrap output carries the corrected clipboard-permission glue (2.2.2)", () => {
+  const out = boot(FIX).html;
+  // The corrected runtime tracks permission state and gates ambient reads on it.
+  assert.ok(out.includes("clipPermissionState"), "permission-state tracker present");
+  assert.ok(out.includes('navigator.permissions.query({ name: "clipboard-read" })'), "Permissions API tracking present");
+  assert.ok(out.includes('if(clipPermissionState!=="granted") return;'), "ambient reads gated on granted");
+  // And reinspects at the bumped runtime version.
+  assert.equal(boot(FIX).postInspection.runtimeVersion, ATLAS_RUNTIME_VERSION);
+  assert.equal(ATLAS_RUNTIME_VERSION, "2.2.2");
+});

@@ -79,7 +79,6 @@ FakeEl.prototype.setAttribute = function (k, v) { this.attrs[k] = v; };
 FakeEl.prototype.getAttribute = function (k) { return this.attrs[k] === undefined ? null : this.attrs[k]; };
 FakeEl.prototype.querySelector = function () { return null; };
 FakeEl.prototype.querySelectorAll = function () { return []; };
-FakeEl.prototype.appendChild = function (c) { return c; };
 FakeEl.prototype.getContext = function () {
   if (!this._ctx) {
     const noop = () => {};
@@ -92,6 +91,7 @@ FakeEl.prototype.releasePointerCapture = function (id) { if (this._captured === 
 FakeEl.prototype.focus = function () {};
 FakeEl.prototype.getBoundingClientRect = function () { return { left: 0, top: 0, width: 1280, height: 720 }; };
 FakeEl.prototype.fire = function (ev, e) { (this._h[ev] || []).forEach((f) => f(e)); };
+FakeEl.prototype.appendChild = function (n) { (this.children || (this.children = [])).push(n); return n; };
 
 function makeFakeDom() {
   const els = Object.create(null);
@@ -190,8 +190,11 @@ function runGlue(role = "agent", opts = {}) {
     }
     return c;
   };
+  // outerStubs lets a test supply the package's outer-IIFE locals (e.g. props
+  // with liveTourStops) instead of the default empty-stops stub.
+  const body = opts.outerStubs ? (opts.outerStubs + "\n" + ANNO_INPUT + "\n" + GLUE) : BODY;
   // eslint-disable-next-line no-new-func
-  const fn = new Function("window", "document", "navigator", "createLiveSession", "ResizeObserver", "frame", BODY);
+  const fn = new Function("window", "document", "navigator", "createLiveSession", "ResizeObserver", "frame", body);
   fn(window, document, navigator, controllerFactory, undefined, frame);
   const fireDoc = (ev, payload) =>
     (document._h[ev] || []).forEach((f) => f(Object.assign({ preventDefault() {}, target: null, key: "" }, payload || {})));
@@ -917,4 +920,102 @@ test("location-sync dedup is provenance-aware in the glue source (no blanket sup
   const sendBlock = GLUE.slice(GLUE.indexOf("function attemptSendLocation"), GLUE.indexOf("function attemptSendLocation") + 3200);
   assert.ok(sendBlock.includes("currentViewKey=key;"), "successful send rolls the glue view key");
   assert.ok(!sendBlock.includes("session.noteCurrentView"), "no duplicated noteCurrentView CALL after sends — the controller owns it");
+});
+
+// ── V. Clipboard-read permission isolation (runtime 2.2.2) ───────────────────
+// Behavioral proof that ambient location-sync reads NEVER act as permission
+// probes: readText() runs only when clipboard-read is already granted, or once
+// inside the Start/Join pre-grant gesture. Drives the REAL glue against a
+// controllable navigator. (PR #172 manual-acceptance defect.)
+const tick = () => new Promise((r) => setTimeout(r, 0));
+
+// Desktop-eligible navigator with a recording clipboard + a permissions.query
+// resolving to `permState`. readText/query are counted; no real clipboard.
+function clipNav(permState, opts) {
+  opts = opts || {};
+  const calls = { readText: 0, query: 0 };
+  const navigator = {
+    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0 Safari/537.36",
+    platform: "Win32",
+    maxTouchPoints: 0,
+    permissions: {
+      query: () => { calls.query += 1; return Promise.resolve({ state: permState, onchange: null }); },
+    },
+  };
+  if (opts.withClipboard !== false) {
+    navigator.clipboard = {
+      readText: () => { calls.readText += 1; return Promise.resolve(""); },
+      addEventListener: () => {},
+    };
+  }
+  return { navigator, calls };
+}
+
+test("V1 — ambient poll does NOT call readText when permission is 'prompt'/'unknown'", async () => {
+  for (const permState of ["prompt", "denied"]) {
+    const { navigator, calls } = clipNav(permState);
+    const h = runGlue("visitor", { navigator });
+    await tick(); // let trackClipboardPermission resolve
+    h.letterbox.fire("pointerenter", { pointerType: "mouse" });
+    h.fireDoc("visibilitychange");
+    await tick();
+    assert.equal(calls.readText, 0, `${permState}: ambient reads must not probe`);
+  }
+});
+
+test("V2 — ambient poll CAN read silently after permission is 'granted'", async () => {
+  const { navigator, calls } = clipNav("granted");
+  const h = runGlue("visitor", { navigator });
+  await tick(); // clipPermissionState becomes "granted"
+  h.letterbox.fire("pointerenter", { pointerType: "mouse" });
+  await tick();
+  assert.ok(calls.readText >= 1, "granted state lets ambient sync read silently");
+});
+
+test("V3 — Start/Join pre-grant is the ONLY permission-probing read path", async () => {
+  const { navigator, calls } = clipNav("prompt");
+  const h = runGlue("visitor", { navigator });
+  await tick();
+  // No ambient probe has fired yet (state is 'prompt').
+  h.letterbox.fire("pointerenter", { pointerType: "mouse" });
+  await tick();
+  assert.equal(calls.readText, 0, "no ambient probe before the gesture");
+  // The Join gesture pre-grants exactly once, inside the click.
+  h.els["lg-pin-input"].value = "1234";
+  h.els["lg-join-btn"].fire("click", { preventDefault() {} });
+  assert.equal(calls.readText, 1, "pre-grant probes exactly once in the user gesture");
+});
+
+test("V4 — a saved/bookmark stop click does NOT read the clipboard", async () => {
+  const outer =
+    'var props=[{ name:"P", iframeUrl:"https://my.matterport.com/show/?m=abc&play=1", ' +
+    'liveTourStops:[{ name:"Kitchen", ss:"5", sr:"1,2" }] }]; var current=0;';
+  const { navigator, calls } = clipNav("prompt");
+  const h = runGlue("agent", { navigator, outerStubs: outer, wireRemote: true });
+  await tick();
+  const stopsEl = h.els["lg-stops"];
+  assert.ok(stopsEl.children && stopsEl.children.length >= 1, "a saved stop button rendered");
+  calls.readText = 0; // ignore anything before the click
+  stopsEl.children[0].fire("click", { preventDefault() {} });
+  await tick();
+  assert.equal(calls.readText, 0, "teleporting to a saved stop never touches the clipboard");
+});
+
+test("V5 — ineligible (mobile) device wires no clipboard path at all", async () => {
+  const { navigator, calls } = clipNav("granted");
+  // Make it mobile/ineligible.
+  navigator.userAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Safari/604.1";
+  navigator.maxTouchPoints = 5;
+  const h = runGlue("visitor", {
+    navigator,
+    window: { matchMedia: (q) => ({ matches: q === "(pointer: coarse)" }) },
+  });
+  await tick();
+  // The collaboration glue returns at the eligibility gate: the loc-sync pill is
+  // neutralized and NO ambient clipboard listeners are wired, so document-level
+  // triggers read nothing.
+  assert.equal(h.els["loc-sync"].hidden, true, "collaboration pill neutralized on ineligible devices");
+  h.fireDoc("visibilitychange");
+  await tick();
+  assert.equal(calls.readText, 0, "no collaboration/clipboard path on ineligible devices");
 });

@@ -67,7 +67,7 @@ for (const [version, fixture] of [["2.1.0", FIX_210], ["2.2.0", FIX_220]]) {
     assert.equal(dl.html, pr.html, "download html must be EXACTLY the validated result.html");
     assert.equal(dl.filename, rep.replacementFilename);
     assert.equal(dl.mimeType, DOWNLOAD_MIME_TYPE);
-    assert.match(dl.filename, /\.upgraded-2\.2\.1\.html$/);
+    assert.ok(dl.filename.endsWith(`.upgraded-${ATLAS_RUNTIME_VERSION}.html`));
   });
 }
 
