@@ -285,15 +285,20 @@ test("P1 — committed fixture carries no phone-shaped numbers on any surface", 
 });
 
 // ── R. Bootstrapped output carries the corrected clipboard runtime ───────────
-test("R1 — bootstrap output carries the explicit Enable View Sync glue (2.2.3)", () => {
+test("R1 — bootstrap output carries the LEGACY readText-is-source-of-truth glue (2.2.4)", () => {
   const out = boot(FIX).html;
-  // The corrected runtime tracks permission state, gates ambient reads on it,
-  // and exposes the explicit one-time enable gesture.
-  assert.ok(out.includes("clipPermissionState"), "permission-state tracker present");
-  assert.ok(out.includes('navigator.permissions.query({ name: "clipboard-read" })'), "Permissions API tracking present");
-  assert.ok(out.includes('if(clipPermissionState!=="granted") return;'), "ambient reads gated on granted");
-  assert.ok(out.includes("function enableViewSync"), "explicit Enable View Sync gesture present");
+  // 2.2.4 restores the legacy mechanism: readText is the source of truth; NO
+  // permissions.query and NO cached-permission gate.
+  assert.ok(out.includes("function vsRead"), "legacy readText helper present");
+  assert.ok(out.includes("function processClipboardText"), "shared parse/dedupe/send helper present");
+  assert.ok(!out.includes("clipPermissionState"), "no cached clipboard-permission state");
+  // The clipboard read is NOT gated on a Permissions API pre-flight (a stray
+  // navigator.permissions.query for the microphone may exist in the kernel — that
+  // is unrelated; what must be gone is the clipboard-read permission CALL).
+  assert.ok(!out.includes('permissions.query({ name: "clipboard-read" }'), "no clipboard-read permission pre-flight");
+  // Flag-gated, off-by-default debug log.
+  assert.ok(out.includes("__F3D_VIEW_SYNC_DEBUG__"), "acceptance debug flag present");
   // And reinspects at the bumped runtime version.
   assert.equal(boot(FIX).postInspection.runtimeVersion, ATLAS_RUNTIME_VERSION);
-  assert.equal(ATLAS_RUNTIME_VERSION, "2.2.3");
+  assert.equal(ATLAS_RUNTIME_VERSION, "2.2.4");
 });

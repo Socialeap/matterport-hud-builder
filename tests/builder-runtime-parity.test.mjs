@@ -83,20 +83,23 @@ test("Builder fails closed: Draw/Rope refuse without the input kernel", () => {
 });
 
 // ── 3. iOS clipboard isolation (the Apple Paste fix) ─────────────────────
-test("Builder gates ambient clipboard reads off iOS WebKit, active tools, and ungranted permission", () => {
-  assert.ok(RUNTIME.includes("function ambientClipboardAllowed()"), "defines the ambient-read gate");
+test("Builder View Sync uses the legacy readText-is-source-of-truth mechanism (2.2.4)", () => {
+  assert.ok(RUNTIME.includes("function ambientClipboardAllowed()"), "keeps the iOS/tool isolation gate");
   assert.ok(RUNTIME.includes("if(IS_IOS_WEBKIT) return false;"), "iOS never reads ambiently");
-  // 2.2.3: ambient reads NEVER probe — they run only when permission is granted.
+  // readText is the source of truth — NO cached clipboard-permission state, NO
+  // pre-flight Permissions API gate on the ambient path.
+  assert.ok(!RUNTIME.includes("clipPermissionState"), "no cached clipboard-permission state");
   assert.ok(
-    RUNTIME.includes('if(clipPermissionState!=="granted") return;'),
-    "ambient reads are gated on a granted clipboard-read permission",
+    !RUNTIME.includes('permissions.query({ name: "clipboard-read" }'),
+    "does not pre-flight the clipboard-read Permissions API",
   );
-  // The lone not-yet-granted readText() probe lives in the explicit, iOS-gated
-  // Enable View Sync gesture (fired from Start/Join + a pill click), not inline.
-  assert.ok(RUNTIME.includes("function enableViewSync()"), "defines the explicit Enable View Sync gesture");
-  const ev = RUNTIME.slice(RUNTIME.indexOf("function enableViewSync()"), RUNTIME.indexOf("function enableViewSync()") + 400);
-  assert.ok(ev.includes("if(IS_IOS_WEBKIT) return;"), "Enable View Sync is disabled on iOS WebKit");
-  assert.ok(ev.includes("navigator.clipboard.readText"), "Enable View Sync is the readText probe path");
+  assert.ok(!RUNTIME.includes("function enableViewSync"), "the explicit Enable-View-Sync gesture is gone");
+  // The one-time prompt is the Start/Join readText pre-fire; ambient triggers
+  // funnel through schedulePoll → readClipboardAndSend → vsRead.
+  assert.ok(RUNTIME.includes("function vsRead("), "legacy readText helper present");
+  assert.ok(RUNTIME.includes('vsRead("join")') && RUNTIME.includes('vsRead("start")'), "Start/Join pre-fire readText in the gesture");
+  // Acceptance-only debug behind an explicit local flag (off by default).
+  assert.ok(RUNTIME.includes("__F3D_VIEW_SYNC_DEBUG__"), "flag-gated debug log present");
 });
 
 // ── 4. Memory hardening: lazy canvas + DPR budget ────────────────────────

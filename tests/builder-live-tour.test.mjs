@@ -923,31 +923,26 @@ test("location-sync dedup is provenance-aware in the glue source (no blanket sup
   assert.ok(!sendBlock.includes("session.noteCurrentView"), "no duplicated noteCurrentView CALL after sends — the controller owns it");
 });
 
-// ── V. Clipboard-read permission isolation (runtime 2.2.2) ───────────────────
-// Behavioral proof that ambient location-sync reads NEVER act as permission
-// probes: readText() runs only when clipboard-read is already granted, or once
-// inside the Start/Join pre-grant gesture. Drives the REAL glue against a
-// controllable navigator. (PR #172 manual-acceptance defect.)
+// ── V. View Sync clipboard (runtime 2.2.4 — LEGACY readText-is-source-of-truth)
+// readText() success/failure is the source of truth: ambient triggers call it
+// directly with NO Permissions API and NO cached-permission gate. Dedupe is
+// preserved. Drives the REAL glue against a controllable navigator.
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
-// Desktop-eligible navigator with a recording clipboard + a permissions.query
-// resolving to `permState`. readText/query are counted. opts.read controls the
-// readText result: undefined → resolves ""; "reject" → rejects (deny/dismiss/
-// lapse); any other string → resolves that string (e.g. a Matterport URL); a
-// FUNCTION (callIndex) → per-call behavior ("reject" | string) for lapse+retry.
-// fireClip(ev) invokes captured clipboard listeners (e.g. "clipboardchange").
-function clipNav(permState, opts) {
+// Desktop-eligible navigator with a recording clipboard. opts.read controls the
+// readText result: undefined → resolves ""; "reject" → rejects; any other string
+// → resolves it; a FUNCTION (callIndex) → per-call behavior. NOTE: the 2.2.4
+// runtime does NOT call navigator.permissions — it is intentionally absent here
+// to prove ambient reads never depend on a Permissions API "granted" state.
+function clipNav(opts) {
   opts = opts || {};
-  const calls = { readText: 0, query: 0 };
+  const calls = { readText: 0 };
   const clipListeners = {};
   const read = opts.read;
   const navigator = {
     userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0 Safari/537.36",
     platform: "Win32",
     maxTouchPoints: 0,
-    permissions: {
-      query: () => { calls.query += 1; return Promise.resolve({ state: permState, onchange: null }); },
-    },
   };
   if (opts.withClipboard !== false) {
     navigator.clipboard = {
@@ -966,59 +961,81 @@ function clipNav(permState, opts) {
 }
 const MP_URL = "https://my.matterport.com/show/?m=abc&ss=12&sr=1.5,2.5";
 
-test("V1 — ambient poll does NOT call readText when permission is 'prompt'/'unknown'", async () => {
-  for (const permState of ["prompt", "denied"]) {
-    const { navigator, calls } = clipNav(permState);
-    const h = runGlue("visitor", { navigator });
-    await tick(); // let trackClipboardPermission resolve
-    h.letterbox.fire("pointerenter", { pointerType: "mouse" });
-    h.fireDoc("visibilitychange");
-    await tick();
-    assert.equal(calls.readText, 0, `${permState}: ambient reads must not probe`);
-  }
-});
-
-test("V2 — ambient poll CAN read silently after permission is 'granted'", async () => {
-  const { navigator, calls } = clipNav("granted");
-  const h = runGlue("visitor", { navigator });
-  await tick(); // clipPermissionState becomes "granted"
-  h.letterbox.fire("pointerenter", { pointerType: "mouse" });
-  await tick();
-  assert.ok(calls.readText >= 1, "granted state lets ambient sync read silently");
-});
-
-test("V3 — Start/Join (Enable View Sync) is the ONLY probing read path while prompt/unknown", async () => {
-  const { navigator, calls } = clipNav("prompt");
+test("V1 — legacy-style ambient triggers call readText WITHOUT any Permissions API", async () => {
+  const { navigator, calls } = clipNav({});
+  assert.equal(navigator.permissions, undefined, "no Permissions API in this environment");
   const h = runGlue("visitor", { navigator });
   await tick();
-  // No ambient probe has fired yet (state is 'prompt').
   h.letterbox.fire("pointerenter", { pointerType: "mouse" });
   await tick();
-  assert.equal(calls.readText, 0, "no ambient probe before the gesture");
-  // The Join gesture runs Enable View Sync exactly once, inside the click.
-  h.els["lg-pin-input"].value = "1234";
-  h.els["lg-join-btn"].fire("click", { preventDefault() {} });
-  assert.equal(calls.readText, 1, "Enable View Sync probes exactly once in the user gesture");
+  assert.ok(calls.readText >= 1, "ambient read happens with no permissions.query gate");
 });
 
-test("V4 — a saved/bookmark stop click does NOT read the clipboard", async () => {
+test("V2 — a copied Matterport URL on an ambient trigger syncs immediately", async () => {
+  const { navigator, calls } = clipNav({ read: MP_URL });
+  const h = runGlue("visitor", { navigator });
+  await tick();
+  h.letterbox.fire("pointerenter", { pointerType: "mouse" });
+  await tick();
+  assert.equal(calls.readText, 1, "one read");
+  assert.equal((h.spy.sends || []).length, 1, "the URL is sent immediately");
+  assert.deepEqual(h.spy.sends[0], { kind: "share", ss: "12", sr: "1.5,2.5" });
+  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "success");
+});
+
+// Past the LOC_SYNC_POLL_THROTTLE_MS (800ms) ambient throttle, so the SECOND
+// trigger actually reads and we isolate the dedupe/retry behavior (not throttle).
+const PAST_THROTTLE = () => new Promise((r) => setTimeout(r, 850));
+
+test("V3 — repeated identical clipboard text does NOT double-send (text dedupe)", async () => {
+  const { navigator, calls, fireClip } = clipNav({ read: MP_URL });
+  const h = runGlue("visitor", { navigator });
+  await tick();
+  fireClip("clipboardchange", {}); // first copy → read #0 → sends
+  await tick();
+  assert.equal((h.spy.sends || []).length, 1, "sent once");
+  await PAST_THROTTLE();
+  h.fireDoc("visibilitychange"); // read #1 of the SAME URL → dedup, no resend
+  await tick();
+  assert.equal(calls.readText, 2, "the second trigger DID read (throttle cleared)");
+  assert.equal((h.spy.sends || []).length, 1, "identical text never double-sends (dedupe, not throttle)");
+});
+
+test("V4 — a rejected read stays quiet and does NOT break the session; a later read still syncs", async () => {
+  // First read rejects (denied/no focus); the next trigger reads the URL and syncs.
+  const { navigator, calls, fireClip } = clipNav({ read: (i) => (i === 0 ? "reject" : MP_URL) });
+  const h = runGlue("visitor", { navigator });
+  await tick();
+  fireClip("clipboardchange", {}); // read #0 → reject (quiet)
+  await tick();
+  assert.equal((h.spy.sends || []).length, 0, "nothing sent on a rejected read");
+  await PAST_THROTTLE();
+  h.letterbox.fire("pointerenter", { pointerType: "mouse" }); // read #1 → URL
+  await tick();
+  assert.equal(calls.readText, 2, "session still reads after a rejection");
+  assert.equal((h.spy.sends || []).length, 1, "a later good read syncs");
+});
+
+test("V5 — a saved/bookmark stop click sends coords directly without a clipboard read", async () => {
   const outer =
     'var props=[{ name:"P", iframeUrl:"https://my.matterport.com/show/?m=abc&play=1", ' +
     'liveTourStops:[{ name:"Kitchen", ss:"5", sr:"1,2" }] }]; var current=0;';
-  const { navigator, calls } = clipNav("prompt");
+  const { navigator, calls } = clipNav({});
   const h = runGlue("agent", { navigator, outerStubs: outer, wireRemote: true });
   await tick();
   const stopsEl = h.els["lg-stops"];
   assert.ok(stopsEl.children && stopsEl.children.length >= 1, "a saved stop button rendered");
-  calls.readText = 0; // ignore anything before the click
+  calls.readText = 0;
+  h.spy.sends = [];
   stopsEl.children[0].fire("click", { preventDefault() {} });
   await tick();
-  assert.equal(calls.readText, 0, "teleporting to a saved stop never touches the clipboard");
+  assert.equal(calls.readText, 0, "stop click never reads the clipboard");
+  assert.equal((h.spy.sends || []).length, 1, "stop click sends the known coordinates directly");
+  assert.deepEqual(h.spy.sends[0], { kind: "teleport", ss: "5", sr: "1,2" });
 });
 
-test("V5 — ineligible (mobile) device wires no clipboard path at all", async () => {
-  const { navigator, calls } = clipNav("granted");
-  // Make it mobile/ineligible.
+test("V6 — ineligible (mobile) device wires no clipboard path at all", async () => {
+  const { navigator, calls } = clipNav({ read: MP_URL });
   navigator.userAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Safari/604.1";
   navigator.maxTouchPoints = 5;
   const h = runGlue("visitor", {
@@ -1026,122 +1043,20 @@ test("V5 — ineligible (mobile) device wires no clipboard path at all", async (
     window: { matchMedia: (q) => ({ matches: q === "(pointer: coarse)" }) },
   });
   await tick();
-  // The collaboration glue returns at the eligibility gate: the loc-sync pill is
-  // neutralized and NO ambient clipboard listeners are wired, so document-level
-  // triggers read nothing.
   assert.equal(h.els["loc-sync"].hidden, true, "collaboration pill neutralized on ineligible devices");
   h.fireDoc("visibilitychange");
   await tick();
-  assert.equal(calls.readText, 0, "no collaboration/clipboard path on ineligible devices");
+  assert.equal(calls.readText, 0, "no clipboard path on ineligible devices");
 });
 
-test("V6 — clicking the pill is the explicit Enable View Sync gesture (prompt → granted)", async () => {
-  const { navigator, calls } = clipNav("prompt");
+test("V7 — the pill is informational only (no click/keydown clipboard read)", async () => {
+  const { navigator, calls } = clipNav({ read: MP_URL });
   const h = runGlue("visitor", { navigator });
   await tick();
-  // Connected but not granted → the pill is actionable "Enable View Sync".
-  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "enable");
-  h.els["loc-sync"].fire("click", { preventDefault() {} });
-  assert.equal(calls.readText, 1, "the pill click probes exactly once");
+  const pill = h.els["loc-sync"];
+  assert.equal((pill._h.click || []).length, 0, "no click handler on the pill");
+  assert.equal((pill._h.keydown || []).length, 0, "no keydown handler on the pill");
+  pill.fire("click", { preventDefault() {} }); // no-op
   await tick();
-  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "idle", "granted → View Sync ready");
-});
-
-test("V7 — after granted, a Matterport Copy (clipboardchange) reads once and syncs", async () => {
-  const url = "https://my.matterport.com/show/?m=abc&ss=12&sr=1.5,2.5";
-  const { navigator, calls, fireClip } = clipNav("granted", { read: url });
-  const h = runGlue("visitor", { navigator });
-  await tick();
-  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "idle", "granted → ready");
-  fireClip("clipboardchange", {});
-  await tick();
-  assert.equal(calls.readText, 1, "exactly one read on the copy event");
-  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "success", "a parsed location syncs");
-});
-
-test("V8 — a dismissed Enable gesture shows not-ready and does NOT keep prompting", async () => {
-  const { navigator, calls, fireClip } = clipNav("prompt", { read: "reject" });
-  const h = runGlue("visitor", { navigator });
-  await tick();
-  h.els["loc-sync"].fire("click", { preventDefault() {} }); // explicit attempt → rejected
-  assert.equal(calls.readText, 1, "one explicit attempt");
-  await tick();
-  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "needed", "denied → actionable not-ready");
-  // Subsequent ambient triggers must NOT re-prompt.
-  fireClip("clipboardchange", {});
-  h.letterbox.fire("pointerenter", { pointerType: "mouse" });
-  h.fireDoc("visibilitychange");
-  await tick();
-  assert.equal(calls.readText, 1, "no repeated clipboard prompts after a denial");
-});
-
-test("V9 — a lapsed grant self-heals: one rejected ambient read, then no more prompts", async () => {
-  const { navigator, calls, fireClip } = clipNav("granted", { read: "reject" });
-  const h = runGlue("visitor", { navigator });
-  await tick();
-  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "idle", "granted → ready");
-  // First copy after the browser silently lapsed the grant → read rejects.
-  fireClip("clipboardchange", {});
-  await tick();
-  assert.equal(calls.readText, 1, "one ambient read attempt");
-  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "enable", "lapsed grant flips back to actionable");
-  // Further copies / ambient triggers do NOT keep reading (no repeated prompts).
-  fireClip("clipboardchange", {});
-  h.fireDoc("visibilitychange");
-  await tick();
-  assert.equal(calls.readText, 1, "no repeated prompts after the grant lapsed");
-});
-
-test("V10 — Enable View Sync with a Matterport URL already on the clipboard syncs immediately", async () => {
-  const { navigator, calls } = clipNav("prompt", { read: MP_URL });
-  const h = runGlue("visitor", { navigator });
-  await tick();
-  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "enable");
-  h.els["loc-sync"].fire("click", { preventDefault() {} });
-  assert.equal(calls.readText, 1, "one read from the enable gesture");
-  await tick();
-  assert.equal((h.spy.sends || []).length, 1, "the already-present URL is sent from the enable gesture");
-  assert.deepEqual(h.spy.sends[0], { kind: "share", ss: "12", sr: "1.5,2.5" });
-  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "success", "syncs immediately");
-});
-
-test("V11 — Enable View Sync with a non-Matterport clipboard marks ready but does NOT send", async () => {
-  const { navigator, calls } = clipNav("prompt", { read: "just some copied text" });
-  const h = runGlue("visitor", { navigator });
-  await tick();
-  h.els["loc-sync"].fire("click", { preventDefault() {} });
-  assert.equal(calls.readText, 1);
-  await tick();
-  assert.equal((h.spy.sends || []).length, 0, "no send for a non-Matterport clipboard");
-  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "idle", "View Sync ready, no false success pulse");
-});
-
-test("V12 — a clipboardchange echoing the just-enabled URL does NOT double-send", async () => {
-  const { navigator, fireClip } = clipNav("prompt", { read: MP_URL });
-  const h = runGlue("visitor", { navigator });
-  await tick();
-  h.els["loc-sync"].fire("click", { preventDefault() {} }); // enable → sends once
-  await tick();
-  assert.equal((h.spy.sends || []).length, 1, "sent once from the enable gesture");
-  // Matterport "Copy" fires clipboardchange with the SAME URL — must be a no-op.
-  fireClip("clipboardchange", {});
-  await tick();
-  assert.equal((h.spy.sends || []).length, 1, "dedupe prevents a double-send");
-});
-
-test("V13 — a lapsed grant retried via the pill syncs on the retry gesture itself", async () => {
-  // Start granted; the FIRST read (ambient) rejects (grant lapsed); the SECOND
-  // read (pill retry) resolves the Matterport URL still on the clipboard.
-  const { navigator, calls, fireClip } = clipNav("granted", { read: (i) => (i === 0 ? "reject" : MP_URL) });
-  const h = runGlue("visitor", { navigator });
-  await tick();
-  fireClip("clipboardchange", {}); // ambient read → rejects → flips to actionable
-  await tick();
-  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "enable", "lapsed grant → actionable");
-  assert.equal((h.spy.sends || []).length, 0, "nothing sent yet");
-  h.els["loc-sync"].fire("click", { preventDefault() {} }); // retry gesture
-  await tick();
-  assert.equal(calls.readText, 2, "one ambient + one retry read");
-  assert.equal((h.spy.sends || []).length, 1, "the retry gesture itself syncs");
-  assert.equal(h.els["loc-sync"].getAttribute("data-state"), "success");
+  assert.equal(calls.readText, 0, "clicking the pill never reads the clipboard");
 });
