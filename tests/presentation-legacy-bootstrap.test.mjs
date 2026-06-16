@@ -285,20 +285,25 @@ test("P1 — committed fixture carries no phone-shaped numbers on any surface", 
 });
 
 // ── R. Bootstrapped output carries the corrected clipboard runtime ───────────
-test("R1 — bootstrap output carries the LEGACY readText-is-source-of-truth glue (2.2.4)", () => {
+test("R1 — bootstrap output carries the 2.2.5 runtime (legacy View Sync + shared-annotation persistence)", () => {
   const out = boot(FIX).html;
-  // 2.2.4 restores the legacy mechanism: readText is the source of truth; NO
-  // permissions.query and NO cached-permission gate.
+  // Legacy readText-is-source-of-truth clipboard (2.2.4): NO permissions.query,
+  // NO cached-permission gate.
   assert.ok(out.includes("function vsRead"), "legacy readText helper present");
   assert.ok(out.includes("function processClipboardText"), "shared parse/dedupe/send helper present");
   assert.ok(!out.includes("clipPermissionState"), "no cached clipboard-permission state");
-  // The clipboard read is NOT gated on a Permissions API pre-flight (a stray
-  // navigator.permissions.query for the microphone may exist in the kernel — that
-  // is unrelated; what must be gone is the clipboard-read permission CALL).
   assert.ok(!out.includes('permissions.query({ name: "clipboard-read" }'), "no clipboard-read permission pre-flight");
-  // Flag-gated, off-by-default debug log.
   assert.ok(out.includes("__F3D_VIEW_SYNC_DEBUG__"), "acceptance debug flag present");
+  // Shared-annotation persistence (2.2.5): a View Sync converges the view key but
+  // does NOT wipe — attemptSendLocation / applyTeleport no longer reset the scene.
+  const sendStart = out.indexOf("function attemptSendLocation");
+  const sendBlock = out.slice(sendStart, out.indexOf("function ", sendStart + 1));
+  assert.ok(sendBlock.includes("currentViewKey=key;"), "attemptSendLocation converges the key");
+  assert.ok(!sendBlock.includes("wipeAnnotations()"), "attemptSendLocation does NOT wipe on send");
+  const teleStart = out.indexOf("function applyTeleport");
+  const teleBlock = out.slice(teleStart, out.indexOf("function ", teleStart + 1));
+  assert.ok(!teleBlock.includes("wipeAnnotations()"), "applyTeleport does NOT wipe on inbound sync");
   // And reinspects at the bumped runtime version.
   assert.equal(boot(FIX).postInspection.runtimeVersion, ATLAS_RUNTIME_VERSION);
-  assert.equal(ATLAS_RUNTIME_VERSION, "2.2.4");
+  assert.equal(ATLAS_RUNTIME_VERSION, "2.2.5");
 });

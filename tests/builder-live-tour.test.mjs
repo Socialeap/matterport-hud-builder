@@ -83,7 +83,13 @@ FakeEl.prototype.querySelectorAll = function () { return []; };
 FakeEl.prototype.getContext = function () {
   if (!this._ctx) {
     const noop = () => {};
-    this._ctx = { clearRect: noop, setTransform: noop, beginPath: noop, moveTo: noop, lineTo: noop, stroke: noop, arc: noop, fill: noop };
+    // Count strokes drawn per redraw: redrawAllStrokes() clearRect()s once then
+    // beginPath()s once per drawn stroke, so `_drawn` after a redraw == the
+    // number of strokes currently rendered (committed localStrokes + active).
+    const ctx = { _drawn: 0, setTransform: noop, moveTo: noop, lineTo: noop, stroke: noop, arc: noop, fill: noop };
+    ctx.clearRect = () => { ctx._drawn = 0; };
+    ctx.beginPath = () => { ctx._drawn += 1; };
+    this._ctx = ctx;
   }
   return this._ctx;
 };
@@ -113,7 +119,10 @@ function makeFakeDom() {
 }
 
 // Connected controller with stroke spies (agent role → keyboard hotkeys work).
-function makeConnectedController(role, spy) {
+// `onSend` (optional) receives a normalized record for every OUTBOUND wire
+// message so a paired test can relay it to the peer instance.
+function makeConnectedController(role, spy, onSend) {
+  const emitSend = (rec) => { if (typeof onSend === "function") onSend(rec); };
   const state = {
     role, status: "connected", pin: "1234", peerId: "peer", error: null,
     isConnected: true, remoteStream: null, voiceCallActive: false,
@@ -125,25 +134,29 @@ function makeConnectedController(role, spy) {
     subscribe: () => () => {},
     initializeAsAgent: () => Promise.resolve({ pin: "1234", peerId: "host" }),
     joinAsVisitor: (pin) => Promise.resolve({ pin, peerId: "guest" }),
-    teleportVisitor: (ss, sr) => { (spy.sends || (spy.sends = [])).push({ kind: "teleport", ss, sr }); return true; },
-    shareLocationWithAgent: (ss, sr) => { (spy.sends || (spy.sends = [])).push({ kind: "share", ss, sr }); return true; },
+    teleportVisitor: (ss, sr) => { (spy.sends || (spy.sends = [])).push({ kind: "teleport", ss, sr }); emitSend({ m: "teleport", ss, sr }); return true; },
+    shareLocationWithAgent: (ss, sr) => { (spy.sends || (spy.sends = [])).push({ kind: "share", ss, sr }); emitSend({ m: "share", ss, sr }); return true; },
     noteCurrentView: (ss, sr) => {
       (spy.note || (spy.note = [])).push([ss, sr]);
       return true;
     },
     sendPointer: () => true,
     sendStrokeBegin: (vk, sid, color, width, points) => {
-      spy.begin.push({ vk, sid, points: Array.isArray(points) ? points.map((p) => p.slice()) : [] });
+      const pts = Array.isArray(points) ? points.map((p) => p.slice()) : [];
+      spy.begin.push({ vk, sid, points: pts });
+      emitSend({ m: "begin", vk, sid, color, width, points: pts });
       return true;
     },
     sendStrokePatch: (vk, sid, points) => {
-      spy.patch.push({ sid, points: Array.isArray(points) ? points.map((p) => p.slice()) : [] });
+      const pts = Array.isArray(points) ? points.map((p) => p.slice()) : [];
+      spy.patch.push({ sid, points: pts });
+      emitSend({ m: "patch", vk, sid, points: pts });
       return true;
     },
-    sendStrokeCommit: (vk, sid) => { spy.commit.push(sid); return true; },
-    sendClear: () => { (spy.clear || (spy.clear = [])).push(true); return true; },
-    sendNavLock: (vk, locked) => { (spy.navlock || (spy.navlock = [])).push({ vk, locked }); return true; },
-    sendStrokeDelete: (vk, ids) => { (spy.deletes || (spy.deletes = [])).push({ vk, ids: ids.slice() }); return true; },
+    sendStrokeCommit: (vk, sid) => { spy.commit.push(sid); emitSend({ m: "commit", vk, sid }); return true; },
+    sendClear: (vk) => { (spy.clear || (spy.clear = [])).push(true); emitSend({ m: "clear", vk }); return true; },
+    sendNavLock: (vk, locked) => { (spy.navlock || (spy.navlock = [])).push({ vk, locked }); emitSend({ m: "navlock", vk, locked }); return true; },
+    sendStrokeDelete: (vk, ids) => { (spy.deletes || (spy.deletes = [])).push({ vk, ids: ids.slice() }); emitSend({ m: "delete", vk, ids: ids.slice() }); return true; },
     dispose: () => {},
   };
 }
@@ -181,7 +194,7 @@ function runGlue(role = "agent", opts = {}) {
   let _push = null;
   const controllerFactory = () => {
     spy.factoryCalls += 1;
-    const c = makeConnectedController(role, spy);
+    const c = makeConnectedController(role, spy, opts.onSend);
     _controller = c;
     // Capture the glue's onState subscriber so tests can push inbound
     // (remote-peer) state — strokes, nav_lock floor, stroke_delete.
@@ -1059,4 +1072,153 @@ test("V7 — the pill is informational only (no click/keydown clipboard read)", 
   pill.fire("click", { preventDefault() {} }); // no-op
   await tick();
   assert.equal(calls.readText, 0, "clicking the pill never reads the clipboard");
+});
+
+// ── W. Shared-annotation persistence across View Sync (PAIRED, runtime 2.2.5)
+// Two REAL glue instances (Host=agent, Guest=visitor) wired peer-to-peer via the
+// controller onSend relay. The fake 2D ctx counts strokes drawn per redraw
+// (clearRect resets, beginPath increments), so `canvas.getContext()._drawn`
+// after a redraw == the number of strokes currently rendered. A wipe would
+// redraw to 0; persistence keeps the count.
+function strokes(h) { return h.canvas.getContext()._drawn; }
+
+// Pair two instances; relay each side's outbound wire messages to the other's
+// inbound onState. Monotonic seq/ts so the glue's per-type dedupe accepts each.
+function pairedSession() {
+  let SEQ = 1;
+  const peers = {};
+  function deliver(targetName, rec) {
+    const target = peers[targetName];
+    if (!target) return;
+    const seq = SEQ++, ts = SEQ++;
+    let patch = null;
+    if (rec.m === "begin") patch = { incomingStrokeEvent: { viewKey: rec.vk, seq, kind: "begin", strokeId: rec.sid, color: rec.color, width: rec.width, points: rec.points, ts } };
+    else if (rec.m === "patch") patch = { incomingStrokeEvent: { viewKey: rec.vk, seq, kind: "patch", strokeId: rec.sid, points: rec.points, ts } };
+    else if (rec.m === "commit") patch = { incomingStrokeEvent: { viewKey: rec.vk, seq, kind: "commit", strokeId: rec.sid, ts } };
+    else if (rec.m === "delete") patch = { incomingStrokeDeleteEvent: { viewKey: rec.vk, seq, strokeIds: rec.ids, ts } };
+    else if (rec.m === "clear") patch = { incomingClearEvent: { viewKey: rec.vk, seq, ts } };
+    else if (rec.m === "navlock") patch = { incomingNavLockEvent: { viewKey: rec.vk, seq, locked: rec.locked, ts } };
+    else if (rec.m === "teleport") patch = { incomingTeleportEvent: { ss: rec.ss, sr: rec.sr, seq, ts } };
+    else if (rec.m === "share") patch = { incomingLocationShareEvent: { ss: rec.ss, sr: rec.sr, seq, ts } };
+    if (patch) target.emit(patch);
+  }
+  const hostNav = clipNav({ read: MP_URL });
+  const guestNav = clipNav({ read: MP_URL });
+  const host = runGlue("agent", { navigator: hostNav.navigator, wireRemote: true, onSend: (r) => deliver("guest", r) });
+  const guest = runGlue("visitor", { navigator: guestNav.navigator, wireRemote: true, onSend: (r) => deliver("host", r) });
+  peers.host = host; peers.guest = guest;
+  return { host, guest, hostFireClip: hostNav.fireClip, guestFireClip: guestNav.fireClip };
+}
+
+// Tool selection via the TOOLBAR — works for BOTH roles (keyboard hotkeys are
+// agent-only). Synthesizes the click target the handler reads (closest(.anno-
+// tool-btn) → getAttribute("data-tool")).
+function selectTool(h, tool) {
+  const btn = { getAttribute: (k) => (k === "data-tool" ? tool : null) };
+  h.els["anno-toolbar"].fire("click", { target: { closest: () => btn }, preventDefault() {} });
+}
+function drawOn(h, id, x, y) {
+  selectTool(h, "draw");
+  h.canvas.fire("pointerdown", ev(id, x, y, "mouse"));
+  h.canvas.fire("pointerup", ev(id, x, y, "mouse"));
+}
+function eraseOn(h, id, x, y) {
+  selectTool(h, "eraser");
+  h.canvas.fire("pointerdown", ev(id, x, y, "mouse"));
+  h.canvas.fire("pointerup", ev(id, x, y, "mouse"));
+}
+// Host (agent) does U + Copy: clear the tool first (ambient reads are blocked
+// while an annotation tool is active), then a clipboardchange drives
+// attemptSendLocation, which relays a teleport to the Guest (applyTeleport) —
+// exercising BOTH former wipe sites.
+async function hostSync(p) {
+  p.host.fireDoc("keydown", { key: "Escape" }); // agent: leave the tool
+  p.hostFireClip("clipboardchange", {});
+  await tick();
+}
+
+test("W1 — Host draws → Guest sees it; Guest draws → Host retains BOTH (paired)", () => {
+  const p = pairedSession();
+  drawOn(p.host, 1, 200, 200);          // Host S1
+  assert.equal(strokes(p.host), 1, "host shows its own stroke");
+  assert.equal(strokes(p.guest), 1, "guest received host's stroke");
+  drawOn(p.guest, 2, 600, 400);         // Guest S2
+  assert.equal(strokes(p.guest), 2, "guest shows host + guest");
+  assert.equal(strokes(p.host), 2, "host RETAINS both after guest draws");
+  drawOn(p.host, 3, 300, 300);          // Host again
+  assert.equal(strokes(p.host), 3, "all three on host");
+  assert.equal(strokes(p.guest), 3, "all three on guest");
+});
+
+test("W2 — reverse order: Guest draws first → Host sees → Host draws → Guest retains both", () => {
+  const p = pairedSession();
+  drawOn(p.guest, 1, 200, 200);
+  assert.equal(strokes(p.host), 1, "host received guest's stroke");
+  drawOn(p.host, 2, 600, 400);
+  assert.equal(strokes(p.host), 2);
+  assert.equal(strokes(p.guest), 2, "guest RETAINS both after host draws");
+});
+
+test("W3 — a View Sync does NOT wipe; annotation continues to accumulate after sync", async () => {
+  const p = pairedSession();
+  drawOn(p.host, 1, 200, 200);
+  drawOn(p.guest, 2, 600, 400);
+  assert.equal(strokes(p.host), 2);
+  assert.equal(strokes(p.guest), 2);
+  await hostSync(p);                     // U + Copy on host → teleport to guest
+  assert.equal(strokes(p.host), 2, "host marks survive its own send (no wipe)");
+  assert.equal(strokes(p.guest), 2, "guest marks survive the inbound sync (no wipe)");
+  drawOn(p.guest, 3, 300, 300);          // annotate after sync
+  assert.equal(strokes(p.guest), 3);
+  assert.equal(strokes(p.host), 3, "post-sync annotation accumulates on both");
+});
+
+test("W4 — strokes drawn under the empty key survive the FIRST sync (key migration)", async () => {
+  const p = pairedSession();
+  // No sync yet → currentViewKey is "" on both; strokes go out with empty key.
+  drawOn(p.host, 1, 220, 220);
+  drawOn(p.guest, 2, 640, 360);
+  assert.equal(strokes(p.host), 2);
+  assert.equal(strokes(p.guest), 2);
+  await hostSync(p);                     // first sync establishes ss|sr on both
+  assert.equal(strokes(p.host), 2, "empty-key marks not orphaned/erased on host");
+  assert.equal(strokes(p.guest), 2, "empty-key marks not orphaned/erased on guest");
+});
+
+test("W5 — Eraser removes a selected Host OR Guest stroke without clearing the others", () => {
+  const p = pairedSession();
+  drawOn(p.host, 1, 200, 200);           // S1 authored by host
+  drawOn(p.guest, 2, 600, 400);          // S2 authored by guest
+  assert.equal(strokes(p.guest), 2);
+  // Guest erases the HOST-authored stroke (committed on guest via begin+commit).
+  eraseOn(p.guest, 9, 200, 200);
+  assert.equal(strokes(p.guest), 1, "guest removed only the selected (host) stroke");
+  assert.equal(strokes(p.host), 1, "the erase synced; host dropped that stroke too");
+  // The survivor is S2 — erasing at S2's spot clears it; an unrelated spot does not.
+  eraseOn(p.guest, 10, 50, 50);
+  assert.equal(strokes(p.guest), 1, "erasing empty space removes nothing");
+  eraseOn(p.guest, 11, 600, 400);
+  assert.equal(strokes(p.guest), 0, "erasing the survivor's spot clears it");
+  assert.equal(strokes(p.host), 0, "host converged to empty too");
+});
+
+test("W6 — Clear is the only broad wipe: it clears BOTH sides", () => {
+  const p = pairedSession();
+  drawOn(p.host, 1, 200, 200);
+  drawOn(p.guest, 2, 600, 400);
+  assert.equal(strokes(p.host), 2);
+  p.host.fireDoc("keydown", { key: "c" }); // explicit Clear
+  assert.equal(strokes(p.host), 0, "Clear wipes the initiator");
+  assert.equal(strokes(p.guest), 0, "Clear wipes the peer");
+});
+
+test("W7 — switching tools never clears committed annotations", () => {
+  const p = pairedSession();
+  drawOn(p.host, 1, 200, 200);
+  drawOn(p.guest, 2, 600, 400);
+  assert.equal(strokes(p.host), 2);
+  // Cycle every tool on the host — none may wipe.
+  for (const k of ["p", "d", "r", "e", "Escape"]) p.host.fireDoc("keydown", { key: k });
+  drawOn(p.host, 3, 300, 300); // force a redraw to re-measure
+  assert.equal(strokes(p.host), 3, "all committed marks survived the tool changes");
 });
