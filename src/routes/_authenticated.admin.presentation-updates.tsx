@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useRef, useState } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -43,6 +43,100 @@ import {
 export const Route = createFileRoute("/_authenticated/admin/presentation-updates")({
   component: AdminPresentationUpdates,
 });
+
+// ── Module-scoped session store ─────────────────────────────────────────────
+// The upgrade session (selected file, inspection, report, download) lives at
+// module scope so it survives route unmount/remount — navigating to another
+// admin tab and returning preserves the user's selection and summary. The
+// raw HTML stays in a module variable (never rendered, never persisted to
+// disk), matching the prior in-memory-only handling. State is cleared only
+// when the user presses Clear, selects a new file, or reloads the page.
+
+type SessionSnapshot = {
+  fileName: string | null;
+  fileSize: number | null;
+  inspection: InspectionReport | null;
+  legacyProfile: LegacyProfileReport | null;
+  report: UpgradeReport | LegacyBootstrapReport | null;
+  download: DownloadPayload | null;
+  error: string | null;
+  reading: boolean;
+  upgrading: boolean;
+};
+
+const initialSnapshot: SessionSnapshot = {
+  fileName: null,
+  fileSize: null,
+  inspection: null,
+  legacyProfile: null,
+  report: null,
+  download: null,
+  error: null,
+  reading: false,
+  upgrading: false,
+};
+
+let moduleSnapshot: SessionSnapshot = initialSnapshot;
+let moduleHtml: string | null = null;
+const listeners = new Set<() => void>();
+
+function subscribeSession(fn: () => void) {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
+}
+function getSessionSnapshot() {
+  return moduleSnapshot;
+}
+function applyModuleState(p: UpgradeControllerState) {
+  if ("html" in p) moduleHtml = p.html ?? null;
+  const next: SessionSnapshot = { ...moduleSnapshot };
+  let changed = false;
+  const keys: (keyof SessionSnapshot)[] = [
+    "fileName",
+    "fileSize",
+    "inspection",
+    "legacyProfile",
+    "report",
+    "download",
+    "error",
+    "reading",
+    "upgrading",
+  ];
+  for (const k of keys) {
+    if (k in p) {
+      const raw = (p as Record<string, unknown>)[k];
+      const coerced =
+        k === "reading" || k === "upgrading" ? !!raw : (raw ?? null);
+      if ((next as Record<string, unknown>)[k] !== coerced) {
+        (next as Record<string, unknown>)[k] = coerced;
+        changed = true;
+      }
+    }
+  }
+  if (changed) {
+    moduleSnapshot = next;
+    listeners.forEach((l) => l());
+  }
+}
+
+let moduleController: UpgradeController | null = null;
+function getController(): UpgradeController {
+  if (moduleController === null) {
+    moduleController = createUpgradeController({
+      checkSize: checkPresentationHtmlSize,
+      readFile: (file) => (file as File).text(),
+      runUpgrade: (args) => runUpgradeSession(args),
+      sink: {
+        setState: applyModuleState,
+        toastSuccess: (m) => toast.success(m),
+        toastError: (m) => toast.error(m),
+      },
+    });
+  }
+  return moduleController;
+}
 
 // ── Small presentational helpers ────────────────────────────────────────────
 
