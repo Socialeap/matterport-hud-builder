@@ -30,6 +30,7 @@ const RUNTIME_SOURCES = {
   annoInputJs: stripExports(read("src", "lib", "portal", "anno-input.mjs")),
 };
 const FIX_210 = read("tests", "fixtures", "builder-2.1.0.sanitized.html");
+const FIX_LEGACY = read("tests", "fixtures", "legacy-builder-may2026.sanitized.html");
 
 function deferred() {
   let resolve, reject;
@@ -224,4 +225,16 @@ test("I9 — a throwing runtime-source provider yields a guarded error, no downl
   assert.ok(state.error && state.error.length > 0);
   assert.equal(state.upgrading, false);
   assert.ok(toasts.some((t) => t.type === "error"));
+});
+
+// 10. A recognized legacy file: select stores both the inspection and the
+//     matched legacy profile so the route can offer the bootstrap.
+test("I10 — select stores the matched legacy profile (recognized legacy file)", async () => {
+  const { state, reads, controller } = harness();
+  controller.select({ name: "index.html", type: "text/html", size: FIX_LEGACY.length });
+  reads[0].resolve(FIX_LEGACY);
+  await tick();
+  assert.equal(state.inspection.outcome, "legacy_unsupported");
+  assert.ok(state.legacyProfile && state.legacyProfile.supported === true, "legacy profile stored + supported");
+  assert.equal(state.legacyProfile.profileId, "builder-may2026-f8f68f0");
 });

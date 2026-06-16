@@ -22,6 +22,21 @@
 //     (controller + glue + CSS). Bump on every behavior change; the
 //     Upgrade Center compares this value to decide "outdated".
 const ATLAS_PACKAGE_SCHEMA = 2;
+// 2.2.2: Builder runtime clipboard-permission isolation — brought to parity
+// with the Atlas runtime. The Builder live-tour glue previously called
+// navigator.clipboard.readText() on EVERY ambient trigger (focus /
+// visibilitychange / letterbox pointerenter / clipboardchange) with no
+// permission-state gate, so on a not-yet-granted environment ordinary pointer
+// movement, saved/bookmark stop clicks, and a Matterport "Copy to clipboard"
+// each raised a clipboard-read prompt — and view sync only worked after the
+// sender approved that prompt. Fix: track navigator.permissions.query({ name:
+// "clipboard-read" }) WITHOUT calling readText (clipPermissionState +
+// onchange); ambient polls read silently ONLY when state is "granted"; the
+// single not-yet-granted readText() probe stays inside the Start/Join click
+// gesture (pre-grant), which also flips the state to "granted" on success so
+// later ambient reads are silent. Desktop-only; no mobile change; no Matterport
+// SDK. Packages at <= 2.2.1 carry the over-eager polling — that is what makes
+// them "outdated" to the Upgrade Center.
 // 2.2.1: P0 fix — Explore Together host→guest direction. Three latent
 // defects made the host→guest half of a session fail while guest→host
 // kept working: (1) the glue and the transport controller each kept
@@ -86,7 +101,7 @@ const ATLAS_PACKAGE_SCHEMA = 2;
 // 2.0.1: iOS clipboard isolation — ambient readText() disabled on
 // iOS/iPadOS WebKit (Paste-callout interruption fix) + stage-scoped
 // WebKit gesture defenses.
-const ATLAS_RUNTIME_VERSION = "2.2.1";
+const ATLAS_RUNTIME_VERSION = "2.2.2";
 
 // SUPPORTED-CURRENT capabilities — what freshly generated packages
 // advertise. Live Tour / Explore Together is desktop-only (2026-06-09), so

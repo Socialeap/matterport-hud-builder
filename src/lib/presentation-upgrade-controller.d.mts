@@ -5,13 +5,17 @@ import type {
   UpgradeReport,
   DownloadPayload,
   UpgradeSessionResult,
+  LegacyBootstrapReport,
+  LegacyProfileReport,
 } from "./presentation-upgrade-session.mjs";
 
 export interface UpgradeControllerState {
   fileName?: string | null;
   fileSize?: number | null;
   inspection?: InspectionReport | null;
-  report?: UpgradeReport | null;
+  /** Set when the inspection is legacy_unsupported but a bootstrap profile matched. */
+  legacyProfile?: LegacyProfileReport | null;
+  report?: UpgradeReport | LegacyBootstrapReport | null;
   download?: DownloadPayload | null;
   error?: string | null;
   reading?: boolean;

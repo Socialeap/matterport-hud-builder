@@ -1420,9 +1420,6 @@ export const BUILDER_JS_GLUE_SPAN = `// f3d:runtime-js:glue BEGIN v=1 family=bui
   var LOC_SYNC_POLL_THROTTLE_MS=800;
   var LOC_SYNC_SUCCESS_RESET_MS=1800;
   var LOC_SYNC_TIPS_HIDE_DELAY_MS=250;
-  // locSyncGranted is a hint, not a hard gate — every poll attempts
-  // readText() inside try/catch and degrades gracefully on rejection.
-  var locSyncGranted=false;
   var locSyncLastPollTs=0;
   var lastReadClipText="";
   var lastSentLocationKey="";
@@ -1493,7 +1490,9 @@ export const BUILDER_JS_GLUE_SPAN = `// f3d:runtime-js:glue BEGIN v=1 family=bui
     },LOC_SYNC_SUCCESS_RESET_MS);
   }
   function resetLocationSyncUi(){
-    locSyncGranted=false;
+    // clipPermissionState is a BROWSER fact (tracked via the Permissions API),
+    // not session state — it persists across teardown and is intentionally NOT
+    // reset here.
     locSyncLastPollTs=0;
     lastReadClipText="";
     lastSentLocationKey="";
@@ -1597,10 +1596,35 @@ export const BUILDER_JS_GLUE_SPAN = `// f3d:runtime-js:glue BEGIN v=1 family=bui
   // Only NEW Matterport URLs flash the pulse (syncing → success → idle).
   // Repeat reads, non-Matterport clipboards, and rejected reads stay
   // silent so the pill doesn't strobe during normal interaction.
-  // We deliberately don't pre-flight navigator.permissions.query() —
-  // it returned stale "denied" on file:// while the live popup was
-  // pending. readText() raises the popup itself; the Promise outcome
-  // is the source of truth.
+  //
+  // Desktop clipboard-read permission, tracked WITHOUT ever calling readText()
+  // — a readText() probe is exactly what raises the permission prompt / iOS
+  // Paste callout. Ambient polls (focus / visibilitychange / pointerenter /
+  // clipboardchange) read ONLY when this is "granted"; the single one-time
+  // probe lives in the Start/Join click gesture (pre-grant) where a prompt is
+  // expected. "unknown" (Permissions API absent / query unsupported) keeps
+  // ambient reads OFF so ordinary pointer movement, saved-stop clicks, and a
+  // Matterport "Copy to clipboard" never trigger a prompt. Skipped on iOS/
+  // iPadOS WebKit (query unsupported there; the native callout is the very
+  // thing we isolate). The status object's onchange keeps it live if the user
+  // grants/revokes mid-session.
+  var clipPermissionState="unknown";
+  (function trackClipboardPermission(){
+    if(IS_IOS_WEBKIT) return;
+    try {
+      if(navigator&&navigator.permissions&&typeof navigator.permissions.query==="function"){
+        var q=navigator.permissions.query({ name: "clipboard-read" });
+        if(q&&typeof q.then==="function"){
+          q.then(function(st){
+            if(!st||typeof st.state!=="string") return;
+            clipPermissionState=st.state;
+            try { st.onchange=function(){ clipPermissionState=st.state; }; } catch(_e){}
+          },function(){});
+        }
+      }
+    } catch(_e){}
+  })();
+
   // Ambient clipboard reads are allowed only when they cannot raise the
   // iOS Paste callout mid-gesture: never on iOS/iPadOS WebKit, never while
   // an annotation tool is active (any platform), and only when the input
@@ -1613,6 +1637,11 @@ export const BUILDER_JS_GLUE_SPAN = `// f3d:runtime-js:glue BEGIN v=1 family=bui
   }
   function readClipboardAndSend(){
     if(!ambientClipboardAllowed()) return;
+    // Ambient reads NEVER probe for permission: read silently ONLY once the
+    // browser has already granted clipboard-read (tracked via the Permissions
+    // API, never via a readText probe). The Start/Join pre-grant is the only
+    // place a not-yet-granted readText() runs, inside the user gesture.
+    if(clipPermissionState!=="granted") return;
     var s=session.getState();
     if((s.role!=="visitor"&&s.role!=="agent")||!s.isConnected) return;
     if(!navigator||!navigator.clipboard||typeof navigator.clipboard.readText!=="function") return;
@@ -1634,7 +1663,6 @@ export const BUILDER_JS_GLUE_SPAN = `// f3d:runtime-js:glue BEGIN v=1 family=bui
         lastReadClipText=text;
         return;
       }
-      locSyncGranted=true;
       // Only NOW do we know there's something real to do. Flip the
       // pulse to "syncing" and dispatch the share.
       setPulseState("syncing");
@@ -1662,6 +1690,10 @@ export const BUILDER_JS_GLUE_SPAN = `// f3d:runtime-js:glue BEGIN v=1 family=bui
   // production scenario.
   function schedulePoll(){
     if(!ambientClipboardAllowed()) return;
+    // Polling reads silently ONLY when permission is already granted — never a
+    // probe. Bail before the throttle stamp so a not-yet-granted environment
+    // never even pretends to have polled.
+    if(clipPermissionState!=="granted") return;
     if(document.hidden) return;
     var s=session.getState();
     if((s.role!=="visitor"&&s.role!=="agent")||!s.isConnected) return;
@@ -1881,12 +1913,15 @@ export const BUILDER_JS_GLUE_SPAN = `// f3d:runtime-js:glue BEGIN v=1 family=bui
       try {
         if(navigator&&navigator.permissions&&typeof navigator.permissions.query==="function"){
           navigator.permissions.query({ name: "clipboard-read" }).then(function(r){
-            locSyncGranted=!!(r&&r.state==="granted");
+            if(r&&typeof r.state==="string") clipPermissionState=r.state;
           },function(){});
         }
         if(!IS_IOS_WEBKIT&&navigator&&navigator.clipboard&&typeof navigator.clipboard.readText==="function"){
-          navigator.clipboard.readText().then(function(){ locSyncGranted=true; },
-                                              function(){ locSyncGranted=false; });
+          // The one-time probe inside the user gesture. On grant, flip the
+          // state so ambient reads turn on immediately; on rejection leave the
+          // state as-is (ambient stays off — no further prompts).
+          navigator.clipboard.readText().then(function(){ clipPermissionState="granted"; },
+                                              function(){});
         }
       } catch(_e){}
       ensurePeerJs().then(function(){
@@ -1919,12 +1954,15 @@ export const BUILDER_JS_GLUE_SPAN = `// f3d:runtime-js:glue BEGIN v=1 family=bui
       try {
         if(navigator&&navigator.permissions&&typeof navigator.permissions.query==="function"){
           navigator.permissions.query({ name: "clipboard-read" }).then(function(r){
-            locSyncGranted=!!(r&&r.state==="granted");
+            if(r&&typeof r.state==="string") clipPermissionState=r.state;
           },function(){});
         }
         if(!IS_IOS_WEBKIT&&navigator&&navigator.clipboard&&typeof navigator.clipboard.readText==="function"){
-          navigator.clipboard.readText().then(function(){ locSyncGranted=true; },
-                                              function(){ locSyncGranted=false; });
+          // The one-time probe inside the user gesture. On grant, flip the
+          // state so ambient reads turn on immediately; on rejection leave the
+          // state as-is (ambient stays off — no further prompts).
+          navigator.clipboard.readText().then(function(){ clipPermissionState="granted"; },
+                                              function(){});
         }
       } catch(_e){}
       ensurePeerJs().then(function(){

@@ -12,11 +12,13 @@ import { readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
+import { createHash } from "node:crypto";
 import {
   classifyUpload,
   describeDisposition,
   runUpgradeSession,
   inspectPresentationHtml,
+  inspectLegacyProfile,
 } from "../src/lib/presentation-upgrade-session.mjs";
 import {
   MAX_PRESENTATION_HTML_BYTES,
@@ -41,6 +43,8 @@ const RUNTIME_SOURCES = {
 
 const FIX_210 = read("tests", "fixtures", "builder-2.1.0.sanitized.html");
 const FIX_220 = read("tests", "fixtures", "builder-2.2.0.sanitized.html");
+const FIX_LEGACY = read("tests", "fixtures", "legacy-builder-may2026.sanitized.html");
+const sha256 = (s) => createHash("sha256").update(Buffer.from(s, "utf8")).digest("hex");
 
 const ROUTE_SRC = read("src", "routes", "_authenticated.admin.presentation-updates.tsx");
 const ADMIN_LAYOUT_SRC = read("src", "routes", "_authenticated.admin.tsx");
@@ -439,4 +443,75 @@ test("H3 — the object URL is revoked after download", () => {
 
 test("H4 — the route file exists where the file-based router expects it", () => {
   assert.ok(existsSync(repoPath("src", "routes", "_authenticated.admin.presentation-updates.tsx")));
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// M. Legacy bootstrap path (L4 integration) over the sanitized May-2026 fixture
+// ─────────────────────────────────────────────────────────────────────────────
+
+test("M0 — the legacy fixture is legacy_unsupported to the current inspector but a recognized profile", () => {
+  assert.equal(inspectPresentationHtml(FIX_LEGACY).outcome, "legacy_unsupported");
+  assert.equal(inspectLegacyProfile(FIX_LEGACY).supported, true);
+});
+
+test("M1 — describeDisposition exposes a recognized-legacy upgrade action", () => {
+  const insp = inspectPresentationHtml(FIX_LEGACY);
+  const legacy = inspectLegacyProfile(FIX_LEGACY);
+  const d = describeDisposition(insp, legacy);
+  assert.equal(d.outcome, "legacy_recognized");
+  assert.equal(d.canUpgrade, true);
+  assert.equal(d.tone, "action");
+  assert.ok(d.legacy && d.legacy.capabilities.includes("live_tour"));
+});
+
+test("M2 — unrecognized legacy stays unsupported (no upgrade)", () => {
+  // legacy_unsupported with NO matching profile → canUpgrade false.
+  const insp = { outcome: "legacy_unsupported", runtimeVersion: null, reasons: [] };
+  const d = describeDisposition(insp, { supported: false });
+  assert.equal(d.outcome, "legacy_unsupported");
+  assert.equal(d.canUpgrade, false);
+});
+
+test("M3 — runUpgradeSession bootstraps the legacy fixture to a validated download", async () => {
+  const r = await runUpgradeSession({ filename: "index.html", html: FIX_LEGACY, runtimeSources: RUNTIME_SOURCES });
+  assert.equal(r.kind, "legacy");
+  assert.equal(r.outcome, "bootstrapped");
+  assert.equal(r.downloadable, true);
+  assert.ok(r.download, "download payload present");
+  assert.equal(r.report.mode, "legacy");
+  assert.equal(r.report.outcome, "bootstrapped");
+  assert.equal(r.report.runtime.to, ATLAS_RUNTIME_VERSION);
+  assert.equal(r.report.preservation.verified, true);
+  assert.equal(r.report.download.available, true);
+  // ACCEPTANCE: the downloaded output re-inspects already_current and its
+  // sha256 equals the report's after-hash.
+  assert.equal(inspectPresentationHtml(r.download.html).outcome, "already_current");
+  assert.equal(sha256(r.download.html), r.report.sha256.after);
+  assert.match(r.download.filename, /\.upgraded-.*\.html$/);
+});
+
+test("M4 — legacy bootstrap fails closed on bad runtime sources (no download)", async () => {
+  const r = await runUpgradeSession({ filename: "index.html", html: FIX_LEGACY, runtimeSources: {} });
+  assert.equal(r.kind, "legacy");
+  assert.equal(r.outcome, "rejected");
+  assert.equal(r.downloadable, false);
+  assert.equal(r.download, null);
+});
+
+test("M5 — re-running the legacy bootstrap output is a current no-op (patch path)", async () => {
+  const first = await runUpgradeSession({ filename: "index.html", html: FIX_LEGACY, runtimeSources: RUNTIME_SOURCES });
+  const second = await runUpgradeSession({ filename: "x.html", html: first.download.html, runtimeSources: RUNTIME_SOURCES });
+  assert.equal(second.kind, "patch");
+  assert.equal(second.outcome, "noop_already_current");
+  assert.equal(second.downloadable, false);
+});
+
+test("M6 — route delegates the legacy path + renders the legacy report card", () => {
+  assert.match(ROUTE_SRC, /describeDisposition\(inspection, legacyProfile\)/);
+  assert.match(ROUTE_SRC, /LegacyReportCard/);
+  assert.match(ROUTE_SRC, /"mode" in report/);
+  // upgrade is gated on the disposition (covers patchable AND legacy_recognized)
+  assert.match(ROUTE_SRC, /disposition\.canUpgrade/);
+  // still never renders/executes the upload
+  assert.ok(!ROUTE_CODE.includes("dangerouslySetInnerHTML") && !ROUTE_CODE.includes("<iframe"));
 });

@@ -25,6 +25,8 @@ import {
   type DispositionDescriptor,
   type UpgradeReport,
   type DownloadPayload,
+  type LegacyProfileReport,
+  type LegacyBootstrapReport,
 } from "@/lib/presentation-upgrade-session.mjs";
 import { createUpgradeController } from "@/lib/presentation-upgrade-controller.mjs";
 import type {
@@ -95,7 +97,8 @@ function AdminPresentationUpdates() {
   const [fileName, setFileName] = useState<string | null>(null);
   const [fileSize, setFileSize] = useState<number | null>(null);
   const [inspection, setInspection] = useState<InspectionReport | null>(null);
-  const [report, setReport] = useState<UpgradeReport | null>(null);
+  const [legacyProfile, setLegacyProfile] = useState<LegacyProfileReport | null>(null);
+  const [report, setReport] = useState<UpgradeReport | LegacyBootstrapReport | null>(null);
   const [download, setDownload] = useState<DownloadPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reading, setReading] = useState(false);
@@ -103,7 +106,7 @@ function AdminPresentationUpdates() {
   const [dragActive, setDragActive] = useState(false);
 
   const disposition: DispositionDescriptor | null = inspection
-    ? describeDisposition(inspection)
+    ? describeDisposition(inspection, legacyProfile)
     : null;
 
   // Apply a controller state patch: the large HTML goes to a ref (never
@@ -114,6 +117,7 @@ function AdminPresentationUpdates() {
     if ("fileName" in p) setFileName(p.fileName ?? null);
     if ("fileSize" in p) setFileSize(p.fileSize ?? null);
     if ("inspection" in p) setInspection(p.inspection ?? null);
+    if ("legacyProfile" in p) setLegacyProfile(p.legacyProfile ?? null);
     if ("report" in p) setReport(p.report ?? null);
     if ("download" in p) setDownload(p.download ?? null);
     if ("error" in p) setError(p.error ?? null);
@@ -159,7 +163,10 @@ function AdminPresentationUpdates() {
 
   const handleUpgrade = () => {
     const html = htmlRef.current;
-    if (!inspection || inspection.outcome !== "patchable" || html === null) return;
+    // Upgrade is allowed only when the disposition exposes it (patchable, or a
+    // recognized legacy bootstrap profile). The session routes to the patcher
+    // or the legacy adapter accordingly.
+    if (!disposition || !disposition.canUpgrade || html === null) return;
     // Trusted runtime sources from the application bundle ONLY (resolved inside
     // the controller's guarded try); the controller binds this to its session.
     void controller.upgrade({
@@ -329,13 +336,20 @@ function AdminPresentationUpdates() {
       )}
 
       {/* Report + download */}
-      {report && (
-        <ReportCard
-          report={report}
-          downloadable={download !== null && report.download.available === true}
-          onDownload={handleDownload}
-        />
-      )}
+      {report &&
+        ("mode" in report && report.mode === "legacy" ? (
+          <LegacyReportCard
+            report={report}
+            downloadable={download !== null && report.download.available === true}
+            onDownload={handleDownload}
+          />
+        ) : (
+          <ReportCard
+            report={report as UpgradeReport}
+            downloadable={download !== null && report.download.available === true}
+            onDownload={handleDownload}
+          />
+        ))}
     </div>
   );
 }
@@ -355,6 +369,16 @@ function DispositionPanel({
       <div className="min-w-0 space-y-1">
         <div className="text-sm font-semibold">{disposition.headline}</div>
         <p className="text-sm text-muted-foreground">{disposition.guidance}</p>
+        {disposition.legacy && disposition.legacy.capabilities.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            <span className="text-xs text-muted-foreground">Detected:</span>
+            {disposition.legacy.capabilities.map((c) => (
+              <Badge key={c} variant="secondary" className="text-xs">
+                {c.replace(/_/g, " ")}
+              </Badge>
+            ))}
+          </div>
+        )}
         {Array.isArray(reasons) && reasons.length > 0 && (
           <details className="mt-1">
             <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
@@ -573,6 +597,170 @@ function ReportCard({
         )}
 
         {/* Download */}
+        <div className="flex items-center gap-3 pt-1">
+          <Button onClick={onDownload} disabled={!downloadable} className="gap-2">
+            <Download className="size-4" />
+            Download upgraded HTML
+          </Button>
+          {downloadable ? (
+            <span className="truncate font-mono text-xs text-muted-foreground">
+              {report.replacementFilename}
+            </span>
+          ) : (
+            <span className="text-xs text-muted-foreground">
+              Download is unavailable for this result.
+            </span>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function LegacyReportCard({
+  report,
+  downloadable,
+  onDownload,
+}: {
+  report: LegacyBootstrapReport;
+  downloadable: boolean;
+  onDownload: () => void;
+}) {
+  const ok = report.outcome === "bootstrapped";
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle className="text-lg">3 · Legacy bootstrap report</CardTitle>
+          <Badge variant={ok ? "default" : "destructive"}>{report.outcome}</Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {report.rejection && (
+          <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm">
+            <XCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
+            <div className="min-w-0 space-y-1">
+              <div className="font-medium text-destructive">
+                {report.rejection.message}
+                {report.rejection.code ? (
+                  <span className="ml-2 font-mono text-xs text-muted-foreground">
+                    {report.rejection.code}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {ok && (
+          <>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+              <Field label="Profile">
+                <span className="font-mono text-xs">{report.profileId}</span>
+              </Field>
+              <Field label="Generation">{report.generationLabel}</Field>
+              <Field label="Runtime">
+                <span className="inline-flex items-center gap-1.5">
+                  {report.runtime.from ?? "—"}
+                  <ArrowRight className="size-3.5 text-muted-foreground" />
+                  <span className="font-medium">{report.runtime.to ?? "—"}</span>
+                </span>
+              </Field>
+              <Field label="Accent">
+                <Swatch color={report.branding?.accentColor ?? null} />
+              </Field>
+              <Field label="HUD background">
+                <Swatch color={report.branding?.hudBgColor ?? null} />
+              </Field>
+              <Field label="Preservation">
+                {report.preservation.verified ? (
+                  <span className="inline-flex items-center gap-1.5 text-green-600">
+                    <CheckCircle2 className="size-4" />
+                    Verified
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 text-destructive">
+                    <XCircle className="size-4" />
+                    Failed
+                  </span>
+                )}
+              </Field>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Runtime regions">
+                {report.regions.filter((r) => r.op !== "insert").length} replaced/rewritten
+              </Field>
+              <Field label="Metadata">4 markers inserted; 5 sentinels added</Field>
+            </div>
+
+            {report.capabilities.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                <span className="text-xs text-muted-foreground">Preserved features:</span>
+                {report.capabilities.map((c) => (
+                  <Badge key={c} variant="secondary" className="text-xs">
+                    {c.replace(/_/g, " ")}
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {report.warnings.length > 0 && (
+          <div className="space-y-2">
+            {report.warnings.map((w, i) => (
+              <div
+                key={i}
+                className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-700"
+              >
+                <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                <span>{w}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {ok && (
+          <details className="rounded-md border border-border">
+            <summary className="cursor-pointer px-3 py-2 text-sm font-medium hover:bg-muted/40">
+              Technical detail
+            </summary>
+            <div className="space-y-4 border-t border-border p-3">
+              <div className="space-y-1">
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  SHA-256 (before → after)
+                </div>
+                <div className="break-all font-mono text-xs">
+                  <div>before: {report.sha256.before}</div>
+                  <div>after: {report.sha256.after ?? "—"}</div>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Mutation regions ({report.regions.length})
+                </div>
+                <table className="w-full text-xs">
+                  <tbody>
+                    {report.regions.map((r) => (
+                      <tr key={r.key} className="border-t border-border/60">
+                        <td className="py-1 font-mono">{r.key}</td>
+                        <td className="py-1 text-right text-muted-foreground">{r.op}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="space-y-1">
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Preservation
+                </div>
+                <div className="text-xs text-muted-foreground">{report.preservation.detail}</div>
+              </div>
+            </div>
+          </details>
+        )}
+
         <div className="flex items-center gap-3 pt-1">
           <Button onClick={onDownload} disabled={!downloadable} className="gap-2">
             <Download className="size-4" />
