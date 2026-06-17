@@ -1,31 +1,48 @@
-## Findings
+# Plan: Add Frontiers3D Operation Visual Map As Owner-Facing Documentation
 
-- The fullscreen control is now present and working in the Atlas modal toolbar.
-- On mobile and tablet, the embedded showcase content has its own top bar directly under the modal controls. The current fullscreen button is icon-only and competes with Share/Open/Close, so it is easy to miss and can feel like part of a small floating icon cluster rather than a primary viewer action.
-- The safer fix is not to depend on the underlying page header on small screens. The visible modal toolbar should explicitly prioritize fullscreen for touch devices.
+## Goal
+Add the uploaded `frontiers3d_operation_visual_map_updated.html` as documentation (not app/runtime code) and create supporting files for owner orientation.
 
-## Safe fix
+## Files to Create
 
-1. Update `src/routes/atlas.tsx`
-   - Keep the existing desktop modal fullscreen icon.
-   - Add a mobile/tablet-only, clearly labeled fullscreen button inside the visible modal controls area.
-   - Preserve the existing `useFullscreen(modalRef)` behavior and native/CSS fallback.
-   - Keep Share, Open, and Close available.
+1. `docs/operations/visual-map/index.html`
+   - Copy of the uploaded HTML, self-contained, no external dependencies.
+   - No redesign; only minimal path/title cleanup if needed.
 
-2. Update `src/styles.css`
-   - Make `.atlas-modal-controls` responsive:
-     - Desktop: keep the compact right-aligned icon row.
-     - Tablet/mobile: use a two-row/wrapping control layout where the fullscreen action has a text label like `Fullscreen` / `Exit full` and a larger touch target.
-   - Ensure controls stay above the embedded iframe/showcase with explicit sizing and z-index.
-   - Avoid hiding controls at narrow widths and prevent overflow/clipping on 320px-wide phones.
+2. `docs/operations/visual-map/README.md`
+   - What the visual map is.
+   - What it is not (not a source of truth, not an app route, not a public feature).
+   - Source-of-truth hierarchy (PRODUCT_END_STATES.md > GitHub main > BACKEND_ACTIVATION.md > CODEX_REVIEW_QUEUE.md > STATUS.md).
+   - Status definitions (Current, Active, Planned, Mixed, Needs decision).
+   - Update cadence (after major PR merges, backend activation changes, product end-state changes, major roadmap decisions, weekly owner review if state changed; not after every small bugfix).
+   - Note that it should not be treated as a deployable app route or public feature unless explicitly approved later.
 
-3. Verify
-   - Check `/atlas?spot=b3b73f4d-f042-4b54-b4bb-153073fb90e6` at phone, tablet, and desktop viewport sizes.
-   - Confirm the fullscreen button is visibly present before interaction and still toggles fullscreen/pseudo-fullscreen.
-   - Confirm no backend changes are required.
+3. `CODEX_REVIEW_QUEUE.md` (new file at repo root)
+   - Compact handoff note that the Operation Visual Map has been added as owner-facing documentation.
+   - Required checklist fields per the project rule.
+
+4. `.codex-review/claude-session.md` (new file)
+   - Timestamped milestone entry for this session.
+
+## Files to Change
+- None (docs-only addition).
+
+## What NOT to Change
+- `src/`, `public/`, app routes, runtime/package generation paths.
+- Application code, route tree, migrations, backend files, Edge Functions.
+- Dependencies, lockfiles, secrets, RLS, grants, policies.
+- Atlas runtime, Builder runtime, presentation packages.
+
+## Verification Steps
+1. Confirm the HTML is self-contained and can be opened locally.
+2. Confirm the committed files are docs-only (`git diff --name-only`).
+3. Run `git diff --check` (no trailing whitespace / conflicts).
+4. Run `npm run verify:no-secrets` if the script exists.
+5. Confirm no app/runtime/backend files changed.
+
+## PR
+- Title: `docs(operations): add Frontiers3D operation visual map`
+- Stop before merge.
 
 ## Backend Activation Required
-
-NO
-
-Reason: This is a frontend-only responsive layout and UI visibility fix for the Atlas page.
+NO — documentation only.
