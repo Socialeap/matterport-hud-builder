@@ -1,5 +1,8 @@
 # Frontiers|3D Operation Visual Map
 
+<!-- sync: 2026-06-17 re-trigger GitHub push for Progress Spine snapshot -->
+
+
 Owner-facing orientation map for the Frontiers|3D platform. Open
 [`index.html`](./index.html) directly in a browser to view it — it is a
 single self-contained HTML file with no external dependencies and no
