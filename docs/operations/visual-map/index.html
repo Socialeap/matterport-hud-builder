@@ -567,6 +567,155 @@
       }
       .summary, .branch-panel { display: block !important; }
     }
+
+    /* ---------- Progress Spine ---------- */
+    .progress-spine {
+      margin: 14px 0;
+      padding: 14px 16px 16px;
+      border: 1px solid rgba(141, 169, 196, 0.22);
+      border-radius: 22px;
+      background: rgba(8, 18, 28, 0.66);
+      backdrop-filter: blur(14px);
+      box-shadow: var(--shadow);
+    }
+    .progress-header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px 14px;
+      margin-bottom: 12px;
+    }
+    .progress-header h2 {
+      margin: 0;
+      font-size: 16px;
+      letter-spacing: -0.01em;
+    }
+    .progress-snapshot {
+      margin: 0;
+      color: var(--soft);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+    .progress-rail {
+      display: grid;
+      grid-auto-flow: column;
+      grid-auto-columns: minmax(190px, 1fr);
+      gap: 10px;
+      overflow-x: auto;
+      padding-bottom: 6px;
+      scroll-snap-type: x proximity;
+    }
+    .progress-rail::-webkit-scrollbar { height: 8px; }
+    .progress-rail::-webkit-scrollbar-thumb {
+      background: rgba(141, 169, 196, 0.22);
+      border-radius: 999px;
+    }
+    .progress-card {
+      scroll-snap-align: start;
+      position: relative;
+      display: grid;
+      gap: 8px;
+      padding: 11px 12px 12px;
+      border: 1px solid rgba(141, 169, 196, 0.22);
+      border-radius: 16px;
+      background: linear-gradient(145deg, rgba(18, 33, 48, 0.86), rgba(10, 21, 32, 0.86));
+      cursor: pointer;
+      text-align: left;
+      color: var(--text);
+      font: inherit;
+      transition: border-color 140ms ease, transform 140ms ease;
+    }
+    .progress-card:hover {
+      border-color: rgba(91, 231, 221, 0.42);
+      transform: translateY(-1px);
+      background: linear-gradient(145deg, rgba(18, 33, 48, 0.92), rgba(10, 21, 32, 0.92));
+    }
+    .progress-card-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .progress-card-title {
+      margin: 0;
+      font-size: 12.5px;
+      font-weight: 800;
+      letter-spacing: -0.01em;
+      line-height: 1.2;
+      min-width: 0;
+    }
+    .progress-warn {
+      flex: 0 0 auto;
+      width: 16px;
+      height: 16px;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      background: var(--rose);
+      color: #1a0510;
+      font-size: 10px;
+      font-weight: 900;
+      line-height: 1;
+    }
+    .progress-bar {
+      position: relative;
+      height: 6px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.07);
+      overflow: hidden;
+    }
+    .progress-bar-fill {
+      position: absolute;
+      inset: 0 auto 0 0;
+      border-radius: 999px;
+      background: linear-gradient(90deg, rgba(91,231,221,0.85), rgba(124,199,255,0.85));
+    }
+    .progress-card[data-status="planned"] .progress-bar-fill { background: linear-gradient(90deg, rgba(196,161,255,0.85), rgba(124,199,255,0.55)); }
+    .progress-card[data-status="decision"] .progress-bar-fill { background: linear-gradient(90deg, rgba(255,122,162,0.85), rgba(255,209,102,0.65)); }
+    .progress-card[data-status="mixed"]    .progress-bar-fill { background: linear-gradient(90deg, rgba(124,199,255,0.85), rgba(91,231,221,0.55)); }
+    .progress-card[data-status="active"]   .progress-bar-fill { background: linear-gradient(90deg, rgba(255,209,102,0.85), rgba(91,231,221,0.55)); }
+    .progress-card[data-status="current"]  .progress-bar-fill { background: linear-gradient(90deg, rgba(134,239,172,0.9), rgba(91,231,221,0.7)); }
+    .progress-card-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+    .progress-card-meta .dot { margin-right: 5px; }
+    .progress-markers {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .marker-chip {
+      font-size: 9.5px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: rgba(91, 231, 221, 0.12);
+      border: 1px solid rgba(91, 231, 221, 0.32);
+      color: #cdeeea;
+    }
+
+    @media (max-width: 820px) {
+      .progress-rail {
+        grid-auto-flow: row;
+        grid-auto-columns: auto;
+        overflow-x: visible;
+      }
+    }
+
+    @media print {
+      .progress-rail { grid-auto-flow: row; overflow: visible; }
+    }
   </style>
 </head>
 <body>
@@ -599,6 +748,14 @@
         <button id="collapseBtn" type="button">Collapse All</button>
         <button id="expandBtn" type="button">Show Branches</button>
       </div>
+    </section>
+
+    <section class="progress-spine" aria-label="Frontiers|3D Progress Spine">
+      <div class="progress-header">
+        <h2>Frontiers|3D Progress Spine</h2>
+        <p class="progress-snapshot">Snapshot updated: 2026-06-17 · Reflects source-of-truth docs; does not replace them.</p>
+      </div>
+      <div class="progress-rail" id="progressRail"></div>
     </section>
 
     <div class="legend" aria-label="Status legend">
@@ -730,7 +887,67 @@
         { title: "4 · Publish + Verify", icon: "✓", status: "mixed", sources: ["GitHub main", "Backend Activation"], text: "Package is published, URL is submitted, ownership is checked, and Atlas activation depends on backend state." },
         { title: "5 · Atlas Discovery", icon: "▧", status: "mixed", sources: ["End-States", "Backend Activation", "Roadmap"], text: "Visitors browse verified, curated, organic, and future sponsored/synthetic listings with clear labeling." },
         { title: "6 · Monetization", icon: "↺", status: "mixed", sources: ["Roadmap", "Current Queue"], text: "Revenue flows through setup/upkeep, work orders, platform fees, and future Sponsored Atlas CPC." }
+      ],
+      progress: [
+        { id: "foundation", title: "Platform Foundation", status: "active", readiness: 75, markers: ["Spec", "Built", "Tested", "Merged"],
+          done: "Identity, multi-tenant routing, user_roles, RLS, server-authorized data paths.",
+          pending: "Broader workflow acceptance and edge-case role coverage.", blocker: "",
+          sources: ["End-States", "GitHub main"] },
+        { id: "builder", title: "Presentation Builder", status: "active", readiness: 75, markers: ["Spec", "Built", "Tested", "Merged"],
+          done: "Non-technical generation of validated, owned Matterport packages.",
+          pending: "Synthetic/CGI input path and broader acceptance for non-Matterport sources.", blocker: "",
+          sources: ["End-States", "GitHub main", "Current Queue"] },
+        { id: "runtime", title: "Runtime / HUD", status: "active", readiness: 75, markers: ["Spec", "Built", "Tested", "Merged", "Activated"],
+          done: "Branded, responsive HUD across direct-host and Atlas-modal use.",
+          pending: "Continued parity sweeps and device-edge polish.", blocker: "",
+          sources: ["End-States", "GitHub main"] },
+        { id: "explore-together", title: "Explore Together", status: "active", readiness: 75, markers: ["Spec", "Built", "Tested", "Merged"],
+          done: "Two-desktop join, voice, sync, and shared Draw/Focus/Eraser tools.",
+          pending: "Reconnect/edge-case hardening and broader acceptance.", blocker: "",
+          sources: ["End-States", "GitHub main"] },
+        { id: "upgrade-center", title: "Upgrade Center", status: "active", readiness: 75, markers: ["Spec", "Built", "Tested", "Merged"],
+          done: "Admin upload UI, versioned patcher, legacy bootstrap profile.",
+          pending: "Broader legacy profiles and self-service path.", blocker: "",
+          sources: ["GitHub main", "Current Queue", "End-States"] },
+        { id: "atlas-discovery", title: "Atlas Discovery", status: "mixed", readiness: 50, markers: ["Spec", "Built", "Tested"],
+          done: "Map, search, listing, and viewer scaffolding for verified spaces.",
+          pending: "Activation depth, synthetic pin distinction, sponsored-vs-organic UX.", blocker: "",
+          sources: ["End-States", "GitHub main", "Backend Activation"] },
+        { id: "atlas-curation", title: "Atlas Curation + Publishing", status: "active", readiness: 50, markers: ["Spec", "Built", "Merged"],
+          done: "Curation jobs, showcase branch/PR scaffolding, publishing path.",
+          pending: "End-to-end acceptance for curated→published→listed flow.", blocker: "",
+          sources: ["GitHub main", "Current Queue", "Backend Activation"] },
+        { id: "marketplace", title: "Provider Marketplace", status: "mixed", readiness: 50, markers: ["Spec", "Built", "Tested"],
+          done: "Provider directory, marketplace match, work-order containers.",
+          pending: "Full demand→match→work-order→delivery loop acceptance.", blocker: "",
+          sources: ["End-States", "GitHub main", "Current Queue"] },
+        { id: "payments", title: "Payments / Revenue Rails", status: "mixed", readiness: 50, markers: ["Spec", "Built", "Tested"],
+          done: "Stripe Embedded Checkout and Connect rails wired in code.",
+          pending: "Work-order payment, payout, refund, and split-fee policy not fully accepted/activated end-to-end.",
+          blocker: "Unresolved Pro setup pricing ($299 vs $499) and split-fee policy.",
+          sources: ["GitHub main", "Backend Activation", "End-States"] },
+        { id: "map-oracle", title: "Map Oracle / Outreach", status: "active", readiness: 50, markers: ["Spec", "Built", "Tested"],
+          done: "Discovery/enrichment migrations, throttled outreach scaffolding.",
+          pending: "Operator-controlled, exactly-once delivery acceptance at scale.", blocker: "",
+          sources: ["End-States", "Current Queue", "Backend Activation"] },
+        { id: "truespace", title: "TrueSpace / AutoSplat", status: "planned", readiness: 25, markers: ["Spec"],
+          done: "Approved planned track; product direction recorded.",
+          pending: "Storage, queue, GPU worker, viewer, and quota work.",
+          blocker: "Compute engine decision pending; Edge Functions / Mac Mini are not the production engine.",
+          sources: ["End-States", "Roadmap"] },
+        { id: "synthetic", title: "Synthetic / CGI Showrooms", status: "planned", readiness: 25, markers: ["Spec"],
+          done: "Approved planned track with labeling and Atlas-pin boundaries.",
+          pending: "Generation pipeline, builder integration, Atlas distinct-pin UX.", blocker: "",
+          sources: ["End-States", "Roadmap"] }
       ]
+    };
+
+    const readinessLabels = {
+      0: "0% · Not started",
+      25: "25% · Planned",
+      50: "50% · Built / needs acceptance",
+      75: "75% · Working / needs rollout",
+      100: "100% · Live / accepted"
     };
 
     const statusLabels = { current: "Live / Available", active: "In Progress", planned: "Roadmap", mixed: "Hybrid", decision: "Unresolved" };
@@ -793,9 +1010,56 @@
           <h3>${escapeHTML(item.title)}</h3>
           <p>${escapeHTML(item.text)}</p>
         </article>`).join("");
+      renderProgressSpine();
       bindEvents();
       selectNode(DATA.core);
       requestAnimationFrame(drawConnectors);
+    }
+
+    function renderProgressSpine() {
+      const rail = document.getElementById("progressRail");
+      if (!rail || !DATA.progress) return;
+      rail.innerHTML = DATA.progress.map(item => {
+        const warn = item.blocker || item.status === "decision";
+        const pct = Math.max(0, Math.min(100, item.readiness || 0));
+        return `
+          <button type="button" class="progress-card" data-status="${item.status}" data-progress-id="${item.id}">
+            <div class="progress-card-top">
+              <h3 class="progress-card-title">${escapeHTML(item.title)}</h3>
+              ${warn ? `<span class="progress-warn" title="Blocker or unresolved decision" aria-label="Blocker or unresolved decision">!</span>` : ""}
+            </div>
+            <div class="progress-bar" aria-label="${escapeHTML(readinessLabels[pct] || (pct + '%'))}">
+              <div class="progress-bar-fill" style="width:${pct}%"></div>
+            </div>
+            <div class="progress-card-meta">
+              <span><span class="dot ${item.status}"></span>${escapeHTML(statusLabels[item.status] || item.status)}</span>
+              <span>${escapeHTML(readinessLabels[pct] || (pct + "%"))}</span>
+            </div>
+            <div class="progress-markers">${(item.markers || []).map(m => `<span class="marker-chip">${escapeHTML(m)}</span>`).join("")}</div>
+          </button>`;
+      }).join("");
+      rail.querySelectorAll("[data-progress-id]").forEach(el => {
+        el.addEventListener("click", () => {
+          const item = DATA.progress.find(p => p.id === el.getAttribute("data-progress-id"));
+          if (item) openProgressModal(item);
+        });
+      });
+    }
+
+    function openProgressModal(item) {
+      const pct = Math.max(0, Math.min(100, item.readiness || 0));
+      const parts = [
+        `<p><strong>Status:</strong> ${escapeHTML(statusLabels[item.status] || item.status)} · <strong>Readiness:</strong> ${escapeHTML(readinessLabels[pct] || (pct + "%"))}</p>`,
+        item.done ? `<p><strong>Done:</strong> ${escapeHTML(item.done)}</p>` : "",
+        item.pending ? `<p><strong>Next:</strong> ${escapeHTML(item.pending)}</p>` : "",
+        item.blocker ? `<p><strong>Blocker:</strong> ${escapeHTML(item.blocker)}</p>` : "",
+        item.sources && item.sources.length ? `<p><strong>Source anchors:</strong> ${item.sources.map(escapeHTML).join(" · ")}</p>` : "",
+        `<p style="color: var(--soft); font-size: 12px;">Snapshot only — source-of-truth remains End-States, GitHub main, Backend Activation, Current Queue, and STATUS.md.</p>`
+      ];
+      modalKicker.textContent = "Progress milestone";
+      modalTitle.textContent = item.title;
+      modalBody.innerHTML = parts.filter(Boolean).join("");
+      modalBackdrop.classList.add("open");
     }
 
     function bindEvents() {
