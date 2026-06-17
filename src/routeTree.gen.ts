@@ -57,6 +57,7 @@ import { Route as AuthenticatedDashboardDemoRouteImport } from './routes/_authen
 import { Route as AuthenticatedDashboardClientsRouteImport } from './routes/_authenticated.dashboard.clients'
 import { Route as AuthenticatedDashboardBrandingRouteImport } from './routes/_authenticated.dashboard.branding'
 import { Route as AuthenticatedDashboardAccountRouteImport } from './routes/_authenticated.dashboard.account'
+import { Route as AuthenticatedAdminVisualMapRouteImport } from './routes/_authenticated.admin.visual-map'
 import { Route as AuthenticatedAdminSettingsRouteImport } from './routes/_authenticated.admin.settings'
 import { Route as AuthenticatedAdminServiceMatchesRouteImport } from './routes/_authenticated.admin.service-matches'
 import { Route as AuthenticatedAdminPresentationUpdatesRouteImport } from './routes/_authenticated.admin.presentation-updates'
@@ -332,6 +333,12 @@ const AuthenticatedDashboardAccountRoute =
     path: '/account',
     getParentRoute: () => AuthenticatedDashboardRoute,
   } as any)
+const AuthenticatedAdminVisualMapRoute =
+  AuthenticatedAdminVisualMapRouteImport.update({
+    id: '/visual-map',
+    path: '/visual-map',
+    getParentRoute: () => AuthenticatedAdminRoute,
+  } as any)
 const AuthenticatedAdminSettingsRoute =
   AuthenticatedAdminSettingsRouteImport.update({
     id: '/settings',
@@ -479,6 +486,7 @@ export interface FileRoutesByFullPath {
   '/admin/presentation-updates': typeof AuthenticatedAdminPresentationUpdatesRoute
   '/admin/service-matches': typeof AuthenticatedAdminServiceMatchesRouteWithChildren
   '/admin/settings': typeof AuthenticatedAdminSettingsRoute
+  '/admin/visual-map': typeof AuthenticatedAdminVisualMapRoute
   '/dashboard/account': typeof AuthenticatedDashboardAccountRoute
   '/dashboard/branding': typeof AuthenticatedDashboardBrandingRoute
   '/dashboard/clients': typeof AuthenticatedDashboardClientsRoute
@@ -543,6 +551,7 @@ export interface FileRoutesByTo {
   '/admin/map-oracle-outreach': typeof AuthenticatedAdminMapOracleOutreachRoute
   '/admin/presentation-updates': typeof AuthenticatedAdminPresentationUpdatesRoute
   '/admin/settings': typeof AuthenticatedAdminSettingsRoute
+  '/admin/visual-map': typeof AuthenticatedAdminVisualMapRoute
   '/dashboard/account': typeof AuthenticatedDashboardAccountRoute
   '/dashboard/branding': typeof AuthenticatedDashboardBrandingRoute
   '/dashboard/clients': typeof AuthenticatedDashboardClientsRoute
@@ -613,6 +622,7 @@ export interface FileRoutesById {
   '/_authenticated/admin/presentation-updates': typeof AuthenticatedAdminPresentationUpdatesRoute
   '/_authenticated/admin/service-matches': typeof AuthenticatedAdminServiceMatchesRouteWithChildren
   '/_authenticated/admin/settings': typeof AuthenticatedAdminSettingsRoute
+  '/_authenticated/admin/visual-map': typeof AuthenticatedAdminVisualMapRoute
   '/_authenticated/dashboard/account': typeof AuthenticatedDashboardAccountRoute
   '/_authenticated/dashboard/branding': typeof AuthenticatedDashboardBrandingRoute
   '/_authenticated/dashboard/clients': typeof AuthenticatedDashboardClientsRoute
@@ -683,6 +693,7 @@ export interface FileRouteTypes {
     | '/admin/presentation-updates'
     | '/admin/service-matches'
     | '/admin/settings'
+    | '/admin/visual-map'
     | '/dashboard/account'
     | '/dashboard/branding'
     | '/dashboard/clients'
@@ -747,6 +758,7 @@ export interface FileRouteTypes {
     | '/admin/map-oracle-outreach'
     | '/admin/presentation-updates'
     | '/admin/settings'
+    | '/admin/visual-map'
     | '/dashboard/account'
     | '/dashboard/branding'
     | '/dashboard/clients'
@@ -816,6 +828,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/presentation-updates'
     | '/_authenticated/admin/service-matches'
     | '/_authenticated/admin/settings'
+    | '/_authenticated/admin/visual-map'
     | '/_authenticated/dashboard/account'
     | '/_authenticated/dashboard/branding'
     | '/_authenticated/dashboard/clients'
@@ -1224,6 +1237,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardAccountRouteImport
       parentRoute: typeof AuthenticatedDashboardRoute
     }
+    '/_authenticated/admin/visual-map': {
+      id: '/_authenticated/admin/visual-map'
+      path: '/visual-map'
+      fullPath: '/admin/visual-map'
+      preLoaderRoute: typeof AuthenticatedAdminVisualMapRouteImport
+      parentRoute: typeof AuthenticatedAdminRoute
+    }
     '/_authenticated/admin/settings': {
       id: '/_authenticated/admin/settings'
       path: '/settings'
@@ -1387,6 +1407,7 @@ interface AuthenticatedAdminRouteChildren {
   AuthenticatedAdminPresentationUpdatesRoute: typeof AuthenticatedAdminPresentationUpdatesRoute
   AuthenticatedAdminServiceMatchesRoute: typeof AuthenticatedAdminServiceMatchesRouteWithChildren
   AuthenticatedAdminSettingsRoute: typeof AuthenticatedAdminSettingsRoute
+  AuthenticatedAdminVisualMapRoute: typeof AuthenticatedAdminVisualMapRoute
   AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
 }
 
@@ -1403,6 +1424,7 @@ const AuthenticatedAdminRouteChildren: AuthenticatedAdminRouteChildren = {
   AuthenticatedAdminServiceMatchesRoute:
     AuthenticatedAdminServiceMatchesRouteWithChildren,
   AuthenticatedAdminSettingsRoute: AuthenticatedAdminSettingsRoute,
+  AuthenticatedAdminVisualMapRoute: AuthenticatedAdminVisualMapRoute,
   AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
 }
 
@@ -1563,12 +1585,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}

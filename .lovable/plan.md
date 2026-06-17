@@ -1,48 +1,59 @@
-# Plan: Add Frontiers3D Operation Visual Map As Owner-Facing Documentation
-
 ## Goal
-Add the uploaded `frontiers3d_operation_visual_map_updated.html` as documentation (not app/runtime code) and create supporting files for owner orientation.
 
-## Files to Create
+Give Shakoure a private, admin-only web URL (`/admin/visual-map`) to view `docs/operations/visual-map/index.html` from the Admin Portal. No public exposure, no copy into `public/`, no raw HTTP endpoint.
 
-1. `docs/operations/visual-map/index.html`
-   - Copy of the uploaded HTML, self-contained, no external dependencies.
-   - No redesign; only minimal path/title cleanup if needed.
+## Approach
 
-2. `docs/operations/visual-map/README.md`
-   - What the visual map is.
-   - What it is not (not a source of truth, not an app route, not a public feature).
-   - Source-of-truth hierarchy (PRODUCT_END_STATES.md > GitHub main > BACKEND_ACTIVATION.md > CODEX_REVIEW_QUEUE.md > STATUS.md).
-   - Status definitions (Current, Active, Planned, Mixed, Needs decision).
-   - Update cadence (after major PR merges, backend activation changes, product end-state changes, major roadmap decisions, weekly owner review if state changed; not after every small bugfix).
-   - Note that it should not be treated as a deployable app route or public feature unless explicitly approved later.
+Single admin-gated TanStack route. The docs HTML is imported as a bundled raw string via Vite's `?raw` query and rendered inside an `<iframe srcDoc={...} sandbox="allow-scripts">`. Auth is enforced by the existing `_authenticated.admin.tsx` layout (admin check + redirect). No `fs`, no server handler, no `/admin/visual-map/raw`.
 
-3. `CODEX_REVIEW_QUEUE.md` (new file at repo root)
-   - Compact handoff note that the Operation Visual Map has been added as owner-facing documentation.
-   - Required checklist fields per the project rule.
+## Changes
 
-4. `.codex-review/claude-session.md` (new file)
-   - Timestamped milestone entry for this session.
+1. **New route** `src/routes/_authenticated.admin.visual-map.tsx`
+   - `createFileRoute("/_authenticated/admin/visual-map")`.
+   - `import visualMapHtml from "../../docs/operations/visual-map/index.html?raw";` (path verified relative to `src/routes/`).
+   - Page layout:
+     - Header: title **"Operation Visual Map"** + subcopy: *"Owner-facing orientation map. Source-of-truth remains Product End-States, GitHub main, Backend Activation, Current Queue, and STATUS.md when present."*
+     - Optional "Open in new tab" link to `/admin/visual-map`.
+     - Full-width `<iframe srcDoc={visualMapHtml} sandbox="allow-scripts" className="w-full h-[calc(100vh-180px)] border rounded" title="Operation Visual Map" />`.
 
-## Files to Change
-- None (docs-only addition).
+2. **Admin nav link** in `src/routes/_authenticated.admin.tsx`
+   - Add `<Link to="/admin/visual-map">Visual Map</Link>` in the admin header row (next to "Settings").
 
-## What NOT to Change
-- `src/`, `public/`, app routes, runtime/package generation paths.
-- Application code, route tree, migrations, backend files, Edge Functions.
-- Dependencies, lockfiles, secrets, RLS, grants, policies.
-- Atlas runtime, Builder runtime, presentation packages.
+3. **README update** `docs/operations/visual-map/README.md`
+   - Add "Private admin access" section noting:
+     - URL: `/admin/visual-map`
+     - Rendered from this docs HTML via Vite raw import (no duplication, no `public/` copy)
+     - Not public, not indexed, not a source of truth
+     - Update cadence: major milestones, backend activations, roadmap decisions, or weekly owner review
 
-## Verification Steps
-1. Confirm the HTML is self-contained and can be opened locally.
-2. Confirm the committed files are docs-only (`git diff --name-only`).
-3. Run `git diff --check` (no trailing whitespace / conflicts).
-4. Run `npm run verify:no-secrets` if the script exists.
-5. Confirm no app/runtime/backend files changed.
+## What does NOT change
 
-## PR
-- Title: `docs(operations): add Frontiers3D operation visual map`
-- Stop before merge.
+- `docs/operations/visual-map/index.html` — untouched, remains canonical.
+- No `public/` copy. No sitemap entry. No public route. No raw HTTP endpoint.
+- No `fs` / `path` / server file reads.
+- No backend, migrations, RLS, Edge Functions, secrets, dependencies, Atlas runtime, Builder runtime, or `PRODUCT_END_STATES.md` changes.
+- `src/routeTree.gen.ts` regenerates automatically — not hand-edited.
 
-## Backend Activation Required
-NO — documentation only.
+## Verification
+
+- Signed-in admin → `/admin/visual-map` renders header + interactive iframe.
+- Non-admin → redirected to `/dashboard` by existing admin layout.
+- Signed-out → redirected to `/login` by `_authenticated` layout.
+- No `/admin/visual-map/raw` exists; no `public/` copy exists.
+- `git diff --name-only` → only: new route file, edit to `_authenticated.admin.tsx`, edit to README (+ auto-regenerated `routeTree.gen.ts`).
+- `git diff --check` clean.
+- `npm run verify:no-secrets` if present.
+
+## End-State Alignment
+
+- Component: Operations / owner-facing documentation
+- Approved outcome advanced: Private admin access to the visual operation map without making it public or authoritative.
+- Boundaries preserved: Admin-only via existing layout gate; docs file canonical; no raw unauthenticated endpoint; no public route; no backend changes.
+- Cross-component effects: Improves owner / AI handoff orientation.
+- Acceptance evidence: Manual admin / non-admin / signed-out sign-in test.
+- Remaining gap: None.
+- PRODUCT_END_STATES.md revision required: NO
+
+## Backend Activation Required: NO
+
+Reason: Frontend-only admin route with a bundled raw import. No migrations, Edge Functions, RLS, storage, or secrets.

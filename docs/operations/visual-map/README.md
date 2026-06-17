@@ -5,6 +5,18 @@ Owner-facing orientation map for the Frontiers|3D platform. Open
 single self-contained HTML file with no external dependencies and no
 network calls.
 
+## Private admin access
+
+Also available in-app at **`/admin/visual-map`** (admin role required).
+That route renders this same HTML via a Vite raw import (`?raw`) inside a
+sandboxed `<iframe>` — no duplicate copy in `public/`, no raw HTTP
+endpoint, not indexed, not a source of truth. Access is gated by the
+existing `_authenticated/admin` layout.
+
+Update cadence: major milestones, backend activations, roadmap
+decisions, or a weekly owner review.
+
+
 ## What this is
 
 - A high-level visual overview of the platform's major systems, revenue

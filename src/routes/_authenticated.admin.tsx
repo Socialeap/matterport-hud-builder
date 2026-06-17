@@ -84,6 +84,12 @@ function AdminLayout() {
             Presentation Updates
           </Link>
           <Link
+            to="/admin/visual-map"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Visual Map
+          </Link>
+          <Link
             to="/admin/settings"
             className="text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
