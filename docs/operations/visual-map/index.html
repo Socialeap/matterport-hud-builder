@@ -1010,9 +1010,56 @@
           <h3>${escapeHTML(item.title)}</h3>
           <p>${escapeHTML(item.text)}</p>
         </article>`).join("");
+      renderProgressSpine();
       bindEvents();
       selectNode(DATA.core);
       requestAnimationFrame(drawConnectors);
+    }
+
+    function renderProgressSpine() {
+      const rail = document.getElementById("progressRail");
+      if (!rail || !DATA.progress) return;
+      rail.innerHTML = DATA.progress.map(item => {
+        const warn = item.blocker || item.status === "decision";
+        const pct = Math.max(0, Math.min(100, item.readiness || 0));
+        return `
+          <button type="button" class="progress-card" data-status="${item.status}" data-progress-id="${item.id}">
+            <div class="progress-card-top">
+              <h3 class="progress-card-title">${escapeHTML(item.title)}</h3>
+              ${warn ? `<span class="progress-warn" title="Blocker or unresolved decision" aria-label="Blocker or unresolved decision">!</span>` : ""}
+            </div>
+            <div class="progress-bar" aria-label="${escapeHTML(readinessLabels[pct] || (pct + '%'))}">
+              <div class="progress-bar-fill" style="width:${pct}%"></div>
+            </div>
+            <div class="progress-card-meta">
+              <span><span class="dot ${item.status}"></span>${escapeHTML(statusLabels[item.status] || item.status)}</span>
+              <span>${escapeHTML(readinessLabels[pct] || (pct + "%"))}</span>
+            </div>
+            <div class="progress-markers">${(item.markers || []).map(m => `<span class="marker-chip">${escapeHTML(m)}</span>`).join("")}</div>
+          </button>`;
+      }).join("");
+      rail.querySelectorAll("[data-progress-id]").forEach(el => {
+        el.addEventListener("click", () => {
+          const item = DATA.progress.find(p => p.id === el.getAttribute("data-progress-id"));
+          if (item) openProgressModal(item);
+        });
+      });
+    }
+
+    function openProgressModal(item) {
+      const pct = Math.max(0, Math.min(100, item.readiness || 0));
+      const parts = [
+        `<p><strong>Status:</strong> ${escapeHTML(statusLabels[item.status] || item.status)} · <strong>Readiness:</strong> ${escapeHTML(readinessLabels[pct] || (pct + "%"))}</p>`,
+        item.done ? `<p><strong>Done:</strong> ${escapeHTML(item.done)}</p>` : "",
+        item.pending ? `<p><strong>Next:</strong> ${escapeHTML(item.pending)}</p>` : "",
+        item.blocker ? `<p><strong>Blocker:</strong> ${escapeHTML(item.blocker)}</p>` : "",
+        item.sources && item.sources.length ? `<p><strong>Source anchors:</strong> ${item.sources.map(escapeHTML).join(" · ")}</p>` : "",
+        `<p style="color: var(--soft); font-size: 12px;">Snapshot only — source-of-truth remains End-States, GitHub main, Backend Activation, Current Queue, and STATUS.md.</p>`
+      ];
+      modalKicker.textContent = "Progress milestone";
+      modalTitle.textContent = item.title;
+      modalBody.innerHTML = parts.filter(Boolean).join("");
+      modalBackdrop.classList.add("open");
     }
 
     function bindEvents() {
