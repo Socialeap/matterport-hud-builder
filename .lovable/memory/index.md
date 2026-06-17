@@ -23,4 +23,5 @@ Export lock checks provider's license for client users via client_providers look
 - [Marketplace and revenue](features/marketplace-revenue.md)
 - [Map Oracle and outreach](features/map-oracle-outreach.md)
 - [Public experience, operations, and roadmap](features/operations-roadmap.md)
+- [PWA / app shell](features/pwa-app-shell.md) — installable shell, conservative SW caching, boundaries, future opportunities
 - [Synthetic / CGI commerce showrooms](features/synthetic-commerce.md)

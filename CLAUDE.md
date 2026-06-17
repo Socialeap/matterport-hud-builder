@@ -34,6 +34,8 @@ This is the **3D Presentation Studio (3DPS)** — a white-label Matterport tour 
 - Keep detailed discoveries in scoped memory or tactical docs — not in the global baseline.
 - Treat implementation anchors as current references, not permanent architecture.
 
+**PWA / App Shell routing:** When work touches mobile UX, installability, offline behavior, service-worker caching, update prompts, notifications, long-running job alerts, app shortcuts, or share-target behavior, consult the PWA/App Shell docs (`.lovable/memory/features/pwa-app-shell.md`) and the current `public/sw.js` + `public/sw-cache-policy.js` before planning or editing. Do not broaden service-worker caching to private/admin/API/server-function/upload/Matterport/Live-Tour data without explicit owner approval.
+
 **Skip the End-State read entirely** for trivial status checks, simple Git operations, formatting-only changes, and unrelated mechanical tasks — do not spend tokens re-reading the baseline for work that cannot affect product direction.
 
 **Required completion block** — include for every qualifying task (planning, implementation, debugging, copy/workflow changes, or PR readiness):

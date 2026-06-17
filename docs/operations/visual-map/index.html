@@ -826,7 +826,7 @@
           "Update only after meaningful platform, backend, roadmap, or owner-review milestones."
         ],
         branches: [
-          "Demand Engine", "Provider Network", "Presentation Tracks", "Publish + Verify", "Immersive Atlas", "Marketplace + Payments", "Revenue + Retention", "Governance + Source Truth"
+          "Demand Engine", "Provider Network", "Presentation Tracks", "Publish + Verify", "Immersive Atlas", "Marketplace + Payments", "Revenue + Retention", "App Shell / Delivery", "Governance + Source Truth"
         ]
       },
       clusters: [
@@ -878,6 +878,10 @@
           { id: "backend-state", title: "Backend / Live Activation", icon: "⚡", status: "active", sources: ["Backend Activation"], summary: "In-progress activation source for migrations, edge functions, storage/RLS, static package regeneration, and live verification.", bullets: ["A feature is not live just because code exists.", "Backend activation should be tracked as a separate state.", "Use this when deciding whether a shipped path is truly available to users."] },
           { id: "current-queue", title: "Current Work Queue", icon: "Q", status: "active", sources: ["Current Queue"], summary: "In-progress execution source for what is actively being reviewed, tested, queued, or handed between Codex/Claude/Lovable.", bullets: ["Useful for what is moving now.", "Should not be confused with long-term product authority.", "Good source for the map’s Active / In Progress labels."] },
           { id: "pricing-conflict", title: "Pricing Decision", icon: "?", status: "decision", sources: ["End-States", "Roadmap"], summary: "Unresolved commercial decision around Pro setup pricing and final provider fee structure.", bullets: ["MRR-style planning references one Pro setup number.", "Business-model framing references another.", "Map should flag this without pretending the conflict is settled."], warning: "Do not use the visual map as the authority for final pricing until Shakoure confirms the official model." }
+        ]},
+        { id: "app-shell", title: "App Shell / Delivery (PWA)", icon: "▢", status: "mixed", sources: ["GitHub main", "End-States"], summary: "Hybrid client-delivery layer: an installable Progressive Web App shell is live (manifest, icons, service worker, offline fallback, conservative static caching, update manager, Atlas install prompt), while richer offline and notification capabilities are planned, not built.", bullets: ["Affects mobile UX, installability, offline fallback, and app-shell updates — a wrapper around the public/Atlas experience, not a content track.", "Service-worker caching is deliberately conservative: a tiny same-origin static allowlist; a hard DENY set keeps /api, /admin, /dashboard, /agent-dashboard, /login, /email, /p/, /_serverFn, /__server out of cache.", "Detail lives in .lovable/memory/features/pwa-app-shell.md and PRODUCT_END_STATES.md §K; source-of-truth is the SW + cache policy on GitHub main."], children: [
+          { id: "pwa-shell", title: "Installable App Shell", icon: "▣", status: "current", sources: ["GitHub main"], summary: "Live/available installable PWA shell: web app manifest + icons, service worker, branded offline fallback page, conservative static (app-shell) caching, a user-confirmed update manager, and an Atlas-only install prompt.", bullets: ["Anchors: public/manifest.webmanifest, public/sw.js, public/sw-cache-policy.js, public/offline.html, src/components/pwa/ServiceWorkerManager.tsx, src/components/pwa/InstallPrompt.tsx.", "Navigations are network-first then offline.html; personalized HTML is never stored. Caches only Vite hashed /assets, /icons, manifest, offline page, favicon.", "Tested: tests/pwa-manifest.test.mjs, tests/pwa-cache-policy.test.mjs, tests/pwa-install.test.mjs. Registers in production only; an update never auto-activates."] },
+          { id: "pwa-future", title: "Notifications + Offline Workflows", icon: "◷", status: "planned", sources: ["Roadmap", "End-States"], summary: "Roadmap PWA opportunities: push notifications, long-running job/deploy/publish + TrueSpace conversion alerts, local draft persistence, dashboard shortcuts, app badging, share-target, and owner/admin docs availability.", bullets: ["Not implemented — keep labeled planned; do not claim as live.", "Boundary: NO offline Matterport tours, offline Live Tour, offline Atlas map data, cached private/admin/API/server-function data, uploads, or offline dashboard workflows.", "Broadening the service-worker cache scope to any of those surfaces requires explicit owner approval."] }
         ]}
       ],
       flow: [
@@ -909,6 +913,11 @@
           done: "Admin upload UI, versioned patcher, legacy bootstrap profile.",
           pending: "Broader legacy profiles and self-service path.", blocker: "",
           sources: ["GitHub main", "Current Queue", "End-States"] },
+        { id: "pwa", title: "PWA / App Shell", status: "mixed", readiness: 75, markers: ["Spec", "Built", "Tested", "Merged"],
+          done: "Installable web app shell: manifest + icons, service worker, branded offline fallback, conservative static (app-shell) caching, user-confirmed update manager, Atlas install prompt. Conservative by design — auth/admin/API/dashboard/presentation paths are never cached.",
+          pending: "Planned (not built): push notifications; job/deploy/publish + TrueSpace conversion alerts; local draft persistence; dashboard shortcuts; app badging; share-target; owner/admin docs availability.",
+          blocker: "",
+          sources: ["GitHub main", "End-States"] },
         { id: "atlas-discovery", title: "Atlas Discovery", status: "mixed", readiness: 50, markers: ["Spec", "Built", "Tested"],
           done: "Map, search, listing, and viewer scaffolding for verified spaces.",
           pending: "Activation depth, synthetic pin distinction, sponsored-vs-organic UX.", blocker: "",
