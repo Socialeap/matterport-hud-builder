@@ -44,3 +44,34 @@
   resolve them in `findNode`; DATA object preserved byte-for-byte (30794 B,
   identical sha256). Harness now clicks steps and asserts step detail renders;
   parses, self-contained, diff still docs-only. Backend Activation Required: NO.
+- **2026-06-18 (recovery check)** — Read-only recovery after a VS Code extension
+  hang. Repo `/Users/shakoure/matterport-hud-builder`; branch
+  `frontiers3d/visual-map-cockpit` @ `4f568a2`, clean + synced, already MERGED to
+  main (PR #176; #175 also merged). NO in-flight Atlas work, no stash/worktree with
+  Atlas changes, no open PRs — nothing lost. Atlas Curation + Showcase Publishing
+  is code-complete + merged; migration `20260613000000_frontiers3d_atlas_showcase_merge.sql`
+  is APPLIED & VERIFIED live per Lovable — BUT that doc update + STATUS.md are
+  stranded on unpushed local commit `f880740`, so origin/main still reads NEEDS
+  APPLY. Blockers: local Supabase CLI can't reach the Lovable Cloud project
+  (use Lovable/Dashboard); Netlify + admin smoke test are owner-side. Safe to
+  continue. Next: (1) docs-only reconcile of the showcase_merge applied state +
+  STATUS.md; (2) admin Approve & Publish smoke test + branch-protection check;
+  (3) republish showcases on current runtime. No files edited during recovery.
+- **2026-06-18** — Docs-only reconciliation PR for the Atlas showcase merge
+  migration. Branch `frontiers3d/atlas-showcase-merge-doc-reconcile` off
+  `origin/main`. Redid (cleanly, on current main) the reconciliation stranded on
+  unpushed `f880740`: `BACKEND_ACTIVATION.md` moves
+  `20260613000000_frontiers3d_atlas_showcase_merge.sql` from Pending/NEEDS APPLY
+  to Completed / APPLIED & VERIFIED (Lovable confirmed live: 3/3 columns +
+  widened publish_status CHECK; no backend action required or performed).
+  STATUS.md NOT added — absent on origin/main and the stranded copy is stale vs
+  current main; recommended a separate refresh if a tracked STATUS.md is wanted.
+  No migration applied/reapplied; no code/runtime/RLS/secret/deploy touched.
+  Backend Activation Required: NO. Opened a focused docs-only PR; stopped before merge.
+- **2026-06-18** — Codex P2 follow-up on the reconciliation PR: cleared the
+  obsolete migration gap in `.lovable/memory/features/atlas-discovery.md:21`
+  (it still listed "apply/verify showcase_merge" as a current gap, which CLAUDE.md
+  routing would surface to future Atlas work). Replaced it with the remaining
+  admin acceptance gap + a note that the migration is applied & verified. Now the
+  documented backend state matches live reality in BOTH the handoff and scoped
+  memory. Docs-only; same branch/PR #177. Backend Activation Required: NO.
