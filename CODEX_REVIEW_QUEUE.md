@@ -1,53 +1,47 @@
 # Codex Review Queue
 
+## Recovery Snapshot — 2026-06-18 (read-only check; no edits made during it)
+
+- **Repo/branch/HEAD:** `/Users/shakoure/matterport-hud-builder` · `frontiers3d/visual-map-cockpit` @ `4f568a2` · clean + synced · already MERGED to `main` (PR #176; #175 also merged). No open PRs.
+- **In-flight work:** NONE. Working tree clean; no Atlas branch/stash/worktree changes; nothing lost in the extension hang.
+- **Atlas Curation + Showcase Publishing state:** code-complete + merged (curation → package → showcase PR → admin Approve & Publish → Netlify deploy/verify → URL attach, listing stays inactive). Migration `20260613000000_frontiers3d_atlas_showcase_merge.sql` is **APPLIED & VERIFIED live per Lovable**.
+  - ⚠️ **Doc divergence:** that applied/verified update + `STATUS.md` are stranded on **unpushed local commit `f880740`**; on `origin/main`, `BACKEND_ACTIVATION.md` still reads **NEEDS APPLY** and `atlas-discovery.md` still lists it as a gap. Reconcile via a docs-only PR (no backend action needed).
+- **Blockers:** local Supabase CLI can't reach the Lovable Cloud project (`cllvwdzjgqlkdquroauz`) — migrations/verification go through Lovable/Dashboard; Netlify + admin Approve & Publish smoke test are owner-side; `gh` works.
+- **Safe to continue:** YES. **Next (1) is now this PR** (docs-only reconcile of showcase_merge applied state); (2) admin Approve & Publish smoke test + branch-protection check; (3) republish showcases on current runtime.
+
 ## Current Review Request
 
-- **Timestamp:** 2026-06-17
+- **Timestamp:** 2026-06-18
 - **Repository:** /Users/shakoure/matterport-hud-builder (Socialeap)
-- **Branch:** `frontiers3d/visual-map-cockpit` → **PR #176**, base `main`. (Was stacked on PR #175/PWA; #175 is now MERGED into `main`, so the base was retargeted to `main` and the diff is overhaul-only.)
-- **PR:** #176 — `feat(visual-map): calmer progressive-disclosure cockpit`
-- **Base commit:** `origin/main` (already contains the PWA commit `6bcec73` via the #175 merge)
-- **Head commit:** `c794ddd`
+- **Branch:** `frontiers3d/atlas-showcase-merge-doc-reconcile` (off `origin/main`), base `main`.
+- **PR:** (to be opened) — `docs(backend): reconcile Atlas showcase merge migration as applied & verified`
+- **Base commit:** `origin/main`
+- **Head commit:** pending commit on current branch
 - **Status:** ready for review
-- **Summary:** UI/UX overhaul of the Operation Visual Map (`docs/operations/visual-map/index.html`)
-  into a calm, progressive-disclosure cockpit. Replaces the dense progress spine
-  with a 5-tile **System Health Dashboard** (counts + plain English, no
-  percentages); adds **view modes** (Overview · Health · Flow · Domains ·
-  Decisions · Source Truth) that show one mental model at a time; minimal node
-  cards (icon · title · one status · short read) with all detail moved to the
-  **inspector**; progressive drill-down (no branches open by default → click a
-  domain → only its components → click a component → inspector); a "**Start
-  here**" recommender; tooltips (hover + keyboard) on status/source/concept
-  labels; owner-readable label renames (Product Direction, Code Reality, Backend
-  / Live Activation, etc.); reduced visual noise; responsive (tiles stack, tabs
-  wrap, inspector below map). Same DATA model, calmer rendering.
+- **Summary:** Docs-only reconciliation. `BACKEND_ACTIVATION.md` recorded migration
+  `20260613000000_frontiers3d_atlas_showcase_merge.sql` as NEEDS APPLY, but Lovable
+  confirmed it is already APPLIED & VERIFIED on the live DB (columns
+  `showcase_pr_number`/`showcase_branch`/`merged_at`; `publish_status` CHECK =
+  `none|pr_open|merged|pending_deploy|published|failed`). The original reconciliation
+  was stranded on unpushed local commit `f880740`; this PR redoes it cleanly on
+  `origin/main`. Moves the item from Pending → Completed (APPLIED & VERIFIED);
+  no migration applied/reapplied; no backend action.
 - **Files changed:**
-  - `docs/operations/visual-map/index.html` — full presentation-layer rewrite (DATA object preserved verbatim).
-  - `docs/operations/visual-map/README.md` — "How to read it" (views/drill-down/start-here/tooltips).
-  - `CODEX_REVIEW_QUEUE.md` + `.codex-review/claude-session.md` — this update.
-- **Verification:** `git diff --check` clean; `verify:no-secrets` PASS; inline JS
-  parses (`new Function`); self-contained (0 external URLs / no fetch); DOM-stub
-  harness drives every view + inspector (14/14 checks); real-browser screenshots
-  (desktop overview, domain drill-down, mobile full-page) confirm calm layout.
-  Source-of-truth hierarchy + conservative statuses unchanged.
-- **Review fixes:** Codex P2 (flow rows rendered `data-node=""` because `DATA.flow`
-  has no `id`, so clicking a step fell back to "Start here") — FIXED by assigning
-  synthetic `flow-<i>` ids at render time and resolving them in `findNode`; DATA
-  object left byte-for-byte unchanged. Harness now clicks steps and asserts the
-  step detail renders.
-- **Known failures / risks:** None. Docs-only; surfaced read-only at `/admin/visual-map`
-  via existing `?raw` iframe (`sandbox="allow-scripts"`) — no route/runtime change.
-- **Backend Activation Required:** NO — documentation only.
+  - `BACKEND_ACTIVATION.md` — NEEDS APPLY → Completed / APPLIED & VERIFIED (2026-06-18); verification SQL marked satisfied.
+  - `CODEX_REVIEW_QUEUE.md` + `.codex-review/claude-session.md` — this update + recovery snapshot.
+- **STATUS.md:** NOT added. It is absent on `origin/main` (the prior copy lived only on stranded `f880740` and predates the PWA/visual-map merges, so it is stale). Recommendation: do not resurrect the stale file here; if a tracked STATUS.md is wanted, refresh it against current `main` in a separate focused PR. Out of scope for this reconciliation.
+- **Verification:** `git diff --check` clean; `verify:no-secrets` PASS;
+  `git diff --name-only` shows only the allowed docs/handoff files.
+- **Known failures / risks:** None. Docs-only; no migration applied/reapplied.
+- **Backend Activation Required:** NO — documentation reconciliation only (Lovable already verified the migration live).
 - **End-State Alignment:**
-  - Component: Public Marketing and PWA / Operations visual map
-  - Approved outcome advanced: Owner can understand system state in <5s and drill
-    down intentionally; orientation cockpit only — reflects, never outranks, sources.
-  - Boundaries preserved: No DATA semantics changed; conservative statuses kept;
-    no runtime/backend/public-feature change; source-of-truth hierarchy intact.
-  - Cross-component effects: Lower cognitive load for owner planning across all domains.
-  - Acceptance evidence: 14/14 harness checks; 3 browser screenshots; first load = 1 cockpit + 9 domains, no open children, no percentages.
-  - Remaining gap: None for this PR; first-load selection persists across views by design.
+  - Component: Atlas Discovery Map / Atlas Curation + Showcase Publishing
+  - Approved outcome advanced: Documented backend state matches verified live reality (curated → published spine no longer shows a false pending gate).
+  - Boundaries preserved: Docs-only; no code/migration/runtime/RLS/secret/deploy change; no unrelated backend item marked complete; conservative statuses kept.
+  - Cross-component effects: None.
+  - Acceptance evidence: BACKEND_ACTIVATION.md shows the item under Completed with Lovable's 3/3 columns + widened CHECK; diff is docs/handoff only.
+  - Remaining gap: Admin manual checks (branch-protection + Approve & Publish smoke test); showcase republish on current runtime.
   - PRODUCT_END_STATES.md revision required: NO.
-- **Decisions / approvals needed:** Owner review/merge of PR #176 into `main`.
-- **Recommended next action:** Open the map (or `/admin/visual-map`), review the three screenshots, then merge #176.
-- **Superseded:** PWA-only review request (PR #175, now MERGED into `main`).
+- **Decisions / approvals needed:** Owner review/merge of the docs-only PR.
+- **Recommended next action:** Merge this PR; then run the admin Approve & Publish smoke test + branch-protection check.
+- **Superseded:** Stranded local commit `f880740` (never pushed); the visual-map PR #176 (MERGED).
