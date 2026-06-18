@@ -2,52 +2,38 @@
 
 ## Current Review Request
 
-- **Timestamp:** 2026-06-17
+- **Timestamp:** 2026-06-18
 - **Repository:** /Users/shakoure/matterport-hud-builder (Socialeap)
-- **Branch:** `frontiers3d/visual-map-cockpit` → **PR #176**, base `main`. (Was stacked on PR #175/PWA; #175 is now MERGED into `main`, so the base was retargeted to `main` and the diff is overhaul-only.)
-- **PR:** #176 — `feat(visual-map): calmer progressive-disclosure cockpit`
-- **Base commit:** `origin/main` (already contains the PWA commit `6bcec73` via the #175 merge)
-- **Head commit:** `c794ddd`
+- **Branch:** `frontiers3d/atlas-showcase-auto-attach` (off `origin/main`), base `main`.
+- **PR:** (to be opened) — `feat(atlas): auto-attach deployed showcase URL after PR merge`
+- **Base commit:** `origin/main` · **Head commit:** pending
 - **Status:** ready for review
-- **Summary:** UI/UX overhaul of the Operation Visual Map (`docs/operations/visual-map/index.html`)
-  into a calm, progressive-disclosure cockpit. Replaces the dense progress spine
-  with a 5-tile **System Health Dashboard** (counts + plain English, no
-  percentages); adds **view modes** (Overview · Health · Flow · Domains ·
-  Decisions · Source Truth) that show one mental model at a time; minimal node
-  cards (icon · title · one status · short read) with all detail moved to the
-  **inspector**; progressive drill-down (no branches open by default → click a
-  domain → only its components → click a component → inspector); a "**Start
-  here**" recommender; tooltips (hover + keyboard) on status/source/concept
-  labels; owner-readable label renames (Product Direction, Code Reality, Backend
-  / Live Activation, etc.); reduced visual noise; responsive (tiles stack, tabs
-  wrap, inspector below map). Same DATA model, calmer rendering.
+- **Summary:** Closes the "stuck on awaiting deploy" gap in Atlas showcase publishing.
+  The merge → verify → attach backend already existed, but the in-merge poll is
+  only ~15s, so real Netlify deploys land in `pending_deploy` and needed a manual
+  "Retry deploy & attach". Adds a **non-destructive** `pollShowcaseDeployment`
+  server fn (verify the deployed URL → attach `presentation_url` to the listing on
+  success → leave `pending_deploy` on a slow deploy; **never** `failed`) and a
+  bounded **client auto-poll** (~6s then 8s × up to 12) that runs after Approve &
+  Publish so the live URL attaches on its own. Pending badge shows "checking
+  deploy…". Manual "Retry deploy & attach" remains as fallback.
 - **Files changed:**
-  - `docs/operations/visual-map/index.html` — full presentation-layer rewrite (DATA object preserved verbatim).
-  - `docs/operations/visual-map/README.md` — "How to read it" (views/drill-down/start-here/tooltips).
-  - `CODEX_REVIEW_QUEUE.md` + `.codex-review/claude-session.md` — this update.
-- **Verification:** `git diff --check` clean; `verify:no-secrets` PASS; inline JS
-  parses (`new Function`); self-contained (0 external URLs / no fetch); DOM-stub
-  harness drives every view + inspector (14/14 checks); real-browser screenshots
-  (desktop overview, domain drill-down, mobile full-page) confirm calm layout.
-  Source-of-truth hierarchy + conservative statuses unchanged.
-- **Review fixes:** Codex P2 (flow rows rendered `data-node=""` because `DATA.flow`
-  has no `id`, so clicking a step fell back to "Start here") — FIXED by assigning
-  synthetic `flow-<i>` ids at render time and resolving them in `findNode`; DATA
-  object left byte-for-byte unchanged. Harness now clicks steps and asserts the
-  step detail renders.
-- **Known failures / risks:** None. Docs-only; surfaced read-only at `/admin/visual-map`
-  via existing `?raw` iframe (`sandbox="allow-scripts"`) — no route/runtime change.
-- **Backend Activation Required:** NO — documentation only.
+  - `src/lib/atlas-showcase-deploy-plan.mjs` (+ `.d.mts`) — NEW pure decision helper (`planShowcaseDeploymentOutcome`): ok→published+attach; not-ok→pending_deploy (retryable, never failed).
+  - `src/lib/atlas-curation.functions.ts` — NEW `pollShowcaseDeployment` server fn (admin-gated; reuses `resolveShowcaseUrl`/`defaultShowcaseUrl`/`verifyDeployedShowcase`).
+  - `src/routes/_authenticated.admin.atlas-curation.tsx` — bounded auto-poll after merge + "checking deploy…" indicator.
+  - `tests/atlas-showcase-deploy-plan.test.mjs` (4) + `tests/atlas-showcase-auto-attach.test.mjs` (6, source guards incl. no-client-secret).
+- **No new DB columns/migrations** — uses existing `publish_status`/`deployed_url`/`published_at`/`publish_error`/`showcase_slug`/`atlas_entry_id` + `atlas_entries.presentation_url`.
+- **Verification:** `tsc` 0 errors; `test:intelligence` 583/583 (10 new); `verify:no-secrets` PASS; eslint clean on changed files; `vite build` OK (pre-existing routeTree SSR-register drift reverted). Deterministic-URL + verify-gate + no-false-success + secret-confinement all covered by tests.
+- **Known failures / risks:** None. Auto-poll is bounded + non-destructive; manual retry preserved. Server fns deploy with the app (normal Lovable "Publish → Update"); no Supabase activation.
+- **Backend Activation Required:** NO — application/server-fn code only; no migration, Edge Function, secret, RLS, storage, or webhook. Reuses already-configured `ATLAS_SHOWCASES_GITHUB_TOKEN` / `NETLIFY_ATLAS_*` (server-only).
 - **End-State Alignment:**
-  - Component: Public Marketing and PWA / Operations visual map
-  - Approved outcome advanced: Owner can understand system state in <5s and drill
-    down intentionally; orientation cockpit only — reflects, never outranks, sources.
-  - Boundaries preserved: No DATA semantics changed; conservative statuses kept;
-    no runtime/backend/public-feature change; source-of-truth hierarchy intact.
-  - Cross-component effects: Lower cognitive load for owner planning across all domains.
-  - Acceptance evidence: 14/14 harness checks; 3 browser screenshots; first load = 1 cockpit + 9 domains, no open children, no percentages.
-  - Remaining gap: None for this PR; first-load selection persists across views by design.
+  - Component: Atlas Discovery / Atlas Curation + Showcase Publishing
+  - Approved outcome advanced: Curated showcases reach `published` with the live URL attached automatically once Netlify deploys — no manual URL step — listing stays inactive until explicit activation.
+  - Boundaries preserved: Hard verify gate (no false success); never auto-activates; non-destructive poll; secrets server-only; no runtime refactor.
+  - Cross-component effects: Editor's Presentation URL auto-populates from the attached `presentation_url`.
+  - Acceptance evidence: 583/583 tests incl. 10 new; verify-gate + transition + secret-confinement unit/source tests; manual two-step acceptance pending (owner: real Netlify deploy).
+  - Remaining gap: Manual end-to-end acceptance against a live Netlify deploy; admin branch-protection check.
   - PRODUCT_END_STATES.md revision required: NO.
-- **Decisions / approvals needed:** Owner review/merge of PR #176 into `main`.
-- **Recommended next action:** Open the map (or `/admin/visual-map`), review the three screenshots, then merge #176.
-- **Superseded:** PWA-only review request (PR #175, now MERGED into `main`).
+- **Decisions / approvals needed:** Owner review/merge + live acceptance (generate → Approve & Publish → confirm URL auto-fills on `/atlas`).
+- **Recommended next action:** Review + merge; then live acceptance.
+- **Other open PRs:** #177 (docs: Atlas showcase-merge reconciliation) — independent, still open.

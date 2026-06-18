@@ -877,6 +877,123 @@ export const markShowcaseDeployed = createServerFn({ method: "POST" })
     return { job: updated as AtlasCurationJob, deployedUrl };
   });
 
+// ── Auto-poll a merged showcase: verify + attach once Netlify is live ────────
+//
+// Non-destructive companion to mergeAndPublishShowcase, used by the admin UI's
+// automatic "awaiting deploy" poll so the live URL attaches on its own once
+// Netlify finishes — no manual "Retry deploy & attach" click needed. It NEVER
+// merges (the PR is already merged) and NEVER marks the job "failed": a deploy
+// that is not live yet simply stays "pending_deploy" so the poll can retry.
+// Attaches presentation_url to the listing ONLY when verifyDeployedShowcase
+// passes (HTTP 200 page + manifest with service=frontiers3d-atlas,
+// kind=curated_showcase). The listing stays inactive — activation is separate.
+
+export const pollShowcaseDeployment = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => z.object({ jobId: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }): Promise<{
+    job: AtlasCurationJob;
+    status: "published" | "pending_deploy";
+    deployedUrl: string;
+    reason: string | null;
+  }> => {
+    await requireAdmin(context as Ctx);
+    const sb = (context as Ctx).supabase;
+
+    const { data: job, error: loadErr } = await sb
+      .from("atlas_curation_jobs")
+      .select(JOB_COLUMNS)
+      .eq("id", data.jobId)
+      .single();
+    if (loadErr || !job) throw new Error(loadErr?.message ?? "Curation job not found.");
+
+    // Already attached — nothing to poll.
+    if (job.publish_status === "published") {
+      return {
+        job: job as AtlasCurationJob,
+        status: "published",
+        deployedUrl: (job.deployed_url as string | null) ?? "",
+        reason: null,
+      };
+    }
+
+    // Only poll a showcase whose PR has been merged (merge happens via
+    // mergeAndPublishShowcase). Anything earlier has nothing to verify yet.
+    const prState = (job.publish_status ?? "none") as string;
+    if (!["merged", "pending_deploy"].includes(prState)) {
+      return {
+        job: job as AtlasCurationJob,
+        status: "pending_deploy",
+        deployedUrl: (job.deployed_url as string | null) ?? "",
+        reason: "Showcase PR is not merged yet — run Approve & Publish first.",
+      };
+    }
+    const slug = (job.showcase_slug ?? "").trim();
+    if (!slug || !job.atlas_entry_id) {
+      return {
+        job: job as AtlasCurationJob,
+        status: "pending_deploy",
+        deployedUrl: (job.deployed_url as string | null) ?? "",
+        reason: "Missing showcase slug or Atlas entry — re-open the showcase PR and create the entry.",
+      };
+    }
+
+    const publish = await import("./atlas-showcase-publish");
+    const { planShowcaseDeploymentOutcome } = await import("./atlas-showcase-deploy-plan.mjs");
+
+    // Resolve the canonical URL (Netlify API → deterministic fallback), then
+    // hard-verify it before trusting it.
+    let deployedUrl = (job.deployed_url as string | null) ?? "";
+    if (!deployedUrl) {
+      try {
+        deployedUrl = await publish.resolveShowcaseUrl(slug);
+      } catch {
+        deployedUrl = publish.defaultShowcaseUrl(slug);
+      }
+    }
+
+    const verification = await publish.verifyDeployedShowcase(deployedUrl, { expectedJobId: job.id });
+    const outcome = planShowcaseDeploymentOutcome(verification, deployedUrl, new Date().toISOString());
+
+    // Published → attach the live URL to the listing (still inactive).
+    if (outcome.status === "published" && outcome.attachUrl) {
+      const { error: entErr } = await sb
+        .from("atlas_entries")
+        .update({ presentation_url: outcome.attachUrl })
+        .eq("id", job.atlas_entry_id);
+      if (entErr) {
+        // Couldn't attach — stay pending (retryable), do not claim success.
+        const { data: pend } = await sb
+          .from("atlas_curation_jobs")
+          .update({ publish_status: "pending_deploy", deployed_url: deployedUrl, publish_error: `Deployed, but couldn't attach the URL: ${entErr.message}` })
+          .eq("id", data.jobId)
+          .select(JOB_COLUMNS)
+          .single();
+        return {
+          job: (pend ?? job) as AtlasCurationJob,
+          status: "pending_deploy",
+          deployedUrl,
+          reason: `Couldn't attach the URL to the Atlas entry: ${entErr.message}`,
+        };
+      }
+    }
+
+    const { data: updated, error: updErr } = await sb
+      .from("atlas_curation_jobs")
+      .update(outcome.jobUpdate)
+      .eq("id", data.jobId)
+      .select(JOB_COLUMNS)
+      .single();
+    if (updErr) throw new Error(updErr.message);
+
+    return {
+      job: updated as AtlasCurationJob,
+      status: outcome.status,
+      deployedUrl,
+      reason: outcome.reason,
+    };
+  });
+
 // ── Verify a deployed showcase URL (used by Atlas admin before activation) ───
 
 export const verifyShowcaseDeployment = createServerFn({ method: "POST" })
