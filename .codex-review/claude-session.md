@@ -19,3 +19,28 @@
   PASS; visual-map JS parses. Backend Activation Required: NO. (Note: local
   unpushed `f880740` — Atlas-migration-verified + STATUS.md — is a separate
   concern, not on origin/main and not part of this PR.)
+- **2026-06-17** — Overhauled the Operation Visual Map into a calm
+  progressive-disclosure cockpit. Branch `frontiers3d/visual-map-cockpit`,
+  STACKED on the PWA branch (tip `6bcec73`) so the diff is overhaul-only.
+  Full presentation-layer rewrite of `docs/operations/visual-map/index.html`
+  (DATA object preserved verbatim): 5-tile System Health Dashboard (counts, no
+  percentages); view modes Overview/Health/Flow/Domains/Decisions/Source Truth
+  (one mental model at a time); minimal node cards with detail in the inspector;
+  drill-down (no branches open by default → domain → components → inspector);
+  "Start here" recommender from DATA; hover+keyboard tooltips on status/source/
+  concept labels; owner-readable label renames; reduced visual noise; responsive
+  (tiles stack, tabs wrap, inspector below map). README gained a "How to read it"
+  section. Source-of-truth hierarchy + conservative statuses unchanged; surfaced
+  read-only at `/admin/visual-map` via the existing `?raw` sandboxed iframe (no
+  route/runtime change). Verified: JS parses; self-contained (0 external URLs);
+  14/14 DOM-stub harness checks across all views; 3 real-browser screenshots
+  (desktop overview, atlas drill-down, mobile full-page) confirm calm layout;
+  `git diff --check` clean; verify:no-secrets PASS. Docs-only. Backend
+  Activation Required: NO. Opened as PR #176; PR #175 (PWA) was MERGED into main
+  meanwhile, so #176's base was retargeted to `main` (overhaul-only diff). Stopped before merge.
+- **2026-06-18** — Fixed Codex P2 on PR #176: Flow-view rows rendered
+  `data-node=""` (DATA.flow has no `id`), so clicking a step set selectedId="" and
+  fell back to the "Start here" panel. Fix: render synthetic `flow-<i>` ids and
+  resolve them in `findNode`; DATA object preserved byte-for-byte (30794 B,
+  identical sha256). Harness now clicks steps and asserts step detail renders;
+  parses, self-contained, diff still docs-only. Backend Activation Required: NO.

@@ -30,6 +30,24 @@ decisions, or a weekly owner review.
 - A planning/review aid that should reflect the current state of the
   platform's moving parts.
 
+## How to read it (progressive disclosure)
+
+The map is a calm cockpit, not an everything-at-once diagram. It opens on a
+plain-English **System Health Dashboard** (Operational / Active Work /
+Roadmap / Needs Decision / Critical Blockers — counts only, no percentages),
+one cockpit node, and the major domains. Detail is revealed on demand:
+
+- **Views** (tabs): Overview · Health · Flow · Domains · Decisions · Source Truth.
+  Each view shows only its own mental model.
+- **Drill down:** click a domain to open only its components; click any block
+  to load plain-English detail in the right-side inspector.
+- **Start here:** the default inspector recommends what to look at first
+  (blockers/decisions, else active work nearest acceptance, plus the launch path).
+- **Tooltips:** hover or keyboard-focus a status/source label for its meaning.
+
+Statuses stay conservative: nothing is labeled *Current (Live)* unless it is
+truly live/available.
+
 ## What this is NOT
 
 - **Not a source of truth.** It reflects the source-of-truth documents
