@@ -80,10 +80,20 @@ for (const [label, { src, norm }] of Object.entries(RUNTIMES)) {
     // The single iframe src write lives in applyTeleport (via normalize).
     const srcWrites = (src.match(/frame\.src\s*=/g) || []).length;
     assert.equal(srcWrites, 1, "exactly one frame.src assignment in the runtime (applyTeleport)");
-    // applyTeleport carries the no-op (no-reload) guard.
+    // applyTeleport carries the no-op (no-reload) guard, keyed off currentViewKey
+    // (which is kept in sync by inbound teleports/follows AND local sends), so an
+    // echo of a just-sent/just-followed view does not reload.
     const ap = src.slice(src.indexOf("function applyTeleport"));
     const apBody = ap.slice(0, ap.indexOf("\n  }") + 1);
-    assert.ok(/lastTeleportedKey/.test(apBody), "applyTeleport has the lastTeleportedKey no-op guard");
+    assert.ok(/sameView\s*=\s*\(\s*newKey\s*===\s*currentViewKey/.test(apBody), "no-op guard keys off currentViewKey");
+    assert.ok(/if\s*\(\s*sameView\s*\)\s*return/.test(apBody), "applyTeleport returns (no reload) when already at the view");
+    assert.ok(!/lastTeleportedKey/.test(apBody), "stale lastTeleportedKey removed");
     assert.ok(/normalizeMatterportLiveSyncUrl\(/.test(apBody), "applyTeleport routes through the quiet-sync normalizer");
+    // The guard's key is kept in sync by LOCAL clipboard sends too: attemptSendLocation
+    // converges currentViewKey, so an echo of a just-sent view is recognised as same-view
+    // (reviewer P2 — guest shares V, host follows + sends V back).
+    const asl = src.slice(src.indexOf("function attemptSendLocation"));
+    const aslBody = asl.slice(0, asl.indexOf("\n  }") + 1);
+    assert.ok(/currentViewKey\s*=\s*key/.test(aslBody), "attemptSendLocation keeps currentViewKey (the no-op guard key) in sync");
   });
 }

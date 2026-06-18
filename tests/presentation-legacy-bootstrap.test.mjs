@@ -306,7 +306,7 @@ test("R1 — bootstrap output carries the 2.2.6 runtime (quiet View Sync + share
   // Quiet View Sync (2.2.6): normalize helper present + quiet params; no-op guard.
   assert.ok(out.includes("function normalizeMatterportLiveSyncUrl"), "quiet-sync URL helper present");
   assert.ok(out.includes("&help=0&hl=0&dh=0"), "teleport URL carries Matterport quiet-start params");
-  assert.ok(teleBlock.includes("lastTeleportedKey"), "applyTeleport has the no-op (no-reload) guard");
+  assert.ok(teleBlock.includes("sameView"), "applyTeleport has the no-op (no-reload) guard keyed off currentViewKey");
   // And reinspects at the bumped runtime version.
   assert.equal(boot(FIX).postInspection.runtimeVersion, ATLAS_RUNTIME_VERSION);
   assert.equal(ATLAS_RUNTIME_VERSION, "2.2.6");

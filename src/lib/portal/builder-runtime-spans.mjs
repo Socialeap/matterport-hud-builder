@@ -385,7 +385,6 @@ export const BUILDER_JS_GLUE_SPAN = `// f3d:runtime-js:glue BEGIN v=1 family=bui
 
   var toolMode="none";
   var currentViewKey="";
-  var lastTeleportedKey=""; // last ss|sr actually loaded into the iframe — 2.2.6 quiet-sync no-op guard
   var localStrokes=[];
   var activeStroke=null;
   var pendingStrokePoints=null;
@@ -1760,7 +1759,6 @@ export const BUILDER_JS_GLUE_SPAN = `// f3d:runtime-js:glue BEGIN v=1 family=bui
     setToolMode("none");
     wipeAnnotations();
     currentViewKey="";
-    lastTeleportedKey="";
     lastPointerSeq=0;
     lastStrokeSeq=0;
     lastClearSeq=0;
@@ -1821,6 +1819,11 @@ export const BUILDER_JS_GLUE_SPAN = `// f3d:runtime-js:glue BEGIN v=1 family=bui
     var p=props[current];
     if(!p||!p.iframeUrl) return;
     var newKey=(ss||"")+"|"+(sr||"");
+    // Is the viewer already at this exact view? currentViewKey tracks the live
+    // view — set by an inbound teleport/follow AND by a LOCAL clipboard send in
+    // attemptSendLocation — so this also catches an echo of a just-sent/just-
+    // followed view, not only repeats of a prior teleport. Capture BEFORE converge.
+    var sameView=(newKey===currentViewKey);
     // Converge the view key (outbound annotation stamping + stale-frame filter),
     // but do NOT wipe — 2.2.5 shared-scene persistence. Empty-key strokes drawn
     // before the first sync stay accepted (the filter only drops when BOTH keys
@@ -1834,12 +1837,11 @@ export const BUILDER_JS_GLUE_SPAN = `// f3d:runtime-js:glue BEGIN v=1 family=bui
     // Feature / Mattertag (ghost iframe) is open still returns the user to the
     // live-tour view instead of leaving them on the ghost/tag.
     try { if(window.__snapPrimaryActive) window.__snapPrimaryActive(); } catch(_e){}
-    // 2.2.6 quiet sync: if the iframe already shows this exact view, never
-    // reassign src — a reload would replay Matterport's startup UI. This also
-    // makes duplicate/echo teleports and same-view re-syncs reload-free. (The
-    // primary-iframe snap above already ran, so the user is on the live view.)
-    if(newKey===lastTeleportedKey) return;
-    lastTeleportedKey=newKey;
+    // 2.2.6 quiet sync: never reassign src for a view already shown — a reload
+    // would replay Matterport's startup UI (e.g. guest shares V, host follows and
+    // sends V back; the echo must not reload). The primary-iframe snap above
+    // already ran, so the user is on the live view regardless.
+    if(sameView) return;
     try { frame.src=normalizeMatterportLiveSyncUrl(p.iframeUrl,ss,sr); } catch(_e){}
   }
 

@@ -118,3 +118,15 @@
   no-op path while src is not reassigned. Atlas is single-iframe (no snap, no
   change). js:glue re-pinned (cc9de988…, 89753). tsc 0; test:intelligence
   599/599; verify:html + verify:no-secrets PASS; build OK. Backend Activation: NO.
+- **2026-06-18** — Codex P2 #2 on PR #179 (quiet View Sync): the no-op guard used
+  a separate lastTeleportedKey updated only on teleport-write, so an echo of a
+  just-sent/just-followed view (local send sets currentViewKey, not
+  lastTeleportedKey) wasn't recognized → reloaded anyway. Fix (both runtimes):
+  dropped lastTeleportedKey; the guard now compares newKey to the pre-converge
+  currentViewKey, which attemptSendLocation already keeps in sync (currentViewKey=key).
+  Source guards assert the guard keys off currentViewKey AND that attemptSendLocation
+  converges it. (The behavioral send→echo path is additionally covered by the
+  pre-existing own-send echo-suppression window; an isolated test was dropped as
+  confounded by that window — X2 + source guards prove the currentViewKey guard.)
+  js:glue re-pinned (6af1a435…, 89934). tsc 0; test:intelligence 599/599;
+  verify:html + verify:no-secrets PASS; build OK. Backend Activation: NO.

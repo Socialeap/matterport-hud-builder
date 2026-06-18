@@ -339,7 +339,6 @@
 
   var toolMode = "none";
   var currentViewKey = "";
-  var lastTeleportedKey = ""; // last ss|sr actually loaded into the iframe — 2.2.6 quiet-sync no-op guard
   var localStrokes = [];
   var activeStroke = null;
   var pendingStrokePoints = null;
@@ -1912,6 +1911,11 @@
   function applyTeleport(ss, sr) {
     if (!frame || !MP_BASE) return;
     var newKey = (ss || "") + "|" + (sr || "");
+    // Is the viewer already at this exact view? currentViewKey tracks the live
+    // view — set by an inbound teleport/follow AND by a LOCAL clipboard send in
+    // attemptSendLocation — so this also catches an echo of a just-sent/just-
+    // followed view, not only repeats of a prior teleport. Capture BEFORE converge.
+    var sameView = (newKey === currentViewKey);
     // Converge the view key (outbound annotation stamping + stale-frame filter),
     // but do NOT wipe — 2.2.5: a View Sync / follow keeps Host and Guest in one
     // shared scene where committed annotations persist. Empty-key strokes drawn
@@ -1919,11 +1923,10 @@
     // are non-empty and differ), so establishing the first key never orphans them.
     currentViewKey = newKey;
     try { session.noteCurrentView(ss, sr); } catch (_e) {}
-    // 2.2.6 quiet sync: if the iframe already shows this exact view, never
-    // reassign src — a reload would replay Matterport's startup UI. This also
-    // makes duplicate/echo teleports and same-view re-syncs reload-free.
-    if (newKey === lastTeleportedKey) return;
-    lastTeleportedKey = newKey;
+    // 2.2.6 quiet sync: never reassign src for a view already shown — a reload
+    // would replay Matterport's startup UI (e.g. guest shares V, host follows and
+    // sends V back; the echo must not reload the guest, who is already at V).
+    if (sameView) return;
     try {
       frame.src = normalizeMatterportLiveSyncUrl(MP_BASE, ss, sr);
     } catch (_e) {}
@@ -2116,7 +2119,6 @@
     wipeAnnotations();
     releaseAnnoCanvas();
     currentViewKey = "";
-    lastTeleportedKey = "";
     lastPointerSeq = 0;
     lastStrokeSeq = 0;
     lastClearSeq = 0;
