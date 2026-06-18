@@ -36,4 +36,5 @@
   14/14 DOM-stub harness checks across all views; 3 real-browser screenshots
   (desktop overview, atlas drill-down, mobile full-page) confirm calm layout;
   `git diff --check` clean; verify:no-secrets PASS. Docs-only. Backend
-  Activation Required: NO. Stop before merge; merge #175 first or retarget to main.
+  Activation Required: NO. Opened as PR #176; PR #175 (PWA) was MERGED into main
+  meanwhile, so #176's base was retargeted to `main` (overhaul-only diff). Stopped before merge.

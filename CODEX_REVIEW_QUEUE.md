@@ -4,10 +4,10 @@
 
 - **Timestamp:** 2026-06-17
 - **Repository:** /Users/shakoure/matterport-hud-builder (Socialeap)
-- **Branch:** `frontiers3d/visual-map-cockpit` — STACKED on `frontiers3d/docs-pwa-app-shell` (PR #175). PR base = the PWA branch so the diff is overhaul-only; retarget to `main` after #175 merges.
-- **PR:** (to be opened) — `feat(visual-map): calmer progressive-disclosure cockpit`
-- **Base commit:** `6bcec73` (tip of the PWA branch)
-- **Head commit:** pending commit on current branch
+- **Branch:** `frontiers3d/visual-map-cockpit` → **PR #176**, base `main`. (Was stacked on PR #175/PWA; #175 is now MERGED into `main`, so the base was retargeted to `main` and the diff is overhaul-only.)
+- **PR:** #176 — `feat(visual-map): calmer progressive-disclosure cockpit`
+- **Base commit:** `origin/main` (already contains the PWA commit `6bcec73` via the #175 merge)
+- **Head commit:** `c794ddd`
 - **Status:** ready for review
 - **Summary:** UI/UX overhaul of the Operation Visual Map (`docs/operations/visual-map/index.html`)
   into a calm, progressive-disclosure cockpit. Replaces the dense progress spine
@@ -43,6 +43,6 @@
   - Acceptance evidence: 14/14 harness checks; 3 browser screenshots; first load = 1 cockpit + 9 domains, no open children, no percentages.
   - Remaining gap: None for this PR; first-load selection persists across views by design.
   - PRODUCT_END_STATES.md revision required: NO.
-- **Decisions / approvals needed:** Owner review/merge. Merge #175 first (or retarget this PR to `main`).
-- **Recommended next action:** Review the three screenshots + open the map; then merge after #175.
-- **Superseded:** Supersedes the PWA-only review request (now folded under this stacked branch, which includes #175's commit `6bcec73`).
+- **Decisions / approvals needed:** Owner review/merge of PR #176 into `main`.
+- **Recommended next action:** Open the map (or `/admin/visual-map`), review the three screenshots, then merge #176.
+- **Superseded:** PWA-only review request (PR #175, now MERGED into `main`).
