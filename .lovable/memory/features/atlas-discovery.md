@@ -18,6 +18,6 @@ Atlas is the public discovery layer for verified immersive physical and virtual 
 - Map-click coordinate selection must remain within configured geo-fence rules.
 
 ## Current Gaps
-- Apply/verify `20260613000000_frontiers3d_atlas_showcase_merge.sql`.
+- Run the admin Approve & Publish acceptance: confirm the `Socialeap/frontiers3d-atlas-showcases` default branch does not block API merges, then the end-to-end `/admin/atlas-curation` smoke test. (Migration `20260613000000_frontiers3d_atlas_showcase_merge.sql` is applied & verified live — see `BACKEND_ACTIVATION.md`.)
 - Republish representative showcases with the current runtime.
 - Complete launch-scale clustering and claim/operations acceptance.
