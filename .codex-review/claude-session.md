@@ -110,3 +110,11 @@
   pre-existing routeTree SSR-register drift). Initial iframe markup intentionally
   untouched (out of scope). Backend Activation Required: NO. Opened a PR; stopped
   before merge; owner two-browser acceptance pending.
+- **2026-06-18** — Codex P2 fix on PR #179 (quiet View Sync): Builder
+  applyTeleport returned before window.__snapPrimaryActive(), so a no-op
+  same-view teleport while a Property Feature/Mattertag (ghost iframe) was open
+  could leave the user on the ghost view. Fixed: snap the primary iframe FIRST
+  (idempotent), then the no-reload guard. New test X6 proves the snap runs on the
+  no-op path while src is not reassigned. Atlas is single-iframe (no snap, no
+  change). js:glue re-pinned (cc9de988…, 89753). tsc 0; test:intelligence
+  599/599; verify:html + verify:no-secrets PASS; build OK. Backend Activation: NO.

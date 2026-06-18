@@ -33,9 +33,10 @@
   - `src/lib/atlas-runtime-version.mjs` — runtime **2.2.5 → 2.2.6** + changelog.
   - `tests/live-tour-quiet-sync.test.mjs` (NEW, 10: normalize unit+parity for both runtimes + source guards).
   - `tests/builder-live-tour.test.mjs` (X1–X5: quiet params, no-op guard, tool/stroke/clear never touch src).
-  - `tests/builder-runtime-spans.test.mjs` (js:glue re-pin → `dcda269d…`, 89481) + `tests/presentation-legacy-bootstrap.test.mjs` (R1 → 2.2.6 + quiet-param assertions).
+  - `tests/builder-runtime-spans.test.mjs` (js:glue re-pin → `cc9de988…`, 89753) + `tests/presentation-legacy-bootstrap.test.mjs` (R1 → 2.2.6 + quiet-param assertions).
+- **Review fixes:** Codex P2 — Builder `applyTeleport` returned before `__snapPrimaryActive()`, so a no-op same-view teleport while a Property Feature/Mattertag (ghost iframe) was open could leave the user on the ghost view. Fixed: snap the primary iframe FIRST (idempotent), then apply the no-reload guard. New test X6 asserts the snap runs on the no-op path while `src` is not reassigned. (Atlas is single-iframe — no snap, no change.)
 - **Matterport params (verified vs Matterport URL-parameter docs):** `play=1` auto-open · `qs=1` quickstart→Inside View · `help=0` no help · `hl=0` auto-collapse highlight reel · `dh=0` no dollhouse fly-in/button (no `hl=2` exists; `hl=0` is the safe value). `title=0`/`brand=0` preserve prior behavior.
-- **Verification:** `tsc` 0; `test:intelligence` **598/598** (15 new); `verify:html` PASS (glue IIFE parses, no risky escapes); `verify:no-secrets` PASS; `vite build` OK (pre-existing routeTree SSR-register drift reverted); `git diff --check` clean.
+- **Verification:** `tsc` 0; `test:intelligence` **599/599** (16 new); `verify:html` PASS (glue IIFE parses, no risky escapes); `verify:no-secrets` PASS; `vite build` OK (pre-existing routeTree SSR-register drift reverted); `git diff --check` clean.
 - **Manual acceptance (pending — owner, two desktops):**
   1. A syncs view (U + Matterport Copy) → B moves with **no** reel/logo/help popup.
   2. B syncs back → same.

@@ -1828,15 +1828,18 @@ export const BUILDER_JS_GLUE_SPAN = `// f3d:runtime-js:glue BEGIN v=1 family=bui
     currentViewKey=newKey;
     // Tell the controller the (otherwise invisible) locally-applied view changed.
     try { session.noteCurrentView(ss,sr); } catch(_e){}
+    // Live tour teleports always target the primary iframe (closure-captured
+    // frame === Iframe A). Snap it back to the foreground FIRST — even for a
+    // no-op same-view teleport — so a repeat sync/tour-stop while a Property
+    // Feature / Mattertag (ghost iframe) is open still returns the user to the
+    // live-tour view instead of leaving them on the ghost/tag.
+    try { if(window.__snapPrimaryActive) window.__snapPrimaryActive(); } catch(_e){}
     // 2.2.6 quiet sync: if the iframe already shows this exact view, never
     // reassign src — a reload would replay Matterport's startup UI. This also
-    // makes duplicate/echo teleports and same-view re-syncs reload-free.
+    // makes duplicate/echo teleports and same-view re-syncs reload-free. (The
+    // primary-iframe snap above already ran, so the user is on the live view.)
     if(newKey===lastTeleportedKey) return;
     lastTeleportedKey=newKey;
-    // Live tour teleports always target the primary iframe (closure-captured
-    // frame === Iframe A). Snap state back so the user sees the reload on the
-    // iframe they're looking at.
-    try { if(window.__snapPrimaryActive) window.__snapPrimaryActive(); } catch(_e){}
     try { frame.src=normalizeMatterportLiveSyncUrl(p.iframeUrl,ss,sr); } catch(_e){}
   }
 

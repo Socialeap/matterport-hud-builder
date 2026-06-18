@@ -98,8 +98,8 @@ const BASELINES = [
     // change — re-pinned deliberately.
     name: "js:glue",
     build: () => BUILDER_JS_GLUE_SPAN,
-    sha256: "dcda269d28ef09304eaad85c46df1c573e5b5190e82469ffab1ff3ea45663c25",
-    bytes: 89481,
+    sha256: "cc9de988aa2a473d2c0133d941615dc405922e8882a550e3a60838a27c43f4cc",
+    bytes: 89753,
   },
 ];
 

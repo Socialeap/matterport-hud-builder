@@ -1273,3 +1273,15 @@ test("X5 — remote Clear affects the overlay only, never the iframe src", () =>
   h.emit({ incomingClearEvent: { seq: 1 } });
   assert.equal(h.frame.src, "SENTINEL://clear", "Clear wipes annotations only — no viewer reload");
 });
+
+test("X6 — Builder restores the primary iframe (__snapPrimaryActive) even on a no-op same-view teleport", () => {
+  let snaps = 0;
+  const h = runGlue("visitor", { wireRemote: true, window: { __snapPrimaryActive: () => { snaps++; } } });
+  h.emit({ incomingTeleportEvent: { ss: "9", sr: "3,4", ts: 1 } });
+  assert.ok(snaps >= 1, "first teleport snaps the primary iframe to the foreground");
+  const afterFirst = snaps;
+  h.frame.src = "SENTINEL://noreload";
+  h.emit({ incomingTeleportEvent: { ss: "9", sr: "3,4", ts: 2 } }); // same view → no reload
+  assert.equal(h.frame.src, "SENTINEL://noreload", "no-op guard still skips the iframe reload");
+  assert.ok(snaps > afterFirst, "but the primary iframe is STILL snapped back (ghost/Mattertag restore) on the no-op path");
+});
