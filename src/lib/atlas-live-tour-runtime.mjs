@@ -1887,32 +1887,48 @@
   }
 
   // ── Teleport / iframe rewrite (single iframe) ────────────────────────
-  function rewriteIframeForTeleport(baseUrl, ss, sr) {
+  // Build a "quiet" Matterport show URL for a synced/teleported view. Changing
+  // ss/sr requires reloading the iframe (no Matterport SDK); these verified
+  // params stop that reload from replaying Matterport's startup UI:
+  //   play=1 auto-open · qs=1 quickstart→Inside View · help=0 no help prompt ·
+  //   hl=0 auto-collapse the highlight reel · dh=0 no dollhouse fly-in/button.
+  // (title=0/brand=0 preserve prior behavior.) Idempotent; preserves m + ss/sr;
+  // only ever decorates real Matterport show URLs.
+  function normalizeMatterportLiveSyncUrl(baseUrl, ss, sr) {
     if (!baseUrl) return baseUrl;
-    var stripped = baseUrl.replace(/[?&](ss|sr|qs|play|title|brand)=[^&]*/g, function (m) {
+    if (!/matterport\.com/i.test(baseUrl)) return baseUrl;
+    var stripped = baseUrl.replace(/[?&](ss|sr|qs|play|title|brand|help|hl|dh)=[^&]*/g, function (m) {
       return m.charAt(0) === "?" ? "?" : "";
     });
     stripped = stripped.replace(/\?&/g, "?").replace(/[?&]$/, "");
     var sep = stripped.indexOf("?") === -1 ? "?" : "&";
     var qs = "ss=" + encodeURIComponent(ss);
     if (sr) qs += "&sr=" + encodeURIComponent(sr);
-    qs += "&qs=1&play=1&title=0&brand=0";
+    qs += "&qs=1&play=1&title=0&brand=0&help=0&hl=0&dh=0";
     return stripped + sep + qs;
   }
 
   function applyTeleport(ss, sr) {
     if (!frame || !MP_BASE) return;
-    // Converge the view key (so outbound annotation packets are stamped with the
-    // live view and the receive filter keeps dropping genuinely stale frames),
+    var newKey = (ss || "") + "|" + (sr || "");
+    // Is the viewer already at this exact view? currentViewKey tracks the live
+    // view — set by an inbound teleport/follow AND by a LOCAL clipboard send in
+    // attemptSendLocation — so this also catches an echo of a just-sent/just-
+    // followed view, not only repeats of a prior teleport. Capture BEFORE converge.
+    var sameView = (newKey === currentViewKey);
+    // Converge the view key (outbound annotation stamping + stale-frame filter),
     // but do NOT wipe — 2.2.5: a View Sync / follow keeps Host and Guest in one
-    // shared scene where committed annotations persist. Clear and the Eraser are
-    // the only ways to remove marks. Empty-key strokes drawn before the first
-    // sync stay accepted on both ends (the filter only drops when BOTH keys are
-    // non-empty and differ), so establishing the first key never orphans them.
-    currentViewKey = (ss || "") + "|" + (sr || "");
+    // shared scene where committed annotations persist. Empty-key strokes drawn
+    // before the first sync stay accepted (the filter only drops when BOTH keys
+    // are non-empty and differ), so establishing the first key never orphans them.
+    currentViewKey = newKey;
     try { session.noteCurrentView(ss, sr); } catch (_e) {}
+    // 2.2.6 quiet sync: never reassign src for a view already shown — a reload
+    // would replay Matterport's startup UI (e.g. guest shares V, host follows and
+    // sends V back; the echo must not reload the guest, who is already at V).
+    if (sameView) return;
     try {
-      frame.src = rewriteIframeForTeleport(MP_BASE, ss, sr);
+      frame.src = normalizeMatterportLiveSyncUrl(MP_BASE, ss, sr);
     } catch (_e) {}
   }
 

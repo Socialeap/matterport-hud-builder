@@ -22,6 +22,17 @@
 //     (controller + glue + CSS). Bump on every behavior change; the
 //     Upgrade Center compares this value to decide "outdated".
 const ATLAS_PACKAGE_SCHEMA = 2;
+// 2.2.6: Quiet View Sync + no annotation-triggered reloads. (1) The teleport
+// iframe URL builder (renamed rewriteIframeForTeleport -> normalizeMatterportLive
+// SyncUrl in both Builder + Atlas runtimes) now adds verified Matterport
+// quiet-start params (help=0, hl=0, dh=0 alongside the existing qs=1/play=1/
+// title=0/brand=0) so a sync reload no longer replays Matterport's startup UI
+// (intro fly-in, help, highlight reel). It is idempotent, preserves m/ss/sr, and
+// only decorates real Matterport show URLs. (2) applyTeleport gained a no-op
+// guard: it converges the view key but SKIPS reassigning iframe.src when the
+// frame already shows that exact view, so duplicate/echo teleports and same-view
+// re-syncs never reload — and no annotation/tool path can cause a viewer reload
+// (annotation messages never call applyTeleport). No wipe-on-sync (2.2.5 kept).
 // 2.2.5: Shared-annotation persistence across View Sync. Both runtimes
 // (Builder + Atlas) previously called wipeAnnotations() on EVERY sync — in
 // attemptSendLocation() on a successful send and in applyTeleport() on an
@@ -149,7 +160,7 @@ const ATLAS_PACKAGE_SCHEMA = 2;
 // 2.0.1: iOS clipboard isolation — ambient readText() disabled on
 // iOS/iPadOS WebKit (Paste-callout interruption fix) + stage-scoped
 // WebKit gesture defenses.
-const ATLAS_RUNTIME_VERSION = "2.2.5";
+const ATLAS_RUNTIME_VERSION = "2.2.6";
 
 // SUPPORTED-CURRENT capabilities — what freshly generated packages
 // advertise. Live Tour / Explore Together is desktop-only (2026-06-09), so

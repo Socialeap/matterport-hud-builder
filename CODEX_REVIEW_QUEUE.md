@@ -11,42 +11,50 @@
 
 - **Timestamp:** 2026-06-18
 - **Repository:** /Users/shakoure/matterport-hud-builder (Socialeap)
-- **Branch:** `frontiers3d/atlas-showcase-auto-attach`, base `main` (latest `main` merged in; conflicts resolved in handoff files only).
-- **PR:** #178 — `feat(atlas): auto-attach deployed showcase URL after PR merge`
-- **Base commit:** `origin/main` · **Head commit:** pending (post-merge)
+- **Branch:** `frontiers3d/live-tour-quiet-sync` (off `origin/main`), base `main`.
+- **PR:** (to be opened) — `feat(live-tour): quiet View Sync + no annotation-triggered Matterport reloads (runtime 2.2.6)`
+- **Base commit:** `origin/main` · **Head commit:** pending
 - **Status:** ready for review
-- **Summary:** Closes the "stuck on awaiting deploy" gap in Atlas showcase publishing.
-  The merge → verify → attach backend already existed, but the in-merge poll is
-  only ~15s, so real Netlify deploys land in `pending_deploy` and needed a manual
-  "Retry deploy & attach". Adds a **non-destructive** `pollShowcaseDeployment`
-  server fn (verify the deployed URL → attach `presentation_url` on success →
-  leave `pending_deploy` on a slow deploy; **never** `failed`) and a bounded
-  **client auto-poll** (~6s then 8s × up to 12) after Approve & Publish so the
-  live URL attaches on its own. Pending badge shows "checking deploy…". Manual
-  "Retry deploy & attach" remains as fallback.
+- **Summary:** Two Live Tour UX defects. (1) A View Sync reload replayed Matterport's
+  startup UI (intro/help/highlight reel) because the teleport URL builder lacked
+  reel/help suppression params. (2) Concern that annotation/tool actions reload the
+  peer's viewer. **Root cause / proof:** the ONLY iframe `src` writer is
+  `applyTeleport` (View Sync / saved-stop); annotation, tool, stroke, clear,
+  navlock, and floor handlers never call it (source-guarded). Fix, parity-matched
+  across Builder + Atlas runtimes: (A) `rewriteIframeForTeleport` →
+  `normalizeMatterportLiveSyncUrl` — adds verified Matterport quiet params
+  `help=0&hl=0&dh=0` (with existing `qs=1&play=1&title=0&brand=0`), idempotent,
+  preserves m/ss/sr, only decorates `matterport.com` URLs; (B) `applyTeleport`
+  no-op guard — converges the view key but SKIPS reassigning `iframe.src` when the
+  frame already shows that view, so duplicate/echo/same-view re-syncs never reload.
+  No wipe-on-sync (2.2.5 persistence preserved).
 - **Files changed:**
-  - `src/lib/atlas-showcase-deploy-plan.mjs` (+ `.d.mts`) — NEW pure `planShowcaseDeploymentOutcome` (ok→published+attach; not-ok→pending_deploy, retryable, never failed).
-  - `src/lib/atlas-curation.functions.ts` — NEW `pollShowcaseDeployment` server fn (admin-gated; reuses `resolveShowcaseUrl`/`defaultShowcaseUrl`/`verifyDeployedShowcase`).
-  - `src/routes/_authenticated.admin.atlas-curation.tsx` — bounded auto-poll after merge + "checking deploy…" indicator.
-  - `tests/atlas-showcase-deploy-plan.test.mjs` (4) + `tests/atlas-showcase-auto-attach.test.mjs` (6, source guards incl. no-client-secret).
-- **No new DB columns/migrations** — uses existing `publish_status`/`deployed_url`/`published_at`/`publish_error`/`showcase_slug`/`atlas_entry_id` + `atlas_entries.presentation_url`.
-- **Verification:** `tsc` 0; `test:intelligence` 583/583 (10 new); `verify:no-secrets` PASS; eslint clean on changed files; `vite build` OK (pre-existing routeTree SSR-register drift reverted). Deterministic-URL + verify-gate + no-false-success + secret-confinement covered by tests.
-- **Manual acceptance (pending — owner, needs a live Netlify deploy):**
-  1. Generate curated showcase.
-  2. Approve & Publish (merges showcase PR).
-  3. Watch the pending badge show "checking deploy…".
-  4. Presentation URL auto-fills once Netlify is live.
-  5. Public `/atlas` opens the listing and loads the Netlify showcase.
-  6. Listing activation remains manual/intentional (stays inactive until activated).
-- **Known failures / risks:** None. Auto-poll is bounded + non-destructive; manual retry preserved. Server fns deploy with the app (Lovable "Publish → Update"); no Supabase activation.
-- **Backend Activation Required:** NO — application/server-fn code only; no migration, Edge Function, secret, RLS, storage, or webhook. Reuses already-configured server-only `ATLAS_SHOWCASES_GITHUB_TOKEN` / `NETLIFY_ATLAS_*`.
+  - `src/lib/atlas-live-tour-runtime.mjs` + `src/lib/portal/builder-runtime-spans.mjs` — normalize helper + no-op `applyTeleport` guard (parity).
+  - `src/lib/atlas-runtime-version.mjs` — runtime **2.2.5 → 2.2.6** + changelog.
+  - `tests/live-tour-quiet-sync.test.mjs` (NEW, 10: normalize unit+parity for both runtimes + source guards).
+  - `tests/builder-live-tour.test.mjs` (X1–X5: quiet params, no-op guard, tool/stroke/clear never touch src).
+  - `tests/builder-runtime-spans.test.mjs` (js:glue re-pin → `6af1a435…`, 89934) + `tests/presentation-legacy-bootstrap.test.mjs` (R1 → 2.2.6 + quiet-param assertions).
+- **Review fixes:**
+  - Codex P2 (snap order) — Builder `applyTeleport` returned before `__snapPrimaryActive()`, so a no-op same-view teleport while a Property Feature/Mattertag (ghost iframe) was open could leave the user on the ghost view. Fixed: snap the primary iframe FIRST (idempotent), then the no-reload guard. Test X6.
+  - Codex P2 (stale guard key) — the no-op guard used a separate `lastTeleportedKey` only updated on teleport-write, so an echo of a just-sent/just-followed view (local send via `attemptSendLocation`, which sets `currentViewKey`) wasn't recognized and reloaded anyway. Fixed: dropped `lastTeleportedKey`; the guard now keys off the pre-converge `currentViewKey` (kept in sync by inbound teleports/follows AND local sends). Source guards assert the guard reads `currentViewKey` and that `attemptSendLocation` converges it. (Atlas is single-iframe — snap N/A; the key fix applies to both runtimes.)
+- **Matterport params (verified vs Matterport URL-parameter docs):** `play=1` auto-open · `qs=1` quickstart→Inside View · `help=0` no help · `hl=0` auto-collapse highlight reel · `dh=0` no dollhouse fly-in/button (no `hl=2` exists; `hl=0` is the safe value). `title=0`/`brand=0` preserve prior behavior.
+- **Verification:** `tsc` 0; `test:intelligence` **599/599** (16 new); `verify:html` PASS (glue IIFE parses, no risky escapes); `verify:no-secrets` PASS; `vite build` OK (pre-existing routeTree SSR-register drift reverted); `git diff --check` clean.
+- **Manual acceptance (pending — owner, two desktops):**
+  1. A syncs view (U + Matterport Copy) → B moves with **no** reel/logo/help popup.
+  2. B syncs back → same.
+  3. A selects Draw/Focus/Eraser/Pointer → B's viewer does **not** reload.
+  4. A draws / B draws+erases → seen with no reload; Clear wipes only on click.
+  5. Voice + fullscreen still work; Atlas modal + direct Netlify showcase both OK.
+- **Known failures / risks:** None. Initial iframe markup intentionally untouched (first-load intro is expected; out of scope). The no-op guard skips reload when coords are unchanged — a same-coordinate re-sync won't force-snap a guest who manually moved (acceptable; move to a different view to re-sync).
+- **Backend Activation Required:** NO — generated runtime + version + tests only; no migration, Edge Function, secret, RLS, storage, or backend.
 - **End-State Alignment:**
-  - Component: Atlas Discovery / Atlas Curation + Showcase Publishing
-  - Approved outcome advanced: Curated showcases reach `published` with the live URL attached automatically once Netlify deploys — no manual URL step — listing stays inactive until explicit activation.
-  - Boundaries preserved: Hard verify gate (no false success); never auto-activates; non-destructive poll; secrets server-only; no runtime refactor.
-  - Cross-component effects: Editor's Presentation URL auto-populates from the attached `presentation_url`.
-  - Acceptance evidence: 583/583 tests incl. 10 new; verify-gate + transition + secret-confinement unit/source tests; manual live acceptance pending.
-  - Remaining gap: Manual end-to-end acceptance against a live Netlify deploy; admin branch-protection check.
+  - Component: Explore Together / Presentation Runtime / Atlas curated showcases
+  - Approved outcome advanced: View Sync + annotation collaboration feel seamless — no Matterport startup-UI replays, no annotation-triggered viewer reloads.
+  - Boundaries preserved: No Matterport SDK; no backend; desktop-only; no mobile collaboration; annotations persist unless Clear/Eraser; Builder+Atlas parity.
+  - Cross-component effects: Builder exports, Atlas showcases, and Upgrade Center-bootstrapped packages all inherit 2.2.6.
+  - Acceptance evidence: 598/598 incl. 15 new; normalize unit+parity; source guards; behavioral X1–X5; R1 bootstrap @ 2.2.6.
+  - Remaining gap: Owner two-browser manual acceptance.
   - PRODUCT_END_STATES.md revision required: NO.
-- **Decisions / approvals needed:** Owner review/merge + live acceptance.
-- **Recommended next action:** Review + merge; then run the manual acceptance checklist above.
+- **Decisions / approvals needed:** Owner review/merge + two-browser acceptance.
+- **Recommended next action:** Review + merge; then run the two-desktop acceptance.
+- **Other open PRs:** #178 (Atlas auto-attach deployed URL) — independent, still open.

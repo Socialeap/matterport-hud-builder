@@ -92,3 +92,41 @@
   583/583; verify:no-secrets PASS; eslint clean; build OK (reverted pre-existing
   routeTree SSR-register drift). Backend Activation Required: NO. Opened a PR;
   stopped before merge. Manual live-Netlify acceptance pending.
+- **2026-06-18** — Live Tour polish: quiet View Sync + no annotation-triggered
+  reloads (runtime 2.2.5 → 2.2.6). Branch `frontiers3d/live-tour-quiet-sync` off
+  origin/main. Investigation proved the ONLY iframe.src writer is applyTeleport
+  (View Sync / saved-stop); annotation/tool/stroke/clear/navlock/floor handlers
+  never navigate. Fix (Builder + Atlas parity): (A) rewriteIframeForTeleport →
+  normalizeMatterportLiveSyncUrl adds verified Matterport quiet params
+  help=0/hl=0/dh=0 (with existing qs=1/play=1/title=0/brand=0), idempotent,
+  preserves m/ss/sr, matterport.com-only; (B) applyTeleport no-op guard
+  (lastTeleportedKey) skips iframe.src reassignment when already showing that
+  view → duplicate/echo/same-view re-syncs never reload. No wipe-on-sync (2.2.5
+  kept). Version bumped + changelog; js:glue re-pinned (dcda269d…, 89481);
+  legacy-bootstrap R1 → 2.2.6 + quiet-param asserts. New tests: 15
+  (tests/live-tour-quiet-sync.test.mjs 10 = normalize unit+parity both runtimes +
+  source guards; builder-live-tour X1–X5 behavioral). tsc 0; test:intelligence
+  598/598; verify:html PASS; verify:no-secrets PASS; build OK (reverted
+  pre-existing routeTree SSR-register drift). Initial iframe markup intentionally
+  untouched (out of scope). Backend Activation Required: NO. Opened a PR; stopped
+  before merge; owner two-browser acceptance pending.
+- **2026-06-18** — Codex P2 fix on PR #179 (quiet View Sync): Builder
+  applyTeleport returned before window.__snapPrimaryActive(), so a no-op
+  same-view teleport while a Property Feature/Mattertag (ghost iframe) was open
+  could leave the user on the ghost view. Fixed: snap the primary iframe FIRST
+  (idempotent), then the no-reload guard. New test X6 proves the snap runs on the
+  no-op path while src is not reassigned. Atlas is single-iframe (no snap, no
+  change). js:glue re-pinned (cc9de988…, 89753). tsc 0; test:intelligence
+  599/599; verify:html + verify:no-secrets PASS; build OK. Backend Activation: NO.
+- **2026-06-18** — Codex P2 #2 on PR #179 (quiet View Sync): the no-op guard used
+  a separate lastTeleportedKey updated only on teleport-write, so an echo of a
+  just-sent/just-followed view (local send sets currentViewKey, not
+  lastTeleportedKey) wasn't recognized → reloaded anyway. Fix (both runtimes):
+  dropped lastTeleportedKey; the guard now compares newKey to the pre-converge
+  currentViewKey, which attemptSendLocation already keeps in sync (currentViewKey=key).
+  Source guards assert the guard keys off currentViewKey AND that attemptSendLocation
+  converges it. (The behavioral send→echo path is additionally covered by the
+  pre-existing own-send echo-suppression window; an isolated test was dropped as
+  confounded by that window — X2 + source guards prove the currentViewKey guard.)
+  js:glue re-pinned (6af1a435…, 89934). tsc 0; test:intelligence 599/599;
+  verify:html + verify:no-secrets PASS; build OK. Backend Activation: NO.

@@ -1793,18 +1793,24 @@ export const BUILDER_JS_GLUE_SPAN = `// f3d:runtime-js:glue BEGIN v=1 family=bui
   // watermark mid-tour. This override is scoped to live-tour bookmark
   // teleports only — normal viewing still respects the agent's
   // TourBehavior hideTitle / hideBranding toggles.
-  function rewriteIframeForTeleport(baseUrl,ss,sr){
+  // Build a "quiet" Matterport show URL for a synced/teleported view. Changing
+  // ss/sr requires reloading the iframe (no Matterport SDK); these verified
+  // params stop that reload from replaying Matterport's startup UI:
+  //   play=1 auto-open · qs=1 quickstart->Inside View · help=0 no help prompt ·
+  //   hl=0 auto-collapse the highlight reel · dh=0 no dollhouse fly-in/button.
+  // (title=0/brand=0 preserve prior behavior.) Idempotent; preserves m + ss/sr;
+  // only ever decorates real Matterport show URLs.
+  function normalizeMatterportLiveSyncUrl(baseUrl,ss,sr){
     if(!baseUrl) return baseUrl;
-    var stripped=baseUrl.replace(/[?&](ss|sr|qs|play|title|brand)=[^&]*/g,function(m){
+    if(!/matterport\\.com/i.test(baseUrl)) return baseUrl;
+    var stripped=baseUrl.replace(/[?&](ss|sr|qs|play|title|brand|help|hl|dh)=[^&]*/g,function(m){
       return m.charAt(0)==="?"?"?":"";
     });
-    // The strip above can leave a trailing "?" or "?&" sequence —
-    // normalize to a clean separator.
     stripped=stripped.replace(/\\?&/g,"?").replace(/[?&]$/,"");
     var sep=stripped.indexOf("?")===-1?"?":"&";
     var qs="ss="+encodeURIComponent(ss);
     if(sr) qs+="&sr="+encodeURIComponent(sr);
-    qs+="&qs=1&play=1&title=0&brand=0";
+    qs+="&qs=1&play=1&title=0&brand=0&help=0&hl=0&dh=0";
     return stripped+sep+qs;
   }
 
@@ -1812,26 +1818,31 @@ export const BUILDER_JS_GLUE_SPAN = `// f3d:runtime-js:glue BEGIN v=1 family=bui
     if(!frame) return;
     var p=props[current];
     if(!p||!p.iframeUrl) return;
-    // Converge the view key (so outbound annotation packets are stamped with the
-    // live view and the receive filter keeps dropping genuinely stale frames),
-    // but do NOT wipe — 2.2.5: a View Sync / follow keeps Host and Guest in one
-    // shared scene where committed annotations persist. Wiping here erased the
-    // peer's marks on every sync (the reported regression). Clear and the Eraser
-    // are the only ways to remove marks in a shared scene.
-    currentViewKey=(ss||"")+"|"+(sr||"");
-    // Tell the controller the view it cannot see changed: its receive filter and
-    // outbound annotation stamping both key off _currentViewKey, and a locally
-    // applied view (inbound sync follow or tour-stop click) is invisible to it
-    // otherwise. Idempotent for the tour-stop path (teleportVisitor already set
-    // it). Empty-key strokes drawn before the first sync stay accepted on both
-    // ends (the filter only drops when BOTH keys are non-empty and differ), so
-    // establishing the first key does not orphan or erase earlier marks.
+    var newKey=(ss||"")+"|"+(sr||"");
+    // Is the viewer already at this exact view? currentViewKey tracks the live
+    // view — set by an inbound teleport/follow AND by a LOCAL clipboard send in
+    // attemptSendLocation — so this also catches an echo of a just-sent/just-
+    // followed view, not only repeats of a prior teleport. Capture BEFORE converge.
+    var sameView=(newKey===currentViewKey);
+    // Converge the view key (outbound annotation stamping + stale-frame filter),
+    // but do NOT wipe — 2.2.5 shared-scene persistence. Empty-key strokes drawn
+    // before the first sync stay accepted (the filter only drops when BOTH keys
+    // are non-empty and differ), so establishing the first key never orphans them.
+    currentViewKey=newKey;
+    // Tell the controller the (otherwise invisible) locally-applied view changed.
     try { session.noteCurrentView(ss,sr); } catch(_e){}
-    // Live tour teleports always target the primary iframe (closure-
-    // captured frame === Iframe A). Snap state back so the user sees
-    // the upcoming reload on the iframe they're looking at.
+    // Live tour teleports always target the primary iframe (closure-captured
+    // frame === Iframe A). Snap it back to the foreground FIRST — even for a
+    // no-op same-view teleport — so a repeat sync/tour-stop while a Property
+    // Feature / Mattertag (ghost iframe) is open still returns the user to the
+    // live-tour view instead of leaving them on the ghost/tag.
     try { if(window.__snapPrimaryActive) window.__snapPrimaryActive(); } catch(_e){}
-    try { frame.src=rewriteIframeForTeleport(p.iframeUrl,ss,sr); } catch(_e){}
+    // 2.2.6 quiet sync: never reassign src for a view already shown — a reload
+    // would replay Matterport's startup UI (e.g. guest shares V, host follows and
+    // sends V back; the echo must not reload). The primary-iframe snap above
+    // already ran, so the user is on the live view regardless.
+    if(sameView) return;
+    try { frame.src=normalizeMatterportLiveSyncUrl(p.iframeUrl,ss,sr); } catch(_e){}
   }
 
   function renderStops(){

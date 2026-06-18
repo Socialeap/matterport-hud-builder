@@ -1222,3 +1222,66 @@ test("W7 — switching tools never clears committed annotations", () => {
   drawOn(p.host, 3, 300, 300); // force a redraw to re-measure
   assert.equal(strokes(p.host), 3, "all committed marks survived the tool changes");
 });
+
+// ── X. Quiet View Sync + no annotation-triggered reload (runtime 2.2.6) ──────
+// View Sync reloads the iframe (no Matterport SDK) but must do so QUIETLY, and
+// only an explicit location/teleport may ever touch iframe.src — annotation and
+// tool actions must never reload the peer's Matterport viewer.
+
+test("X1 — inbound View Sync reloads the iframe with verified Matterport quiet params", () => {
+  const h = runGlue("visitor", { wireRemote: true });
+  h.emit({ incomingTeleportEvent: { ss: "1.5", sr: "0.2,0.3", ts: 1 } });
+  const src = h.frame.src || "";
+  assert.match(src, /ss=1\.5/, "iframe moved to the synced view (ss preserved)");
+  assert.match(src, /sr=0\.2/, "sr preserved");
+  for (const p of ["play=1", "qs=1", "help=0", "hl=0", "dh=0"]) {
+    assert.ok(src.includes(p), `quiet param ${p} present so the reload doesn't replay Matterport startup UI`);
+  }
+});
+
+test("X2 — a repeat sync to the SAME view does NOT reload the iframe (no-op guard)", () => {
+  const h = runGlue("visitor", { wireRemote: true });
+  h.emit({ incomingTeleportEvent: { ss: "9", sr: "3,4", ts: 1 } });
+  assert.match(h.frame.src || "", /ss=9/, "first sync reloads");
+  // Sentinel proves whether a second identical sync reassigns src at all.
+  h.frame.src = "SENTINEL://unchanged";
+  h.emit({ incomingTeleportEvent: { ss: "9", sr: "3,4", ts: 2 } }); // same view, new event
+  assert.equal(h.frame.src, "SENTINEL://unchanged", "identical re-sync must not reload the viewer");
+  // A genuinely different view still reloads.
+  h.emit({ incomingTeleportEvent: { ss: "10", sr: "3,4", ts: 3 } });
+  assert.match(h.frame.src || "", /ss=10/, "a new view still reloads");
+});
+
+test("X3 — selecting annotation tools never touches the Matterport iframe src", () => {
+  const h = runGlue("agent", { wireRemote: true });
+  h.frame.src = "SENTINEL://tool";
+  for (const k of ["p", "d", "r", "e", "Escape"]) h.fireDoc("keydown", { key: k });
+  assert.equal(h.frame.src, "SENTINEL://tool", "Pointer/Draw/Focus Rope/Eraser/clear-tool must not reload the viewer");
+});
+
+test("X4 — receiving remote strokes never touches the iframe src", () => {
+  const h = runGlue("agent", { wireRemote: true });
+  h.frame.src = "SENTINEL://stroke";
+  h.emit({ incomingStrokeEvent: { seq: 1, kind: "begin", strokeId: "s1", color: "#fff", width: 4, points: [{ x: 0.1, y: 0.1 }] } });
+  h.emit({ incomingStrokeEvent: { seq: 2, kind: "patch", strokeId: "s1", points: [{ x: 0.2, y: 0.2 }] } });
+  assert.equal(h.frame.src, "SENTINEL://stroke", "remote annotations affect the overlay only, never the iframe");
+});
+
+test("X5 — remote Clear affects the overlay only, never the iframe src", () => {
+  const h = runGlue("agent", { wireRemote: true });
+  h.frame.src = "SENTINEL://clear";
+  h.emit({ incomingClearEvent: { seq: 1 } });
+  assert.equal(h.frame.src, "SENTINEL://clear", "Clear wipes annotations only — no viewer reload");
+});
+
+test("X6 — Builder restores the primary iframe (__snapPrimaryActive) even on a no-op same-view teleport", () => {
+  let snaps = 0;
+  const h = runGlue("visitor", { wireRemote: true, window: { __snapPrimaryActive: () => { snaps++; } } });
+  h.emit({ incomingTeleportEvent: { ss: "9", sr: "3,4", ts: 1 } });
+  assert.ok(snaps >= 1, "first teleport snaps the primary iframe to the foreground");
+  const afterFirst = snaps;
+  h.frame.src = "SENTINEL://noreload";
+  h.emit({ incomingTeleportEvent: { ss: "9", sr: "3,4", ts: 2 } }); // same view → no reload
+  assert.equal(h.frame.src, "SENTINEL://noreload", "no-op guard still skips the iframe reload");
+  assert.ok(snaps > afterFirst, "but the primary iframe is STILL snapped back (ghost/Mattertag restore) on the no-op path");
+});

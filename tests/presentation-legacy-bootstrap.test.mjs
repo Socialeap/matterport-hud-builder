@@ -285,7 +285,7 @@ test("P1 — committed fixture carries no phone-shaped numbers on any surface", 
 });
 
 // ── R. Bootstrapped output carries the corrected clipboard runtime ───────────
-test("R1 — bootstrap output carries the 2.2.5 runtime (legacy View Sync + shared-annotation persistence)", () => {
+test("R1 — bootstrap output carries the 2.2.6 runtime (quiet View Sync + shared-annotation persistence)", () => {
   const out = boot(FIX).html;
   // Legacy readText-is-source-of-truth clipboard (2.2.4): NO permissions.query,
   // NO cached-permission gate.
@@ -303,7 +303,11 @@ test("R1 — bootstrap output carries the 2.2.5 runtime (legacy View Sync + shar
   const teleStart = out.indexOf("function applyTeleport");
   const teleBlock = out.slice(teleStart, out.indexOf("function ", teleStart + 1));
   assert.ok(!teleBlock.includes("wipeAnnotations()"), "applyTeleport does NOT wipe on inbound sync");
+  // Quiet View Sync (2.2.6): normalize helper present + quiet params; no-op guard.
+  assert.ok(out.includes("function normalizeMatterportLiveSyncUrl"), "quiet-sync URL helper present");
+  assert.ok(out.includes("&help=0&hl=0&dh=0"), "teleport URL carries Matterport quiet-start params");
+  assert.ok(teleBlock.includes("sameView"), "applyTeleport has the no-op (no-reload) guard keyed off currentViewKey");
   // And reinspects at the bumped runtime version.
   assert.equal(boot(FIX).postInspection.runtimeVersion, ATLAS_RUNTIME_VERSION);
-  assert.equal(ATLAS_RUNTIME_VERSION, "2.2.5");
+  assert.equal(ATLAS_RUNTIME_VERSION, "2.2.6");
 });
