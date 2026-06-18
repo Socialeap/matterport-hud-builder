@@ -28,7 +28,9 @@
   no migration applied/reapplied; no backend action.
 - **Files changed:**
   - `BACKEND_ACTIVATION.md` — NEEDS APPLY → Completed / APPLIED & VERIFIED (2026-06-18); verification SQL marked satisfied.
+  - `.lovable/memory/features/atlas-discovery.md` — cleared the obsolete "apply/verify showcase_merge" Current Gap (now points to the remaining admin acceptance; notes the migration is applied & verified).
   - `CODEX_REVIEW_QUEUE.md` + `.codex-review/claude-session.md` — this update + recovery snapshot.
+- **Review fixes:** Codex P2 — the Atlas feature memory (`atlas-discovery.md:21`) still listed the migration apply as a current gap, which CLAUDE.md routing would surface to future Atlas work. Cleared it so the documented state matches live reality across BOTH the handoff and the scoped memory.
 - **STATUS.md:** NOT added. It is absent on `origin/main` (the prior copy lived only on stranded `f880740` and predates the PWA/visual-map merges, so it is stale). Recommendation: do not resurrect the stale file here; if a tracked STATUS.md is wanted, refresh it against current `main` in a separate focused PR. Out of scope for this reconciliation.
 - **Verification:** `git diff --check` clean; `verify:no-secrets` PASS;
   `git diff --name-only` shows only the allowed docs/handoff files.

@@ -68,3 +68,10 @@
   current main; recommended a separate refresh if a tracked STATUS.md is wanted.
   No migration applied/reapplied; no code/runtime/RLS/secret/deploy touched.
   Backend Activation Required: NO. Opened a focused docs-only PR; stopped before merge.
+- **2026-06-18** — Codex P2 follow-up on the reconciliation PR: cleared the
+  obsolete migration gap in `.lovable/memory/features/atlas-discovery.md:21`
+  (it still listed "apply/verify showcase_merge" as a current gap, which CLAUDE.md
+  routing would surface to future Atlas work). Replaced it with the remaining
+  admin acceptance gap + a note that the migration is applied & verified. Now the
+  documented backend state matches live reality in BOTH the handoff and scoped
+  memory. Docs-only; same branch/PR #177. Backend Activation Required: NO.
