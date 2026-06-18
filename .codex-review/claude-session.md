@@ -92,3 +92,21 @@
   583/583; verify:no-secrets PASS; eslint clean; build OK (reverted pre-existing
   routeTree SSR-register drift). Backend Activation Required: NO. Opened a PR;
   stopped before merge. Manual live-Netlify acceptance pending.
+- **2026-06-18** — Live Tour polish: quiet View Sync + no annotation-triggered
+  reloads (runtime 2.2.5 → 2.2.6). Branch `frontiers3d/live-tour-quiet-sync` off
+  origin/main. Investigation proved the ONLY iframe.src writer is applyTeleport
+  (View Sync / saved-stop); annotation/tool/stroke/clear/navlock/floor handlers
+  never navigate. Fix (Builder + Atlas parity): (A) rewriteIframeForTeleport →
+  normalizeMatterportLiveSyncUrl adds verified Matterport quiet params
+  help=0/hl=0/dh=0 (with existing qs=1/play=1/title=0/brand=0), idempotent,
+  preserves m/ss/sr, matterport.com-only; (B) applyTeleport no-op guard
+  (lastTeleportedKey) skips iframe.src reassignment when already showing that
+  view → duplicate/echo/same-view re-syncs never reload. No wipe-on-sync (2.2.5
+  kept). Version bumped + changelog; js:glue re-pinned (dcda269d…, 89481);
+  legacy-bootstrap R1 → 2.2.6 + quiet-param asserts. New tests: 15
+  (tests/live-tour-quiet-sync.test.mjs 10 = normalize unit+parity both runtimes +
+  source guards; builder-live-tour X1–X5 behavioral). tsc 0; test:intelligence
+  598/598; verify:html PASS; verify:no-secrets PASS; build OK (reverted
+  pre-existing routeTree SSR-register drift). Initial iframe markup intentionally
+  untouched (out of scope). Backend Activation Required: NO. Opened a PR; stopped
+  before merge; owner two-browser acceptance pending.

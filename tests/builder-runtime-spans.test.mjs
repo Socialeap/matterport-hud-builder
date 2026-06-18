@@ -91,14 +91,15 @@ const BASELINES = [
     bytes: 1001,
   },
   {
-    // Re-pinned for runtime 2.2.5 (shared-annotation persistence across View
-    // Sync: attemptSendLocation/applyTeleport converge the view key but no longer
-    // wipe committed strokes). A byte change to the glue IS a runtime change —
-    // re-pinned deliberately.
+    // Re-pinned for runtime 2.2.6 (quiet View Sync: rewriteIframeForTeleport ->
+    // normalizeMatterportLiveSyncUrl with verified Matterport quiet-start params
+    // help=0/hl=0/dh=0, plus a no-op applyTeleport guard that skips reload when
+    // the iframe already shows that view). A byte change to the glue IS a runtime
+    // change — re-pinned deliberately.
     name: "js:glue",
     build: () => BUILDER_JS_GLUE_SPAN,
-    sha256: "33fcc00815619278be4a7fe858919a1893132d70145299b5d2aecd722668ceaf",
-    bytes: 89134,
+    sha256: "dcda269d28ef09304eaad85c46df1c573e5b5190e82469ffab1ff3ea45663c25",
+    bytes: 89481,
   },
 ];
 
