@@ -489,7 +489,12 @@
         for (const ch of (c.children || [])) if (ch.id === id) return Object.assign({ _kind: "component", _domain: c.id, _domainTitle: c.title }, ch);
       }
       for (const p of DATA.progress) if (p.id === id) return Object.assign({ _kind: "progress" }, p);
-      for (const f of DATA.flow) if (f.id === id) return Object.assign({ _kind: "flow" }, f);
+      // Flow items carry no id in DATA — resolve the synthetic "flow-<index>" id from renderFlow.
+      if (typeof id === "string" && id.indexOf("flow-") === 0) {
+        const f = DATA.flow[Number(id.slice(5))];
+        if (f) return Object.assign({ _kind: "flow", id: id }, f);
+      }
+      for (const f of DATA.flow) if (f.id && f.id === id) return Object.assign({ _kind: "flow" }, f);
       return null;
     }
     // Merge a matching progress milestone (done/pending/blocker) into a component/domain by title.
@@ -664,7 +669,7 @@
         <div class="flow">${DATA.flow.map((f, i) => `
           ${i ? `<div class="flow-step"><span class="arrow" aria-hidden="true">↓</span></div>` : ""}
           <div class="flow-step">
-            <button type="button" class="row" data-node="${esc(f.id)}">
+            <button type="button" class="row" data-node="flow-${i}">
               <span class="dot ${statusClass(f.status)}"></span>
               <span class="row-main"><span class="row-title">${esc(f.title)}</span><span class="row-sub">${esc(f.text)}</span></span>
               <span class="row-aside">${esc(statusLabel(f.status))}</span>

@@ -30,6 +30,11 @@
   harness drives every view + inspector (14/14 checks); real-browser screenshots
   (desktop overview, domain drill-down, mobile full-page) confirm calm layout.
   Source-of-truth hierarchy + conservative statuses unchanged.
+- **Review fixes:** Codex P2 (flow rows rendered `data-node=""` because `DATA.flow`
+  has no `id`, so clicking a step fell back to "Start here") — FIXED by assigning
+  synthetic `flow-<i>` ids at render time and resolving them in `findNode`; DATA
+  object left byte-for-byte unchanged. Harness now clicks steps and asserts the
+  step detail renders.
 - **Known failures / risks:** None. Docs-only; surfaced read-only at `/admin/visual-map`
   via existing `?raw` iframe (`sandbox="allow-scripts"`) — no route/runtime change.
 - **Backend Activation Required:** NO — documentation only.

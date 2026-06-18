@@ -38,3 +38,9 @@
   `git diff --check` clean; verify:no-secrets PASS. Docs-only. Backend
   Activation Required: NO. Opened as PR #176; PR #175 (PWA) was MERGED into main
   meanwhile, so #176's base was retargeted to `main` (overhaul-only diff). Stopped before merge.
+- **2026-06-18** — Fixed Codex P2 on PR #176: Flow-view rows rendered
+  `data-node=""` (DATA.flow has no `id`), so clicking a step set selectedId="" and
+  fell back to the "Start here" panel. Fix: render synthetic `flow-<i>` ids and
+  resolve them in `findNode`; DATA object preserved byte-for-byte (30794 B,
+  identical sha256). Harness now clicks steps and asserts step detail renders;
+  parses, self-contained, diff still docs-only. Backend Activation Required: NO.
