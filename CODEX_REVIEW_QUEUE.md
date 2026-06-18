@@ -2,46 +2,45 @@
 
 ## Current Review Request
 
-- **Timestamp:** 2026-06-17T18:34:25Z
-- **Repository:** Socialeap (Lovable workspace, `/dev-server`)
-- **Branch:** `edit/edt-04ff1637-8c6c-4483-9a97-f1b9d91ea654`
-- **PR:** (to be opened) — `docs(operations): add Frontiers3D operation visual map`
-- **Base commit:** `2c789cd`
+- **Timestamp:** 2026-06-17
+- **Repository:** /Users/shakoure/matterport-hud-builder (Socialeap)
+- **Branch:** `frontiers3d/docs-pwa-app-shell` (off `origin/main` `a632743`)
+- **PR:** (to be opened) — `docs(operations): surface PWA/App Shell in visual map + scoped docs`
+- **Base commit:** `a632743`
 - **Head commit:** pending commit on current branch
 - **Status:** ready for review
-- **Summary:** Adds the Frontiers|3D Operation Visual Map as owner-facing
-  documentation under `docs/operations/visual-map/`. Docs-only change;
-  no app/runtime/backend modifications.
+- **Summary:** Makes the existing PWA/App Shell layer visible in owner-facing
+  planning/orientation. Adds an App Shell / Delivery (PWA) node + children to
+  the Operation Visual Map and a "PWA / App Shell" Progress Spine milestone
+  (Mixed, 75); adds scoped memory `pwa-app-shell.md`; references it from
+  PRODUCT_END_STATES.md §K; adds a concise PWA routing rule to CLAUDE.md.
+  Docs/governance/visual-map only — no app, runtime, service-worker, or
+  backend changes.
 - **Files changed:**
-  - `docs/operations/visual-map/index.html` (new) — self-contained
-    visual map HTML.
-  - `docs/operations/visual-map/README.md` (new) — purpose, scope,
-    source-of-truth hierarchy, status definitions, update cadence.
-  - `CODEX_REVIEW_QUEUE.md` (new) — this file.
-  - `.codex-review/claude-session.md` (new) — session milestone log.
-- **Verification:**
-  - HTML is self-contained: `grep -n -E '(src=|href=|url\(|@import|fetch\(|http|cdn)'`
-    on the uploaded source returned no external references.
-  - No `src/`, `public/`, `supabase/`, `scripts/`, route, migration,
-    Edge Function, lockfile, or dependency files modified.
-  - Build / typecheck / tests not required for a docs-only addition.
-- **Known failures / risks:** None. Static HTML; not wired into the app.
+  - `docs/operations/visual-map/index.html` — new PWA cluster + Progress Spine milestone.
+  - `.lovable/memory/features/pwa-app-shell.md` (new) + `.lovable/memory/index.md` entry.
+  - `PRODUCT_END_STATES.md` §K — PWA boundary + memory-file reference (still Partial; 92 lines).
+  - `CLAUDE.md` — concise PWA/App-Shell routing rule.
+  - `CODEX_REVIEW_QUEUE.md` + `.codex-review/claude-session.md` — this update.
+- **Verification:** `git diff --check` clean; `verify:no-secrets` PASS; inline
+  visual-map JS parses (`new Function` over the script block); `wc -l
+  PRODUCT_END_STATES.md` = 92 (<120). No `src/` runtime, `public/sw*`,
+  route, migration, Edge Function, lockfile, or dependency changes.
+- **Known failures / risks:** None. Docs-only; SW/cache behavior untouched.
 - **Backend Activation Required:** NO — documentation only.
 - **End-State Alignment:**
-  - Component: Governance + Operations
-  - Approved outcome advanced: Owner-facing visual orientation map
-    added that reflects, but does not replace, the source-of-truth
-    documents.
-  - Boundaries preserved: Documentation-only; not an app route; not
-    runtime code; not a source of truth; no backend / dependency
-    changes.
-  - Cross-component effects: Improves planning clarity and AI-agent
-    handoff across platform components.
-  - Acceptance evidence: Files present under `docs/operations/visual-map/`;
-    HTML opens locally; no runtime surface changed.
-  - Remaining gap: None for this PR.
-  - PRODUCT_END_STATES.md revision required: NO
-- **Decisions / approvals needed:** Owner approval to merge the
-  docs-only PR.
+  - Component: Public Marketing and PWA / Operations visual map
+  - Approved outcome advanced: Existing PWA/App Shell layer made visible in
+    owner-facing planning + orientation; reflects, not outranks, source-of-truth.
+  - Boundaries preserved: Documentation-only; no runtime, service-worker,
+    backend, or public-feature expansion; future PWA ideas stay Planned.
+  - Cross-component effects: Clearer planning for mobile, installability,
+    offline fallback, and future notification/job workflows.
+  - Acceptance evidence: Visual-map node + milestone render; scoped doc +
+    index entry; minimal §K + CLAUDE routing rule; verification passes.
+  - Remaining gap: Future PWA opportunities remain planned, not implemented.
+  - PRODUCT_END_STATES.md revision required: NO (reference-only touch).
+- **Decisions / approvals needed:** Owner review/merge of the docs-only PR.
 - **Recommended next action:** Review files, then merge.
-- **Superseded:** None.
+- **Superseded:** Prior "operation visual map" review request (that PR's work
+  is already on `origin/main` `a632743`).

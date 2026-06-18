@@ -60,7 +60,7 @@ Frontiers|3D is a multi-tenant ecosystem for providers, agents/businesses, and v
 **End-state:** Public-source discovery/enrichment supports truthful, compliant, auditable, throttled outreach with operator control and exactly-once delivery. **Anchors:** admin Doorway/Outreach routes, Map Oracle migrations/functions, email queues/logs. **See:** `.lovable/memory/features/map-oracle-outreach.md`.
 
 ### K. Public Marketing And PWA - Partial
-**End-state:** Audience-specific pages present one truthful ecosystem and direct each user to discovery, provider, builder, publishing, or Atlas actions with responsive/PWA usability. **Anchors:** `index.tsx`, `agents.tsx`, `businesses.tsx`, `opportunities.tsx`, `atlas.tsx`. **See:** `.lovable/memory/features/operations-roadmap.md`.
+**End-state:** Audience-specific pages present one truthful ecosystem and direct each user to discovery, provider, builder, publishing, or Atlas actions with responsive/PWA usability. **PWA boundary:** installable app shell + conservative static service-worker caching only; no offline tours/Live-Tour/Atlas data and no cached private/admin/API data without approval. **Anchors:** `index.tsx`, `atlas.tsx`, `public/sw.js`, `public/sw-cache-policy.js`, `src/components/pwa/*`. **See:** `.lovable/memory/features/operations-roadmap.md`, `.lovable/memory/features/pwa-app-shell.md`.
 
 ### L. Admin And Operations - Partial
 **End-state:** Guarded, transparent operator tools replace routine scripts and verify every active/public/published/queued/sent transition. **Anchors:** `src/routes/_authenticated.admin*`, activation/handoff docs. **See:** `.lovable/memory/features/operations-roadmap.md`.
