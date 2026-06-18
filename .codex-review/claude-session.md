@@ -75,3 +75,20 @@
   admin acceptance gap + a note that the migration is applied & verified. Now the
   documented backend state matches live reality in BOTH the handoff and scoped
   memory. Docs-only; same branch/PR #177. Backend Activation Required: NO.
+- **2026-06-18** — Atlas Showcase Publishing: auto-attach deployed URL after PR
+  merge. Branch `frontiers3d/atlas-showcase-auto-attach` off origin/main.
+  Investigation found the merge→verify→attach backend ALREADY exists
+  (mergeAndPublishShowcase / markShowcaseDeployed / verifyDeployedShowcase +
+  deterministic defaultShowcaseUrl); confirmed with owner the real gap is "stuck
+  on awaiting deploy" (in-merge poll ~15s → real Netlify deploys land
+  pending_deploy needing a manual retry). Fix (no migration/secret): NEW pure
+  helper `atlas-showcase-deploy-plan.mjs` (planShowcaseDeploymentOutcome:
+  ok→published+attach, not-ok→pending_deploy retryable, NEVER failed); NEW
+  non-destructive `pollShowcaseDeployment` server fn (admin-gated, verify→attach
+  presentation_url on success, leave pending otherwise); bounded client auto-poll
+  (~6s then 8s ×12) after Approve & Publish with a "checking deploy…" indicator;
+  manual "Retry deploy & attach" kept as fallback. Tests: 10 new (4 transition
+  unit + 6 source guards incl. secrets-never-in-client). tsc 0; test:intelligence
+  583/583; verify:no-secrets PASS; eslint clean; build OK (reverted pre-existing
+  routeTree SSR-register drift). Backend Activation Required: NO. Opened a PR;
+  stopped before merge. Manual live-Netlify acceptance pending.

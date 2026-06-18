@@ -44,6 +44,7 @@ import {
   publishCuratedShowcase,
   mergeAndPublishShowcase,
   markShowcaseDeployed,
+  pollShowcaseDeployment,
   publishShowcasesRootIndexPr,
 } from "@/lib/atlas-curation.functions";
 
@@ -151,6 +152,7 @@ function AdminAtlasCuration() {
   const pubShowcase = useServerFn(publishCuratedShowcase);
   const mergeDeploy = useServerFn(mergeAndPublishShowcase);
   const markDeployed = useServerFn(markShowcaseDeployed);
+  const pollDeploy = useServerFn(pollShowcaseDeployment);
   const publishRootIndex = useServerFn(publishShowcasesRootIndexPr);
   const [publishingRootIndex, setPublishingRootIndex] = useState(false);
 
@@ -176,6 +178,10 @@ function AdminAtlasCuration() {
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Auto-poll a just-merged showcase until Netlify is live and the URL attaches,
+  // so the admin doesn't have to click "Retry deploy & attach" manually.
+  const [autoPoll, setAutoPoll] = useState<{ jobId: string; attempt: number } | null>(null);
+  const AUTO_POLL_MAX = 12; // ~12 × 8s ≈ 95s of waiting after the initial merge poll
   const reviewPanelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -353,6 +359,37 @@ function AdminAtlasCuration() {
   const replaceJob = (job: AtlasCurationJob) =>
     setJobs((prev) => prev.map((j) => (j.id === job.id ? job : j)));
 
+  // Drive the "awaiting deploy" auto-poll: verify + attach once Netlify is live.
+  useEffect(() => {
+    if (!autoPoll) return;
+    if (autoPoll.attempt >= AUTO_POLL_MAX) {
+      setAutoPoll(null);
+      toast.info("Netlify is still deploying — click “Retry deploy & attach” once it’s live to finish.");
+      return;
+    }
+    let cancelled = false;
+    const delay = autoPoll.attempt === 0 ? 6000 : 8000;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await pollDeploy({ data: { jobId: autoPoll.jobId } });
+        if (cancelled) return;
+        replaceJob(res.job);
+        if (res.status === "published") {
+          setAutoPoll(null);
+          toast.success("Deployed — live URL attached to the listing (still inactive; activate it in Atlas Listings).");
+        } else {
+          setAutoPoll((p) => (p && p.jobId === autoPoll.jobId ? { ...p, attempt: p.attempt + 1 } : p));
+        }
+      } catch {
+        if (!cancelled) setAutoPoll(null); // fall back to the manual "Retry deploy & attach"
+      }
+    }, delay);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [autoPoll, pollDeploy]);
+
   const handleSelectCandidate = async (placeId: string) => {
     if (!selected) return;
     setBusy(true);
@@ -499,12 +536,15 @@ function AdminAtlasCuration() {
       const res = await mergeDeploy({ data: { jobId: selected.id } });
       replaceJob(res.job);
       if (res.status === "published") {
+        setAutoPoll(null);
         toast.success(
           "Merged, deployed & URL attached. Listing is still inactive — activate it in Atlas Listings when ready.",
         );
       } else {
+        // Netlify is still deploying — auto-poll verifies + attaches once it's live.
+        setAutoPoll({ jobId: selected.id, attempt: 0 });
         toast.info(
-          "PR merged. Netlify is still deploying — re-run “Approve & Publish” in a moment to finish attaching the URL.",
+          "PR merged. Netlify is still deploying — checking automatically and attaching the URL once it’s live…",
         );
       }
     } catch (err) {
@@ -705,6 +745,7 @@ function AdminAtlasCuration() {
             setDraft={setDraft}
             coordsMissing={coordsMissing}
             busy={busy}
+            autoPolling={autoPoll?.jobId === selected.id}
             onSelectCandidate={handleSelectCandidate}
             onSaveDraft={() => void saveDraft()}
             onMarkReady={() => void saveDraft("ready_for_review")}
@@ -790,7 +831,7 @@ function AdminAtlasCuration() {
 }
 
 function JobReviewPanel({
-  job, draft, setDraft, coordsMissing, busy,
+  job, draft, setDraft, coordsMissing, busy, autoPolling,
   onSelectCandidate, onSaveDraft, onMarkReady, onCreateEntry, onGeneratePackage,
   onPublishShowcase, onMergeAndDeploy, onMarkDeployed, onReject, onClose,
 }: {
@@ -799,6 +840,7 @@ function JobReviewPanel({
   setDraft: React.Dispatch<React.SetStateAction<DraftForm>>;
   coordsMissing: boolean;
   busy: boolean;
+  autoPolling: boolean;
   onSelectCandidate: (placeId: string) => void;
   onSaveDraft: () => void;
   onMarkReady: () => void;
@@ -1009,7 +1051,7 @@ function JobReviewPanel({
             </Popover>
             {publishStatus === "pr_open" && <span className="text-xs font-normal text-amber-600 dark:text-amber-400">PR open</span>}
             {publishStatus === "merged" && <span className="inline-flex items-center gap-1 text-xs font-normal text-sky-600 dark:text-sky-400"><Clock className="size-3.5" /> merged · deploying</span>}
-            {publishStatus === "pending_deploy" && <span className="inline-flex items-center gap-1 text-xs font-normal text-amber-600 dark:text-amber-400"><Clock className="size-3.5" /> awaiting deploy</span>}
+            {publishStatus === "pending_deploy" && <span className="inline-flex items-center gap-1 text-xs font-normal text-amber-600 dark:text-amber-400"><Clock className={`size-3.5 ${autoPolling ? "animate-spin" : ""}`} /> {autoPolling ? "checking deploy…" : "awaiting deploy"}</span>}
             {publishStatus === "published" && <span className="inline-flex items-center gap-1 text-xs font-normal text-emerald-600 dark:text-emerald-400"><CheckCircle2 className="size-3.5" /> published</span>}
             {publishStatus === "failed" && <span className="text-xs font-normal text-rose-600 dark:text-rose-400">failed</span>}
           </div>
