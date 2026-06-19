@@ -199,3 +199,19 @@
 - Verification: git diff --check clean; verify:no-secrets PASS; no app/route/runtime/
   migration/edge-function/lockfile/dependency/routeTree edits. Backend Activation: NO.
   Docs-only PR opened against main; STOP before merge.
+
+## 2026-06-19 — Docs: SHA-verification for the Lovable/GitHub sync protocol (docs-only)
+- Branch frontiers3d/docs-sync-sha-verification (off main @ 1377274).
+- Adds post-merge SHA verification so testing never runs stale code (the #179/#180 episode:
+  merged on GitHub, stale in Lovable). GitHub main = code source of truth. After any merge
+  Claude reports PR# + merge SHA + expected marker + "Lovable sync required: YES/NO"; before
+  testing Lovable confirms GitHub-main SHA, its workspace/deployed SHA, SHA match, marker
+  present. Mismatch or Lovable local edits = STOP (preserve-as-PR or GitHub-wins). Claude must
+  not green-light testing until SHA match=YES and marker=YES. Example markers documented
+  (ATLAS_RUNTIME_VERSION, republishCuratedShowcase, heading/file path).
+- Edits: CLAUDE.md (Post-merge SHA verification block) + .codex-review/sync-protocol.md (NEW
+  §7) + CODEX_REVIEW_QUEUE.md (#181 → recently merged; current request) + this log.
+- Note: PR #182 (Pratt recovery) still open and also edits the queue + this log — small
+  conflict expected at second merge; keep both entries.
+- Verification: git diff --check clean; verify:no-secrets PASS; docs-only. Backend Activation:
+  NO. Docs-only PR opened against main; STOP before merge.

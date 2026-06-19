@@ -47,6 +47,27 @@ it before any branch/merge/activation coordination.
 - Any exception where Lovable edits repo code must be **explicitly called out as an
   exception** and must **not** overlap with Claude's active branch.
 
+**Post-merge SHA verification (prevents testing stale code)**
+
+GitHub `main` is the **code source of truth**. A recurring failure mode is: a PR is
+merged to `main`, but the Lovable workspace/deploy is still behind, so testing runs
+old code and a working fix looks broken. Visual "in sync" status is not enough — the
+**exact commit SHA** must match. (See the full procedure + example markers in
+`.codex-review/sync-protocol.md` §7.)
+
+- **After any PR merge,** Claude must report: merged **PR number**, **merge commit
+  SHA**, an **expected verification marker** (a concrete string the new code
+  contains), and **Lovable sync required before testing: YES/NO**.
+- **Before Shakoure tests in Lovable,** Lovable must confirm: **GitHub `main` latest
+  SHA**, **Lovable workspace/deployed SHA**, **SHA match: YES/NO**, and **expected
+  marker present: YES/NO**.
+- If the **SHA does not match → STOP. Do not test.** Resolve sync first.
+- If **Lovable has local edits → STOP** and choose one: (a) preserve Lovable's edits
+  as a PR, or (b) GitHub-wins resync. Never silently overwrite either side.
+- Lovable stays **read-only** unless explicitly assigned a separate branch/task.
+- **Claude must not tell Shakoure to test a merged PR until Lovable SHA verification
+  is complete** (SHA match = YES and marker present = YES).
+
 ## Product End-State Alignment Rule
 
 `PRODUCT_END_STATES.md` (repo root) is the compressed product-direction baseline. Detailed per-component workflows live in scoped memory under `.lovable/memory/features/` (indexed in `.lovable/memory/index.md`). Consult them so work advances the approved end-states without re-deriving direction or drifting from it — and without paying token cost on trivial work.

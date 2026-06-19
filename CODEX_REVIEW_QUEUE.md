@@ -2,6 +2,7 @@
 
 ## Recently merged (main context)
 
+- **PR #181** (docs: AI role split + Lovable sync protocol) — MERGED into `main` (`1377274`).
 - **PR #180** (Atlas-managed showcase runtime upgrade / republish path + P2 downgrade guard) — MERGED into `main` (`3f59b83`). Owner smoke test on a real 2.2.5 showcase still pending.
 - **PR #179** (live-tour quiet View Sync + runtime **2.2.6**) — MERGED into `main` (`50fb018`).
 - **PR #178** (auto-attach deployed showcase URL after PR merge) — MERGED into `main`.
@@ -13,30 +14,32 @@
 
 - **Timestamp:** 2026-06-19
 - **Repository:** /Users/shakoure/matterport-hud-builder (Socialeap)
-- **Branch:** `frontiers3d/docs-ai-role-split` (off `main`). Base: `main`.
-- **PR:** [#181](https://github.com/Socialeap/matterport-hud-builder/pull/181) — `docs: AI role split + Lovable sync protocol`
-- **Base commit:** `3f59b83` · **Head commit:** `74c6cdc` (branch tip; PR [#181](https://github.com/Socialeap/matterport-hud-builder/pull/181) is the canonical live head — act on the PR's current head, which includes this trailing queue-bookkeeping commit).
+- **Branch:** `frontiers3d/docs-sync-sha-verification` (off `main`). Base: `main`.
+- **PR:** _(opening against `main` — URL to follow)_ — `docs: strengthen Lovable/GitHub sync protocol with SHA verification`
+- **Base commit:** `1377274` · **Head commit:** pending push
 - **Status:** ready for review — **docs-only; stop before merge**
-- **Summary:** Documents the development workflow now that Claude Code/App is the primary
-  implementation agent, Lovable is the secondary read-only/deploy-aware assistant, and Codex
-  is the planning/review/handoff assistant. Formalizes the sync rules that prevent
-  GitHub/Lovable divergence and backend-activation confusion. No application/runtime/backend
-  changes.
+- **Summary:** Strengthens the Lovable/GitHub sync protocol so post-merge testing can't run
+  stale code. GitHub `main` is the code source of truth; after any merge Claude reports the
+  PR number + merge commit SHA + an expected verification marker + whether Lovable sync is
+  required, and Lovable must confirm the GitHub-main SHA, its own workspace/deployed SHA, the
+  SHA match, and marker presence before Shakoure tests. SHA mismatch or Lovable local edits =
+  STOP. Motivated by the #179/#180 episode (merged on GitHub, stale in Lovable). No app/
+  runtime/backend changes.
 - **Files changed (docs/handoff only):**
-  - `CLAUDE.md` — NEW "AI Role Split & Lovable Sync Protocol" section (roles + sync rules + the pre-merge "confirm Lovable is idle and in sync" reminder), pointing to the detailed protocol.
-  - `.codex-review/sync-protocol.md` — NEW detailed protocol (roles, branch/edit discipline, merge/push to main, backend activation, exceptions, divergence recovery).
-  - `CODEX_REVIEW_QUEUE.md` — moved #180 to Recently merged; this entry.
+  - `CLAUDE.md` — added a "Post-merge SHA verification" block to the AI Role Split & Lovable Sync Protocol section.
+  - `.codex-review/sync-protocol.md` — NEW §7 (post-merge SHA verification: Claude report fields, Lovable pre-test confirmation, stop conditions, local-edit handling, example markers).
+  - `CODEX_REVIEW_QUEUE.md` — #181 → Recently merged; this entry.
   - `.codex-review/claude-session.md` — milestone entry.
 - **Verification:** `git diff --check` clean; `verify:no-secrets` PASS; changed files are docs/handoff only (no app/route/runtime/migration/edge-function/lockfile/dependency/`routeTree.gen.ts` edits).
 - **Backend Activation Required:** NO — documentation only.
 - **End-State Alignment:**
   - Component: Admin & Operations / AI workflow governance.
-  - Approved outcome advanced: a clear AI role split reduces branch drift, backend-activation confusion, and duplicated implementation work.
+  - Approved outcome advanced: post-merge SHA verification stops Shakoure from testing stale Lovable code and misreading working fixes as failures.
   - Boundaries preserved: documentation-only; no app/runtime/backend/deploy changes; `PRODUCT_END_STATES.md` untouched.
-  - Cross-component effects: improves Claude/Lovable/Codex handoff discipline across all future work.
+  - Cross-component effects: tightens Claude/Lovable handoff discipline for every future merge.
   - Acceptance evidence: `git diff --check` clean; `verify:no-secrets` PASS; diff limited to `CLAUDE.md`, `.codex-review/sync-protocol.md`, `CODEX_REVIEW_QUEUE.md`, `.codex-review/claude-session.md`.
-  - Remaining gap: none for the docs scope; Lovable/Codex acknowledgement of the documented roles is an operational follow-up.
+  - Remaining gap: none for the docs scope; operational adoption of the SHA check by Lovable.
   - PRODUCT_END_STATES.md revision required: NO.
 - **Decisions / approvals needed:** Owner review; **stop before merge** (confirm Lovable is idle and in sync first).
 - **Recommended next action:** Review the docs PR; merge only after confirming Lovable is idle and in sync.
-- **Other open PRs / context:** #180 merged into `main` (`3f59b83`), owner smoke test pending.
+- **Other open PRs / context:** **#182** (docs: Pratt Manhattan Gallery recovery) is **open** and also edits `CODEX_REVIEW_QUEUE.md` + `.codex-review/claude-session.md` — expect a small queue/log conflict at the second merge; resolve by keeping both the recovery record and this entry. #180 + #181 merged into `main`.

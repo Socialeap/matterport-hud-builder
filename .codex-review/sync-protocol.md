@@ -72,3 +72,54 @@ roles and the sync rules, and so GitHub and Lovable do not diverge.
   reviewable path: rebase/merge through Git, or re-sync from the agreed source of
   truth (`main`), with the owner deciding which side wins.
 - Record the chosen recovery path and outcome in `.codex-review/claude-session.md`.
+
+## 7. Post-merge SHA verification (before any Lovable test)
+
+**Why this exists:** repeatedly, GitHub `main` has contained a merged PR while the
+Lovable workspace/deploy was still behind or diverged, so Shakoure tested old code
+and believed the fix failed (the #179 / #180 episode proved this). A visual "in sync"
+indicator is **not** sufficient — the **exact commit SHA** must match. **GitHub
+`main` is the code source of truth.**
+
+### 7.1 Claude — required post-merge report
+
+Immediately after any PR merges to `main`, Claude reports:
+
+- **Merged PR number:** `#<n>`
+- **Merge commit SHA:** `<full or short sha>` (the new `main` tip)
+- **Expected verification marker:** a concrete string the merged code now contains
+  (see §7.4) that proves the workspace is on the new revision
+- **Lovable sync required before testing:** **YES / NO**
+
+### 7.2 Lovable — required pre-test confirmation
+
+Before Shakoure tests anything that depends on the merge, Lovable confirms:
+
+- **GitHub `main` latest SHA:** `<sha>`
+- **Lovable workspace / deployed SHA:** `<sha>`
+- **SHA match:** **YES / NO**
+- **Expected marker present:** **YES / NO**
+
+### 7.3 Stop conditions
+
+- **SHA does not match → STOP. Do not test.** Resolve sync first (pull/redeploy
+  `main`), then re-confirm §7.2.
+- **Lovable has local edits → STOP** and choose exactly one:
+  1. **Preserve Lovable's edits as a PR** (open a branch from them, review, merge), or
+  2. **GitHub-wins resync** (discard the Lovable-side drift in favor of `main`).
+  Never silently overwrite either side; record the choice (§6).
+- **Claude must not tell Shakoure to test a merged PR** until §7.2 returns SHA
+  match = YES **and** marker present = YES.
+
+### 7.4 Example verification markers
+
+Pick a marker that only exists in the merged change:
+
+- **Runtime change:** the version constant, e.g. `ATLAS_RUNTIME_VERSION = "2.2.6"`
+  (in `src/lib/atlas-runtime-version.mjs`), and/or the deployed
+  `atlas-manifest.json` → `runtime_version`.
+- **Atlas Curation change:** a new function/button name, e.g.
+  `republishCuratedShowcase` / "Upgrade runtime to X.Y.Z".
+- **Visual Map / docs change:** an exact heading or file path, e.g. this
+  `## 7. Post-merge SHA verification` heading, or a new file like
+  `.codex-review/sync-protocol.md`.
