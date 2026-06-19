@@ -13,8 +13,8 @@
 - **Timestamp:** 2026-06-18
 - **Repository:** /Users/shakoure/matterport-hud-builder (Socialeap)
 - **Branch:** `frontiers3d/atlas-showcase-runtime-republish` — **rebased onto `main`** (`50fb018`, which now carries runtime **2.2.6** via #179). Base: `main`. NOT stacked on the live-tour branch.
-- **PR:** _(opening against `main` now — URL to follow)_ — `feat(atlas): Atlas-managed showcase runtime upgrade (republish) path`
-- **Base commit:** `50fb018` · **Head commit:** pending push
+- **PR:** [#180](https://github.com/Socialeap/matterport-hud-builder/pull/180) — `feat(atlas): Atlas-managed showcase runtime upgrade (republish) path`
+- **Base commit:** `50fb018` · **Head commit:** `b0f3c80`
 - **Status:** ready for review
 - **Summary:** Atlas equivalent of the Builder Patch Tool: an existing **published** curated
   showcase at an older runtime (e.g. 2.2.5) upgrades to the current runtime (2.2.6) by
