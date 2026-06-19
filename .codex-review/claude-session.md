@@ -183,3 +183,19 @@
 - Tests U19 (gate decisions) + U20 (verify+gate ordered before publishShowcasePr).
 - tsc 0; eslint 0; build OK; verify:html + verify:no-secrets PASS; git diff --check
   clean; test:intelligence 619/619 (20 new). Backend Activation: NO.
+
+## 2026-06-19 — Docs: AI role split + Lovable sync protocol (docs-only)
+- Branch frontiers3d/docs-ai-role-split (off main @ 3f59b83, which includes merged #180).
+- Formalized the workflow: Claude Code/App = primary implementation; Lovable = secondary
+  read-only/deploy-aware (backend activation + deploy verification); Codex =
+  planning/review/handoff. Sync rules: no concurrent edits to the same branch; before
+  merge/push to main, confirm "Lovable is idle and in sync"; backend activation is
+  explicitly requested + confirmed; docs/code PRs never imply activation; on Lovable/GitHub
+  divergence stop and pick ONE recovery path (no routine raw-blob copying); Lovable edits
+  are an explicit, non-overlapping exception.
+- Edits (docs/handoff only): CLAUDE.md (NEW "AI Role Split & Lovable Sync Protocol"
+  section) + NEW .codex-review/sync-protocol.md (detailed) + CODEX_REVIEW_QUEUE.md (#180 →
+  recently merged; this PR) + this log.
+- Verification: git diff --check clean; verify:no-secrets PASS; no app/route/runtime/
+  migration/edge-function/lockfile/dependency/routeTree edits. Backend Activation: NO.
+  Docs-only PR opened against main; STOP before merge.
