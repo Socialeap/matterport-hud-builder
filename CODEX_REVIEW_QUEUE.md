@@ -19,8 +19,8 @@
 - **Timestamp:** 2026-06-19
 - **Repository:** /Users/shakoure/matterport-hud-builder (Socialeap)
 - **Branch:** `frontiers3d/docs-pratt-recovery` (off `main`). Base: `main`.
-- **PR:** _(opening against `main` — URL to follow)_ — `docs: record Pratt Manhattan Gallery Atlas listing recovery`
-- **Base commit:** `1377274` · **Head commit:** pending push
+- **PR:** [#182](https://github.com/Socialeap/matterport-hud-builder/pull/182) — `docs: record Pratt Manhattan Gallery Atlas listing recovery`
+- **Base commit:** `1377274` · **Head commit:** `d469d74` (branch tip; PR [#182](https://github.com/Socialeap/matterport-hud-builder/pull/182) is the canonical live head — act on the PR's current head, which includes this trailing queue-bookkeeping commit).
 - **Status:** ready for review — **docs-only; stop before merge**
 - **Summary:** Records the completed recovery of the hard-deleted **Pratt Manhattan Gallery**
   Atlas curated listing. The listing was rebuilt from its surviving curation job (entry-delete
