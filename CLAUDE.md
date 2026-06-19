@@ -13,6 +13,40 @@ This is the **3D Presentation Studio (3DPS)** — a white-label Matterport tour 
 - **Deployment:** Lovable (frontend) + Supabase (backend)
 - **Repo owner:** Socialeap (GitHub)
 
+## AI Role Split & Lovable Sync Protocol
+
+Three AI assistants collaborate on this repo. Keep their roles distinct to avoid
+GitHub/Lovable divergence, backend-activation confusion, and duplicated work. The
+detailed rules and recovery paths live in `.codex-review/sync-protocol.md` — read
+it before any branch/merge/activation coordination.
+
+**Roles**
+
+- **Claude Code / Claude App — primary implementation agent.** Owns repo changes,
+  branch/PR preparation, tests, and code verification (`tsc`, `eslint`, `build`,
+  `verify:html`, `verify:no-secrets`, `test:intelligence`).
+- **Lovable — secondary, read-only / deploy-aware by default.** Use it for
+  deployment state, backend-activation verification, Supabase/Lovable-managed
+  environment checks, and Lovable-specific activation. Lovable normally does **not**
+  edit repo code.
+- **Codex — planning / prompt / review / handoff.** Use it to clarify goals,
+  review Claude/Lovable output, and decide proceed / revise / merge / stop.
+
+**Sync rules**
+
+- Claude and Lovable must **not** edit the same branch concurrently.
+- Before merging or pushing to `main`, Shakoure must confirm Lovable is **idle and
+  in sync**. Claude must surface this reminder before any merge:
+  > "Please confirm Lovable is idle and in sync."
+- Backend activation must be **explicitly requested and confirmed**. Documentation-
+  only or code PRs must **not** imply backend activation (see the Backend Activation
+  Policy below and `BACKEND_ACTIVATION.md`).
+- Lovable may **review** plans and deployment/backend status **without editing**.
+- If Lovable/GitHub diverge, **stop** and pick **one** recovery path (see the sync
+  protocol). Do **not** routinely hand-copy raw blobs to reconcile.
+- Any exception where Lovable edits repo code must be **explicitly called out as an
+  exception** and must **not** overlap with Claude's active branch.
+
 ## Product End-State Alignment Rule
 
 `PRODUCT_END_STATES.md` (repo root) is the compressed product-direction baseline. Detailed per-component workflows live in scoped memory under `.lovable/memory/features/` (indexed in `.lovable/memory/index.md`). Consult them so work advances the approved end-states without re-deriving direction or drifting from it — and without paying token cost on trivial work.
