@@ -16,6 +16,7 @@ import {
   parseRuntimeVersion,
   compareRuntimeVersions,
   computeShowcaseRuntimeStatus,
+  evaluateRuntimeUpgradeGate,
   canRepublishShowcase,
   buildShowcaseInputFromJob,
   resolveRepublishSlug,
@@ -182,6 +183,44 @@ test("U14 — the PR-open job update preserves the live URL + listing until the 
   assert.ok(!("presentation_url" in update), "republish must not touch presentation_url");
   assert.ok(!("atlas_entry_id" in update), "republish must not touch the Atlas listing");
   assert.ok(!("status" in update), "republish must not change listing active/inactive status");
+});
+
+// ── Downgrade guard (authoritative, server-enforced) ──────────────────────────
+
+test("U19 — the upgrade gate proceeds ONLY when the live runtime is strictly older", () => {
+  const older = evaluateRuntimeUpgradeGate("2.2.5", "2.2.6");
+  assert.equal(older.ok, true);
+  assert.equal(older.status, "upgrade_available");
+
+  const current = evaluateRuntimeUpgradeGate("2.2.6", "2.2.6");
+  assert.equal(current.ok, false);
+  assert.equal(current.status, "current");
+  assert.match(current.reason, /nothing to upgrade/i);
+
+  const ahead = evaluateRuntimeUpgradeGate("9.9.9", "2.2.6");
+  assert.equal(ahead.ok, false);
+  assert.equal(ahead.status, "ahead_of_build");
+  assert.match(ahead.reason, /downgrade/i);
+
+  for (const bad of [null, "", "not-a-version"]) {
+    const unknown = evaluateRuntimeUpgradeGate(bad, "2.2.6");
+    assert.equal(unknown.ok, false, `gate must reject unverifiable runtime ${JSON.stringify(bad)}`);
+    assert.equal(unknown.status, "unknown");
+    assert.match(unknown.reason, /couldn'?t confirm/i);
+  }
+});
+
+test("U20 — republishCuratedShowcase verifies the live runtime BEFORE opening a PR (no downgrade)", () => {
+  const src = read("src", "lib", "atlas-curation.functions.ts");
+  const start = src.indexOf("export const republishCuratedShowcase");
+  assert.ok(start > 0, "republishCuratedShowcase must exist");
+  const body = src.slice(start);
+  const verifyAt = body.indexOf("verifyDeployedShowcase");
+  const gateAt = body.indexOf("evaluateRuntimeUpgradeGate");
+  const prAt = body.indexOf("publishShowcasePr");
+  assert.ok(verifyAt > 0 && gateAt > 0 && prAt > 0, "verify + gate + PR all present in republish");
+  assert.ok(verifyAt < prAt, "must verify the deployed runtime before opening the PR");
+  assert.ok(gateAt < prAt, "must evaluate the downgrade gate before opening the PR");
 });
 
 // ── Boundary: the single-file patcher still REJECTS family=atlas ───────────────

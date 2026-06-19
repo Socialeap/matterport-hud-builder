@@ -1147,20 +1147,45 @@ export const republishCuratedShowcase = createServerFn({ method: "POST" })
       buildShowcaseInputFromJob,
       resolveRepublishSlug,
       buildRepublishJobUpdate,
+      evaluateRuntimeUpgradeGate,
     } = await import("./atlas-runtime-upgrade.mjs");
     const { ATLAS_RUNTIME_VERSION } = await import("./atlas-runtime-version.mjs");
+    const publish = await import("./atlas-showcase-publish");
     const runtimeVersion = ATLAS_RUNTIME_VERSION as string;
 
-    // ── Guard: this is the upgrade path for an EXISTING live showcase ────────
+    // ── Structural guard: this is the upgrade path for an EXISTING live showcase
     const gate = canRepublishShowcase(job);
     if (!gate.ok) return failPublish(gate.reason ?? "This showcase can't be republished.");
+
+    // ── Downgrade guard (authoritative): only upgrade a showcase whose LIVE
+    //    runtime is strictly OLDER than this build. The UI disables the button
+    //    for current/ahead/unknown, but a republish regenerates the live folder
+    //    with THIS build's runtime, so a direct server call (or a click after a
+    //    failed inspection) must NOT be able to downgrade a newer live folder.
+    //    We re-read the deployed manifest's runtime here and reject otherwise.
+    //    These rejections throw WITHOUT marking the job "failed": a healthy
+    //    published listing that simply needs no upgrade keeps its published state.
+    const deployedUrl = (job.deployed_url as string | null)?.trim() ?? "";
+    if (!deployedUrl) {
+      throw new Error(
+        "Runtime upgrade not applied — this showcase has no live deployed URL to confirm its runtime against. Finish the current deploy first.",
+      );
+    }
+    const verification = await publish.verifyDeployedShowcase(deployedUrl, { expectedJobId: job.id });
+    const runtimeGate = evaluateRuntimeUpgradeGate(
+      verification.manifest?.runtime_version ?? null,
+      runtimeVersion,
+    );
+    if (!runtimeGate.ok) {
+      const extra = runtimeGate.status === "unknown" && verification.reason ? ` (${verification.reason})` : "";
+      throw new Error(`Runtime upgrade not applied — ${runtimeGate.reason}${extra}`);
+    }
 
     try {
       // Regenerate from the stored curation draft with the CURRENT runtime and
       // open an upgrade PR on the SAME slug folder. The existing presentation_url
       // and deployed_url are left attached so the live listing keeps working
       // until the new deploy verifies; "Approve & Publish" re-attaches the URL.
-      const publish = await import("./atlas-showcase-publish");
       const res = await publish.publishShowcasePr({
         slug: resolveRepublishSlug(job),
         input: buildShowcaseInputFromJob(job),

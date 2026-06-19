@@ -1244,15 +1244,19 @@ function JobReviewPanel({
                   busy ||
                   !hasEntry ||
                   runtimeChecking ||
-                  runtimeInfo?.status === "current" ||
-                  runtimeInfo?.status === "ahead_of_build"
+                  // Enable only when the live runtime is confirmed older. The
+                  // server enforces this too (no downgrade), but don't invite a
+                  // click when it's current/ahead/unverified.
+                  (!!runtimeInfo && !runtimeInfo.upgradeAvailable)
                 }
                 title={
                   runtimeInfo?.status === "current"
                     ? "Already on the current runtime — no upgrade needed."
                     : runtimeInfo?.status === "ahead_of_build"
                       ? "Deployed runtime is newer than this build — refusing to downgrade."
-                      : "Regenerate this showcase with the current runtime and open an upgrade PR on the same folder/URL. Approve & Publish then merges & redeploys; the live URL stays attached."
+                      : runtimeInfo?.status === "unknown"
+                        ? "Couldn't read the deployed runtime — re-check the live showcase before upgrading."
+                        : "Regenerate this showcase with the current runtime and open an upgrade PR on the same folder/URL. Approve & Publish then merges & redeploys; the live URL stays attached."
                 }
               >
                 <RefreshCw className="mr-1 size-4" />

@@ -45,6 +45,17 @@ export function computeShowcaseRuntimeStatus(
   currentRuntime: string,
 ): ShowcaseRuntimeInfo;
 
+export interface RuntimeUpgradeGate {
+  ok: boolean;
+  reason: string | null;
+  status: ShowcaseRuntimeStatus;
+}
+
+export function evaluateRuntimeUpgradeGate(
+  deployedRuntime: string | null | undefined,
+  currentRuntime: string,
+): RuntimeUpgradeGate;
+
 export function canRepublishShowcase(job: unknown): RepublishGate;
 
 export function buildShowcaseInputFromJob(job: unknown): CuratedPackageInput;

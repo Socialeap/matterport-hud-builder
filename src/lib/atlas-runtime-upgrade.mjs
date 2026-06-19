@@ -14,6 +14,29 @@
 //   - buildRepublishJobUpdate — the job row update on PR-open that preserves the
 //     live URL + the Atlas listing until the new deploy verifies.
 
+/**
+ * Authoritative downgrade guard for the republish (upgrade) action: a republish
+ * regenerates the live folder with THIS build's runtime, so it may run ONLY when
+ * the deployed runtime is strictly OLDER than current. Returns { ok, reason,
+ * status } — the server fn enforces this even when invoked directly (bypassing
+ * the disabled UI button), so a newer or unverifiable live folder is never
+ * downgraded. Reject on "current" (no-op), "ahead_of_build" (would downgrade),
+ * and "unknown" (can't prove it's older → don't risk it).
+ */
+export function evaluateRuntimeUpgradeGate(deployedRuntime, currentRuntime) {
+  const info = computeShowcaseRuntimeStatus(deployedRuntime, currentRuntime);
+  if (info.status === "upgrade_available") {
+    return { ok: true, reason: null, status: info.status };
+  }
+  const reason =
+    info.status === "current"
+      ? `The live showcase already runs the current runtime ${currentRuntime} — nothing to upgrade.`
+      : info.status === "ahead_of_build"
+        ? `The live showcase runs ${info.deployedRuntime}, newer than this build's ${currentRuntime} — refusing to downgrade.`
+        : `Couldn't confirm the live runtime is older than ${currentRuntime} — re-check the deployed showcase and try again.`;
+  return { ok: false, reason, status: info.status };
+}
+
 const MATTERPORT_ID_RE = /^[A-Za-z0-9]{11}$/;
 // Republish (runtime upgrade) is only for a showcase that is already live: it
 // regenerates the existing folder. Anything earlier publishes for the first time.

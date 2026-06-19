@@ -169,3 +169,17 @@
 - Verification (on main): tsc 0; eslint 0; vite build OK (routeTree drift reverted);
   verify:html PASS; verify:no-secrets PASS; git diff --check clean; test:intelligence
   617/617 (18 new). Backend Activation: NO. Opening PR against main.
+
+## 2026-06-18 — PR #180 review fix: P2 server-side downgrade guard
+- GitHub-ChatGPT P2: republishCuratedShowcase only ran the structural guard, so a
+  direct server call / click-after-failed-inspection could regenerate a NEWER live
+  folder with this build's OLDER runtime (downgrade once approved).
+- Fix: NEW evaluateRuntimeUpgradeGate(deployed, current) in atlas-runtime-upgrade.mjs
+  (proceed ONLY when status===upgrade_available; reject current/ahead_of_build/unknown).
+  republishCuratedShowcase now re-reads the deployed manifest runtime via
+  verifyDeployedShowcase and runs the gate BEFORE opening any PR; rejections throw
+  WITHOUT marking the healthy published job failed. Also requires a live deployed_url.
+  UI: Upgrade button enabled only when upgradeAvailable (covers unknown too).
+- Tests U19 (gate decisions) + U20 (verify+gate ordered before publishShowcasePr).
+- tsc 0; eslint 0; build OK; verify:html + verify:no-secrets PASS; git diff --check
+  clean; test:intelligence 619/619 (20 new). Backend Activation: NO.
