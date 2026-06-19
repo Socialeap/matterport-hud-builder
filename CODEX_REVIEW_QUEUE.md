@@ -15,8 +15,8 @@
 - **Timestamp:** 2026-06-19
 - **Repository:** /Users/shakoure/matterport-hud-builder (Socialeap)
 - **Branch:** `frontiers3d/docs-sync-sha-verification` (off `main`). Base: `main`.
-- **PR:** _(opening against `main` — URL to follow)_ — `docs: strengthen Lovable/GitHub sync protocol with SHA verification`
-- **Base commit:** `1377274` · **Head commit:** pending push
+- **PR:** [#183](https://github.com/Socialeap/matterport-hud-builder/pull/183) — `docs: strengthen Lovable/GitHub sync protocol with SHA verification`
+- **Base commit:** `1377274` · **Head commit:** `26fd57c` (branch tip; PR [#183](https://github.com/Socialeap/matterport-hud-builder/pull/183) is the canonical live head — act on the PR's current head, which includes this trailing queue-bookkeeping commit).
 - **Status:** ready for review — **docs-only; stop before merge**
 - **Summary:** Strengthens the Lovable/GitHub sync protocol so post-merge testing can't run
   stale code. GitHub `main` is the code source of truth; after any merge Claude reports the
