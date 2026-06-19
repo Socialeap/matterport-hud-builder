@@ -45,6 +45,8 @@ import {
   mergeAndPublishShowcase,
   markShowcaseDeployed,
   pollShowcaseDeployment,
+  republishCuratedShowcase,
+  inspectShowcaseRuntime,
   publishShowcasesRootIndexPr,
 } from "@/lib/atlas-curation.functions";
 
@@ -153,6 +155,8 @@ function AdminAtlasCuration() {
   const mergeDeploy = useServerFn(mergeAndPublishShowcase);
   const markDeployed = useServerFn(markShowcaseDeployed);
   const pollDeploy = useServerFn(pollShowcaseDeployment);
+  const republish = useServerFn(republishCuratedShowcase);
+  const inspectRuntime = useServerFn(inspectShowcaseRuntime);
   const publishRootIndex = useServerFn(publishShowcasesRootIndexPr);
   const [publishingRootIndex, setPublishingRootIndex] = useState(false);
 
@@ -182,6 +186,17 @@ function AdminAtlasCuration() {
   // so the admin doesn't have to click "Retry deploy & attach" manually.
   const [autoPoll, setAutoPoll] = useState<{ jobId: string; attempt: number } | null>(null);
   const AUTO_POLL_MAX = 12; // ~12 × 8s ≈ 95s of waiting after the initial merge poll
+  // Deployed-runtime check for a published showcase: drives the "Upgrade
+  // available" affordance. Keyed by jobId so it only applies to its own job.
+  const [runtimeInfo, setRuntimeInfo] = useState<{
+    jobId: string;
+    deployedRuntime: string | null;
+    currentRuntime: string;
+    upgradeAvailable: boolean;
+    status: "upgrade_available" | "current" | "ahead_of_build" | "unknown";
+    reason: string | null;
+  } | null>(null);
+  const [runtimeChecking, setRuntimeChecking] = useState(false);
   const reviewPanelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -390,6 +405,35 @@ function AdminAtlasCuration() {
     };
   }, [autoPoll, pollDeploy]);
 
+  // When a PUBLISHED showcase is selected, check its deployed runtime against the
+  // current build's runtime so we can surface an "Upgrade available" affordance.
+  // Read-only; never mutates the job. Re-runs when the deployed URL changes (a
+  // republish redeploys the same URL, so re-checking confirms the new runtime).
+  const selPublishStatus = selected?.publish_status ?? null;
+  const selDeployedUrl = selected?.deployed_url ?? null;
+  useEffect(() => {
+    if (!selectedId || selPublishStatus !== "published" || !selDeployedUrl) {
+      setRuntimeInfo(null);
+      return;
+    }
+    const jobId = selectedId;
+    let cancelled = false;
+    setRuntimeChecking(true);
+    (async () => {
+      try {
+        const res = await inspectRuntime({ data: { jobId } });
+        if (!cancelled) setRuntimeInfo({ jobId, ...res });
+      } catch {
+        if (!cancelled) setRuntimeInfo(null);
+      } finally {
+        if (!cancelled) setRuntimeChecking(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, selPublishStatus, selDeployedUrl, inspectRuntime]);
+
   const handleSelectCandidate = async (placeId: string) => {
     if (!selected) return;
     setBusy(true);
@@ -563,6 +607,31 @@ function AdminAtlasCuration() {
       toast.success("Deployed URL attached to the listing (still inactive — activate it in Atlas Listings).");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Couldn't attach the deployed URL.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRepublish = async () => {
+    if (!selected) return;
+    const target = runtimeInfo?.currentRuntime ?? "the current runtime";
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(
+        `Upgrade this showcase to runtime ${target}?\n\nThis regenerates the showcase from its curation draft with the current runtime and opens an upgrade PR on the SAME folder/URL in the showcases repo. Nothing goes live until you click “Approve & Publish” to merge & redeploy. The listing’s active/inactive state is unchanged and its URL stays attached.`,
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await republish({ data: { jobId: selected.id } });
+      replaceJob(res.job);
+      toast.success(
+        `Upgrade PR opened (runtime ${res.runtimeVersion}). Click “Approve & Publish” to merge & redeploy — the live URL stays attached.`,
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Runtime upgrade failed.");
     } finally {
       setBusy(false);
     }
@@ -746,6 +815,8 @@ function AdminAtlasCuration() {
             coordsMissing={coordsMissing}
             busy={busy}
             autoPolling={autoPoll?.jobId === selected.id}
+            runtimeInfo={runtimeInfo?.jobId === selected.id ? runtimeInfo : null}
+            runtimeChecking={runtimeChecking}
             onSelectCandidate={handleSelectCandidate}
             onSaveDraft={() => void saveDraft()}
             onMarkReady={() => void saveDraft("ready_for_review")}
@@ -754,6 +825,7 @@ function AdminAtlasCuration() {
             onPublishShowcase={() => void handlePublishShowcase()}
             onMergeAndDeploy={() => void handleMergeAndDeploy()}
             onMarkDeployed={(url) => void handleMarkDeployed(url)}
+            onRepublish={() => void handleRepublish()}
             onReject={() => void handleReject()}
             onClose={() => setSelectedId(null)}
           />
@@ -831,9 +903,9 @@ function AdminAtlasCuration() {
 }
 
 function JobReviewPanel({
-  job, draft, setDraft, coordsMissing, busy, autoPolling,
+  job, draft, setDraft, coordsMissing, busy, autoPolling, runtimeInfo, runtimeChecking,
   onSelectCandidate, onSaveDraft, onMarkReady, onCreateEntry, onGeneratePackage,
-  onPublishShowcase, onMergeAndDeploy, onMarkDeployed, onReject, onClose,
+  onPublishShowcase, onMergeAndDeploy, onMarkDeployed, onRepublish, onReject, onClose,
 }: {
   job: AtlasCurationJob;
   draft: DraftForm;
@@ -841,6 +913,14 @@ function JobReviewPanel({
   coordsMissing: boolean;
   busy: boolean;
   autoPolling: boolean;
+  runtimeInfo: {
+    deployedRuntime: string | null;
+    currentRuntime: string;
+    upgradeAvailable: boolean;
+    status: "upgrade_available" | "current" | "ahead_of_build" | "unknown";
+    reason: string | null;
+  } | null;
+  runtimeChecking: boolean;
   onSelectCandidate: (placeId: string) => void;
   onSaveDraft: () => void;
   onMarkReady: () => void;
@@ -849,6 +929,7 @@ function JobReviewPanel({
   onPublishShowcase: () => void;
   onMergeAndDeploy: () => void;
   onMarkDeployed: (url?: string) => void;
+  onRepublish: () => void;
   onReject: () => void;
   onClose: () => void;
 }) {
@@ -1115,6 +1196,82 @@ function JobReviewPanel({
           <p className="mt-1 text-[11px] text-emerald-700 dark:text-emerald-300">
             Attached: <a href={job.deployed_url} target="_blank" rel="noopener noreferrer" className="underline">{job.deployed_url}</a> — listing still inactive.
           </p>
+        )}
+
+        {/* Runtime upgrade (Atlas-managed republish). Only for a live showcase:
+            regenerate from the curation draft with the current runtime, open an
+            upgrade PR on the same folder/URL, then Approve & Publish to redeploy.
+            This is the ONLY supported upgrade path for family=atlas — never the
+            single-file Presentation Upgrade Center. */}
+        {publishStatus === "published" && (
+          <div className="mt-2 rounded-md border border-border bg-background/60 p-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                <RefreshCw className={`size-3.5 ${runtimeChecking ? "animate-spin" : ""}`} />
+                {runtimeChecking ? (
+                  <span>Checking deployed runtime…</span>
+                ) : runtimeInfo ? (
+                  <span>
+                    Deployed runtime:{" "}
+                    <span className="font-mono text-foreground">{runtimeInfo.deployedRuntime ?? "unknown"}</span>
+                    {" · "}current:{" "}
+                    <span className="font-mono text-foreground">{runtimeInfo.currentRuntime}</span>
+                    {runtimeInfo.status === "upgrade_available" && (
+                      <span className="ml-1 inline-flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 text-amber-700 dark:text-amber-300">
+                        upgrade available
+                      </span>
+                    )}
+                    {runtimeInfo.status === "current" && (
+                      <span className="ml-1 inline-flex items-center gap-1 rounded bg-emerald-500/15 px-1.5 py-0.5 text-emerald-700 dark:text-emerald-300">
+                        up to date
+                      </span>
+                    )}
+                    {runtimeInfo.status === "ahead_of_build" && (
+                      <span className="ml-1 inline-flex items-center gap-1 rounded bg-sky-500/15 px-1.5 py-0.5 text-sky-700 dark:text-sky-300">
+                        ahead of this build
+                      </span>
+                    )}
+                  </span>
+                ) : (
+                  <span>Runtime status unavailable.</span>
+                )}
+              </div>
+              <Button
+                size="sm"
+                variant={runtimeInfo?.upgradeAvailable ? "default" : "outline"}
+                onClick={onRepublish}
+                disabled={
+                  busy ||
+                  !hasEntry ||
+                  runtimeChecking ||
+                  // Enable only when the live runtime is confirmed older. The
+                  // server enforces this too (no downgrade), but don't invite a
+                  // click when it's current/ahead/unverified.
+                  (!!runtimeInfo && !runtimeInfo.upgradeAvailable)
+                }
+                title={
+                  runtimeInfo?.status === "current"
+                    ? "Already on the current runtime — no upgrade needed."
+                    : runtimeInfo?.status === "ahead_of_build"
+                      ? "Deployed runtime is newer than this build — refusing to downgrade."
+                      : runtimeInfo?.status === "unknown"
+                        ? "Couldn't read the deployed runtime — re-check the live showcase before upgrading."
+                        : "Regenerate this showcase with the current runtime and open an upgrade PR on the same folder/URL. Approve & Publish then merges & redeploys; the live URL stays attached."
+                }
+              >
+                <RefreshCw className="mr-1 size-4" />
+                {runtimeInfo?.currentRuntime
+                  ? `Upgrade runtime to ${runtimeInfo.currentRuntime}`
+                  : "Upgrade runtime"}
+              </Button>
+            </div>
+            <p className="mt-1.5 text-[11px] text-muted-foreground">
+              Atlas-managed upgrade path: regenerates from the curation draft, opens an upgrade PR on{" "}
+              <code>/{job.showcase_slug || "<slug>"}/</code>, then{" "}
+              <strong>Approve &amp; Publish</strong> merges &amp; redeploys. The slug/path/URL and the
+              listing’s active/inactive state are preserved.
+            </p>
+          </div>
         )}
         {(publishStatus === "failed" || publishStatus === "pending_deploy") && job.publish_error && (
           <p className={`mt-1 text-[11px] ${publishStatus === "failed" ? "text-rose-600 dark:text-rose-400" : "text-amber-600 dark:text-amber-400"}`}>{job.publish_error}</p>
