@@ -139,7 +139,7 @@ function describeDisposition(inspection, legacyProfile) {
         canUpgrade: false,
         headline: "Atlas-managed showcase",
         guidance:
-          "This is an Atlas curated showcase. Upgrade it by regenerating and republishing through Atlas curation (its GitHub source + redeploy), never by single-file patch.",
+          "This is an Atlas-managed showcase. Use Admin → Atlas Curation → Upgrade runtime / Republish showcase.",
       };
     case "legacy_unsupported":
       return {

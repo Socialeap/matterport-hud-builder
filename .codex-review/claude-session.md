@@ -130,3 +130,42 @@
   confounded by that window — X2 + source guards prove the currentViewKey guard.)
   js:glue re-pinned (6af1a435…, 89934). tsc 0; test:intelligence 599/599;
   verify:html + verify:no-secrets PASS; build OK. Backend Activation: NO.
+
+## 2026-06-18 — Atlas-managed showcase runtime republish/upgrade path
+- Branch `frontiers3d/atlas-showcase-runtime-republish` (off live-tour-quiet-sync @ 5602a6e).
+  Adds in-place runtime upgrade for live Atlas curated showcases (2.2.5 → current 2.2.6)
+  without recreating listings. Single-file Upgrade Center still rejects family=atlas;
+  upgrade stays on GitHub source + Netlify redeploy.
+- Finding: regenerate→PR→merge→redeploy→re-attach already exists and always stamps the
+  current runtime; missing piece was runtime visibility + a guided/guarded affordance.
+- New server fns (atlas-curation.functions.ts): inspectShowcaseRuntime (read-only deployed
+  vs current + upgradeAvailable) and republishCuratedShowcase (Atlas-only; guards
+  published/pending + slug + entry; regenerates from draft_payload on the SAME slug;
+  preserves deployed_url + presentation_url; sets pr_open so existing Approve & Publish
+  finishes). atlas-showcase-publish.ts manifest type gained runtime_version fields.
+  Admin route: published-state runtime badge + "Upgrade runtime to X.Y.Z" button (guided
+  two-step, owner-confirmed).
+- tsc 0; eslint 0 (changed files); build OK (routeTree SSR-register drift reverted);
+  verify:html PASS. test:intelligence not re-run (no runtime/template change). Not yet
+  committed/pushed — awaiting owner go-ahead. Backend Activation: NO.
+
+## 2026-06-18 — Atlas runtime upgrade path COMPLETED + rebased onto main
+- PR #179 (runtime 2.2.6) and #178 (auto-attach) merged. Rebased
+  `frontiers3d/atlas-showcase-runtime-republish` cleanly onto main (50fb018) — NOT
+  stacked on the live-tour branch. Content of base was byte-identical to main, so no
+  conflicts.
+- Completed the feature: extracted pure helpers into NEW src/lib/atlas-runtime-upgrade.mjs
+  (+ .d.mts) — computeShowcaseRuntimeStatus (older→upgrade, equal→current, newer→
+  ahead_of_build/no-downgrade, unreadable→unknown), canRepublishShowcase guard,
+  buildShowcaseInputFromJob/resolveRepublishSlug (reuse curation data + existing slug),
+  buildRepublishJobUpdate (preserves live URL + listing until verify). Refactored
+  inspectShowcaseRuntime + republishCuratedShowcase to delegate to them. Admin UI now
+  disables the Upgrade button when current/ahead. Requirement #6: Presentation Update
+  Center atlas_managed guidance → "This is an Atlas-managed showcase. Use Admin → Atlas
+  Curation → Upgrade runtime / Republish showcase." (canUpgrade stays false — never patches).
+- NEW tests/atlas-runtime-upgrade.test.mjs (18): version compare, republish guard,
+  slug/data/URL/listing preservation, single-file patcher STILL rejects family=atlas + new
+  message, no client-side secrets / dynamic-import boundary.
+- Verification (on main): tsc 0; eslint 0; vite build OK (routeTree drift reverted);
+  verify:html PASS; verify:no-secrets PASS; git diff --check clean; test:intelligence
+  617/617 (18 new). Backend Activation: NO. Opening PR against main.

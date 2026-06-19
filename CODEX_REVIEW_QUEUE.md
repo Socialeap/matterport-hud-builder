@@ -2,59 +2,53 @@
 
 ## Recently merged (main context)
 
+- **PR #179** (live-tour quiet View Sync + runtime **2.2.6**) — MERGED into `main` (`50fb018`).
+- **PR #178** (auto-attach deployed showcase URL after PR merge) — MERGED into `main`.
 - **PR #177** (docs: Atlas showcase-merge reconciliation) — MERGED into `main`.
-  `BACKEND_ACTIVATION.md` now records `20260613000000_frontiers3d_atlas_showcase_merge.sql`
-  as **APPLIED & VERIFIED**; `atlas-discovery.md` obsolete migration gap cleared.
+  `BACKEND_ACTIVATION.md` records `20260613000000_frontiers3d_atlas_showcase_merge.sql` **APPLIED & VERIFIED**.
 - **PR #176** (visual-map cockpit) + **PR #175** (PWA/App Shell) — MERGED into `main`.
 
 ## Current Review Request
 
 - **Timestamp:** 2026-06-18
 - **Repository:** /Users/shakoure/matterport-hud-builder (Socialeap)
-- **Branch:** `frontiers3d/live-tour-quiet-sync` (off `origin/main`), base `main`.
-- **PR:** (to be opened) — `feat(live-tour): quiet View Sync + no annotation-triggered Matterport reloads (runtime 2.2.6)`
-- **Base commit:** `origin/main` · **Head commit:** pending
+- **Branch:** `frontiers3d/atlas-showcase-runtime-republish` — **rebased onto `main`** (`50fb018`, which now carries runtime **2.2.6** via #179). Base: `main`. NOT stacked on the live-tour branch.
+- **PR:** _(opening against `main` now — URL to follow)_ — `feat(atlas): Atlas-managed showcase runtime upgrade (republish) path`
+- **Base commit:** `50fb018` · **Head commit:** pending push
 - **Status:** ready for review
-- **Summary:** Two Live Tour UX defects. (1) A View Sync reload replayed Matterport's
-  startup UI (intro/help/highlight reel) because the teleport URL builder lacked
-  reel/help suppression params. (2) Concern that annotation/tool actions reload the
-  peer's viewer. **Root cause / proof:** the ONLY iframe `src` writer is
-  `applyTeleport` (View Sync / saved-stop); annotation, tool, stroke, clear,
-  navlock, and floor handlers never call it (source-guarded). Fix, parity-matched
-  across Builder + Atlas runtimes: (A) `rewriteIframeForTeleport` →
-  `normalizeMatterportLiveSyncUrl` — adds verified Matterport quiet params
-  `help=0&hl=0&dh=0` (with existing `qs=1&play=1&title=0&brand=0`), idempotent,
-  preserves m/ss/sr, only decorates `matterport.com` URLs; (B) `applyTeleport`
-  no-op guard — converges the view key but SKIPS reassigning `iframe.src` when the
-  frame already shows that view, so duplicate/echo/same-view re-syncs never reload.
-  No wipe-on-sync (2.2.5 persistence preserved).
+- **Summary:** Atlas equivalent of the Builder Patch Tool: an existing **published** curated
+  showcase at an older runtime (e.g. 2.2.5) upgrades to the current runtime (2.2.6) by
+  regenerating from its stored curation draft and redeploying through its GitHub source repo
+  + Netlify — **without recreating the listing**. Single-file patching (Presentation Upgrade
+  Center) still rejects `family=atlas`. **Key finding:** the regenerate→PR→merge→redeploy→
+  re-attach machinery already exists and always stamps the *current* runtime
+  (`buildShowcaseFiles` → `buildRuntimeManifestFields("atlas")`); what was missing was
+  runtime visibility, a guided/guarded upgrade affordance, and a clearer rejection message.
 - **Files changed:**
-  - `src/lib/atlas-live-tour-runtime.mjs` + `src/lib/portal/builder-runtime-spans.mjs` — normalize helper + no-op `applyTeleport` guard (parity).
-  - `src/lib/atlas-runtime-version.mjs` — runtime **2.2.5 → 2.2.6** + changelog.
-  - `tests/live-tour-quiet-sync.test.mjs` (NEW, 10: normalize unit+parity for both runtimes + source guards).
-  - `tests/builder-live-tour.test.mjs` (X1–X5: quiet params, no-op guard, tool/stroke/clear never touch src).
-  - `tests/builder-runtime-spans.test.mjs` (js:glue re-pin → `6af1a435…`, 89934) + `tests/presentation-legacy-bootstrap.test.mjs` (R1 → 2.2.6 + quiet-param assertions).
-- **Review fixes:**
-  - Codex P2 (snap order) — Builder `applyTeleport` returned before `__snapPrimaryActive()`, so a no-op same-view teleport while a Property Feature/Mattertag (ghost iframe) was open could leave the user on the ghost view. Fixed: snap the primary iframe FIRST (idempotent), then the no-reload guard. Test X6.
-  - Codex P2 (stale guard key) — the no-op guard used a separate `lastTeleportedKey` only updated on teleport-write, so an echo of a just-sent/just-followed view (local send via `attemptSendLocation`, which sets `currentViewKey`) wasn't recognized and reloaded anyway. Fixed: dropped `lastTeleportedKey`; the guard now keys off the pre-converge `currentViewKey` (kept in sync by inbound teleports/follows AND local sends). Source guards assert the guard reads `currentViewKey` and that `attemptSendLocation` converges it. (Atlas is single-iframe — snap N/A; the key fix applies to both runtimes.)
-- **Matterport params (verified vs Matterport URL-parameter docs):** `play=1` auto-open · `qs=1` quickstart→Inside View · `help=0` no help · `hl=0` auto-collapse highlight reel · `dh=0` no dollhouse fly-in/button (no `hl=2` exists; `hl=0` is the safe value). `title=0`/`brand=0` preserve prior behavior.
-- **Verification:** `tsc` 0; `test:intelligence` **599/599** (16 new); `verify:html` PASS (glue IIFE parses, no risky escapes); `verify:no-secrets` PASS; `vite build` OK (pre-existing routeTree SSR-register drift reverted); `git diff --check` clean.
-- **Manual acceptance (pending — owner, two desktops):**
-  1. A syncs view (U + Matterport Copy) → B moves with **no** reel/logo/help popup.
-  2. B syncs back → same.
-  3. A selects Draw/Focus/Eraser/Pointer → B's viewer does **not** reload.
-  4. A draws / B draws+erases → seen with no reload; Clear wipes only on click.
-  5. Voice + fullscreen still work; Atlas modal + direct Netlify showcase both OK.
-- **Known failures / risks:** None. Initial iframe markup intentionally untouched (first-load intro is expected; out of scope). The no-op guard skips reload when coords are unchanged — a same-coordinate re-sync won't force-snap a guest who manually moved (acceptable; move to a different view to re-sync).
-- **Backend Activation Required:** NO — generated runtime + version + tests only; no migration, Edge Function, secret, RLS, storage, or backend.
+  - `src/lib/atlas-runtime-upgrade.mjs` (+ `.d.mts`) — NEW pure helpers (the Atlas patch-tool logic): `computeShowcaseRuntimeStatus` (older→`upgrade_available`, equal→`current`, newer→`ahead_of_build` [no downgrade], unreadable→`unknown`), `canRepublishShowcase` guard, `buildShowcaseInputFromJob` / `resolveRepublishSlug` (reuse curation data + existing slug), `buildRepublishJobUpdate` (preserves live URL + listing until verify).
+  - `src/lib/atlas-curation.functions.ts` — NEW `inspectShowcaseRuntime` (read-only deployed vs current) + `republishCuratedShowcase` (Atlas-only; delegates to the shared helpers; opens upgrade PR on the SAME slug; sets `pr_open` so the existing #178 Approve & Publish merges/redeploys/re-attaches; never clears `deployed_url`/`presentation_url`; never changes activation).
+  - `src/lib/atlas-showcase-publish.ts` — added optional `package_schema`/`runtime_version`/`package_family` to the verifier's `manifest` type (read-only).
+  - `src/routes/_authenticated.admin.atlas-curation.tsx` — published-state UI: auto runtime check, "deployed X · current Y · upgrade available / up to date / ahead of this build" badge, guided **"Upgrade runtime to X.Y.Z"** button (disabled when current/ahead) → republish, then existing **Approve & Publish**.
+  - `src/lib/presentation-upgrade-session.mjs` — `atlas_managed` guidance now: _"This is an Atlas-managed showcase. Use Admin → Atlas Curation → Upgrade runtime / Republish showcase."_ `canUpgrade` stays **false** (never patches the file).
+  - `tests/atlas-runtime-upgrade.test.mjs` — NEW (18: U1–U5 version compare; U6–U10 guard; U11–U14 slug/data/URL/listing preservation; U15–U16 single-file patcher still rejects atlas + new message; U17–U18 no client-side secrets / dynamic-import boundary).
+- **Design decision (owner-confirmed):** Guided two-step (open upgrade PR, then Approve & Publish) — matches the existing re-open→merge pattern; no auto-merge.
+- **Verification (rebased on main):** `tsc` **0**; `eslint` **0** (changed files); `vite build` OK (routeTree SSR-register drift reverted); `verify:html` PASS; `verify:no-secrets` PASS; `git diff --check` clean; `test:intelligence` **617/617** (18 new).
+- **Manual acceptance (pending — owner):**
+  1. `/admin/atlas-curation`, select a published 2.2.5 showcase → badge "deployed 2.2.5 · current 2.2.6 · upgrade available".
+  2. "Upgrade runtime to 2.2.6" → confirm → upgrade PR opens on the same `<slug>/` folder.
+  3. "Approve & Publish" → merges, Netlify redeploys, live URL re-attaches; listing active/inactive unchanged.
+  4. Public `/atlas` opens the same listing; deployed `atlas-manifest.json` reports `runtime_version: 2.2.6`; Live Tour quiet View Sync works.
+  5. Upload that showcase's HTML to the Presentation Update Center → rejected with the new Atlas-Curation message; file not patched.
+- **Known failures / risks:** None functional. Reuses the existing GitHub-merge path → still needs the showcases repo default branch to have no blocking branch protection (else merge manually + "Mark deployed & attach URL"). Runtime check is a live read-only fetch of the deployed manifest.
+- **Backend Activation Required:** NO — new server fns + pure helper + admin UI + tests only; no migration, Edge Function, secret, RLS, storage, or webhook.
 - **End-State Alignment:**
-  - Component: Explore Together / Presentation Runtime / Atlas curated showcases
-  - Approved outcome advanced: View Sync + annotation collaboration feel seamless — no Matterport startup-UI replays, no annotation-triggered viewer reloads.
-  - Boundaries preserved: No Matterport SDK; no backend; desktop-only; no mobile collaboration; annotations persist unless Clear/Eraser; Builder+Atlas parity.
-  - Cross-component effects: Builder exports, Atlas showcases, and Upgrade Center-bootstrapped packages all inherit 2.2.6.
-  - Acceptance evidence: 598/598 incl. 15 new; normalize unit+parity; source guards; behavioral X1–X5; R1 bootstrap @ 2.2.6.
-  - Remaining gap: Owner two-browser manual acceptance.
+  - Component: H. Atlas Discovery Map (curated showcases) + G. Presentation Upgrade Center boundary + L. Admin & Operations.
+  - Approved outcome advanced: existing showcases upgrade to the current runtime without recreating listings (closes an `atlas-discovery.md` "Current Gaps" item); upgrade stays on the Atlas GitHub→Netlify path.
+  - Boundaries preserved: single-file path still rejects `family=atlas` (canUpgrade false); no auto-activation; secrets stay server-side (dynamic-import boundary test); slug/path/URL preserved; activation untouched; no Matterport SDK; no migration.
+  - Cross-component effects: confined to the admin curation route + the Upgrade Center rejection copy; reuses existing publish/merge/verify infrastructure.
+  - Acceptance evidence: 617/617 incl. 18 new; tsc/eslint/build/verify:html/verify:no-secrets PASS; flow proven by reuse of #178 merge/deploy/re-attach functions; owner smoke test pending.
+  - Remaining gap: owner `/admin/atlas-curation` smoke test on a real published showcase; confirm showcases repo branch protection allows API merge.
   - PRODUCT_END_STATES.md revision required: NO.
-- **Decisions / approvals needed:** Owner review/merge + two-browser acceptance.
-- **Recommended next action:** Review + merge; then run the two-desktop acceptance.
-- **Other open PRs:** #178 (Atlas auto-attach deployed URL) — independent, still open.
+- **Decisions / approvals needed:** Owner review/merge + the manual smoke test above.
+- **Recommended next action:** Review + merge; then run the smoke test on a real 2.2.5 showcase.
+- **Other open PRs / context:** None blocking — #178 (auto-attach) + #179 (runtime 2.2.6) already merged into `main`; this builds directly on both.

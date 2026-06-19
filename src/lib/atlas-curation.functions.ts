@@ -1033,3 +1033,150 @@ export const publishShowcasesRootIndexPr = createServerFn({ method: "POST" })
     const res = await publishShowcasesRootIndex();
     return { prUrl: res.prUrl, alreadyExists: res.alreadyExists };
   });
+
+// ── Inspect a deployed showcase's runtime version (upgrade availability) ──────
+//
+// Read-only. Fetches the live showcase's atlas-manifest.json (via the same
+// verifier used before activation) and reports its deployed runtime_version
+// against the current ATLAS_RUNTIME_VERSION this build generates. Drives the
+// admin "Upgrade available" affordance — it never mutates the job, the listing,
+// or the repo. `upgradeAvailable` is true only when we can read a deployed
+// version AND it differs from current (older OR a stale string); when the
+// deployed version can't be read it stays false (nothing to claim).
+
+export const inspectShowcaseRuntime = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => z.object({ jobId: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }): Promise<{
+    deployedRuntime: string | null;
+    currentRuntime: string;
+    upgradeAvailable: boolean;
+    status: "upgrade_available" | "current" | "ahead_of_build" | "unknown";
+    reason: string | null;
+  }> => {
+    await requireAdmin(context as Ctx);
+    const sb = (context as Ctx).supabase;
+
+    const { ATLAS_RUNTIME_VERSION } = await import("./atlas-runtime-version.mjs");
+    const { computeShowcaseRuntimeStatus } = await import("./atlas-runtime-upgrade.mjs");
+    const currentRuntime = ATLAS_RUNTIME_VERSION as string;
+
+    const { data: job, error: loadErr } = await sb
+      .from("atlas_curation_jobs")
+      .select(JOB_COLUMNS)
+      .eq("id", data.jobId)
+      .single();
+    if (loadErr || !job) throw new Error(loadErr?.message ?? "Curation job not found.");
+
+    const deployedUrl = (job.deployed_url as string | null)?.trim() ?? "";
+    if (!deployedUrl) {
+      return {
+        deployedRuntime: null,
+        currentRuntime,
+        upgradeAvailable: false,
+        status: "unknown",
+        reason: "No deployed URL yet — publish the showcase before checking its runtime.",
+      };
+    }
+
+    const { verifyDeployedShowcase } = await import("./atlas-showcase-publish");
+    const verification = await verifyDeployedShowcase(deployedUrl, { expectedJobId: job.id });
+    const deployedRuntime = verification.manifest?.runtime_version ?? null;
+
+    if (!deployedRuntime) {
+      return {
+        deployedRuntime: null,
+        currentRuntime,
+        upgradeAvailable: false,
+        status: "unknown",
+        reason: verification.ok
+          ? "Deployed showcase manifest has no runtime version — re-publish to stamp the current runtime."
+          : `Couldn't read the deployed runtime — ${verification.reason ?? "verification failed"}.`,
+      };
+    }
+
+    // Pure decision (older = upgrade; equal = current; newer = ahead-of-build,
+    // never offered as a downgrade) — shared with the tests.
+    return computeShowcaseRuntimeStatus(deployedRuntime, currentRuntime);
+  });
+
+// ── Republish (runtime upgrade) for an already-published Atlas showcase ───────
+//
+// The Atlas-managed upgrade path. Single-file patching (Presentation Upgrade
+// Center) rejects family=atlas; an Atlas curated showcase is upgraded by
+// REGENERATING it from its stored curation draft with the current runtime and
+// REDEPLOYING through its GitHub source repo + Netlify. This action opens the
+// upgrade PR (reusing the existing slug → same `<slug>/` folder, same public
+// path & URL); the admin then runs "Approve & Publish" to merge, redeploy, and
+// re-attach the URL — exactly the existing merge/deploy/verify flow.
+//
+// Distinct from the first-time publish path so it can guard for "an existing
+// live listing" and preserve the attached presentation_url throughout: it does
+// NOT clear deployed_url or the entry's presentation_url, so the listing keeps
+// working until the new deploy verifies, and the merge re-attaches the same URL.
+// Never changes listing active/inactive state.
+
+export const republishCuratedShowcase = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => z.object({ jobId: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }): Promise<{
+    job: AtlasCurationJob;
+    prUrl: string;
+    runtimeVersion: string;
+  }> => {
+    await requireAdmin(context as Ctx);
+    const sb = (context as Ctx).supabase;
+
+    const { data: job, error: loadErr } = await sb
+      .from("atlas_curation_jobs")
+      .select(JOB_COLUMNS)
+      .eq("id", data.jobId)
+      .single();
+    if (loadErr || !job) throw new Error(loadErr?.message ?? "Curation job not found.");
+
+    const failPublish = async (msg: string): Promise<never> => {
+      await sb
+        .from("atlas_curation_jobs")
+        .update({ publish_status: "failed", publish_error: msg })
+        .eq("id", data.jobId);
+      throw new Error(msg);
+    };
+
+    const {
+      canRepublishShowcase,
+      buildShowcaseInputFromJob,
+      resolveRepublishSlug,
+      buildRepublishJobUpdate,
+    } = await import("./atlas-runtime-upgrade.mjs");
+    const { ATLAS_RUNTIME_VERSION } = await import("./atlas-runtime-version.mjs");
+    const runtimeVersion = ATLAS_RUNTIME_VERSION as string;
+
+    // ── Guard: this is the upgrade path for an EXISTING live showcase ────────
+    const gate = canRepublishShowcase(job);
+    if (!gate.ok) return failPublish(gate.reason ?? "This showcase can't be republished.");
+
+    try {
+      // Regenerate from the stored curation draft with the CURRENT runtime and
+      // open an upgrade PR on the SAME slug folder. The existing presentation_url
+      // and deployed_url are left attached so the live listing keeps working
+      // until the new deploy verifies; "Approve & Publish" re-attaches the URL.
+      const publish = await import("./atlas-showcase-publish");
+      const res = await publish.publishShowcasePr({
+        slug: resolveRepublishSlug(job),
+        input: buildShowcaseInputFromJob(job),
+      });
+
+      const { data: updated, error: updErr } = await sb
+        .from("atlas_curation_jobs")
+        .update(buildRepublishJobUpdate(res))
+        .eq("id", data.jobId)
+        .select(JOB_COLUMNS)
+        .single();
+      if (updErr) throw new Error(updErr.message);
+      return { job: updated as AtlasCurationJob, prUrl: res.prUrl, runtimeVersion };
+    } catch (err) {
+      return failPublish(
+        err instanceof Error ? `Runtime upgrade publish failed — ${err.message}` : "Runtime upgrade publish failed.",
+      );
+    }
+  });

@@ -344,6 +344,12 @@ export interface ShowcaseVerifyResult {
     kind?: string;
     curation_job_id?: string;
     matterport_id?: string;
+    // Runtime/package versioning stamped by buildRuntimeManifestFields("atlas").
+    // Read by the admin runtime-upgrade check to compare a live showcase's
+    // deployed runtime against the current ATLAS_RUNTIME_VERSION.
+    package_schema?: number;
+    runtime_version?: string;
+    package_family?: string;
   };
   checks: {
     indexStatus: number | null;
