@@ -15,7 +15,7 @@
 - **Repository:** /Users/shakoure/matterport-hud-builder (Socialeap)
 - **Branch:** `frontiers3d/docs-ai-role-split` (off `main`). Base: `main`.
 - **PR:** [#181](https://github.com/Socialeap/matterport-hud-builder/pull/181) — `docs: AI role split + Lovable sync protocol`
-- **Base commit:** `3f59b83` · **Head commit:** `d6810f9`
+- **Base commit:** `3f59b83` · **Head commit:** `74c6cdc` (branch tip; PR [#181](https://github.com/Socialeap/matterport-hud-builder/pull/181) is the canonical live head — act on the PR's current head, which includes this trailing queue-bookkeeping commit).
 - **Status:** ready for review — **docs-only; stop before merge**
 - **Summary:** Documents the development workflow now that Claude Code/App is the primary
   implementation agent, Lovable is the secondary read-only/deploy-aware assistant, and Codex
