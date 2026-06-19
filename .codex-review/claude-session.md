@@ -199,3 +199,18 @@
 - Verification: git diff --check clean; verify:no-secrets PASS; no app/route/runtime/
   migration/edge-function/lockfile/dependency/routeTree edits. Backend Activation: NO.
   Docs-only PR opened against main; STOP before merge.
+
+## 2026-06-19 — Docs: record Pratt Manhattan Gallery Atlas listing recovery (docs-only)
+- Branch frontiers3d/docs-pratt-recovery (off main @ 1377274; #180 + #181 merged).
+- Recovery was performed earlier via the Lovable Cloud DB tool (admin server fns require an
+  authenticated admin session). This PR only DOCUMENTS it — data recovery / direct DB write,
+  NOT schema activation. No migration/Edge Function/RLS/storage/secret/schema change.
+- Facts: job 390a00d9-8c2b-48f6-ac6b-ee7e7d395aca → new atlas_entry_id
+  514a948c-6b31-4394-8419-48ba1e11bd05; publish_status=published; URL
+  .../there-is-a-certain-slant-of-light-pratt-manhattan-gallery/ re-attached after manifest
+  verification; entry inactive; relationship_status=unclaimed; owner_user_id=null;
+  merged_at=null.
+- Edits: BACKEND_ACTIVATION.md (Status note + Completed Activations entry) + CODEX_REVIEW_QUEUE.md
+  (#181 → recently merged; Operational recoveries note; current request) + this log.
+- Verification: git diff --check clean; verify:no-secrets PASS; docs-only. Backend Activation:
+  NO (completed data recovery, not schema activation). Owner previews + activates; STOP before merge.

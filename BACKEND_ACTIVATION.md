@@ -6,6 +6,8 @@ Backend Activation Required: **YES** — sender domain `notify.3dps.transcendenc
 
 Backend Activation Required: **NO (resolved, 2026-06-18)** — migration `20260613000000_frontiers3d_atlas_showcase_merge.sql` is **APPLIED & VERIFIED**. Lovable confirmed it was already applied to the live database and reapplied nothing. See the Completed Activations record. No new secrets, no RLS/grant/policy changes, no data changes, no auto-activation. (Two admin manual checks remain — branch-protection confirmation + Approve & Publish smoke test — listed in that record.)
 
+Backend Activation Required: **NO — completed data recovery / direct DB write (2026-06-19)** — the deleted **Pratt Manhattan Gallery** Atlas curated listing was recovered via the Lovable Cloud DB tool (admin server functions require an authenticated admin session). This is a **row-level data recovery, not a schema activation**: no migration, Edge Function, RLS/policy, storage, secret, or schema change. Manifest verification passed before the write. See the Completed Activations record. Remaining: owner previews and manually activates the listing if correct (optional runtime republish via the PR #180 path).
+
 ---
 
 ## Pending Activation
@@ -15,6 +17,28 @@ _None._ (The Atlas Showcase "Approve & Publish" migration below was the last pen
 ---
 
 ## Completed Activations
+
+### Atlas curated listing recovery — Pratt Manhattan Gallery (2026-06-19) — COMPLETED (data recovery, NOT schema activation)
+
+**Type:** Row-level **data recovery** via the **Lovable Cloud DB tool** — performed there because the admin server functions (`createAtlasEntryFromJob`, `markShowcaseDeployed`) require an authenticated admin session. **No schema activation:** no migration, Edge Function, RLS/policy, storage, secret, or schema change.
+
+**Why:** The Atlas listing for this showcase was hard-deleted during testing (before the PR #180 Atlas-managed upgrade path was understood). `atlas_entries` has no soft-delete; deleting the listing only nulled `atlas_curation_jobs.atlas_entry_id` (FK `on delete set null`), so the curation job — with its `draft_payload`, `showcase_slug`, and `deployed_url` — survived and the listing was rebuilt from it. The GitHub showcase folder and the live Netlify URL were never affected.
+
+**Recovered state (verified before write — deployed manifest checked OK):**
+- Curation job ID: `390a00d9-8c2b-48f6-ac6b-ee7e7d395aca`
+- New `atlas_entry_id`: `514a948c-6b31-4394-8419-48ba1e11bd05`
+- `publish_status`: `published`
+- `deployed_url` / `presentation_url`: `https://frontiers3d-atlas-showcases.netlify.app/there-is-a-certain-slant-of-light-pratt-manhattan-gallery/`
+- Entry `status`: `inactive` (never auto-activated)
+- `relationship_status`: `unclaimed`
+- `owner_user_id`: `null`
+- `merged_at`: intentionally left `null`
+
+**Boundaries honored:** entry created **inactive** (no auto-activation); listing/URL re-attached only after manifest verification passed; no secrets, no RLS/grant/policy changes, no migration, no schema change.
+
+**Remaining (owner manual — NOT backend activation):**
+1. Owner previews the recovered listing and **manually activates** it in `/admin/atlas` if correct.
+2. Optional: run the PR #180 runtime upgrade (Admin → Atlas Curation → **Upgrade runtime / Republish showcase**) if a newer runtime is desired (deployed runtime must read as older than current to be offered).
 
 ### Atlas Showcase "Approve & Publish" — programmatic merge & deploy (2026-06-03) — APPLIED & VERIFIED (2026-06-18)
 
